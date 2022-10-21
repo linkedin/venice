@@ -89,12 +89,12 @@ public class VeniceChunkedResponse {
    * to include meta data info, which are only available after processing the full request.
    */
   private static final RecordSerializer<StreamingFooterRecordV1> STREAMING_FOOTER_SERIALIZER =
-      SerializerDeserializerFactory.getAvroGenericSerializer(StreamingFooterRecordV1.SCHEMA$);
+      SerializerDeserializerFactory.getAvroGenericSerializer(StreamingFooterRecordV1.getClassSchema());
   private static final Map<CharSequence, CharSequence> EMPTY_MAP = new HashMap<>();
   private static final RecordSerializer<MultiGetResponseRecordV1> MULTI_GET_RESPONSE_SERIALIZER =
-      SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
+      SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.getClassSchema());
   private static final RecordSerializer<ComputeResponseRecordV1> COMPUTE_RESPONSE_SERIALIZER =
-      SerializerDeserializerFactory.getAvroGenericSerializer(ComputeResponseRecordV1.SCHEMA$);
+      SerializerDeserializerFactory.getAvroGenericSerializer(ComputeResponseRecordV1.getClassSchema());
 
   private final VenicePath path;
   private final RouterStats<AggRouterHttpRequestStats> routerStats;

@@ -9,6 +9,7 @@ import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_STORE_NAME_CONFIG;
 import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCountString;
+import static com.linkedin.venice.utils.Utils.getUniqueString;
 import static org.apache.hadoop.mapreduce.MRJobConfig.MAPREDUCE_JOB_CLASSLOADER;
 import static org.apache.hadoop.mapreduce.MRJobConfig.MAPREDUCE_JOB_CREDENTIALS_BINARY;
 import static org.apache.hadoop.security.UserGroupInformation.HADOOP_TOKEN_FILE_LOCATION;
@@ -39,6 +40,7 @@ import com.linkedin.venice.hadoop.input.kafka.KafkaInputRecordReader;
 import com.linkedin.venice.hadoop.input.kafka.VeniceKafkaInputMapper;
 import com.linkedin.venice.hadoop.input.kafka.VeniceKafkaInputReducer;
 import com.linkedin.venice.hadoop.input.kafka.ttl.TTLResolutionPolicy;
+import com.linkedin.venice.hadoop.output.avro.ValidateSchemaAndBuildDictMapperOutput;
 import com.linkedin.venice.hadoop.pbnj.PostBulkLoadAnalysisMapper;
 import com.linkedin.venice.hadoop.schema.HDFSRmdSchemaSource;
 import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
@@ -99,6 +101,7 @@ import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.mapred.Counters;
 import org.apache.hadoop.mapred.FileInputFormat;
+import org.apache.hadoop.mapred.FileOutputFormat;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.Partitioner;
 import org.apache.hadoop.mapred.RunningJob;
@@ -164,6 +167,18 @@ public class VenicePushJob implements AutoCloseable {
    */
   public static final String USE_MAPPER_TO_BUILD_DICTIONARY = "use.mapper.to.build.dictionary";
   public static final boolean DEFAULT_USE_MAPPER_TO_BUILD_DICTIONARY = false;
+
+  /**
+   * Location and key to store the output of {@link ValidateSchemaAndBuildDictMapper} and retrieve it back
+   * when USE_MAPPER_TO_BUILD_DICTIONARY is enabled
+   */
+  public static final String MAPPER_OUTPUT_DIRECTORY = "mapper.output.directory";
+  public static final String UNIQUE_STRING_FOR_MAPPER_OUTPUT_DIRECTORY = "unique.string.for.mapper.output.directory";
+  protected static final String VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_PARENT_DIR_DEFAULT = "/tmp/venice";
+  private static final String VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_FILE_PREFIX = "mapper-output-";
+  private static final String VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_FILE_EXTENSION = ".avro";
+  public static final String KEY_ZSTD_COMPRESSION_DICTIONARY = "zstdDictionary";
+  public static final String KEY_INPUT_FILE_DATA_SIZE = "inputFileDataSize";
 
   /**
    * Configs used to enable Kafka Input.
@@ -375,6 +390,8 @@ public class VenicePushJob implements AutoCloseable {
   private SentPushJobDetailsTracker sentPushJobDetailsTracker;
   private Class<? extends Partitioner> mapRedPartitionerClass = VeniceMRPartitioner.class;
   private PushJobSchemaInfo pushJobSchemaInfo;
+  private ValidateSchemaAndBuildDictMapperOutput validateSchemaAndBuildDictMapperOutput;
+  private String uniqueStringForMapperOutputDirectory;
 
   protected static class PushJobSetting {
     boolean enablePush;
@@ -415,6 +432,7 @@ public class VenicePushJob implements AutoCloseable {
     boolean compressionMetricCollectionEnabled;
     // temporary flag to host the code to use mapper to validate schema and build dictionary
     boolean useMapperToBuildDict;
+    String useMapperToBuildDictOutputPath;
     // specify ttl time to drop stale records. Only works for repush
     long repushTtlInHours;
     // HDFS directory to cache RMD schemas
@@ -725,6 +743,10 @@ public class VenicePushJob implements AutoCloseable {
         props.getBoolean(COMPRESSION_METRIC_COLLECTION_ENABLED, DEFAULT_COMPRESSION_METRIC_COLLECTION_ENABLED);
     pushJobSettingToReturn.useMapperToBuildDict =
         props.getBoolean(USE_MAPPER_TO_BUILD_DICTIONARY, DEFAULT_USE_MAPPER_TO_BUILD_DICTIONARY);
+    if (pushJobSettingToReturn.useMapperToBuildDict) {
+      pushJobSettingToReturn.useMapperToBuildDictOutputPath = props
+          .getString(MAPPER_OUTPUT_DIRECTORY, VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_PARENT_DIR_DEFAULT);
+    }
     return pushJobSettingToReturn;
   }
 
@@ -950,7 +972,8 @@ public class VenicePushJob implements AutoCloseable {
         if (pushJobSetting.useMapperToBuildDict) {
           /**
            * 1. validate whether the remaining file's schema are consistent with the first file
-           * 2. Build dictionary (if dictionary compression is enabled for this store version or compressionMetricCollectionEnabled)
+           * 2. calculate {@link inputFileDataSize} during step 1
+           * 3. Build dictionary (if dictionary compression is enabled for this store version or compressionMetricCollectionEnabled)
            */
           validateSchemaAndBuildDict(
               validateSchemaAndBuildDictJobConf,
@@ -1287,11 +1310,68 @@ public class VenicePushJob implements AutoCloseable {
     }
   }
 
-  private void runValidateSchemaAndBuildDictJobAndUpdateStatus(JobConf jobConf) throws IOException {
+  private void runValidateSchemaAndBuildDictJobAndUpdateStatus(JobConf conf) throws Exception {
     updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.START_VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB);
-    runningJob = runJobWithConfig(jobConf);
+    runningJob = runJobWithConfig(conf);
     validateCountersAfterValidateSchemaAndBuildDict();
+    getValidateSchemaAndBuildDictMapperOutput(runningJob.getID().toString());
     updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB_COMPLETED);
+  }
+
+  /**
+   * Creating the output file for {@link ValidateSchemaAndBuildDictMapper} to persist data
+   * to be read from VPJ driver.
+   *
+   * Output Directory: {$hadoopTmpDir}/{$storeName}-{$JOB_EXEC_ID}-{$randomUniqueString}
+   * File name: mapper-output-{$MRJobID}.avro
+   *
+   * Why JOB_EXEC_ID and randomUniqueString: This gives uniqueness to the name of the directory whose
+   * permission will be restricted to the current user who started the VPJ only. This helps with 2 issues.
+   * 1. There could be instances where multiple headless accounts are writing to a single Venice store.
+   *    It shouldn't happen in regular cases - but is very likely in case of migrations (technical or organizational)
+   *    => unless we have unique directory for each job, the multiple accounts will have access issues of the directory.
+   *
+   * 2. Multiple push jobs can be started in parallel, but only 1 will continue beyond
+   *    {@link ControllerClient#requestTopicForWrites} as this method will throw CONCURRENT_BATCH_PUSH error
+   *    if there is another push job in progress. As {@link ValidateSchemaAndBuildDictMapper} runs before this method,
+   *    it is prone to concurrent push jobs and thus race conditions. Having unique directories per execution will help here.
+   *
+   * Why can't use MRJobID to achieve randomness: MR's jobID gets populated only after {@link FileOutputFormat#checkOutputSpecs},
+   * which needs {@link FileOutputFormat#setOutputPath} to be set already. so currently unable to use the ID.
+   *
+   * TODO: should try exploring using conf.get("hadoop.tmp.dir") or similar configs to get default
+   *     tmp directory in different HDFS environments rather than hardcoding it to
+   *     VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_PARENT_DIR_DEFAULT.
+   */
+  protected static String getValidateSchemaAndBuildDictionaryOutputDir(
+      String parentOutputDir,
+      String storeName,
+      String jobExecId,
+      String uniqueString) {
+    return parentOutputDir + "/" + storeName + "-" + jobExecId + "-" + uniqueString;
+  }
+
+  protected static String getValidateSchemaAndBuildDictionaryOutputFileNameNoExtension(String mrJobId) {
+    return VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_FILE_PREFIX + mrJobId;
+  }
+
+  protected static String getValidateSchemaAndBuildDictionaryOutputFileName(String mrJobId) {
+    return getValidateSchemaAndBuildDictionaryOutputFileNameNoExtension(mrJobId)
+        + VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_FILE_EXTENSION;
+  }
+
+  private void getValidateSchemaAndBuildDictMapperOutput(String mrJobId) throws Exception {
+    String outputDir = getValidateSchemaAndBuildDictionaryOutputDir(
+        pushJobSetting.useMapperToBuildDictOutputPath,
+        pushJobSetting.storeName,
+        props.getString(JOB_EXEC_ID, ""),
+        uniqueStringForMapperOutputDirectory);
+    String outputAvroFile = getValidateSchemaAndBuildDictionaryOutputFileName(mrJobId);
+    try (ValidateSchemaAndBuildDictMapperOutputReader outputReader =
+        new ValidateSchemaAndBuildDictMapperOutputReader(outputDir, outputAvroFile)) {
+      validateSchemaAndBuildDictMapperOutput = outputReader.getOutput();
+    }
+    inputFileDataSize = validateSchemaAndBuildDictMapperOutput.getInputFileDataSize() * INPUT_DATA_SIZE_FACTOR;
   }
 
   private void checkLastModificationTimeAndLog() throws IOException {
@@ -1522,14 +1602,17 @@ public class VenicePushJob implements AutoCloseable {
         compressionDictionary = DictionaryUtils
             .readDictionaryFromKafka(pushJobSetting.kafkaInputTopic, new VeniceProperties(kafkaConsumerProperties));
       } else {
-        LOGGER.info("Training Zstd dictionary");
         if (!pushJobSetting.useMapperToBuildDict) {
+          LOGGER.info("Training Zstd dictionary");
           compressionDictionary = ByteBuffer.wrap(getInputDataInfoProvider().getZstdDictTrainSamples());
         } else {
-          compressionDictionary = ByteBuffer.wrap("TODO".getBytes());
+          LOGGER.info(
+              "Retrieving the Zstd dictionary trained by {}",
+              ValidateSchemaAndBuildDictMapper.class.getSimpleName());
+          compressionDictionary = validateSchemaAndBuildDictMapperOutput.getZstdDictionary();
         }
       }
-      LOGGER.info("Zstd dictionary size = {} bytes", compressionDictionary.limit());
+      LOGGER.info("Zstd dictionary size = {} bytes", compressionDictionary.remaining());
     } else {
       LOGGER.info("No compression dictionary is generated with the strategy {}", storeSetting.compressionStrategy);
     }
@@ -2613,7 +2696,7 @@ public class VenicePushJob implements AutoCloseable {
       StoreSetting storeSetting,
       VeniceProperties props,
       String id,
-      String inputDirectory) throws IOException {
+      String inputDirectory) throws Exception {
     setupMRConfToValidateSchemaAndBuildDict(
         conf,
         pushJobSetting,
@@ -2658,7 +2741,6 @@ public class VenicePushJob implements AutoCloseable {
         conf,
         pushJobSchemaInfo,
         id + ":venice_push_job_validate_schema_and_build_dict-" + pushJobSetting.storeName);
-
     conf.set(VENICE_STORE_NAME_PROP, pushJobSetting.storeName);
     conf.set(ETL_VALUE_SCHEMA_TRANSFORMATION, pushJobSetting.etlValueSchemaTransformation.name());
     conf.setBoolean(INCREMENTAL_PUSH, pushJobSetting.isIncrementalPush);
@@ -2678,6 +2760,11 @@ public class VenicePushJob implements AutoCloseable {
     conf.set(COMPRESSION_STRATEGY, storeSetting.compressionStrategy.toString());
     conf.setBoolean(COMPRESSION_METRIC_COLLECTION_ENABLED, pushJobSetting.compressionMetricCollectionEnabled);
     conf.setBoolean(USE_MAPPER_TO_BUILD_DICTIONARY, pushJobSetting.useMapperToBuildDict);
+    conf.set(MAPPER_OUTPUT_DIRECTORY, pushJobSetting.useMapperToBuildDictOutputPath);
+    uniqueStringForMapperOutputDirectory = getUniqueString();
+    conf.set(UNIQUE_STRING_FOR_MAPPER_OUTPUT_DIRECTORY, uniqueStringForMapperOutputDirectory);
+
+    conf.set(JOB_EXEC_ID, props.getString(JOB_EXEC_ID, ""));
 
     /** adding below for AbstractMapReduceTask.configure() to not crash: Doesn't affect this flow */
     conf.setBoolean(VeniceWriter.ENABLE_CHUNKING, false);
@@ -2702,6 +2789,9 @@ public class VenicePushJob implements AutoCloseable {
 
     conf.setInputFormat(VeniceFileInputFormat.class);
     conf.setMapperClass(ValidateSchemaAndBuildDictMapper.class);
+
+    AvroJob.setOutputSchema(conf, ValidateSchemaAndBuildDictMapperOutput.getClassSchema());
+    conf.setOutputFormat(ValidateSchemaAndBuildDictOutputFormat.class);
 
     /** key/value fields to be used in {@link DefaultInputDataInfoProvider#validateInputAndGetInfo(String)} in the mapper
      * These values were populated to schemaInfo in the same function but in driver */

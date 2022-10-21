@@ -92,7 +92,7 @@ public class TestVeniceComputePath {
     ComputeRequestV1 computeRequest = getComputeRequest();
 
     RecordSerializer<ComputeRequestV1> computeRequestSerializer =
-        SerializerDeserializerFactory.getAvroGenericSerializer(ComputeRequestV1.SCHEMA$);
+        SerializerDeserializerFactory.getAvroGenericSerializer(ComputeRequestV1.getClassSchema());
     byte[] computeRequestInBytes = computeRequestSerializer.serialize(computeRequest);
     int expectedLength = computeRequestInBytes.length;
 

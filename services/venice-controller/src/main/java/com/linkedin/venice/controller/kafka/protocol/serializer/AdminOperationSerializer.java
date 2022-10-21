@@ -23,7 +23,7 @@ public class AdminOperationSerializer {
       AvroProtocolDefinition.ADMIN_OPERATION.getCurrentProtocolVersion();
 
   private static SpecificDatumWriter<AdminOperation> SPECIFIC_DATUM_WRITER =
-      new SpecificDatumWriter<>(AdminOperation.SCHEMA$);
+      new SpecificDatumWriter<>(AdminOperation.getClassSchema());
   /** Used to generate decoders. */
   private static final DecoderFactory DECODER_FACTORY = new DecoderFactory();
 
@@ -47,7 +47,7 @@ public class AdminOperationSerializer {
       throw new VeniceMessageException("Writer schema: " + writerSchemaId + " doesn't exist");
     }
     SpecificDatumReader<AdminOperation> reader =
-        new SpecificDatumReader<>(PROTOCOL_MAP.get(writerSchemaId), AdminOperation.SCHEMA$);
+        new SpecificDatumReader<>(PROTOCOL_MAP.get(writerSchemaId), AdminOperation.getClassSchema());
     Decoder decoder = DECODER_FACTORY.createBinaryDecoder(bytes, null);
     try {
       return reader.read(null, decoder);
