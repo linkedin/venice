@@ -18,3 +18,4 @@ jobs:
   build-and-publish:
     needs: make-tag
     uses: ./.github/workflows/build-and-upload-archives.yml
+    secrets: inherit
