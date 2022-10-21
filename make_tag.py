@@ -33,8 +33,8 @@ def format_version(major, minor, build):
     return f'{major}.{minor}.{build}'
 
 
-def get_next_version(bump_major, bump_minor):
-    tag_text = check_output(['git', 'describe', '--tags', '--abbrev=0', 'main'], text=True)
+def get_next_version(bump_major, bump_minor, remote):
+    tag_text = check_output(['git', 'describe', '--tags', '--abbrev=0', f'{remote}/main'], text=True)
     tag_text = tag_text.rstrip()
     commits = check_output(['git', 'log', f'{tag_text}..HEAD', '--oneline'], text=True)
     if commits == "":
@@ -46,10 +46,12 @@ def get_next_version(bump_major, bump_minor):
     major = version_ints[0]
     if bump_major:
         major += 1
+        return format_version(major, 0, 0)
 
     minor = version_ints[1]
     if bump_minor:
         minor += 1
+        return format_version(major, minor, 0)
 
     build = version_ints[2]
 
@@ -76,10 +78,10 @@ def make_tag(remote, bump_major, bump_minor, need_verification, github_actor):
         if set_email != 0:
             sys.exit()
 
-   # pull_success = call(['git', 'pull', '--rebase', remote, 'main'])
-    #if pull_success != 0:
-     #   sys.exit()
-    version = get_next_version(bump_major, bump_minor)
+    pull_success = call(['git', 'pull', '--rebase', remote, 'main'])
+    if pull_success != 0:
+        sys.exit()
+    version = get_next_version(bump_major, bump_minor, remote)
     tag_message = 'tag for release ' + version
 
     if need_verification:
