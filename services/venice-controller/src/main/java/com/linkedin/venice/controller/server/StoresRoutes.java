@@ -138,7 +138,7 @@ public class StoresRoutes extends AbstractRoute {
         boolean isDataReplicationPolicyConfigFilter = false;
         Schema.Field configFilterField = null;
         if (storeConfigNameFilter.isPresent()) {
-          configFilterField = StoreProperties.SCHEMA$.getField(storeConfigNameFilter.get());
+          configFilterField = StoreProperties.getClassSchema().getField(storeConfigNameFilter.get());
           if (configFilterField == null) {
             isDataReplicationPolicyConfigFilter = storeConfigNameFilter.get().equalsIgnoreCase("dataReplicationPolicy");
             if (!isDataReplicationPolicyConfigFilter) {

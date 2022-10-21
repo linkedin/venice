@@ -15,7 +15,7 @@ public class ComputeResponseWrapper extends MultiKeyResponseWrapper<ComputeRespo
   @Override
   protected byte[] serializedResponse() {
     RecordSerializer<ComputeResponseRecordV1> serializer =
-        SerializerDeserializerFactory.getAvroGenericSerializer(ComputeResponseRecordV1.SCHEMA$);
+        SerializerDeserializerFactory.getAvroGenericSerializer(ComputeResponseRecordV1.getClassSchema());
 
     return serializer.serializeObjects(records, AvroSerializer.REUSE.get());
   }

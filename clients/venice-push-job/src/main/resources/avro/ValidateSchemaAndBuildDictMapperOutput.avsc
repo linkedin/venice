@@ -1,0 +1,19 @@
+{
+  "name": "ValidateSchemaAndBuildDictMapperOutput",
+  "namespace": "com.linkedin.venice.hadoop.output.avro",
+  "type": "record",
+  "doc": "The data protocol between ValidateSchemaAndBuildDictMapper and VenicePushJob",
+  "fields": [
+    {
+      "name": "inputFileDataSize",
+      "doc": "Total input Data size in all files",
+      "type": "long"
+    },
+    {
+      "name": "zstdDictionary",
+      "doc": "Zstd compression dictionary",
+      "type": ["null", "bytes"],
+      "default": null
+    }
+  ]
+}
