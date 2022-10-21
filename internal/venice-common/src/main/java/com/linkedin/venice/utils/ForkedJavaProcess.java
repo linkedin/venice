@@ -26,6 +26,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import nonapi.io.github.classgraph.utils.JarUtils;
+import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -145,7 +146,7 @@ public final class ForkedJavaProcess extends Process {
       try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
         for (;;) {
           String line = reader.readLine();
-          if (line != null) {
+          if (!StringUtils.isEmpty(line)) {
             processAndExtractLevelFromForkedProcessLog(logInfo, line);
             logger.log(logInfo.getLevel(), logInfo.getLog());
           } else {
