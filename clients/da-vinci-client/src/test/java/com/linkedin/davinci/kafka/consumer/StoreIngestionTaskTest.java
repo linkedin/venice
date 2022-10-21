@@ -868,20 +868,38 @@ public abstract class StoreIngestionTaskTest {
     }).when(aggKafkaConsumerService).hasConsumerAssignedFor(anyString(), anyString(), anyString(), anyInt());
 
     doAnswer(invocation -> {
+      String versionTopic = invocation.getArgument(0, String.class);
       Set<TopicPartition> topicPartitions = invocation.getArgument(1, Set.class);
-      inMemoryLocalKafkaConsumer.batchUnsubscribe(topicPartitions);
-      inMemoryRemoteKafkaConsumer.batchUnsubscribe(topicPartitions);
+      /**
+       * The internal {@link SharedKafkaConsumer} has special logic for unsubscription to avoid some race condition
+       * between the fast unsubscribe and re-subscribe.
+       * Please check {@link SharedKafkaConsumer#unSubscribe} to find more details.
+       *
+       * We shouldn't use {@link #mockLocalKafkaConsumer} or {@link #inMemoryRemoteKafkaConsumer} here since
+       * they don't have the proper synchronization.
+       */
+      localKafkaConsumerService.batchUnsubscribe(versionTopic, topicPartitions);
+      remoteKafkaConsumerService.batchUnsubscribe(versionTopic, topicPartitions);
       return null;
     }).when(aggKafkaConsumerService).batchUnsubscribeConsumerFor(anyString(), anySet());
 
     doAnswer(invocation -> {
+      String versionTopic = invocation.getArgument(0, String.class);
       String topic = invocation.getArgument(1, String.class);
       int partition = invocation.getArgument(2, Integer.class);
+      /**
+       * The internal {@link SharedKafkaConsumer} has special logic for unsubscription to avoid some race condition
+       * between the fast unsubscribe and re-subscribe.
+       * Please check {@link SharedKafkaConsumer#unSubscribe} to find more details.
+       *
+       * We shouldn't use {@link #mockLocalKafkaConsumer} or {@link #inMemoryRemoteKafkaConsumer} here since
+       * they don't have the proper synchronization.
+       */
       if (inMemoryLocalKafkaConsumer.hasSubscription(topic, partition)) {
-        inMemoryLocalKafkaConsumer.unSubscribe(topic, partition);
+        localKafkaConsumerService.unSubscribe(versionTopic, topic, partition);
       }
       if (inMemoryRemoteKafkaConsumer.hasSubscription(topic, partition)) {
-        inMemoryRemoteKafkaConsumer.unSubscribe(topic, partition);
+        remoteKafkaConsumerService.unSubscribe(versionTopic, topic, partition);
       }
       return null;
     }).when(aggKafkaConsumerService).unsubscribeConsumerFor(anyString(), anyString(), anyInt());
@@ -1676,6 +1694,7 @@ public abstract class StoreIngestionTaskTest {
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testSubscribeCompletedPartitionUnsubscribe(boolean isActiveActiveReplicationEnabled) throws Exception {
     final int offset = 100;
+    final long LONG_TEST_TIMEOUT = 2 * TEST_TIMEOUT_MS;
     localVeniceWriter.broadcastStartOfPush(new HashMap<>());
     Map<String, Object> extraServerProperties = new HashMap<>();
     extraServerProperties.put(SERVER_UNSUB_AFTER_BATCHPUSH, true);
@@ -1689,11 +1708,12 @@ public abstract class StoreIngestionTaskTest {
       doReturn(getOffsetRecord(offset, true)).when(mockStorageMetadataService).getLastOffset(topic, PARTITION_FOO);
     }, () -> {
       TopicPartition topicPartition = new TopicPartition(topic, PARTITION_FOO);
-      verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).completed(topic, PARTITION_FOO, offset);
-      verify(aggKafkaConsumerService, timeout(TEST_TIMEOUT_MS))
+      verify(mockLogNotifier, timeout(LONG_TEST_TIMEOUT)).completed(topic, PARTITION_FOO, offset);
+      verify(aggKafkaConsumerService, timeout(LONG_TEST_TIMEOUT))
           .batchUnsubscribeConsumerFor(topic, Collections.singleton(topicPartition));
       verify(aggKafkaConsumerService, never()).unsubscribeConsumerFor(topic, topic, PARTITION_BAR);
-      verify(mockLocalKafkaConsumer).batchUnsubscribe(Collections.singleton(topicPartition));
+      verify(mockLocalKafkaConsumer, timeout(LONG_TEST_TIMEOUT))
+          .batchUnsubscribe(Collections.singleton(topicPartition));
       verify(mockLocalKafkaConsumer, never()).unSubscribe(topic, PARTITION_BAR);
     }, this.hybridStoreConfig, false, Optional.empty(), isActiveActiveReplicationEnabled, 1, extraServerProperties);
   }
@@ -1820,6 +1840,7 @@ public abstract class StoreIngestionTaskTest {
     final Map<Pair<Integer, ByteArray>, ByteArray> pushedRecords = new HashMap<>();
     final int totalNumberOfMessages = 1000;
     final int totalNumberOfConsumptionRestarts = 10;
+    final long LONG_TEST_TIMEOUT = 2 * TEST_TIMEOUT_MS;
 
     setStoreVersionStateSupplier(sortedInput);
     localVeniceWriter.broadcastStartOfPush(sortedInput, new HashMap<>());
@@ -1876,7 +1897,7 @@ public abstract class StoreIngestionTaskTest {
             int partition = entry.getKey();
             long offset = entry.getValue();
             LOGGER.info("Verifying completed was called for partition {} and offset {} or greater.", partition, offset);
-            verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce())
+            verify(mockLogNotifier, timeout(LONG_TEST_TIMEOUT).atLeastOnce())
                 .completed(eq(topic), eq(partition), LongEqualOrGreaterThanMatcher.get(offset));
           });
 
@@ -1888,9 +1909,10 @@ public abstract class StoreIngestionTaskTest {
 
       // Verify that we really unsubscribed and re-subscribed.
       relevantPartitions.stream().forEach(partition -> {
-        verify(mockLocalKafkaConsumer, atLeast(totalNumberOfConsumptionRestarts + 1))
+        verify(mockLocalKafkaConsumer, timeout(LONG_TEST_TIMEOUT).atLeast(totalNumberOfConsumptionRestarts + 1))
             .subscribe(eq(topic), eq(partition), anyLong());
-        verify(mockLocalKafkaConsumer, atLeast(totalNumberOfConsumptionRestarts)).unSubscribe(topic, partition);
+        verify(mockLocalKafkaConsumer, timeout(LONG_TEST_TIMEOUT).atLeast(totalNumberOfConsumptionRestarts))
+            .unSubscribe(topic, partition);
 
         if (sortedInput) {
           // Check database mode switches from deferred-write to transactional after EOP control message

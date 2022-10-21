@@ -14,10 +14,10 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
+import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpObjectAggregator;
-import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.codec.http.HttpVersion;
@@ -26,10 +26,6 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-//TODO: It is worth taking a look of Netty handler here.
-//TODO: It seems that each request goes through the channel twice. (checkout AvroGenericStoreClientImplTest)
-//TODO: The request has no msg at the second time and trigger ""Unknown message type" exception.
 
 
 public class MockHttpServerWrapper extends ProcessWrapper {
@@ -118,7 +114,7 @@ public class MockHttpServerWrapper extends ProcessWrapper {
     uriToResponseMap.clear();
   }
 
-  private static class MockServerHandler extends SimpleChannelInboundHandler {
+  private static class MockServerHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
     private static final Logger LOGGER = LogManager.getLogger(MockServerHandler.class);
     private final Map<String, FullHttpResponse> responseMap;
     private final Map<String, FullHttpResponse> uriPatternToResponseMap;
@@ -150,31 +146,27 @@ public class MockHttpServerWrapper extends ProcessWrapper {
     }
 
     @Override
-    public void channelRead0(ChannelHandlerContext ctx, Object msg) {
-      if (msg instanceof HttpRequest) {
-        URI uri = URI.create(((HttpRequest) msg).uri());
-        // stripe URI scheme, host and port
-        String uriStr = uri.getPath();
-        uriStr = uri.getQuery() == null ? uriStr : uriStr + "?" + uri.getQuery();
-        LOGGER.trace("Receive request uri: {}", uriStr);
+    public void channelRead0(ChannelHandlerContext ctx, FullHttpRequest msg) {
+      URI uri = URI.create(msg.uri());
+      // stripe URI scheme, host and port
+      String uriStr = uri.getPath();
+      uriStr = uri.getQuery() == null ? uriStr : uriStr + "?" + uri.getQuery();
+      LOGGER.trace("Receive request uri: {}", uriStr);
 
-        if (responseMap.containsKey(uriStr)) {
-          LOGGER.trace("Found matched response");
-          ctx.writeAndFlush(responseMap.get(uriStr).copy());
-        } else {
-          for (Map.Entry<String, FullHttpResponse> entry: uriPatternToResponseMap.entrySet()) {
-            String uriPattern = entry.getKey();
-            if (uriStr.matches(uriPattern)) {
-              LOGGER.trace("Found matched response by uri pattern: {}", uriPattern);
-              ctx.writeAndFlush(entry.getValue().copy()).addListener(ChannelFutureListener.CLOSE);
-              return;
-            }
-          }
-          LOGGER.trace("No matched response");
-          ctx.writeAndFlush(notFoundResponse.copy()).addListener(ChannelFutureListener.CLOSE);
-        }
+      if (responseMap.containsKey(uriStr)) {
+        LOGGER.trace("Found matched response");
+        ctx.writeAndFlush(responseMap.get(uriStr).copy());
       } else {
-        throw new RuntimeException("Unknown message type: " + msg.getClass());
+        for (Map.Entry<String, FullHttpResponse> entry: uriPatternToResponseMap.entrySet()) {
+          String uriPattern = entry.getKey();
+          if (uriStr.matches(uriPattern)) {
+            LOGGER.trace("Found matched response by uri pattern: {}", uriPattern);
+            ctx.writeAndFlush(entry.getValue().copy());
+            return;
+          }
+        }
+        LOGGER.trace("No matched response");
+        ctx.writeAndFlush(notFoundResponse.copy());
       }
     }
 

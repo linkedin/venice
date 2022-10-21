@@ -73,14 +73,14 @@ public class CollectionRmdTimestamp<DELETED_ELEMENT_TYPE> {
     if (!(collectionReplicationMetadata.get(PUT_ONLY_PART_LENGTH_FIELD_NAME) instanceof Integer)) {
       throw new IllegalArgumentException(
           String.format(
-              "Expect %s field to be Long type. Got record: %s",
+              "Expect %s field to be Integer type. Got record: %s",
               PUT_ONLY_PART_LENGTH_FIELD_NAME,
               collectionReplicationMetadata));
     }
     if (!(collectionReplicationMetadata.get(TOP_LEVEL_COLO_ID_FIELD_NAME) instanceof Integer)) {
       throw new IllegalArgumentException(
           String.format(
-              "Expect %s field to be Long type. Got record: %s",
+              "Expect %s field to be Integer type. Got record: %s",
               TOP_LEVEL_COLO_ID_FIELD_NAME,
               collectionReplicationMetadata));
     }
@@ -155,11 +155,12 @@ public class CollectionRmdTimestamp<DELETED_ELEMENT_TYPE> {
 
   public void removeDeletionInfoWithTimestampsLowerOrEqualTo(final long minTimestamp) {
     final int nextLargerNumberIndex = findIndexOfNextLargerNumber(getDeletedElementTimestamps(), minTimestamp);
-    if (nextLargerNumberIndex > 0) {
-      getDeletedElementTimestamps().subList(0, nextLargerNumberIndex).clear();
-      getDeletedElements().subList(0, nextLargerNumberIndex).clear();
-      populateDeletedElementSet();
+    if (nextLargerNumberIndex < 0) {
+      return;
     }
+    getDeletedElementTimestamps().subList(0, nextLargerNumberIndex).clear();
+    getDeletedElements().subList(0, nextLargerNumberIndex).clear();
+    populateDeletedElementSet();
   }
 
   // Visible for test.
