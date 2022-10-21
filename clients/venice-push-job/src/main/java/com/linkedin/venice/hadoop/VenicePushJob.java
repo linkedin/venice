@@ -101,6 +101,7 @@ import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.mapred.Counters;
 import org.apache.hadoop.mapred.FileInputFormat;
+import org.apache.hadoop.mapred.FileOutputFormat;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.Partitioner;
 import org.apache.hadoop.mapred.RunningJob;
@@ -165,7 +166,7 @@ public class VenicePushJob implements AutoCloseable {
    * to validate schema and build dictionary is stable.
    */
   public static final String USE_MAPPER_TO_BUILD_DICTIONARY = "use.mapper.to.build.dictionary";
-  public static final boolean DEFAULT_USE_MAPPER_TO_BUILD_DICTIONARY = true;
+  public static final boolean DEFAULT_USE_MAPPER_TO_BUILD_DICTIONARY = false;
 
   /**
    * Location and key to store the output of {@link ValidateSchemaAndBuildDictMapper} and retrieve it back
@@ -1316,9 +1317,9 @@ public class VenicePushJob implements AutoCloseable {
    * Output Directory: {$hadoopTmpDir}/{$storeName}-{$JOB_EXEC_ID}-{$randomUniqueString}
    * File name: mapper-output-{$MRJobID}.avro
    *
-   * Why JOB_EXEC_ID and randomUniqueString? This gives uniqueness to the name of the directory whose
+   * Why JOB_EXEC_ID and randomUniqueString: This gives uniqueness to the name of the directory whose
    * permission will be restricted to the current user who started the VPJ only. This helps with 2 issues.
-   * 1. That there could be instances where multiple headless accounts are writing to a single Venice store.
+   * 1. There could be instances where multiple headless accounts are writing to a single Venice store.
    *    It shouldn't happen in regular cases - but is very likely in case of migrations (technical or organizational)
    *    => unless we have unique directory for each job, the multiple accounts will have access issues of the directory.
    *
@@ -1326,6 +1327,9 @@ public class VenicePushJob implements AutoCloseable {
    *    {@link ControllerClient#requestTopicForWrites} as this method will throw CONCURRENT_BATCH_PUSH error
    *    if there is another push job in progress. As {@link ValidateSchemaAndBuildDictMapper} runs before this method,
    *    it is prone to concurrent push jobs and thus race conditions. Having unique directories per execution will help here.
+   *
+   * Why can't use MRJobID to achieve randomness: MR's jobID gets populated only after {@link FileOutputFormat#checkOutputSpecs},
+   * which needs {@link FileOutputFormat#setOutputPath} to be set already. so currently unable to use the ID.
    *
    * TODO: should try exploring using conf.get("hadoop.tmp.dir") or similar configs to get default
    *     tmp directory in different HDFS environments rather than hardcoding it to
