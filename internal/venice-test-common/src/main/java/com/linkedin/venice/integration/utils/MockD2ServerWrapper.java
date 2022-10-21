@@ -11,19 +11,17 @@ public class MockD2ServerWrapper extends MockHttpServerWrapper {
   private final ZkServerWrapper zkServer;
   private final D2Server d2Server;
 
-  static StatefulServiceProvider<MockD2ServerWrapper> generateService(String d2ClusterName, String d2ServiceName) {
-    return (
-        serviceName,
-        dataDirectory) -> new MockD2ServerWrapper(serviceName, Utils.getFreePort(), d2ClusterName, d2ServiceName);
+  static StatefulServiceProvider<MockD2ServerWrapper> generateService(String d2ServiceName) {
+    return (serviceName, dataDirectory) -> new MockD2ServerWrapper(serviceName, Utils.getFreePort(), d2ServiceName);
   }
 
-  public MockD2ServerWrapper(String serviceName, int port, String d2ClusterName, String d2ServiceName) {
+  public MockD2ServerWrapper(String serviceName, int port, String d2ServiceName) {
     super(serviceName, port);
     this.zkServer = ServiceFactory.getZkServer();
 
     String zkAddress = zkServer.getAddress();
-    D2TestUtils.setupD2Config(zkAddress, false, d2ClusterName, d2ServiceName, false);
-    d2Server = D2TestUtils.getD2Server(zkAddress, "http://localhost:" + port, d2ClusterName);
+    String d2ClusterName = D2TestUtils.setupD2Config(zkAddress, false, d2ServiceName, false);
+    d2Server = D2TestUtils.createD2Server(zkAddress, "http://localhost:" + port, d2ClusterName);
   }
 
   @Override

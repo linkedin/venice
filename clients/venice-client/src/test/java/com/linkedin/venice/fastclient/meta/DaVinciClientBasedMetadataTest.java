@@ -96,7 +96,11 @@ public class DaVinciClientBasedMetadataTest {
           .build();
     });
 
-    daVinciClientFactory = new CachingDaVinciClientFactory(d2Client, new MetricsRepository(), daVinciBackendConfig);
+    daVinciClientFactory = new CachingDaVinciClientFactory(
+        d2Client,
+        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+        new MetricsRepository(),
+        daVinciBackendConfig);
     daVinciClientForMetaStore = daVinciClientFactory.getAndStartSpecificAvroClient(
         VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName),
         new DaVinciConfig(),

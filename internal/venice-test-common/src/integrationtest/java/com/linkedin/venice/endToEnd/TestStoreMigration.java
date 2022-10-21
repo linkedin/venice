@@ -43,6 +43,7 @@ import com.linkedin.venice.integration.utils.DaVinciTestContext;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
@@ -160,8 +161,8 @@ public class TestStoreMigration {
     String storeName = Utils.getUniqueString("store");
     createAndPushStore(parentControllerUrl, srcClusterName, storeName);
 
-    String srcD2ServiceName = "venice-" + srcClusterName.substring(srcClusterName.length() - 1);
-    String destD2ServiceName = "venice-" + destClusterName.substring(destClusterName.length() - 1);
+    String srcD2ServiceName = multiClusterWrapper.getClusterToD2().get(srcClusterName);
+    String destD2ServiceName = multiClusterWrapper.getClusterToD2().get(destClusterName);
     D2Client d2Client =
         D2TestUtils.getAndStartD2Client(multiClusterWrapper.getClusters().get(srcClusterName).getZk().getAddress());
     ClientConfig clientConfig =
@@ -265,7 +266,7 @@ public class TestStoreMigration {
           30,
           TimeUnit.SECONDS);
 
-      String srcD2ServiceName = "venice-" + srcClusterName.substring(srcClusterName.length() - 1);
+      String srcD2ServiceName = multiClusterWrapper.getClusterToD2().get(srcClusterName);
       D2Client d2Client =
           D2TestUtils.getAndStartD2Client(multiClusterWrapper.getClusters().get(srcClusterName).getZk().getAddress());
 
@@ -339,7 +340,10 @@ public class TestStoreMigration {
 
     D2Client srcD2Client =
         D2TestUtils.getAndStartD2Client(multiClusterWrapper.getClusters().get(srcClusterName).getZk().getAddress());
-    PushStatusStoreReader srcReader = new PushStatusStoreReader(srcD2Client, TimeUnit.MINUTES.toSeconds(10));
+    PushStatusStoreReader srcReader = new PushStatusStoreReader(
+        srcD2Client,
+        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+        TimeUnit.MINUTES.toSeconds(10));
     try (DaVinciClient daVinciClient = ServiceFactory.getGenericAvroDaVinciClient(
         storeName,
         multiClusterWrapper.getClusters().get(srcClusterName),
@@ -362,7 +366,10 @@ public class TestStoreMigration {
     // verify if push status is reporting in destination cluster
     D2Client destD2Client =
         D2TestUtils.getAndStartD2Client(multiClusterWrapper.getClusters().get(destClusterName).getZk().getAddress());
-    PushStatusStoreReader destReader = new PushStatusStoreReader(destD2Client, TimeUnit.MINUTES.toSeconds(10));
+    PushStatusStoreReader destReader = new PushStatusStoreReader(
+        destD2Client,
+        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+        TimeUnit.MINUTES.toSeconds(10));
     try (DaVinciClient daVinciClient = ServiceFactory.getGenericAvroDaVinciClient(
         storeName,
         multiClusterWrapper.getClusters().get(destClusterName),
@@ -402,24 +409,13 @@ public class TestStoreMigration {
             .setHybridRewindSeconds(TEST_TIMEOUT)
             .setHybridOffsetLagThreshold(2L);
     TestPushUtils.createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreQueryParams).close();
-    try (ControllerClient client = new ControllerClient(clusterName, controllerUrl)) {
-      TestUtils.createMetaSystemStore(client, storeName, Optional.of(LOGGER));
-    }
 
-    // L/F is enabled in dc-0 and disabled in parent.
+    // Verify store is created in dc-0
     try (ControllerClient childControllerClient0 = new ControllerClient(clusterName, childControllerUrl0)) {
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
         StoreResponse response = childControllerClient0.getStore(storeName);
         StoreInfo storeInfo = response.getStore();
         assertNotNull(storeInfo);
-      });
-      UpdateStoreQueryParams enableLeaderFollower = new UpdateStoreQueryParams().setLeaderFollowerModel(true);
-      childControllerClient0.updateStore(storeName, enableLeaderFollower);
-      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-        StoreResponse response = childControllerClient0.getStore(storeName);
-        StoreInfo storeInfo = response.getStore();
-        assertNotNull(storeInfo);
-        assertTrue(storeInfo.isLeaderFollowerModelEnabled());
       });
     }
 
@@ -450,14 +446,14 @@ public class TestStoreMigration {
     AdminTool.main(startMigrationArgs);
   }
 
-  private void completeMigration(String controllerUrl, String storeName) {
+  private void completeMigration(String controllerUrl, String storeName) throws Exception {
     String[] completeMigration0 = { "--complete-migration", "--url", controllerUrl, "--store", storeName,
         "--cluster-src", srcClusterName, "--cluster-dest", destClusterName, "--fabric", FABRIC0 };
+    AdminTool.main(completeMigration0);
 
     try (ControllerClient destParentControllerClient = new ControllerClient(destClusterName, controllerUrl)) {
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
         // Store discovery should point to the new cluster after completing migration
-        AdminTool.main(completeMigration0);
         ControllerResponse discoveryResponse = destParentControllerClient.discoverCluster(storeName);
         Assert.assertEquals(discoveryResponse.getCluster(), destClusterName);
       });

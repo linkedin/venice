@@ -1,7 +1,5 @@
 package com.linkedin.venice.integration.utils;
 
-import static com.linkedin.venice.client.store.ClientConfig.DEFAULT_D2_SERVICE_NAME;
-
 import com.linkedin.common.callback.Callback;
 import com.linkedin.common.util.None;
 import com.linkedin.d2.balancer.D2Client;
@@ -20,6 +18,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
 import com.linkedin.venice.utils.SslUtils;
+import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -28,26 +27,49 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import org.apache.commons.lang.StringUtils;
 
 
 public class D2TestUtils {
-  public static final String DEFAULT_TEST_CLUSTER_NAME = "VeniceStorageService";
-  public static final String DEFAULT_TEST_SERVICE_NAME = DEFAULT_D2_SERVICE_NAME;
+  private static final Map<String, String> D2_SERVICE_TO_CLUSTER = new HashMap<>();
 
-  public static final String CONTROLLER_CLUSTER_NAME = "VeniceController";
-  public static final String CONTROLLER_SERVICE_NAME = "VeniceController";
-
-  public static void setupD2Config(String zkHosts, boolean https) {
-    setupD2Config(zkHosts, https, DEFAULT_TEST_CLUSTER_NAME, DEFAULT_TEST_SERVICE_NAME, false);
+  /**
+   * In our setup, Routers from different Venice clusters announce to different D2 services. Hence, we need to use
+   * different D2 clusters for each service name so as not to route requests to Routers in other clusters. This function
+   * creates a cluster name for each service and returns the created name.
+   */
+  public static String setupD2Config(
+      String zkHosts,
+      boolean https,
+      String d2ServiceName,
+      boolean stickyRoutingForSingleGet) {
+    // d2ClusterName must be different for routers with different d2ServiceName
+    // We've consciously not set it to be deterministically derivable from service name to make sure we don't rely on
+    // hardcoded values.
+    String d2ClusterName =
+        D2_SERVICE_TO_CLUSTER.computeIfAbsent(d2ServiceName, s -> Utils.getUniqueString(d2ServiceName + "_cluster"));
+    setupD2Config(zkHosts, https, d2ClusterName, d2ServiceName, stickyRoutingForSingleGet);
+    return d2ClusterName;
   }
 
   public static void setupD2Config(
       String zkHosts,
       boolean https,
-      String clusterName,
-      String serviceName,
+      String d2ClusterName,
+      String d2ServiceName,
       boolean stickyRoutingForSingleGet) {
+    String d2ClusterNameFromCache = D2_SERVICE_TO_CLUSTER.get(d2ServiceName);
+    if (d2ClusterNameFromCache == null) {
+      D2_SERVICE_TO_CLUSTER.put(d2ServiceName, d2ClusterName);
+    } else if (!d2ClusterNameFromCache.equals(d2ClusterName)) {
+      throw new VeniceException(
+          new StringBuilder("Same D2 service attempted to register to multiple D2 clusters.")
+              .append(" Already registered cluster: ")
+              .append(d2ClusterNameFromCache)
+              .append(". Newly attempted cluster: ")
+              .append(d2ClusterName)
+              .toString());
+    }
+
     int sessionTimeout = 5000;
     String basePath = "/d2";
     int retryLimit = 10;
@@ -57,7 +79,7 @@ public class D2TestUtils {
       Map<String, Object> clusterDefaults = Collections.EMPTY_MAP;
       Map<String, Object> serviceDefaults = getD2ServiceDefaults();
       Map<String, Object> clusterServiceConfigurations =
-          getD2ServiceConfig(clusterName, serviceName, https, stickyRoutingForSingleGet);
+          getD2ServiceConfig(d2ClusterName, d2ServiceName, https, stickyRoutingForSingleGet);
       Map<String, Object> extraClusterServiceConfigurations = Collections.EMPTY_MAP;
       Map<String, Object> serviceVariants = Collections.EMPTY_MAP;
 
@@ -79,23 +101,15 @@ public class D2TestUtils {
     }
   }
 
-  public static String getD2ServiceName(String clusterToD2, String clusterName) {
-    String d2 = null;
-    if (!StringUtils.isEmpty(clusterToD2)) {
-      d2 = clusterToD2.substring(clusterToD2.indexOf(clusterName) + clusterName.length() + 1);
-      int end = d2.indexOf(",");
-      if (end > 0) {
-        d2 = d2.substring(0, end);
-      }
+  public static String getRouterD2ServiceName(Map<String, String> clusterToD2, String clusterName) {
+    String defaultD2Service = Utils.getUniqueString(clusterName + "_d2");
+    if (clusterToD2 == null) {
+      return defaultD2Service;
     }
-    return d2 == null ? DEFAULT_TEST_SERVICE_NAME : d2;
+    return clusterToD2.getOrDefault(clusterName, defaultD2Service);
   }
 
-  private static D2Server getD2Server(String zkHosts, String localUri) {
-    return getD2Server(zkHosts, localUri, DEFAULT_TEST_CLUSTER_NAME);
-  }
-
-  public static D2Server getD2Server(String zkHosts, String localUri, String clusterName) {
+  public static D2Server createD2Server(String zkHosts, String localUri, String clusterName) {
     int sessionTimeout = 5000;
     String basePath = "/d2";
 
@@ -145,19 +159,13 @@ public class D2TestUtils {
    * @param localUris varags if we want to announce on multiple uris (for example on an http port and https port)
    * @return
    */
-  public static List<ServiceDiscoveryAnnouncer> getD2Servers(String zkHosts, String... localUris) {
+  public static List<ServiceDiscoveryAnnouncer> getD2ServersForRouter(
+      String zkHosts,
+      String d2ClusterName,
+      String... localUris) {
     List<ServiceDiscoveryAnnouncer> d2List = new ArrayList<>();
     for (String localUri: localUris) {
-      D2Server d2 = getD2Server(zkHosts, localUri);
-      d2List.add(d2);
-    }
-    return d2List;
-  }
-
-  public static List<ServiceDiscoveryAnnouncer> getD2Servers(String zkHosts, String[] localUris, String clusterName) {
-    List<ServiceDiscoveryAnnouncer> d2List = new ArrayList<>();
-    for (String localUri: localUris) {
-      D2Server d2 = getD2Server(zkHosts, localUri, clusterName);
+      D2Server d2 = createD2Server(zkHosts, localUri, d2ClusterName);
       d2List.add(d2);
     }
     return d2List;

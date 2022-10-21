@@ -387,8 +387,11 @@ public class BatchGetAvroStoreClientTest {
                 .setSslFactory(SslUtils.getVeniceLocalSslFactory()));
     clientConfigBuilder.setGenericThinClient(genericThinClient);
 
-    CachingDaVinciClientFactory daVinciClientFactory =
-        new CachingDaVinciClientFactory(d2Client, new MetricsRepository(), daVinciBackendConfig);
+    CachingDaVinciClientFactory daVinciClientFactory = new CachingDaVinciClientFactory(
+        d2Client,
+        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+        new MetricsRepository(),
+        daVinciBackendConfig);
     DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore =
         daVinciClientFactory.getAndStartSpecificAvroClient(
             VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName),

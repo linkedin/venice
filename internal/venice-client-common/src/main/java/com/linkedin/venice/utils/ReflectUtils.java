@@ -88,11 +88,26 @@ public class ReflectUtils {
    */
   public static void printJarContainingBadClass(NoSuchMethodError e) {
     String rawMessage = e.getMessage();
-    int methodBoundary = rawMessage.lastIndexOf('.');
+    int methodBoundary = rawMessage.lastIndexOf('(');
     if (methodBoundary == -1) {
-      throw new IllegalArgumentException("Unexpected exception message format. Could not find any dot.", e);
+      throw new IllegalArgumentException(
+          "Unexpected exception message format. Could not find any opening parenthesis '('.",
+          e);
     }
-    String className = rawMessage.substring(0, methodBoundary);
+    String classAndMethodName = rawMessage.substring(0, methodBoundary);
+    int classStartBoundary = classAndMethodName.indexOf(' ');
+    if (classStartBoundary == -1) {
+      throw new IllegalArgumentException(
+          "Unexpected exception message format. Could not find any ' ' between return type and function signature.",
+          e);
+    }
+    int classEndBoundary = classAndMethodName.lastIndexOf('.');
+    if (classEndBoundary == -1) {
+      throw new IllegalArgumentException(
+          "Unexpected exception message format. Could not split class name from method name.",
+          e);
+    }
+    String className = classAndMethodName.substring(classStartBoundary + 1, classEndBoundary);
     Class klass = loadClass(className);
     LOGGER.info(
         "Class '{}' is loaded from: {}",

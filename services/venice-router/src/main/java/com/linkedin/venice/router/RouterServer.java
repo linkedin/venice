@@ -115,7 +115,7 @@ public class RouterServer extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(RouterServer.class);
 
   // Immutable state
-  private final List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncer;
+  private final List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers;
   private final MetricsRepository metricsRepository;
   private final Optional<SSLFactory> sslFactory;
   private final Optional<DynamicAccessController> accessController;
@@ -239,11 +239,11 @@ public class RouterServer extends AbstractVeniceService {
 
   public RouterServer(
       VeniceProperties properties,
-      List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncer,
+      List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers,
       Optional<DynamicAccessController> accessController,
       Optional<SSLFactory> sslFactory,
       MetricsRepository metricsRepository) {
-    this(properties, serviceDiscoveryAnnouncer, accessController, sslFactory, metricsRepository, true);
+    this(properties, serviceDiscoveryAnnouncers, accessController, sslFactory, metricsRepository, true);
 
     HelixReadOnlyZKSharedSystemStoreRepository readOnlyZKSharedSystemStoreRepository =
         new HelixReadOnlyZKSharedSystemStoreRepository(zkClient, adapter, config.getSystemSchemaClusterName());
@@ -299,7 +299,7 @@ public class RouterServer extends AbstractVeniceService {
    */
   private RouterServer(
       VeniceProperties properties,
-      List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncer,
+      List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers,
       Optional<DynamicAccessController> accessController,
       Optional<SSLFactory> sslFactory,
       MetricsRepository metricsRepository,
@@ -319,7 +319,7 @@ public class RouterServer extends AbstractVeniceService {
 
     this.aggHostHealthStats = new AggHostHealthStats(metricsRepository);
 
-    this.serviceDiscoveryAnnouncer = serviceDiscoveryAnnouncer;
+    this.serviceDiscoveryAnnouncers = serviceDiscoveryAnnouncers;
     this.accessController = accessController;
     this.sslFactory = sslFactory;
     verifySslOk();
@@ -338,10 +338,10 @@ public class RouterServer extends AbstractVeniceService {
       HelixReadOnlyStoreRepository metadataRepository,
       HelixReadOnlySchemaRepository schemaRepository,
       HelixReadOnlyStoreConfigRepository storeConfigRepository,
-      List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncer,
+      List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers,
       Optional<SSLFactory> sslFactory,
       HelixLiveInstanceMonitor liveInstanceMonitor) {
-    this(properties, serviceDiscoveryAnnouncer, Optional.empty(), sslFactory, new MetricsRepository(), false);
+    this(properties, serviceDiscoveryAnnouncers, Optional.empty(), sslFactory, new MetricsRepository(), false);
     this.routingDataRepository = routingDataRepository;
     this.hybridStoreQuotaRepository = hybridStoreQuotaRepository;
     this.metadataRepository = metadataRepository;
@@ -714,7 +714,7 @@ public class RouterServer extends AbstractVeniceService {
 
   @Override
   public void stopInner() throws Exception {
-    for (ServiceDiscoveryAnnouncer serviceDiscoveryAnnouncer: serviceDiscoveryAnnouncer) {
+    for (ServiceDiscoveryAnnouncer serviceDiscoveryAnnouncer: serviceDiscoveryAnnouncers) {
       LOGGER.info("Unregistering from service discovery: {}", serviceDiscoveryAnnouncer);
       try {
         serviceDiscoveryAnnouncer.unregister();
@@ -918,7 +918,7 @@ public class RouterServer extends AbstractVeniceService {
         handleExceptionInStartServices(new VeniceException(e), async);
       }
 
-      for (ServiceDiscoveryAnnouncer serviceDiscoveryAnnouncer: serviceDiscoveryAnnouncer) {
+      for (ServiceDiscoveryAnnouncer serviceDiscoveryAnnouncer: serviceDiscoveryAnnouncers) {
         LOGGER.info("Registering to service discovery: {}", serviceDiscoveryAnnouncer);
         serviceDiscoveryAnnouncer.register();
       }

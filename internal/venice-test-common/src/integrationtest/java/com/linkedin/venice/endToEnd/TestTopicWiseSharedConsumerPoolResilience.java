@@ -74,7 +74,7 @@ public class TestTopicWiseSharedConsumerPoolResilience {
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir); // records 1-100
     Properties vpjProperties = defaultVPJProps(veniceCluster, inputDirPath, storeName);
 
-    VeniceControllerWrapper controllerWrapper = veniceCluster.getRandmonVeniceController();
+    VeniceControllerWrapper controllerWrapper = veniceCluster.getRandomVeniceController();
     Admin admin = controllerWrapper.getVeniceAdmin();
 
     try (ControllerClient controllerClient =

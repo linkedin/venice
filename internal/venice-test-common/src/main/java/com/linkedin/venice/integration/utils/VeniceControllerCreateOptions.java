@@ -9,6 +9,7 @@ import static com.linkedin.venice.integration.utils.VeniceClusterWrapperConstant
 
 import com.linkedin.venice.authorization.AuthorizerService;
 import java.util.Arrays;
+import java.util.Map;
 import java.util.Properties;
 import java.util.stream.Collectors;
 import org.apache.commons.lang.Validate;
@@ -24,7 +25,7 @@ public class VeniceControllerCreateOptions {
   private final long rebalanceDelayMs;
   private final String[] clusterNames;
   private final String zkAddress;
-  private final String clusterToD2;
+  private final Map<String, String> clusterToD2;
   private final VeniceControllerWrapper[] childControllers;
   private final KafkaBrokerWrapper kafkaBroker;
   private final Properties extraProperties;
@@ -136,7 +137,7 @@ public class VeniceControllerCreateOptions {
     return zkAddress;
   }
 
-  public String getClusterToD2() {
+  public Map<String, String> getClusterToD2() {
     return clusterToD2;
   }
 
@@ -167,7 +168,7 @@ public class VeniceControllerCreateOptions {
     private int minActiveReplica;
     private long rebalanceDelayMs = DEFAULT_DELAYED_TO_REBALANCE_MS;
     private String zkAddress;
-    private String clusterToD2 = null;
+    private Map<String, String> clusterToD2 = null;
     private VeniceControllerWrapper[] childControllers = null;
     private Properties extraProperties = new Properties();
     private AuthorizerService authorizerService;
@@ -217,7 +218,7 @@ public class VeniceControllerCreateOptions {
       return this;
     }
 
-    public Builder clusterToD2(String clusterToD2) {
+    public Builder clusterToD2(Map<String, String> clusterToD2) {
       this.clusterToD2 = clusterToD2;
       return this;
     }
