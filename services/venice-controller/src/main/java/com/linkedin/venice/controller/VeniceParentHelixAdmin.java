@@ -164,6 +164,7 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
@@ -2310,7 +2311,7 @@ public class VeniceParentHelixAdmin implements Admin {
           partitionerClass,
           partitionerParams,
           amplificationFactor);
-
+      
       if (partitionerClass.isPresent() || partitionerParams.isPresent() || amplificationFactor.isPresent()) {
         // Update updatedConfigsList.
         partitionerClass.ifPresent(p -> updatedConfigsList.add(PARTITIONER_CLASS));
