@@ -2,7 +2,9 @@ cd ../
 ./gradlew shadowJar
 cd docker
 
+oss_release=0.4.17
 head_hash=$(git rev-parse --short HEAD)
+version=$oss_release
 
 cp ../clients/venice-push-job/build/libs/venice-push-job-all.jar venice-client/
 cp ../clients/venice-thin-client/build/libs/venice-thin-client-all.jar venice-client/
@@ -14,7 +16,7 @@ cp ../services/venice-router/build/libs/venice-router-all.jar venice-router/
 targets=(venice-controller venice-server venice-router venice-client)
 
 for target in ${targets[@]}; do
-    docker build -t "$target:$head_hash" $target
+    docker build -t "venicedb/$target:$version" $target
 done
 
 rm -f venice-client/venice-push-job-all.jar
