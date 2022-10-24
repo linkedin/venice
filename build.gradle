@@ -136,11 +136,8 @@ subprojects {
     plugin 'org.gradle.test-retry'
   }
 
-  java {
-    toolchain {
-      // Compile to JDK 8 bytecode
-      languageVersion = JavaLanguageVersion.of(8)
-    }
+  tasks.withType(JavaCompile).configureEach {
+    it.options.release = 8
   }
 
   configurations {
