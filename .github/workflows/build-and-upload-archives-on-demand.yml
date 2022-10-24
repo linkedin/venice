@@ -16,9 +16,9 @@ jobs:
         with:
           fetch-depth: 0 # all history for all branches and tags
 
-      - name: Add upstream remote
+      - name: Setup upstream remote
         if: github.repository != 'linkedin/venice'
-        run: git remote add upstream https://github.com/linkedin/venice
+        run: git remote add upstream https://github.com/linkedin/venice && git fetch upstream
 
       - name: Fetch upstream refs
         if: github.repository != 'linkedin/venice'
