@@ -40,7 +40,7 @@ public enum AvroProtocolDefinition {
   /**
    * Used for the Kafka topics, including the main data topics as well as the admin topic.
    */
-  KAFKA_MESSAGE_ENVELOPE(23, 10, KafkaMessageEnvelope.class),
+  KAFKA_MESSAGE_ENVELOPE(23, 11, KafkaMessageEnvelope.class),
 
   /**
    * Used to persist the state of a partition in Storage Nodes, including offset,
