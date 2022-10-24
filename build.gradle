@@ -136,8 +136,10 @@ subprojects {
     plugin 'org.gradle.test-retry'
   }
 
-  tasks.withType(JavaCompile).configureEach {
-    it.options.release = 8
+  if (JavaVersion.current() >= JavaVersion.VERSION_1_9) {
+    tasks.withType(JavaCompile).configureEach {
+      it.options.release = 8
+    }
   }
 
   configurations {
