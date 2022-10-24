@@ -234,28 +234,29 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    * @param subPartition The partition to fetch the replication metadata from storage engine
    * @return The object containing RMD and value schema id. If nothing is found, return {@code Optional.empty()}
    */
-  private Optional<RmdWithValueSchemaId> getReplicationMetadataAndSchemaId(
+  protected Optional<RmdWithValueSchemaId> getReplicationMetadataAndSchemaId(
       PartitionConsumptionState partitionConsumptionState,
       byte[] key,
       int subPartition) {
+    double replicationMetadataLatency = 0; // Initialize default latency to 0 so that we always generate a metric
+    RmdWithValueSchemaId rmd = null;
     PartitionConsumptionState.TransientRecord cachedRecord = partitionConsumptionState.getTransientRecord(key);
     if (cachedRecord != null) {
       hostLevelIngestionStats.recordIngestionReplicationMetadataCacheHitCount();
-      return Optional.of(
-          new RmdWithValueSchemaId(
-              cachedRecord.getValueSchemaId(),
-              rmdProtocolVersionID,
-              cachedRecord.getReplicationMetadataRecord()));
+      rmd = new RmdWithValueSchemaId(
+          cachedRecord.getValueSchemaId(),
+          rmdProtocolVersionID,
+          cachedRecord.getReplicationMetadataRecord());
+    } else {
+      final long lookupStartTimeInNS = System.nanoTime();
+      byte[] replicationMetadataWithValueSchemaBytes = storageEngine.getReplicationMetadata(subPartition, key);
+      replicationMetadataLatency = LatencyUtils.getLatencyInMS(lookupStartTimeInNS);
+      if (replicationMetadataWithValueSchemaBytes != null) {
+        rmd = rmdSerDe.deserializeValueSchemaIdPrependedRmdBytes(replicationMetadataWithValueSchemaBytes);
+      }
     }
-
-    final long lookupStartTimeInNS = System.nanoTime();
-    byte[] replicationMetadataWithValueSchemaBytes = storageEngine.getReplicationMetadata(subPartition, key);
-    hostLevelIngestionStats
-        .recordIngestionReplicationMetadataLookUpLatency(LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
-    if (replicationMetadataWithValueSchemaBytes == null) {
-      return Optional.empty(); // No RMD for this key
-    }
-    return Optional.of(rmdSerDe.deserializeValueSchemaIdPrependedRmdBytes(replicationMetadataWithValueSchemaBytes));
+    hostLevelIngestionStats.recordIngestionReplicationMetadataLookUpLatency(replicationMetadataLatency);
+    return Optional.ofNullable(rmd);
   }
 
   // This function may modify the original record in KME and it is unsafe to use the payload from KME directly after
