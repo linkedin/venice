@@ -56,8 +56,6 @@ ext.libraries = [
     commonsLang: 'commons-lang:commons-lang:2.6',
     conscrypt: 'org.conscrypt:conscrypt-openjdk-uber:2.4.0',
     d2: 'com.linkedin.pegasus:d2:' + pegasusVersion,
-    restliCommon: 'com.linkedin.pegasus:restli-common:' + pegasusVersion,
-    r2: 'com.linkedin.pegasus:r2:' + pegasusVersion,
     failsafe: 'net.jodah:failsafe:2.4.0',
     fastUtil: 'it.unimi.dsi:fastutil:8.3.0',
     hadoopCommon: 'org.apache.hadoop:hadoop-common:2.3.0',
@@ -91,6 +89,7 @@ ext.libraries = [
     netty: 'io.netty:netty-all:4.1.52.Final',
     oss: 'org.sonatype.oss:oss-parent:7',
     r2: 'com.linkedin.pegasus:r2:' + pegasusVersion,
+    restliCommon: 'com.linkedin.pegasus:restli-common:' + pegasusVersion,
     rocksdbjni: 'org.rocksdb:rocksdbjni:7.0.3',
     samzaApi: 'org.apache.samza:samza-api:1.5.1',
     snappy: 'org.iq80.snappy:snappy:0.4',
@@ -137,7 +136,12 @@ subprojects {
     plugin 'org.gradle.test-retry'
   }
 
-  sourceCompatibility = 1.8
+  java {
+    toolchain {
+      // Compile to JDK 8 bytecode
+      languageVersion = JavaLanguageVersion.of(8)
+    }
+  }
 
   configurations {
     implementation {

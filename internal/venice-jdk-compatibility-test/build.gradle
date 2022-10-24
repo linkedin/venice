@@ -1,0 +1,25 @@
+plugins {
+    id("java-library") // or id("application")
+}
+
+dependencies {
+    testImplementation project(':internal:venice-test-common')
+    testImplementation project(':internal:venice-common')
+}
+
+for (version in [8, 11]) {
+    task "testJava${version}" (type: Test) {
+        javaLauncher = javaToolchains.launcherFor {
+            languageVersion = JavaLanguageVersion.of(version)
+        }
+    }
+}
+
+test {
+    dependsOn (
+        testJava8,
+        testJava11
+    )
+
+    exclude '**/*.class'
+}
