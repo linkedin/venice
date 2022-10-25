@@ -3,6 +3,9 @@ plugins {
 }
 
 ext {
+  // For JDK 8 builds, we set alpn-boot.jar via build.gradle.
+  // This config fails to apply on JDK 11 runtimes since "-Xbootclasspath/p is no longer a supported option"
+  // Since this module doesn't use ALPN yet, we skip adding it to jvm parameters.
   skipAlpnBoot = true
 }
 
@@ -16,11 +19,6 @@ for (version in [8, 11]) {
     javaLauncher = javaToolchains.launcherFor {
       languageVersion = JavaLanguageVersion.of(version)
     }
-
-    // For JDK 8 builds, we set alpn-boot.jar via build.gradle.
-    // This config fails to apply on JDK 11 runtimes since "-Xbootclasspath/p is no longer a supported option"
-    // Since this module doesn't use ALPN yet, we skip adding it to jvm parameters.
-    ext.skipAlpnBoot = true
   }
 }
 
