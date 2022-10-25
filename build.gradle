@@ -383,7 +383,7 @@ subprojects {
   }
 
   // Only publish artifacts for projects that are at the leaf level
-  if (project.childProjects.size() == 0) {
+  if (project.childProjects.isEmpty()) {
     publishing.configureArtifactPublishing(project, sourceJar, testJar)
   }
 }
@@ -399,20 +399,16 @@ spotless {
   }
 }
 
-task setupLocalRepo {
-  println 'Setting up default repo configs'
+task setupWorkspace {
+  println 'Setting up default git config'
   def gitConfig = [
       'core.hooksPath' : 'gradle/githooks',
+      'blame.ignoreRevsFile' : '.git-blame-ignore-revs',
+      'branch.autoSetupMerge' : 'true', // Only track remote branches
+      'branch.autoSetupRebase' : 'always',
       'pull.rebase' : 'true',
-      'branch.autosetupmerge' : 'true', // Only track remote branches
-      'branch.autosetuprebase' : 'always',
   ]
-  gitConfig.each {
-    def configKey = it.key
-    def configValue = it.value
-    println "Setting $configKey = $configValue"
-    git.setConfig(configKey, configValue)
-  }
+  gitConfig.each(git.setConfig)
 }
 
 task spotbugs {
@@ -427,7 +423,7 @@ test {
 
 assemble {
   dependsOn (
-    setupLocalRepo,
+    setupWorkspace,
     testClasses,
     'internal:venice-test-common:jmhClasses',
     'internal:venice-test-common:integrationTestClasses'
