@@ -16,10 +16,10 @@ There are two modes the Push Job can run in:
 ### Full Push
 When performing a Full Push, the user takes advantage of the fact that Venice's datasets are versioned. The Full Push
 triggers the dynamic creation of a new dataset version, and then loads data into it in the background. The new dataset 
-version is called a "future" version as long as data is still loading, and during that time, no online read traffic will 
-hit it. When the loading is determined to have successfully completed in a given datacenter, the new dataset version 
-transitions from "future" to "current", whereas the old dataset version transitions from "current" to "backup". When a
-dataset version becomes current, online read traffic gets routed to it.
+version is called a "future" version as long as data is still loading, and during that time, no online read traffic will
+be served from it. When the loading is determined to have successfully completed in a given datacenter, the new dataset 
+version transitions from "future" to "current", whereas the old dataset version transitions from "current" to "backup". 
+When a dataset version becomes current, online read traffic gets routed to it.
 
 ### Incremental Push
 When performing an Incremental Push, no new dataset versions are created, and data gets added into all existing versions 
