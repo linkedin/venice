@@ -301,15 +301,17 @@ subprojects {
   tasks.withType(Test) {
     mustRunAfter tasks.withType(SpotBugsTask)
 
-    // The ALPN version should match the JVM version
-    if (JavaVersion.current() < JavaVersion.VERSION_11) {
-      if (Os.isFamily(Os.FAMILY_MAC)) {
-        jvmArgs '-Xbootclasspath/p:/Library/Java/Boot/1_8_0_172/alpn-boot-8.1.12.v20180117.jar'
-      } else if (Os.isFamily(Os.FAMILY_UNIX)) {
-        jvmArgs '-Xbootclasspath/p:/export/apps/jdkboot/1_8_0_172/alpn-boot-8.1.12.v20180117.jar'
-      } else {
-        def osName = System.getProperty('os.name').toLowerCase(Locale.ENGLISH)
-        throw new GradleException("$osName is not supported since ALPN only works for either Mac or Linux right now.")
+    if (!project.ext.has("skipAlpnBoot") || !project.ext.skipAlpnBoot) {
+      // The ALPN version should match the JVM version
+      if (JavaVersion.current() < JavaVersion.VERSION_11) {
+        if (Os.isFamily(Os.FAMILY_MAC)) {
+          jvmArgs '-Xbootclasspath/p:/Library/Java/Boot/1_8_0_172/alpn-boot-8.1.12.v20180117.jar'
+        } else if (Os.isFamily(Os.FAMILY_UNIX)) {
+          jvmArgs '-Xbootclasspath/p:/export/apps/jdkboot/1_8_0_172/alpn-boot-8.1.12.v20180117.jar'
+        } else {
+          def osName = System.getProperty('os.name').toLowerCase(Locale.ENGLISH)
+          throw new GradleException("$osName is not supported since ALPN only works for either Mac or Linux right now.")
+        }
       }
     }
 
