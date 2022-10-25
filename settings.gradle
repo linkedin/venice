@@ -36,9 +36,9 @@ dependencyResolutionManagement {
 
 // Client modules
 include 'clients:da-vinci-client'
-include 'clients:venice-push-job'
 include 'clients:venice-admin-tool'
 include 'clients:venice-client'
+include 'clients:venice-push-job'
 include 'clients:venice-samza'
 include 'clients:venice-thin-client'
 
@@ -48,10 +48,11 @@ include 'services:venice-router'
 include 'services:venice-server'
 
 // Internal modules
-include 'internal:venice-common'
-include 'internal:venice-compatibility-test'
-include 'internal:venice-consumer'
+include 'internal:venice-avro-compatibility-test'
 include 'internal:venice-client-common'
+include 'internal:venice-common'
+include 'internal:venice-consumer'
+include 'internal:venice-jdk-compatibility-test'
 include 'internal:venice-test-common'
 
 // Alpini modules
