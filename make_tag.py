@@ -98,6 +98,7 @@ def make_tag(remote, bump_major, bump_minor, need_verification, github_actor):
 
 def get_tags(remote):
     call(['git', 'fetch', remote, 'main', '--tags'])
+    call(['git', 'fetch', remote, 'main'])
 
 
 def run(bump_major, bump_minor, need_verification, github_actor):
