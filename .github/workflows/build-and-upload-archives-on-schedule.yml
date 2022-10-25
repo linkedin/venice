@@ -11,10 +11,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout the code
-      - uses: actions/checkout@v3
-      - with:
+        uses: actions/checkout@v3
+        with:
           fetch-depth: 0 # all history for all branches and tags
-          
+
       - name: Cut release tag to build and upload Venice Release archive
         run: |
           ./make_tag.py --no-verify --github-actor '${GITHUB_ACTOR}'
