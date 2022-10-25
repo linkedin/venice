@@ -137,8 +137,8 @@ subprojects {
   }
 
   if (JavaVersion.current() >= JavaVersion.VERSION_1_9) {
-    tasks.withType(JavaCompile).configureEach {
-      it.options.release = 8
+    tasks.withType(JavaCompile) {
+      options.release = 8
     }
   }
 
