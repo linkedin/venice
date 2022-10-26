@@ -256,12 +256,6 @@ public class VenicePushJob implements AutoCloseable {
    * In single-colo mode, this can be either a controller or router.
    * In multi-colo mode, it must be a parent controller.
    */
-  public static final String VENICE_URL_PROP = "venice.urls";
-  /**
-   * This new url field is meant to replace {@link #VENICE_URL_PROP} to avoid Venice users accidentally override
-   * this system property.
-   * Once the new prop: {@link #VENICE_DISCOVER_URL_PROP} is fully adopted, we will deprecate {@link #VENICE_URL_PROP}.
-   */
   public static final String VENICE_DISCOVER_URL_PROP = "venice.discover.urls";
 
   public static final String SOURCE_GRID_FABRIC = "source.grid.fabric";
@@ -536,10 +530,10 @@ public class VenicePushJob implements AutoCloseable {
       }
     });
     LOGGER.info("Constructing {}: {}", VenicePushJob.class.getSimpleName(), props.toString(true));
-    String veniceControllerUrl = getVeniceControllerUrl(props);
+    String veniceControllerUrl = props.getString(VENICE_DISCOVER_URL_PROP);
     initControllerClient(
         props.getString(VENICE_STORE_NAME_PROP),
-        getVeniceControllerUrl(props),
+        props.getString(VENICE_DISCOVER_URL_PROP),
         createSSLFactory(isSslEnabled(), props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME)),
         props.getInt(CONTROLLER_REQUEST_RETRY_ATTEMPTS, 1));
     this.pushJobSetting = getPushJobSetting(veniceControllerUrl, props);
@@ -580,7 +574,7 @@ public class VenicePushJob implements AutoCloseable {
                                                                                                    // value
     Optional<SSLFactory> sslFactory =
         createSSLFactory(isSslEnabled(), properties.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME));
-    String veniceControllerUrl = getVeniceControllerUrl(properties);
+    String veniceControllerUrl = props.getString(VENICE_DISCOVER_URL_PROP);
     String heartbeatStoreClusterName = discoverCluster(heartbeatStoreName);
     ControllerClient heartbeatStoreControllerClient =
         ControllerClient.constructClusterControllerClient(heartbeatStoreClusterName, veniceControllerUrl, sslFactory);
@@ -607,7 +601,6 @@ public class VenicePushJob implements AutoCloseable {
   private VeniceProperties getVenicePropsFromVanillaProps(Properties vanillaProps) {
     handleLegacyConfig(vanillaProps, LEGACY_AVRO_KEY_FIELD_PROP, KEY_FIELD_PROP, "key field");
     handleLegacyConfig(vanillaProps, LEGACY_AVRO_VALUE_FIELD_PROP, VALUE_FIELD_PROP, "value field");
-    handleLegacyConfig(vanillaProps, VENICE_URL_PROP, VENICE_DISCOVER_URL_PROP, "Venice discovery URL");
     return new VeniceProperties(vanillaProps);
   }
 
@@ -752,25 +745,6 @@ public class VenicePushJob implements AutoCloseable {
     return pushJobSettingToReturn;
   }
 
-  private String getVeniceControllerUrl(VeniceProperties props) {
-    String veniceControllerUrl = null;
-    if (!props.containsKey(VENICE_URL_PROP) && !props.containsKey(VENICE_DISCOVER_URL_PROP)) {
-      throw new VeniceException(
-          "At least one of the following config properties needs to be present: " + VENICE_URL_PROP + " or "
-              + VENICE_DISCOVER_URL_PROP);
-    }
-    if (props.containsKey(VENICE_URL_PROP)) {
-      veniceControllerUrl = props.getString(VENICE_URL_PROP);
-    }
-    if (props.containsKey(VENICE_DISCOVER_URL_PROP)) {
-      /**
-       * {@link VENICE_DISCOVER_URL_PROP} has higher priority than {@link VENICE_URL_PROP}.
-       */
-      veniceControllerUrl = props.getString(VENICE_DISCOVER_URL_PROP);
-    }
-    return veniceControllerUrl;
-  }
-
   /**
    * This method gets the name of the topic with the current version for the given store. It handles below 5 cases:
    *
@@ -795,7 +769,7 @@ public class VenicePushJob implements AutoCloseable {
     if (controllerClient == null) {
       initControllerClient(
           pushJobSettingUnderConstruction.storeName,
-          getVeniceControllerUrl(properties),
+          props.getString(VENICE_DISCOVER_URL_PROP),
           createSSLFactory(
               isSslEnabled(),
               properties.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME)),

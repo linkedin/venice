@@ -13,7 +13,6 @@ import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.PUSH_JOB_STATUS_UPLOAD_ENABLE;
 import static com.linkedin.venice.hadoop.VenicePushJob.PushJobCheckpoints;
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_DISCOVER_URL_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_URL_PROP;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.ARCHIVED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.CATCH_UP_BASE_TOPIC_OFFSET_LAG;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.DATA_RECOVERY_COMPLETED;
@@ -143,7 +142,6 @@ public class PushJobDetailsTest {
         .updateStore(testStoreName, new UpdateStoreQueryParams().setStorageQuotaInByte(-1).setPartitionCount(2));
     Properties pushJobProps = defaultVPJProps(venice, inputDirPath, testStoreName);
     pushJobProps.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, String.valueOf(true));
-    pushJobProps.setProperty(VENICE_URL_PROP, parentController.getControllerUrl());
     pushJobProps.setProperty(VENICE_DISCOVER_URL_PROP, parentController.getControllerUrl());
     try (VenicePushJob testPushJob = new VenicePushJob("test-push-job-details-job", pushJobProps)) {
       testPushJob.run();
@@ -234,7 +232,6 @@ public class PushJobDetailsTest {
     parentControllerClient.updateStore(testStoreName, new UpdateStoreQueryParams().setStorageQuotaInByte(0));
     Properties pushJobProps = defaultVPJProps(venice, inputDirPath, testStoreName);
     pushJobProps.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, String.valueOf(true));
-    pushJobProps.setProperty(VENICE_URL_PROP, parentController.getControllerUrl());
     pushJobProps.setProperty(VENICE_DISCOVER_URL_PROP, parentController.getControllerUrl());
     try (VenicePushJob testPushJob = new VenicePushJob("test-push-job-details-job", pushJobProps)) {
       assertThrows(VeniceException.class, testPushJob::run);

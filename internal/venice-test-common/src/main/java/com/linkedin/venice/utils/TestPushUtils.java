@@ -14,7 +14,6 @@ import static com.linkedin.venice.hadoop.VenicePushJob.PUSH_JOB_STATUS_UPLOAD_EN
 import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_DISCOVER_URL_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_URL_PROP;
 import static com.linkedin.venice.meta.Version.PushType;
 import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
 import static com.linkedin.venice.samza.VeniceSystemFactory.DOT;
@@ -886,7 +885,7 @@ public class TestPushUtils {
 
   public static Properties defaultVPJProps(String veniceUrl, String inputDirPath, String storeName) {
     Properties props = new Properties();
-    props.put(VENICE_URL_PROP, veniceUrl);
+    props.put(VENICE_DISCOVER_URL_PROP, veniceUrl);
     props.put(VENICE_STORE_NAME_PROP, storeName);
     props.put(INPUT_PATH_PROP, inputDirPath);
     // No need for a big close timeout in tests. This is just to speed up discovery of certain regressions.
@@ -988,9 +987,7 @@ public class TestPushUtils {
   }
 
   private static ControllerClient getControllerClient(String veniceClusterName, Properties props) {
-    String veniceUrl = props.containsKey(VENICE_DISCOVER_URL_PROP)
-        ? props.getProperty(VENICE_DISCOVER_URL_PROP)
-        : props.getProperty(VENICE_URL_PROP);
+    String veniceUrl = props.getProperty(VENICE_DISCOVER_URL_PROP);
     return ControllerClient.constructClusterControllerClient(veniceClusterName, veniceUrl);
   }
 

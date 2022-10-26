@@ -14,9 +14,7 @@ import static com.linkedin.venice.hadoop.VenicePushJob.SEND_CONTROL_MESSAGES_DIR
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_ETL;
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_KAFKA;
 import static com.linkedin.venice.hadoop.VenicePushJob.USE_MAPPER_TO_BUILD_DICTIONARY;
-import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_DISCOVER_URL_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_URL_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.ZSTD_COMPRESSION_LEVEL;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_VERSION_NUMBER;
@@ -199,10 +197,10 @@ public abstract class TestBatch {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testEmptyPush() throws Exception {
-    testBatchStore(inputDir -> new KeyAndValueSchemas(writeEmptyAvroFileWithUserSchema(inputDir)), properties -> {
-      properties.setProperty(VENICE_DISCOVER_URL_PROP, properties.getProperty(VENICE_URL_PROP));
-      properties.setProperty(VENICE_URL_PROP, "invalid_venice_urls");
-    }, (avroClient, vsonClient, metricsRepository) -> {});
+    testBatchStore(
+        inputDir -> new KeyAndValueSchemas(writeEmptyAvroFileWithUserSchema(inputDir)),
+        properties -> {},
+        (avroClient, vsonClient, metricsRepository) -> {});
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
@@ -263,11 +261,6 @@ public abstract class TestBatch {
     String storeName = testBatchStore(
         inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithUserSchema(inputDir, false)),
         properties -> {
-          /**
-           * Here will use {@link VENICE_DISCOVER_URL_PROP} instead.
-           */
-          properties.setProperty(VENICE_DISCOVER_URL_PROP, properties.getProperty(VENICE_URL_PROP));
-          properties.setProperty(VENICE_URL_PROP, "invalid_venice_urls");
           properties
               .setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, String.valueOf(compressionMetricCollectionEnabled));
           properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, String.valueOf(useMapperToBuildDict));
@@ -283,13 +276,7 @@ public abstract class TestBatch {
   public void testZstdCompressingAvroRecordCanFailWhenNoFallbackAvailable() throws Exception {
     testBatchStore(
         inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithUserSchema(inputDir, false)),
-        properties -> {
-          /**
-           * Here will use {@link VENICE_DISCOVER_URL_PROP} instead.
-           */
-          properties.setProperty(VENICE_DISCOVER_URL_PROP, properties.getProperty(VENICE_URL_PROP));
-          properties.setProperty(VENICE_URL_PROP, "invalid_venice_urls");
-        },
+        properties -> {},
         (avroClient, vsonClient, metricsRepository) -> {
           // test single get. Can throw exception since no fallback available
           try {
@@ -346,14 +333,7 @@ public abstract class TestBatch {
   public void testZstdCompressingAvroRecordWhenNoFallbackAvailableWithSleep() throws Exception {
     testBatchStore(
         inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithUserSchema(inputDir, false)),
-        properties -> {
-          /**
-           * Here will use {@link VENICE_DISCOVER_URL_PROP} instead.
-           */
-          properties.setProperty(VENICE_DISCOVER_URL_PROP, properties.getProperty(VENICE_URL_PROP));
-          properties.setProperty(VENICE_URL_PROP, "invalid_venice_urls");
-          properties.setProperty(ZSTD_COMPRESSION_LEVEL, String.valueOf(17));
-        },
+        properties -> properties.setProperty(ZSTD_COMPRESSION_LEVEL, String.valueOf(17)),
         getSimpleFileWithUserSchemaValidatorForZstd(),
         new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
   }
@@ -366,11 +346,6 @@ public abstract class TestBatch {
     String storeName = testBatchStore(
         inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithUserSchema(inputDir, false)),
         properties -> {
-          /**
-           * Here will use {@link VENICE_DISCOVER_URL_PROP} instead.
-           */
-          properties.setProperty(VENICE_DISCOVER_URL_PROP, properties.getProperty(VENICE_URL_PROP));
-          properties.setProperty(VENICE_URL_PROP, "invalid_venice_urls");
           properties
               .setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, String.valueOf(compressionMetricCollectionEnabled));
           properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, String.valueOf(useMapperToBuildDict));
@@ -382,11 +357,6 @@ public abstract class TestBatch {
     testBatchStore(
         inputDir -> new KeyAndValueSchemas(writeAlternateSimpleAvroFileWithUserSchema(inputDir, false)),
         properties -> {
-          /**
-           * Here will use {@link VENICE_DISCOVER_URL_PROP} instead.
-           */
-          properties.setProperty(VENICE_DISCOVER_URL_PROP, properties.getProperty(VENICE_URL_PROP));
-          properties.setProperty(VENICE_URL_PROP, "invalid_venice_urls");
           properties
               .setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, String.valueOf(compressionMetricCollectionEnabled));
           properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, String.valueOf(useMapperToBuildDict));
@@ -480,11 +450,6 @@ public abstract class TestBatch {
     String storeName = testBatchStore(
         inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithUserSchema(inputDir, false)),
         properties -> {
-          /**
-           * Here will use {@link VENICE_DISCOVER_URL_PROP} instead.
-           */
-          properties.setProperty(VENICE_DISCOVER_URL_PROP, properties.getProperty(VENICE_URL_PROP));
-          properties.setProperty(VENICE_URL_PROP, "invalid_venice_urls");
           properties
               .setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, String.valueOf(compressionMetricCollectionEnabled));
           properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, String.valueOf(useMapperToBuildDict));
