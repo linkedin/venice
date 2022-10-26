@@ -1947,7 +1947,7 @@ public class VenicePushJob implements AutoCloseable {
       } else {
         LOGGER.info("All currently registered value schemas:");
         for (MultiSchemaResponse.Schema schema: response.getSchemas()) {
-          LOGGER.info("Schema " + schema.getId() + ": " + schema.getSchemaStr());
+          LOGGER.info("Schema {}: {}", schema.getId(), schema.getSchemaStr());
         }
       }
       throw new VeniceException(
