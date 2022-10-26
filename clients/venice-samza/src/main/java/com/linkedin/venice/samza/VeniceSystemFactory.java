@@ -281,10 +281,19 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
       localVeniceZKHosts = legacyLocalVeniceZKHosts;
     }
 
-    String localControllerD2Service =
-        config.get(VENICE_CHILD_CONTROLLER_D2_SERVICE, LEGACY_VENICE_CHILD_CONTROLLER_D2_SERVICE);
-    String parentControllerD2Service =
-        config.get(VENICE_PARENT_CONTROLLER_D2_SERVICE, LEGACY_VENICE_PARENT_CONTROLLER_D2_SERVICE);
+    String localControllerD2Service = config.get(VENICE_CHILD_CONTROLLER_D2_SERVICE);
+    if (isEmpty(localControllerD2Service)) {
+      LOGGER.info(
+          VENICE_CHILD_CONTROLLER_D2_SERVICE + " is not defined. Using " + LEGACY_VENICE_CHILD_CONTROLLER_D2_SERVICE);
+      localControllerD2Service = LEGACY_VENICE_CHILD_CONTROLLER_D2_SERVICE;
+    }
+
+    String parentControllerD2Service = config.get(VENICE_PARENT_CONTROLLER_D2_SERVICE);
+    if (isEmpty(parentControllerD2Service)) {
+      LOGGER.info(
+          VENICE_PARENT_CONTROLLER_D2_SERVICE + " is not defined. Using " + LEGACY_VENICE_PARENT_CONTROLLER_D2_SERVICE);
+      parentControllerD2Service = LEGACY_VENICE_PARENT_CONTROLLER_D2_SERVICE;
+    }
 
     // Build Ssl Factory if Controller SSL is enabled
     Optional<SSLFactory> sslFactory = Optional.empty();
