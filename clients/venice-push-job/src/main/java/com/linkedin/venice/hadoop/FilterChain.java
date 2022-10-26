@@ -2,21 +2,25 @@ package com.linkedin.venice.hadoop;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.LinkedList;
 import java.util.List;
 
 
+/**
+ * The FilterChain class takes a list of {@link AbstractVeniceFilter} to assemble a filter chain to manage the life cycles'
+ * of filters and perform filtering based on the order of filters.
+ * If a record has been filtered by a predecessor, then it won't be passed to latter part of the filter chain.
+ */
 public class FilterChain<INPUT_VALUE> implements Closeable {
   private List<AbstractVeniceFilter<INPUT_VALUE>> filterList;
 
   public FilterChain() {
-    this.filterList = new LinkedList<>();
+    this.filterList = new ArrayList<>();
   }
 
   public FilterChain(AbstractVeniceFilter<INPUT_VALUE>... filters) {
-    this.filterList = new LinkedList<>();
-    filterList.addAll(Arrays.asList(filters));
+    this.filterList = Arrays.asList(filters);
   }
 
   public boolean isEmpty() {
@@ -34,9 +38,11 @@ public class FilterChain<INPUT_VALUE> implements Closeable {
    * @return true if the value should be filtered out by this filter or its successor, otherwise false.
    */
   public boolean apply(final INPUT_VALUE value) {
-    for (AbstractVeniceFilter<INPUT_VALUE> filter: filterList) {
-      if (filter.apply(value)) {
-        return true;
+    if (!filterList.isEmpty()) {
+      for (AbstractVeniceFilter<INPUT_VALUE> filter: filterList) {
+        if (filter.apply(value)) {
+          return true;
+        }
       }
     }
     return false;

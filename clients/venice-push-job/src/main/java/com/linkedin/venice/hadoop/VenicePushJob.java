@@ -1009,9 +1009,9 @@ public class VenicePushJob implements AutoCloseable {
           pushId = Version.generateRePushId(pushId);
           if (storeSetting.sourceKafkaInputVersionInfo.getHybridStoreConfig() != null
               && pushJobSetting.rewindTimeInSecondsOverride == NOT_SET) {
-            // for repush with ttl, default rewind time should be 0 otherwise stale records may be re-consumed.
-            pushJobSetting.rewindTimeInSecondsOverride =
-                repushWithTTLEnabled(pushJobSetting) ? 0L : DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
+            pushJobSetting.rewindTimeInSecondsOverride = repushWithTTLEnabled(pushJobSetting)
+                ? storeSetting.sourceKafkaOutputVersionInfo.getHybridStoreConfig().getRewindTimeInSeconds()
+                : DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
             LOGGER.info("Overriding re-push rewind time in seconds to: {}", pushJobSetting.rewindTimeInSecondsOverride);
           }
           if (repushWithTTLEnabled(pushJobSetting)) {
@@ -1257,6 +1257,11 @@ public class VenicePushJob implements AutoCloseable {
             "Source kafka input topic : {} has {} records",
             pushJobSetting.kafkaInputTopic,
             totalPutOrDeleteRecordsCount);
+        if (repushWithTTLEnabled(pushJobSetting)) {
+          LOGGER.info(
+              "Repush with ttl filtered out {} records",
+              MRJobCounterHelper.getRepushTtlFilterCount(runningJob.getCounters()));
+        }
       }
       if (reducerClosedCount < kafkaTopicInfo.partitionCount) {
         /**

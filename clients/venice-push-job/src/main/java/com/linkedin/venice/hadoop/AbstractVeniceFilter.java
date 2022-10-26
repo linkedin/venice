@@ -2,7 +2,6 @@ package com.linkedin.venice.hadoop;
 
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.Closeable;
-import java.io.IOException;
 
 
 /**
@@ -22,10 +21,4 @@ public abstract class AbstractVeniceFilter<INPUT_VALUE> implements Closeable {
    * @return true if the value should be filtered out, otherwise false.
    */
   public abstract boolean apply(final INPUT_VALUE value);
-
-  /**
-   * Close any resources that this filter holds.
-   * @throws IOException
-   */
-  public abstract void close();
 }

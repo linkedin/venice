@@ -1,5 +1,6 @@
 package com.linkedin.venice.hadoop.schema;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.annotation.NotThreadsafe;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
@@ -78,6 +79,8 @@ public class HDFSRmdSchemaSource implements RmdSchemaSource, AutoCloseable {
             "Finished writing RMD schema with id {} and RMD value schema id {} onto disk",
             schema.getId(),
             schema.getRmdValueSchemaId());
+      } else {
+        throw new IllegalStateException(String.format("The schema path %s already exists.", schemaPath));
       }
     }
   }
@@ -102,7 +105,7 @@ public class HDFSRmdSchemaSource implements RmdSchemaSource, AutoCloseable {
         if (schemeStr == null) {
           throw new RuntimeException(String.format("Failed to load RMD schema at the path %s", path));
         }
-        mapping.put(pair, Schema.parse(schemeStr));
+        mapping.put(pair, AvroCompatibilityHelper.parse(schemeStr));
       }
     }
     return mapping;

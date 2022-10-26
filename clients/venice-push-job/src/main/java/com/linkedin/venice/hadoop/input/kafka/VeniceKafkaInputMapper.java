@@ -4,6 +4,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.AbstractVeniceMapper;
 import com.linkedin.venice.hadoop.AbstractVeniceRecordReader;
 import com.linkedin.venice.hadoop.FilterChain;
+import com.linkedin.venice.hadoop.MRJobCounterHelper;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.input.kafka.ttl.VeniceKafkaInputTTLFilter;
@@ -59,7 +60,8 @@ public class VeniceKafkaInputMapper extends AbstractVeniceMapper<BytesWritable, 
       BytesWritable keyBW,
       BytesWritable valueBW,
       Reporter reporter) {
-    if (veniceFilterChain != null && !veniceFilterChain.isEmpty() && veniceFilterChain.apply(inputValue)) {
+    if (veniceFilterChain != null && veniceFilterChain.apply(inputValue)) {
+      MRJobCounterHelper.incrRepushTtlFilterCount(reporter, 1L);
       return false;
     }
     keyBW.set(inputKey);
