@@ -302,10 +302,14 @@
                     }, {
                       "name": "localHighWatermarks",
                       "doc": "The latest offsets of all real-time topic has been consumed up until now.",
-                      "type": {
-                        "type": "array",
-                        "items": "long"
-                      }
+                      "type": [
+                        "null",
+                        {
+                          "type": "array",
+                          "items": "long"
+                        }
+                      ],
+                      "default": null
                     }
                   ]
                 }
