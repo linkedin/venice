@@ -97,7 +97,7 @@ public class TestParentControllerWithMultiDataCenter {
               .setLeaderFollowerModel(true) // Enable L/F to update amplification factor.
               .setAmplificationFactor(2);
 
-      TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, updateStoreParams);
+      TestPushUtils.updateStore(storeName, parentControllerClient, updateStoreParams);
 
       ControllerClient[] controllerClients = new ControllerClient[childDatacenters.size() + 1];
       controllerClients[0] = parentControllerClient;
@@ -131,7 +131,7 @@ public class TestParentControllerWithMultiDataCenter {
       // Turn off hybrid config so we can update the partitioner config.
       final UpdateStoreQueryParams updateStoreParams2 =
           new UpdateStoreQueryParams().setHybridRewindSeconds(-1).setHybridOffsetLagThreshold(-1);
-      TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, updateStoreParams2);
+      TestPushUtils.updateStore(storeName, parentControllerClient, updateStoreParams2);
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
         for (ControllerClient controllerClient: controllerClients) {
           StoreResponse storeResponse = controllerClient.getStore(storeName);
@@ -144,7 +144,7 @@ public class TestParentControllerWithMultiDataCenter {
       // Update partitioner parameters make sure new update is in and other fields of partitioner config is not reset.
       final UpdateStoreQueryParams updateStoreParams3 =
           new UpdateStoreQueryParams().setPartitionerParams(Collections.singletonMap("key", "val"));
-      TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, updateStoreParams3);
+      TestPushUtils.updateStore(storeName, parentControllerClient, updateStoreParams3);
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
         for (ControllerClient controllerClient: controllerClients) {
           StoreResponse storeResponse = controllerClient.getStore(storeName);
@@ -193,7 +193,7 @@ public class TestParentControllerWithMultiDataCenter {
           new UpdateStoreQueryParams().setStorageQuotaInByte(expectedStorageQuotaInDC0)
               .setLeaderFollowerModel(expectedLeaderFollowerConfigInDC0)
               .setNativeReplicationEnabled(expectedNativeReplicationConfigInDC0);
-      TestPushUtils.updateStore(clusterName, storeName, dc0Client, updateStoreParams);
+      TestPushUtils.updateStore(storeName, dc0Client, updateStoreParams);
 
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
         StoreResponse storeResponse = dc0Client.getStore(storeName);
@@ -210,7 +210,7 @@ public class TestParentControllerWithMultiDataCenter {
       long expectedReadQuota = 2021;
       UpdateStoreQueryParams updateStoreParamsOnParent =
           new UpdateStoreQueryParams().setReadQuotaInCU(expectedReadQuota);
-      TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, updateStoreParamsOnParent);
+      TestPushUtils.updateStore(storeName, parentControllerClient, updateStoreParamsOnParent);
 
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
         StoreResponse storeResponse = dc0Client.getStore(storeName);
@@ -251,7 +251,7 @@ public class TestParentControllerWithMultiDataCenter {
       long newReadQuotaInParent = 116;
       UpdateStoreQueryParams forceUpdateStoreParamsOnParent =
           new UpdateStoreQueryParams().setReadQuotaInCU(newReadQuotaInParent).setReplicateAllConfigs(true);
-      TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, forceUpdateStoreParamsOnParent);
+      TestPushUtils.updateStore(storeName, parentControllerClient, forceUpdateStoreParamsOnParent);
 
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
         StoreResponse storeResponse = dc0Client.getStore(storeName);
@@ -313,7 +313,7 @@ public class TestParentControllerWithMultiDataCenter {
       UpdateStoreQueryParams updateStoreToEnableAARepl = new UpdateStoreQueryParams().setLeaderFollowerModel(true)
           .setNativeReplicationEnabled(true)
           .setActiveActiveReplicationEnabled(true);
-      TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, updateStoreToEnableAARepl);
+      TestPushUtils.updateStore(storeName, parentControllerClient, updateStoreToEnableAARepl);
       /**
        * Test Active/Active replication config enablement generates the active active metadata schema.
        */

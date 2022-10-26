@@ -8,8 +8,8 @@ import static com.linkedin.venice.hadoop.VenicePushJob.SSL_KEY_PASSWORD_PROPERTY
 import static com.linkedin.venice.hadoop.VenicePushJob.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME;
 import static com.linkedin.venice.hadoop.VenicePushJob.SSL_KEY_STORE_PROPERTY_NAME;
 import static com.linkedin.venice.hadoop.VenicePushJob.SSL_TRUST_STORE_PROPERTY_NAME;
+import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_DISCOVER_URL_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_URL_PROP;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -298,7 +298,7 @@ public class TestKafkaFormatTopicAutoDiscover {
     properties.setProperty(SSL_TRUST_STORE_PROPERTY_NAME, "something");
     properties.setProperty(SOURCE_KAFKA, "true");
     properties.setProperty(KAFKA_INPUT_BROKER_URL, "some-kafka-input-broker-url");
-    properties.setProperty(VENICE_URL_PROP, "some-venice-URL");
+    properties.setProperty(VENICE_DISCOVER_URL_PROP, "some-venice-URL");
     return properties;
   }
 }

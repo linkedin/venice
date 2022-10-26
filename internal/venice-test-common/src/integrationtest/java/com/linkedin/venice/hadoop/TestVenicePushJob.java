@@ -2,6 +2,8 @@ package com.linkedin.venice.hadoop;
 
 import static com.linkedin.venice.ConfigKeys.VENICE_PARTITIONERS;
 import static com.linkedin.venice.hadoop.VenicePushJob.CONTROLLER_REQUEST_RETRY_ATTEMPTS;
+import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_KEY_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFER_VERSION_SWAP;
 import static com.linkedin.venice.hadoop.VenicePushJob.ENABLE_WRITE_COMPUTE;
 import static com.linkedin.venice.hadoop.VenicePushJob.INCREMENTAL_PUSH;
@@ -115,12 +117,11 @@ public class TestVenicePushJob {
    * @throws IOException
    */
   protected static Schema writeSimpleAvroFileWithDifferentUserSchema(File parentDir) throws IOException {
-    String schemaStr =
-        "{" + "  \"namespace\" : \"example.avro\",  " + "  \"type\": \"record\",   " + "  \"name\": \"User\",     "
-            + "  \"fields\": [           " + "       { \"name\": \"id\", \"type\": \"string\" },  "
-            + "       { \"name\": \"name\", \"type\": \"string\" },  "
-            + "       { \"name\": \"age\", \"type\": \"int\" },  "
-            + "       { \"name\": \"company\", \"type\": \"string\" }  " + "  ] " + " } ";
+    String schemaStr = "{" + "  \"namespace\" : \"example.avro\",  " + "  \"type\": \"record\",   "
+        + "  \"name\": \"User\",     " + "  \"fields\": [           " + "       { \"name\": \"" + DEFAULT_KEY_FIELD_PROP
+        + "\", \"type\": \"string\" },  " + "       { \"name\": \"" + DEFAULT_VALUE_FIELD_PROP
+        + "\", \"type\": \"string\" },  " + "       { \"name\": \"age\", \"type\": \"int\" },  "
+        + "       { \"name\": \"company\", \"type\": \"string\" }  " + "  ] " + " } ";
     Schema schema = Schema.parse(schemaStr);
     File file = new File(parentDir, "simple_user_with_different_schema.avro");
     DatumWriter<GenericRecord> datumWriter = new GenericDatumWriter<>(schema);
@@ -131,8 +132,8 @@ public class TestVenicePushJob {
       String company = "company_";
       for (int i = 1; i <= 100; ++i) {
         GenericRecord user = new GenericData.Record(schema);
-        user.put("id", Integer.toString(i));
-        user.put("name", name + i);
+        user.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
+        user.put(DEFAULT_VALUE_FIELD_PROP, name + i);
         user.put("age", i);
         user.put("company", company + i);
         dataFileWriter.append(user);

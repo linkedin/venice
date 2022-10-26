@@ -1,6 +1,7 @@
 package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.LF_MODEL_DEPENDENCY_CHECK_DISABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
@@ -11,12 +12,10 @@ import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_KAFKA_PRODUCER_ENABLE
 import static com.linkedin.venice.hadoop.VenicePushJob.INCREMENTAL_PUSH;
 import static com.linkedin.venice.hadoop.VenicePushJob.SEND_CONTROL_MESSAGES_DIRECTLY;
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_GRID_FABRIC;
-import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
@@ -28,29 +27,29 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
-import org.apache.commons.io.IOUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
-import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
 public class TestActiveActiveReplicationForIncPush {
   private static final Logger LOGGER = LogManager.getLogger(TestActiveActiveReplicationForIncPush.class);
 
-  private static final int TEST_TIMEOUT = 90_000; // ms
+  private static final int TEST_TIMEOUT = 3 * Time.MS_PER_MINUTE;
 
   private static final int NUMBER_OF_CHILD_DATACENTERS = 3;
   private static final int NUMBER_OF_CLUSTERS = 1;
@@ -63,11 +62,6 @@ public class TestActiveActiveReplicationForIncPush {
   private VeniceTwoLayerMultiColoMultiClusterWrapper multiColoMultiClusterWrapper;
 
   KafkaBrokerWrapper veniceParentDefaultKafka;
-
-  @DataProvider(name = "storeSize")
-  public static Object[][] storeSize() {
-    return new Object[][] { { 50, 2 } };
-  }
 
   @BeforeClass(alwaysRun = true)
   public void setUp() {
@@ -87,6 +81,7 @@ public class TestActiveActiveReplicationForIncPush {
     Properties controllerProps = new Properties();
     controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 1000);
     controllerProps.put(LF_MODEL_DEPENDENCY_CHECK_DISABLED, "true");
+    controllerProps.put(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, "true");
 
     multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
@@ -115,7 +110,7 @@ public class TestActiveActiveReplicationForIncPush {
    * The purpose of this test is to verify that incremental push with RT policy succeeds when A/A is enabled in all colos.
    * And also incremental push can push to the closes kafka cluster from the grid using the SOURCE_GRID_CONFIG.
    */
-  @Test(timeOut = TEST_TIMEOUT * 2)
+  @Test(timeOut = TEST_TIMEOUT)
   public void testAAReplicationForIncrementalPushToRT() throws Exception {
     String clusterName = CLUSTER_NAMES[0];
     File inputDirBatch = getTempDataDirectory();
@@ -127,17 +122,13 @@ public class TestActiveActiveReplicationForIncPush {
     String inputDirPathBatch = "file:" + inputDirBatch.getAbsolutePath();
     String inputDirPathInc1 = "file:" + inputDirInc1.getAbsolutePath();
     String inputDirPathInc2 = "file:" + inputDirInc2.getAbsolutePath();
+    Function<Integer, String> connectionString = i -> childDatacenters.get(i).getControllerConnectString();
 
-    ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrls);
-    ControllerClient dc0ControllerClient =
-        new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
-    ControllerClient dc1ControllerClient =
-        new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString());
-    ControllerClient dc2ControllerClient =
-        new ControllerClient(clusterName, childDatacenters.get(2).getControllerConnectString());
-    String storeName = Utils.getUniqueString("store");
-
-    try {
+    try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrls);
+        ControllerClient dc0ControllerClient = new ControllerClient(clusterName, connectionString.apply(0));
+        ControllerClient dc1ControllerClient = new ControllerClient(clusterName, connectionString.apply(1));
+        ControllerClient dc2ControllerClient = new ControllerClient(clusterName, connectionString.apply(2))) {
+      String storeName = Utils.getUniqueString("store");
       Properties propsBatch = defaultVPJProps(parentControllerUrls, inputDirPathBatch, storeName);
       propsBatch.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
       Properties propsInc1 = defaultVPJProps(parentControllerUrls, inputDirPathInc1, storeName);
@@ -146,10 +137,8 @@ public class TestActiveActiveReplicationForIncPush {
       propsInc2.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
 
       Schema recordSchema = TestPushUtils.writeSimpleAvroFileWithUserSchema(inputDirBatch, true, 100);
-      String keySchemaStr =
-          recordSchema.getField(propsBatch.getProperty(VenicePushJob.KEY_FIELD_PROP)).schema().toString();
-      String valueSchemaStr =
-          recordSchema.getField(propsBatch.getProperty(VenicePushJob.VALUE_FIELD_PROP)).schema().toString();
+      String keySchemaStr = recordSchema.getField(VenicePushJob.DEFAULT_KEY_FIELD_PROP).schema().toString();
+      String valueSchemaStr = recordSchema.getField(VenicePushJob.DEFAULT_VALUE_FIELD_PROP).schema().toString();
 
       propsInc1.setProperty(INCREMENTAL_PUSH, "true");
       propsInc1.put(SOURCE_GRID_FABRIC, "dc-2");
@@ -159,17 +148,18 @@ public class TestActiveActiveReplicationForIncPush {
       propsInc2.put(SOURCE_GRID_FABRIC, "dc-1");
       TestPushUtils.writeSimpleAvroFileWithUserSchema3(inputDirInc2);
 
+      TestUtils.assertCommand(parentControllerClient.createNewStore(storeName, "owner", keySchemaStr, valueSchemaStr));
       // Store Setup
       UpdateStoreQueryParams updateStoreParams =
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
               .setPartitionCount(1)
-              .setHybridOffsetLagThreshold(TEST_TIMEOUT)
+              .setHybridOffsetLagThreshold(TEST_TIMEOUT / 2)
               .setHybridRewindSeconds(2L)
               .setIncrementalPushEnabled(true)
               .setLeaderFollowerModel(true)
               .setNativeReplicationEnabled(true)
               .setNativeReplicationSourceFabric("dc-2");
-      createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, propsBatch, updateStoreParams).close();
+      TestUtils.assertCommand(parentControllerClient.updateStore(storeName, updateStoreParams));
 
       UpdateStoreQueryParams enableAARepl = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true);
 
@@ -180,7 +170,7 @@ public class TestActiveActiveReplicationForIncPush {
       LOGGER.info("KafkaURL dc-parent-0:{}", veniceParentDefaultKafka.getAddress());
 
       // Turn on A/A in parent to trigger auto replication metadata schema registration
-      TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, enableAARepl);
+      TestPushUtils.updateStore(storeName, parentControllerClient, enableAARepl);
 
       // verify store configs
       TestUtils.verifyDCConfigNativeAndActiveRepl(parentControllerClient, storeName, true, true);
@@ -200,10 +190,12 @@ public class TestActiveActiveReplicationForIncPush {
       }
 
       // Verify
-      for (VeniceMultiClusterWrapper childDataCenter: childDatacenters) {
+      for (int i = 0; i < childDatacenters.size(); i++) {
+        VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(i);
         // Verify the current version should be 1.
         Optional<Version> version =
             childDataCenter.getRandomController().getVeniceAdmin().getStore(clusterName, storeName).getVersion(1);
+        Assert.assertTrue(version.isPresent(), "Version 1 is not present for DC: " + i);
       }
       NativeReplicationTestUtils.verifyIncrementalPushData(childDatacenters, clusterName, storeName, 150, 2);
 
@@ -213,15 +205,6 @@ public class TestActiveActiveReplicationForIncPush {
         Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(1).getKafkaBrokerWrapper().getAddress());
       }
       NativeReplicationTestUtils.verifyIncrementalPushData(childDatacenters, clusterName, storeName, 200, 3);
-    } finally {
-      ControllerResponse deleteStoreResponse = parentControllerClient.disableAndDeleteStore(storeName);
-      Assert.assertFalse(
-          deleteStoreResponse.isError(),
-          "Failed to delete the test store: " + deleteStoreResponse.getError());
-      IOUtils.closeQuietly(parentControllerClient);
-      IOUtils.closeQuietly(dc0ControllerClient);
-      IOUtils.closeQuietly(dc1ControllerClient);
-      IOUtils.closeQuietly(dc2ControllerClient);
     }
   }
 }

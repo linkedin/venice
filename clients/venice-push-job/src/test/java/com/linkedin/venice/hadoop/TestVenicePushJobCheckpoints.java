@@ -504,7 +504,7 @@ public class TestVenicePushJobCheckpoints {
 
   private Properties getVPJProps() {
     Properties props = new Properties();
-    props.put(VenicePushJob.VENICE_URL_PROP, "venice-urls");
+    props.put(VenicePushJob.VENICE_DISCOVER_URL_PROP, "venice-urls");
     props.put(VenicePushJob.VENICE_STORE_NAME_PROP, "store-name");
     props.put(VenicePushJob.INPUT_PATH_PROP, "input-path");
     props.put(VenicePushJob.KEY_FIELD_PROP, "id");
