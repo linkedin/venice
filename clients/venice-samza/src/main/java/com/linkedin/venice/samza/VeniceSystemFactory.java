@@ -40,6 +40,20 @@ import org.apache.samza.system.SystemProducer;
 import org.apache.samza.util.SinglePartitionWithoutOffsetsSystemAdmin;
 
 
+/**
+ * Samza jobs talk to either parent or child controller depending on the aggregate mode config.
+ * The decision of which controller should be used is made in {@link VeniceSystemFactory}.
+ * The "Primary Controller" term is used to refer to whichever controller the Samza job should talk to.
+ *
+ * The primary controller should be:
+ * 1. The parent controller when the Venice system is deployed in a multi-colo mode and either:
+ *     a. {@link PushType} is {@link PushType.BATCH} or {@link PushType.STREAM_REPROCESSING}; or
+ *     b. @deprecated {@link PushType} is {@link PushType.STREAM} and the job is configured to write data in AGGREGATE mode
+ * 2. The child controller when either:
+ *     a. The Venice system is deployed in a single-colo mode; or
+ *     b. The {@link PushType} is {@link PushType.STREAM} and the job is configured to write data in NON_AGGREGATE mode
+ */
+
 public class VeniceSystemFactory implements SystemFactory, Serializable {
   private static final Logger LOGGER = LogManager.getLogger(VeniceSystemFactory.class);
 
@@ -183,11 +197,24 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
         samzaJobId,
         runningFabric,
         verifyLatestProtocolPresent,
-        config,
         sslFactory,
         partitioners);
   }
 
+  /**
+   * Construct a new instance of {@link VeniceSystemProducer}
+   * @param veniceChildD2ZkHost D2 Zk Address where the components in the child colo are announcing themselves
+   * @param primaryControllerColoD2ZKHost D2 Zk Address of the colo where the primary controller resides
+   * @param primaryControllerD2ServiceName The service name that the primary controller uses to announce itself to D2
+   * @param storeName The store to write to
+   * @param pushType The {@link PushType} to use to write to the store
+   * @param samzaJobId A unique id used to identify jobs that can concurrently write to the same store
+   * @param runningFabric The colo where the job is running. It is used to find the best destination for the data to be written to
+   * @param verifyLatestProtocolPresent Config to check whether the protocol versions used at runtime are valid in Venice backend
+   * @param factory The {@link VeniceSystemFactory} object that was used to create this object
+   * @param sslFactory An optional {@link SSLFactory} that is used to communicate with other components using SSL
+   * @param partitioners A list of comma-separated partitioners class names that are supported.
+   */
   protected SystemProducer createSystemProducer(
       String veniceChildD2ZkHost,
       String primaryControllerColoD2ZKHost,
@@ -197,7 +224,6 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
       String samzaJobId,
       String runningFabric,
       boolean verifyLatestProtocolPresent,
-      Config config,
       Optional<SSLFactory> sslFactory,
       Optional<String> partitioners) {
     return new VeniceSystemProducer(
@@ -319,7 +345,6 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
         samzaJobId,
         runningFabric,
         verifyLatestProtocolPresent,
-        config,
         sslFactory,
         partitioners);
     this.systemProducerStatues.computeIfAbsent(systemProducer, k -> Pair.create(true, false));

@@ -69,6 +69,18 @@ import org.apache.samza.system.SystemProducer;
 
 /**
  * {@code VeniceSystemProducer} defines the interfaces for Samza jobs to send data to Venice stores.
+ *
+ * Samza jobs talk to either parent or child controller depending on the aggregate mode config.
+ * The decision of which controller should be used is made in {@link VeniceSystemFactory}.
+ * The "Primary Controller" term is used to refer to whichever controller the Samza job should talk to.
+ *
+ * The primary controller should be:
+ * 1. The parent controller when the Venice system is deployed in a multi-colo mode and either:
+ *     a. {@link PushType} is {@link PushType.BATCH} or {@link PushType.STREAM_REPROCESSING}; or
+ *     b. @deprecated {@link PushType} is {@link PushType.STREAM} and the job is configured to write data in AGGREGATE mode
+ * 2. The child controller when either:
+ *     a. The Venice system is deployed in a single-colo mode; or
+ *     b. The {@link PushType} is {@link PushType.STREAM} and the job is configured to write data in NON_AGGREGATE mode
  */
 public class VeniceSystemProducer implements SystemProducer, Closeable {
   private static final Logger LOGGER = LogManager.getLogger(VeniceSystemProducer.class);
@@ -90,14 +102,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
   // Immutable state
   private final String veniceChildD2ZkHost;
-
-  /** Samza jobs talk to either parent or child controller depending on the aggregate mode config and PushType.
-   * The decision of which controller should be used is made in {@link VeniceSystemFactory}.
-   * "PrimaryController" is used to refer to whichever controller the Samza job should talk to.
-   */
   private final String primaryControllerColoD2ZKHost;
   private final String primaryControllerD2ServiceName;
-
   private final String storeName;
   private final String samzaJobId;
   private final Version.PushType pushType;
@@ -165,6 +171,9 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
         partitioners);
   }
 
+  /**
+   * Construct a new instance of {@link VeniceSystemProducer}. Equivalent to {@link VeniceSystemProducer(veniceChildD2ZkHost, primaryControllerColoD2ZKHost, primaryControllerD2ServiceName, storeName, pushType, samzaJobId, runningFabric, verifyLatestProtocolPresent, factory, sslFactory, partitioners, SystemTime.INSTANCE)}
+   */
   public VeniceSystemProducer(
       String veniceChildD2ZkHost,
       String primaryControllerColoD2ZKHost,
@@ -192,6 +201,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
         SystemTime.INSTANCE);
   }
 
+  @Deprecated
   public VeniceSystemProducer(
       String primaryControllerColoD2ZKHost,
       String primaryControllerD2ServiceName,
@@ -219,6 +229,21 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
         time);
   }
 
+  /**
+   * Construct a new instance of {@link VeniceSystemProducer}
+   * @param veniceChildD2ZkHost D2 Zk Address where the components in the child colo are announcing themselves
+   * @param primaryControllerColoD2ZKHost D2 Zk Address of the colo where the primary controller resides
+   * @param primaryControllerD2ServiceName The service name that the primary controller uses to announce itself to D2
+   * @param storeName The store to write to
+   * @param pushType The {@link PushType} to use to write to the store
+   * @param samzaJobId A unique id used to identify jobs that can concurrently write to the same store
+   * @param runningFabric The colo where the job is running. It is used to find the best destination for the data to be written to
+   * @param verifyLatestProtocolPresent Config to check whether the protocol versions used at runtime are valid in Venice backend
+   * @param factory The {@link VeniceSystemFactory} object that was used to create this object
+   * @param sslFactory An optional {@link SSLFactory} that is used to communicate with other components using SSL
+   * @param partitioners A list of comma-separated partitioners class names that are supported.
+   * @param time An object of type {@link Time}. It is helpful to be configurable for testing.
+   */
   public VeniceSystemProducer(
       String veniceChildD2ZkHost,
       String primaryControllerColoD2ZKHost,
