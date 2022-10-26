@@ -1763,12 +1763,6 @@ public class ConfigKeys {
       "server.enable.live.config.based.kafka.throttling";
 
   /**
-   * Enable usage of {@link com.linkedin.venice.kafka.consumer.AutoClosingKafkaConsumer} instead of the raw
-   * {@link org.apache.kafka.clients.consumer.KafkaConsumer}.
-   */
-  public static final String AUTO_CLOSE_IDLE_CONSUMERS_ENABLED = "auto.close.idle.consumers";
-
-  /**
    * Enable the concurrent execution of the controllers' init routines, which are executed when a controller
    * becomes a cluster leader.
    */

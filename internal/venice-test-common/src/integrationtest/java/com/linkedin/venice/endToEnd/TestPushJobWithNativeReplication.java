@@ -9,6 +9,8 @@ import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_KAFKA_PRODUCER_ENABLED;
+import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_KEY_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.INCREMENTAL_PUSH;
 import static com.linkedin.venice.hadoop.VenicePushJob.INPUT_PATH_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_BROKER_URL;
@@ -450,7 +452,6 @@ public class TestPushJobWithNativeReplication {
           props.put(BatchJobHeartbeatConfigs.HEARTBEAT_LAST_HEARTBEAT_IS_DELETE_CONFIG.getConfigName(), false);
 
           TestPushUtils.updateStore(
-              clusterName,
               VPJ_HEARTBEAT_STORE_NAME,
               parentControllerClient,
               new UpdateStoreQueryParams().setLeaderFollowerModel(true).setNativeReplicationEnabled(true));
@@ -519,7 +520,7 @@ public class TestPushJobWithNativeReplication {
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
           UpdateStoreQueryParams updateStoreParams =
               new UpdateStoreQueryParams().setNativeReplicationSourceFabric("dc-1");
-          TestPushUtils.updateStore(clusterName, storeName, parentControllerClient, updateStoreParams);
+          TestPushUtils.updateStore(storeName, parentControllerClient, updateStoreParams);
 
           try (VenicePushJob job = new VenicePushJob("Test push job", props)) {
             job.run();
@@ -890,9 +891,8 @@ public class TestPushJobWithNativeReplication {
         .apply(new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA));
 
     Schema recordSchema = TestPushUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, recordCount);
-    String keySchemaStr = recordSchema.getField(props.getProperty(VenicePushJob.KEY_FIELD_PROP)).schema().toString();
-    String valueSchemaStr =
-        recordSchema.getField(props.getProperty(VenicePushJob.VALUE_FIELD_PROP)).schema().toString();
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
 
     try {
       createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams).close();

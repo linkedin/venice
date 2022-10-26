@@ -1,5 +1,7 @@
 package com.linkedin.venice.hadoop;
 
+import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_KEY_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 
 import com.github.luben.zstd.ZstdDictTrainer;
@@ -133,8 +135,8 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
     final AtomicLong inputFileDataSize = new AtomicLong(0);
     if (pushJobSchemaInfo.isAvro()) {
       LOGGER.info("Detected Avro input format.");
-      pushJobSchemaInfo.setKeyField(props.getString(KEY_FIELD_PROP));
-      pushJobSchemaInfo.setValueField(props.getString(VALUE_FIELD_PROP));
+      pushJobSchemaInfo.setKeyField(props.getString(KEY_FIELD_PROP, DEFAULT_KEY_FIELD_PROP));
+      pushJobSchemaInfo.setValueField(props.getString(VALUE_FIELD_PROP, DEFAULT_VALUE_FIELD_PROP));
 
       if (!pushJobSetting.useMapperToBuildDict) {
         pushJobSchemaInfo.setAvroSchema(checkAvroSchemaConsistency(fs, fileStatuses, inputFileDataSize));
@@ -426,8 +428,8 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
   }
 
   private VeniceAvroRecordReader getVeniceAvroRecordReader(FileSystem fs, Path path) {
-    String keyField = props.getString(KEY_FIELD_PROP);
-    String valueField = props.getString(VALUE_FIELD_PROP);
+    String keyField = props.getString(KEY_FIELD_PROP, DEFAULT_KEY_FIELD_PROP);
+    String valueField = props.getString(VALUE_FIELD_PROP, DEFAULT_VALUE_FIELD_PROP);
     return new VeniceAvroRecordReader(
         null,
         keyField,

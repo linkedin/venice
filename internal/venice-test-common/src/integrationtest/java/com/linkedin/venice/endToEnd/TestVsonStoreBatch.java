@@ -6,8 +6,6 @@ import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.hadoop.VenicePushJob.KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_KAFKA;
 import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_DISCOVER_URL_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_URL_PROP;
 import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
@@ -30,6 +28,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonSchema;
+import com.linkedin.venice.utils.KeyAndValueSchemas;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.Time;
@@ -166,10 +165,7 @@ public class TestVsonStoreBatch {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testVsonStoreMultiLevelRecordsSchema() throws Exception {
-    testBatchStore(inputDir -> {
-      Pair<Schema, Schema> schemas = writeMultiLevelVsonFile(inputDir);
-      return new Pair<>(schemas.getFirst(), schemas.getSecond());
-    }, props -> {
+    testBatchStore(inputDir -> writeMultiLevelVsonFile(inputDir), props -> {
       props.setProperty(KEY_FIELD_PROP, "");
       props.setProperty(VALUE_FIELD_PROP, "");
     }, (avroClient, vsonClient, metricsRepository) -> {
@@ -189,10 +185,10 @@ public class TestVsonStoreBatch {
   @Test(timeOut = TEST_TIMEOUT)
   public void testVsonStoreWithSelectedField() throws Exception {
     testBatchStore(inputDir -> {
-      Pair<Schema, Schema> schemas = writeComplexVsonFile(inputDir);
+      KeyAndValueSchemas schemas = writeComplexVsonFile(inputDir);
       // strip the value schema since this is selected filed
-      Schema selectedValueSchema = VsonAvroSchemaAdapter.stripFromUnion(schemas.getSecond()).getField("score").schema();
-      return new Pair<>(schemas.getFirst(), selectedValueSchema);
+      Schema selectedValueSchema = VsonAvroSchemaAdapter.stripFromUnion(schemas.getValue()).getField("score").schema();
+      return new KeyAndValueSchemas(schemas.getKey(), selectedValueSchema);
     }, props -> {
       props.setProperty(KEY_FIELD_PROP, "");
       props.setProperty(VALUE_FIELD_PROP, "score");
@@ -210,7 +206,7 @@ public class TestVsonStoreBatch {
       Pair<VsonSchema, VsonSchema> schemas = writeMultiLevelVsonFile2(inputDir);
       Schema keySchema = VsonAvroSchemaAdapter.parse(schemas.getFirst().toString());
       Schema selectedValueSchema = VsonAvroSchemaAdapter.parse(schemas.getSecond().recordSubtype("recs").toString());
-      return new Pair<>(keySchema, selectedValueSchema);
+      return new KeyAndValueSchemas(keySchema, selectedValueSchema);
     }, props -> {
       props.setProperty(KEY_FIELD_PROP, "");
       props.setProperty(VALUE_FIELD_PROP, "recs");
@@ -244,14 +240,14 @@ public class TestVsonStoreBatch {
       Pair<VsonSchema, VsonSchema> schemas = writeMultiLevelVsonFile2(inputDir);
       Schema keySchema = VsonAvroSchemaAdapter.parse(schemas.getFirst().toString());
       Schema selectedValueSchema = VsonAvroSchemaAdapter.parse(schemas.getSecond().recordSubtype("recs").toString());
-      return new Pair<>(keySchema, selectedValueSchema);
+      return new KeyAndValueSchemas(keySchema, selectedValueSchema);
     }, props -> {
       props.setProperty(KEY_FIELD_PROP, "");
       props.setProperty(VALUE_FIELD_PROP, "recs");
     }, validator, new UpdateStoreQueryParams(), Optional.empty(), false);
     // Re-push with Kafka Input
     testBatchStore(
-        inputDir -> new Pair<>(Schema.create(Schema.Type.NULL), Schema.create(Schema.Type.NULL)),
+        inputDir -> new KeyAndValueSchemas(Schema.create(Schema.Type.NULL), Schema.create(Schema.Type.NULL)),
         properties -> {
           properties.setProperty(SOURCE_KAFKA, "true");
           properties.setProperty(KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(storeName, 1));
@@ -269,14 +265,13 @@ public class TestVsonStoreBatch {
     testBatchStore(inputDir -> {
       Pair<Schema, Schema> schemas = writeSimpleVsonFileWithUserSchema(inputDir);
       Schema selectedValueSchema = VsonAvroSchemaAdapter.stripFromUnion(schemas.getSecond()).getField("name").schema();
-      return new Pair<>(schemas.getFirst(), selectedValueSchema);
+      return new KeyAndValueSchemas(schemas.getFirst(), selectedValueSchema);
     }, properties -> {
       /**
        * Here will use {@link VENICE_DISCOVER_URL_PROP} instead.
        */
       properties.setProperty(VenicePushJob.KEY_FIELD_PROP, "");
-      properties.setProperty(VENICE_DISCOVER_URL_PROP, properties.getProperty(VENICE_URL_PROP));
-      properties.setProperty(VENICE_URL_PROP, "invalid_venice_urls");
+      properties.setProperty(VenicePushJob.VALUE_FIELD_PROP, "name");
     },
         TestBatch.getSimpleFileWithUserSchemaValidatorForZstd(),
         new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
@@ -305,7 +300,7 @@ public class TestVsonStoreBatch {
       Optional<String> storeNameOptional,
       boolean deleteStoreAfterValidation) throws Exception {
     File inputDir = getTempDataDirectory();
-    Pair<Schema, Schema> schemas = inputFileWriter.write(inputDir);
+    KeyAndValueSchemas schemas = inputFileWriter.write(inputDir);
     String storeName = storeNameOptional.isPresent() ? storeNameOptional.get() : Utils.getUniqueString("store");
     AvroGenericStoreClient avroClient = null;
     AvroGenericStoreClient vsonClient = null;
@@ -322,8 +317,8 @@ public class TestVsonStoreBatch {
          */
         createStoreForJob(
             veniceCluster.getClusterName(),
-            schemas.getFirst().toString(),
-            schemas.getSecond().toString(),
+            schemas.getKey().toString(),
+            schemas.getValue().toString(),
             props,
             storeParms).close();
       }

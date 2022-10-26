@@ -25,7 +25,7 @@ public class ControllerKafkaClientFactory extends KafkaClientFactory {
   public ControllerKafkaClientFactory(
       VeniceControllerConfig controllerConfig,
       Optional<MetricsParameters> metricsParameters) {
-    super(Optional.empty(), metricsParameters, controllerConfig.isAutoCloseIdleConsumersEnabled());
+    super(Optional.empty(), metricsParameters);
     this.controllerConfig = controllerConfig;
   }
 
