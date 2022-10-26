@@ -2,6 +2,7 @@
 layout: default
 title: Push Job
 parent: Write APIs
+grand_parent: User Guides
 permalink: /docs/user_guide/write_api/push_job
 ---
 # Push Job
