@@ -729,7 +729,7 @@ public class TestUtils {
       String storeName,
       boolean enabledNR,
       boolean enabledAA) {
-    TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, true, () -> {
       StoreResponse storeResponse = controllerClient.getStore(storeName);
       Assert.assertFalse(storeResponse.isError());
       Assert.assertEquals(

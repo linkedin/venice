@@ -29,7 +29,7 @@ public class ServerKafkaClientFactory extends KafkaClientFactory {
       VeniceServerConfig serverConfig,
       Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader,
       Optional<MetricsParameters> metricsParameters) {
-    super(kafkaMessageEnvelopeSchemaReader, metricsParameters, serverConfig.isAutoCloseIdleConsumersEnabled());
+    super(kafkaMessageEnvelopeSchemaReader, metricsParameters);
     this.serverConfig = serverConfig;
   }
 

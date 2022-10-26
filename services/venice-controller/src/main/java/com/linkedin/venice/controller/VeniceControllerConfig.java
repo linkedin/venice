@@ -11,7 +11,6 @@ import static com.linkedin.venice.ConfigKeys.ADMIN_TOPIC_REMOTE_CONSUMPTION_ENAB
 import static com.linkedin.venice.ConfigKeys.ADMIN_TOPIC_SOURCE_REGION;
 import static com.linkedin.venice.ConfigKeys.AGGREGATE_REAL_TIME_SOURCE_REGION;
 import static com.linkedin.venice.ConfigKeys.ALLOW_CLUSTER_WIPE;
-import static com.linkedin.venice.ConfigKeys.AUTO_CLOSE_IDLE_CONSUMERS_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_ALLOWLIST;
 import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_D2_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_D2_SERVICE_NAME;
@@ -81,7 +80,6 @@ import com.linkedin.venice.authorization.DefaultIdentityParser;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.status.BatchJobHeartbeatConfigs;
 import com.linkedin.venice.utils.RegionUtils;
@@ -227,8 +225,6 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final String emergencySourceRegion;
 
   private final boolean allowClusterWipe;
-
-  private final boolean autoCloseIdleConsumersEnabled;
 
   private final boolean childControllerAdminTopicConsumptionEnabled;
 
@@ -429,8 +425,6 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.usePushStatusStoreForIncrementalPush = props.getBoolean(USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH, false);
     this.emergencySourceRegion = props.getString(EMERGENCY_SOURCE_REGION, "");
     this.allowClusterWipe = props.getBoolean(ALLOW_CLUSTER_WIPE, false);
-    this.autoCloseIdleConsumersEnabled = props
-        .getBoolean(AUTO_CLOSE_IDLE_CONSUMERS_ENABLED, KafkaClientFactory.DEFAULT_AUTO_CLOSE_IDLE_CONSUMERS_ENABLED);
     this.childControllerAdminTopicConsumptionEnabled =
         props.getBoolean(CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED, true);
     this.concurrentInitRoutinesEnabled = props.getBoolean(CONCURRENT_INIT_ROUTINES_ENABLED, false);
@@ -777,10 +771,6 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public boolean isClusterWipeAllowed() {
     return allowClusterWipe;
-  }
-
-  public boolean isAutoCloseIdleConsumersEnabled() {
-    return autoCloseIdleConsumersEnabled;
   }
 
   public boolean isChildControllerAdminTopicConsumptionEnabled() {

@@ -88,7 +88,7 @@ public abstract class TestRestartServerDuringIngestion {
     String storeName = Utils.getUniqueString("test_store");
     String veniceUrl = cluster.getLeaderVeniceController().getControllerUrl();
     Properties properties = new Properties();
-    properties.put(VenicePushJob.VENICE_URL_PROP, veniceUrl);
+    properties.put(VenicePushJob.VENICE_DISCOVER_URL_PROP, veniceUrl);
     properties.put(VenicePushJob.VENICE_STORE_NAME_PROP, storeName);
     TestPushUtils.createStoreForJob(cluster, stringSchemaStr, stringSchemaStr, properties).close();
     TestPushUtils.makeStoreLF(cluster, storeName);
@@ -233,7 +233,7 @@ public abstract class TestRestartServerDuringIngestion {
     String storeName = Utils.getUniqueString("test_store");
     String veniceUrl = cluster.getLeaderVeniceController().getControllerUrl();
     Properties properties = new Properties();
-    properties.put(VenicePushJob.VENICE_URL_PROP, veniceUrl);
+    properties.put(VenicePushJob.VENICE_DISCOVER_URL_PROP, veniceUrl);
     properties.put(VenicePushJob.VENICE_STORE_NAME_PROP, storeName);
     TestPushUtils.createStoreForJob(cluster, stringSchemaStr, stringSchemaStr, properties).close();
 

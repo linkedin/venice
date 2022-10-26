@@ -46,16 +46,17 @@ public abstract class AbstractMapReduceTask {
   }
 
   public final void configure(JobConf job) {
-    VeniceProperties props;
-
-    SSLConfigurator configurator = SSLConfigurator.getSSLConfigurator(job.get(SSL_CONFIGURATOR_CLASS_CONFIG));
-    try {
-      Properties javaProps =
-          configurator.setupSSLConfig(HadoopUtils.getProps(job), UserCredentialsFactory.getHadoopUserCredentials());
-      props = new VeniceProperties(javaProps);
-    } catch (IOException e) {
-      throw new VeniceException("Could not get user credential for job:" + job.getJobName(), e);
+    Properties javaProps = HadoopUtils.getProps(job);
+    String sslConfiguratorClassName = job.get(SSL_CONFIGURATOR_CLASS_CONFIG);
+    if (sslConfiguratorClassName != null) {
+      SSLConfigurator configurator = SSLConfigurator.getSSLConfigurator(sslConfiguratorClassName);
+      try {
+        javaProps = configurator.setupSSLConfig(javaProps, UserCredentialsFactory.getHadoopUserCredentials());
+      } catch (IOException e) {
+        throw new VeniceException("Could not get user credential for job:" + job.getJobName(), e);
+      }
     }
+    VeniceProperties props = new VeniceProperties(javaProps);
     setChunkingEnabled(props.getBoolean(VeniceWriter.ENABLE_CHUNKING));
     this.partitionCount = job.getNumReduceTasks();
     TaskAttemptID taskAttemptID = TaskAttemptID.forName(job.get(MAPRED_TASK_ID_PROP_NAME));
