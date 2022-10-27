@@ -50,7 +50,6 @@ public class MergeConflictResolver {
   private final MergeByteBuffer mergeByteBuffer;
   private final MergeResultValueSchemaResolver mergeResultValueSchemaResolver;
   private final RmdSerDe rmdSerde;
-  private final boolean enableHandlingUpdate;
 
   MergeConflictResolver(
       MapKeyStringAnnotatedStoreSchemaCache storeSchemaCache,
@@ -59,8 +58,7 @@ public class MergeConflictResolver {
       MergeGenericRecord mergeGenericRecord,
       MergeByteBuffer mergeByteBuffer,
       MergeResultValueSchemaResolver mergeResultValueSchemaResolver,
-      RmdSerDe rmdSerde,
-      boolean enableHandlingUpdate) {
+      RmdSerDe rmdSerde) {
     this.storeSchemaCache = Validate.notNull(storeSchemaCache);
     this.storeName = Validate.notNull(storeName);
     this.newRmdCreator = Validate.notNull(newRmdCreator);
@@ -68,7 +66,6 @@ public class MergeConflictResolver {
     this.mergeResultValueSchemaResolver = Validate.notNull(mergeResultValueSchemaResolver);
     this.mergeByteBuffer = Validate.notNull(mergeByteBuffer);
     this.rmdSerde = Validate.notNull(rmdSerde);
-    this.enableHandlingUpdate = enableHandlingUpdate;
   }
 
   /**
@@ -525,12 +522,6 @@ public class MergeConflictResolver {
       final long newValueSourceOffset,
       final int newValueSourceBrokerID,
       final int newValueColoID) {
-    if (!enableHandlingUpdate) {
-      // We need more testing and validation before actually enabling this method. For now, we throw an exception to
-      // preserve the previous behavior.
-      throw new VeniceUnsupportedOperationException(
-          "TODO: add more unit and integration tests first and then remove this exception.");
-    }
     final SchemaEntry supersetValueSchemaEntry = storeSchemaCache.getSupersetSchema().orElse(null);
     if (supersetValueSchemaEntry == null) {
       throw new IllegalStateException("Expect to get superset value schema for store: " + storeName);
@@ -550,7 +541,12 @@ public class MergeConflictResolver {
         supersetValueSchemaEntry);
 
     int oldValueSchemaID = oldValueAndRmd.getValueSchemaID();
-    Schema oldValueSchema = getValueSchema(oldValueAndRmd.getValueSchemaID());
+    // todo(Sushant): Discuss with Jialin if we can use incomingValueSchemaId (or supersetSchemaId?) when
+    // oldValueSchemaID is -1
+    if (oldValueSchemaID == -1) {
+      oldValueSchemaID = incomingValueSchemaId;
+    }
+    Schema oldValueSchema = getValueSchema(oldValueSchemaID);
     ValueAndRmd<GenericRecord> updatedValueAndRmd = mergeGenericRecord.update(
         oldValueAndRmd,
         Lazy.of(() -> writeComputeRecord),

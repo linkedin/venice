@@ -270,10 +270,11 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     // Step 4: Set deleted keys and their deleted timestamps.
     List<String> newDeletedKeys = new ArrayList<>(deletedKeyToTsMap.size());
     PrimitiveLongList newDeletedTimestamps = new PrimitiveLongArrayList(deletedKeyToTsMap.size());
-    deletedKeyToTsMap.forEach((deletedKey, deletedTimestamp) -> {
-      newDeletedKeys.add(deletedKey);
-      newDeletedTimestamps.add(deletedTimestamp);
-    });
+    for (Map.Entry deleteKeyAndTs: deletedKeyToTsMap.entrySet()) {
+      newDeletedKeys.add(deleteKeyAndTs.getKey().toString());
+      newDeletedTimestamps.add((Long) deleteKeyAndTs.getValue());
+    }
+
     collectionFieldRmd.setDeletedElementsAndTimestamps(newDeletedKeys, newDeletedTimestamps);
 
     return collectionFieldRmd.isInPutOnlyState()
@@ -930,14 +931,15 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
 
     // Step 4: Set new deleted keys and their deleted timestamps.
     final List<ElementAndTimestamp> newDeletedKeyAndTsList = new ArrayList<>(deletedKeyToTsMap.size());
-    deletedKeyToTsMap.forEach((key, timestamp) -> {
-      newDeletedKeyAndTsList.add(new ElementAndTimestamp(key, timestamp));
-    });
-    sortElementAndTimestampList(newDeletedKeyAndTsList, Comparator.comparing(o -> ((String) o)) // The element here is
-                                                                                                // String (as deleted
-                                                                                                // key). So, we can use
-                                                                                                // a String comparator.
-    );
+
+    // Keys in deletedKeyToTsMap are actually of type Utf-8 and not String
+    // todo: We should consider wildcard capture throughout MCR code path <?>.
+    for (Map.Entry entry: deletedKeyToTsMap.entrySet()) {
+      newDeletedKeyAndTsList.add(new ElementAndTimestamp(entry.getKey().toString(), (Long) entry.getValue()));
+    }
+
+    // The element here is String (as deleted key). So, we can use a String comparator.
+    sortElementAndTimestampList(newDeletedKeyAndTsList, Comparator.comparing(o -> ((String) o)));
     setDeletedDeletedKeyAndTsList(newDeletedKeyAndTsList, collectionFieldRmd);
     return UpdateResultStatus.PARTIALLY_UPDATED;
   }
