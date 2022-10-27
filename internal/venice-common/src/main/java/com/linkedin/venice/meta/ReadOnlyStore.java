@@ -14,7 +14,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 
@@ -492,12 +491,20 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
-    public Set<ViewConfig> getViewConfigs() {
-      return this.delegate.getViewConfigs().stream().map(ReadOnlyViewConfig::new).collect(Collectors.toSet());
+    public Map<String, ViewConfig> getViewConfigs() {
+      if (this.delegate.getViewConfigs() == null) {
+        return new HashMap<>();
+      } else {
+        return Collections.unmodifiableMap(
+            this.delegate.getViewConfigs()
+                .entrySet()
+                .stream()
+                .collect(Collectors.toMap(Map.Entry::getKey, e -> new ReadOnlyViewConfig(e.getValue()))));
+      }
     }
 
     @Override
-    public void setViewConfig(Set<ViewConfig> viewConfigList) {
+    public void setViewConfig(Map<String, ViewConfig> viewConfigList) {
       throw new UnsupportedOperationException();
     }
 
@@ -832,12 +839,17 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
-  public Set<ViewConfig> getViewConfigs() {
-    return this.delegate.getViewConfigs().stream().map(ReadOnlyViewConfig::new).collect(Collectors.toSet());
+  public Map<String, ViewConfig> getViewConfigs() {
+
+    return Collections.unmodifiableMap(
+        this.delegate.getViewConfigs()
+            .entrySet()
+            .stream()
+            .collect(Collectors.toMap(Map.Entry::getKey, e -> new ReadOnlyViewConfig(e.getValue()))));
   }
 
   @Override
-  public void setViewConfig(Set<ViewConfig> viewConfigList) {
+  public void setViewConfig(Map<String, ViewConfig> viewConfigList) {
     throw new UnsupportedOperationException();
   }
 

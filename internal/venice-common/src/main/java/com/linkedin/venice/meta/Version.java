@@ -11,8 +11,8 @@ import com.linkedin.venice.systemstore.schemas.StoreVersion;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 
 
 /**
@@ -162,9 +162,9 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   void setHybridStoreConfig(HybridStoreConfig hybridConfig);
 
-  Set<ViewConfig> getViewConfigs();
+  Map<String, ViewConfig> getViewConfigs();
 
-  void setViewConfig(Set<ViewConfig> viewConfigList);
+  void setViewConfig(Map<String, ViewConfig> viewConfigMap);
 
   boolean isUseVersionLevelHybridConfig();
 

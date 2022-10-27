@@ -5,11 +5,10 @@ import static com.linkedin.venice.meta.Store.NUM_VERSION_PRESERVE_NOT_SET;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.linkedin.venice.compression.CompressionStrategy;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 
 
 /**
@@ -294,7 +293,7 @@ public class StoreInfo {
 
   private String kafkaBrokerUrl;
 
-  private Set<ViewConfig> viewConfigs = new HashSet<>();
+  private Map<String, ViewConfig> viewConfigs = new HashMap<>();
 
   public StoreInfo() {
   }
@@ -553,11 +552,11 @@ public class StoreInfo {
     this.writeComputationEnabled = writeComputationEnabled;
   }
 
-  public Set<ViewConfig> getViewConfigs() {
+  public Map<String, ViewConfig> getViewConfigs() {
     return viewConfigs;
   }
 
-  public void setViewConfigs(Set<ViewConfig> viewConfigs) {
+  public void setViewConfigs(Map<String, ViewConfig> viewConfigs) {
     this.viewConfigs = viewConfigs;
   }
 

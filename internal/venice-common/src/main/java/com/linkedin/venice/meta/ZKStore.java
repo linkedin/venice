@@ -15,7 +15,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.avro.util.Utf8;
 
@@ -452,20 +451,24 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   }
 
   @Override
-  public Set<ViewConfig> getViewConfigs() {
+  public Map<String, ViewConfig> getViewConfigs() {
     if (this.storeProperties.views == null) {
       return null;
     }
-    return this.storeProperties.views.stream().map(ViewConfigImpl::new).collect(Collectors.toSet());
+    return this.storeProperties.views.entrySet()
+        .stream()
+        .collect(Collectors.toMap(e -> e.getKey().toString(), e -> new ViewConfigImpl(e.getValue())));
+
   }
 
   @Override
-  public void setViewConfig(Set<ViewConfig> viewConfigList) {
+  public void setViewConfig(Map<String, ViewConfig> viewConfigList) {
     if (viewConfigList == null) {
-      this.storeProperties.views = new ArrayList<>();
+      this.storeProperties.views = new HashMap<>();
     } else {
-      this.storeProperties.views =
-          viewConfigList.stream().map(DataModelBackedStructure::dataModel).collect(Collectors.toList());
+      this.storeProperties.views = viewConfigList.entrySet()
+          .stream()
+          .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().dataModel()));
     }
   }
 

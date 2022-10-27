@@ -5,10 +5,11 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.systemstore.schemas.StoreVersion;
+import com.linkedin.venice.systemstore.schemas.StoreViewConfig;
 import com.linkedin.venice.utils.AvroCompatibilityUtils;
 import java.time.Duration;
+import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 
@@ -294,14 +295,23 @@ public class VersionImpl implements Version {
   }
 
   @Override
-  public Set<ViewConfig> getViewConfigs() {
-    return this.storeVersion.views.stream().map(ViewConfigImpl::new).collect(Collectors.toSet());
+  public Map<String, ViewConfig> getViewConfigs() {
+
+    return this.storeVersion.views.entrySet()
+        .stream()
+        .collect(Collectors.toMap(Map.Entry::getKey, e -> new ViewConfigImpl(e.getValue())));
   }
 
   @Override
-  public void setViewConfig(Set<ViewConfig> viewConfigList) {
-    this.storeVersion.views =
-        viewConfigList.stream().map(viewConfig -> viewConfig.dataModel()).collect(Collectors.toList());
+  public void setViewConfig(Map<String, ViewConfig> viewConfigList) {
+    this.storeVersion.views = viewConfigList.entrySet()
+        .stream()
+        .collect(
+            Collectors.toMap(
+                Map.Entry::getKey,
+                e -> new StoreViewConfig(
+                    e.getValue().getViewType().value,
+                    e.getValue().dataModel().getViewParameters())));
   }
 
   @Override

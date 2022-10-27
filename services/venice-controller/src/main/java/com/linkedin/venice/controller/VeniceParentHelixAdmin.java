@@ -98,7 +98,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.SchemaMeta;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreOwner;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStorePartitionCount;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
-import com.linkedin.venice.controller.kafka.protocol.admin.StoreViewConfig;
+import com.linkedin.venice.controller.kafka.protocol.admin.StoreViewConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.SupersetSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStoragePersona;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
@@ -161,7 +161,6 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
-import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
@@ -2150,7 +2149,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Boolean> activeActiveReplicationEnabled = params.getActiveActiveReplicationEnabled();
       Optional<String> regionsFilter = params.getRegionsFilter();
       Optional<String> personaName = params.getStoragePersona();
-      Optional<Set<String>> storeViewConfig = params.getStoreViews();
+      Optional<Map<String, String>> storeViewConfig = params.getStoreViews();
 
       /**
        * Check whether parent controllers will only propagate the update configs to child controller, or all unchanged
@@ -2235,16 +2234,9 @@ public class VeniceParentHelixAdmin implements Admin {
           .orElseGet(currStore::isActiveActiveReplicationEnabled);
 
       if (storeViewConfig.isPresent()) {
-        StoreViewConfig config = new StoreViewConfig();
-        config.setViewType("CHANGE_CAPTURE");
-        setStore.views = Arrays.asList(config);
-      } else {
-        Set<ViewConfig> viewConfigs = currStore.getViewConfigs();
-        if (!viewConfigs.isEmpty()) {
-          StoreViewConfig config = new StoreViewConfig();
-          config.setViewType("CHANGE_CAPTURE");
-          setStore.views = Arrays.asList(config);
-        }
+        Map<String, StoreViewConfigRecord> mergedViewSettings =
+            VeniceHelixAdmin.mergeNewViewConfigsIntoOldConfigs(currStore, storeViewConfig.get());
+        setStore.views = mergedViewSettings;
       }
 
       if (partitionerClass.isPresent() || partitionerParams.isPresent() || amplificationFactor.isPresent()) {

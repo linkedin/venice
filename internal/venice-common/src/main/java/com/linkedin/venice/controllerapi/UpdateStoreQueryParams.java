@@ -13,14 +13,12 @@ import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.StoreInfo;
-import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 
@@ -74,7 +72,13 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setAutoSchemaPushJobEnabled(srcStore.isSchemaAutoRegisterFromPushJobEnabled())
             .setStorageQuotaInByte(srcStore.getStorageQuotaInByte())
             .setWriteComputationEnabled(srcStore.isWriteComputationEnabled())
-            .setStoreViews(srcStore.getViewConfigs().stream().map(ViewConfig::toString).collect(Collectors.toSet()));
+            // TODO: This needs probably some refinement, but since we only support one kind of view type today, this is
+            // still easy to parse
+            .setStoreViews(
+                srcStore.getViewConfigs()
+                    .entrySet()
+                    .stream()
+                    .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().toString())));
 
     if (srcStore.getReplicationMetadataVersionId() != -1) {
       updateStoreQueryParams.setReplicationMetadataVersionID(srcStore.getReplicationMetadataVersionId());
@@ -393,12 +397,12 @@ public class UpdateStoreQueryParams extends QueryParams {
     return putBoolean(NATIVE_REPLICATION_ENABLED, nativeReplicationEnabled);
   }
 
-  public UpdateStoreQueryParams setStoreViews(Set<String> viewSet) {
-    return (UpdateStoreQueryParams) putStringSet(STORE_VIEW, viewSet);
+  public UpdateStoreQueryParams setStoreViews(Map<String, String> viewMap) {
+    return (UpdateStoreQueryParams) putStringMap(STORE_VIEW, viewMap);
   }
 
-  public Optional<Set<String>> getStoreViews() {
-    return getStringSet(STORE_VIEW);
+  public Optional<Map<String, String>> getStoreViews() {
+    return getStringMap(STORE_VIEW);
   }
 
   public UpdateStoreQueryParams setPushStreamSourceAddress(String pushStreamSourceAddress) {

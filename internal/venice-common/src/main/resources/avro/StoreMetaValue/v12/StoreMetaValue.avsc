@@ -59,10 +59,10 @@
             },
             {
               "name": "views",
-              "doc": "A list of views which describe and configure a downstream view of a venice store.",
+              "doc": "A map of views which describe and configure a downstream view of a venice store. Keys in this map are for convenience of managing configs.",
               "type": {
-                "type": "array",
-                "items": {
+                "type":"map",
+                "values": {
                   "name": "StoreViewConfig",
                   "type": "record",
                   "doc": "A configuration for a particular view.  This config should inform Venice leaders how to transform and transmit data to destination views.",
@@ -72,11 +72,24 @@
                       "type": "int",
                       "doc": "This informs what kind of view we are materializing.  This then informs what kind of parameters are passed to parse this input. Defaults to CHANGE_CAPTURE",
                       "default": 0
+                    },
+                    {
+                      "name": "viewParameters",
+                      "doc": "Optional parameters to be passed to the given view config.",
+                      "type": ["null",
+                        {
+                          "type": "map",
+                          "java-key-class": "java.lang.String",
+                          "avro.java.string": "String",
+                          "values": { "type": "string", "avro.java.string": "String" }
+                        }
+                      ],
+                      "default": null
                     }
                   ]
                 }
               },
-              "default": []
+              "default": {}
             },
             {"name": "accessControlled", "type": "boolean", "default": true, "doc": "Store-level ACL switch. When disabled, Venice Router should accept every request."},
             {"name": "compressionStrategy", "type": "int", "default": 0, "doc": "Strategy used to compress/decompress Record's value, and default is 'NO_OP'"},
@@ -212,10 +225,12 @@
                       "name": "views",
                       "doc": "A list of views which describe and configure a downstream view of a venice store.",
                       "type": {
-                        "type": "array",
-                        "items": "com.linkedin.venice.systemstore.schemas.StoreViewConfig"
+                        "type": "map",
+                        "java-key-class": "java.lang.String",
+                        "avro.java.string": "String",
+                        "values": "com.linkedin.venice.systemstore.schemas.StoreViewConfig"
                       },
-                      "default": []
+                      "default": {}
                     }
                   ]
                 }

@@ -42,6 +42,7 @@ import com.linkedin.venice.controller.init.SystemSchemaInitializationRoutine;
 import com.linkedin.venice.controller.kafka.StoreStatusDecider;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.ControllerKafkaClientFactory;
+import com.linkedin.venice.controller.kafka.protocol.admin.StoreViewConfigRecord;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.ControllerRoute;
@@ -123,7 +124,6 @@ import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
-import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.participant.protocol.KillPushJob;
 import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
@@ -162,7 +162,6 @@ import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.system.store.MetaStoreWriter;
-import com.linkedin.venice.systemstore.schemas.StoreViewConfig;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.ExceptionUtils;
@@ -3525,14 +3524,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     });
   }
 
-  private void addStoreViews(String clusterName, String storeName, Set<String> storeViews) {
-    // TODO: We only support one kind of view today for change capture. At some point this function should
-    // read the current list of views and merge them together with whatever we're trying to write as a kind of set merge
-    // operation.
+  private void addStoreViews(String clusterName, String storeName, Map<String, String> viewConfigMap) {
     storeMetadataUpdate(clusterName, storeName, store -> {
-      StoreViewConfig storeViewConfig = new StoreViewConfig();
-      storeViewConfig.setViewType(0);
-      store.setViewConfig(new HashSet<>(Arrays.asList(new ViewConfigImpl(storeViewConfig))));
+      store.setViewConfig(StoreViewUtils.convertStringMapViewToViewConfig(viewConfigMap));
       return store;
     });
   }
@@ -3727,7 +3721,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<String> nativeReplicationSourceFabric = params.getNativeReplicationSourceFabric();
     Optional<Boolean> activeActiveReplicationEnabled = params.getActiveActiveReplicationEnabled();
     Optional<String> personaName = params.getStoragePersona();
-    Optional<Set<String>> storeViews = params.getStoreViews();
+    Optional<Map<String, String>> storeViews = params.getStoreViews();
 
     final Optional<HybridStoreConfig> newHybridStoreConfig;
     if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent() || hybridTimeLagThreshold.isPresent()
@@ -4034,7 +4028,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         repository.addStoresToPersona(personaName.get(), Arrays.asList(storeName));
       }
 
-      if (storeViews.isPresent() && !storeViews.get().isEmpty()) {
+      if (storeViews.isPresent()) {
         addStoreViews(clusterName, storeName, storeViews.get());
       }
 
@@ -4206,6 +4200,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         partitionerClass.orElse(originalPartitionerConfig.getPartitionerClass()),
         partitionerParams.orElse(originalPartitionerConfig.getPartitionerParams()),
         amplificationFactor.orElse(originalPartitionerConfig.getAmplificationFactor()));
+  }
+
+  static Map<String, StoreViewConfigRecord> mergeNewViewConfigsIntoOldConfigs(
+      Store oldStore,
+      Map<String, String> viewParameters) {
+    // TODO: This should do some kind of merge logic based on what kind of views are being set up.
+    // since we only support one kind of view, we just overwrite the entire map. Merging logic should
+    // be some heuristic based on the type of view. For example, we may want multiple different kinds
+    // of projecting views, but only 1 change capture view potentially.
+    return StoreViewUtils.convertStringMapViewToStoreViewConfigRecord(viewParameters);
   }
 
   /**
