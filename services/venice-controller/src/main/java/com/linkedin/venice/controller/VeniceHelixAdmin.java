@@ -35,11 +35,11 @@ import com.linkedin.venice.controller.datarecovery.DataRecoveryManager;
 import com.linkedin.venice.controller.exception.HelixClusterMaintenanceModeException;
 import com.linkedin.venice.controller.helix.SharedHelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.controller.helix.SharedHelixReadOnlyZKSharedSystemStoreRepository;
-import com.linkedin.venice.controller.init.ClusterLeaderInitializationManager;
-import com.linkedin.venice.controller.init.ClusterLeaderInitializationRoutine;
+import com.linkedin.venice.controller.init.ClusterInitializationManager;
+import com.linkedin.venice.controller.init.ClusterInitializationRoutine;
+import com.linkedin.venice.controller.init.ControllerSystemSchemaInitializer;
 import com.linkedin.venice.controller.init.InternalRTStoreInitializationRoutine;
 import com.linkedin.venice.controller.init.LatestVersionPromoteToCurrentTimestampCorrectionRoutine;
-import com.linkedin.venice.controller.init.SystemSchemaInitializationRoutine;
 import com.linkedin.venice.controller.kafka.StoreStatusDecider;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.ControllerKafkaClientFactory;
@@ -149,7 +149,6 @@ import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.security.SSLFactory;
-import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
@@ -297,7 +296,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final HelixAdapterSerializer adapterSerializer;
   private final ZkAllowlistAccessor allowlistAccessor;
   private final ExecutionIdAccessor executionIdAccessor;
-  private final RealTimeTopicSwitcher realTimeTopicSwitcher;
   private final long deprecatedJobTopicRetentionMs;
   private final long deprecatedJobTopicMaxRetentionMs;
   private final HelixReadOnlyStoreConfigRepository storeConfigRepo;
@@ -354,11 +352,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final Map<String, Map<String, ControllerClient>> clusterControllerClientPerColoMap =
       new VeniceConcurrentHashMap<>();
 
-  private VeniceDistClusterControllerStateModelFactory controllerStateModelFactory;
+  private final ControllerSystemSchemaInitializer controllerSystemSchemaInitializer;
 
-  private long backupVersionDefaultRetentionMs;
+  private final VeniceDistClusterControllerStateModelFactory controllerStateModelFactory;
 
-  private DataRecoveryManager dataRecoveryManager;
+  private final long backupVersionDefaultRetentionMs;
+
+  private final DataRecoveryManager dataRecoveryManager;
 
   public VeniceHelixAdmin(
       VeniceControllerMultiClusterConfig multiClusterConfigs,
@@ -453,7 +453,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     storeConfigRepo.refresh();
     this.storeGraveyard = new HelixStoreGraveyard(zkClient, adapterSerializer, multiClusterConfigs.getClusters());
     veniceWriterFactory = new VeniceWriterFactory(commonConfig.getProps().toProperties());
-    this.realTimeTopicSwitcher = new RealTimeTopicSwitcher(
+    RealTimeTopicSwitcher realTimeTopicSwitcher = new RealTimeTopicSwitcher(
         topicManagerRepository.getTopicManager(),
         veniceWriterFactory,
         commonConfig.getProps());
@@ -499,54 +499,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     dataRecoveryManager =
         new DataRecoveryManager(this, d2Client, commonConfig.getClusterDiscoveryD2ServiceName(), icProvider);
 
-    List<ClusterLeaderInitializationRoutine> initRoutines = new ArrayList<>();
-    initRoutines.add(
-        new SystemSchemaInitializationRoutine(
-            AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE,
-            multiClusterConfigs,
-            this));
-    initRoutines
-        .add(new SystemSchemaInitializationRoutine(AvroProtocolDefinition.PARTITION_STATE, multiClusterConfigs, this));
-    initRoutines.add(
-        new SystemSchemaInitializationRoutine(AvroProtocolDefinition.STORE_VERSION_STATE, multiClusterConfigs, this));
-
-    if (multiClusterConfigs.isZkSharedMetaSystemSchemaStoreAutoCreationEnabled()) {
-      // Add routine to create zk shared metadata system store
-      UpdateStoreQueryParams metadataSystemStoreUpdate =
-          new UpdateStoreQueryParams().setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(1)) // 1 day rewind
-              .setHybridOffsetLagThreshold(1)
-              .setHybridTimeLagThreshold(-1) // Explicitly disable hybrid time lag measurement on system store
-              .setLeaderFollowerModel(true)
-              .setWriteComputationEnabled(true)
-              .setPartitionCount(1);
-      initRoutines.add(
-          new SystemSchemaInitializationRoutine(
-              AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
-              multiClusterConfigs,
-              this,
-              Optional.of(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema()),
-              Optional.of(metadataSystemStoreUpdate),
-              true));
-    }
-    if (multiClusterConfigs.isZkSharedDaVinciPushStatusSystemSchemaStoreAutoCreationEnabled()) {
-      // Add routine to create zk shared da vinci push status system store
-      UpdateStoreQueryParams daVinciPushStatusSystemStoreUpdate =
-          new UpdateStoreQueryParams().setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(1)) // 1 day rewind
-              .setHybridOffsetLagThreshold(1)
-              .setHybridTimeLagThreshold(-1) // Explicitly disable hybrid time lag measurement on system store
-              .setLeaderFollowerModel(true)
-              .setWriteComputationEnabled(true)
-              .setPartitionCount(1);
-      initRoutines.add(
-          new SystemSchemaInitializationRoutine(
-              AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE,
-              multiClusterConfigs,
-              this,
-              Optional.of(AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema()),
-              Optional.of(daVinciPushStatusSystemStoreUpdate),
-              true));
-    }
-
+    List<ClusterInitializationRoutine> initRoutines = new ArrayList<>();
     // TODO: Remove this latest version promote to current timestamp update logic in the future.
     initRoutines.add(new LatestVersionPromoteToCurrentTimestampCorrectionRoutine(this));
 
@@ -562,8 +515,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               ParticipantMessageKey.getClassSchema().toString(),
               ParticipantMessageValue.getClassSchema().toString()));
     }
-    ClusterLeaderInitializationRoutine controllerInitialization =
-        new ClusterLeaderInitializationManager(initRoutines, commonConfig.isConcurrentInitRoutinesEnabled());
+    ClusterInitializationRoutine controllerLeaderInitialization =
+        new ClusterInitializationManager(initRoutines, commonConfig.isConcurrentInitRoutinesEnabled());
+
+    List<ClusterInitializationRoutine> stateTransitionInitRoutines = new ArrayList<>();
+    controllerSystemSchemaInitializer =
+        new ControllerSystemSchemaInitializer(multiClusterConfigs, this, getReadOnlyZKSharedSchemaRepository());
+    stateTransitionInitRoutines.add(controllerSystemSchemaInitializer);
+    ClusterInitializationRoutine controllerStateTransitionInitialization =
+        new ClusterInitializationManager(stateTransitionInitRoutines, commonConfig.isConcurrentInitRoutinesEnabled());
 
     // Create the controller cluster if required.
     if (isControllerClusterHAAS) {
@@ -577,7 +537,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         this,
         multiClusterConfigs,
         metricsRepository,
-        controllerInitialization,
+        controllerLeaderInitialization,
+        controllerStateTransitionInitialization,
         realTimeTopicSwitcher,
         accessController,
         helixAdminClient);
@@ -897,7 +858,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         resources.getPushMonitor().cleanupStoreStatus(storeName);
         // Clean up topics
         if (!store.isMigrating()) {
-          // for RT topic block on deletion so that next create store does not see the lingering RT topic which could
+          // for RT topic block on deletion so that next "create-store" does not see the lingering RT topic which could
           // have different partition count
           String rtTopic = Version.composeRealTimeTopic(storeName);
           truncateKafkaTopic(rtTopic);
@@ -1526,7 +1487,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     ReadWriteStoreRepository repository = getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository();
     Store store = repository.getStore(storeName);
-    // If the store exists in store repository and it's still active(not being deleted), we don't allow to re-create it.
+    // If the store exists in store repository, and it's still active(not being deleted), we don't allow to re-create
+    // it.
     if (store != null && !isLegacyStore) {
       throwStoreAlreadyExists(clusterName, storeName);
     }
@@ -1587,7 +1549,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if (store == null) {
       throwStoreDoesNotExist(clusterName, storeName);
     }
-    // The cannot delete current version restriction is only applied to non-system stores.
+    // The "cannot delete current version restriction" is only applied to non-system stores.
     if (!store.isSystemStore() && store.getCurrentVersion() == versionNum) {
       String errorMsg = "Unable to delete the version: " + versionNum
           + ". The current version could not be deleted from store: " + storeName;
@@ -1691,7 +1653,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           }
         }
       } else if (clusterName.equals(sourceCluster)) {
-        // Migration is still in progress and we need to mirror new version signal from source to dest.
+        // Migration is still in progress, and we need to mirror new version signal from source to dest.
         ControllerClient destClusterControllerClient = ControllerClient.constructClusterControllerClient(
             destinationCluster,
             getLeaderController(destinationCluster).getUrl(false),
@@ -1967,7 +1929,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   /**
    * Note, versionNumber may be VERSION_ID_UNSET, which must be accounted for.
-   * Add version is a multi step process that can be broken down to three main steps:
+   * Add version is a multi-step process that can be broken down to three main steps:
    * 1. topic creation or verification, 2. version creation or addition, 3. start ingestion. The execution for some of
    * these steps are different depending on how it's invoked.
    *
@@ -2184,7 +2146,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           LOGGER.info("Add version: {} for store: {}", version.getNumber(), storeName);
 
           /**
-           *  When native replication is enabled and it's in parent controller, directly create the topic in
+           *  When native replication is enabled, and it's in parent controller, directly create the topic in
            *  the specified source fabric if the source fabric is not the local fabric; the above topic creation
            *  is still required since child controllers need to create a topic locally, and parent controller uses
            *  local VT to determine whether there is any ongoing offline push.
@@ -2291,8 +2253,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     } catch (Throwable e) {
       if (useFastKafkaOperationTimeout && e instanceof VeniceOperationAgainstKafkaTimedOut) {
-        // Expected and retriable exception skip error handling within VeniceHelixAdmin and let the caller to
-        // handle the exception.
+        // Expected and retriable exception skip error handling within VeniceHelixAdmin and let the caller handle the
+        // exception.
         throw e;
       }
       int failedVersionNumber = version == null ? versionNumber : version.getNumber();
@@ -2410,7 +2372,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    *
    * @param store
    * @return the started version if there is only one, throws an exception if there is an error version with
-   * a greater number than the current version.  Otherwise returns Optional.empty()
+   * a greater number than the current version. Otherwise, returns Optional.empty()
    */
   protected static Optional<Version> getStartedVersion(Store store) {
     List<Version> startedVersions = new ArrayList<>();
@@ -2670,8 +2632,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       Store store = repository.getStore(storeName);
       checkPreConditionForDeletion(clusterName, storeName, store);
       LOGGER.info("Deleting all versions in store: {} in cluster: {}", storeName, clusterName);
-      // Set current version to NON_VERSION_AVAILABLE. Otherwise after this store is enabled again, as all of
-      // version were deleted, router will get a current version which does not exist actually.
+      // Set current version to NON_VERSION_AVAILABLE. Otherwise, after this store is enabled again, as all
+      // versions were deleted, router will get a current version which does not exist.
       store.setEnableWrites(true);
       store.setCurrentVersion(Store.NON_EXISTING_VERSION);
       store.setEnableWrites(false);
@@ -2701,7 +2663,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       // might still use the old one as the current version, so when they send the request to that version,
       // they will get error response.
       // TODO the way to solve this could be: Introduce a timestamp to represent when the version is online.
-      // TOOD And only allow to delete the old version that the newer version has been online for a while.
+      // TODO And only allow to delete the old version that the newer version has been online for a while.
       checkPreConditionForSingleVersionDeletion(clusterName, storeName, store, versionNum);
       if (!store.containsVersion(versionNum)) {
         LOGGER.warn(
@@ -2871,7 +2833,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * speculative executions in map-reduce job, but we are not planning to clean them up now.
    * 2. For batch push jobs to hybrid/incremental stores, if the compaction is enabled at the beginning of the job,
    * Kafka compaction could kick in during push job, and storage node could detect DIV error, such as missing messages,
-   * checksum mismatch, because speculative execution could produce duplicate entries, and we don't want to fail the push in this scenario
+   * checksum mismatch, because speculative execution could produce duplicate entries, and we don't want to fail the push in this scenario,
    * and we still want to perform the strong DIV validation in batch push, so we could only enable compaction after the batch push completes.
    * 3. For GF jobs to hybrid store, it is similar as #2, and it contains duplicate entries because there is no de-dedup
    * happening anywhere.
@@ -3078,7 +3040,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
        *
        * The reason to check whether the to-be-deleted version is smaller than the largest used version of current store or not:
        * 1. Topic could be created either by Kafka MM or addVersion function call (triggered by
-       * {@link com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask};
+       * {@link com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask});
        * 2. If the topic is created by Kafka MM and the actual version creation gets delayed for some reason, the following
        * scenario could happen (assuming the current version is n):
        *   a. Topics: store_v(n-2), store_v(n-1), store_v(n), store_v(n+1) could exist at the same time because of the actual
@@ -3337,7 +3299,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * Update the writability of a specified store.
+   * Update the writeability of a specified store.
    */
   @Override
   public void setStoreWriteability(String clusterName, String storeName, boolean desiredWriteability) {
@@ -3361,7 +3323,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * Update both readability and writability of a specified store.
+   * Update both readability and writeability of a specified store.
    */
   @Override
   public void setStoreReadWriteability(String clusterName, String storeName, boolean isAccessible) {
@@ -3872,13 +3834,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         storeMetadataUpdate(clusterName, storeName, store -> {
           if (!isHybrid(finalHybridConfig)) {
             /**
-             * If all of the hybrid config values are negative, it indicates that the store is being set back to batch-only store.
+             * If all hybrid config values are negative, it indicates that the store is being set back to batch-only store.
              * We cannot remove the RT topic immediately because with NR and AA, existing current version is
              * still consuming the RT topic.
              */
             store.setHybridStoreConfig(null);
             if (store.isLeaderFollowerModelEnabled() || clusterConfig.isLfModelDependencyCheckDisabled()) {
-              // Disabling hybrid configs for a L/F store
+              // Disabling hybrid configs for an L/F store
               if (!store.isIncrementalPushEnabled()) {
                 // Enable/disable native replication for batch-only stores if the cluster level config for new batch
                 // stores is on
@@ -4307,6 +4269,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return multiClusterConfigs.getControllerConfig(clusterName).getStorageEngineOverheadRatio();
   }
 
+  public Optional<SSLFactory> getSslFactory() {
+    return sslFactory;
+  }
+
   private void waitUntilNodesAreAssignedForResource(
       String clusterName,
       String topic,
@@ -4417,13 +4383,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   public Pair<Integer, Integer> getDerivedSchemaId(String clusterName, String storeName, String schemaStr) {
     checkControllerLeadershipFor(clusterName);
     ReadWriteSchemaRepository schemaRepo = getHelixVeniceClusterResources(clusterName).getSchemaRepository();
-    Pair<Integer, Integer> schamaID = schemaRepo.getDerivedSchemaId(storeName, schemaStr);
+    Pair<Integer, Integer> schemaID = schemaRepo.getDerivedSchemaId(storeName, schemaStr);
     // validate the schema as VPJ uses this method to fetch the value schema. Fail loudly if the schema user trying
     // to push is bad.
-    if (schamaID.getFirst() != SchemaData.INVALID_VALUE_SCHEMA_ID) {
+    if (schemaID.getFirst() != SchemaData.INVALID_VALUE_SCHEMA_ID) {
       AvroSchemaUtils.validateAvroSchemaStr(schemaStr);
     }
-    return schamaID;
+    return schemaID;
   }
 
   /**
@@ -4937,6 +4903,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public void stopVeniceController() {
     try {
+      controllerSystemSchemaInitializer.close();
       helixManager.disconnect();
       topicManagerRepository.close();
       zkClient.close();
@@ -5238,7 +5205,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
        * the details...
        *
        * In the main code, I (FGV) believe we don't retry the #addCluster() call, so we should not fall
-       * in the scenario where this returns true and we mistakenly think the cluster exists. This does
+       * in the scenario where this returns true, and we mistakenly think the cluster exists. This does
        * happen in the integration test suite, however, which retries service creation several times
        * if it gets any exception.
        *
@@ -5285,7 +5252,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
       helixClusterProperties
           .put(ClusterConfig.ClusterConfigProperty.PERSIST_BEST_POSSIBLE_ASSIGNMENT.name(), String.valueOf(true));
-      // Topology and fault zone type fields are used by CRUSH alg. Helix would apply the constrains on CRUSH alg to
+      // Topology and fault zone type fields are used by CRUSH alg. Helix would apply the constraints on CRUSH alg to
       // choose proper instance to hold the replica.
       helixClusterProperties
           .put(ClusterConfig.ClusterConfigProperty.TOPOLOGY.name(), "/" + HelixUtils.TOPOLOGY_CONSTRAINT);
@@ -5324,7 +5291,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       helixClusterProperties
           .put(ClusterConfig.ClusterConfigProperty.DELAY_REBALANCE_TIME.name(), String.valueOf(delayedTime));
     }
-    // Topology and fault zone type fields are used by CRUSH alg. Helix would apply the constrains on CRUSH alg to
+    // Topology and fault zone type fields are used by CRUSH alg. Helix would apply the constraints on CRUSH alg to
     // choose proper instance to hold the replica.
     helixClusterProperties
         .put(ClusterConfig.ClusterConfigProperty.TOPOLOGY.name(), "/" + HelixUtils.TOPOLOGY_CONSTRAINT);
@@ -5802,9 +5769,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     StatusMessageChannel messageChannel = getHelixVeniceClusterResources(clusterName).getMessageChannel();
-    // As we should already have retry outside of this function call, so we do not need to retry again inside.
+    // As we should already have retry outside this function call, so we do not need to retry again inside.
     int retryCount = 1;
-    // Broadcast kill message to all of storage nodes assigned to given resource. Helix will help us to only send
+    // Broadcast kill message to all storage nodes assigned to given resource. Helix will help us to only send
     // message to the live instances.
     // The alternative way here is that get the storage nodes in BOOTSTRAP state of given resource, then send the
     // kill message node by node. Considering the simplicity, broadcast is a better.
@@ -6134,7 +6101,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     // Find all ongoing offline pushes at first.
     PushMonitor monitor = getHelixVeniceClusterResources(clusterName).getPushMonitor();
     monitor.getTopicsOfOngoingOfflinePushes().forEach(topic -> result.put(topic, VersionStatus.STARTED.toString()));
-    // Find the versions which had been ONLINE, but some of replicas are still bootstrapping due to:
+    // Find the versions which had been ONLINE, but some replicas are still bootstrapping due to:
     // 1. As we use N-1 strategy, so there might be some slow replicas caused by kafka or other issues.
     // 2. Storage node was added/removed/disconnected, so replicas need to bootstrap again on the same or other node.
     RoutingDataRepository routingDataRepository =
@@ -6566,7 +6533,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           break;
       }
       /**
-       * If the command is trying to enable active active replication, the store must have Leader/Follower state model enabled.
+       * If the command is trying to enable active-active replication, the store must have Leader/Follower state model enabled.
        */
       if (enableActiveActiveReplicationForCluster) {
         shouldUpdateActiveActiveReplication &=
@@ -6874,7 +6841,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   boolean isHybrid(HybridStoreConfig hybridStoreConfig) {
     /** A store is not hybrid in the following two scenarios:
      * If hybridStoreConfig is null, it means store is not hybrid.
-     * If all of the hybrid config values are negative, it indicates that the store is being set back to batch-only store.
+     * If all hybrid config values are negative, it indicates that the store is being set back to batch-only store.
      */
     return hybridStoreConfig != null
         && (hybridStoreConfig.getRewindTimeInSeconds() >= 0 || hybridStoreConfig.getOffsetLagThresholdToGoOnline() >= 0
@@ -7151,7 +7118,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           resourceAssn.getPartitionAssignment(replica.getResource()),
           replica.getPartitionId());
 
-      // A current replica is unready if its running instance is unready and it is not an extra replica.
+      // A current replica is unready if its running instance is unready, and it is not an extra replica.
       if (!readyToServeInstances.contains(replica.getInstance())
           && !Utils.isExtraReplica(storeRepo, replica, readyToServeInstances)) {
         unreadyReplicas.add(replica);

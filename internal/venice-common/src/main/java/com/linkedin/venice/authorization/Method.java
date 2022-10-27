@@ -23,7 +23,7 @@ public enum Method {
   /**
    * Custom Methods for Venice System Stores.
    */
-  READ_SYSTEM_STORE, WRITE_SYSTEM_STORE,
+  READ_SYSTEM_STORE, WRITE_SYSTEM_STORE, SCHEMA_SYSTEM_STORE,
 
   UNKNOWN
 }

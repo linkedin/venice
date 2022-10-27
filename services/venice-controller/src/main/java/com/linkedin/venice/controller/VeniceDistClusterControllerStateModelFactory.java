@@ -1,7 +1,7 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.acl.DynamicAccessController;
-import com.linkedin.venice.controller.init.ClusterLeaderInitializationRoutine;
+import com.linkedin.venice.controller.init.ClusterInitializationRoutine;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
 import io.tehuti.metrics.MetricsRepository;
@@ -24,7 +24,8 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
   private final ConcurrentMap<String, VeniceControllerStateModel> clusterToStateModelsMap = new ConcurrentHashMap<>();
   private final VeniceHelixAdmin admin;
   private final MetricsRepository metricsRepository;
-  private final ClusterLeaderInitializationRoutine controllerInitialization;
+  private final ClusterInitializationRoutine controllerLeaderInitialization;
+  private final ClusterInitializationRoutine controllerStateTransitionInitialization;
   private final RealTimeTopicSwitcher realTimeTopicSwitcher;
   private final Optional<DynamicAccessController> accessController;
   private final HelixAdminClient helixAdminClient;
@@ -35,7 +36,8 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
       VeniceHelixAdmin admin,
       VeniceControllerMultiClusterConfig clusterConfigs,
       MetricsRepository metricsRepository,
-      ClusterLeaderInitializationRoutine controllerInitialization,
+      ClusterInitializationRoutine controllerLeaderInitialization,
+      ClusterInitializationRoutine controllerStateTransitionInitialization,
       RealTimeTopicSwitcher realTimeTopicSwitcher,
       Optional<DynamicAccessController> accessController,
       HelixAdminClient helixAdminClient) {
@@ -44,7 +46,8 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
     this.clusterConfigs = clusterConfigs;
     this.admin = admin;
     this.metricsRepository = metricsRepository;
-    this.controllerInitialization = controllerInitialization;
+    this.controllerLeaderInitialization = controllerLeaderInitialization;
+    this.controllerStateTransitionInitialization = controllerStateTransitionInitialization;
     this.realTimeTopicSwitcher = realTimeTopicSwitcher;
     this.accessController = accessController;
     this.helixAdminClient = helixAdminClient;
@@ -63,7 +66,8 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
         clusterConfigs,
         admin,
         metricsRepository,
-        controllerInitialization,
+        controllerLeaderInitialization,
+        controllerStateTransitionInitialization,
         realTimeTopicSwitcher,
         accessController,
         helixAdminClient);

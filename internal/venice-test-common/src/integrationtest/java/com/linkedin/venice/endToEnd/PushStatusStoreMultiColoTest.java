@@ -15,7 +15,7 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.Admin;
-import com.linkedin.venice.controller.init.ClusterLeaderInitializationRoutine;
+import com.linkedin.venice.controller.init.ClusterInitializationRoutine;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -152,7 +152,7 @@ public class PushStatusStoreMultiColoTest {
       assertNotNull(
           readOnlyStore,
           "Store: " + zkSharedDaVinciPushStatusSchemaStoreName + " should be initialized by "
-              + ClusterLeaderInitializationRoutine.class.getSimpleName());
+              + ClusterInitializationRoutine.class.getSimpleName());
       assertTrue(
           readOnlyStore.isHybrid(),
           "Store: " + zkSharedDaVinciPushStatusSchemaStoreName + " should be configured to hybrid");

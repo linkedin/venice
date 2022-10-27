@@ -68,6 +68,7 @@ import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.authorization.SystemStoreAclSynchronizationTask;
+import com.linkedin.venice.controller.init.ClusterInitializationRoutine;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask;
@@ -536,7 +537,7 @@ public class VeniceParentHelixAdmin implements Admin {
   /**
    * Setup the venice RT store used internally for hosting push job status records or participant messages.
    * If the store already exists and is in the correct state then only verification is performed.
-   * TODO replace this with {@link com.linkedin.venice.controller.init.ClusterLeaderInitializationRoutine}
+   * TODO replace this with {@link ClusterInitializationRoutine}
    */
   private void asyncSetupForInternalRTStore(
       String clusterName,

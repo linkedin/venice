@@ -6,13 +6,7 @@ import com.linkedin.venice.authorization.Method;
 import com.linkedin.venice.authorization.Permission;
 import com.linkedin.venice.authorization.Resource;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.pushstatus.PushStatusKey;
-import com.linkedin.venice.pushstatus.PushStatusValue;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
-import com.linkedin.venice.status.protocol.BatchJobHeartbeatKey;
-import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
-import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
-import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -26,28 +20,56 @@ import java.util.List;
  */
 public enum VeniceSystemStoreType {
   DAVINCI_PUSH_STATUS_STORE(
-      String.format(Store.SYSTEM_STORE_FORMAT, "davinci_push_status_store"), true, PushStatusKey.SCHEMA$.toString(),
-      PushStatusValue.SCHEMA$.toString(), AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getSystemStoreName(),
-      true, Method.WRITE_SYSTEM_STORE
+      String.format(Store.SYSTEM_STORE_FORMAT, "davinci_push_status_store"), true, false,
+      AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE_KEY,
+      AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE,
+      AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getSystemStoreName(), true, Method.WRITE_SYSTEM_STORE
   ),
 
   // New Metadata system store
   META_STORE(
-      String.format(Store.SYSTEM_STORE_FORMAT, "meta_store"), true, StoreMetaKey.SCHEMA$.toString(),
-      StoreMetaValue.SCHEMA$.toString(), AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getSystemStoreName(), true,
-      Method.READ_SYSTEM_STORE
+      String.format(Store.SYSTEM_STORE_FORMAT, "meta_store"), true, false,
+      AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE_KEY, AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE,
+      AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getSystemStoreName(), true, Method.READ_SYSTEM_STORE
   ),
 
-  // This system store's prefix is used as its full name since it is not a per-user-store system store
+  // These system store's prefixes are used as their full name since they are not per-user-store system stores
   BATCH_JOB_HEARTBEAT_STORE(
-      String.format(Store.SYSTEM_STORE_FORMAT, AvroProtocolDefinition.BATCH_JOB_HEARTBEAT), false,
-      BatchJobHeartbeatKey.SCHEMA$.toString(), BatchJobHeartbeatValue.SCHEMA$.toString(), "", false,
+      String.format(Store.SYSTEM_STORE_FORMAT, AvroProtocolDefinition.BATCH_JOB_HEARTBEAT), false, false,
+      AvroProtocolDefinition.BATCH_JOB_HEARTBEAT_KEY, AvroProtocolDefinition.BATCH_JOB_HEARTBEAT, null, false,
       Method.WRITE_SYSTEM_STORE
+  ),
+
+  PARTITION_STATE(
+      String.format(Store.SYSTEM_STORE_FORMAT, AvroProtocolDefinition.PARTITION_STATE), false, true,
+      AvroProtocolDefinition.DEFAULT_SYSTEM_STORE_KEY_SCHEMA, AvroProtocolDefinition.PARTITION_STATE,
+      AvroProtocolDefinition.PARTITION_STATE.getSystemStoreName(), false, Method.SCHEMA_SYSTEM_STORE
+  ),
+
+  STORE_VERSION_STATE(
+      String.format(Store.SYSTEM_STORE_FORMAT, AvroProtocolDefinition.STORE_VERSION_STATE), false, true,
+      AvroProtocolDefinition.DEFAULT_SYSTEM_STORE_KEY_SCHEMA, AvroProtocolDefinition.STORE_VERSION_STATE,
+      AvroProtocolDefinition.STORE_VERSION_STATE.getSystemStoreName(), false, Method.SCHEMA_SYSTEM_STORE
+  ),
+
+  KAFKA_MESSAGE_ENVELOPE(
+      String.format(Store.SYSTEM_STORE_FORMAT, AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE), false, true,
+      AvroProtocolDefinition.DEFAULT_SYSTEM_STORE_KEY_SCHEMA, AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE,
+      AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName(), false, Method.SCHEMA_SYSTEM_STORE
+  ),
+
+  TEST_DUMMY(
+      String.format(Store.SYSTEM_STORE_FORMAT, AvroProtocolDefinition.TEST_DUMMY), false, true,
+      AvroProtocolDefinition.DEFAULT_SYSTEM_STORE_KEY_SCHEMA, AvroProtocolDefinition.TEST_DUMMY,
+      AvroProtocolDefinition.TEST_DUMMY.getSystemStoreName(), false, Method.SCHEMA_SYSTEM_STORE
   );
 
   private final String prefix;
   private final boolean isStoreZkShared;
+  private final boolean isSchemaSystemStore;
+  private AvroProtocolDefinition keySchemaProtocol;
   private final String keySchema;
+  private AvroProtocolDefinition valueSchemaProtocol;
   private final String valueSchema;
   private final String zkSharedStoreName;
   /**
@@ -62,7 +84,7 @@ public enum VeniceSystemStoreType {
    *    extract the common store property from its zk shared system store and distinct properties from the corresponding
    *    regular venice store structure (such as version related metadata).
    */
-  private final boolean newMedataRepositoryAdopted;
+  private final boolean newMetadataRepositoryAdopted;
   /**
    * The access {@link Method} type required by client (DaVinci or fast-client) for the system store.
    */
@@ -73,21 +95,25 @@ public enum VeniceSystemStoreType {
   VeniceSystemStoreType(
       String prefix,
       boolean isStoreZkShared,
-      String keySchema,
-      String valueSchema,
+      boolean isSchemaSystemStore,
+      AvroProtocolDefinition keySchemaProtocol,
+      AvroProtocolDefinition valueSchemaProtocol,
       String zkSharedStoreName,
-      boolean newMedataRepositoryAdopted,
+      boolean newMetadataRepositoryAdopted,
       Method clientAccessMethod) {
     this.prefix = prefix;
     this.isStoreZkShared = isStoreZkShared;
-    this.keySchema = keySchema;
-    this.valueSchema = valueSchema;
-    if (zkSharedStoreName.isEmpty()) {
+    this.isSchemaSystemStore = isSchemaSystemStore;
+    this.keySchemaProtocol = keySchemaProtocol;
+    this.keySchema = keySchemaProtocol.getCurrentProtocolVersionSchema().toString();
+    this.valueSchemaProtocol = valueSchemaProtocol;
+    this.valueSchema = valueSchemaProtocol.getCurrentProtocolVersionSchema().toString();
+    if (zkSharedStoreName == null) {
       this.zkSharedStoreName = this.getPrefix();
     } else {
       this.zkSharedStoreName = zkSharedStoreName;
     }
-    this.newMedataRepositoryAdopted = newMedataRepositoryAdopted;
+    this.newMetadataRepositoryAdopted = newMetadataRepositoryAdopted;
     this.clientAccessMethod = clientAccessMethod;
   }
 
@@ -97,6 +123,10 @@ public enum VeniceSystemStoreType {
 
   public boolean isStoreZkShared() {
     return isStoreZkShared;
+  }
+
+  public boolean isSchemaSystemStore() {
+    return isSchemaSystemStore;
   }
 
   public String getKeySchema() {
@@ -112,13 +142,18 @@ public enum VeniceSystemStoreType {
   }
 
   public String getZkSharedStoreNameInCluster(String clusterName) {
-    return isNewMedataRepositoryAdopted()
+    return isNewMetadataRepositoryAdopted()
         ? zkSharedStoreName
         : zkSharedStoreName + VeniceSystemStoreUtils.SEPARATOR + clusterName;
   }
 
+  @Deprecated
   public boolean isNewMedataRepositoryAdopted() {
-    return newMedataRepositoryAdopted;
+    return isNewMetadataRepositoryAdopted();
+  }
+
+  public boolean isNewMetadataRepositoryAdopted() {
+    return newMetadataRepositoryAdopted;
   }
 
   /**
@@ -127,6 +162,9 @@ public enum VeniceSystemStoreType {
    * @return
    */
   public String getSystemStoreName(String regularStoreName) {
+    if (isSchemaSystemStore) {
+      return getZkSharedStoreName();
+    }
     return getPrefix() + VeniceSystemStoreUtils.SEPARATOR + regularStoreName;
   }
 
@@ -154,6 +192,14 @@ public enum VeniceSystemStoreType {
 
   public Method getClientAccessMethod() {
     return clientAccessMethod;
+  }
+
+  public AvroProtocolDefinition getKeySchemaProtocol() {
+    return keySchemaProtocol;
+  }
+
+  public AvroProtocolDefinition getValueSchemaProtocol() {
+    return valueSchemaProtocol;
   }
 
   /**

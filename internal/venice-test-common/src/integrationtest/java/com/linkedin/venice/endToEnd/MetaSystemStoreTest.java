@@ -31,7 +31,7 @@ import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreType;
-import com.linkedin.venice.controller.init.ClusterLeaderInitializationRoutine;
+import com.linkedin.venice.controller.init.ClusterInitializationRoutine;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
@@ -543,7 +543,7 @@ public class MetaSystemStoreTest {
         Assert.assertNotNull(
             readOnlyStore,
             "Store: " + zkSharedMetaSystemSchemaStoreName + " should be initialized by "
-                + ClusterLeaderInitializationRoutine.class.getSimpleName());
+                + ClusterInitializationRoutine.class.getSimpleName());
         Assert.assertTrue(
             readOnlyStore.isHybrid(),
             "Store: " + zkSharedMetaSystemSchemaStoreName + " should be configured to hybrid");

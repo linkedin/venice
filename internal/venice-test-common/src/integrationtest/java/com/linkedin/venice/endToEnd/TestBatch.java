@@ -114,7 +114,7 @@ public abstract class TestBatch {
 
   public abstract VeniceClusterWrapper initializeVeniceCluster();
 
-  @BeforeClass(alwaysRun = true)
+  @BeforeClass(alwaysRun = true, timeOut = TEST_TIMEOUT)
   public void setUp() {
     veniceCluster = initializeVeniceCluster();
   }

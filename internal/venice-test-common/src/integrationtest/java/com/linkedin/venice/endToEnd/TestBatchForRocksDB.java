@@ -3,6 +3,8 @@ package com.linkedin.venice.endToEnd;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
+import static com.linkedin.venice.ConfigKeys.PRIMARY_CONTROLLER_D2_SERVICE_NAME;
+import static com.linkedin.venice.ConfigKeys.PRIMARY_CONTROLLER_D2_ZK_HOSTS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_DECOMPRESSION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
@@ -10,6 +12,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_
 
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.meta.PersistenceType;
 import java.util.Properties;
 import org.testng.annotations.Test;
@@ -27,6 +30,8 @@ public class TestBatchForRocksDB extends TestBatch {
     serverProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
     serverProperties.setProperty(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, "true");
     serverProperties.setProperty(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, "300");
+    serverProperties.setProperty(PRIMARY_CONTROLLER_D2_ZK_HOSTS, veniceClusterWrapper.getZk().getAddress());
+    serverProperties.setProperty(PRIMARY_CONTROLLER_D2_SERVICE_NAME, VeniceControllerWrapper.D2_SERVICE_NAME);
     serverProperties.setProperty(DATA_BASE_PATH, BASE_DATA_PATH_1);
     veniceClusterWrapper.addVeniceServer(new Properties(), serverProperties);
     serverProperties.setProperty(DATA_BASE_PATH, BASE_DATA_PATH_2);

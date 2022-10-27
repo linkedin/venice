@@ -2,6 +2,8 @@ package com.linkedin.venice.integration.utils;
 
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.PRIMARY_CONTROLLER_D2_SERVICE_NAME;
+import static com.linkedin.venice.ConfigKeys.PRIMARY_CONTROLLER_D2_ZK_HOSTS;
 import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_KAFKA_OPENSSL;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.CLIENT_CONFIG_FOR_CONSUMER;
@@ -19,7 +21,7 @@ import com.github.luben.zstd.ZstdDictTrainer;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.Admin;
-import com.linkedin.venice.controller.init.ClusterLeaderInitializationRoutine;
+import com.linkedin.venice.controller.init.ClusterInitializationRoutine;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
@@ -74,6 +76,7 @@ import java.util.stream.Stream;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
@@ -193,6 +196,12 @@ public class VeniceClusterWrapper extends ProcessWrapper {
           false,
           VeniceControllerWrapper.D2_CLUSTER_NAME,
           VeniceControllerWrapper.D2_SERVICE_NAME);
+
+      String primaryControllerD2ZkHosts =
+          StringUtils.defaultIfEmpty(options.getPrimaryControllerD2ZkHosts(), zkAddress);
+      String primaryControllerD2ServiceName = StringUtils
+          .defaultIfEmpty(options.getPrimaryControllerD2ServiceName(), VeniceControllerWrapper.D2_SERVICE_NAME);
+
       for (int i = 0; i < options.getNumberOfControllers(); i++) {
         if (options.getNumberOfRouters() > 0) {
           ClientConfig clientConfig = new ClientConfig().setVeniceURL(zkAddress)
@@ -212,6 +221,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
                 .sslToKafka(options.isSslToKafka())
                 .d2Enabled(true)
                 .extraProperties(options.getExtraProperties())
+                .primaryControllerD2ZkHosts(primaryControllerD2ZkHosts)
+                .primaryControllerD2ServiceName(primaryControllerD2ServiceName)
                 .build());
         LOGGER.info(
             "[{}][{}] Created child controller on port {}",
@@ -250,6 +261,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
           featureProperties.put(CLIENT_CONFIG_FOR_CONSUMER, clientConfig);
         }
         featureProperties.setProperty(SERVER_ENABLE_KAFKA_OPENSSL, Boolean.toString(options.isKafkaOpenSSLEnabled()));
+        featureProperties.setProperty(PRIMARY_CONTROLLER_D2_ZK_HOSTS, primaryControllerD2ZkHosts);
+        featureProperties.setProperty(PRIMARY_CONTROLLER_D2_SERVICE_NAME, primaryControllerD2ServiceName);
 
         String serverName = "";
         if (!options.getColoName().isEmpty() && !options.getClusterName().isEmpty()) {
@@ -297,7 +310,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
               options.isSslToStorageNodes(),
               options.isSslToKafka(),
               clusterToD2);
-          // Wait for all the asynchronous ClusterLeaderInitializationRoutine to complete before returning the
+          // Wait for all the asynchronous ClusterInitializationRoutine to complete before returning the
           // VeniceClusterWrapper to tests.
           if (!veniceClusterWrapper.getVeniceControllers().isEmpty()) {
             final VeniceClusterWrapper finalClusterWrapper = veniceClusterWrapper;
@@ -310,7 +323,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
                   Assert.assertNotNull(
                       store,
                       "Store: " + avroProtocolDefinition.getSystemStoreName() + " should be initialized by "
-                          + ClusterLeaderInitializationRoutine.class.getSimpleName());
+                          + ClusterInitializationRoutine.class.getSimpleName());
                   if (hybridRequiredSystemStoresSet.contains(avroProtocolDefinition)) {
                     // Check against the HelixReadOnlyZKSharedSystemStoreRepository instead of the
                     // ReadWriteStoreRepository because of the way we implemented getStore for meta system stores in
@@ -322,12 +335,12 @@ public class VeniceClusterWrapper extends ProcessWrapper {
                     Assert.assertNotNull(
                         readOnlyStore,
                         "Store: " + avroProtocolDefinition.getSystemStoreName() + "should be initialized by "
-                            + ClusterLeaderInitializationRoutine.class.getSimpleName());
+                            + ClusterInitializationRoutine.class.getSimpleName());
                     Assert.assertTrue(
                         readOnlyStore.isHybrid(),
                         "Store: " + avroProtocolDefinition.getSystemStoreName() + " should be configured to hybrid by "
-                            + ClusterLeaderInitializationRoutine.class.getSimpleName()
-                            + ". Store is hybrid in write repo: " + store.isHybrid());
+                            + ClusterInitializationRoutine.class.getSimpleName() + ". Store is hybrid in write repo: "
+                            + store.isHybrid());
                   }
                 }
               } catch (VeniceNoClusterException e) {

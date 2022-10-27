@@ -243,7 +243,7 @@ public class ConfigKeys {
   public static final String KAFKA_FETCH_PARTITION_MAX_SIZE_PER_SEC = "kafka.fetch.partition.max.size.per.sec";
 
   // Controller specific configs
-  public static final String CONTROLLER_CLUSTER_ZK_ADDRESSS = "controller.cluster.zk.address";
+  public static final String CONTROLLER_CLUSTER_ZK_ADDRESS = "controller.cluster.zk.address";
   /** Cluster name for all parent controllers */
   public static final String CONTROLLER_CLUSTER = "controller.cluster.name";
 
@@ -1839,4 +1839,32 @@ public class ConfigKeys {
    * Turn off the config in where access to routers is not feasible.
    */
   public static final String VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION = "validate.venice.internal.schema.version";
+
+  /**
+   * A config to decide if the component should auto-register new schemas for schema system stores that the component
+   * writes data to. {@literal false} by default
+   */
+  public static final String AUTO_REGISTER_WRITE_SYSTEM_SCHEMAS = "auto.register.write.system.schemas";
+
+  /**
+   * A config to decide if the component should auto-create new system stores that the component writes data to.
+   * {@literal false} by default
+   */
+  public static final String AUTO_CREATE_WRITE_SYSTEM_STORES = "auto.create.write.system.stores";
+
+  /**
+   * D2 ZK hosts for the primary controller. Mandatory if {@link AUTO_REGISTER_WRITE_SYSTEM_SCHEMAS} is {@literal true}.
+   * The primary controller should be:
+   * 1. The parent controller when the Venice system is deployed in a multi-colo mode
+   * 2. The child controller when the Venice system is deployed in a single-colo mode
+   */
+  public static final String PRIMARY_CONTROLLER_D2_ZK_HOSTS = "primary.controller.d2.zk.hosts";
+
+  /**
+   * D2 service name for primary controller. Mandatory if {@link AUTO_REGISTER_WRITE_SYSTEM_SCHEMAS} is {@literal true}.
+   * The primary controller should be:
+   * 1. The parent controller when the Venice system is deployed in a multi-colo mode
+   * 2. The child controller when the Venice system is deployed in a single-colo mode
+   */
+  public static final String PRIMARY_CONTROLLER_D2_SERVICE_NAME = "primary.controller.d2.service.name";
 }

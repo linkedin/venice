@@ -13,7 +13,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-public class InternalRTStoreInitializationRoutine implements ClusterLeaderInitializationRoutine {
+public class InternalRTStoreInitializationRoutine implements ClusterInitializationRoutine {
   private static final Logger LOGGER = LogManager.getLogger(InternalRTStoreInitializationRoutine.class);
 
   private final Function<String, String> storeNameSupplier;
@@ -36,7 +36,7 @@ public class InternalRTStoreInitializationRoutine implements ClusterLeaderInitia
   }
 
   /**
-   * @see ClusterLeaderInitializationRoutine#execute(String)
+   * @see ClusterInitializationRoutine#execute(String)
    */
   @Override
   public void execute(String clusterName) {

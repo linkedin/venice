@@ -25,23 +25,36 @@ public class ExceptionUtils {
    * around (i.e.: if you're looking for the subclass but the throwableToInspect is the
    * parent class, then this function returns false).
    *
-   * @return true if a the throwableToInspect corresponds to or is caused by any of the throwableClassesToLookFor
+   * @return true if the throwableToInspect corresponds to or is caused by any of the throwableClassesToLookFor
    */
   public static boolean recursiveClassEquals(Throwable throwableToInspect, Class... throwableClassesToLookFor) {
+    return getRecursiveCause(throwableToInspect, throwableClassesToLookFor) != null;
+  }
+
+  /**
+   * Inspects a given {@link Throwable} as well as its nested causes, in order to look
+   * for a specific set of exception classes. The function also detects if the throwable
+   * to inspect is a subclass of one of the classes you look for, but not the other way
+   * around (i.e.: if you're looking for the subclass but the throwableToInspect is the
+   * parent class, then this function returns false).
+   *
+   * @return true if the throwableToInspect corresponds to or is caused by any of the throwableClassesToLookFor
+   */
+  public static Throwable getRecursiveCause(Throwable throwableToInspect, Class... throwableClassesToLookFor) {
     if (throwableToInspect == null) {
-      return false;
+      return null;
     }
     for (Class clazz: throwableClassesToLookFor) {
       Class classToInspect = throwableToInspect.getClass();
       while (classToInspect != null) {
         if (classToInspect.equals(clazz)) {
-          return true;
+          return throwableToInspect;
         }
         classToInspect = classToInspect.getSuperclass();
       }
     }
     Throwable cause = throwableToInspect.getCause();
-    return recursiveClassEquals(cause, throwableClassesToLookFor);
+    return getRecursiveCause(cause, throwableClassesToLookFor);
   }
 
   /**

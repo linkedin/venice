@@ -87,6 +87,9 @@ public class AuthorizationTest {
     ab.addAceEntry(new AceEntry(p3, Method.Read, Permission.ALLOW));
 
     for (VeniceSystemStoreType veniceSystemStoreType: VeniceSystemStoreType.values()) {
+      // if (veniceSystemStoreType.getClientAccessMethod() == Method.SCHEMA_SYSTEM_STORE) {
+      // continue;
+      // }
       AclBinding sysAb = veniceSystemStoreType.generateSystemStoreAclBinding(ab);
       AclBinding sysKafkaTopicAb = new AclBinding(new Resource(veniceSystemStoreType.getSystemStoreName(storeName)));
       sysKafkaTopicAb.addAceEntry(
@@ -110,7 +113,11 @@ public class AuthorizationTest {
       Assert.assertTrue(
           sysAb.getAceEntries()
               .contains(new AceEntry(p3, veniceSystemStoreType.getClientAccessMethod(), Permission.ALLOW)));
-      Assert.assertEquals(sysAb, VeniceSystemStoreType.getSystemStoreAclFromTopicAcl(sysKafkaTopicAb));
+      // For schema system stores that don't have user system stores, there will be no Kafka topics - so, skip this
+      // check
+      if (!veniceSystemStoreType.isSchemaSystemStore()) {
+        Assert.assertEquals(sysAb, VeniceSystemStoreType.getSystemStoreAclFromTopicAcl(sysKafkaTopicAb));
+      }
     }
   }
 }

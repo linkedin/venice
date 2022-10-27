@@ -9,8 +9,8 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-public class LatestVersionPromoteToCurrentTimestampCorrectionRoutine implements ClusterLeaderInitializationRoutine {
-  private static final Logger LOGGER = LogManager.getLogger(ClusterLeaderInitializationManager.class);
+public class LatestVersionPromoteToCurrentTimestampCorrectionRoutine implements ClusterInitializationRoutine {
+  private static final Logger LOGGER = LogManager.getLogger(ClusterInitializationManager.class);
   VeniceHelixAdmin veniceHelixAdmin;
 
   public LatestVersionPromoteToCurrentTimestampCorrectionRoutine(VeniceHelixAdmin veniceHelixAdmin) {
@@ -18,7 +18,7 @@ public class LatestVersionPromoteToCurrentTimestampCorrectionRoutine implements 
   }
 
   /**
-   * @see ClusterLeaderInitializationRoutine#execute(String)
+   * @see ClusterInitializationRoutine#execute(String)
    */
   @Override
   public void execute(String clusterToInit) {

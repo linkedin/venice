@@ -1,5 +1,6 @@
 package com.linkedin.venice.serialization.avro;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.admin.protocol.response.AdminResponseRecord;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
@@ -15,6 +16,7 @@ import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.pushstatus.PushStatusKey;
 import com.linkedin.venice.pushstatus.PushStatusValue;
+import com.linkedin.venice.status.protocol.BatchJobHeartbeatKey;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
@@ -117,7 +119,20 @@ public enum AvroProtocolDefinition {
    */
   PROCESS_SHUTDOWN_COMMAND(32, 1, ProcessShutdownCommand.class),
 
+  /**
+   * Default Key schema of Schema System stores
+   */
+  DEFAULT_SYSTEM_STORE_KEY_SCHEMA(1, AvroCompatibilityHelper.parse("\"int\""), "DEFAULT_SYSTEM_STORE_KEY_SCHEMA"),
+
+  /**
+   * Value schema for Batch Job Heartbeat system store.
+   */
   BATCH_JOB_HEARTBEAT(33, 1, BatchJobHeartbeatValue.class),
+
+  /**
+   * Key schema for Batch Job Heartbeat system store.
+   */
+  BATCH_JOB_HEARTBEAT_KEY(BatchJobHeartbeatKey.class),
 
   /**
    * Key schema for metadata system store.
@@ -138,6 +153,11 @@ public enum AvroProtocolDefinition {
    * Value schema for push status system store.
    */
   PUSH_STATUS_SYSTEM_SCHEMA_STORE(1, PushStatusValue.class),
+
+  /**
+   * TEST schema dummy.
+   */
+  TEST_DUMMY(1, SpecificData.get().getSchema(ByteBuffer.class), "TestDummy"),
 
   /**
    * Response record for admin request v1
@@ -183,6 +203,9 @@ public enum AvroProtocolDefinition {
    */
   final String className;
 
+  /**
+   * The protocol schema. This is also the value schema of the system store with schema id = {@link currentProtocolVersion}.
+   */
   final Schema schema;
 
   /**
@@ -190,6 +213,11 @@ public enum AvroProtocolDefinition {
    * it will be stored outside of the payload, and provided at deserialization-time.
    */
   final boolean protocolVersionStoredInHeader;
+
+  /**
+   * The system store name for the system store for this protocol.
+   */
+  final String systemStoreName;
 
   /**
    * Constructor for protocols where the Avro record is prepended by a protocol
@@ -204,6 +232,7 @@ public enum AvroProtocolDefinition {
     this.protocolVersionStoredInHeader = true;
     this.className = specificRecordClass.getSimpleName();
     this.schema = SpecificData.get().getSchema(specificRecordClass);
+    this.systemStoreName = generateSystemStoreName();
   }
 
   /**
@@ -221,6 +250,7 @@ public enum AvroProtocolDefinition {
     this.protocolVersionStoredInHeader = false;
     this.className = specificRecordClass.getSimpleName();
     this.schema = SpecificData.get().getSchema(specificRecordClass);
+    this.systemStoreName = generateSystemStoreName();
   }
 
   /**
@@ -233,6 +263,7 @@ public enum AvroProtocolDefinition {
     this.protocolVersionStoredInHeader = false;
     this.className = specificRecordClass.getSimpleName();
     this.schema = SpecificData.get().getSchema(specificRecordClass);
+    this.systemStoreName = generateSystemStoreName();
   }
 
   /**
@@ -245,6 +276,7 @@ public enum AvroProtocolDefinition {
     this.protocolVersionStoredInHeader = false;
     this.className = name;
     this.schema = schema;
+    this.systemStoreName = generateSystemStoreName();
   }
 
   public <T extends SpecificRecord> InternalAvroSpecificSerializer<T> getSerializer() {
@@ -271,7 +303,11 @@ public enum AvroProtocolDefinition {
     return className;
   }
 
-  public String getSystemStoreName() {
+  private String generateSystemStoreName() {
     return String.format(Store.SYSTEM_STORE_FORMAT, name());
+  }
+
+  public String getSystemStoreName() {
+    return systemStoreName;
   }
 }

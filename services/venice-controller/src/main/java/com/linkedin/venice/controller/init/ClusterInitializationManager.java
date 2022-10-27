@@ -13,8 +13,8 @@ import org.apache.logging.log4j.Logger;
  * another chance of executing next time the same controller becomes leader of the cluster
  * for which the routine previously failed.
  */
-public class ClusterLeaderInitializationManager implements ClusterLeaderInitializationRoutine {
-  private static final Logger LOGGER = LogManager.getLogger(ClusterLeaderInitializationManager.class);
+public class ClusterInitializationManager implements ClusterInitializationRoutine {
+  private static final Logger LOGGER = LogManager.getLogger(ClusterInitializationManager.class);
 
   /**
    * Used to keep track of which clusters have been initialized with which routine.
@@ -23,24 +23,22 @@ public class ClusterLeaderInitializationManager implements ClusterLeaderInitiali
    *
    * The inner maps' keys are the routines to execute, and the value is ignored (i.e.: it is used as a set).
    */
-  private final Map<String, Map<ClusterLeaderInitializationRoutine, Object>> initializedClusters =
+  private final Map<String, Map<ClusterInitializationRoutine, Object>> initializedClusters =
       new VeniceConcurrentHashMap<>();
-  private final List<ClusterLeaderInitializationRoutine> initRoutines;
+  private final List<ClusterInitializationRoutine> initRoutines;
   private final boolean concurrentInit;
 
-  public ClusterLeaderInitializationManager(
-      List<ClusterLeaderInitializationRoutine> initRoutines,
-      boolean concurrentInit) {
+  public ClusterInitializationManager(List<ClusterInitializationRoutine> initRoutines, boolean concurrentInit) {
     this.initRoutines = initRoutines;
     this.concurrentInit = concurrentInit;
   }
 
   /**
-   * @see ClusterLeaderInitializationRoutine#execute(String)
+   * @see ClusterInitializationRoutine#execute(String)
    */
   @Override
   public void execute(String clusterToInit) {
-    Map<ClusterLeaderInitializationRoutine, Object> initializedRoutinesForCluster =
+    Map<ClusterInitializationRoutine, Object> initializedRoutinesForCluster =
         initializedClusters.computeIfAbsent(clusterToInit, k -> new VeniceConcurrentHashMap());
 
     if (concurrentInit) {
@@ -55,8 +53,8 @@ public class ClusterLeaderInitializationManager implements ClusterLeaderInitiali
 
   private void initRoutine(
       String clusterToInit,
-      Map<ClusterLeaderInitializationRoutine, Object> initializedRoutinesForCluster,
-      ClusterLeaderInitializationRoutine routine) {
+      Map<ClusterInitializationRoutine, Object> initializedRoutinesForCluster,
+      ClusterInitializationRoutine routine) {
     initializedRoutinesForCluster.computeIfAbsent(routine, k -> {
       try {
         LOGGER.info(logMessage("Starting", routine, clusterToInit));
@@ -74,7 +72,7 @@ public class ClusterLeaderInitializationManager implements ClusterLeaderInitiali
     });
   }
 
-  private String logMessage(String action, ClusterLeaderInitializationRoutine routine, String clusterToInit) {
+  private String logMessage(String action, ClusterInitializationRoutine routine, String clusterToInit) {
     return action + " execution of '" + routine.toString() + "' for cluster '" + clusterToInit + "'.";
   }
 }

@@ -18,6 +18,7 @@ import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang3.StringUtils;
 
 
 public class VeniceMultiClusterWrapper extends ProcessWrapper {
@@ -93,6 +94,12 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
           ClientConfig.defaultGenericClientConfig("")
               .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
               .setD2Client(clientConfigD2Client));
+
+      String primaryControllerD2ZkHosts =
+          StringUtils.defaultIfEmpty(options.getPrimaryControllerD2ZkHosts(), zkAddress);
+      String primaryControllerD2ServiceName = StringUtils
+          .defaultIfEmpty(options.getPrimaryControllerD2ServiceName(), VeniceControllerWrapper.D2_SERVICE_NAME);
+
       VeniceControllerCreateOptions controllerCreateOptions =
           new VeniceControllerCreateOptions.Builder(clusterNames, kafkaBrokerWrapper)
               .replicationFactor(options.getReplicationFactor())
@@ -102,6 +109,8 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
               .clusterToD2(clusterToD2)
               .sslToKafka(false)
               .d2Enabled(true)
+              .primaryControllerD2ZkHosts(primaryControllerD2ZkHosts)
+              .primaryControllerD2ServiceName(primaryControllerD2ServiceName)
               .extraProperties(controllerProperties)
               .build();
       for (int i = 0; i < options.getNumberOfControllers(); i++) {
@@ -130,7 +139,9 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
               .sslToStorageNodes(options.isSslToStorageNodes())
               .extraProperties(extraProperties)
               .forkServer(options.isForkServer())
-              .kafkaClusterMap(options.getKafkaClusterMap());
+              .kafkaClusterMap(options.getKafkaClusterMap())
+              .primaryControllerD2ZkHosts(primaryControllerD2ZkHosts)
+              .primaryControllerD2ServiceName(primaryControllerD2ServiceName);
 
       for (int i = 0; i < options.getNumberOfClusters(); i++) {
         // Create a wrapper for cluster without controller.

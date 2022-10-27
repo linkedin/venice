@@ -12,31 +12,31 @@ public class VeniceNoStoreException extends VeniceException {
   private final String clusterName;
 
   public VeniceNoStoreException(String storeName, String clusterName) {
-    super("Store: " + storeName + " does not exist in cluster " + clusterName);
+    super("Store: " + storeName + " does not exist in cluster " + clusterName, ErrorType.STORE_NOT_FOUND);
     this.storeName = storeName;
     this.clusterName = clusterName;
   }
 
   public VeniceNoStoreException(String storeName, String clusterName, Throwable t) {
-    super("Store: " + storeName + " does not exist in cluster " + clusterName, t);
+    super("Store: " + storeName + " does not exist in cluster " + clusterName, t, ErrorType.STORE_NOT_FOUND);
     this.storeName = storeName;
     this.clusterName = clusterName;
   }
 
   public VeniceNoStoreException(String storeName) {
-    super("Store: " + storeName + " does not exist");
+    super("Store: " + storeName + " does not exist", ErrorType.STORE_NOT_FOUND);
     this.storeName = storeName;
     this.clusterName = "unspecified";
   }
 
   public VeniceNoStoreException(String storeName, Optional<String> additionalMessage) {
-    super("Store: " + storeName + " does not exist. " + (additionalMessage.orElse("")));
+    super("Store: " + storeName + " does not exist. " + (additionalMessage.orElse("")), ErrorType.STORE_NOT_FOUND);
     this.storeName = storeName;
     this.clusterName = "unspecified";
   }
 
   public VeniceNoStoreException(String storeName, Throwable t) {
-    super("Store: " + storeName + " does not exist", t);
+    super("Store: " + storeName + " does not exist", t, ErrorType.STORE_NOT_FOUND);
     this.storeName = storeName;
     this.clusterName = "unspecified";
   }

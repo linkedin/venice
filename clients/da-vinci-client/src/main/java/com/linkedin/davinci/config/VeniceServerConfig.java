@@ -2,6 +2,8 @@ package com.linkedin.davinci.config;
 
 import static com.linkedin.davinci.config.BlockingQueueType.ARRAY_BLOCKING_QUEUE;
 import static com.linkedin.venice.ConfigKeys.AUTOCREATE_DATA_PATH;
+import static com.linkedin.venice.ConfigKeys.AUTO_CREATE_WRITE_SYSTEM_STORES;
+import static com.linkedin.venice.ConfigKeys.AUTO_REGISTER_WRITE_SYSTEM_SCHEMAS;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.ENABLE_SERVER_ALLOW_LIST;
 import static com.linkedin.venice.ConfigKeys.FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS;
@@ -19,6 +21,8 @@ import static com.linkedin.venice.ConfigKeys.MAX_FUTURE_VERSION_LEADER_FOLLOWER_
 import static com.linkedin.venice.ConfigKeys.MAX_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER;
 import static com.linkedin.venice.ConfigKeys.OFFSET_LAG_DELTA_RELAX_FACTOR_FOR_FAST_ONLINE_TRANSITION_IN_RESTART;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS;
+import static com.linkedin.venice.ConfigKeys.PRIMARY_CONTROLLER_D2_SERVICE_NAME;
+import static com.linkedin.venice.ConfigKeys.PRIMARY_CONTROLLER_D2_ZK_HOSTS;
 import static com.linkedin.venice.ConfigKeys.SERVER_AUTO_COMPACTION_FOR_SAMZA_REPROCESSING_JOB_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_BLOCKING_QUEUE_TYPE;
 import static com.linkedin.venice.ConfigKeys.SERVER_CACHE_WARMING_BEFORE_READY_TO_SERVE_ENABLED;
@@ -371,6 +375,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final long optimizeDatabaseServiceScheduleIntervalSeconds;
   private final boolean unregisterMetricForDeletedStoreEnabled;
   private final boolean readOnlyForBatchOnlyStoreEnabled; // TODO: remove this config as its never used in prod
+  private final boolean autoRegisterWriteSystemSchemas;
+  private final boolean autoCreateWriteSystemStores;
+  private final String primaryControllerD2ZkHosts;
+  private final String primaryControllerD2ServiceName;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -600,6 +608,15 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         .getLong(SERVER_OPTIMIZE_DATABASE_SERVICE_SCHEDULE_INTERNAL_SECONDS, TimeUnit.MINUTES.toSeconds(1));
     unregisterMetricForDeletedStoreEnabled =
         serverProperties.getBoolean(UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED, false);
+    autoRegisterWriteSystemSchemas = serverProperties.getBoolean(AUTO_REGISTER_WRITE_SYSTEM_SCHEMAS, false);
+    autoCreateWriteSystemStores = serverProperties.getBoolean(AUTO_CREATE_WRITE_SYSTEM_STORES, false);
+    if (autoRegisterWriteSystemSchemas) {
+      primaryControllerD2ZkHosts = serverProperties.getString(PRIMARY_CONTROLLER_D2_ZK_HOSTS);
+      primaryControllerD2ServiceName = serverProperties.getString(PRIMARY_CONTROLLER_D2_SERVICE_NAME);
+    } else {
+      primaryControllerD2ZkHosts = serverProperties.getString(PRIMARY_CONTROLLER_D2_ZK_HOSTS, (String) null);
+      primaryControllerD2ServiceName = serverProperties.getString(PRIMARY_CONTROLLER_D2_SERVICE_NAME, (String) null);
+    }
   }
 
   public int getListenerPort() {
@@ -1011,5 +1028,21 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isReadOnlyForBatchOnlyStoreEnabled() {
     return readOnlyForBatchOnlyStoreEnabled;
+  }
+
+  public boolean shouldAutoRegisterWriteSystemSchemas() {
+    return autoRegisterWriteSystemSchemas;
+  }
+
+  public boolean shouldAutoCreateWriteSystemStores() {
+    return autoCreateWriteSystemStores;
+  }
+
+  public String getPrimaryControllerD2ZkHosts() {
+    return primaryControllerD2ZkHosts;
+  }
+
+  public String getPrimaryControllerD2ServiceName() {
+    return primaryControllerD2ServiceName;
   }
 }

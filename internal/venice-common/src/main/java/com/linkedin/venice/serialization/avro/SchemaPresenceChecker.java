@@ -92,4 +92,19 @@ public class SchemaPresenceChecker {
   public void verifySchemaVersionPresentOrExit() {
     verifySchemaVersionPresentOrExit(Optional.empty(), true);
   }
+
+  /**
+   * Check if the specified schema version is present. If a schema version is not specified, check the current version
+   * of the {@link AvroProtocolDefinition} associated with the object of this class.
+   * @param protocolVersion -- the protocol version to fetch the schema for, if not present then fetch the current version.
+   * @param retry -- should retry fetching the schema or not
+   */
+  public boolean isSchemaVersionPresent(int protocolVersion, boolean retry) {
+    try {
+      verifySchemaIsPresent(protocolVersion, retry);
+      return true;
+    } catch (VeniceException e) {
+      return false;
+    }
+  }
 }

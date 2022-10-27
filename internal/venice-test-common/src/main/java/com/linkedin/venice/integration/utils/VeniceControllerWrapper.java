@@ -37,6 +37,8 @@ import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC;
 import static com.linkedin.venice.ConfigKeys.OFFLINE_JOB_START_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
+import static com.linkedin.venice.ConfigKeys.PRIMARY_CONTROLLER_D2_SERVICE_NAME;
+import static com.linkedin.venice.ConfigKeys.PRIMARY_CONTROLLER_D2_ZK_HOSTS;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA;
@@ -194,6 +196,14 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_ALL_STORES, true)
             .put(CLUSTER_DISCOVERY_D2_SERVICE, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
             .put(extraProps.toProperties());
+
+        if (options.getPrimaryControllerD2ZkHosts() != null) {
+          builder.put(PRIMARY_CONTROLLER_D2_ZK_HOSTS, options.getPrimaryControllerD2ZkHosts());
+        }
+
+        if (options.getPrimaryControllerD2ServiceName() != null) {
+          builder.put(PRIMARY_CONTROLLER_D2_SERVICE_NAME, options.getPrimaryControllerD2ServiceName());
+        }
 
         if (sslEnabled) {
           builder.put(SslUtils.getVeniceLocalSslProperties());

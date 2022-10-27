@@ -149,9 +149,10 @@ public class VeniceController {
         routerClientConfig,
         icProvider);
 
+    Admin admin = controllerService.getVeniceHelixAdmin();
     adminServer = new AdminSparkServer(
         multiClusterConfigs.getAdminPort(),
-        controllerService.getVeniceHelixAdmin(),
+        admin,
         metricsRepository,
         multiClusterConfigs.getClusters(),
         multiClusterConfigs.isControllerEnforceSSLOnly(),
@@ -168,7 +169,7 @@ public class VeniceController {
        */
       secureAdminServer = new AdminSparkServer(
           multiClusterConfigs.getAdminSecurePort(),
-          controllerService.getVeniceHelixAdmin(),
+          admin,
           metricsRepository,
           multiClusterConfigs.getClusters(),
           true,
@@ -181,7 +182,6 @@ public class VeniceController {
     }
     storeBackupVersionCleanupService = Optional.empty();
     storeGraveyardCleanupService = Optional.empty();
-    Admin admin = controllerService.getVeniceHelixAdmin();
     if (multiClusterConfigs.isParent()) {
       topicCleanupService = new TopicCleanupServiceForParentController(admin, multiClusterConfigs);
       if (!(admin instanceof VeniceParentHelixAdmin)) {

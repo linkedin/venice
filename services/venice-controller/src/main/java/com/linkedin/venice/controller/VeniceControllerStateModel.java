@@ -1,7 +1,7 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.acl.DynamicAccessController;
-import com.linkedin.venice.controller.init.ClusterLeaderInitializationRoutine;
+import com.linkedin.venice.controller.init.ClusterInitializationRoutine;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixState;
@@ -41,7 +41,8 @@ public class VeniceControllerStateModel extends StateModel {
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final VeniceHelixAdmin admin;
   private final MetricsRepository metricsRepository;
-  private final ClusterLeaderInitializationRoutine controllerInitialization;
+  private final ClusterInitializationRoutine controllerLeaderInitialization;
+  private final ClusterInitializationRoutine controllerStateTransitionInitialization;
   private final Optional<DynamicAccessController> accessController;
   private final String clusterName;
   private final HelixAdminClient helixAdminClient;
@@ -58,7 +59,8 @@ public class VeniceControllerStateModel extends StateModel {
       VeniceControllerMultiClusterConfig multiClusterConfigs,
       VeniceHelixAdmin admin,
       MetricsRepository metricsRepository,
-      ClusterLeaderInitializationRoutine controllerInitialization,
+      ClusterInitializationRoutine controllerLeaderInitialization,
+      ClusterInitializationRoutine controllerStateTransitionInitialization,
       RealTimeTopicSwitcher realTimeTopicSwitcher,
       Optional<DynamicAccessController> accessController,
       HelixAdminClient helixAdminClient) {
@@ -69,7 +71,8 @@ public class VeniceControllerStateModel extends StateModel {
     this.multiClusterConfigs = multiClusterConfigs;
     this.admin = admin;
     this.metricsRepository = metricsRepository;
-    this.controllerInitialization = controllerInitialization;
+    this.controllerLeaderInitialization = controllerLeaderInitialization;
+    this.controllerStateTransitionInitialization = controllerStateTransitionInitialization;
     this.realTimeTopicSwitcher = realTimeTopicSwitcher;
     this.accessController = accessController;
     this.helixAdminClient = helixAdminClient;
@@ -96,7 +99,10 @@ public class VeniceControllerStateModel extends StateModel {
       result = super.updateState(newState);
     }
     if (newState.equals(HelixState.LEADER_STATE)) {
-      controllerInitialization.execute(clusterName);
+      controllerLeaderInitialization.execute(clusterName);
+      controllerStateTransitionInitialization.execute(clusterName);
+    } else if (newState.equals(HelixState.STANDBY_STATE)) {
+      controllerStateTransitionInitialization.execute(clusterName);
     }
     return result;
   }

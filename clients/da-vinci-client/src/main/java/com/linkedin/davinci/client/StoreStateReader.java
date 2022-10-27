@@ -60,7 +60,7 @@ public class StoreStateReader implements Closeable {
       if (response == null) {
         throw new VeniceClientException("Unexpected null response " + exceptionMessageFooter);
       }
-      if (veniceSystemStoreType != null && veniceSystemStoreType.isNewMedataRepositoryAdopted()) {
+      if (veniceSystemStoreType != null && veniceSystemStoreType.isNewMetadataRepositoryAdopted()) {
         SerializableSystemStore serializableSystemStore = SYSTEM_STORE_SERIALIZER.deserialize(response, null);
         return new SystemStore(
             serializableSystemStore.getZkSharedStore(),

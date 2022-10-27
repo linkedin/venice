@@ -31,7 +31,7 @@ public class HelixReadOnlyZKSharedSystemStoreRepository extends HelixReadOnlySto
     super(zkClient, compositeSerializer, systemStoreClusterName, 0, 0);
     // Initialize the necessary zk shared system stores
     for (VeniceSystemStoreType type: VeniceSystemStoreType.values()) {
-      if (type.isNewMedataRepositoryAdopted()) {
+      if (type.isNewMetadataRepositoryAdopted()) {
         zkSharedSystemStoreSet.add(type.getZkSharedStoreName());
       }
     }

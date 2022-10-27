@@ -33,6 +33,8 @@ public class VeniceMultiClusterCreateOptions {
   private final Map<String, Map<String, String>> kafkaClusterMap;
   private final ZkServerWrapper zkServerWrapper;
   private final KafkaBrokerWrapper kafkaBrokerWrapper;
+  private final String primaryControllerD2ZkHosts;
+  private final String primaryControllerD2ServiceName;
   private final Properties childControllerProperties;
   private final VeniceProperties veniceProperties;
 
@@ -108,6 +110,14 @@ public class VeniceMultiClusterCreateOptions {
     return kafkaBrokerWrapper;
   }
 
+  public String getPrimaryControllerD2ZkHosts() {
+    return primaryControllerD2ZkHosts;
+  }
+
+  public String getPrimaryControllerD2ServiceName() {
+    return primaryControllerD2ServiceName;
+  }
+
   public Properties getChildControllerProperties() {
     return childControllerProperties;
   }
@@ -179,6 +189,12 @@ public class VeniceMultiClusterCreateOptions {
         .append(", ")
         .append("kafkaClusterMap:")
         .append(kafkaClusterMap)
+        .append(", ")
+        .append("primaryControllerD2ZkHosts:")
+        .append(primaryControllerD2ZkHosts)
+        .append(", ")
+        .append("primaryControllerD2ServiceName:")
+        .append(primaryControllerD2ServiceName)
         .toString();
   }
 
@@ -203,6 +219,8 @@ public class VeniceMultiClusterCreateOptions {
     veniceProperties = builder.veniceProperties;
     forkServer = builder.forkServer;
     kafkaClusterMap = builder.kafkaClusterMap;
+    primaryControllerD2ZkHosts = builder.primaryControllerD2ZkHosts;
+    primaryControllerD2ServiceName = builder.primaryControllerD2ServiceName;
   }
 
   public static class Builder {
@@ -225,6 +243,8 @@ public class VeniceMultiClusterCreateOptions {
     private Map<String, Map<String, String>> kafkaClusterMap;
     private ZkServerWrapper zkServerWrapper;
     private KafkaBrokerWrapper kafkaBrokerWrapper;
+    private String primaryControllerD2ZkHosts;
+    private String primaryControllerD2ServiceName;
     private Properties childControllerProperties;
     private VeniceProperties veniceProperties;
 
@@ -315,6 +335,16 @@ public class VeniceMultiClusterCreateOptions {
 
     public Builder kafkaBrokerWrapper(KafkaBrokerWrapper kafkaBrokerWrapper) {
       this.kafkaBrokerWrapper = kafkaBrokerWrapper;
+      return this;
+    }
+
+    public Builder primaryControllerD2ZkHosts(String d2ZkHosts) {
+      this.primaryControllerD2ZkHosts = d2ZkHosts;
+      return this;
+    }
+
+    public Builder primaryControllerD2Service(String d2Service) {
+      this.primaryControllerD2ServiceName = d2Service;
       return this;
     }
 

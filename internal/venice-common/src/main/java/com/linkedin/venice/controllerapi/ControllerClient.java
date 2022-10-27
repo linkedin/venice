@@ -18,6 +18,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC_A;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC_B;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCLUDE_SYSTEM_STORES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_VERSION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_SYSTEM_STORE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_WRITE_COMPUTE_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_LOG_COMPACTION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_RETENTION_IN_MS;
@@ -69,6 +70,7 @@ import static com.linkedin.venice.meta.Version.PushType;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.LastSucceedExecutionIdResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
+import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.helix.VeniceJsonSerializer;
@@ -475,6 +477,15 @@ public class ControllerClient implements Closeable {
   public NewStoreResponse createNewStore(String storeName, String owner, String keySchema, String valueSchema) {
     QueryParams params =
         newParams().add(NAME, storeName).add(OWNER, owner).add(KEY_SCHEMA, keySchema).add(VALUE_SCHEMA, valueSchema);
+    return request(ControllerRoute.NEW_STORE, params, NewStoreResponse.class);
+  }
+
+  public NewStoreResponse createNewSystemStore(String storeName, String owner, String keySchema, String valueSchema) {
+    QueryParams params = newParams().add(NAME, storeName)
+        .add(OWNER, owner)
+        .add(KEY_SCHEMA, keySchema)
+        .add(VALUE_SCHEMA, valueSchema)
+        .add(IS_SYSTEM_STORE, true);
     return request(ControllerRoute.NEW_STORE, params, NewStoreResponse.class);
   }
 
@@ -977,10 +988,9 @@ public class ControllerClient implements Closeable {
           params,
           ClusterStaleDataAuditResponse.class);
     } catch (Exception e) {
-      return makeErrorResponse(
-          "controllerapi:ControllerClient:getClusterStaleStores - ",
-          e,
-          ClusterStaleDataAuditResponse.class);
+      String message =
+          "Unable to get stale stores for cluster " + clusterName + " from " + this.controllerDiscoveryUrls;
+      return makeErrorResponse(message, e, ClusterStaleDataAuditResponse.class);
     }
   }
 
@@ -1005,10 +1015,8 @@ public class ControllerClient implements Closeable {
       return transport
           .request(parentControllerUrl, ControllerRoute.LIST_STORE_PUSH_INFO, params, StoreHealthAuditResponse.class);
     } catch (Exception e) {
-      return makeErrorResponse(
-          "controllerapi:ControllerClient:listStorePushInfo - " + e.toString(),
-          e,
-          StoreHealthAuditResponse.class);
+      String message = "Unable to list push info for store " + storeName + " from " + this.controllerDiscoveryUrls;
+      return makeErrorResponse(message, e, StoreHealthAuditResponse.class);
     }
   }
 
@@ -1039,6 +1047,9 @@ public class ControllerClient implements Closeable {
             QueryParams params = getQueryParamsToDiscoverCluster(storeName);
             return transport.request(url, ControllerRoute.CLUSTER_DISCOVERY, params, D2ServiceDiscoveryResponse.class);
           } catch (VeniceHttpException e) {
+            if (ErrorType.STORE_NOT_FOUND.equals(e.getErrorType())) {
+              throw e;
+            }
             String routerPath = ControllerRoute.CLUSTER_DISCOVERY.getPath() + "/" + storeName;
             return transport.executeGet(url, routerPath, new QueryParams(), D2ServiceDiscoveryResponse.class);
           }

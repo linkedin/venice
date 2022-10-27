@@ -50,7 +50,7 @@ public class HelixReadOnlyStoreRepositoryAdapter implements ReadOnlyStoreReposit
      * This is a regular Venice store or the existing system stores, which hasn't adopted the new repositories yet.
      * Check {@link VeniceSystemStoreType} to find more details.
      */
-    return systemStoreType == null || !systemStoreType.isNewMedataRepositoryAdopted();
+    return systemStoreType == null || !systemStoreType.isNewMetadataRepositoryAdopted();
   }
 
   @Override

@@ -1,6 +1,7 @@
 package com.linkedin.venice.controllerapi;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.linkedin.venice.schema.SchemaData;
 
 
 public class SchemaResponse
@@ -10,7 +11,7 @@ public class SchemaResponse
    * An uninitialized primitive defaults to 0, which could cause the Venice Samza System producer starts sending
    * Venice UPDATE messages instead of PUT messages.
    */
-  private int derivedSchemaId = -1;
+  private int derivedSchemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
   private String schemaStr;
 
   public int getId() {

@@ -11,6 +11,8 @@ import static com.linkedin.venice.ConfigKeys.ADMIN_TOPIC_REMOTE_CONSUMPTION_ENAB
 import static com.linkedin.venice.ConfigKeys.ADMIN_TOPIC_SOURCE_REGION;
 import static com.linkedin.venice.ConfigKeys.AGGREGATE_REAL_TIME_SOURCE_REGION;
 import static com.linkedin.venice.ConfigKeys.ALLOW_CLUSTER_WIPE;
+import static com.linkedin.venice.ConfigKeys.AUTO_CREATE_WRITE_SYSTEM_STORES;
+import static com.linkedin.venice.ConfigKeys.AUTO_REGISTER_WRITE_SYSTEM_SCHEMAS;
 import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_ALLOWLIST;
 import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_D2_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_D2_SERVICE_NAME;
@@ -28,7 +30,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_BACKUP_VERSION_RETENTION
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_LEADER_HAAS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_REPLICA;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_ZK_ADDRESSS;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_CLUSTER_ZK_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLED_ROUTES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLE_PARENT_TOPIC_TRUNCATION_UPON_COMPLETION;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_EARLY_DELETE_BACKUP_ENABLED;
@@ -60,6 +62,8 @@ import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC;
 import static com.linkedin.venice.ConfigKeys.PARENT_CONTROLLER_MAX_ERRORED_TOPIC_NUM_TO_KEEP;
 import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
+import static com.linkedin.venice.ConfigKeys.PRIMARY_CONTROLLER_D2_SERVICE_NAME;
+import static com.linkedin.venice.ConfigKeys.PRIMARY_CONTROLLER_D2_ZK_HOSTS;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_STATUS_STORE_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS;
@@ -119,6 +123,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final boolean parent;
   private final Map<String, String> childDataCenterControllerUrlMap;
   private final String d2ServiceName;
+  private final boolean autoRegisterWriteSystemSchemas;
+  private final boolean autoCreateWriteSystemStores;
+  private final String primaryControllerD2ZkHosts;
+  private final String primaryControllerD2ServiceName;
   private final String clusterDiscoveryD2ServiceName;
   private final Map<String, String> childDataCenterControllerD2Map;
   private final int parentControllerWaitingTimeForConsumptionMs;
@@ -254,7 +262,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.adminCheckReadMethodForKafka = props.getBoolean(ADMIN_CHECK_READ_METHOD_FOR_KAFKA, true);
     this.controllerClusterName = props.getString(CONTROLLER_CLUSTER, "venice-controllers");
     this.controllerClusterReplica = props.getInt(CONTROLLER_CLUSTER_REPLICA, 3);
-    this.controllerClusterZkAddress = props.getString(CONTROLLER_CLUSTER_ZK_ADDRESSS, getZkAddress());
+    this.controllerClusterZkAddress = props.getString(CONTROLLER_CLUSTER_ZK_ADDRESS, getZkAddress());
     this.topicCreationThrottlingTimeWindowMs =
         props.getLong(TOPIC_CREATION_THROTTLING_TIME_WINDOW_MS, 10 * Time.MS_PER_SECOND);
     this.parent = props.getBoolean(ConfigKeys.CONTROLLER_PARENT_MODE, false);
@@ -274,6 +282,15 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     }
     this.d2ServiceName =
         childDataCenterControllerD2Map.isEmpty() ? null : props.getString(CHILD_CLUSTER_D2_SERVICE_NAME);
+    autoRegisterWriteSystemSchemas = props.getBoolean(AUTO_REGISTER_WRITE_SYSTEM_SCHEMAS, false);
+    autoCreateWriteSystemStores = props.getBoolean(AUTO_CREATE_WRITE_SYSTEM_STORES, false);
+    if (autoRegisterWriteSystemSchemas) {
+      primaryControllerD2ZkHosts = props.getString(PRIMARY_CONTROLLER_D2_ZK_HOSTS);
+      primaryControllerD2ServiceName = props.getString(PRIMARY_CONTROLLER_D2_SERVICE_NAME);
+    } else {
+      primaryControllerD2ZkHosts = props.getString(PRIMARY_CONTROLLER_D2_ZK_HOSTS, (String) null);
+      primaryControllerD2ServiceName = props.getString(PRIMARY_CONTROLLER_D2_SERVICE_NAME, (String) null);
+    }
     if (this.parent) {
       if (childDataCenterControllerUrlMap.isEmpty() && childDataCenterControllerD2Map.isEmpty()) {
         throw new VeniceException("child controller list can not be empty");
@@ -807,6 +824,22 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public int getStoreGraveyardCleanupSleepIntervalBetweenListFetchMinutes() {
     return storeGraveyardCleanupSleepIntervalBetweenListFetchMinutes;
+  }
+
+  public boolean shouldAutoRegisterWriteSystemSchemas() {
+    return autoRegisterWriteSystemSchemas;
+  }
+
+  public boolean shouldAutoCreateWriteSystemStores() {
+    return autoCreateWriteSystemStores;
+  }
+
+  public String getPrimaryControllerD2ZkHosts() {
+    return primaryControllerD2ZkHosts;
+  }
+
+  public String getPrimaryControllerD2ServiceName() {
+    return primaryControllerD2ServiceName;
   }
 
   /**

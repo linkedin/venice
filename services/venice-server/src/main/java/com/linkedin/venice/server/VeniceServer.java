@@ -1,5 +1,9 @@
 package com.linkedin.venice.server;
 
+import static com.linkedin.venice.exceptions.ErrorType.STORE_NOT_FOUND;
+
+import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceClusterConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
@@ -19,6 +23,7 @@ import com.linkedin.davinci.storage.StorageEngineMetadataService;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
+import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.cleaner.BackupVersionOptimizationService;
@@ -26,12 +31,17 @@ import com.linkedin.venice.cleaner.LeakedResourceCleaner;
 import com.linkedin.venice.cleaner.ResourceReadUsageTracker;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.D2ControllerClient;
+import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.AllowlistAccessor;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.ZkAllowlistAccessor;
+import com.linkedin.venice.init.ControllerClientBackedSystemSchemaInitializer;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.listener.ListenerService;
@@ -44,6 +54,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.StaticClusterInfoProvider;
 import com.linkedin.venice.schema.SchemaReader;
+import com.linkedin.venice.schema.SchemaRepoBackedSchemaReader;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -60,8 +71,11 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -204,31 +218,6 @@ public class VeniceServer {
     // Create jvm metrics object
     jvmStats = new VeniceJVMStats(metricsRepository, "VeniceJVMStats");
 
-    Optional<SchemaReader> partitionStateSchemaReader = clientConfigForConsumer.map(
-        cc -> ClientFactory
-            .getSchemaReader(cc.setStoreName(AvroProtocolDefinition.PARTITION_STATE.getSystemStoreName())));
-    Optional<SchemaReader> storeVersionStateSchemaReader = clientConfigForConsumer.map(
-        cc -> ClientFactory
-            .getSchemaReader(cc.setStoreName(AvroProtocolDefinition.STORE_VERSION_STATE.getSystemStoreName())));
-    final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
-        AvroProtocolDefinition.PARTITION_STATE.getSerializer();
-    partitionStateSchemaReader.ifPresent(partitionStateSerializer::setSchemaReader);
-    final InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer =
-        AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
-    storeVersionStateSchemaReader.ifPresent(storeVersionStateSerializer::setSchemaReader);
-
-    // Verify the current version of PARTITION_STATE and STORE_VERSION_STATE schema is registered in ZK before moving
-    // ahead.
-    if (serverConfig.isSchemaPresenceCheckEnabled()) {
-      partitionStateSchemaReader.ifPresent(
-          schemaReader -> new SchemaPresenceChecker(schemaReader, AvroProtocolDefinition.PARTITION_STATE)
-              .verifySchemaVersionPresentOrExit());
-
-      storeVersionStateSchemaReader.ifPresent(
-          schemaReader -> new SchemaPresenceChecker(schemaReader, AvroProtocolDefinition.STORE_VERSION_STATE)
-              .verifySchemaVersionPresentOrExit());
-    }
-
     // Create and add Offset Service.
     VeniceClusterConfig clusterConfig = veniceConfigLoader.getVeniceClusterConfig();
 
@@ -244,6 +233,102 @@ public class VeniceServer {
     schemaRepo = veniceMetadataRepositoryBuilder.getSchemaRepo();
     liveClusterConfigRepo = veniceMetadataRepositoryBuilder.getLiveClusterConfigRepo();
     readOnlyZKSharedSchemaRepository = veniceMetadataRepositoryBuilder.getReadOnlyZKSharedSchemaRepository();
+
+    List<VeniceSystemStoreType> schemaStoresForWritableComponents = Arrays.asList(
+        // VeniceSystemStoreType.TEST_DUMMY,
+        VeniceSystemStoreType.PARTITION_STATE,
+        VeniceSystemStoreType.STORE_VERSION_STATE,
+        VeniceSystemStoreType.KAFKA_MESSAGE_ENVELOPE,
+        VeniceSystemStoreType.META_STORE,
+        VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE);
+
+    Map<VeniceSystemStoreType, SchemaReader> schemaStoresSchemaReaderMap = new HashMap<>();
+
+    Lazy<D2Client> primaryControllerColoD2Client = Lazy.of(() -> {
+      D2Client d2Client = new D2ClientBuilder().setZkHosts(serverConfig.getPrimaryControllerD2ZkHosts())
+          .setSSLContext(sslFactory.map(SSLFactory::getSSLContext).orElse(null))
+          .setIsSSLEnabled(sslFactory.isPresent())
+          .setSSLParameters(sslFactory.map(SSLFactory::getSSLParameters).orElse(null))
+          .setFsBasePath(Utils.getUniqueTempPath("d2"))
+          .setEnableSaveUriDataOnDisk(true)
+          .build();
+
+      D2ClientUtils.startClient(d2Client);
+      return d2Client;
+    });
+    Map<String, ControllerClient> clusterToControllerClientMap = new HashMap<>();
+    try {
+      for (VeniceSystemStoreType schemaStoreForWritableComponent: schemaStoresForWritableComponents) {
+        if (!schemaStoreForWritableComponent.getValueSchemaProtocol().currentProtocolVersion.isPresent()) {
+          throw new VeniceException(
+              "No current protocol version set for " + schemaStoreForWritableComponent.getValueSchemaProtocol() + ".");
+        }
+
+        SchemaReader systemStoreSchemaReader = schemaStoresSchemaReaderMap.computeIfAbsent(
+            schemaStoreForWritableComponent,
+            protocolDefinition -> new SchemaRepoBackedSchemaReader(
+                schemaRepo,
+                schemaStoreForWritableComponent.getZkSharedStoreName()));
+
+        if (serverConfig.isSchemaPresenceCheckEnabled()) {
+          SchemaPresenceChecker schemaPresenceChecker = new SchemaPresenceChecker(
+              systemStoreSchemaReader,
+              schemaStoreForWritableComponent.getValueSchemaProtocol());
+          boolean protocolVersionRegistered = schemaPresenceChecker.isSchemaVersionPresent(
+              schemaStoreForWritableComponent.getValueSchemaProtocol().currentProtocolVersion.get(),
+              false);
+
+          if (serverConfig.shouldAutoRegisterWriteSystemSchemas() && !protocolVersionRegistered) {
+            D2ServiceDiscoveryResponse d2ServiceDiscoveryResponse = D2ControllerClient.discoverCluster(
+                primaryControllerColoD2Client.get(),
+                serverConfig.getPrimaryControllerD2ServiceName(),
+                schemaStoreForWritableComponent.getZkSharedStoreName());
+
+            final String clusterName;
+            if (d2ServiceDiscoveryResponse.isError()) {
+              if (!STORE_NOT_FOUND.equals(d2ServiceDiscoveryResponse.getErrorType())) {
+                throw new VeniceException(d2ServiceDiscoveryResponse.getError());
+              }
+              clusterName = serverConfig.getSystemSchemaClusterName();
+            } else {
+              clusterName = d2ServiceDiscoveryResponse.getCluster();
+            }
+
+            ControllerClient controllerClient = clusterToControllerClientMap.computeIfAbsent(
+                clusterName,
+                cluster -> new D2ControllerClient(
+                    serverConfig.getPrimaryControllerD2ServiceName(),
+                    cluster,
+                    primaryControllerColoD2Client.get(),
+                    sslFactory));
+
+            new ControllerClientBackedSystemSchemaInitializer(
+                controllerClient,
+                schemaStoreForWritableComponent,
+                schemaPresenceChecker,
+                serverConfig.shouldAutoCreateWriteSystemStores()).execute();
+          }
+        }
+      }
+    } finally {
+      for (ControllerClient controllerClient: clusterToControllerClientMap.values()) {
+        Utils.closeQuietlyWithErrorLogged(controllerClient);
+      }
+      primaryControllerColoD2Client.ifPresent(D2ClientUtils::shutdownClient);
+    }
+
+    final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+    if (schemaStoresSchemaReaderMap.containsKey(VeniceSystemStoreType.PARTITION_STATE)) {
+      partitionStateSerializer.setSchemaReader(schemaStoresSchemaReaderMap.get(VeniceSystemStoreType.PARTITION_STATE));
+    }
+
+    final InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer =
+        AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
+    if (schemaStoresSchemaReaderMap.containsKey(VeniceSystemStoreType.STORE_VERSION_STATE)) {
+      partitionStateSerializer
+          .setSchemaReader(schemaStoresSchemaReaderMap.get(VeniceSystemStoreType.STORE_VERSION_STATE));
+    }
 
     // TODO: It would be cleaner to come up with a storage engine metric abstraction so we're not passing around so
     // many objects in constructors
