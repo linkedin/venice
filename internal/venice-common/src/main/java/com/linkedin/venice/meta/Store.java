@@ -352,14 +352,6 @@ public interface Store {
 
   void updateVersionStatus(int versionNumber, VersionStatus status);
 
-  /**
-   * Use the form of this method that accepts a pushJobId
-   */
-  @Deprecated
-  Version increaseVersion();
-
-  Version increaseVersion(String pushJobId);
-
   Version peekNextVersion();
 
   Optional<Version> getVersion(int versionNumber);

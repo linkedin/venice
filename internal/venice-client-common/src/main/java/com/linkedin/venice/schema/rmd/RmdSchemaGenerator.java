@@ -45,6 +45,10 @@ public class RmdSchemaGenerator {
     return generateMetadataSchema(schema, LATEST_VERSION);
   }
 
+  public static int getLatestVersion() {
+    return LATEST_VERSION;
+  }
+
   public static Schema generateMetadataSchema(Schema schema, int version) {
     Utils.notNull(schema);
     RmdSchemaGeneratorV1 metadataSchemaGenerator = RMD_SCHEMA_GENERATOR.get(version);

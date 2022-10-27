@@ -15,7 +15,7 @@ public enum ErrorType {
   SCHEMA_NOT_FOUND(ExceptionType.SCHEMA_NOT_FOUND), CONNECTION_ERROR(ExceptionType.CONNECTION_ERROR),
   @JsonEnumDefaultValue
   GENERAL_ERROR(ExceptionType.GENERAL_ERROR), BAD_REQUEST(ExceptionType.BAD_REQUEST),
-  CONCURRENT_BATCH_PUSH(ExceptionType.BAD_REQUEST);
+  CONCURRENT_BATCH_PUSH(ExceptionType.BAD_REQUEST), RESOURCE_STILL_EXISTS(ExceptionType.BAD_REQUEST);
 
   private final ExceptionType exceptionType;
 

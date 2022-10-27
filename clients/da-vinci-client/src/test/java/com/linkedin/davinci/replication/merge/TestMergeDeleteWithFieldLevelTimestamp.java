@@ -31,7 +31,7 @@ public class TestMergeDeleteWithFieldLevelTimestamp extends TestMergeConflictRes
     fieldNameToTimestampMap.put("id", 10L);
     fieldNameToTimestampMap.put("name", 20L);
     fieldNameToTimestampMap.put("age", 30L);
-    GenericRecord rmdRecord = createRmdWithFieldLevelTimestamp(rmdSchemaV1, fieldNameToTimestampMap);
+    GenericRecord rmdRecord = createRmdWithFieldLevelTimestamp(userRmdSchemaV1, fieldNameToTimestampMap);
     final int oldValueSchemaID = 1;
     final long deleteOperationTimestamp = 9L; // Strictly smaller than all fields' RMD timestamps.
 
@@ -52,16 +52,16 @@ public class TestMergeDeleteWithFieldLevelTimestamp extends TestMergeConflictRes
     fieldNameToTimestampMap.put("id", 10L);
     fieldNameToTimestampMap.put("name", 20L);
     fieldNameToTimestampMap.put("age", 30L);
-    GenericRecord oldRmdRecord = createRmdWithFieldLevelTimestamp(rmdSchemaV1, fieldNameToTimestampMap);
+    GenericRecord oldRmdRecord = createRmdWithFieldLevelTimestamp(userRmdSchemaV1, fieldNameToTimestampMap);
     RmdWithValueSchemaId oldRmdWithValueSchemaID =
         new RmdWithValueSchemaId(valueSchemaID, RMD_VERSION_ID, oldRmdRecord);
-    GenericRecord oldValueRecord = new GenericData.Record(valueRecordSchemaV1);
+    GenericRecord oldValueRecord = new GenericData.Record(userSchemaV1);
     oldValueRecord.put("id", "123");
     oldValueRecord.put("name", "James");
     oldValueRecord.put("age", 32);
-    final ByteBuffer oldValueBytes = ByteBuffer.wrap(getSerializer(valueRecordSchemaV1).serialize(oldValueRecord));
+    final ByteBuffer oldValueBytes = ByteBuffer.wrap(getSerializer(userSchemaV1).serialize(oldValueRecord));
     ReadOnlySchemaRepository schemaRepository = mock(ReadOnlySchemaRepository.class);
-    doReturn(new SchemaEntry(1, valueRecordSchemaV1)).when(schemaRepository).getValueSchema(storeName, valueSchemaID);
+    doReturn(new SchemaEntry(1, userSchemaV1)).when(schemaRepository).getValueSchema(storeName, valueSchemaID);
 
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
@@ -83,7 +83,7 @@ public class TestMergeDeleteWithFieldLevelTimestamp extends TestMergeConflictRes
     Optional<ByteBuffer> updatedValueOptional = result.getNewValue();
     Assert.assertTrue(updatedValueOptional.isPresent());
     GenericRecord updatedValueRecord =
-        getDeserializer(valueRecordSchemaV1, valueRecordSchemaV1).deserialize(updatedValueOptional.get());
+        getDeserializer(userSchemaV1, userSchemaV1).deserialize(updatedValueOptional.get());
     Assert.assertEquals(updatedValueRecord.get("id").toString(), "default_id"); // Deleted and has the default value
     Assert.assertEquals(updatedValueRecord.get("name").toString(), "James"); // Not updated
     Assert.assertEquals(updatedValueRecord.get("age"), 32); // Not updated
@@ -101,8 +101,7 @@ public class TestMergeDeleteWithFieldLevelTimestamp extends TestMergeConflictRes
 
     updatedValueOptional = result.getNewValue();
     Assert.assertTrue(updatedValueOptional.isPresent());
-    updatedValueRecord =
-        getDeserializer(valueRecordSchemaV1, valueRecordSchemaV1).deserialize(updatedValueOptional.get());
+    updatedValueRecord = getDeserializer(userSchemaV1, userSchemaV1).deserialize(updatedValueOptional.get());
     Assert.assertEquals(updatedValueRecord.get("id").toString(), "default_id"); // Not updated. Still the default value.
     Assert.assertEquals(updatedValueRecord.get("name").toString(), "default_name"); // Deleted and has the default value
     Assert.assertEquals(updatedValueRecord.get("age"), 32); // Not updated

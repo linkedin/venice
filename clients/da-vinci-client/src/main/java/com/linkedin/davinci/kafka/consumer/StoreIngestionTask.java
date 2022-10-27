@@ -6,10 +6,10 @@ import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.UNSUBSCRIBE
 import static java.util.concurrent.TimeUnit.HOURS;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
-import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
 
 import com.linkedin.avroutil1.compatibility.shaded.org.apache.commons.lang3.Validate;
+import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
@@ -28,6 +28,7 @@ import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.exceptions.VeniceChecksumException;
@@ -83,9 +84,11 @@ import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
+import com.linkedin.venice.utils.SparseConcurrentList;
 import com.linkedin.venice.utils.Timer;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import it.unimi.dsi.fastutil.ints.IntList;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
@@ -93,6 +96,7 @@ import it.unimi.dsi.fastutil.ints.IntSet;
 import it.unimi.dsi.fastutil.ints.IntSets;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import java.io.Closeable;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.time.Instant;
@@ -123,7 +127,6 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import org.apache.avro.Schema;
-import org.apache.commons.codec.binary.Hex;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.producer.Callback;
@@ -234,8 +237,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   // use this checker to check whether ingestion completion can be reported for a partition
   protected final ReadyToServeCheck defaultReadyToServeChecker;
 
-  protected final IntSet availableSchemaIds;
-  protected final IntSet deserializedSchemaIds;
+  protected final SparseConcurrentList<Object> availableSchemaIds = new SparseConcurrentList<>();
+  protected final SparseConcurrentList<Object> deserializedSchemaIds = new SparseConcurrentList<>();
   protected int idleCounter = 0;
 
   // This indicates whether it polls nothing from Kafka
@@ -288,6 +291,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * entry for each key.
    */
   private final boolean disableAutoCompactionForSamzaReprocessingJob;
+  /** Constructor which only returns an instance if the related functionality is enabled, and null otherwise. */
+  private final Supplier<IntSet> intSetProviderForTrackingCompactingPartitions;
   /**
    * This map is used to track the manual compaction progress for each partition.
    * This map won't be cleaned up even the compaction is done since it is being used in {@link #produceToStoreBufferServiceOrKafka}
@@ -353,6 +358,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private final Object2IntMap<String> kafkaClusterUrlToIdMap;
   protected final boolean readOnlyForBatchOnlyStoreEnabled;
   protected final CompressionStrategy compressionStrategy;
+  protected final StorageEngineBackedCompressorFactory compressorFactory;
+  protected final Lazy<VeniceCompressor> compressor;
+  protected final boolean isChunked;
 
   public StoreIngestionTask(
       StoreIngestionTaskFactory.Builder builder,
@@ -384,8 +392,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.isUserSystemStore = VeniceSystemStoreUtils.isUserSystemStore(storeName);
     this.realTimeTopic = Version.composeRealTimeTopic(storeName);
     this.versionNumber = Version.parseVersionFromKafkaTopicName(kafkaVersionTopic);
-    this.availableSchemaIds = new IntOpenHashSet();
-    this.deserializedSchemaIds = new IntOpenHashSet();
     this.consumerActionsQueue = new PriorityBlockingQueue<>(CONSUMER_ACTION_QUEUE_INIT_CAPACITY);
 
     // partitionConsumptionStateMap could be accessed by multiple threads: consumption thread and the thread handling
@@ -415,7 +421,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     this.diskUsage = builder.getDiskUsage();
 
-    this.storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
+    this.storageEngine = Validate.notNull(storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic));
 
     this.serverConfig = builder.getServerConfig();
 
@@ -437,6 +443,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * The reason to use a different field name here is that the naming convention will be consistent with RocksDB.
      */
     this.disableAutoCompactionForSamzaReprocessingJob = !serverConfig.isEnableAutoCompactionForSamzaReprocessingJob();
+    this.intSetProviderForTrackingCompactingPartitions =
+        disableAutoCompactionForSamzaReprocessingJob ? IntOpenHashSet::new : () -> null;
 
     this.storeVersionPartitionCount = version.getPartitionCount();
 
@@ -470,7 +478,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     this.cacheBackend = cacheBackend;
     this.localKafkaServer = this.kafkaProps.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
-    this.localKafkaServerSingletonSet = Collections.unmodifiableSet(Collections.singleton(localKafkaServer));
+    this.localKafkaServerSingletonSet = Collections.singleton(localKafkaServer);
     this.isDaVinciClient = builder.isDaVinciClient();
     this.isActiveActiveReplicationEnabled = version.isActiveActiveReplicationEnabled();
     this.offsetLagDeltaRelaxEnabled = serverConfig.getOffsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart() > 0;
@@ -494,6 +502,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.kafkaClusterUrlToIdMap = serverConfig.getKafkaClusterUrlToIdMap();
     this.localKafkaClusterId = kafkaClusterUrlToIdMap.getOrDefault(localKafkaServer, Integer.MIN_VALUE);
     this.compressionStrategy = version.getCompressionStrategy();
+    this.compressorFactory = builder.getCompressorFactory();
+    this.compressor = Lazy.of(() -> compressorFactory.getCompressor(compressionStrategy, kafkaVersionTopic));
+    this.isChunked = version.isChunkingEnabled();
   }
 
   /** Package-private on purpose, only intended for tests. Do not use for production use cases. */
@@ -985,13 +996,32 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * Once the manual compaction is triggered, all the following messages belonging to the same partition
      * will be dropped.
      */
-    IntSet compactingPartitions = new IntOpenHashSet();
+    IntSet compactingPartitions = intSetProviderForTrackingCompactingPartitions.get();
     int subPartition =
         PartitionUtils.getSubPartition(topicPartition.topic(), topicPartition.partition(), amplificationFactor);
     for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record: records) {
       long beforeProcessingRecordTimestamp = System.nanoTime();
       if (!shouldProcessRecord(record, subPartition)) {
         continue;
+      }
+
+      if (record.key().isControlMessage()) {
+        ControlMessage controlMessage = (ControlMessage) record.value().payloadUnion;
+        if (ControlMessageType.valueOf(controlMessage.controlMessageType) == ControlMessageType.START_OF_PUSH) {
+          /**
+           * N.B.: The rest of the {@link ControlMessage} types are handled by:
+           * {@link #processControlMessage(KafkaMessageEnvelope, ControlMessage, int, long, PartitionConsumptionState)}
+           *
+           * But for the SOP in particular, we want to process it here, at the start of the pipeline, to ensure that the
+           * {@link StoreVersionState} is properly primed, as other functions below this point, but prior to being
+           * enqueued into the {@link StoreBufferService} rely on this state to be there.
+           */
+          processStartOfPush(
+              record.value(),
+              controlMessage,
+              record.partition(),
+              partitionConsumptionStateMap.get(subPartition));
+        }
       }
 
       if (disableAutoCompactionForSamzaReprocessingJob) {
@@ -1027,9 +1057,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           KafkaKey kafkaKey = record.key();
           if (kafkaKey.isControlMessage() && ControlMessageType
               .valueOf((ControlMessage) record.value().payloadUnion) == ControlMessageType.END_OF_PUSH) {
-            Optional<StoreVersionState> storeVersionState =
-                storageMetadataService.getStoreVersionState(kafkaVersionTopic);
-            if (!storeVersionState.isPresent()) {
+            StoreVersionState storeVersionState = storageEngine.getStoreVersionState();
+            if (storeVersionState == null) {
               /**
                * EOP is received, but {@link StoreVersionState} for current store is not available, which indicates that
                * this is a small push, but to be consistent, we will flush all the pending messages in the drainer queue, and wait
@@ -1050,15 +1079,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                   record.topic(),
                   record.partition(),
                   partitionConsumptionState);
-              storeVersionState = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
-              if (!storeVersionState.isPresent()) {
+              storeVersionState = storageEngine.getStoreVersionState();
+              if (storeVersionState == null) {
                 throw new VeniceException(
                     "Failed to get StoreVersionState after draining all the pending messages for topic: "
                         + kafkaVersionTopic + ", partition: " + consumingPartition);
               }
             }
 
-            if (storeVersionState.get().sorted) {
+            if (storeVersionState.sorted) {
               /**
                * The batch part is sorted, which indicates the push job is mostly from VPJ, so no delay compaction is required.
                * Nothing needs to be done here
@@ -1289,7 +1318,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  protected void processMessages(Store store) throws InterruptedException {
+  protected void checkIngestionProgress(Store store) throws InterruptedException {
     Exception ingestionTaskException = lastStoreIngestionException.get();
     if (ingestionTaskException != null) {
       throw new VeniceException(
@@ -1407,7 +1436,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         processConsumerActions(store);
         checkLongRunningTaskState();
         checkLongRunningDBCompaction();
-        processMessages(store);
+        checkIngestionProgress(store);
       }
 
       // If the ingestion task is stopped gracefully (server stops), persist processed offset to disk
@@ -1706,13 +1735,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // If this storage node has never consumed data from this topic, instead of sending "START" here, we send it
     // once START_OF_PUSH message has been read.
     if (offsetRecord.getLocalVersionTopicOffset() > 0) {
-      Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
-      if (storeVersionState.isPresent()) {
-        boolean sorted = storeVersionState.get().sorted;
+      StoreVersionState storeVersionState = storageEngine.getStoreVersionState();
+      if (storeVersionState != null) {
+        boolean sorted = storeVersionState.sorted;
         /**
          * Put TopicSwitch message into in-memory state.
          */
-        TopicSwitch topicSwitch = resolveSourceKafkaServersWithinTopicSwitch(storeVersionState.get().topicSwitch);
+        TopicSwitch topicSwitch = resolveSourceKafkaServersWithinTopicSwitch(storeVersionState.topicSwitch);
         newPartitionConsumptionState.setTopicSwitch(topicSwitch);
 
         /**
@@ -1720,8 +1749,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          */
         beginBatchWrite(partition, sorted, newPartitionConsumptionState);
 
-        newPartitionConsumptionState.setStartOfPushTimestamp(storeVersionState.get().startOfPushTimestamp);
-        newPartitionConsumptionState.setEndOfPushTimestamp(storeVersionState.get().endOfPushTimestamp);
+        newPartitionConsumptionState.setStartOfPushTimestamp(storeVersionState.startOfPushTimestamp);
+        newPartitionConsumptionState.setEndOfPushTimestamp(storeVersionState.endOfPushTimestamp);
 
         statusReportAdapter.reportRestarted(newPartitionConsumptionState);
       }
@@ -1973,8 +2002,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return localKafkaServerSingletonSet;
   }
 
-  public Optional<PartitionConsumptionState> getPartitionConsumptionState(int partitionId) {
-    return Optional.ofNullable(partitionConsumptionStateMap.get(partitionId));
+  public PartitionConsumptionState getPartitionConsumptionState(int partitionId) {
+    return partitionConsumptionStateMap.get(partitionId);
   }
 
   public boolean hasAnyPartitionConsumptionState(Predicate<PartitionConsumptionState> pcsPredicate) {
@@ -2388,18 +2417,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   private void syncEndOfPushTimestampToMetadataService(long endOfPushTimestamp) {
-    Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
-    if (storeVersionState.isPresent()) {
-      storeVersionState.get().endOfPushTimestamp = endOfPushTimestamp;
+    storageMetadataService.computeStoreVersionState(kafkaVersionTopic, previousStoreVersionState -> {
+      if (previousStoreVersionState != null) {
+        previousStoreVersionState.endOfPushTimestamp = endOfPushTimestamp;
 
-      // Sync latest store version level metadata to disk
-      storageMetadataService.put(kafkaVersionTopic, storeVersionState.get());
-    } else {
-      throw new VeniceException(
-          "Unexpected: received some " + ControlMessageType.END_OF_PUSH.name()
-              + " control message in a topic where we have not yet received a "
-              + ControlMessageType.START_OF_PUSH.name() + " control message.");
-    }
+        // Sync latest store version level metadata to disk
+        return previousStoreVersionState;
+      } else {
+        throw new VeniceException(
+            "Unexpected: received some " + ControlMessageType.END_OF_PUSH.name()
+                + " control message in a topic where we have not yet received a "
+                + ControlMessageType.START_OF_PUSH.name() + " control message.");
+      }
+    });
   }
 
   private void processStartOfPush(
@@ -2415,33 +2445,37 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     partitionConsumptionState.setStartOfPushTimestamp(startOfPushKME.producerMetadata.messageTimestamp);
 
     statusReportAdapter.reportStarted(partitionConsumptionState);
-    Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
-    if (!storeVersionState.isPresent()) {
-      // No other partition of the same topic has started yet, let's initialize the StoreVersionState
-      StoreVersionState newStoreVersionState = new StoreVersionState();
-      newStoreVersionState.sorted = startOfPush.sorted;
-      newStoreVersionState.chunked = startOfPush.chunked;
-      newStoreVersionState.compressionStrategy = startOfPush.compressionStrategy;
-      newStoreVersionState.compressionDictionary = startOfPush.compressionDictionary;
-      newStoreVersionState.batchConflictResolutionPolicy = startOfPush.timestampPolicy;
-      newStoreVersionState.startOfPushTimestamp = startOfPushKME.producerMetadata.messageTimestamp;
+    storageMetadataService.computeStoreVersionState(kafkaVersionTopic, previousStoreVersionState -> {
+      if (previousStoreVersionState == null) {
+        // No other partition of the same topic has started yet, let's initialize the StoreVersionState
+        StoreVersionState newStoreVersionState = new StoreVersionState();
+        newStoreVersionState.sorted = startOfPush.sorted;
+        newStoreVersionState.chunked = startOfPush.chunked;
+        newStoreVersionState.compressionStrategy = startOfPush.compressionStrategy;
+        newStoreVersionState.compressionDictionary = startOfPush.compressionDictionary;
+        newStoreVersionState.batchConflictResolutionPolicy = startOfPush.timestampPolicy;
+        newStoreVersionState.startOfPushTimestamp = startOfPushKME.producerMetadata.messageTimestamp;
 
-      storageMetadataService.put(kafkaVersionTopic, newStoreVersionState);
-      LOGGER.info(
-          "Persisted {} for the first time following a SOP for topic {}.",
-          StoreVersionState.class.getSimpleName(),
-          kafkaVersionTopic);
-    } else if (storeVersionState.get().sorted != startOfPush.sorted) {
-      // Something very wrong is going on ): ...
-      throw new VeniceException(
-          "Unexpected: received multiple " + ControlMessageType.START_OF_PUSH.name()
-              + " control messages with inconsistent 'sorted' fields within the same topic!");
-    } else if (storeVersionState.get().chunked != startOfPush.chunked) {
-      // Something very wrong is going on ): ...
-      throw new VeniceException(
-          "Unexpected: received multiple " + ControlMessageType.START_OF_PUSH.name()
-              + " control messages with inconsistent 'chunked' fields within the same topic!");
-    } // else, no need to persist it once more.
+        LOGGER.info(
+            "Persisted {} for the first time following a SOP for topic {}.",
+            StoreVersionState.class.getSimpleName(),
+            kafkaVersionTopic);
+        return newStoreVersionState;
+      } else if (previousStoreVersionState.sorted != startOfPush.sorted) {
+        // Something very wrong is going on ): ...
+        throw new VeniceException(
+            "Unexpected: received multiple " + ControlMessageType.START_OF_PUSH.name()
+                + " control messages with inconsistent 'sorted' fields within the same topic!");
+      } else if (previousStoreVersionState.chunked != startOfPush.chunked) {
+        // Something very wrong is going on ): ...
+        throw new VeniceException(
+            "Unexpected: received multiple " + ControlMessageType.START_OF_PUSH.name()
+                + " control messages with inconsistent 'chunked' fields within the same topic!");
+      } else {
+        // No need to mutate it, so we return it as is
+        return previousStoreVersionState;
+      }
+    });
   }
 
   protected void processEndOfPush(
@@ -2562,7 +2596,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     switch (type) {
       case START_OF_PUSH:
-        processStartOfPush(kafkaMessageEnvelope, controlMessage, partition, partitionConsumptionState);
+        /**
+         * N.B.: The processing for SOP happens at the very beginning of the pipeline, in:
+         * {@link #produceToStoreBufferServiceOrKafka(Iterable, boolean, TopicPartition, String, int)}
+         */
         break;
       case END_OF_PUSH:
         processEndOfPush(kafkaMessageEnvelope, controlMessage, partition, offset, partitionConsumptionState);
@@ -3113,18 +3150,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         Put put = (Put) kafkaValue.payloadUnion;
         waitReadyToProcessDataRecord(put.schemaId);
         try {
-          deserializeValue(put.schemaId, put.putValue);
+          deserializeValue(put.schemaId, put.putValue, record);
         } catch (Exception e) {
-          byte[] valueBytes = ByteUtils.extractByteArray(put.putValue);
-          LOGGER.error(
-              "Encounter the error while deserializing PUT message. topic: {}, partition: {}"
-                  + " offset: {}, schema id: {}, value bytes: {}",
-              record.topic(),
-              record.partition(),
-              record.offset(),
-              put.schemaId,
-              Hex.encodeHexString(valueBytes));
-          throw e;
+          throw new VeniceException(
+              "Failed to deserialize PUT for topic: " + record.topic() + ", partition: " + record.partition()
+                  + ", offset: " + record.offset() + ", schema id: " + put.schemaId,
+              e);
         }
         break;
       case UPDATE:
@@ -3169,18 +3200,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected StoreVersionState waitVersionStateAvailable(String kafkaTopic) throws InterruptedException {
-    long startTime = System.nanoTime();
+    long startTime = System.currentTimeMillis();
+    long elapsedTime;
+    StoreVersionState state;
     for (;;) {
-      Optional<StoreVersionState> state = storageMetadataService.getStoreVersionState(this.kafkaVersionTopic);
-      long elapsedTime = System.nanoTime() - startTime;
+      state = storageEngine.getStoreVersionState();
+      elapsedTime = System.currentTimeMillis() - startTime;
 
-      if (state.isPresent()) {
-        LOGGER.info("Version state is available for {} after {}", kafkaTopic, NANOSECONDS.toSeconds(elapsedTime));
-        return state.get();
+      if (state != null) {
+        LOGGER.info("Version state is available for {} after {} ms", kafkaTopic, elapsedTime);
+        return state;
       }
 
-      if (NANOSECONDS.toMillis(elapsedTime) > SCHEMA_POLLING_TIMEOUT_MS || !isRunning()) {
-        LOGGER.warn("Version state is not available for {} after {}", kafkaTopic, NANOSECONDS.toSeconds(elapsedTime));
+      if (elapsedTime > SCHEMA_POLLING_TIMEOUT_MS || !isRunning()) {
+        LOGGER.warn("Version state is not available for {} after {}", kafkaTopic, elapsedTime);
         throw new VeniceException("Store version state is not available for " + kafkaTopic);
       }
 
@@ -3190,11 +3223,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   private void waitUntilValueSchemaAvailable(int schemaId) throws InterruptedException {
     // Considering value schema is immutable for an existing store, we can cache it locally
-    if (availableSchemaIds.contains(schemaId)) {
+    if (availableSchemaIds.get(schemaId) != null) {
       return;
     }
 
-    long startTime = System.nanoTime();
+    long startTime = System.currentTimeMillis();
+    long elapsedTime;
+    boolean schemaExists;
     for (;;) {
       // Since schema registration topic might be slower than data topic,
       // the consumer will be pending until the new schema arrives.
@@ -3204,15 +3239,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // such as throwing error after certain amount of time;
       // Or we might want to propagate our state to the Controller via the VeniceNotifier,
       // if we're stuck polling more than a certain threshold of time?
-      boolean schemaExists = schemaRepository.hasValueSchema(storeName, schemaId);
-      long elapsedTime = System.nanoTime() - startTime;
+      schemaExists = schemaRepository.hasValueSchema(storeName, schemaId);
+      elapsedTime = System.currentTimeMillis() - startTime;
       if (schemaExists) {
-        LOGGER.info(
-            "Found new value schema [{}] for {} after {}",
-            schemaId,
-            storeName,
-            NANOSECONDS.toSeconds(elapsedTime));
-        availableSchemaIds.add(schemaId);
+        LOGGER.info("Found new value schema [{}] for {} after {} ms", schemaId, storeName, elapsedTime);
+        availableSchemaIds.set(schemaId, new Object());
         // TODO: Query metastore for existence of value schema id before doing an update. During bounce of large
         // cluster these metastore writes could be spiky
         if (metaStoreWriter != null && !VeniceSystemStoreType.META_STORE.isSystemStore(storeName)) {
@@ -3225,12 +3256,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         return;
       }
 
-      if (NANOSECONDS.toMillis(elapsedTime) > SCHEMA_POLLING_TIMEOUT_MS || !isRunning()) {
-        LOGGER.warn(
-            "Value schema [{}] is not available for {} after {}",
-            schemaId,
-            storeName,
-            NANOSECONDS.toSeconds(elapsedTime));
+      if (elapsedTime > SCHEMA_POLLING_TIMEOUT_MS || !isRunning()) {
+        LOGGER.warn("Value schema [{}] is not available for {} after {} ms", schemaId, storeName, elapsedTime);
         throw new VeniceException("Value schema [" + schemaId + "] is not available for " + storeName);
       }
 
@@ -3240,27 +3267,30 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   /**
    * Deserialize a value using the schema that serializes it. Exception will be thrown and ingestion will fail if the
-   * value cannot be deserialized. Currently the deserialization dry-run won't happen in the following cases:
+   * value cannot be deserialized. Currently, the deserialization dry-run won't happen in the following cases:
    *
    * 1. Value is chunked. A single piece of value cannot be deserialized. In this case, the schema id is not added in
    *    availableSchemaIds by {@link StoreIngestionTask#waitUntilValueSchemaAvailable}.
-   * 2. Value is compressed, which cannot be deserialized without decompression.
-   * 3. Ingestion isolation is enabled, in which ingestion happens on forked process instead of this main process.
+   * 2. Ingestion isolation is enabled, in which case ingestion happens on forked process instead of this main process.
    */
-  private void deserializeValue(int schemaId, ByteBuffer value) {
-    if (!availableSchemaIds.contains(schemaId) || deserializedSchemaIds.contains(schemaId)) {
+  private void deserializeValue(int schemaId, ByteBuffer value, ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record)
+      throws IOException {
+    if (schemaId < 0 || deserializedSchemaIds.get(schemaId) != null || availableSchemaIds.get(schemaId) == null) {
       return;
     }
-    Optional<StoreVersionState> state = storageMetadataService.getStoreVersionState(this.kafkaVersionTopic);
-    if (!state.isPresent() || state.get().compressionStrategy != CompressionStrategy.NO_OP.getValue()) {
-      return;
+    if (!Version.isRealTimeTopic(record.topic())) {
+      value = compressor.get().decompress(value);
     }
     SchemaEntry valueSchema = schemaRepository.getValueSchema(storeName, schemaId);
     if (valueSchema != null) {
       Schema schema = valueSchema.getSchema();
       new AvroGenericDeserializer<>(schema, schema).deserialize(value);
-      LOGGER.info("Value deserialization succeeded with schema [{}] for {}", schemaId, storeName);
-      deserializedSchemaIds.add(schemaId);
+      LOGGER.info(
+          "Value deserialization succeeded with schema id {} for topic: {}, partition: {}",
+          schemaId,
+          record.topic(),
+          record.partition());
+      deserializedSchemaIds.set(schemaId, new Object());
     }
   }
 
@@ -3544,8 +3574,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Invoked by admin request to dump store version state metadata.
    */
   public void dumpStoreVersionState(AdminResponse response) {
-    Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(kafkaVersionTopic);
-    storeVersionState.ifPresent(response::addStoreVersionState);
+    StoreVersionState storeVersionState = storageEngine.getStoreVersionState();
+    if (storeVersionState != null) {
+      response.addStoreVersionState(storeVersionState);
+    }
   }
 
   public VeniceServerConfig getServerConfig() {

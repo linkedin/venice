@@ -14,12 +14,16 @@ import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_PRODUCER_POOL_SIZE_PER
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_KAFKA_PRODUCER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS;
+import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
-import static com.linkedin.venice.samza.VeniceSystemFactory.D2_ZK_HOSTS_PROPERTY;
+import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.PARENT_D2_SERVICE_NAME;
 import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
 import static com.linkedin.venice.samza.VeniceSystemFactory.DOT;
 import static com.linkedin.venice.samza.VeniceSystemFactory.SYSTEMS_PREFIX;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_AGGREGATE;
+import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_CONTROLLER_D2_SERVICE;
+import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_D2_ZK_HOSTS;
+import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_CONTROLLER_D2_SERVICE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_D2_ZK_HOSTS;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PUSH_TYPE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_STORE;
@@ -77,6 +81,7 @@ public class DataRecoveryTest {
 
   @BeforeClass(alwaysRun = true)
   public void setUp() {
+    Utils.thisIsLocalhost();
     Properties serverProperties = new Properties();
     serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
     serverProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
@@ -105,7 +110,6 @@ public class DataRecoveryTest {
         Optional.of(new VeniceProperties(controllerProps)),
         Optional.of(controllerProps),
         Optional.of(new VeniceProperties(serverProperties)),
-        false,
         false);
     childDatacenters = multiColoMultiClusterWrapper.getClusters();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
@@ -114,9 +118,7 @@ public class DataRecoveryTest {
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    if (multiColoMultiClusterWrapper != null) {
-      multiColoMultiClusterWrapper.close();
-    }
+    Utils.closeQuietlyWithErrorLogged(multiColoMultiClusterWrapper);
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -225,7 +227,7 @@ public class DataRecoveryTest {
       // Prepare dc-1 for data recovery
       Assert.assertFalse(
           parentControllerClient.prepareDataRecovery("dc-0", "dc-1", storeName, 1, Optional.empty()).isError());
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
         ReadyForDataRecoveryResponse readinessResponse =
             parentControllerClient.isStoreVersionReadyForDataRecovery("dc-0", "dc-1", storeName, 1, Optional.empty());
         Assert.assertTrue(readinessResponse.isReady(), readinessResponse.getReason());
@@ -250,7 +252,7 @@ public class DataRecoveryTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT * 2)
   public void testHybridAADataRecovery() throws Exception {
     String storeName = Utils.getUniqueString("dataRecovery-store-hybrid-AA");
     String parentControllerURLs =
@@ -286,8 +288,10 @@ public class DataRecoveryTest {
       samzaConfig.put(configPrefix + VENICE_PUSH_TYPE, Version.PushType.STREAM.toString());
       samzaConfig.put(configPrefix + VENICE_STORE, storeName);
       samzaConfig.put(configPrefix + VENICE_AGGREGATE, "false");
-      samzaConfig.put(D2_ZK_HOSTS_PROPERTY, childDatacenters.get(0).getZkServerWrapper().getAddress());
+      samzaConfig.put(VENICE_CHILD_D2_ZK_HOSTS, childDatacenters.get(0).getZkServerWrapper().getAddress());
+      samzaConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, D2_SERVICE_NAME);
       samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, parentControllers.get(0).getKafkaZkAddress());
+      samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
       samzaConfig.put(DEPLOYMENT_ID, Utils.getUniqueString("venice-push-id"));
       samzaConfig.put(SSL_ENABLED, "false");
       VeniceSystemFactory factory = new VeniceSystemFactory();

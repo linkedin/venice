@@ -1897,13 +1897,43 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null)
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, -1, 1));
-
     parentAdmin.initStorageCluster(clusterName);
+
     Assert.assertThrows(
         () -> parentAdmin.updateStore(
             clusterName,
             storeName,
             new UpdateStoreQueryParams().setPartitionerClass("com.linkedin.im.a.bad.man").setAmplificationFactor(-1)));
+    verify(veniceWriter, times(0)).put(any(), any(), anyInt());
+
+    Assert.assertThrows(
+        () -> parentAdmin.updateStore(
+            clusterName,
+            storeName,
+            new UpdateStoreQueryParams().setWriteComputationEnabled(true).setAmplificationFactor(2)));
+    verify(veniceWriter, times(0)).put(any(), any(), anyInt());
+
+    Assert.assertThrows(
+        () -> parentAdmin.updateStore(
+            clusterName,
+            storeName,
+            new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true).setAmplificationFactor(2)));
+    verify(veniceWriter, times(0)).put(any(), any(), anyInt());
+
+    store.setWriteComputationEnabled(true);
+    Assert.assertThrows(
+        () -> parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setAmplificationFactor(2)));
+    verify(veniceWriter, times(0)).put(any(), any(), anyInt());
+
+    store.setWriteComputationEnabled(false);
+    store.setActiveActiveReplicationEnabled(true);
+    Assert.assertThrows(
+        () -> parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setAmplificationFactor(2)));
+    verify(veniceWriter, times(0)).put(any(), any(), anyInt());
+
+    store.setActiveActiveReplicationEnabled(false);
+    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setAmplificationFactor(2));
+    verify(veniceWriter, times(1)).put(any(), any(), anyInt());
   }
 
   @Test

@@ -20,6 +20,7 @@ import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.zookeeper.data.Stat;
 
 
 public class HelixStoreGraveyard implements StoreGraveyard {
@@ -44,8 +45,7 @@ public class HelixStoreGraveyard implements StoreGraveyard {
       Collection<String> clusterNames,
       VeniceSerializer<Store> storeSerializer) {
     this.clusterNames = new HashSet<>(clusterNames);
-    adapterSerializer
-        .registerSerializer(getGeneralDeletedStorePath(PathResourceRegistry.WILDCARD_MATCH_ANY), storeSerializer);
+    adapterSerializer.registerSerializer(getGeneralStoreGraveyardPath(), storeSerializer);
     zkClient.setZkSerializer(adapterSerializer);
     dataAccessor = new ZkBaseDataAccessor<>(zkClient);
   }
@@ -81,37 +81,6 @@ public class HelixStoreGraveyard implements StoreGraveyard {
         "Found store: {} in the store graveyard. Will initialize the new store at version: {}.",
         storeName,
         largestUsedVersionNumber);
-    return largestUsedVersionNumber;
-  }
-
-  @Override
-  public int getPerUserStoreSystemStoreLargestUsedVersionNumber(
-      String userStoreName,
-      VeniceSystemStoreType systemStoreType) {
-    String systemStoreName = systemStoreType.getSystemStoreName(userStoreName);
-    List<Store> deletedStores = getStoreFromAllClusters(userStoreName);
-    if (deletedStores.isEmpty()) {
-      LOGGER.info(
-          "User store: {} does NOT exist in the store graveyard. Hence, no largest used version for "
-              + "its system store: {}.",
-          userStoreName,
-          systemStoreName);
-      return Store.NON_EXISTING_VERSION;
-    }
-    int largestUsedVersionNumber = Store.NON_EXISTING_VERSION;
-    for (Store deletedStore: deletedStores) {
-      Map<String, SystemStoreAttributes> systemStoreNamesToAttributes = deletedStore.getSystemStores();
-      SystemStoreAttributes systemStoreAttributes =
-          systemStoreNamesToAttributes.get(VeniceSystemStoreType.getSystemStoreType(systemStoreName).getPrefix());
-      if (systemStoreAttributes != null) {
-        largestUsedVersionNumber =
-            Math.max(largestUsedVersionNumber, systemStoreAttributes.getLargestUsedVersionNumber());
-      }
-    }
-
-    if (largestUsedVersionNumber == Store.NON_EXISTING_VERSION) {
-      LOGGER.info("Can not find largest used version number for {}.", systemStoreName);
-    }
     return largestUsedVersionNumber;
   }
 
@@ -160,20 +129,32 @@ public class HelixStoreGraveyard implements StoreGraveyard {
 
     // Store does not exist in graveyard OR store already exists but the re-created store is deleted again so we need to
     // update the ZNode.
-    HelixUtils.update(dataAccessor, getClusterDeletedStorePath(clusterName, store.getName()), store);
+    HelixUtils.update(dataAccessor, getStoreGraveyardPath(clusterName, store.getName()), store);
     LOGGER.info(
         "Put store: {} into graveyard with largestUsedVersionNumber {}.",
         store.getName(),
         largestUsedVersionNumber);
   }
 
+  @Override
+  public Store getStoreFromGraveyard(String clusterName, String storeName, Stat stat) {
+    String path = getStoreGraveyardPath(clusterName, storeName);
+    return dataAccessor.get(path, stat, AccessOption.PERSISTENT);
+  }
+
+  @Override
   public void removeStoreFromGraveyard(String clusterName, String storeName) {
-    String path = getClusterDeletedStorePath(clusterName, storeName);
+    String path = getStoreGraveyardPath(clusterName, storeName);
     Store store = dataAccessor.get(path, null, AccessOption.PERSISTENT);
     if (store != null) {
       HelixUtils.remove(dataAccessor, path);
-      LOGGER.info("Removed store: {} from graveyard.", storeName);
+      LOGGER.info("Removed store: {} from graveyard in cluster: {}.", storeName, clusterName);
     }
+  }
+
+  @Override
+  public List<String> listStoreNamesFromGraveyard(String clusterName) {
+    return HelixUtils.listPathContents(dataAccessor, getStoreGraveyardParentPath(clusterName));
   }
 
   /**
@@ -185,7 +166,7 @@ public class HelixStoreGraveyard implements StoreGraveyard {
   private List<Store> getStoreFromAllClusters(String storeName) {
     List<Store> stores = new ArrayList<>();
     for (String clusterName: clusterNames) {
-      Store store = dataAccessor.get(getClusterDeletedStorePath(clusterName, storeName), null, AccessOption.PERSISTENT);
+      Store store = dataAccessor.get(getStoreGraveyardPath(clusterName, storeName), null, AccessOption.PERSISTENT);
       if (store != null) {
         stores.add(store);
       }
@@ -193,12 +174,44 @@ public class HelixStoreGraveyard implements StoreGraveyard {
     return stores;
   }
 
-  private String getGeneralDeletedStorePath(String storeName) {
-    return HelixUtils.getHelixClusterZkPath(PathResourceRegistry.WILDCARD_MATCH_ANY) + STORE_GRAVEYARD_PATH + "/"
-        + storeName;
+  private int getPerUserStoreSystemStoreLargestUsedVersionNumber(
+      String userStoreName,
+      VeniceSystemStoreType systemStoreType) {
+    String systemStoreName = systemStoreType.getSystemStoreName(userStoreName);
+    List<Store> deletedStores = getStoreFromAllClusters(userStoreName);
+    if (deletedStores.isEmpty()) {
+      LOGGER.info(
+          "User store: {} does NOT exist in the store graveyard. Hence, no largest used version for its system store: {}",
+          userStoreName,
+          systemStoreName);
+      return Store.NON_EXISTING_VERSION;
+    }
+    int largestUsedVersionNumber = Store.NON_EXISTING_VERSION;
+    for (Store deletedStore: deletedStores) {
+      Map<String, SystemStoreAttributes> systemStoreNamesToAttributes = deletedStore.getSystemStores();
+      SystemStoreAttributes systemStoreAttributes =
+          systemStoreNamesToAttributes.get(VeniceSystemStoreType.getSystemStoreType(systemStoreName).getPrefix());
+      if (systemStoreAttributes != null) {
+        largestUsedVersionNumber =
+            Math.max(largestUsedVersionNumber, systemStoreAttributes.getLargestUsedVersionNumber());
+      }
+    }
+
+    if (largestUsedVersionNumber == Store.NON_EXISTING_VERSION) {
+      LOGGER.info("Can not find largest used version number for {}.", systemStoreName);
+    }
+    return largestUsedVersionNumber;
   }
 
-  private String getClusterDeletedStorePath(String clusterName, String storeName) {
-    return HelixUtils.getHelixClusterZkPath(clusterName) + STORE_GRAVEYARD_PATH + "/" + storeName;
+  private String getGeneralStoreGraveyardPath() {
+    return getStoreGraveyardPath(PathResourceRegistry.WILDCARD_MATCH_ANY, PathResourceRegistry.WILDCARD_MATCH_ANY);
+  }
+
+  private String getStoreGraveyardPath(String clusterName, String storeName) {
+    return getStoreGraveyardParentPath(clusterName) + "/" + storeName;
+  }
+
+  private String getStoreGraveyardParentPath(String clusterName) {
+    return HelixUtils.getHelixClusterZkPath(clusterName) + STORE_GRAVEYARD_PATH;
   }
 }

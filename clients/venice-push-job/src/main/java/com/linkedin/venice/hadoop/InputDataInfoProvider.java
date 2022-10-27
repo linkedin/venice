@@ -25,7 +25,17 @@ public interface InputDataInfoProvider extends Closeable {
         int numInputFiles,
         boolean hasRecords,
         long inputModificationTime) {
-      if (inputFileDataSizeInBytes <= 0) {
+      this(pushJobSchemaInfo, inputFileDataSizeInBytes, numInputFiles, hasRecords, inputModificationTime, true);
+    }
+
+    InputDataInfo(
+        PushJobSchemaInfo pushJobSchemaInfo,
+        long inputFileDataSizeInBytes,
+        int numInputFiles,
+        boolean hasRecords,
+        long inputModificationTime,
+        boolean requireValidInputFileDataSizeInBytes) {
+      if (requireValidInputFileDataSizeInBytes && inputFileDataSizeInBytes <= 0) {
         throw new IllegalArgumentException(
             "The input data file size is expected to be positive. Got: " + inputFileDataSizeInBytes);
       }

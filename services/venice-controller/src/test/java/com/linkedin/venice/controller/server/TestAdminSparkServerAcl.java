@@ -3,6 +3,7 @@ package com.linkedin.venice.controller.server;
 import com.linkedin.venice.controller.MockVeniceAuthorizer;
 import com.linkedin.venice.controllerapi.AclResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
+import com.linkedin.venice.utils.Utils;
 import java.util.Optional;
 import java.util.Properties;
 import org.testng.Assert;
@@ -33,7 +34,7 @@ public class TestAdminSparkServerAcl extends AbstractTestAdminSparkServer {
    */
   @Test(timeOut = TEST_TIMEOUT)
   public void testAclRestApis() {
-    String storeName = "test-store-authorizer";
+    String storeName = Utils.getUniqueString("test-store-authorizer");
     String keySchema = "\"string\"";
     String valueSchema = "\"long\"";
     String accessPerm =
@@ -69,7 +70,7 @@ public class TestAdminSparkServerAcl extends AbstractTestAdminSparkServer {
    */
   @Test(timeOut = TEST_TIMEOUT)
   public void testAclRestApiException() {
-    String storeName = "test-store-authorizer-na";
+    String storeName = Utils.getUniqueString("test-store-authorizer-na");
 
     AclResponse aclResponse = controllerClient.getAclForStore(storeName);
     Assert.assertTrue(aclResponse.isError(), "getAcl for store should fail as the store does not exist");

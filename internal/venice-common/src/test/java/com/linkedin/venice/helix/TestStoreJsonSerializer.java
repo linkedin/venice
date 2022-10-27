@@ -27,7 +27,7 @@ public class TestStoreJsonSerializer {
   @Test
   public void testSerializeAndDeserializeStore() throws IOException {
     Store store = TestUtils.createTestStore("s1", "owner", 1l);
-    store.increaseVersion();
+    store.addVersion(new VersionImpl(store.getName(), store.getLargestUsedVersionNumber() + 1, "pushJobId"));
     HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(
         1000,
         1000,
@@ -90,7 +90,7 @@ public class TestStoreJsonSerializer {
   @Test
   public void testDeserializeStoreWithUnknownField() throws IOException {
     Store store = TestUtils.createTestStore("s1", "owner", 1l);
-    store.increaseVersion();
+    store.addVersion(new VersionImpl(store.getName(), store.getLargestUsedVersionNumber() + 1, "pushJobId"));
     store.setReadQuotaInCU(100);
     StoreJSONSerializer serializer = new StoreJSONSerializer();
     byte[] data = serializer.serialize(store, "");
@@ -104,7 +104,7 @@ public class TestStoreJsonSerializer {
   @Test
   public void testDeserializeDisabledStore() throws IOException {
     Store store = TestUtils.createTestStore("s1", "owner", 1l);
-    store.increaseVersion();
+    store.addVersion(new VersionImpl(store.getName(), store.getLargestUsedVersionNumber() + 1, "pushJobId"));
     store.setEnableReads(false);
     store.setEnableWrites(false);
     store.setReadQuotaInCU(100);

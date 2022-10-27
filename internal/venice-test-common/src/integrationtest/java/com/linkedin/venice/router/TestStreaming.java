@@ -216,7 +216,7 @@ public class TestStreaming {
       MetricsRepository d2ClientMetricsRepository = new MetricsRepository();
       d2StoreClient = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName)
-              .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
+              .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
               .setD2Client(d2Client)
               .setMetricsRepository(d2ClientMetricsRepository)
               .setUseFastAvro(false));
@@ -384,7 +384,7 @@ public class TestStreaming {
     }
   }
 
-  @Test(timeOut = 5000)
+  @Test(timeOut = 30000)
   public void testWithNonExistingStore() throws ExecutionException, InterruptedException {
     String nonExistingStoreName = Utils.getUniqueString("non_existing_store");
     D2Client d2Client = null;
@@ -396,7 +396,7 @@ public class TestStreaming {
       D2TestUtils.startD2Client(d2Client);
       d2StoreClient = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(nonExistingStoreName)
-              .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
+              .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
               .setD2Client(d2Client));
       d2StoreClient.get("test").get();
       fail("An exception is expected here");
@@ -424,7 +424,7 @@ public class TestStreaming {
       // Don't start d2 client
       d2StoreClient = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName)
-              .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
+              .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
               .setD2Client(d2Client)
               .setForceClusterDiscoveryAtStartTime(true));
       fail("An exception is expected here");

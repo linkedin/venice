@@ -7,8 +7,6 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.kafka.admin.InstrumentedKafkaAdmin;
 import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
 import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumer;
-import com.linkedin.venice.kafka.consumer.AutoClosingKafkaConsumer;
-import com.linkedin.venice.kafka.consumer.AutoClosingKafkaConsumerStats;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
@@ -35,26 +33,20 @@ import org.apache.logging.log4j.Logger;
  */
 public abstract class KafkaClientFactory {
   private static final Logger LOGGER = LogManager.getLogger(KafkaClientFactory.class);
-  public static final boolean DEFAULT_AUTO_CLOSE_IDLE_CONSUMERS_ENABLED = false;
 
   protected final Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader;
-  private final Optional<AutoClosingKafkaConsumerStats> stats;
-  private final boolean autoCloseIdleConsumersEnabled;
   private final Optional<MetricsParameters> metricsParameters;
 
   protected KafkaClientFactory() {
-    this(Optional.empty(), Optional.empty(), DEFAULT_AUTO_CLOSE_IDLE_CONSUMERS_ENABLED);
+    this(Optional.empty(), Optional.empty());
   }
 
   protected KafkaClientFactory(
       @Nonnull Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader,
-      Optional<MetricsParameters> metricsParameters,
-      boolean autoCloseIdleConsumersEnabled) {
+      Optional<MetricsParameters> metricsParameters) {
     Validate.notNull(kafkaMessageEnvelopeSchemaReader);
     this.kafkaMessageEnvelopeSchemaReader = kafkaMessageEnvelopeSchemaReader;
     this.metricsParameters = metricsParameters;
-    this.stats = metricsParameters.map(m -> new AutoClosingKafkaConsumerStats(m.metricsRepository, m.uniqueName));
-    this.autoCloseIdleConsumersEnabled = autoCloseIdleConsumersEnabled;
   }
 
   public Optional<MetricsParameters> getMetricsParameters() {
@@ -96,13 +88,6 @@ public abstract class KafkaClientFactory {
 
   private <K, V> Consumer<K, V> getKafkaConsumer(Properties properties) {
     Properties propertiesWithSSL = setupSSL(properties);
-    if (autoCloseIdleConsumersEnabled) {
-      AutoClosingKafkaConsumer<K, V> consumer = new AutoClosingKafkaConsumer<>(propertiesWithSSL, stats);
-      stats.ifPresent(s -> {
-        s.addConsumerToTrack(consumer);
-      });
-      return consumer;
-    }
     return new KafkaConsumer<>(propertiesWithSSL);
   }
 

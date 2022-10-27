@@ -31,6 +31,7 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.DaVinciTestContext;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -636,8 +637,11 @@ public class DaVinciComputeTest {
     try (
         VeniceWriter<GenericRecord, GenericRecord, byte[]> writer =
             vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
-        CachingDaVinciClientFactory factory =
-            new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig);
+        CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+            d2Client,
+            VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+            metricsRepository,
+            backendConfig);
         DaVinciClient<GenericRecord, GenericRecord> client =
             factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig().setStorageClass(StorageClass.DISK))) {
 
@@ -732,8 +736,11 @@ public class DaVinciComputeTest {
     try (
         VeniceWriter<GenericRecord, GenericRecord, byte[]> writer =
             vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
-        CachingDaVinciClientFactory factory =
-            new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig);
+        CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
+            d2Client,
+            VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+            metricsRepository,
+            backendConfig);
         DaVinciClient<GenericRecord, GenericRecord> client =
             factory.getAndStartGenericAvroClient(storeName, new DaVinciConfig())) {
 

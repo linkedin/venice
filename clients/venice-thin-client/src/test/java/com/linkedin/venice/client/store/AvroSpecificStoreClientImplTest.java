@@ -12,6 +12,7 @@ import com.linkedin.venice.client.utils.StoreClientTestUtils;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.MockD2ServerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.utils.Utils;
 import io.netty.handler.codec.http.FullHttpResponse;
 import java.io.IOException;
 import java.util.HashMap;
@@ -36,13 +37,15 @@ public class AvroSpecificStoreClientImplTest {
   private String storeName = "test_store";
   private String defaultKeySchemaStr = TestKeyRecord.SCHEMA$.toString();
   private D2Client d2Client;
+  private String d2ServiceName;
 
   private Map<String, AvroSpecificStoreClient<TestKeyRecord, TestValueRecord>> storeClients = new HashMap<>();
   private AbstractAvroStoreClient<TestKeyRecord, TestValueRecord> someStoreClient;
 
   @BeforeTest
   public void setUp() throws Exception {
-    routerServer = ServiceFactory.getMockD2Server("Mock-router-server");
+    d2ServiceName = Utils.getUniqueString("VeniceRouter");
+    routerServer = ServiceFactory.getMockD2Server("Mock-router-server", d2ServiceName);
     routerHost = routerServer.getHost();
     port = routerServer.getPort();
   }
@@ -64,8 +67,7 @@ public class AvroSpecificStoreClientImplTest {
 
     routerServer.addResponseForUri(
         clusterDiscoveryPath,
-        StoreClientTestUtils
-            .constructHttpClusterDiscoveryResponse(storeName, "test_cluster", D2TestUtils.DEFAULT_TEST_SERVICE_NAME));
+        StoreClientTestUtils.constructHttpClusterDiscoveryResponse(storeName, "test_cluster", d2ServiceName));
 
     // http based client
     String routerUrl = "http://" + routerHost + ":" + port + "/";
@@ -77,7 +79,7 @@ public class AvroSpecificStoreClientImplTest {
     d2Client = D2TestUtils.getAndStartD2Client(routerServer.getZkAddress());
     AvroSpecificStoreClient<TestKeyRecord, TestValueRecord> d2StoreClient = ClientFactory.getAndStartSpecificAvroClient(
         ClientConfig.defaultSpecificClientConfig(storeName, TestValueRecord.class)
-            .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
+            .setD2ServiceName(d2ServiceName)
             .setD2Client(d2Client));
     storeClients.put(D2TransportClient.class.getSimpleName(), d2StoreClient);
 
@@ -85,7 +87,7 @@ public class AvroSpecificStoreClientImplTest {
     AvroSpecificStoreClient<TestKeyRecord, TestValueRecord> d2StoreClientWithFastAvro =
         ClientFactory.getAndStartSpecificAvroClient(
             ClientConfig.defaultSpecificClientConfig(storeName, TestValueRecord.class)
-                .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
+                .setD2ServiceName(d2ServiceName)
                 .setD2Client(d2Client)
                 .setUseFastAvro(true));
     storeClients.put(D2TransportClient.class.getSimpleName() + "-fast_avro", d2StoreClientWithFastAvro);

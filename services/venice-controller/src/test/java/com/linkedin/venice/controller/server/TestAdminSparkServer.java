@@ -975,7 +975,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
 
     String clusterName = cluster.getClusterName();
     String storeName = Utils.getUniqueString("controllerClientCanDeleteKafkaTopic");
-    VeniceHelixAdmin childControllerAdmin = cluster.getRandmonVeniceController().getVeniceHelixAdmin();
+    VeniceHelixAdmin childControllerAdmin = cluster.getRandomVeniceController().getVeniceHelixAdmin();
     childControllerAdmin.createStore(clusterName, storeName, "test", "\"string\"", "\"string\"");
     childControllerAdmin.updateStore(
         clusterName,
@@ -995,12 +995,15 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
   public void testCleanupInstanceCustomizedStates() {
     String clusterName = cluster.getClusterName();
     String storeName = Utils.getUniqueString("cleanupInstanceCustomizedStatesTest");
-    VeniceHelixAdmin childControllerAdmin = cluster.getRandmonVeniceController().getVeniceHelixAdmin();
+    VeniceHelixAdmin childControllerAdmin = cluster.getRandomVeniceController().getVeniceHelixAdmin();
     childControllerAdmin.createStore(clusterName, storeName, "test", "\"string\"", "\"string\"");
-    childControllerAdmin.incrementVersionIdempotent(clusterName, storeName, "test", 1, 1);
+    Version version = childControllerAdmin.incrementVersionIdempotent(clusterName, storeName, "test", 1, 1);
     MultiStoreTopicsResponse response = controllerClient.cleanupInstanceCustomizedStates();
     Assert.assertFalse(response.isError());
-    Assert.assertTrue(response.getTopics().isEmpty());
+    Assert.assertNotNull(response.getTopics());
+    for (String topic: response.getTopics()) {
+      Assert.assertFalse(topic.endsWith("/" + version.kafkaTopicName()));
+    }
   }
 
   private void deleteStore(String storeName) {

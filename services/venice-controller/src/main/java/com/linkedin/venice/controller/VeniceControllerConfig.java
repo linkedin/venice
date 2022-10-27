@@ -11,7 +11,6 @@ import static com.linkedin.venice.ConfigKeys.ADMIN_TOPIC_REMOTE_CONSUMPTION_ENAB
 import static com.linkedin.venice.ConfigKeys.ADMIN_TOPIC_SOURCE_REGION;
 import static com.linkedin.venice.ConfigKeys.AGGREGATE_REAL_TIME_SOURCE_REGION;
 import static com.linkedin.venice.ConfigKeys.ALLOW_CLUSTER_WIPE;
-import static com.linkedin.venice.ConfigKeys.AUTO_CLOSE_IDLE_CONSUMERS_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_ALLOWLIST;
 import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_D2_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_D2_SERVICE_NAME;
@@ -20,6 +19,7 @@ import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_WHITELIST;
 import static com.linkedin.venice.ConfigKeys.CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_ZK_PREFIX;
+import static com.linkedin.venice.ConfigKeys.CLUSTER_DISCOVERY_D2_SERVICE;
 import static com.linkedin.venice.ConfigKeys.CONCURRENT_INIT_ROUTINES_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE;
@@ -36,6 +36,9 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_BATCH_PUSH_FROM_A
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENFORCE_SSL;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HAAS_SUPER_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_IN_AZURE_FABRIC;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_DELAY_MINUTES;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MINUTES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_STORE_ACL_SYNCHRONIZATION_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ZK_SHARED_DAVINCI_PUSH_STATUS_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED;
@@ -74,10 +77,10 @@ import static com.linkedin.venice.ConfigKeys.VENICE_STORAGE_CLUSTER_LEADER_HAAS;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.authorization.DefaultIdentityParser;
+import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.KafkaClientFactory;
-import com.linkedin.venice.kafka.admin.ScalaAdminUtils;
+import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.status.BatchJobHeartbeatConfigs;
 import com.linkedin.venice.utils.RegionUtils;
 import com.linkedin.venice.utils.Time;
@@ -116,6 +119,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final boolean parent;
   private final Map<String, String> childDataCenterControllerUrlMap;
   private final String d2ServiceName;
+  private final String clusterDiscoveryD2ServiceName;
   private final Map<String, String> childDataCenterControllerD2Map;
   private final int parentControllerWaitingTimeForConsumptionMs;
   private final String batchJobHeartbeatStoreCluster;// Name of cluster where the batch job liveness heartbeat store
@@ -222,8 +226,6 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   private final boolean allowClusterWipe;
 
-  private final boolean autoCloseIdleConsumersEnabled;
-
   private final boolean childControllerAdminTopicConsumptionEnabled;
 
   private final boolean concurrentInitRoutinesEnabled;
@@ -235,6 +237,12 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final boolean unregisterMetricForDeletedStoreEnabled;
 
   private final String identityParserClassName;
+
+  private final boolean storeGraveyardCleanupEnabled;
+
+  private final int storeGraveyardCleanupDelayMinutes;
+
+  private final int storeGraveyardCleanupSleepIntervalBetweenListFetchMinutes;
 
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
@@ -373,7 +381,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
         props.getBoolean(TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS, false);
     this.enableBatchPushFromAdminInChildController =
         props.getBoolean(CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD, true);
-    this.kafkaAdminClass = props.getString(KAFKA_ADMIN_CLASS, ScalaAdminUtils.class.getName());
+    this.kafkaAdminClass = props.getString(KAFKA_ADMIN_CLASS, KafkaAdminClient.class.getName());
     this.kafkaWriteOnlyClass = props.getString(KAFKA_WRITE_ONLY_ADMIN_CLASS, kafkaAdminClass);
     this.kafkaReadOnlyClass = props.getString(KAFKA_READ_ONLY_ADMIN_CLASS, kafkaAdminClass);
     this.errorPartitionAutoResetLimit = props.getInt(ERROR_PARTITION_AUTO_RESET_LIMIT, 0);
@@ -417,14 +425,18 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.usePushStatusStoreForIncrementalPush = props.getBoolean(USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH, false);
     this.emergencySourceRegion = props.getString(EMERGENCY_SOURCE_REGION, "");
     this.allowClusterWipe = props.getBoolean(ALLOW_CLUSTER_WIPE, false);
-    this.autoCloseIdleConsumersEnabled = props
-        .getBoolean(AUTO_CLOSE_IDLE_CONSUMERS_ENABLED, KafkaClientFactory.DEFAULT_AUTO_CLOSE_IDLE_CONSUMERS_ENABLED);
     this.childControllerAdminTopicConsumptionEnabled =
         props.getBoolean(CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED, true);
     this.concurrentInitRoutinesEnabled = props.getBoolean(CONCURRENT_INIT_ROUTINES_ENABLED, false);
     this.controllerInAzureFabric = props.getBoolean(CONTROLLER_IN_AZURE_FABRIC, false);
     this.unregisterMetricForDeletedStoreEnabled = props.getBoolean(UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED, false);
     this.identityParserClassName = props.getString(IDENTITY_PARSER_CLASS, DefaultIdentityParser.class.getName());
+    this.storeGraveyardCleanupEnabled = props.getBoolean(CONTROLLER_STORE_GRAVEYARD_CLEANUP_ENABLED, false);
+    this.storeGraveyardCleanupDelayMinutes = props.getInt(CONTROLLER_STORE_GRAVEYARD_CLEANUP_DELAY_MINUTES, 0);
+    this.storeGraveyardCleanupSleepIntervalBetweenListFetchMinutes =
+        props.getInt(CONTROLLER_STORE_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MINUTES, 15);
+    this.clusterDiscoveryD2ServiceName =
+        props.getString(CLUSTER_DISCOVERY_D2_SERVICE, ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME);
   }
 
   private void validateActiveActiveConfigs() {
@@ -512,6 +524,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public String getD2ServiceName() {
     return d2ServiceName;
+  }
+
+  public String getClusterDiscoveryD2ServiceName() {
+    return clusterDiscoveryD2ServiceName;
   }
 
   public Map<String, String> getChildDataCenterControllerD2Map() {
@@ -746,19 +762,15 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   }
 
   public String getChildControllerUrl(String fabric) {
-    return getProps().getString(CHILD_CLUSTER_URL_PREFIX + "." + fabric, "");
+    return getProps().getString(CHILD_CLUSTER_URL_PREFIX + fabric, "");
   }
 
   public String getChildControllerD2ZkHost(String fabric) {
-    return getProps().getString(CHILD_CLUSTER_D2_PREFIX + "." + fabric, "");
+    return getProps().getString(CHILD_CLUSTER_D2_PREFIX + fabric, "");
   }
 
   public boolean isClusterWipeAllowed() {
     return allowClusterWipe;
-  }
-
-  public boolean isAutoCloseIdleConsumersEnabled() {
-    return autoCloseIdleConsumersEnabled;
   }
 
   public boolean isChildControllerAdminTopicConsumptionEnabled() {
@@ -783,6 +795,18 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public String getIdentityParserClassName() {
     return identityParserClassName;
+  }
+
+  public boolean isStoreGraveyardCleanupEnabled() {
+    return storeGraveyardCleanupEnabled;
+  }
+
+  public int getStoreGraveyardCleanupDelayMinutes() {
+    return storeGraveyardCleanupDelayMinutes;
+  }
+
+  public int getStoreGraveyardCleanupSleepIntervalBetweenListFetchMinutes() {
+    return storeGraveyardCleanupSleepIntervalBetweenListFetchMinutes;
   }
 
   /**

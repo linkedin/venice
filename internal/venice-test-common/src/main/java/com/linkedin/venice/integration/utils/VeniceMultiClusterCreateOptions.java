@@ -29,7 +29,6 @@ public class VeniceMultiClusterCreateOptions {
   private final boolean sslToStorageNodes;
   private final boolean randomizeClusterName;
   private final boolean multiColoSetup;
-  private final boolean multiD2;
   private final boolean forkServer;
   private final Map<String, Map<String, String>> kafkaClusterMap;
   private final ZkServerWrapper zkServerWrapper;
@@ -91,10 +90,6 @@ public class VeniceMultiClusterCreateOptions {
 
   public boolean isMultiColoSetup() {
     return multiColoSetup;
-  }
-
-  public boolean isMultiD2() {
-    return multiD2;
   }
 
   public boolean isForkServer() {
@@ -175,8 +170,6 @@ public class VeniceMultiClusterCreateOptions {
         .append("veniceProperties:")
         .append(veniceProperties)
         .append(", ")
-        .append("multiD2:")
-        .append(multiD2)
         .append(", ")
         .append("zk:")
         .append(zkServerWrapper == null ? "null" : zkServerWrapper.getAddress())
@@ -208,7 +201,6 @@ public class VeniceMultiClusterCreateOptions {
     kafkaBrokerWrapper = builder.kafkaBrokerWrapper;
     childControllerProperties = builder.childControllerProperties;
     veniceProperties = builder.veniceProperties;
-    multiD2 = builder.multiD2;
     forkServer = builder.forkServer;
     kafkaClusterMap = builder.kafkaClusterMap;
   }
@@ -228,7 +220,6 @@ public class VeniceMultiClusterCreateOptions {
     private boolean sslToStorageNodes = DEFAULT_SSL_TO_STORAGE_NODES;
     private boolean randomizeClusterName = true;
     private boolean multiColoSetup = false;
-    private boolean multiD2 = false;
     private boolean forkServer = false;
     private boolean isMinActiveReplicaSet = false;
     private Map<String, Map<String, String>> kafkaClusterMap;
@@ -304,11 +295,6 @@ public class VeniceMultiClusterCreateOptions {
 
     public Builder multiColoSetup(boolean multiColoSetup) {
       this.multiColoSetup = multiColoSetup;
-      return this;
-    }
-
-    public Builder multiD2(boolean multiD2) {
-      this.multiD2 = multiD2;
       return this;
     }
 

@@ -1,0 +1,32 @@
+plugins {
+  id("java-library")
+}
+
+ext {
+  // For JDK 8 builds, we set alpn-boot.jar via build.gradle.
+  // This config fails to apply on JDK 11 runtimes since "-Xbootclasspath/p is no longer a supported option"
+  // Since this module doesn't use ALPN yet, we skip adding it to jvm parameters.
+  skipAlpnBoot = true
+}
+
+dependencies {
+  testImplementation project(':internal:venice-test-common')
+  testImplementation project(':internal:venice-common')
+}
+
+for (version in [8, 11]) {
+  task "testJava${version}"(type: Test) {
+    javaLauncher = javaToolchains.launcherFor {
+      languageVersion = JavaLanguageVersion.of(version)
+    }
+  }
+}
+
+test {
+  dependsOn(
+      testJava8,
+      testJava11
+  )
+
+  exclude '**/*.class'
+}

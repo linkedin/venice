@@ -6,7 +6,6 @@ import static org.apache.kafka.clients.consumer.ConsumerConfig.BOOTSTRAP_SERVERS
 import static org.apache.kafka.clients.consumer.ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG;
 import static org.apache.kafka.clients.consumer.ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
@@ -120,7 +119,6 @@ import org.apache.kafka.clients.CommonClientConfigs;
 
 public class AdminTool {
   private static ObjectWriter jsonWriter = ObjectMapperFactory.getInstance().writerWithDefaultPrettyPrinter();
-  private static List<String> fieldsToDisplay = new ArrayList<>();
   private static final String STATUS = "status";
   private static final String ERROR = "error";
   private static final String SUCCESS = "success";
@@ -172,9 +170,6 @@ public class AdminTool {
 
       if (cmd.hasOption(Arg.FLAT_JSON.toString())) {
         jsonWriter = ObjectMapperFactory.getInstance().writer();
-      }
-      if (cmd.hasOption(Arg.FILTER_JSON.toString())) {
-        fieldsToDisplay = Arrays.asList(cmd.getOptionValue(Arg.FILTER_JSON.first()).split(","));
       }
 
       switch (foundCommand) {
@@ -2560,25 +2555,7 @@ public class AdminTool {
 
   protected static void printObject(Object response, Consumer<String> printFunction) {
     try {
-      ObjectMapper mapper = ObjectMapperFactory.getInstance();
-      ObjectWriter plainJsonWriter = mapper.writer();
-      String jsonString = plainJsonWriter.writeValueAsString(response);
-      Map<String, Object> printMap = mapper.readValue(jsonString, new TypeReference<Map<String, Object>>() {
-      });
-      Map<String, Object> filteredPrintMap = new HashMap<>();
-      if (fieldsToDisplay.size() > 0) {
-        printMap.entrySet().stream().filter(entry -> fieldsToDisplay.contains(entry.getKey())).forEach(entry -> {
-          filteredPrintMap.put(entry.getKey(), entry.getValue());
-        });
-      } else {
-        filteredPrintMap.putAll(printMap);
-      }
-      // Always filter out exceptionType if error is null.
-      if (filteredPrintMap.containsKey("error") && printMap.get("error") == null) {
-        filteredPrintMap.remove("error");
-        filteredPrintMap.remove("exceptionType");
-      }
-      printFunction.accept(jsonWriter.writeValueAsString(filteredPrintMap));
+      printFunction.accept(jsonWriter.writeValueAsString(response));
       printFunction.accept("\n");
     } catch (IOException e) {
       printFunction.accept("{\"" + ERROR + "\":\"" + e.getMessage() + "\"}");

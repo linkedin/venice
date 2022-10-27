@@ -36,7 +36,7 @@ public interface DynamicAccessController extends AccessController {
    * Check if ACL exists for a particular resource.
    *
    * @param resource the resource name
-   * @return  whether or not ACL exists for the resource
+   * @return  whether an ACL exists for the resource
    */
   boolean hasAcl(String resource) throws AclException;
 
@@ -69,7 +69,7 @@ public interface DynamicAccessController extends AccessController {
    * Use this method to determine if clients will be granted access
    * to a resource when the corresponding ACL of the resource is missing.
    *
-   * @return whether or not the implementation uses a fail-open policy
+   * @return whether the implementation uses a fail-open policy
    */
   boolean isFailOpen();
 }

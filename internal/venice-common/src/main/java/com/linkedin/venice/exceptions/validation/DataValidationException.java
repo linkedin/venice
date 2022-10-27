@@ -14,7 +14,7 @@ import com.linkedin.venice.exceptions.KafkaConsumerException;
  * // Benign data validation exception, which includes::
  * @see   DuplicateDataException
  */
-abstract public class DataValidationException extends KafkaConsumerException {
+public abstract class DataValidationException extends KafkaConsumerException {
   public DataValidationException(String message) {
     super(message);
   }

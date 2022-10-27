@@ -5,6 +5,7 @@
 # create the tag and push it to main
 
 import sys
+import requests
 from subprocess import check_output
 from subprocess import call
 import click
@@ -19,87 +20,42 @@ if cur_version.major < 3 or (cur_version.major == 3 and cur_version.minor < 6):
 @click.option('--bump-major', is_flag=True)
 @click.option('--bump-minor', is_flag=True)
 @click.option('--no-verify', is_flag=True)
-def read_config(bump_major, bump_minor, no_verify):
+@click.option('--github-actor', help='The github actor used for push')
+def read_config(bump_major, bump_minor, no_verify, github_actor):
     if bump_major and bump_minor:
         print('Cannot bump major and minor versions. Only bumping major version')
         bump_minor = False
 
-    run(bump_major, bump_minor, not no_verify)
+    run(bump_major, bump_minor, not no_verify, github_actor)
 
 
 def format_version(major, minor, build):
     return f'{major}.{minor}.{build}'
 
 
-def get_next_version(bump_major, bump_minor):
-    # looking to parse tags of form: 'release-0.1.36-cutoff' to get the latest version number and increment build
-    # component.
-    # Because we have some inconsistency in the prefix (sometimes release-, sometimes release-venice-), assume tags are
-    # either of the two:
-    # 1. Full versions (e.g. '0.1.37')
-    # 2. End in '-<version>-cutoff' (e.g. '-0.1.37-cutoff')
-    tags_text = check_output(['git', 'tag'], text=True)  # tag1\ntag2\ntag3...
-    tags_lines = [str(l) for l in tags_text.splitlines()]  # ['tag1', 'tag2', ...]
+def get_next_version(bump_major, bump_minor, remote):
+    tag_text = check_output(['git', 'describe', '--tags', '--abbrev=0', f'{remote}/main'], text=True)
+    tag_text = tag_text.rstrip()
+    commits = check_output(['git', 'log', f'{tag_text}..HEAD', '--oneline'], text=True)
+    if commits == "":
+        print(f'Not pushing new tag as there is no new commit since the last tag {tag_text}')
+        sys.exit()
+    version_numbers = tag_text.split('.')  # ['0','1','36']
+    version_ints = [int(part) for part in version_numbers]  # [0,1,36]
 
-    full_version_regex = '(^\\d+(?:.\\d+)+$)'
-    legacy_version_regex = '^release-(\\d+(.\\d+)+)-cutoff$'
-    tags_numbers = []
-    for line in tags_lines:
-        full_version_regex_match = re.search(full_version_regex, line)
-        if full_version_regex_match:
-            tags_numbers.append(full_version_regex_match.group(1))
-            continue
-
-        legacy_version_regex_match = re.search(legacy_version_regex, line)
-        if legacy_version_regex_match:
-            tags_numbers.append(legacy_version_regex_match.group(1))
-            continue
-
-    version_numbers = [n.split('.') for n in tags_numbers if len(n.split('.')) == 3]  # [ ['0','1','36'], ...]
-    version_ints = [[int(part) for part in number] for number in version_numbers]  # [[0,1,36], ...]
-
-    max_major = 0
-    for v in version_ints:  # [0, 1, 36]
-        max_major = max(max_major, v[0])
-
+    major = version_ints[0]
     if bump_major:
-        max_major += 1
+        major += 1
+        return format_version(major, 0, 0)
 
-    major_filtered_version_numbers = [n for n in version_ints if n[0] == max_major]
-
-    if bump_major:
-        if major_filtered_version_numbers:
-            raise Exception(f'''
-            Something went wrong. Expected version list for major version {max_major}
-            to be empty. Found {major_filtered_version_numbers}. Verify the script.
-            ''')
-
-        return format_version(max_major, 0, 0)
-
-    max_minor = 0
-    for v in major_filtered_version_numbers:  # [0, 1, 36]
-        max_minor = max(max_minor, v[1])
-
+    minor = version_ints[1]
     if bump_minor:
-        max_minor += 1
+        minor += 1
+        return format_version(major, minor, 0)
 
-    minor_filtered_version_numbers = [n for n in major_filtered_version_numbers if n[1] == max_minor]
+    build = version_ints[2]
 
-    if bump_minor:
-        if minor_filtered_version_numbers:
-            raise Exception(f'''
-            Something went wrong. Expected version list for major version {max_major} and minor version {max_minor}
-            to be empty. Found {minor_filtered_version_numbers}. Verify the script.
-            ''')
-
-        return format_version(max_major, max_minor, 0)
-
-    max_build = 0
-    for v in minor_filtered_version_numbers:  # [0, 1, 36]
-        if v[2] > max_build:
-            max_build = v[2]
-
-    return format_version(max_major, max_minor, max_build + 1)
+    return format_version(major, minor, build + 1)
 
 
 def get_remote():
@@ -113,34 +69,42 @@ def get_remote():
     raise Exception('Failed to parse remotes for this git repository')
 
 
-def make_tag(remote, bump_major, bump_minor, need_verification):
+def make_tag(remote, bump_major, bump_minor, need_verification, github_actor):
+    if github_actor:
+        set_user=call(['git', 'config', 'user.name', github_actor])
+        if set_user != 0:
+            sys.exit()
+        set_email=call(['git', 'config', 'user.email', f'{github_actor}@users.noreply.github.com'])
+        if set_email != 0:
+            sys.exit()
+
     pull_success = call(['git', 'pull', '--rebase', remote, 'main'])
     if pull_success != 0:
         sys.exit()
-    version = get_next_version(bump_major, bump_minor)
-    tag_name = version
+    version = get_next_version(bump_major, bump_minor, remote)
     tag_message = 'tag for release ' + version
 
     if need_verification:
-        proceed = get_confirmation(f'New tag is {tag_name}. Continue? [y/N]: ')
+        proceed = get_confirmation(f'New tag is {version}. Continue? [y/N]: ')
         if not proceed:
             print('Skipped creating the tag')
             return
 
-    tag_success = call(['git', 'tag', '-a', '-m', tag_message, tag_name])
+    tag_success = call(['git', 'tag', '-a', '-m', tag_message, version])
     if tag_success != 0:
         sys.exit()
-    call(['git', 'push', remote, tag_name])
+    call(['git', 'push', remote, version])
 
 
 def get_tags(remote):
     call(['git', 'fetch', remote, 'main', '--tags'])
+    call(['git', 'fetch', remote, 'main'])
 
 
-def run(bump_major, bump_minor, need_verification):
+def run(bump_major, bump_minor, need_verification, github_actor):
     remote = get_remote()
     get_tags(remote)
-    make_tag(remote, bump_major, bump_minor, need_verification)
+    make_tag(remote, bump_major, bump_minor, need_verification, github_actor)
 
 
 def get_confirmation(prompt=None):

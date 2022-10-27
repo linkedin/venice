@@ -144,14 +144,12 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE> extends Abstr
       int compressionLevel = props.getInt(ZSTD_COMPRESSION_LEVEL, Zstd.maxCompressionLevel());
 
       if (compressionDictionary != null && compressionDictionary.limit() > 0) {
-        this.compressor = compressorFactory.createCompressorWithDictionary(
-            CompressionStrategy.ZSTD_WITH_DICT,
-            compressionDictionary.array(),
-            compressionLevel);
+        this.compressor =
+            compressorFactory.createCompressorWithDictionary(compressionDictionary.array(), compressionLevel);
       }
     } else {
       this.compressor =
-          compressorFactory.createCompressor(CompressionStrategy.valueOf(props.getString(COMPRESSION_STRATEGY)));
+          compressorFactory.getCompressor(CompressionStrategy.valueOf(props.getString(COMPRESSION_STRATEGY)));
     }
   }
 

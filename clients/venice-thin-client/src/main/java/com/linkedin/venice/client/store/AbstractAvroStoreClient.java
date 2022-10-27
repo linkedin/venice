@@ -184,6 +184,8 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
    **/
   private static Executor DESERIALIZATION_EXECUTOR;
 
+  private boolean whetherStoreInitTriggeredByRequestFail = false;
+
   public static synchronized Executor getDefaultDeserializationExecutor() {
     if (DESERIALIZATION_EXECUTOR == null) {
       // Half of process number of threads should be good enough, minimum 2
@@ -246,6 +248,30 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
 
   protected String getComputeRequestPath() {
     return TYPE_COMPUTE + "/" + storeName;
+  }
+
+  /**
+   * This function will try to initialize the store client at most once triggered by request.
+   * If the store initialization fails even with the internal retries, all the subsequent requests will fail,
+   * and the reason behind this design is that we don't want the retried store init occupy the application
+   * thread too long for every request, so that application's fallback logic can kick in.
+   */
+  protected RecordSerializer<K> getKeySerializerForRequest() {
+    if (keySerializer != null) {
+      return keySerializer;
+    }
+    if (whetherStoreInitTriggeredByRequestFail) {
+      // Store init already fails.
+      throw new VeniceClientException("Failed to init store client for store: " + storeName);
+    }
+    synchronized (this) {
+      try {
+        return getKeySerializerWithRetryWithShortInterval();
+      } catch (Exception e) {
+        whetherStoreInitTriggeredByRequestFail = true;
+        throw e;
+      }
+    }
   }
 
   protected RecordSerializer<K> getKeySerializerWithoutRetry() {
@@ -359,7 +385,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
 
   // For testing
   public String getRequestPathByKey(K key) throws VeniceClientException {
-    byte[] serializedKey = getKeySerializerWithoutRetry().serialize(key);
+    byte[] serializedKey = getKeySerializerForRequest().serialize(key);
     return getStorageRequestPathForSingleKey(serializedKey);
   }
 
@@ -367,8 +393,8 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   public CompletableFuture<V> get(final K key, final Optional<ClientStats> stats, final long preRequestTimeInNS)
       throws VeniceClientException {
     byte[] serializedKey = reuseObjectsForSerialization
-        ? getKeySerializerWithoutRetry().serialize(key, AvroSerializer.REUSE.get())
-        : getKeySerializerWithoutRetry().serialize(key);
+        ? getKeySerializerForRequest().serialize(key, AvroSerializer.REUSE.get())
+        : getKeySerializerForRequest().serialize(key);
     String requestPath = getStorageRequestPathForSingleKey(serializedKey);
     CompletableFuture<V> valueFuture = new CompletableFuture<>();
 
@@ -451,7 +477,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
 
   private byte[] serializeMultiGetRequest(List<K> keyList) {
     List<ByteBuffer> serializedKeyList = new ArrayList<>(keyList.size());
-    RecordSerializer serializer = getKeySerializerWithoutRetry();
+    RecordSerializer serializer = getKeySerializerForRequest();
     if (reuseObjectsForSerialization) {
       AvroSerializer.ReusableObjects reusableObjects = AvroSerializer.REUSE.get();
       for (int i = 0; i < keyList.size(); i++) {
@@ -472,7 +498,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
         data,
         writerSchemaId,
         key,
-        getKeySerializerWithoutRetry(),
+        getKeySerializerForRequest(),
         getSchemaReader(),
         LOGGER);
   }
@@ -617,7 +643,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
 
   private byte[] serializeComputeRequest(List<K> keyList, byte[] serializedComputeRequest) {
     List<ByteBuffer> serializedKeyList = new ArrayList<>(keyList.size());
-    RecordSerializer keySerializer = getKeySerializerWithoutRetry();
+    RecordSerializer keySerializer = getKeySerializerForRequest();
     keyList.stream().forEach(key -> serializedKeyList.add(ByteBuffer.wrap(keySerializer.serialize(key))));
     return computeRequestClientKeySerializer
         .serializeObjects(serializedKeyList, ByteBuffer.wrap(serializedComputeRequest));
@@ -629,7 +655,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       BinaryEncoder reusedEncoder,
       ByteArrayOutputStream reusedOutputStream) {
     List<ByteBuffer> serializedKeyList = new ArrayList<>(keyList.size());
-    RecordSerializer keySerializer = getKeySerializerWithoutRetry();
+    RecordSerializer keySerializer = getKeySerializerForRequest();
     keyList.stream()
         .forEach(
             key -> serializedKeyList

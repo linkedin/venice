@@ -211,7 +211,7 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
   /**
    * Enforce partition level quota for the map.
    * This function could be invoked by multiple threads when shared consumer is being used.
-   * Check {@link StoreIngestionTask#produceToStoreBufferServiceOrKafka} and {@link StoreIngestionTask#processMessages}
+   * Check {@link StoreIngestionTask#produceToStoreBufferServiceOrKafka} and {@link StoreIngestionTask#checkIngestionProgress}
    * to find more details.
    */
   public void checkAllPartitionsQuota() {
@@ -392,6 +392,9 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
 
   public void notifyFlushToDisk(PartitionConsumptionState pcs) {
     int partition = pcs.getPartition();
-    partitionConsumptionSizeMap.get(partition).syncWithDB();
+    StoragePartitionDiskUsage partitionConsumptionState = partitionConsumptionSizeMap.get(partition);
+    if (partitionConsumptionState != null) {
+      partitionConsumptionState.syncWithDB();
+    }
   }
 }

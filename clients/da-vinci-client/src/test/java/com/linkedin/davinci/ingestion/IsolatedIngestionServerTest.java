@@ -4,7 +4,7 @@ import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.INGEST
 import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.buildAndSaveConfigsForForkedIngestionProcess;
 import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.executeShellCommand;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
-import static com.linkedin.venice.ConfigKeys.D2_CLIENT_ZK_HOSTS_ADDRESS;
+import static com.linkedin.venice.ConfigKeys.D2_ZK_HOSTS_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_ZK_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS;
@@ -120,7 +120,7 @@ public class IsolatedIngestionServerTest {
         .put(ZOOKEEPER_ADDRESS, zkServerWrapper.getAddress())
         .put(KAFKA_BOOTSTRAP_SERVERS, dummyKafkaUrl)
         .put(KAFKA_ZK_ADDRESS, Utils.getUniqueString())
-        .put(D2_CLIENT_ZK_HOSTS_ADDRESS, zkServerWrapper.getAddress())
+        .put(D2_ZK_HOSTS_ADDRESS, zkServerWrapper.getAddress())
         .put(SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS, 100)
         .put(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, 10 * Time.MS_PER_SECOND)
         .put(INGESTION_ISOLATION_CONFIG_PREFIX + "." + SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS, 10)

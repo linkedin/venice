@@ -321,6 +321,24 @@ public class ConfigKeys {
    */
   public static final String CONTROLLER_IN_AZURE_FABRIC = "controller.in.azure.fabric";
 
+  /**
+   * Whether to enable graveyard cleanup for batch-only store at cluster level. Default is false.
+   */
+  public static final String CONTROLLER_STORE_GRAVEYARD_CLEANUP_ENABLED = "controller.store.graveyard.cleanup.enabled";
+
+  /**
+   * When store graveyard cleanup is enabled, delete the graveyard znode if it has not been changed for a specific time.
+   * Default is 0 min.
+   */
+  public static final String CONTROLLER_STORE_GRAVEYARD_CLEANUP_DELAY_MINUTES =
+      "controller.store.graveyard.cleanup.delay.minutes";
+
+  /**
+   * Sleep interval between each graveyard list fetch from ZK in StoreGraveyardCleanup service. Default is 15 min.
+   * */
+  public static final String CONTROLLER_STORE_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MINUTES =
+      "controller.store.graveyard.cleanup.sleep.interval.between.list.fetch.minutes";
+
   // Server specific configs
   public static final String LISTENER_PORT = "listener.port";
   public static final String DATA_BASE_PATH = "data.base.path";
@@ -1029,17 +1047,17 @@ public class ConfigKeys {
   /**
    * Only required when controller.parent.mode=true
    * This prefix specifies the location of every child cluster that is being fed by this parent cluster.
-   * The format for key/value would be like "key=child.cluster.url.ei-ltx1, value=url1;url2;url3"
-   * the cluster name should be human readable, ex: ei-ltx1
+   * The format for key/value would be like "key=child.cluster.url.dc-0, value=url1;url2;url3"
+   * the cluster name should be human-readable, ex: dc-0
    * the url should be of the form http://host:port
    * Note that every cluster name supplied must also be specified in the child.cluster.allowlist in order to be included
    * */
-  public static final String CHILD_CLUSTER_URL_PREFIX = "child.cluster.url";
+  public static final String CHILD_CLUSTER_URL_PREFIX = "child.cluster.url.";
 
   /**
-   * Similar to {@link ConfigKeys#CHILD_CLUSTER_URL_PREFIX} but with D2 url.
+   * Similar to {@link ConfigKeys#CHILD_CLUSTER_URL_PREFIX} but with D2 ZK url.
    */
-  public static final String CHILD_CLUSTER_D2_PREFIX = "child.cluster.d2.zkHost";
+  public static final String CHILD_CLUSTER_D2_PREFIX = "child.cluster.d2.zkHost.";
 
   /**
    * Config prefix for Kafka bootstrap url in all child fabrics; parent controllers need to know the
@@ -1053,7 +1071,15 @@ public class ConfigKeys {
    */
   public static final String CHILD_DATA_CENTER_KAFKA_ZK_PREFIX = "child.data.center.kafka.zk";
 
+  /**
+   * D2 Service name for the child controllers in local datacenter
+   */
   public static final String CHILD_CLUSTER_D2_SERVICE_NAME = "child.cluster.d2.service.name";
+
+  /**
+   * D2 Service name for cluster discovery
+   */
+  public static final String CLUSTER_DISCOVERY_D2_SERVICE = "cluster.discovery.d2.service";
 
   /**
    * The default source fabric used for native replication
@@ -1137,7 +1163,7 @@ public class ConfigKeys {
    * A list of fabrics that are source(s) of the active active real time replication. When active-active replication
    * is enabled on the controller {@link #ACTIVE_ACTIVE_ENABLED_ON_CONTROLLER} is true, this list should contain fabrics
    * where the Venice server should consume from when it accepts the TS (TopicSwitch) message.
-   * Example value of this config: "prod-lva1,prod-lor1,prod-ltx1".
+   * Example value of this config: "dc-0,dc-1,dc-2".
    */
   public static final String ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST = "active.active.real.time.source.fabric.list";
 
@@ -1575,7 +1601,7 @@ public class ConfigKeys {
   /**
    * ZooKeeper address of d2 client.
    */
-  public static final String D2_CLIENT_ZK_HOSTS_ADDRESS = "r2d2Client.zkHosts";
+  public static final String D2_ZK_HOSTS_ADDRESS = "r2d2Client.zkHosts";
 
   /**
    * Config to control if push status store is enabled and should be initialized
@@ -1737,12 +1763,6 @@ public class ConfigKeys {
       "server.enable.live.config.based.kafka.throttling";
 
   /**
-   * Enable usage of {@link com.linkedin.venice.kafka.consumer.AutoClosingKafkaConsumer} instead of the raw
-   * {@link org.apache.kafka.clients.consumer.KafkaConsumer}.
-   */
-  public static final String AUTO_CLOSE_IDLE_CONSUMERS_ENABLED = "auto.close.idle.consumers";
-
-  /**
    * Enable the concurrent execution of the controllers' init routines, which are executed when a controller
    * becomes a cluster leader.
    */
@@ -1798,4 +1818,10 @@ public class ConfigKeys {
    * A config to specify the class to use to parse identities at runtime
    */
   public static final String IDENTITY_PARSER_CLASS = "identity.parser.class";
+
+  /**
+   * Specifies a list of partitioners venice supported.
+   * It contains a string of concatenated partitioner class names separated by comma.
+   */
+  public static final String VENICE_PARTITIONERS = "venice.partitioners";
 }

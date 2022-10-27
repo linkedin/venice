@@ -8,6 +8,7 @@ import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_URL_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_WHITELIST;
 import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_ZK_PREFIX;
+import static com.linkedin.venice.ConfigKeys.CLUSTER_DISCOVERY_D2_SERVICE;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_D2;
 import static com.linkedin.venice.ConfigKeys.CONCURRENT_INIT_ROUTINES_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL;
@@ -40,11 +41,11 @@ import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA;
 import static com.linkedin.venice.ConfigKeys.STORAGE_ENGINE_OVERHEAD_RATIO;
+import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_DELAY_FACTOR;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CREATION_THROTTLING_TIME_WINDOW_MS;
 import static com.linkedin.venice.SSLConfig.DEFAULT_CONTROLLER_SSL_ENABLED;
-import static com.linkedin.venice.integration.utils.D2TestUtils.CONTROLLER_SERVICE_NAME;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -68,9 +69,11 @@ import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
-import org.apache.commons.lang.StringUtils;
+import java.util.stream.Collectors;
 import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -84,12 +87,17 @@ import org.apache.logging.log4j.Logger;
 public class VeniceControllerWrapper extends ProcessWrapper {
   private static final Logger LOGGER = LogManager.getLogger(VeniceControllerWrapper.class);
 
-  public static final String SERVICE_NAME = "VeniceController";
+  public static final String D2_CLUSTER_NAME = "ControllerD2Cluster";
+  public static final String D2_SERVICE_NAME = "ChildController";
+  public static final String PARENT_D2_CLUSTER_NAME = "ParentControllerD2Cluster";
+  public static final String PARENT_D2_SERVICE_NAME = "ParentController";
+
   public static final double DEFAULT_STORAGE_ENGINE_OVERHEAD_RATIO = 0.85d;
   public static final String DEFAULT_PARENT_DATA_CENTER_REGION_NAME = "dc-parent-0";
 
   private VeniceController service;
   private final List<VeniceProperties> configs;
+  private final boolean isParent;
   private final int port;
   private final int securePort;
   private final String zkAddress;
@@ -103,12 +111,14 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       int port,
       int securePort,
       List<VeniceProperties> configs,
+      boolean isParent,
       List<ServiceDiscoveryAnnouncer> d2ServerList,
       String zkAddress,
       MetricsRepository metricsRepository) {
     super(serviceName, dataDirectory);
     this.service = service;
     this.configs = configs;
+    this.isParent = isParent;
     this.port = port;
     this.securePort = securePort;
     this.zkAddress = zkAddress;
@@ -124,6 +134,14 @@ public class VeniceControllerWrapper extends ProcessWrapper {
 
       VeniceProperties extraProps = new VeniceProperties(options.getExtraProperties());
       final boolean sslEnabled = extraProps.getBoolean(CONTROLLER_SSL_ENABLED, DEFAULT_CONTROLLER_SSL_ENABLED);
+
+      Map<String, String> clusterToD2;
+      if (options.getClusterToD2() == null || options.getClusterToD2().isEmpty()) {
+        clusterToD2 = Arrays.stream(options.getClusterNames())
+            .collect(Collectors.toMap(c -> c, c -> Utils.getUniqueString("router_d2_service")));
+      } else {
+        clusterToD2 = options.getClusterToD2();
+      }
 
       for (String clusterName: options.getClusterNames()) {
         VeniceProperties clusterProps = IntegrationTestUtils
@@ -152,11 +170,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(MIN_ACTIVE_REPLICA, options.getMinActiveReplica())
             .put(TOPIC_CREATION_THROTTLING_TIME_WINDOW_MS, 100)
             .put(STORAGE_ENGINE_OVERHEAD_RATIO, DEFAULT_STORAGE_ENGINE_OVERHEAD_RATIO)
-            .put(
-                CLUSTER_TO_D2,
-                StringUtils.isEmpty(options.getClusterToD2())
-                    ? TestUtils.getClusterToDefaultD2String(clusterName)
-                    : options.getClusterToD2())
+            .put(CLUSTER_TO_D2, TestUtils.getClusterToD2String(clusterToD2))
             .put(SSL_TO_KAFKA, options.isSslToKafka())
             .put(SSL_KAFKA_BOOTSTRAP_SERVERS, options.getKafkaBroker().getSSLAddress())
             .put(ENABLE_OFFLINE_PUSH_SSL_WHITELIST, false)
@@ -165,6 +179,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(OFFLINE_JOB_START_TIMEOUT_MS, 60_000)
             // To speed up topic cleanup
             .put(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, 100)
+            .put(TOPIC_CLEANUP_DELAY_FACTOR, 2)
             .put(KAFKA_ADMIN_CLASS, KafkaAdminClient.class.getName())
             .put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
             // Moving from topic monitor to admin protocol for add version and starting ingestion
@@ -177,6 +192,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(PUSH_STATUS_STORE_ENABLED, true)
             .put(CONCURRENT_INIT_ROUTINES_ENABLED, true)
             .put(ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_ALL_STORES, true)
+            .put(CLUSTER_DISCOVERY_D2_SERVICE, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
             .put(extraProps.toProperties());
 
         if (sslEnabled) {
@@ -191,7 +207,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
         String fabricAllowList = "";
         if (options.isParent()) {
           // Parent controller needs config to route per-cluster requests such as job status
-          // This dummy parent controller wont support such requests until we make this config configurable.
+          // This dummy parent controller won't support such requests until we make this config configurable.
           // go/inclusivecode deferred(Reference will be removed when clients have migrated)
           fabricAllowList = extraProps.getStringWithAlternative(CHILD_CLUSTER_ALLOWLIST, CHILD_CLUSTER_WHITELIST, "");
         }
@@ -211,7 +227,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             if (childController == null) {
               throw new IllegalArgumentException("child controller at index " + dcIndex + " is null!");
             }
-            builder.put(CHILD_CLUSTER_URL_PREFIX + "." + dcName, childController.getControllerUrl());
+            builder.put(CHILD_CLUSTER_URL_PREFIX + dcName, childController.getControllerUrl());
             if (options.isParent()) {
               builder.put(
                   CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + dcName,
@@ -275,14 +291,14 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       }
       List<ServiceDiscoveryAnnouncer> d2ServerList = new ArrayList<>();
       if (options.isD2Enabled()) {
-        d2ServerList.add(createD2Server(options.getZkAddress(), adminPort, false));
+        d2ServerList.add(createD2Server(options.getZkAddress(), adminPort, false, options.isParent()));
         if (sslEnabled) {
-          d2ServerList.add(createD2Server(options.getZkAddress(), adminSecurePort, true));
+          d2ServerList.add(createD2Server(options.getZkAddress(), adminSecurePort, true, options.isParent()));
         }
       }
 
       D2Client d2Client = D2TestUtils.getAndStartD2Client(options.getZkAddress());
-      MetricsRepository metricsRepository = TehutiUtils.getMetricsRepository(CONTROLLER_SERVICE_NAME);
+      MetricsRepository metricsRepository = TehutiUtils.getMetricsRepository(D2_SERVICE_NAME);
 
       Optional<ClientConfig> consumerClientConfig = Optional.empty();
       Object clientConfig = options.getExtraProperties().get(VeniceServerWrapper.CLIENT_CONFIG_FOR_CONSUMER);
@@ -305,6 +321,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           adminPort,
           adminSecurePort,
           propertiesList,
+          options.isParent(),
           d2ServerList,
           options.getZkAddress(),
           metricsRepository);
@@ -361,9 +378,10 @@ public class VeniceControllerWrapper extends ProcessWrapper {
     service.stop();
   }
 
-  private static D2Server createD2Server(String zkAddress, int port, boolean https) {
+  private static D2Server createD2Server(String zkAddress, int port, boolean https, boolean isParent) {
     String scheme = https ? "https" : "http";
-    return D2TestUtils.getD2Server(zkAddress, scheme + "://localhost:" + port, D2TestUtils.CONTROLLER_CLUSTER_NAME);
+    String d2ClusterName = isParent ? PARENT_D2_CLUSTER_NAME : D2_CLUSTER_NAME;
+    return D2TestUtils.createD2Server(zkAddress, scheme + "://localhost:" + port, d2ClusterName);
   }
 
   @Override
@@ -378,8 +396,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
      */
     if (!d2ServerList.isEmpty()) {
       d2ServerList.clear();
-      d2ServerList.add(createD2Server(zkAddress, port, false));
-      d2ServerList.add(createD2Server(zkAddress, securePort, true));
+      d2ServerList.add(createD2Server(zkAddress, port, false, isParent));
+      d2ServerList.add(createD2Server(zkAddress, securePort, true, isParent));
     }
     D2Client d2Client = D2TestUtils.getAndStartD2Client(zkAddress);
     service = new VeniceController(configs, d2ServerList, Optional.empty(), d2Client);

@@ -92,6 +92,7 @@ public class DaVinciClientMetaStoreBasedRepository extends NativeMetadataReposit
     super(clientConfig, backendConfig);
     daVinciClientFactory = new CachingDaVinciClientFactory(
         clientConfig.getD2Client(),
+        clientConfig.getD2ServiceName(),
         Optional.ofNullable(clientConfig.getMetricsRepository())
             .orElse(TehutiUtils.getMetricsRepository("davinci-client")),
         backendConfig);

@@ -1,5 +1,7 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_KEY_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.utils.TestPushUtils.NESTED_SCHEMA_STRING;
 import static com.linkedin.venice.utils.TestPushUtils.NESTED_SCHEMA_STRING_V2;
 import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
@@ -91,7 +93,6 @@ public class PartialUpdateTest {
         Optional.of(new VeniceProperties(controllerProps)),
         Optional.of(new Properties(controllerProps)),
         Optional.of(new VeniceProperties(serverProperties)),
-        false,
         false);
     this.childDatacenters = multiColoMultiClusterWrapper.getClusters();
     List<VeniceControllerWrapper> parentControllers = multiColoMultiClusterWrapper.getParentControllers();
@@ -117,6 +118,7 @@ public class PartialUpdateTest {
     String keySchemaStr = "{\"type\" : \"string\"}";
     Schema valueSchemaV1 = AvroCompatibilityHelper.parse(loadFileAsString("writecompute/test/PersonV1.avsc"));
     Schema valueSchemaV2 = AvroCompatibilityHelper.parse(loadFileAsString("writecompute/test/PersonV2.avsc"));
+    String valueFieldName = "name";
 
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
       assertCommand(
@@ -155,7 +157,7 @@ public class PartialUpdateTest {
       veniceProducer = getSamzaProducer(veniceCluster, storeName, Version.PushType.STREAM);
       String key = "key1";
       GenericRecord value = new GenericData.Record(valueSchemaV1);
-      value.put("name", "Lebron");
+      value.put(valueFieldName, "Lebron");
       value.put("age", 37);
       sendStreamingRecord(veniceProducer, storeName, key, value);
 
@@ -164,7 +166,7 @@ public class PartialUpdateTest {
         try {
           GenericRecord retrievedValue = readValue(storeReader, key);
           assertNotNull(retrievedValue);
-          assertEquals(retrievedValue.get("name").toString(), "Lebron");
+          assertEquals(retrievedValue.get(valueFieldName).toString(), "Lebron");
           assertEquals(retrievedValue.get("age").toString(), "37");
 
         } catch (Exception e) {
@@ -176,7 +178,7 @@ public class PartialUpdateTest {
       Schema writeComputeSchemaV2 =
           WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchemaV2);
       UpdateBuilder updateBuilder = new UpdateBuilderImpl(writeComputeSchemaV2);
-      updateBuilder.setNewFieldValue("name", "Lebron James");
+      updateBuilder.setNewFieldValue(valueFieldName, "Lebron James");
       updateBuilder.setNewFieldValue("hometown", "Akron");
       GenericRecord partialUpdateRecord = updateBuilder.build();
       sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord);
@@ -186,7 +188,7 @@ public class PartialUpdateTest {
         try {
           GenericRecord retrievedValue = readValue(storeReader, key);
           assertNotNull(retrievedValue);
-          assertEquals(retrievedValue.get("name").toString(), "Lebron James"); // Updated field
+          assertEquals(retrievedValue.get(valueFieldName).toString(), "Lebron James"); // Updated field
           assertEquals(retrievedValue.get("age").toString(), "37");
           assertEquals(retrievedValue.get("hometown").toString(), "Akron"); // Updated field
 
@@ -232,8 +234,8 @@ public class PartialUpdateTest {
               ClientConfig.defaultGenericClientConfig(storeName)
                   .setVeniceURL(veniceClusterWrapper.getRandomRouterURL()))) {
 
-        String keySchemaStr = recordSchema.getField("id").schema().toString();
-        String valueSchemaStr = recordSchema.getField("name").schema().toString();
+        String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+        String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
         assertCommand(controllerClient.createNewStore(storeName, "test_owner", keySchemaStr, valueSchemaStr));
 
         ControllerResponse response = controllerClient.updateStore(

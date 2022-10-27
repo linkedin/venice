@@ -128,12 +128,12 @@ public class VeniceWriterFactory {
   @Deprecated
   public VeniceWriter<byte[], byte[], byte[]> createBasicVeniceWriter(
       String topicName,
-      Optional<Boolean> chunkingEnabled,
+      boolean chunkingEnabled,
       VenicePartitioner partitioner,
       int topicPartitionCount) {
     VeniceWriterOptions options = new VeniceWriterOptions.Builder(topicName).setPartitioner(partitioner)
         .setPartitionCount(Optional.of(topicPartitionCount))
-        .setChunkingEnabled(chunkingEnabled.orElse(false))
+        .setChunkingEnabled(chunkingEnabled)
         .build();
     return createVeniceWriter(options);
   }

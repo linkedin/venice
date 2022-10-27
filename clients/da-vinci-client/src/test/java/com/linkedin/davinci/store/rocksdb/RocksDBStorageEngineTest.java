@@ -52,7 +52,7 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
         AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
         mockReadOnlyStoreRepository);
     storeConfig = new VeniceStoreVersionConfig(topicName, serverProps, PersistenceType.ROCKS_DB);
-    testStoreEngine = storageService.openStoreForNewPartition(storeConfig, PARTITION_ID);
+    testStoreEngine = storageService.openStoreForNewPartition(storeConfig, PARTITION_ID, () -> null);
     createStoreForTest();
   }
 
@@ -116,11 +116,11 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
     storeVersionStateRecord.sorted = true;
 
     rocksDBStorageEngine.putStoreVersionState(storeVersionStateRecord);
-    Assert.assertEquals(rocksDBStorageEngine.getStoreVersionState().get(), storeVersionStateRecord);
+    Assert.assertEquals(rocksDBStorageEngine.getStoreVersionState(), storeVersionStateRecord);
 
-    // If no store version state is present in this metadata partition, Optional.empty() should be returned.
+    // If no store version state is present in this metadata partition, null should be returned.
     rocksDBStorageEngine.clearStoreVersionState();
-    Assert.assertEquals(rocksDBStorageEngine.getStoreVersionState(), Optional.empty());
+    Assert.assertNull(rocksDBStorageEngine.getStoreVersionState());
   }
 
   @Test

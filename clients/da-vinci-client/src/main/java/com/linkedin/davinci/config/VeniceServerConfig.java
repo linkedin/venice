@@ -2,7 +2,6 @@ package com.linkedin.davinci.config;
 
 import static com.linkedin.davinci.config.BlockingQueueType.ARRAY_BLOCKING_QUEUE;
 import static com.linkedin.venice.ConfigKeys.AUTOCREATE_DATA_PATH;
-import static com.linkedin.venice.ConfigKeys.AUTO_CLOSE_IDLE_CONSUMERS_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.ENABLE_SERVER_ALLOW_LIST;
 import static com.linkedin.venice.ConfigKeys.FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS;
@@ -107,7 +106,6 @@ import com.linkedin.davinci.kafka.consumer.RemoteIngestionRepairService;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.utils.Time;
@@ -364,8 +362,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final boolean enableLiveConfigBasedKafkaThrottling;
 
-  private final boolean autoCloseIdleConsumersEnabled;
-
   private final boolean serverIngestionCheckpointDuringGracefulShutdownEnabled;
 
   private final int remoteIngestionRepairSleepInterval;
@@ -584,8 +580,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     schemaPresenceCheckEnabled = serverProperties.getBoolean(SERVER_SCHEMA_PRESENCE_CHECK_ENABLED, true);
     enableLiveConfigBasedKafkaThrottling =
         serverProperties.getBoolean(SERVER_ENABLE_LIVE_CONFIG_BASED_KAFKA_THROTTLING, false);
-    autoCloseIdleConsumersEnabled = serverProperties
-        .getBoolean(AUTO_CLOSE_IDLE_CONSUMERS_ENABLED, KafkaClientFactory.DEFAULT_AUTO_CLOSE_IDLE_CONSUMERS_ENABLED);
     /**
      * Enable graceful shutdown by default.
      * Speculative risks when disabling graceful shutdown:
@@ -989,10 +983,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isLiveConfigBasedKafkaThrottlingEnabled() {
     return enableLiveConfigBasedKafkaThrottling;
-  }
-
-  public boolean isAutoCloseIdleConsumersEnabled() {
-    return autoCloseIdleConsumersEnabled;
   }
 
   public boolean isServerIngestionCheckpointDuringGracefulShutdownEnabled() {

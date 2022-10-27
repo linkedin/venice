@@ -5,10 +5,12 @@ import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.ConfigKeys.AMPLIFICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.PARTITIONER_CLASS;
+import static com.linkedin.venice.ConfigKeys.VENICE_PARTITIONERS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_STORE_NAME_CONFIG;
 import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCountString;
+import static com.linkedin.venice.utils.Utils.getUniqueString;
 import static org.apache.hadoop.mapreduce.MRJobConfig.MAPREDUCE_JOB_CLASSLOADER;
 import static org.apache.hadoop.mapreduce.MRJobConfig.MAPREDUCE_JOB_CREDENTIALS_BINARY;
 import static org.apache.hadoop.security.UserGroupInformation.HADOOP_TOKEN_FILE_LOCATION;
@@ -39,6 +41,7 @@ import com.linkedin.venice.hadoop.input.kafka.KafkaInputRecordReader;
 import com.linkedin.venice.hadoop.input.kafka.VeniceKafkaInputMapper;
 import com.linkedin.venice.hadoop.input.kafka.VeniceKafkaInputReducer;
 import com.linkedin.venice.hadoop.input.kafka.ttl.TTLResolutionPolicy;
+import com.linkedin.venice.hadoop.output.avro.ValidateSchemaAndBuildDictMapperOutput;
 import com.linkedin.venice.hadoop.pbnj.PostBulkLoadAnalysisMapper;
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
@@ -99,6 +102,7 @@ import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.mapred.Counters;
 import org.apache.hadoop.mapred.FileInputFormat;
+import org.apache.hadoop.mapred.FileOutputFormat;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.Partitioner;
 import org.apache.hadoop.mapred.RunningJob;
@@ -121,10 +125,13 @@ public class VenicePushJob implements AutoCloseable {
 
   public static final String KEY_FIELD_PROP = "key.field";
   public static final String VALUE_FIELD_PROP = "value.field";
+  public static final String DEFAULT_KEY_FIELD_PROP = "key";
+  public static final String DEFAULT_VALUE_FIELD_PROP = "value";
+  public static final boolean DEFAULT_SSL_ENABLED = false;
   public static final String SCHEMA_STRING_PROP = "schema";
   public static final String KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP = "kafka.source.key.schema";
   public static final String EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED = "extended.schema.validity.check.enabled";
-  public static final Boolean DEFAULT_EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED = true;
+  public static final boolean DEFAULT_EXTENDED_SCHEMA_VALIDITY_CHECK_ENABLED = true;
 
   // Vson input configs
   // Vson files store key/value schema on file header. key / value fields are optional
@@ -164,6 +171,18 @@ public class VenicePushJob implements AutoCloseable {
    */
   public static final String USE_MAPPER_TO_BUILD_DICTIONARY = "use.mapper.to.build.dictionary";
   public static final boolean DEFAULT_USE_MAPPER_TO_BUILD_DICTIONARY = false;
+
+  /**
+   * Location and key to store the output of {@link ValidateSchemaAndBuildDictMapper} and retrieve it back
+   * when USE_MAPPER_TO_BUILD_DICTIONARY is enabled
+   */
+  public static final String MAPPER_OUTPUT_DIRECTORY = "mapper.output.directory";
+  public static final String UNIQUE_STRING_FOR_MAPPER_OUTPUT_DIRECTORY = "unique.string.for.mapper.output.directory";
+  protected static final String VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_PARENT_DIR_DEFAULT = "/tmp/venice";
+  private static final String VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_FILE_PREFIX = "mapper-output-";
+  private static final String VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_FILE_EXTENSION = ".avro";
+  public static final String KEY_ZSTD_COMPRESSION_DICTIONARY = "zstdDictionary";
+  public static final String KEY_INPUT_FILE_DATA_SIZE = "inputFileDataSize";
 
   /**
    * Configs used to enable Kafka Input.
@@ -237,12 +256,6 @@ public class VenicePushJob implements AutoCloseable {
    * In single-colo mode, this can be either a controller or router.
    * In multi-colo mode, it must be a parent controller.
    */
-  public static final String VENICE_URL_PROP = "venice.urls";
-  /**
-   * This new url field is meant to replace {@link #VENICE_URL_PROP} to avoid Venice users accidentally override
-   * this system property.
-   * Once the new prop: {@link #VENICE_DISCOVER_URL_PROP} is fully adopted, we will deprecate {@link #VENICE_URL_PROP}.
-   */
   public static final String VENICE_DISCOVER_URL_PROP = "venice.discover.urls";
 
   public static final String SOURCE_GRID_FABRIC = "source.grid.fabric";
@@ -250,16 +263,10 @@ public class VenicePushJob implements AutoCloseable {
   public static final String ENABLE_WRITE_COMPUTE = "venice.write.compute.enable";
   public static final String ENABLE_PUSH = "venice.push.enable";
   public static final String ENABLE_SSL = "venice.ssl.enable";
-  public static final String VENICE_CLUSTER_NAME_PROP = "cluster.name";
   public static final String VENICE_STORE_NAME_PROP = "venice.store.name";
   public static final String INPUT_PATH_PROP = "input.path";
   public static final String INPUT_PATH_LAST_MODIFIED_TIME = "input.path.last.modified.time";
   public static final String BATCH_NUM_BYTES_PROP = "batch.num.bytes";
-  /**
-   * Specifies a list of partitioners venice supported.
-   * It contains a string of concatenated partitioner class names separated by comma.
-   */
-  public static final String VENICE_PARTITIONERS_PROP = "venice.partitioners";
 
   public static final String VALUE_SCHEMA_ID_PROP = "value.schema.id";
   public static final String DERIVED_SCHEMA_ID_PROP = "derived.schema.id";
@@ -379,6 +386,8 @@ public class VenicePushJob implements AutoCloseable {
   private SentPushJobDetailsTracker sentPushJobDetailsTracker;
   private Class<? extends Partitioner> mapRedPartitionerClass = VeniceMRPartitioner.class;
   private PushJobSchemaInfo pushJobSchemaInfo;
+  private ValidateSchemaAndBuildDictMapperOutput validateSchemaAndBuildDictMapperOutput;
+  private String uniqueStringForMapperOutputDirectory;
 
   protected static class PushJobSetting {
     boolean enablePush;
@@ -419,13 +428,14 @@ public class VenicePushJob implements AutoCloseable {
     boolean compressionMetricCollectionEnabled;
     // temporary flag to host the code to use mapper to validate schema and build dictionary
     boolean useMapperToBuildDict;
+    String useMapperToBuildDictOutputPath;
     // specify ttl time to drop stale records. Only works for repush
     long repushTtlInHours;
   }
 
   protected PushJobSetting pushJobSetting;
 
-  protected static class VersionTopicInfo {
+  protected static class TopicInfo {
     // Kafka topic for new data push
     String topic;
     /** Version part of the store-version / topic name */
@@ -443,7 +453,7 @@ public class VenicePushJob implements AutoCloseable {
     boolean chunkingEnabled;
   }
 
-  private VersionTopicInfo kafkaTopicInfo;
+  private TopicInfo kafkaTopicInfo;
 
   private final PushJobDetails pushJobDetails;
   private final InternalAvroSpecificSerializer<PushJobDetails> pushJobDetailsSerializer =
@@ -466,6 +476,7 @@ public class VenicePushJob implements AutoCloseable {
   private InputStorageQuotaTracker inputStorageQuotaTracker;
   private PushJobHeartbeatSenderFactory pushJobHeartbeatSenderFactory;
   private final boolean jobLivenessHeartbeatEnabled;
+  private boolean pushJobStatusUploadDisabledHasBeenLogged = false;
 
   /**
    * Different successful checkpoints and known error scenarios of the VPJ flow.
@@ -493,11 +504,6 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   // Visible for testing
-  public VenicePushJob(String jobId, Properties vanillaProps, ControllerClient controllerClient) {
-    this(jobId, vanillaProps, controllerClient, null);
-  }
-
-  // Visible for testing
   public VenicePushJob(
       String jobId,
       Properties vanillaProps,
@@ -507,6 +513,15 @@ public class VenicePushJob implements AutoCloseable {
     this.clusterDiscoveryControllerClient = clusterDiscoveryControllerClient;
     this.jobId = jobId;
     this.props = getVenicePropsFromVanillaProps(vanillaProps);
+    if (isSslEnabled()) {
+      String[] requiredSSLPropertiesNames = new String[] { SSL_KEY_PASSWORD_PROPERTY_NAME,
+          SSL_KEY_STORE_PASSWORD_PROPERTY_NAME, SSL_KEY_STORE_PROPERTY_NAME, SSL_TRUST_STORE_PROPERTY_NAME };
+      for (String sslPropertyName: requiredSSLPropertiesNames) {
+        if (!vanillaProps.containsKey(sslPropertyName)) {
+          throw new VeniceException("Miss the require ssl property name: " + sslPropertyName);
+        }
+      }
+    }
     this.sslProperties = Lazy.of(() -> {
       try {
         return getSslProperties(this.props);
@@ -515,13 +530,11 @@ public class VenicePushJob implements AutoCloseable {
       }
     });
     LOGGER.info("Constructing {}: {}", VenicePushJob.class.getSimpleName(), props.toString(true));
-    String veniceControllerUrl = getVeniceControllerUrl(props);
+    String veniceControllerUrl = props.getString(VENICE_DISCOVER_URL_PROP);
     initControllerClient(
         props.getString(VENICE_STORE_NAME_PROP),
-        getVeniceControllerUrl(props),
-        createSSlFactory(
-            props.getBoolean(ENABLE_SSL, false),
-            props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME)),
+        props.getString(VENICE_DISCOVER_URL_PROP),
+        createSSLFactory(isSslEnabled(), props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME)),
         props.getInt(CONTROLLER_REQUEST_RETRY_ATTEMPTS, 1));
     this.pushJobSetting = getPushJobSetting(veniceControllerUrl, props);
     LOGGER.info("Going to use controller URL: {}  to discover cluster.", veniceControllerUrl);
@@ -559,10 +572,9 @@ public class VenicePushJob implements AutoCloseable {
   private ControllerClient createLivenessHeartbeatControllerClient(VeniceProperties properties) {
     String heartbeatStoreName = properties.getString(HEARTBEAT_STORE_NAME_CONFIG.getConfigName()); // Required config
                                                                                                    // value
-    Optional<SSLFactory> sslFactory = createSSlFactory(
-        properties.getBoolean(ENABLE_SSL, false),
-        properties.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME));
-    String veniceControllerUrl = getVeniceControllerUrl(properties);
+    Optional<SSLFactory> sslFactory =
+        createSSLFactory(isSslEnabled(), properties.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME));
+    String veniceControllerUrl = props.getString(VENICE_DISCOVER_URL_PROP);
     String heartbeatStoreClusterName = discoverCluster(heartbeatStoreName);
     ControllerClient heartbeatStoreControllerClient =
         ControllerClient.constructClusterControllerClient(heartbeatStoreClusterName, veniceControllerUrl, sslFactory);
@@ -578,7 +590,7 @@ public class VenicePushJob implements AutoCloseable {
    * @param vanillaProps  Property bag for the job
    */
   public VenicePushJob(String jobId, Properties vanillaProps) {
-    this(jobId, vanillaProps, null);
+    this(jobId, vanillaProps, null, null);
   }
 
   // Visible for testing
@@ -587,29 +599,31 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   private VeniceProperties getVenicePropsFromVanillaProps(Properties vanillaProps) {
-    if (vanillaProps.containsKey(LEGACY_AVRO_KEY_FIELD_PROP)) {
-      if (vanillaProps.containsKey(KEY_FIELD_PROP)
-          && !vanillaProps.getProperty(KEY_FIELD_PROP).equals(vanillaProps.getProperty(LEGACY_AVRO_KEY_FIELD_PROP))) {
-        throw new VeniceException("Duplicate key filed found in config. Both avro.key.field and key.field are set up.");
-      }
-      vanillaProps.setProperty(KEY_FIELD_PROP, vanillaProps.getProperty(LEGACY_AVRO_KEY_FIELD_PROP));
-    }
-    if (vanillaProps.containsKey(LEGACY_AVRO_VALUE_FIELD_PROP)) {
-      if (vanillaProps.containsKey(VALUE_FIELD_PROP) && !vanillaProps.getProperty(VALUE_FIELD_PROP)
-          .equals(vanillaProps.getProperty(LEGACY_AVRO_VALUE_FIELD_PROP))) {
-        throw new VeniceException(
-            "Duplicate value filed found in config. Both avro.value.field and value.field are set up.");
-      }
-      vanillaProps.setProperty(VALUE_FIELD_PROP, vanillaProps.getProperty(LEGACY_AVRO_VALUE_FIELD_PROP));
-    }
-    String[] requiredSSLPropertiesNames = new String[] { SSL_KEY_PASSWORD_PROPERTY_NAME,
-        SSL_KEY_STORE_PASSWORD_PROPERTY_NAME, SSL_KEY_STORE_PROPERTY_NAME, SSL_TRUST_STORE_PROPERTY_NAME };
-    for (String sslPropertyName: requiredSSLPropertiesNames) {
-      if (!vanillaProps.containsKey(sslPropertyName)) {
-        throw new VeniceException("Miss the require ssl property name: " + sslPropertyName);
-      }
-    }
+    handleLegacyConfig(vanillaProps, LEGACY_AVRO_KEY_FIELD_PROP, KEY_FIELD_PROP, "key field");
+    handleLegacyConfig(vanillaProps, LEGACY_AVRO_VALUE_FIELD_PROP, VALUE_FIELD_PROP, "value field");
     return new VeniceProperties(vanillaProps);
+  }
+
+  private void handleLegacyConfig(
+      Properties vanillaProps,
+      String legacyConfigProp,
+      String newConfigProp,
+      String configDescription) {
+    String legacyConfig = vanillaProps.getProperty(legacyConfigProp);
+    if (legacyConfig != null) {
+      String newConfig = vanillaProps.getProperty(newConfigProp);
+      if (newConfig == null) {
+        vanillaProps.setProperty(newConfigProp, legacyConfig);
+      } else if (!newConfig.equals(legacyConfig)) {
+        throw new VeniceException(
+            "Duplicate " + configDescription + " config found! Both " + legacyConfigProp + " and " + newConfigProp
+                + " are set, but with different values! Use only: " + newConfigProp);
+      }
+    }
+  }
+
+  private boolean isSslEnabled() {
+    return props.getBoolean(ENABLE_SSL, DEFAULT_SSL_ENABLED);
   }
 
   private PushJobSetting getPushJobSetting(String veniceControllerUrl, VeniceProperties props) {
@@ -620,7 +634,7 @@ public class VenicePushJob implements AutoCloseable {
      * TODO: after controller SSL support is rolled out everywhere, change the default behavior for ssl enabled to true;
      * Besides, change the venice controller urls list for all push job to use the new port
      */
-    pushJobSettingToReturn.enableSsl = props.getBoolean(ENABLE_SSL, false);
+    pushJobSettingToReturn.enableSsl = isSslEnabled();
     pushJobSettingToReturn.sslFactoryClassName =
         props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
     if (props.containsKey(SOURCE_GRID_FABRIC)) {
@@ -724,26 +738,11 @@ public class VenicePushJob implements AutoCloseable {
         props.getBoolean(COMPRESSION_METRIC_COLLECTION_ENABLED, DEFAULT_COMPRESSION_METRIC_COLLECTION_ENABLED);
     pushJobSettingToReturn.useMapperToBuildDict =
         props.getBoolean(USE_MAPPER_TO_BUILD_DICTIONARY, DEFAULT_USE_MAPPER_TO_BUILD_DICTIONARY);
+    if (pushJobSettingToReturn.useMapperToBuildDict) {
+      pushJobSettingToReturn.useMapperToBuildDictOutputPath = props
+          .getString(MAPPER_OUTPUT_DIRECTORY, VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_PARENT_DIR_DEFAULT);
+    }
     return pushJobSettingToReturn;
-  }
-
-  private String getVeniceControllerUrl(VeniceProperties props) {
-    String veniceControllerUrl = null;
-    if (!props.containsKey(VENICE_URL_PROP) && !props.containsKey(VENICE_DISCOVER_URL_PROP)) {
-      throw new VeniceException(
-          "At least one of the following config properties needs to be present: " + VENICE_URL_PROP + " or "
-              + VENICE_DISCOVER_URL_PROP);
-    }
-    if (props.containsKey(VENICE_URL_PROP)) {
-      veniceControllerUrl = props.getString(VENICE_URL_PROP);
-    }
-    if (props.containsKey(VENICE_DISCOVER_URL_PROP)) {
-      /**
-       * {@link VENICE_DISCOVER_URL_PROP} has higher priority than {@link VENICE_URL_PROP}.
-       */
-      veniceControllerUrl = props.getString(VENICE_DISCOVER_URL_PROP);
-    }
-    return veniceControllerUrl;
   }
 
   /**
@@ -770,9 +769,9 @@ public class VenicePushJob implements AutoCloseable {
     if (controllerClient == null) {
       initControllerClient(
           pushJobSettingUnderConstruction.storeName,
-          getVeniceControllerUrl(properties),
-          createSSlFactory(
-              properties.getBoolean(ENABLE_SSL, false),
+          props.getString(VENICE_DISCOVER_URL_PROP),
+          createSSLFactory(
+              isSslEnabled(),
               properties.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME)),
           pushJobSettingUnderConstruction.controllerRetries);
     }
@@ -896,9 +895,9 @@ public class VenicePushJob implements AutoCloseable {
       initPushJobDetails();
       jobStartTimeMs = System.currentTimeMillis();
       logGreeting();
-      final boolean sslEnabled = props.getBoolean(ENABLE_SSL, false);
+      final boolean sslEnabled = isSslEnabled();
       Optional<SSLFactory> sslFactory =
-          createSSlFactory(sslEnabled, props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME));
+          createSSLFactory(sslEnabled, props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME));
       initControllerClient(
           pushJobSetting.storeName,
           pushJobSetting.veniceControllerUrl,
@@ -960,7 +959,8 @@ public class VenicePushJob implements AutoCloseable {
         if (pushJobSetting.useMapperToBuildDict) {
           /**
            * 1. validate whether the remaining file's schema are consistent with the first file
-           * 2. Build dictionary (if dictionary compression is enabled for this store version or compressionMetricCollectionEnabled)
+           * 2. calculate {@link inputFileDataSize} during step 1
+           * 3. Build dictionary (if dictionary compression is enabled for this store version or compressionMetricCollectionEnabled)
            */
           validateSchemaAndBuildDict(
               validateSchemaAndBuildDictJobConf,
@@ -1278,11 +1278,68 @@ public class VenicePushJob implements AutoCloseable {
     }
   }
 
-  private void runValidateSchemaAndBuildDictJobAndUpdateStatus(JobConf jobConf) throws IOException {
+  private void runValidateSchemaAndBuildDictJobAndUpdateStatus(JobConf conf) throws Exception {
     updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.START_VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB);
-    runningJob = runJobWithConfig(jobConf);
+    runningJob = runJobWithConfig(conf);
     validateCountersAfterValidateSchemaAndBuildDict();
+    getValidateSchemaAndBuildDictMapperOutput(runningJob.getID().toString());
     updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB_COMPLETED);
+  }
+
+  /**
+   * Creating the output file for {@link ValidateSchemaAndBuildDictMapper} to persist data
+   * to be read from VPJ driver.
+   *
+   * Output Directory: {$hadoopTmpDir}/{$storeName}-{$JOB_EXEC_ID}-{$randomUniqueString}
+   * File name: mapper-output-{$MRJobID}.avro
+   *
+   * Why JOB_EXEC_ID and randomUniqueString: This gives uniqueness to the name of the directory whose
+   * permission will be restricted to the current user who started the VPJ only. This helps with 2 issues.
+   * 1. There could be instances where multiple headless accounts are writing to a single Venice store.
+   *    It shouldn't happen in regular cases - but is very likely in case of migrations (technical or organizational)
+   *    => unless we have unique directory for each job, the multiple accounts will have access issues of the directory.
+   *
+   * 2. Multiple push jobs can be started in parallel, but only 1 will continue beyond
+   *    {@link ControllerClient#requestTopicForWrites} as this method will throw CONCURRENT_BATCH_PUSH error
+   *    if there is another push job in progress. As {@link ValidateSchemaAndBuildDictMapper} runs before this method,
+   *    it is prone to concurrent push jobs and thus race conditions. Having unique directories per execution will help here.
+   *
+   * Why can't use MRJobID to achieve randomness: MR's jobID gets populated only after {@link FileOutputFormat#checkOutputSpecs},
+   * which needs {@link FileOutputFormat#setOutputPath} to be set already. so currently unable to use the ID.
+   *
+   * TODO: should try exploring using conf.get("hadoop.tmp.dir") or similar configs to get default
+   *     tmp directory in different HDFS environments rather than hardcoding it to
+   *     VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_PARENT_DIR_DEFAULT.
+   */
+  protected static String getValidateSchemaAndBuildDictionaryOutputDir(
+      String parentOutputDir,
+      String storeName,
+      String jobExecId,
+      String uniqueString) {
+    return parentOutputDir + "/" + storeName + "-" + jobExecId + "-" + uniqueString;
+  }
+
+  protected static String getValidateSchemaAndBuildDictionaryOutputFileNameNoExtension(String mrJobId) {
+    return VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_FILE_PREFIX + mrJobId;
+  }
+
+  protected static String getValidateSchemaAndBuildDictionaryOutputFileName(String mrJobId) {
+    return getValidateSchemaAndBuildDictionaryOutputFileNameNoExtension(mrJobId)
+        + VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_FILE_EXTENSION;
+  }
+
+  private void getValidateSchemaAndBuildDictMapperOutput(String mrJobId) throws Exception {
+    String outputDir = getValidateSchemaAndBuildDictionaryOutputDir(
+        pushJobSetting.useMapperToBuildDictOutputPath,
+        pushJobSetting.storeName,
+        props.getString(JOB_EXEC_ID, ""),
+        uniqueStringForMapperOutputDirectory);
+    String outputAvroFile = getValidateSchemaAndBuildDictionaryOutputFileName(mrJobId);
+    try (ValidateSchemaAndBuildDictMapperOutputReader outputReader =
+        new ValidateSchemaAndBuildDictMapperOutputReader(outputDir, outputAvroFile)) {
+      validateSchemaAndBuildDictMapperOutput = outputReader.getOutput();
+    }
+    inputFileDataSize = validateSchemaAndBuildDictMapperOutput.getInputFileDataSize() * INPUT_DATA_SIZE_FACTOR;
   }
 
   private void checkLastModificationTimeAndLog() throws IOException {
@@ -1446,7 +1503,7 @@ public class VenicePushJob implements AutoCloseable {
     }
   }
 
-  private Optional<SSLFactory> createSSlFactory(final boolean enableSsl, final String sslFactoryClassName) {
+  private Optional<SSLFactory> createSSLFactory(final boolean enableSsl, final String sslFactoryClassName) {
     Optional<SSLFactory> sslFactory = Optional.empty();
     if (enableSsl) {
       LOGGER.info("Controller ACL is enabled.");
@@ -1523,14 +1580,17 @@ public class VenicePushJob implements AutoCloseable {
         compressionDictionary = DictionaryUtils
             .readDictionaryFromKafka(pushJobSetting.kafkaInputTopic, new VeniceProperties(kafkaConsumerProperties));
       } else {
-        LOGGER.info("Training Zstd dictionary");
         if (!pushJobSetting.useMapperToBuildDict) {
+          LOGGER.info("Training Zstd dictionary");
           compressionDictionary = ByteBuffer.wrap(getInputDataInfoProvider().getZstdDictTrainSamples());
         } else {
-          compressionDictionary = ByteBuffer.wrap("TODO".getBytes());
+          LOGGER.info(
+              "Retrieving the Zstd dictionary trained by {}",
+              ValidateSchemaAndBuildDictMapper.class.getSimpleName());
+          compressionDictionary = validateSchemaAndBuildDictMapperOutput.getZstdDictionary();
         }
       }
-      LOGGER.info("Zstd dictionary size = {} bytes", compressionDictionary.limit());
+      LOGGER.info("Zstd dictionary size = {} bytes", compressionDictionary.remaining());
     } else {
       LOGGER.info("No compression dictionary is generated with the strategy {}", storeSetting.compressionStrategy);
     }
@@ -1720,10 +1780,14 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   private void sendPushJobDetailsToController() {
-    if (!pushJobSetting.enablePushJobStatusUpload || pushJobDetails == null) {
-      String detailMessage =
-          pushJobSetting.enablePushJobStatusUpload ? "The payload was not populated properly" : "Feature is disabled";
-      LOGGER.warn("Unable to send push job details for monitoring purpose. {}", detailMessage);
+    if (!pushJobSetting.enablePushJobStatusUpload) {
+      if (!pushJobStatusUploadDisabledHasBeenLogged) {
+        pushJobStatusUploadDisabledHasBeenLogged = true;
+        LOGGER.warn("Unable to send push job details for monitoring purpose. Feature is disabled");
+      }
+      return;
+    } else if (pushJobDetails == null) {
+      LOGGER.warn("Unable to send push job details for monitoring purpose. The payload was not populated properly");
       return;
     }
     try {
@@ -1877,6 +1941,15 @@ public class VenicePushJob implements AutoCloseable {
           c -> c.getValueSchemaID(setting.storeName, pushJobSchemaInfo.getValueSchemaString()));
     }
     if (getValueSchemaIdResponse.isError() && !schemaAutoRegisterFromPushJobEnabled) {
+      MultiSchemaResponse response = controllerClient.getAllValueSchema(setting.storeName);
+      if (response.isError()) {
+        LOGGER.error("Failed to fetch all value schemas, so they will not be printed.");
+      } else {
+        LOGGER.info("All currently registered value schemas:");
+        for (MultiSchemaResponse.Schema schema: response.getSchemas()) {
+          LOGGER.info("Schema {}: {}", schema.getId(), schema.getSchemaStr());
+        }
+      }
       throw new VeniceException(
           "Failed to validate value schema for store: " + setting.storeName + "\nError from the server: "
               + getValueSchemaIdResponse.getError() + "\nSchema for the data file: "
@@ -2024,12 +2097,7 @@ public class VenicePushJob implements AutoCloseable {
       Optional<ByteBuffer> optionalCompressionDictionary) {
     Version.PushType pushType = getPushType(setting);
     boolean askControllerToSendControlMessage = !pushJobSetting.sendControlMessagesDirectly;
-    Optional<String> partitioners;
-    if (props.containsKey(VENICE_PARTITIONERS_PROP)) {
-      partitioners = Optional.of(props.getString(VENICE_PARTITIONERS_PROP));
-    } else {
-      partitioners = Optional.of(DefaultVenicePartitioner.class.getName());
-    }
+    final String partitioners = props.getString(VENICE_PARTITIONERS, DefaultVenicePartitioner.class.getName());
 
     Optional<String> dictionary;
     if (askControllerToSendControlMessage) {
@@ -2046,7 +2114,7 @@ public class VenicePushJob implements AutoCloseable {
 
     // If WriteCompute is enabled, request for intermediate topic
     final boolean finalWriteComputeEnabled = writeComputeEnabled;
-    kafkaTopicInfo = new VersionTopicInfo();
+    kafkaTopicInfo = new TopicInfo();
     VersionCreationResponse versionCreationResponse = ControllerClient.retryableRequest(
         controllerClient,
         setting.controllerRetries,
@@ -2058,7 +2126,7 @@ public class VenicePushJob implements AutoCloseable {
             askControllerToSendControlMessage,
             SORTED,
             finalWriteComputeEnabled,
-            partitioners,
+            Optional.of(partitioners),
             dictionary,
             Optional.ofNullable(setting.sourceGridFabric),
             jobLivenessHeartbeatEnabled,
@@ -2148,25 +2216,24 @@ public class VenicePushJob implements AutoCloseable {
     }
   }
 
-  private synchronized VeniceWriter<KafkaKey, byte[], byte[]> getVeniceWriter(VersionTopicInfo versionTopicInfo) {
+  private synchronized VeniceWriter<KafkaKey, byte[], byte[]> getVeniceWriter(TopicInfo topicInfo) {
     if (veniceWriter == null) {
       // Initialize VeniceWriter
-      VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(getVeniceWriterProperties(versionTopicInfo));
+      VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(getVeniceWriterProperties(topicInfo));
       Properties partitionerProperties = new Properties();
-      partitionerProperties.putAll(versionTopicInfo.partitionerParams);
+      partitionerProperties.putAll(topicInfo.partitionerParams);
       VenicePartitioner venicePartitioner = PartitionUtils.getVenicePartitioner(
-          versionTopicInfo.partitionerClass,
-          versionTopicInfo.amplificationFactor,
+          topicInfo.partitionerClass,
+          topicInfo.amplificationFactor,
           new VeniceProperties(partitionerProperties));
-      VeniceWriterOptions vwOptions =
-          new VeniceWriterOptions.Builder(versionTopicInfo.topic).setUseKafkaKeySerializer(true)
-              .setPartitioner(venicePartitioner)
-              .setPartitionCount(
-                  Optional.of(
-                      Version.isVersionTopic(versionTopicInfo.topic)
-                          ? versionTopicInfo.partitionCount * versionTopicInfo.amplificationFactor
-                          : versionTopicInfo.partitionCount))
-              .build();
+      VeniceWriterOptions vwOptions = new VeniceWriterOptions.Builder(topicInfo.topic).setUseKafkaKeySerializer(true)
+          .setPartitioner(venicePartitioner)
+          .setPartitionCount(
+              Optional.of(
+                  Version.isVersionTopic(topicInfo.topic)
+                      ? topicInfo.partitionCount * topicInfo.amplificationFactor
+                      : topicInfo.partitionCount))
+          .build();
       VeniceWriter<KafkaKey, byte[], byte[]> newVeniceWriter = veniceWriterFactory.createVeniceWriter(vwOptions);
       LOGGER.info("Created VeniceWriter: {}", newVeniceWriter);
       veniceWriter = newVeniceWriter;
@@ -2174,9 +2241,9 @@ public class VenicePushJob implements AutoCloseable {
     return veniceWriter;
   }
 
-  private synchronized Properties getVeniceWriterProperties(VersionTopicInfo versionTopicInfo) {
+  private synchronized Properties getVeniceWriterProperties(TopicInfo topicInfo) {
     if (veniceWriterProperties == null) {
-      veniceWriterProperties = createVeniceWriterProperties(versionTopicInfo.kafkaUrl, versionTopicInfo.sslToKafka);
+      veniceWriterProperties = createVeniceWriterProperties(topicInfo.kafkaUrl, topicInfo.sslToKafka);
     }
     return veniceWriterProperties;
   }
@@ -2251,7 +2318,7 @@ public class VenicePushJob implements AutoCloseable {
       Optional<String> incrementalPushVersion,
       ControllerClient controllerClient,
       PushJobSetting pushJobSetting,
-      VersionTopicInfo versionTopicInfo) {
+      TopicInfo topicInfo) {
     // Set of datacenters that have reported a completed status at least once.
     Set<String> completedDatacenters = new HashSet<>();
     // Datacenter-specific details. Stored in memory to avoid printing repetitive details.
@@ -2269,7 +2336,7 @@ public class VenicePushJob implements AutoCloseable {
      */
     long unknownStateStartTimeMs = 0;
 
-    String topicToMonitor = getTopicToMonitor(versionTopicInfo, pushJobSetting);
+    String topicToMonitor = getTopicToMonitor(topicInfo, pushJobSetting);
 
     List<ExecutionStatus> successfulStatuses =
         Arrays.asList(ExecutionStatus.COMPLETED, ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED);
@@ -2317,7 +2384,7 @@ public class VenicePushJob implements AutoCloseable {
         }
 
         // Every known datacenter have successfully reported a completed status at least once.
-        LOGGER.info("Successfully pushed {}", versionTopicInfo.topic);
+        LOGGER.info("Successfully pushed {}", topicInfo.topic);
         return;
       }
 
@@ -2345,12 +2412,10 @@ public class VenicePushJob implements AutoCloseable {
       String previousOverallDetails,
       Map<String, String> previousExtraDetails) {
     String newOverallDetails = previousOverallDetails;
-    String logMessage = "Specific status: ";
     Map<String, String> datacenterSpecificInfo = response.getExtraInfo();
     if (datacenterSpecificInfo != null && !datacenterSpecificInfo.isEmpty()) {
-      logMessage += datacenterSpecificInfo;
+      LOGGER.info("Specific status: {}", datacenterSpecificInfo);
     }
-    LOGGER.info(logMessage);
 
     Optional<String> details = response.getOptionalStatusDetails();
     if (details.isPresent() && detailsAreDifferent(previousOverallDetails, details.get())) {
@@ -2385,21 +2450,21 @@ public class VenicePushJob implements AutoCloseable {
 
   protected void setupMRConf(
       JobConf jobConf,
-      VersionTopicInfo versionTopicInfo,
+      TopicInfo topicInfo,
       PushJobSetting pushJobSetting,
       PushJobSchemaInfo pushJobSchemaInfo,
       StoreSetting storeSetting,
       VeniceProperties props,
       String id,
       String inputDirectory) {
-    setupDefaultJobConf(jobConf, versionTopicInfo, pushJobSetting, pushJobSchemaInfo, storeSetting, props, id);
+    setupDefaultJobConf(jobConf, topicInfo, pushJobSetting, pushJobSchemaInfo, storeSetting, props, id);
     setupInputFormatConf(jobConf, pushJobSchemaInfo, inputDirectory);
-    setupReducerConf(jobConf, pushJobSetting, versionTopicInfo);
+    setupReducerConf(jobConf, pushJobSetting, topicInfo);
   }
 
   private void setupPBNJConf(
       JobConf jobConf,
-      VersionTopicInfo versionTopicInfo,
+      TopicInfo topicInfo,
       PushJobSetting pushJobSetting,
       PushJobSchemaInfo pushJobSchemaInfo,
       StoreSetting storeSetting,
@@ -2410,7 +2475,7 @@ public class VenicePushJob implements AutoCloseable {
       throw new VeniceException("PBNJ only supports Avro input format");
     }
 
-    setupMRConf(jobConf, versionTopicInfo, pushJobSetting, pushJobSchemaInfo, storeSetting, props, id, inputDirectory);
+    setupMRConf(jobConf, topicInfo, pushJobSetting, pushJobSchemaInfo, storeSetting, props, id, inputDirectory);
     jobConf.set(VENICE_STORE_NAME_PROP, pushJobSetting.storeName);
     jobConf.set(PBNJ_ROUTER_URL_PROP, pushJobSetting.veniceRouterUrl);
     jobConf.set(PBNJ_FAIL_FAST, Boolean.toString(pushJobSetting.pbnjFailFast));
@@ -2422,22 +2487,24 @@ public class VenicePushJob implements AutoCloseable {
 
   /**
    * Common configuration for all the Mapreduce Jobs run as part of VPJ
+   *
    * @param conf
    * @param jobName
    */
-  private void setupCommonJobConf(JobConf conf, PushJobSchemaInfo pushJobSchemaInfo, String jobName) {
+  private void setupCommonJobConf(JobConf conf, String jobName) {
     if (System.getenv(HADOOP_TOKEN_FILE_LOCATION) != null) {
       conf.set(MAPREDUCE_JOB_CREDENTIALS_BINARY, System.getenv(HADOOP_TOKEN_FILE_LOCATION));
     }
     conf.setJobName(jobName);
     conf.setJarByClass(this.getClass());
-
-    conf.set(
-        SSL_CONFIGURATOR_CLASS_CONFIG,
-        props.getString(SSL_CONFIGURATOR_CLASS_CONFIG, TempFileSSLConfigurator.class.getName()));
-    conf.set(SSL_KEY_STORE_PROPERTY_NAME, props.getString(SSL_KEY_STORE_PROPERTY_NAME));
-    conf.set(SSL_TRUST_STORE_PROPERTY_NAME, props.getString(SSL_TRUST_STORE_PROPERTY_NAME));
-    conf.set(SSL_KEY_PASSWORD_PROPERTY_NAME, props.getString(SSL_KEY_PASSWORD_PROPERTY_NAME));
+    if (isSslEnabled()) {
+      conf.set(
+          SSL_CONFIGURATOR_CLASS_CONFIG,
+          props.getString(SSL_CONFIGURATOR_CLASS_CONFIG, TempFileSSLConfigurator.class.getName()));
+      conf.set(SSL_KEY_STORE_PROPERTY_NAME, props.getString(SSL_KEY_STORE_PROPERTY_NAME));
+      conf.set(SSL_TRUST_STORE_PROPERTY_NAME, props.getString(SSL_TRUST_STORE_PROPERTY_NAME));
+      conf.set(SSL_KEY_PASSWORD_PROPERTY_NAME, props.getString(SSL_KEY_PASSWORD_PROPERTY_NAME));
+    }
 
     // Hadoop2 dev cluster provides a newer version of an avro dependency.
     // Set mapreduce.job.classloader to true to force the use of the older avro dependency.
@@ -2453,25 +2520,25 @@ public class VenicePushJob implements AutoCloseable {
 
   protected void setupDefaultJobConf(
       JobConf conf,
-      VersionTopicInfo versionTopicInfo,
+      TopicInfo topicInfo,
       PushJobSetting pushJobSetting,
       PushJobSchemaInfo pushJobSchemaInfo,
       StoreSetting storeSetting,
       VeniceProperties props,
       String id) {
-    setupCommonJobConf(conf, pushJobSchemaInfo, id + ":venice_push_job-" + versionTopicInfo.topic);
+    setupCommonJobConf(conf, id + ":venice_push_job-" + topicInfo.topic);
     conf.set(BATCH_NUM_BYTES_PROP, Integer.toString(pushJobSetting.batchNumBytes));
-    conf.set(TOPIC_PROP, versionTopicInfo.topic);
+    conf.set(TOPIC_PROP, topicInfo.topic);
     // We need the two configs with bootstrap servers since VeniceWriterFactory requires kafka.bootstrap.servers while
     // the Kafka consumer requires bootstrap.servers.
-    conf.set(KAFKA_BOOTSTRAP_SERVERS, versionTopicInfo.kafkaUrl);
-    conf.set(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, versionTopicInfo.kafkaUrl);
-    conf.set(COMPRESSION_STRATEGY, versionTopicInfo.compressionStrategy.toString());
-    conf.set(PARTITIONER_CLASS, versionTopicInfo.partitionerClass);
+    conf.set(KAFKA_BOOTSTRAP_SERVERS, topicInfo.kafkaUrl);
+    conf.set(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, topicInfo.kafkaUrl);
+    conf.set(COMPRESSION_STRATEGY, topicInfo.compressionStrategy.toString());
+    conf.set(PARTITIONER_CLASS, topicInfo.partitionerClass);
     // flatten partitionerParams since JobConf class does not support set an object
-    versionTopicInfo.partitionerParams.forEach(conf::set);
-    conf.setInt(AMPLIFICATION_FACTOR, versionTopicInfo.amplificationFactor);
-    if (versionTopicInfo.sslToKafka) {
+    topicInfo.partitionerParams.forEach(conf::set);
+    conf.setInt(AMPLIFICATION_FACTOR, topicInfo.amplificationFactor);
+    if (topicInfo.sslToKafka) {
       conf.set(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, KAFKA_SECURITY_PROTOCOL);
       props.keySet().stream().filter(key -> key.toLowerCase().startsWith(SSL_PREFIX)).forEach(key -> {
         conf.set(key, props.getString(key));
@@ -2606,10 +2673,10 @@ public class VenicePushJob implements AutoCloseable {
     }
   }
 
-  private void setupReducerConf(JobConf jobConf, PushJobSetting pushJobSetting, VersionTopicInfo versionTopicInfo) {
+  private void setupReducerConf(JobConf jobConf, PushJobSetting pushJobSetting, TopicInfo topicInfo) {
     jobConf.setPartitionerClass(this.mapRedPartitionerClass);
     jobConf.setReduceSpeculativeExecution(pushJobSetting.enableReducerSpeculativeExecution);
-    jobConf.setNumReduceTasks(versionTopicInfo.partitionCount * versionTopicInfo.amplificationFactor);
+    jobConf.setNumReduceTasks(topicInfo.partitionCount * topicInfo.amplificationFactor);
     jobConf.setMapOutputKeyClass(BytesWritable.class);
     jobConf.setMapOutputValueClass(BytesWritable.class);
     if (pushJobSetting.isSourceKafka) {
@@ -2633,7 +2700,7 @@ public class VenicePushJob implements AutoCloseable {
       StoreSetting storeSetting,
       VeniceProperties props,
       String id,
-      String inputDirectory) throws IOException {
+      String inputDirectory) throws Exception {
     setupMRConfToValidateSchemaAndBuildDict(
         conf,
         pushJobSetting,
@@ -2658,27 +2725,23 @@ public class VenicePushJob implements AutoCloseable {
       VeniceProperties props,
       String id,
       String inputDirectory) {
-    setupDefaultJobConfToValidateSchemaAndBuildDict(conf, pushJobSetting, pushJobSchemaInfo, storeSetting, props, id);
+    setupDefaultJobConfToValidateSchemaAndBuildDict(conf, pushJobSetting, storeSetting, props, id);
     setupInputFormatConfToValidateSchemaAndBuildDict(conf, pushJobSchemaInfo, inputDirectory);
   }
 
   /**
    * Default config includes the details related to jobids, output formats, compression configs, ssl configs, etc.
+   *
    * @param conf
    * @param id
    */
   private void setupDefaultJobConfToValidateSchemaAndBuildDict(
       JobConf conf,
       PushJobSetting pushJobSetting,
-      PushJobSchemaInfo pushJobSchemaInfo,
       StoreSetting storeSetting,
       VeniceProperties props,
       String id) {
-    setupCommonJobConf(
-        conf,
-        pushJobSchemaInfo,
-        id + ":venice_push_job_validate_schema_and_build_dict-" + pushJobSetting.storeName);
-
+    setupCommonJobConf(conf, id + ":venice_push_job_validate_schema_and_build_dict-" + pushJobSetting.storeName);
     conf.set(VENICE_STORE_NAME_PROP, pushJobSetting.storeName);
     conf.set(ETL_VALUE_SCHEMA_TRANSFORMATION, pushJobSetting.etlValueSchemaTransformation.name());
     conf.setBoolean(INCREMENTAL_PUSH, pushJobSetting.isIncrementalPush);
@@ -2698,6 +2761,11 @@ public class VenicePushJob implements AutoCloseable {
     conf.set(COMPRESSION_STRATEGY, storeSetting.compressionStrategy.toString());
     conf.setBoolean(COMPRESSION_METRIC_COLLECTION_ENABLED, pushJobSetting.compressionMetricCollectionEnabled);
     conf.setBoolean(USE_MAPPER_TO_BUILD_DICTIONARY, pushJobSetting.useMapperToBuildDict);
+    conf.set(MAPPER_OUTPUT_DIRECTORY, pushJobSetting.useMapperToBuildDictOutputPath);
+    uniqueStringForMapperOutputDirectory = getUniqueString();
+    conf.set(UNIQUE_STRING_FOR_MAPPER_OUTPUT_DIRECTORY, uniqueStringForMapperOutputDirectory);
+
+    conf.set(JOB_EXEC_ID, props.getString(JOB_EXEC_ID, ""));
 
     /** adding below for AbstractMapReduceTask.configure() to not crash: Doesn't affect this flow */
     conf.setBoolean(VeniceWriter.ENABLE_CHUNKING, false);
@@ -2723,6 +2791,9 @@ public class VenicePushJob implements AutoCloseable {
     conf.setInputFormat(VeniceFileInputFormat.class);
     conf.setMapperClass(ValidateSchemaAndBuildDictMapper.class);
 
+    AvroJob.setOutputSchema(conf, ValidateSchemaAndBuildDictMapperOutput.getClassSchema());
+    conf.setOutputFormat(ValidateSchemaAndBuildDictOutputFormat.class);
+
     /** key/value fields to be used in {@link DefaultInputDataInfoProvider#validateInputAndGetInfo(String)} in the mapper
      * These values were populated to schemaInfo in the same function but in driver */
     conf.set(KEY_FIELD_PROP, pushJobSchemaInfo.getKeyField());
@@ -2730,7 +2801,7 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   private void logPushJobProperties(
-      VersionTopicInfo versionTopicInfo,
+      TopicInfo topicInfo,
       PushJobSetting pushJobSetting,
       PushJobSchemaInfo pushJobSchemaInfo,
       String clusterName,
@@ -2738,7 +2809,7 @@ public class VenicePushJob implements AutoCloseable {
       long inputFileDataSize) {
     LOGGER.info(
         pushJobPropertiesToString(
-            versionTopicInfo,
+            topicInfo,
             pushJobSetting,
             pushJobSchemaInfo,
             clusterName,
@@ -2747,7 +2818,7 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   private String pushJobPropertiesToString(
-      VersionTopicInfo versionTopicInfo,
+      TopicInfo topicInfo,
       PushJobSetting pushJobSetting,
       PushJobSchemaInfo pushJobSchemaInfo,
       String clusterName,
@@ -2755,9 +2826,9 @@ public class VenicePushJob implements AutoCloseable {
       final long inputFileDataSize) {
     List<String> propKeyValuePairs = new ArrayList<>();
     propKeyValuePairs.add("Job ID: " + this.jobId);
-    propKeyValuePairs.add("Kafka URL: " + versionTopicInfo.kafkaUrl);
-    propKeyValuePairs.add("Kafka Topic: " + versionTopicInfo.topic);
-    propKeyValuePairs.add("Kafka topic partition count: " + versionTopicInfo.partitionCount);
+    propKeyValuePairs.add("Kafka URL: " + topicInfo.kafkaUrl);
+    propKeyValuePairs.add("Kafka Topic: " + topicInfo.topic);
+    propKeyValuePairs.add("Kafka topic partition count: " + topicInfo.partitionCount);
     propKeyValuePairs.add("Kafka Queue Bytes: " + pushJobSetting.batchNumBytes);
     propKeyValuePairs.add("Input Directory: " + inputDirectory);
     propKeyValuePairs.add("Venice Store Name: " + pushJobSetting.storeName);
@@ -2803,27 +2874,27 @@ public class VenicePushJob implements AutoCloseable {
   private void killJobAndCleanup(
       PushJobSetting pushJobSetting,
       ControllerClient controllerClient,
-      VersionTopicInfo versionTopicInfo) {
+      TopicInfo topicInfo) {
     // Attempting to kill job. There's a race condition, but meh. Better kill when you know it's running
     killJob();
-    if (!pushJobSetting.isIncrementalPush && versionTopicInfo != null) {
+    if (!pushJobSetting.isIncrementalPush && topicInfo != null) {
       final int maxRetryAttempt = 10;
       int currentRetryAttempt = 0;
       while (currentRetryAttempt < maxRetryAttempt) {
-        if (!StringUtils.isEmpty(versionTopicInfo.topic)) {
+        if (!StringUtils.isEmpty(topicInfo.topic)) {
           break;
         }
         Utils.sleep(Duration.ofMillis(10).toMillis());
         currentRetryAttempt++;
       }
-      if (StringUtils.isEmpty(versionTopicInfo.topic)) {
+      if (StringUtils.isEmpty(topicInfo.topic)) {
         LOGGER.error("Could not find a store version to delete for store: {}", pushJobSetting.storeName);
       } else {
         ControllerClient.retryableRequest(
             controllerClient,
             pushJobSetting.controllerRetries,
-            c -> c.killOfflinePushJob(versionTopicInfo.topic));
-        LOGGER.info("Offline push job has been killed, topic: {}", versionTopicInfo.topic);
+            c -> c.killOfflinePushJob(topicInfo.topic));
+        LOGGER.info("Offline push job has been killed, topic: {}", topicInfo.topic);
       }
     }
     close();
@@ -2896,10 +2967,6 @@ public class VenicePushJob implements AutoCloseable {
     return inputDirectory;
   }
 
-  public long getInputFileDataSize() {
-    return inputFileDataSize;
-  }
-
   public Optional<String> getIncrementalPushVersion() {
     return pushJobSetting.incrementalPushVersion;
   }
@@ -2915,10 +2982,10 @@ public class VenicePushJob implements AutoCloseable {
     return getTopicToMonitor(this.kafkaTopicInfo, this.pushJobSetting);
   }
 
-  private String getTopicToMonitor(VersionTopicInfo versionTopicInfo, PushJobSetting jobSetting) {
-    return Version.isRealTimeTopic(versionTopicInfo.topic)
-        ? Version.composeKafkaTopic(jobSetting.storeName, versionTopicInfo.version)
-        : versionTopicInfo.topic;
+  private String getTopicToMonitor(TopicInfo topicInfo, PushJobSetting jobSetting) {
+    return Version.isRealTimeTopic(topicInfo.topic)
+        ? Version.composeKafkaTopic(jobSetting.storeName, topicInfo.version)
+        : topicInfo.topic;
   }
 
   private static Path getLatestPath(Path path, FileSystem fs) throws IOException {

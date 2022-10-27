@@ -1,0 +1,25 @@
+name: Venice Publication Pipeline
+
+on:
+  schedule:
+    - cron: "30 20 * * 3"
+  workflow_dispatch:
+
+jobs:
+  make-tag:
+    if: github.repository == 'linkedin/venice'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0 # all history for all branches and tags
+
+      - name: Cut release tag to build and upload Venice Release archive
+        run: |
+          ./make_tag.py --no-verify --github-actor '${GITHUB_ACTOR}'
+
+  build-and-publish:
+    needs: make-tag
+    uses: ./.github/workflows/build-and-upload-archives.yml
+    secrets: inherit

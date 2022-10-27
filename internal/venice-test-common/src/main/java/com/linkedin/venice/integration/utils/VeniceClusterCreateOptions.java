@@ -18,7 +18,7 @@ import java.util.Properties;
 public class VeniceClusterCreateOptions {
   private final String clusterName;
   private final String coloName;
-  private final String clusterToD2;
+  private final Map<String, String> clusterToD2;
   private final int numberOfControllers;
   private final int numberOfServers;
   private final int numberOfRouters;
@@ -70,7 +70,7 @@ public class VeniceClusterCreateOptions {
     return coloName;
   }
 
-  public String getClusterToD2() {
+  public Map<String, String> getClusterToD2() {
     return clusterToD2;
   }
 
@@ -217,7 +217,7 @@ public class VeniceClusterCreateOptions {
   public static class Builder {
     private String clusterName;
     private String coloName;
-    private String clusterToD2 = null;
+    private Map<String, String> clusterToD2 = null;
     private int numberOfControllers = DEFAULT_NUMBER_OF_CONTROLLERS;
     private int numberOfServers = DEFAULT_NUMBER_OF_SERVERS;
     private int numberOfRouters = DEFAULT_NUMBER_OF_ROUTERS;
@@ -248,7 +248,7 @@ public class VeniceClusterCreateOptions {
       return this;
     }
 
-    public Builder clusterToD2(String clusterToD2) {
+    public Builder clusterToD2(Map<String, String> clusterToD2) {
       this.clusterToD2 = clusterToD2;
       return this;
     }

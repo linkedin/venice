@@ -1,0 +1,26 @@
+These TLA+ specifications today do not have model checking integrated with the gradle build yet (TODO). 
+That said, they can be run in a variety of configurations.
+
+Intellij:
+     Intellij has a third party plugin which supports running the model checker from IDE: 
+     https://plugins.jetbrains.com/plugin/17965-tla-
+     It is however, fairly new (as of October 2022!), so it's not quite as stable
+     potentially.
+
+VSCode:
+     VSCode is the newer IDE, and has more first class support from a team within Microsoft: 
+     https://marketplace.visualstudio.com/items?itemName=alygin.vscode-tlaplus
+
+TLA+Toolbox:
+     An eclipse based plugin that is the old standard for running and editing TLA+ code. 
+     It has a few more features then VSCode does, but is heavier weight to run. 
+     https://lamport.azurewebsites.net/tla/toolbox.html
+
+Command Line (tlaTools.jar)
+    https://github.com/tlaplus/tlaplus/releases/ has the list of releases.  Download
+    the tlatools.jar file and run it with 
+    'java -jar tla2tools.jar TLC -h'
+    shows a myriad of configuration options for tuning the model checker.  However,
+    you can just jump on in with:
+    java -jar tla2tools.jar TLC <filename>
+    And it will begine evalauting the model (as well as flag any syntax errors).

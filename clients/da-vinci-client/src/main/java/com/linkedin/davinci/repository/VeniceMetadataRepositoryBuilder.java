@@ -180,5 +180,7 @@ public class VeniceMetadataRepositoryBuilder {
 
     liveClusterConfigRepo = new HelixReadOnlyLiveClusterConfigRepository(zkClient, adapter, clusterName);
     liveClusterConfigRepo.refresh();
+
+    clusterInfoProvider = new StaticClusterInfoProvider(Collections.singleton(clusterName));
   }
 }

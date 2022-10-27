@@ -15,6 +15,7 @@ import com.linkedin.venice.controllerapi.LeaderControllerResponse;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.MockVeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.SslUtils;
@@ -60,8 +61,6 @@ public class TestRouter {
 
   public void testRouterWithD2(boolean https, boolean secureOnly) throws Exception {
     try (ZkServerWrapper zk = ServiceFactory.getZkServer()) {
-      D2TestUtils.setupD2Config(zk.getAddress(), https);
-
       Properties extraConfigs = new Properties();
       if (secureOnly) {
         extraConfigs.put(ConfigKeys.ENFORCE_SECURE_ROUTER, true);
@@ -77,7 +76,7 @@ public class TestRouter {
         }
 
         URI requestUri = new URI(
-            "d2://" + D2TestUtils.DEFAULT_TEST_SERVICE_NAME
+            "d2://" + router.getRouterD2Service()
                 + "/storage/myStore/myKey"); /* D2 client only supports d2:// scheme */
         // "get" method name is put on purpose, since we would like Venice Router to support both 'get' and 'GET'
         RestRequest request = new RestRequestBuilder(requestUri).setMethod("get").build();
@@ -106,7 +105,7 @@ public class TestRouter {
         try (InternalAvroStoreClient<Object, Object> storeClient =
             (InternalAvroStoreClient<Object, Object>) ClientFactory.getAndStartGenericAvroClient(
                 ClientConfig.defaultGenericClientConfig("myStore")
-                    .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
+                    .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
                     .setD2Client(d2Client))) {
           byte[] value = storeClient.getRaw("storage/myStore/myKey").get();
           Assert.fail("Router with Mock components should trigger VeniceClientHttpException");

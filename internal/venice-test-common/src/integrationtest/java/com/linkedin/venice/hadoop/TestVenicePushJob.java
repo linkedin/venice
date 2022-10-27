@@ -1,6 +1,9 @@
 package com.linkedin.venice.hadoop;
 
+import static com.linkedin.venice.ConfigKeys.VENICE_PARTITIONERS;
 import static com.linkedin.venice.hadoop.VenicePushJob.CONTROLLER_REQUEST_RETRY_ATTEMPTS;
+import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_KEY_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFER_VERSION_SWAP;
 import static com.linkedin.venice.hadoop.VenicePushJob.ENABLE_WRITE_COMPUTE;
 import static com.linkedin.venice.hadoop.VenicePushJob.INCREMENTAL_PUSH;
@@ -13,7 +16,6 @@ import static com.linkedin.venice.hadoop.VenicePushJob.SEND_CONTROL_MESSAGES_DIR
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_KAFKA;
 import static com.linkedin.venice.hadoop.VenicePushJob.SUPPRESS_END_OF_PUSH_MESSAGE;
 import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_PARTITIONERS_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.getLatestPathOfInputDirectory;
 import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
@@ -115,12 +117,11 @@ public class TestVenicePushJob {
    * @throws IOException
    */
   protected static Schema writeSimpleAvroFileWithDifferentUserSchema(File parentDir) throws IOException {
-    String schemaStr =
-        "{" + "  \"namespace\" : \"example.avro\",  " + "  \"type\": \"record\",   " + "  \"name\": \"User\",     "
-            + "  \"fields\": [           " + "       { \"name\": \"id\", \"type\": \"string\" },  "
-            + "       { \"name\": \"name\", \"type\": \"string\" },  "
-            + "       { \"name\": \"age\", \"type\": \"int\" },  "
-            + "       { \"name\": \"company\", \"type\": \"string\" }  " + "  ] " + " } ";
+    String schemaStr = "{" + "  \"namespace\" : \"example.avro\",  " + "  \"type\": \"record\",   "
+        + "  \"name\": \"User\",     " + "  \"fields\": [           " + "       { \"name\": \"" + DEFAULT_KEY_FIELD_PROP
+        + "\", \"type\": \"string\" },  " + "       { \"name\": \"" + DEFAULT_VALUE_FIELD_PROP
+        + "\", \"type\": \"string\" },  " + "       { \"name\": \"age\", \"type\": \"int\" },  "
+        + "       { \"name\": \"company\", \"type\": \"string\" }  " + "  ] " + " } ";
     Schema schema = Schema.parse(schemaStr);
     File file = new File(parentDir, "simple_user_with_different_schema.avro");
     DatumWriter<GenericRecord> datumWriter = new GenericDatumWriter<>(schema);
@@ -131,8 +132,8 @@ public class TestVenicePushJob {
       String company = "company_";
       for (int i = 1; i <= 100; ++i) {
         GenericRecord user = new GenericData.Record(schema);
-        user.put("id", Integer.toString(i));
-        user.put("name", name + i);
+        user.put(DEFAULT_KEY_FIELD_PROP, Integer.toString(i));
+        user.put(DEFAULT_VALUE_FIELD_PROP, name + i);
         user.put("age", i);
         user.put("company", company + i);
         dataFileWriter.append(user);
@@ -544,7 +545,7 @@ public class TestVenicePushJob {
                 .setPartitionCount(3)
                 .setPartitionerClass(nonDeterministicPartitionerClassName)));
     Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
-    props.setProperty(VENICE_PARTITIONERS_PROP, nonDeterministicPartitionerClassName);
+    props.setProperty(VENICE_PARTITIONERS, nonDeterministicPartitionerClassName);
 
     TestPushUtils.runPushJob("Test push job", props);
     // No need for asserts, because we are expecting an exception to be thrown!

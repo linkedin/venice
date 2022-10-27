@@ -12,35 +12,35 @@ import org.apache.logging.log4j.Logger;
 
 public class CompressorFactory implements Closeable, AutoCloseable {
   private static final Logger LOGGER = LogManager.getLogger(CompressorFactory.class);
-  private final Map<CompressionStrategy, VeniceCompressor> compressorMap = new VeniceConcurrentHashMap<>();
+  private static final VeniceCompressor NO_OP_COMPRESSOR = new NoopCompressor();
+  private static final VeniceCompressor GZIP_COMPRESSOR = new GzipCompressor();
   private final Map<String, VeniceCompressor> versionSpecificCompressorMap = new VeniceConcurrentHashMap<>();
 
   public VeniceCompressor getCompressor(CompressionStrategy compressionStrategy) {
-    return compressorMap.computeIfAbsent(compressionStrategy, key -> createCompressor(compressionStrategy));
-  }
-
-  public VeniceCompressor createVersionSpecificCompressorIfNotExist(
-      CompressionStrategy compressionStrategy,
-      String kafkaTopic,
-      final byte[] dictionary) {
-    if (compressionStrategy != CompressionStrategy.ZSTD_WITH_DICT) {
-      return getCompressor(compressionStrategy);
-    } else {
-      return createVersionSpecificCompressorIfNotExist(
-          compressionStrategy,
-          kafkaTopic,
-          dictionary,
-          Zstd.maxCompressionLevel());
+    switch (compressionStrategy) {
+      case NO_OP:
+        return NO_OP_COMPRESSOR;
+      case GZIP:
+        return GZIP_COMPRESSOR;
+      case ZSTD_WITH_DICT:
+        throw new IllegalArgumentException(
+            "For " + CompressionStrategy.ZSTD_WITH_DICT + ", please call createVersionSpecificCompressorIfNotExist.");
+      default:
+        throw new IllegalArgumentException("Unsupported compression: " + compressionStrategy);
     }
   }
 
   public VeniceCompressor createVersionSpecificCompressorIfNotExist(
       CompressionStrategy compressionStrategy,
       String kafkaTopic,
-      final byte[] dictionary,
-      int level) {
-    return versionSpecificCompressorMap
-        .computeIfAbsent(kafkaTopic, key -> createCompressorWithDictionary(compressionStrategy, dictionary, level));
+      final byte[] dictionary) {
+    switch (compressionStrategy) {
+      case ZSTD_WITH_DICT:
+        return versionSpecificCompressorMap
+            .computeIfAbsent(kafkaTopic, key -> createCompressorWithDictionary(dictionary, Zstd.maxCompressionLevel()));
+      default:
+        return getCompressor(compressionStrategy);
+    }
   }
 
   public VeniceCompressor getVersionSpecificCompressor(String kafkaTopic) {
@@ -66,33 +66,14 @@ public class CompressorFactory implements Closeable, AutoCloseable {
     return versionSpecificCompressorMap.containsKey(kafkaTopic);
   }
 
-  public VeniceCompressor createCompressor(CompressionStrategy compressionStrategy) {
-    if (compressionStrategy == CompressionStrategy.GZIP) {
-      return new GzipCompressor();
-    } else if (compressionStrategy == CompressionStrategy.NO_OP) {
-      return new NoopCompressor();
-    }
-
-    throw new IllegalArgumentException("unsupported compression strategy: " + compressionStrategy.toString());
-  }
-
-  public VeniceCompressor createCompressorWithDictionary(
-      CompressionStrategy compressionStrategy,
-      final byte[] dictionary,
-      int level) {
-    if (compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
-      return new ZstdWithDictCompressor(dictionary, level);
-    }
-
-    throw new IllegalArgumentException(
-        "unsupported compression strategy with dictionary: " + compressionStrategy.toString());
+  public VeniceCompressor createCompressorWithDictionary(final byte[] dictionary, int level) {
+    return new ZstdWithDictCompressor(dictionary, level);
   }
 
   @Override
   public void close() {
-    for (VeniceCompressor compressor: compressorMap.values()) {
-      IOUtils.closeQuietly(compressor, LOGGER::error);
-    }
+    IOUtils.closeQuietly(NO_OP_COMPRESSOR, LOGGER::error);
+    IOUtils.closeQuietly(GZIP_COMPRESSOR, LOGGER::error);
 
     for (String topic: versionSpecificCompressorMap.keySet()) {
       removeVersionSpecificCompressor(topic);

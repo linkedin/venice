@@ -6,6 +6,7 @@ import static com.linkedin.venice.ConfigKeys.PARTITIONER_CLASS;
 import static com.linkedin.venice.ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_MODE;
 import static com.linkedin.venice.utils.TestPushUtils.STRING_SCHEMA;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.doReturn;
@@ -24,6 +25,7 @@ import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
+import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -46,7 +48,6 @@ import com.linkedin.venice.helix.HelixInstanceConverter;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
-import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -108,6 +109,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.apache.commons.io.IOUtils;
 import org.apache.helix.HelixManagerFactory;
@@ -376,7 +378,7 @@ public class TestUtils {
       ByteBuffer compressionDictionary) {
     VeniceCompressor compressor = null;
     if (compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
-      compressor = new ZstdWithDictCompressor(compressionDictionary.array(), 0);
+      compressor = new ZstdWithDictCompressor(compressionDictionary.array(), Zstd.maxCompressionLevel());
     } else if (compressionStrategy == CompressionStrategy.GZIP) {
       compressor = new GzipCompressor();
     } else {
@@ -457,7 +459,7 @@ public class TestUtils {
           assertCommand(controllerClient.queryJobStatus(topicName, Optional.empty()));
       ExecutionStatus executionStatus = ExecutionStatus.valueOf(jobStatusQueryResponse.getStatus());
       if (executionStatus == ExecutionStatus.ERROR) {
-        throw new VeniceException("Unexpected push failure: " + jobStatusQueryResponse.toString());
+        throw new VeniceException("Unexpected push failure for topic: " + topicName + ": " + jobStatusQueryResponse);
       }
       assertEquals(
           executionStatus,
@@ -553,8 +555,8 @@ public class TestUtils {
     return properties;
   }
 
-  public static String getClusterToDefaultD2String(String cluster) {
-    return cluster + ":" + D2TestUtils.DEFAULT_TEST_SERVICE_NAME;
+  public static String getClusterToD2String(Map<String, String> clusterToD2) {
+    return clusterToD2.entrySet().stream().map(e -> e.getKey() + ":" + e.getValue()).collect(Collectors.joining(","));
   }
 
   public static VeniceWriterFactory getVeniceWriterFactory(String kafkaBootstrapServers) {
@@ -727,7 +729,7 @@ public class TestUtils {
       String storeName,
       boolean enabledNR,
       boolean enabledAA) {
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, true, () -> {
       StoreResponse storeResponse = controllerClient.getStore(storeName);
       Assert.assertFalse(storeResponse.isError());
       Assert.assertEquals(
@@ -762,8 +764,7 @@ public class TestUtils {
       HttpGet getReq = new HttpGet(sb.toString());
       try (InputStream bodyStream = storageNodeClient.execute(getReq, null).get().getEntity().getContent()) {
         byte[] dictionary = IOUtils.toByteArray(bodyStream);
-        return compressorFactory
-            .createCompressorWithDictionary(compressionStrategy, dictionary, Zstd.maxCompressionLevel());
+        return compressorFactory.createCompressorWithDictionary(dictionary, Zstd.maxCompressionLevel());
       } catch (InterruptedException | ExecutionException e) {
         throw e;
       }
@@ -781,6 +782,9 @@ public class TestUtils {
     KafkaClientFactory mockKafkaClientFactory = mock(KafkaClientFactory.class);
     KafkaConsumerWrapper mockKafkaConsumerWrapper = mock(KafkaConsumerWrapper.class);
     doReturn(mockKafkaConsumerWrapper).when(mockKafkaClientFactory).getConsumer(any());
+
+    StorageEngineRepository mockStorageEngineRepository = mock(StorageEngineRepository.class);
+    doReturn(mock(AbstractStorageEngine.class)).when(mockStorageEngineRepository).getLocalStorageEngine(anyString());
 
     ReadOnlyStoreRepository mockReadOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
     Store mockStore = mock(Store.class);
@@ -834,7 +838,7 @@ public class TestUtils {
 
     return new StoreIngestionTaskFactory.Builder().setVeniceWriterFactory(mock(VeniceWriterFactory.class))
         .setKafkaClientFactory(mockKafkaClientFactory)
-        .setStorageEngineRepository(mock(StorageEngineRepository.class))
+        .setStorageEngineRepository(mockStorageEngineRepository)
         .setStorageMetadataService(mockStorageMetadataService)
         .setLeaderFollowerNotifiersQueue(new ArrayDeque<>())
         .setBandwidthThrottler(mock(EventThrottler.class))
@@ -912,8 +916,8 @@ public class TestUtils {
       String storeName,
       Optional<Logger> logger) {
     String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
-    VersionCreationResponse response = controllerClient.emptyPush(metaSystemStoreName, "testEmptyPush", 1234321);
-    Assert.assertFalse(response.isError());
+    VersionCreationResponse response =
+        assertCommand(controllerClient.emptyPush(metaSystemStoreName, "testEmptyPush", 1234321));
     TestUtils.waitForNonDeterministicPushCompletion(response.getKafkaTopic(), controllerClient, 1, TimeUnit.MINUTES);
     logger.ifPresent(value -> value.info("System store " + metaSystemStoreName + " is created."));
   }

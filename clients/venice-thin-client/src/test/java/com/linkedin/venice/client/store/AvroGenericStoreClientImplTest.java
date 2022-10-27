@@ -63,10 +63,12 @@ public class AvroGenericStoreClientImplTest {
   private String routerHost;
   private int port;
   private D2Client d2Client;
+  private String d2ServiceName;
 
   @BeforeTest
   public void setUp() {
-    routerServer = ServiceFactory.getMockD2Server("Mock-router-server");
+    d2ServiceName = Utils.getUniqueString("VeniceRouter");
+    routerServer = ServiceFactory.getMockD2Server("Mock-router-server", d2ServiceName);
     routerHost = routerServer.getHost();
     port = routerServer.getPort();
   }
@@ -88,8 +90,7 @@ public class AvroGenericStoreClientImplTest {
 
     routerServer.addResponseForUri(
         clusterDiscoveryPath,
-        StoreClientTestUtils
-            .constructHttpClusterDiscoveryResponse(storeName, "test_cluster", D2TestUtils.DEFAULT_TEST_SERVICE_NAME));
+        StoreClientTestUtils.constructHttpClusterDiscoveryResponse(storeName, "test_cluster", d2ServiceName));
     // http based client
     String routerUrl = "http://" + routerHost + ":" + port + "/";
     MetricsRepository httpClientMetricsRepository = new MetricsRepository();
@@ -104,7 +105,7 @@ public class AvroGenericStoreClientImplTest {
     MetricsRepository d2ClientMetricsRepository = new MetricsRepository();
     AvroGenericStoreClient<String, Object> d2StoreClient = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
-            .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
+            .setD2ServiceName(d2ServiceName)
             .setD2Client(d2Client)
             .setMetricsRepository(d2ClientMetricsRepository));
     storeClients.put(D2TransportClient.class.getSimpleName(), d2StoreClient);
@@ -113,7 +114,7 @@ public class AvroGenericStoreClientImplTest {
     MetricsRepository d2ClientWithFastAvroMetricsRepository = new MetricsRepository();
     AvroGenericStoreClient<String, Object> d2StoreClientWithFastAvro = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
-            .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
+            .setD2ServiceName(d2ServiceName)
             .setD2Client(d2Client)
             .setMetricsRepository(d2ClientWithFastAvroMetricsRepository)
             .setUseFastAvro(true));
@@ -142,7 +143,7 @@ public class AvroGenericStoreClientImplTest {
     MetricsRepository metricsRepository = new MetricsRepository();
     try (AvroGenericStoreClient<String, Object> d2StoreClient = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
-            .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
+            .setD2ServiceName(d2ServiceName)
             .setD2Client(lateStartD2Client)
             .setMetricsRepository(metricsRepository))) {
       // Register metrics repository per store client for further metrics verification
@@ -306,13 +307,6 @@ public class AvroGenericStoreClientImplTest {
 
   @Test
   public void getByStoreKeyTestWithNoSchemaAvailable() throws Throwable {
-    /**
-     * Bump up to 20K iterations to reliably trigger a {@link com.linkedin.r2.RemoteInvocationException}
-     *
-     * This only seems to happen with the D2 client. The HTTP client is stable.
-     *
-     * TODO: Fix flaky D2 client.
-     */
     final int TEST_ITERATIONS = 100;
 
     String keyStr = "test_key";

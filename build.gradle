@@ -33,7 +33,7 @@ if (project.hasProperty('overrideBuildEnvironment')) {
 def avroVersion = '1.9.2'
 def avroUtilVersion = '0.2.108'
 def kafkaGroup = 'com.linkedin.kafka'
-def kafkaVersion = '2.3.0.43'
+def kafkaVersion = '2.4.1.65'
 def log4j2Version = '2.17.1'
 def pegasusVersion = '29.31.0'
 def jacksonVersion = '2.13.3'
@@ -56,8 +56,6 @@ ext.libraries = [
     commonsLang: 'commons-lang:commons-lang:2.6',
     conscrypt: 'org.conscrypt:conscrypt-openjdk-uber:2.4.0',
     d2: 'com.linkedin.pegasus:d2:' + pegasusVersion,
-    restliCommon: 'com.linkedin.pegasus:restli-common:' + pegasusVersion,
-    r2: 'com.linkedin.pegasus:r2:' + pegasusVersion,
     failsafe: 'net.jodah:failsafe:2.4.0',
     fastUtil: 'it.unimi.dsi:fastutil:8.3.0',
     hadoopCommon: 'org.apache.hadoop:hadoop-common:2.3.0',
@@ -91,6 +89,7 @@ ext.libraries = [
     netty: 'io.netty:netty-all:4.1.52.Final',
     oss: 'org.sonatype.oss:oss-parent:7',
     r2: 'com.linkedin.pegasus:r2:' + pegasusVersion,
+    restliCommon: 'com.linkedin.pegasus:restli-common:' + pegasusVersion,
     rocksdbjni: 'org.rocksdb:rocksdbjni:7.0.3',
     samzaApi: 'org.apache.samza:samza-api:1.5.1',
     snappy: 'org.iq80.snappy:snappy:0.4',
@@ -137,7 +136,11 @@ subprojects {
     plugin 'org.gradle.test-retry'
   }
 
-  sourceCompatibility = 1.8
+  if (JavaVersion.current() >= JavaVersion.VERSION_1_9) {
+    tasks.withType(JavaCompile) {
+      options.release = 8
+    }
+  }
 
   configurations {
     implementation {
@@ -155,6 +158,16 @@ subprojects {
       exclude module: 'clojure'
       exclude module: 'kafka_2.10' // This ends up getting pulled in by a few dependencies, unfortunately :/ ...
       exclude module: 'kafka_2.11'
+
+      // These various netty modules clash with netty-all, and we transitively pull a different version, which causes NoSuchMethodError
+      exclude group: 'io.netty', module: 'netty-buffer'
+      exclude group: 'io.netty', module: 'netty-codec'
+      exclude group: 'io.netty', module: 'netty-common'
+      exclude group: 'io.netty', module: 'netty-handler'
+      exclude group: 'io.netty', module: 'netty-resolver'
+      exclude group: 'io.netty', module: 'netty-transport'
+      exclude group: 'io.netty', module: 'netty-transport-native-epoll'
+      exclude group: 'io.netty', module: 'netty-transport-native-unix-common'
     }
     compileOnly {
       // These dependencies are transitively used at runtime, so we cannot exclude them further than compileOnly
@@ -288,15 +301,17 @@ subprojects {
   tasks.withType(Test) {
     mustRunAfter tasks.withType(SpotBugsTask)
 
-    // The ALPN version should match the JVM version
-    if (JavaVersion.current() < JavaVersion.VERSION_11) {
-      if (Os.isFamily(Os.FAMILY_MAC)) {
-        jvmArgs '-Xbootclasspath/p:/Library/Java/Boot/1_8_0_172/alpn-boot-8.1.12.v20180117.jar'
-      } else if (Os.isFamily(Os.FAMILY_UNIX)) {
-        jvmArgs '-Xbootclasspath/p:/export/apps/jdkboot/1_8_0_172/alpn-boot-8.1.12.v20180117.jar'
-      } else {
-        def osName = System.getProperty('os.name').toLowerCase(Locale.ENGLISH)
-        throw new GradleException("$osName is not supported since ALPN only works for either Mac or Linux right now.")
+    if (!project.ext.has("skipAlpnBoot") || !project.ext.skipAlpnBoot) {
+      // The ALPN version should match the JVM version
+      if (JavaVersion.current() < JavaVersion.VERSION_11) {
+        if (Os.isFamily(Os.FAMILY_MAC)) {
+          jvmArgs '-Xbootclasspath/p:/Library/Java/Boot/1_8_0_172/alpn-boot-8.1.12.v20180117.jar'
+        } else if (Os.isFamily(Os.FAMILY_UNIX)) {
+          jvmArgs '-Xbootclasspath/p:/export/apps/jdkboot/1_8_0_172/alpn-boot-8.1.12.v20180117.jar'
+        } else {
+          def osName = System.getProperty('os.name').toLowerCase(Locale.ENGLISH)
+          throw new GradleException("$osName is not supported since ALPN only works for either Mac or Linux right now.")
+        }
       }
     }
 
@@ -373,7 +388,7 @@ subprojects {
   }
 
   // Only publish artifacts for projects that are at the leaf level
-  if (project.childProjects.size() == 0) {
+  if (project.childProjects.isEmpty()) {
     publishing.configureArtifactPublishing(project, sourceJar, testJar)
   }
 }
@@ -389,20 +404,16 @@ spotless {
   }
 }
 
-task setupLocalRepo {
-  println 'Setting up default repo configs'
+task setupWorkspace {
+  println 'Setting up default git config'
   def gitConfig = [
       'core.hooksPath' : 'gradle/githooks',
+      'blame.ignoreRevsFile' : '.git-blame-ignore-revs',
+      'branch.autoSetupMerge' : 'true', // Only track remote branches
+      'branch.autoSetupRebase' : 'always',
       'pull.rebase' : 'true',
-      'branch.autosetupmerge' : 'true', // Only track remote branches
-      'branch.autosetuprebase' : 'always',
   ]
-  gitConfig.each {
-    def configKey = it.key
-    def configValue = it.value
-    println "Setting $configKey = $configValue"
-    git.setConfig(configKey, configValue)
-  }
+  gitConfig.each(git.setConfig)
 }
 
 task spotbugs {
@@ -417,7 +428,7 @@ test {
 
 assemble {
   dependsOn (
-    setupLocalRepo,
+    setupWorkspace,
     testClasses,
     'internal:venice-test-common:jmhClasses',
     'internal:venice-test-common:integrationTestClasses'
@@ -430,4 +441,71 @@ build {
     'services:venice-server:installDist',
     'services:venice-controller:installDist'
   )
+}
+
+idea.project.ipr {
+  withXml { provider ->
+    provider.node.component
+            .find { it.@name == 'VcsDirectoryMappings' }
+            .mapping.@vcs = 'Git'
+
+    def inspectionProjectProfileManager = provider.node.component
+        .find { it.@name == 'InspectionProjectProfileManager' }
+
+    def danglingJavaDocInspectionProperties = [
+      class: "DanglingJavadoc",
+      enabled: "false",
+      level: "WARNING",
+      enabled_by_default: "false"
+    ]
+
+    if (inspectionProjectProfileManager == null) {
+      inspectionProjectProfileManager = provider.node.appendNode(
+        "component",
+        [
+          name: "InspectionProjectProfileManager"
+        ]
+      )
+
+      def profile = inspectionProjectProfileManager.appendNode(
+        "profile",
+        [
+          version: "1.0"
+        ]
+      )
+
+      profile.appendNode(
+        "option",
+        [
+          name: "myName",
+          value: "Project Default"
+        ]
+      )
+
+      profile.appendNode(
+        "inspection_tool",
+        danglingJavaDocInspectionProperties
+      )
+
+      inspectionProjectProfileManager.appendNode(
+        "version",
+        [
+          value: "1.0"
+        ]
+      )
+    } else {
+      def danglingJavaDoc = inspectionProjectProfileManager.profile.inspection_tool
+          .find { it.@class == 'DanglingJavadoc' }
+      if (danglingJavaDoc == null) {
+        inspectionProjectProfileManager.profile.get(0).appendNode(
+          "inspection_tool",
+          danglingJavaDocInspectionProperties
+        )
+      } else {
+        danglingJavaDoc.@enabled = false
+        danglingJavaDoc.@level = "WARNING"
+        danglingJavaDoc.@enabled_by_default = false
+      }
+    }
+  }
 }

@@ -18,7 +18,7 @@ public class ClientConfig<T extends SpecificRecord> {
   private static final Logger LOGGER = LogManager.getLogger(ClientConfig.class);
   private static final String HTTPS = "https";
   public static final int DEFAULT_ZK_TIMEOUT_MS = 5000;
-  public static final String DEFAULT_D2_SERVICE_NAME = "venice-discovery";
+  public static final String DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME = "venice-discovery";
   public static final String DEFAULT_D2_ZK_BASE_PATH = "/d2";
 
   // Basic settings
@@ -30,7 +30,7 @@ public class ClientConfig<T extends SpecificRecord> {
 
   // D2 specific settings
   private boolean isD2Routing = false;
-  private String d2ServiceName = DEFAULT_D2_SERVICE_NAME;
+  private String d2ServiceName = DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME;
   private String d2BasePath = DEFAULT_D2_ZK_BASE_PATH;
   private int d2ZkTimeout = DEFAULT_ZK_TIMEOUT_MS;
   private D2Client d2Client = null;

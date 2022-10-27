@@ -125,6 +125,7 @@ public class ProduceWithSSL {
       String keyStorePwdPropertyName = "ssl.identity.keystore.password";
       String keyPwdPropertyName = "ssl.identity.key.password";
 
+      props.setProperty(VenicePushJob.ENABLE_SSL, Boolean.TRUE.toString());
       props.setProperty(VenicePushJob.SSL_KEY_STORE_PROPERTY_NAME, keyStorePropertyName);
       props.setProperty(VenicePushJob.SSL_TRUST_STORE_PROPERTY_NAME, trustStorePropertyName);
       props.setProperty(VenicePushJob.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME, keyStorePwdPropertyName);
