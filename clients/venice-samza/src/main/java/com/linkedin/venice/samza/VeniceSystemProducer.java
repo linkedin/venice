@@ -46,6 +46,7 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
@@ -111,10 +112,9 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   private final VeniceSystemFactory factory;
   private final Optional<String> partitioners;
   private final Time time;
-  private final String primaryControllerColoD2FsBasePath;
-  private final String childD2FsBasePath;
   private final String runningFabric;
   private final boolean verifyLatestProtocolPresent;
+  private final Map<String, D2ClientEnvelope> d2ZkHostToClientEnvelopeMap = new HashMap<>();
   private final VeniceConcurrentHashMap<Schema, Pair<Integer, Integer>> valueSchemaIds =
       new VeniceConcurrentHashMap<>();
   /**
@@ -269,8 +269,6 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     this.sslFactory = sslFactory;
     this.partitioners = partitioners;
     this.time = time;
-    this.primaryControllerColoD2FsBasePath = Utils.getUniqueTempPath("d2");
-    this.childD2FsBasePath = Utils.getUniqueTempPath("d2Child");
   }
 
   public String getRunningFabric() {
@@ -349,24 +347,9 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     }
     this.isStarted = true;
 
-    this.primaryControllerColoD2Client = new D2ClientBuilder().setZkHosts(primaryControllerColoD2ZKHost)
-        .setSSLContext(sslFactory.map(SSLFactory::getSSLContext).orElse(null))
-        .setIsSSLEnabled(sslFactory.isPresent())
-        .setSSLParameters(sslFactory.map(SSLFactory::getSSLParameters).orElse(null))
-        .setFsBasePath(primaryControllerColoD2FsBasePath)
-        .setEnableSaveUriDataOnDisk(true)
-        .build();
+    this.primaryControllerColoD2Client = getStartedD2Client(primaryControllerColoD2ZKHost);
+    this.childColoD2Client = getStartedD2Client(veniceChildD2ZkHost);
 
-    this.childColoD2Client = new D2ClientBuilder().setZkHosts(veniceChildD2ZkHost)
-        .setSSLContext(sslFactory.map(SSLFactory::getSSLContext).orElse(null))
-        .setIsSSLEnabled(sslFactory.isPresent())
-        .setSSLParameters(sslFactory.map(SSLFactory::getSSLParameters).orElse(null))
-        .setFsBasePath(childD2FsBasePath)
-        .setEnableSaveUriDataOnDisk(true)
-        .build();
-
-    D2ClientUtils.startClient(primaryControllerColoD2Client);
-    D2ClientUtils.startClient(childColoD2Client);
     // Discover cluster
     D2ServiceDiscoveryResponse discoveryResponse = (D2ServiceDiscoveryResponse) controllerRequestWithRetry(
         () -> D2ControllerClient
@@ -531,14 +514,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     }
     Utils.closeQuietlyWithErrorLogged(controllerClient);
     hybridStoreQuotaMonitor.ifPresent(Utils::closeQuietlyWithErrorLogged);
-    D2ClientUtils.shutdownClient(childColoD2Client);
-    D2ClientUtils.shutdownClient(primaryControllerColoD2Client);
-    try {
-      FileUtils.deleteDirectory(new File(primaryControllerColoD2FsBasePath));
-      FileUtils.deleteDirectory(new File(childD2FsBasePath));
-    } catch (IOException e) {
-      LOGGER.info("Error in cleaning up: {} and {}", primaryControllerColoD2FsBasePath, childD2FsBasePath);
-    }
+    d2ZkHostToClientEnvelopeMap.values().forEach(Utils::closeQuietlyWithErrorLogged);
   }
 
   @Override
@@ -775,5 +751,41 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
    */
   public VeniceWriter<byte[], byte[], byte[]> getInternalProducer() {
     return this.veniceWriter;
+  }
+
+  private D2Client getStartedD2Client(String d2ZkHost) {
+    D2ClientEnvelope d2ClientEnvelope = d2ZkHostToClientEnvelopeMap.computeIfAbsent(d2ZkHost, zkHost -> {
+      String fsBasePath = Utils.getUniqueTempPath("d2");
+      D2Client d2Client = new D2ClientBuilder().setZkHosts(d2ZkHost)
+          .setSSLContext(sslFactory.map(SSLFactory::getSSLContext).orElse(null))
+          .setIsSSLEnabled(sslFactory.isPresent())
+          .setSSLParameters(sslFactory.map(SSLFactory::getSSLParameters).orElse(null))
+          .setFsBasePath(fsBasePath)
+          .setEnableSaveUriDataOnDisk(true)
+          .build();
+      D2ClientUtils.startClient(d2Client);
+      return new D2ClientEnvelope(d2Client, fsBasePath);
+    });
+    return d2ClientEnvelope.d2Client;
+  }
+
+  private static final class D2ClientEnvelope implements Closeable {
+    D2Client d2Client;
+    String fsBasePath;
+
+    D2ClientEnvelope(D2Client d2Client, String fsBasePath) {
+      this.d2Client = d2Client;
+      this.fsBasePath = fsBasePath;
+    }
+
+    @Override
+    public void close() throws IOException {
+      D2ClientUtils.shutdownClient(d2Client);
+      try {
+        FileUtils.deleteDirectory(new File(fsBasePath));
+      } catch (IOException e) {
+        LOGGER.info("Error in cleaning up: {}", fsBasePath);
+      }
+    }
   }
 }
