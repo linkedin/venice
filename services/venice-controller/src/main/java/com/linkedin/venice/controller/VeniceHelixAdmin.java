@@ -3531,7 +3531,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   private void addStoreViews(String clusterName, String storeName, Map<String, String> viewConfigMap) {
     storeMetadataUpdate(clusterName, storeName, store -> {
-      store.setViewConfig(StoreViewUtils.convertStringMapViewToViewConfig(viewConfigMap));
+      store.setViewConfigs(StoreViewUtils.convertStringMapViewToViewConfig(viewConfigMap));
       return store;
     });
   }

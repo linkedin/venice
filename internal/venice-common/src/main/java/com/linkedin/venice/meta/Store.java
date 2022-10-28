@@ -196,7 +196,7 @@ public interface Store {
 
   Map<String, ViewConfig> getViewConfigs();
 
-  void setViewConfig(Map<String, ViewConfig> viewConfigMap);
+  void setViewConfigs(Map<String, ViewConfig> viewConfigMap);
 
   boolean isHybrid();
 

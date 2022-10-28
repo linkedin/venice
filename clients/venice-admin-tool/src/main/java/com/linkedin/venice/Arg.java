@@ -220,7 +220,10 @@ public enum Arg {
   ), RETRY("retry", "r", false, "Retry this operation"),
   DISABLE_LOG("disable-log", "dl", false, "Disable logs from internal classes. Only print command output on console"),
   STORAGE_PERSONA("storage-persona", "sp", true, "Name of Storage Persona"),
-  STORE_VIEW_CONFIGS("storage-view-configs", "svc", true, "Config that describes views to be added for a store");
+  STORE_VIEW_CONFIGS(
+      "storage-view-configs", "svc", true,
+      "Config that describes views to be added for a store.  Input is a json map.  Example: {\"ExampleView\": {\"viewType\": \"CHANGE_CAPTURE\",\"params\": {}}}"
+  );
 
   private final String argName;
   private final String first;

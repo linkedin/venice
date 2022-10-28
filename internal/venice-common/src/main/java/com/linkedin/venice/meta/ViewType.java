@@ -16,6 +16,7 @@ public enum ViewType {
   }
 
   private static final Map<Integer, ViewType> idMapping = new HashMap<>();
+
   static {
     Arrays.stream(values()).forEach(s -> idMapping.put(s.value, s));
   }

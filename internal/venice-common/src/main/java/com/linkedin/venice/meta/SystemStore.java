@@ -274,7 +274,7 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
-  public void setViewConfig(Map<String, ViewConfig> viewConfigList) {
+  public void setViewConfigs(Map<String, ViewConfig> viewConfigList) {
     throwUnsupportedOperationException("setViewConfig");
   }
 

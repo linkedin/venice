@@ -220,7 +220,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setStoreMetaSystemStoreEnabled(store.isStoreMetaSystemStoreEnabled());
     setActiveActiveReplicationEnabled(store.isActiveActiveReplicationEnabled());
     setRmdVersionID(store.getRmdVersionID());
-    setViewConfig(store.getViewConfigs());
+    setViewConfigs(store.getViewConfigs());
 
     for (Version storeVersion: store.getVersions()) {
       forceAddVersion(storeVersion.cloneVersion(), true);
@@ -462,7 +462,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   }
 
   @Override
-  public void setViewConfig(Map<String, ViewConfig> viewConfigList) {
+  public void setViewConfigs(Map<String, ViewConfig> viewConfigList) {
     if (viewConfigList == null) {
       this.storeProperties.views = new HashMap<>();
     } else {

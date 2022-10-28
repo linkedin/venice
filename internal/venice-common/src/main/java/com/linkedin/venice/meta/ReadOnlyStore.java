@@ -849,7 +849,7 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
-  public void setViewConfig(Map<String, ViewConfig> viewConfigList) {
+  public void setViewConfigs(Map<String, ViewConfig> viewConfigList) {
     throw new UnsupportedOperationException();
   }
 
