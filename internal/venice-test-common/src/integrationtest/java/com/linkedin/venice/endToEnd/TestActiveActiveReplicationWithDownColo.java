@@ -125,11 +125,10 @@ public class TestActiveActiveReplicationWithDownColo {
   // timeouts
   // that are hardcoded. Ideally we'd have these fully configurable to make this test finish in a predictable and
   // reasonable amount of time
-  // @Test
+  // @Test(timeOut = TEST_TIMEOUT)
   public void testDownedKafka() throws Exception {
-    // These variable don't do anything other then make it easy to find their values in the debugger so you can hook up
-    // ZooInspector
-    // and figure which colo is assigned where
+    // These variable don't do anything other than to make it easy to find their values in the debugger so you can hook
+    // up ZooInspector and figure which colo is assigned where
     int zkPort = multiColoMultiClusterWrapper.getZkServerWrapper().getPort();
     int dc0Kafka = multiColoMultiClusterWrapper.getClusters().get(0).getKafkaBrokerWrapper().getPort();
     int dc1kafka = multiColoMultiClusterWrapper.getClusters().get(1).getKafkaBrokerWrapper().getPort();
@@ -170,6 +169,7 @@ public class TestActiveActiveReplicationWithDownColo {
     // Build a system producer that writes nearline to dc-0
     SystemProducer producerInDC0 = new VeniceSystemProducer(
         childDatacenters.get(0).getZkServerWrapper().getAddress(),
+        childDatacenters.get(0).getZkServerWrapper().getAddress(),
         D2_SERVICE_NAME,
         storeName,
         Version.PushType.STREAM,
@@ -183,27 +183,28 @@ public class TestActiveActiveReplicationWithDownColo {
 
     SystemProducer producerInDC1 = new VeniceSystemProducer(
         childDatacenters.get(1).getZkServerWrapper().getAddress(),
+        childDatacenters.get(1).getZkServerWrapper().getAddress(),
         D2_SERVICE_NAME,
         storeName,
         Version.PushType.STREAM,
         Utils.getUniqueString("venice-push-id"),
-        "dc-0",
+        "dc-1",
         true,
         null,
         Optional.empty(),
         Optional.empty());
     producerInDC1.start();
 
-    // Build another one which will write some batch data (don't verify latest protocol, the test set up isn't quite set
-    // up for it in parent colos, so we'll skip
+    // Build another one which will write some batch data
     SystemProducer batchProducer = new VeniceSystemProducer(
+        childDatacenters.get(0).getZkServerWrapper().getAddress(),
         multiColoMultiClusterWrapper.getZkServerWrapper().getAddress(),
         PARENT_D2_SERVICE_NAME,
         storeName,
         Version.PushType.BATCH,
         Utils.getUniqueString("venice-push-id"),
         "dc-0",
-        false,
+        true,
         null,
         Optional.empty(),
         Optional.empty());
@@ -249,9 +250,8 @@ public class TestActiveActiveReplicationWithDownColo {
     // suite that might expect a downed Kafka broker
 
     // Ok. So if we've gotten this far, everything is working. Neat. Now lets change that. We're going to kill the kafka
-    // broker in DC-1, and then we're going to execute a new push. Here is what should happen. The new push should
-    // succeed
-    // in the OTHER colos and go live.
+    // broker in one of the colos, and then we're going to execute a new push. Here is what should happen. The new push
+    // should succeed in the OTHER colos and go live.
 
     // It's simple, we kill the kafka broker
     multiColoMultiClusterWrapper.getClusters().get(NUMBER_OF_CHILD_DATACENTERS - 1).getKafkaBrokerWrapper().close();
@@ -268,7 +268,7 @@ public class TestActiveActiveReplicationWithDownColo {
       parentControllerClient.writeEndOfPush(storeName, 2);
     }
 
-    // Lets verify from the other two colos
+    // Let's verify from the other two colos
     for (int i = 0; i < NUMBER_OF_CHILD_DATACENTERS - 1; i++) {
       try (ControllerClient childControllerClient = new ControllerClient(
           clusterName,

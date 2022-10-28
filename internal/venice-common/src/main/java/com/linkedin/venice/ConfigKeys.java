@@ -1824,4 +1824,11 @@ public class ConfigKeys {
    * It contains a string of concatenated partitioner class names separated by comma.
    */
   public static final String VENICE_PARTITIONERS = "venice.partitioners";
+
+  /**
+   * Config to check whether the protocol versions used at runtime are valid in Venice backend; if not, fail fast.
+   * Used by Samza jobs and Da Vinci clients. Default value should be true.
+   * Turn off the config in where access to routers is not feasible.
+   */
+  public static final String VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION = "validate.venice.internal.schema.version";
 }

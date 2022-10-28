@@ -621,6 +621,7 @@ public class ActiveActiveReplicationForHybridTest {
       VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(0);
       try (VeniceSystemProducer producerInDC0 = new VeniceSystemProducer(
           childDataCenter.getZkServerWrapper().getAddress(),
+          childDataCenter.getZkServerWrapper().getAddress(),
           D2_SERVICE_NAME,
           storeName,
           Version.PushType.STREAM,
@@ -703,6 +704,7 @@ public class ActiveActiveReplicationForHybridTest {
       // Build the SystemProducer with the mock time
       VeniceMultiClusterWrapper childDataCenter1 = childDatacenters.get(1);
       try (VeniceSystemProducer producerInDC1 = new VeniceSystemProducer(
+          childDataCenter.getZkServerWrapper().getAddress(),
           childDataCenter1.getZkServerWrapper().getAddress(),
           D2_SERVICE_NAME,
           storeName,
