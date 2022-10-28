@@ -46,6 +46,7 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
@@ -69,6 +70,18 @@ import org.apache.samza.system.SystemProducer;
 
 /**
  * {@code VeniceSystemProducer} defines the interfaces for Samza jobs to send data to Venice stores.
+ *
+ * Samza jobs talk to either parent or child controller depending on the aggregate mode config.
+ * The decision of which controller should be used is made in {@link VeniceSystemFactory}.
+ * The "Primary Controller" term is used to refer to whichever controller the Samza job should talk to.
+ *
+ * The primary controller should be:
+ * 1. The parent controller when the Venice system is deployed in a multi-colo mode and either:
+ *     a. {@link PushType} is {@link PushType.BATCH} or {@link PushType.STREAM_REPROCESSING}; or
+ *     b. @deprecated {@link PushType} is {@link PushType.STREAM} and the job is configured to write data in AGGREGATE mode
+ * 2. The child controller when either:
+ *     a. The Venice system is deployed in a single-colo mode; or
+ *     b. The {@link PushType} is {@link PushType.STREAM} and the job is configured to write data in NON_AGGREGATE mode
  */
 public class VeniceSystemProducer implements SystemProducer, Closeable {
   private static final Logger LOGGER = LogManager.getLogger(VeniceSystemProducer.class);
@@ -89,8 +102,9 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   private static final DatumWriter<Boolean> BOOL_DATUM_WRITER = new GenericDatumWriter<>(BOOL_SCHEMA);
 
   // Immutable state
-  private final String veniceD2ZKHost;
-  private final String d2ServiceName;
+  private final String veniceChildD2ZkHost;
+  private final String primaryControllerColoD2ZKHost;
+  private final String primaryControllerD2ServiceName;
   private final String storeName;
   private final String samzaJobId;
   private final Version.PushType pushType;
@@ -98,9 +112,9 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   private final VeniceSystemFactory factory;
   private final Optional<String> partitioners;
   private final Time time;
-  private final String fsBasePath;
   private final String runningFabric;
   private final boolean verifyLatestProtocolPresent;
+  private final Map<String, D2ClientEnvelope> d2ZkHostToClientEnvelopeMap = new HashMap<>();
   private final VeniceConcurrentHashMap<Schema, Pair<Integer, Integer>> valueSchemaIds =
       new VeniceConcurrentHashMap<>();
   /**
@@ -115,7 +129,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   // To avoid the excessive usage of the cache in case each message is using a unique key schema
   private final Map<Schema, String> canonicalSchemaStrCache = new BoundedHashMap<>(10, true);
 
-  private D2Client d2Client;
+  private D2Client primaryControllerColoD2Client;
+  private D2Client childColoD2Client;
   private D2ControllerClient controllerClient;
   // It can be version topic, real-time topic or stream reprocessing topic, depending on push type
   private String topicName;
@@ -130,9 +145,10 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   private Optional<RouterBasedPushMonitor> pushMonitor = Optional.empty();
   private Optional<RouterBasedHybridStoreQuotaMonitor> hybridStoreQuotaMonitor = Optional.empty();
 
+  @Deprecated
   public VeniceSystemProducer(
-      String veniceD2ZKHost,
-      String d2ServiceName,
+      String primaryControllerColoD2ZKHost,
+      String primaryControllerD2ServiceName,
       String storeName,
       Version.PushType pushType,
       String samzaJobId,
@@ -142,8 +158,38 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       Optional<SSLFactory> sslFactory,
       Optional<String> partitioners) {
     this(
-        veniceD2ZKHost,
-        d2ServiceName,
+        primaryControllerColoD2ZKHost,
+        primaryControllerColoD2ZKHost,
+        primaryControllerD2ServiceName,
+        storeName,
+        pushType,
+        samzaJobId,
+        runningFabric,
+        verifyLatestProtocolPresent,
+        factory,
+        sslFactory,
+        partitioners);
+  }
+
+  /**
+   * Construct a new instance of {@link VeniceSystemProducer}. Equivalent to {@link VeniceSystemProducer(veniceChildD2ZkHost, primaryControllerColoD2ZKHost, primaryControllerD2ServiceName, storeName, pushType, samzaJobId, runningFabric, verifyLatestProtocolPresent, factory, sslFactory, partitioners, SystemTime.INSTANCE)}
+   */
+  public VeniceSystemProducer(
+      String veniceChildD2ZkHost,
+      String primaryControllerColoD2ZKHost,
+      String primaryControllerD2ServiceName,
+      String storeName,
+      Version.PushType pushType,
+      String samzaJobId,
+      String runningFabric,
+      boolean verifyLatestProtocolPresent,
+      VeniceSystemFactory factory,
+      Optional<SSLFactory> sslFactory,
+      Optional<String> partitioners) {
+    this(
+        veniceChildD2ZkHost,
+        primaryControllerColoD2ZKHost,
+        primaryControllerD2ServiceName,
         storeName,
         pushType,
         samzaJobId,
@@ -155,9 +201,10 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
         SystemTime.INSTANCE);
   }
 
+  @Deprecated
   public VeniceSystemProducer(
-      String veniceD2ZKHost,
-      String d2ServiceName,
+      String primaryControllerColoD2ZKHost,
+      String primaryControllerD2ServiceName,
       String storeName,
       Version.PushType pushType,
       String samzaJobId,
@@ -167,8 +214,52 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       Optional<SSLFactory> sslFactory,
       Optional<String> partitioners,
       Time time) {
-    this.veniceD2ZKHost = veniceD2ZKHost;
-    this.d2ServiceName = d2ServiceName;
+    this(
+        primaryControllerColoD2ZKHost,
+        primaryControllerColoD2ZKHost,
+        primaryControllerD2ServiceName,
+        storeName,
+        pushType,
+        samzaJobId,
+        runningFabric,
+        verifyLatestProtocolPresent,
+        factory,
+        sslFactory,
+        partitioners,
+        time);
+  }
+
+  /**
+   * Construct a new instance of {@link VeniceSystemProducer}
+   * @param veniceChildD2ZkHost D2 Zk Address where the components in the child colo are announcing themselves
+   * @param primaryControllerColoD2ZKHost D2 Zk Address of the colo where the primary controller resides
+   * @param primaryControllerD2ServiceName The service name that the primary controller uses to announce itself to D2
+   * @param storeName The store to write to
+   * @param pushType The {@link PushType} to use to write to the store
+   * @param samzaJobId A unique id used to identify jobs that can concurrently write to the same store
+   * @param runningFabric The colo where the job is running. It is used to find the best destination for the data to be written to
+   * @param verifyLatestProtocolPresent Config to check whether the protocol versions used at runtime are valid in Venice backend
+   * @param factory The {@link VeniceSystemFactory} object that was used to create this object
+   * @param sslFactory An optional {@link SSLFactory} that is used to communicate with other components using SSL
+   * @param partitioners A list of comma-separated partitioners class names that are supported.
+   * @param time An object of type {@link Time}. It is helpful to be configurable for testing.
+   */
+  public VeniceSystemProducer(
+      String veniceChildD2ZkHost,
+      String primaryControllerColoD2ZKHost,
+      String primaryControllerD2ServiceName,
+      String storeName,
+      Version.PushType pushType,
+      String samzaJobId,
+      String runningFabric,
+      boolean verifyLatestProtocolPresent,
+      VeniceSystemFactory factory,
+      Optional<SSLFactory> sslFactory,
+      Optional<String> partitioners,
+      Time time) {
+    this.veniceChildD2ZkHost = veniceChildD2ZkHost;
+    this.primaryControllerColoD2ZKHost = primaryControllerColoD2ZKHost;
+    this.primaryControllerD2ServiceName = primaryControllerD2ServiceName;
     this.storeName = storeName;
     this.pushType = pushType;
     this.samzaJobId = samzaJobId;
@@ -178,7 +269,6 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     this.sslFactory = sslFactory;
     this.partitioners = partitioners;
     this.time = time;
-    this.fsBasePath = Utils.getUniqueTempPath("d2");
   }
 
   public String getRunningFabric() {
@@ -257,17 +347,13 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     }
     this.isStarted = true;
 
-    this.d2Client = new D2ClientBuilder().setZkHosts(veniceD2ZKHost)
-        .setSSLContext(sslFactory.map(SSLFactory::getSSLContext).orElse(null))
-        .setIsSSLEnabled(sslFactory.isPresent())
-        .setSSLParameters(sslFactory.map(SSLFactory::getSSLParameters).orElse(null))
-        .setFsBasePath(fsBasePath)
-        .setEnableSaveUriDataOnDisk(true)
-        .build();
-    D2ClientUtils.startClient(d2Client);
+    this.primaryControllerColoD2Client = getStartedD2Client(primaryControllerColoD2ZKHost);
+    this.childColoD2Client = getStartedD2Client(veniceChildD2ZkHost);
+
     // Discover cluster
     D2ServiceDiscoveryResponse discoveryResponse = (D2ServiceDiscoveryResponse) controllerRequestWithRetry(
-        () -> D2ControllerClient.discoverCluster(d2Client, d2ServiceName, this.storeName),
+        () -> D2ControllerClient
+            .discoverCluster(primaryControllerColoD2Client, primaryControllerD2ServiceName, this.storeName),
         10);
     String clusterName = discoveryResponse.getCluster();
     LOGGER.info("Found cluster: {} for store: {}", clusterName, storeName);
@@ -282,12 +368,15 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       // Discover the D2 service name for the system store
       String kafkaMessageEnvelopSchemaSysStore = AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName();
       D2ServiceDiscoveryResponse sysStoreDiscoveryResponse = (D2ServiceDiscoveryResponse) controllerRequestWithRetry(
-          () -> D2ControllerClient.discoverCluster(d2Client, d2ServiceName, kafkaMessageEnvelopSchemaSysStore),
+          () -> D2ControllerClient.discoverCluster(
+              primaryControllerColoD2Client,
+              primaryControllerD2ServiceName,
+              kafkaMessageEnvelopSchemaSysStore),
           2);
       ClientConfig clientConfigForKafkaMessageEnvelopeSchemaReader =
           ClientConfig.defaultGenericClientConfig(kafkaMessageEnvelopSchemaSysStore);
       clientConfigForKafkaMessageEnvelopeSchemaReader.setD2ServiceName(sysStoreDiscoveryResponse.getD2Service());
-      clientConfigForKafkaMessageEnvelopeSchemaReader.setD2Client(d2Client);
+      clientConfigForKafkaMessageEnvelopeSchemaReader.setD2Client(childColoD2Client);
       SchemaReader kafkaMessageEnvelopeSchemaReader =
           ClientFactory.getSchemaReader(clientConfigForKafkaMessageEnvelopeSchemaReader);
       new SchemaPresenceChecker(kafkaMessageEnvelopeSchemaReader, AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE)
@@ -295,7 +384,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       LOGGER.info("Successfully verified the latest protocols at runtime are valid in Venice backend.");
     }
 
-    this.controllerClient = new D2ControllerClient(d2ServiceName, clusterName, d2Client, sslFactory);
+    this.controllerClient =
+        new D2ControllerClient(primaryControllerD2ServiceName, clusterName, primaryControllerColoD2Client, sslFactory);
 
     // Request all the necessary info from Venice Controller
     VersionCreationResponse versionCreationResponse = (VersionCreationResponse) controllerRequestWithRetry(
@@ -343,7 +433,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       String versionTopic = Version.composeVersionTopicFromStreamReprocessingTopic(topicName);
       pushMonitor = Optional.of(
           new RouterBasedPushMonitor(
-              new D2TransportClient(discoveryResponse.getD2Service(), d2Client),
+              new D2TransportClient(discoveryResponse.getD2Service(), childColoD2Client),
               versionTopic,
               factory,
               this));
@@ -381,7 +471,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
         && hybridStoreDiskQuotaEnabled) {
       hybridStoreQuotaMonitor = Optional.of(
           new RouterBasedHybridStoreQuotaMonitor(
-              new D2TransportClient(discoveryResponse.getD2Service(), d2Client),
+              new D2TransportClient(discoveryResponse.getD2Service(), childColoD2Client),
               storeName,
               pushType,
               topicName));
@@ -424,12 +514,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     }
     Utils.closeQuietlyWithErrorLogged(controllerClient);
     hybridStoreQuotaMonitor.ifPresent(Utils::closeQuietlyWithErrorLogged);
-    D2ClientUtils.shutdownClient(d2Client);
-    try {
-      FileUtils.deleteDirectory(new File(fsBasePath));
-    } catch (IOException e) {
-      LOGGER.info("Error in cleaning up: {}", fsBasePath);
-    }
+    d2ZkHostToClientEnvelopeMap.values().forEach(Utils::closeQuietlyWithErrorLogged);
   }
 
   @Override
@@ -666,5 +751,41 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
    */
   public VeniceWriter<byte[], byte[], byte[]> getInternalProducer() {
     return this.veniceWriter;
+  }
+
+  private D2Client getStartedD2Client(String d2ZkHost) {
+    D2ClientEnvelope d2ClientEnvelope = d2ZkHostToClientEnvelopeMap.computeIfAbsent(d2ZkHost, zkHost -> {
+      String fsBasePath = Utils.getUniqueTempPath("d2");
+      D2Client d2Client = new D2ClientBuilder().setZkHosts(d2ZkHost)
+          .setSSLContext(sslFactory.map(SSLFactory::getSSLContext).orElse(null))
+          .setIsSSLEnabled(sslFactory.isPresent())
+          .setSSLParameters(sslFactory.map(SSLFactory::getSSLParameters).orElse(null))
+          .setFsBasePath(fsBasePath)
+          .setEnableSaveUriDataOnDisk(true)
+          .build();
+      D2ClientUtils.startClient(d2Client);
+      return new D2ClientEnvelope(d2Client, fsBasePath);
+    });
+    return d2ClientEnvelope.d2Client;
+  }
+
+  private static final class D2ClientEnvelope implements Closeable {
+    D2Client d2Client;
+    String fsBasePath;
+
+    D2ClientEnvelope(D2Client d2Client, String fsBasePath) {
+      this.d2Client = d2Client;
+      this.fsBasePath = fsBasePath;
+    }
+
+    @Override
+    public void close() throws IOException {
+      D2ClientUtils.shutdownClient(d2Client);
+      try {
+        FileUtils.deleteDirectory(new File(fsBasePath));
+      } catch (IOException e) {
+        LOGGER.info("Error in cleaning up: {}", fsBasePath);
+      }
+    }
   }
 }
