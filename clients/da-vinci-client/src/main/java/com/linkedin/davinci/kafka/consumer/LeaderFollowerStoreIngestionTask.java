@@ -623,38 +623,37 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      *    RT end offset - offset in leader replica > threshold
      * thus replica cannot become online {@link StoreIngestionTask#isReadyToServe}.
      */
-    if (VeniceSystemStoreUtils.isMetaStore(storeName) && !isKafkaTopicPartitionFullyConsumed(pcs)) {
+    if (VeniceSystemStoreUtils.isMetaStore(storeName) && !isLocalVersionTopicPartitionFullyConsumed(pcs)) {
       return false;
     }
     return true;
   }
 
   /**
-   * @return <code>true</code>, if kafka topic partition is fully consumed by comparing its offset against end offset;
+   * @return <code>true</code>, if local kafka topic partition is fully consumed by comparing its offset against end offset;
    *         <code>false</code>, otherwise.
    */
-  private boolean isKafkaTopicPartitionFullyConsumed(PartitionConsumptionState pcs) {
-    long offset = pcs.getLatestProcessedLocalVersionTopicOffset();
-    long endOffset = getKafkaTopicPartitionEndOffSet(pcs);
-    if (endOffset == StatsErrorCode.LAG_MEASUREMENT_FAILURE.code) {
+  private boolean isLocalVersionTopicPartitionFullyConsumed(PartitionConsumptionState pcs) {
+    long localVTOff = pcs.getLatestProcessedLocalVersionTopicOffset();
+    long localVTEndOffset = getKafkaTopicPartitionEndOffSet(localKafkaServer, kafkaVersionTopic, pcs.getPartition());
+    if (localVTEndOffset == StatsErrorCode.LAG_MEASUREMENT_FAILURE.code) {
       return false;
     }
 
-    // If end offset == 0, then no message has been written to the partition, consider as fully consumed.
-    if (endOffset == 0 && offset == OffsetRecord.LOWEST_OFFSET) {
+    // If end offset == 0, then no message has been written to the partition, consider it as fully consumed.
+    if (localVTEndOffset == 0 && localVTOff == OffsetRecord.LOWEST_OFFSET) {
       return true;
     }
 
     // endOffset is the last successful message offset + 1.
-    return offset + 1 >= endOffset;
+    return localVTOff + 1 >= localVTEndOffset;
   }
 
   /**
-   * @return the end offset in Kafka for the current topic partition in SIT.
+   * @return the end offset in kafka for the topic partition in SIT.
    */
-  private long getKafkaTopicPartitionEndOffSet(PartitionConsumptionState pcs) {
-    final String kafkaUrl = getSingleKafkaUrlFor(kafkaVersionTopic);
-    long offsetFromConsumer = getPartitionLatestOffset(kafkaUrl, this.kafkaVersionTopic, pcs.getPartition());
+  private long getKafkaTopicPartitionEndOffSet(String kafkaUrl, String kafkaVersionTopic, int partition) {
+    long offsetFromConsumer = getPartitionLatestOffset(kafkaUrl, kafkaVersionTopic, partition);
     if (offsetFromConsumer >= 0) {
       return offsetFromConsumer;
     }
@@ -664,7 +663,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      * written to, the end offset is 0.
      * @see CachedKafkaMetadataGetter#getOffset(TopicManager, String, int)
      */
-    return cachedKafkaMetadataGetter.getOffset(getTopicManager(kafkaUrl), kafkaVersionTopic, pcs.getPartition());
+    return cachedKafkaMetadataGetter.getOffset(getTopicManager(kafkaUrl), kafkaVersionTopic, partition);
   }
 
   protected void startConsumingAsLeaderInTransitionFromStandby(PartitionConsumptionState partitionConsumptionState) {

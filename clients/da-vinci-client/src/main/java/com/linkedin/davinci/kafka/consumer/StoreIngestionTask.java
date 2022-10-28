@@ -126,7 +126,6 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -3669,14 +3668,5 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   // Visible for unit test.
   protected void setPartitionConsumptionState(int partition, PartitionConsumptionState pcs) {
     partitionConsumptionStateMap.put(partition, pcs);
-  }
-
-  protected String getSingleKafkaUrlFor(String kafkaVersionTopic) {
-    final Set<String> kafkaUrls = aggKafkaConsumerService.getKafkaUrlsFor(kafkaVersionTopic);
-    if (kafkaUrls.size() != 1) {
-      throw new VeniceException(
-          String.format("Only one kafka URL is expected for topic: {}, but we have: {}", kafkaVersionTopic, kafkaUrls));
-    }
-    return kafkaUrls.stream().collect(Collectors.toList()).get(0);
   }
 }
