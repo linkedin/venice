@@ -234,6 +234,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   private volatile boolean isChunkingSet;
   private volatile boolean isChunkingFlagInvoked;
 
+  private boolean isRmdChunkingEnabled;
+
   protected VeniceWriter(
       VeniceWriterOptions params,
       VeniceProperties props,
@@ -271,6 +273,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         props.getLong(MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, DEFAULT_MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS);
     this.elapsedTimeForClosingSegmentEnabled = maxElapsedTimeForSegmentInMs > 0;
     this.defaultDebugInfo = Utils.getDebugInfo();
+    // Hardcoded to false for now until we finished the implementation.
+    this.isRmdChunkingEnabled = false;
 
     // if INSTANCE_ID is not set, we'd use "hostname:port" as the default writer id
     if (props.containsKey(INSTANCE_ID)) {
@@ -498,7 +502,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     byte[] serializedKey = keySerializer.serialize(topicName, key);
     isChunkingFlagInvoked = true;
 
-    int rmdPayloadSize = deleteMetadata.isPresent() ? deleteMetadata.get().getSerializedSize() : 0;
+    int rmdPayloadSize = deleteMetadata.map(DeleteMetadata::getSerializedSize).orElse(0);
     if (serializedKey.length + rmdPayloadSize > maxSizeForUserPayloadPerMessageInBytes) {
       throw new RecordTooLargeException(
           "This record exceeds the maximum size. " + getSizeReport(serializedKey.length, 0, rmdPayloadSize));
@@ -1103,8 +1107,66 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       LeaderMetadataWrapper leaderMetadataWrapper,
       long logicalTs,
       Optional<PutMetadata> putMetadata) {
-    int replicationMetadataPayloadSize = putMetadata.isPresent() ? putMetadata.get().getSerializedSize() : 0;
-    int sizeAvailablePerMessage = maxSizeForUserPayloadPerMessageInBytes - serializedKey.length;
+    int replicationMetadataPayloadSize = putMetadata.map(PutMetadata::getSerializedSize).orElse(0);
+    final Supplier<String> reportSizeGenerator =
+        () -> getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize);
+    ChunkedPayloadAndManifest valueChunksAndManifest =
+        chunksPayloadAndSend(serializedKey, serializedValue, valueSchemaId, callback, partition, reportSizeGenerator);
+    ChunkedPayloadAndManifest rmdChunksAndManifest = null;
+    if (isRmdChunkingEnabled) {
+      rmdChunksAndManifest =
+          chunksPayloadAndSend(serializedKey, serializedValue, valueSchemaId, callback, partition, reportSizeGenerator);
+    }
+    // Now that we've sent all the chunks, we can take care of the final value, the manifest.
+    byte[] topLevelKey = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(serializedKey);
+    KeyProvider manifestKeyProvider = producerMetadata -> new KafkaKey(MessageType.PUT, topLevelKey);
+
+    Put putManifestsPayload = new Put();
+    putManifestsPayload.putValue = ByteBuffer
+        .wrap(chunkedValueManifestSerializer.serialize(topicName, valueChunksAndManifest.getChunkedValueManifest()));
+    putManifestsPayload.schemaId = AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
+    if (putMetadata.isPresent()) {
+      putManifestsPayload.replicationMetadataVersionId = putMetadata.get().getRmdVersionId();
+      if (isChunkingEnabled) {
+        putManifestsPayload.replicationMetadataPayload = ByteBuffer
+            .wrap(chunkedValueManifestSerializer.serialize(topicName, rmdChunksAndManifest.getChunkedValueManifest()));
+      } else {
+        putManifestsPayload.replicationMetadataPayload = putMetadata.get().getRmdPayload();
+      }
+    } else {
+      putManifestsPayload.replicationMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
+      putManifestsPayload.replicationMetadataPayload = EMPTY_BYTE_BUFFER;
+    }
+    final int sizeAvailablePerMessage = maxSizeForUserPayloadPerMessageInBytes - serializedKey.length;
+    if (putManifestsPayload.putValue.remaining()
+        + putManifestsPayload.replicationMetadataPayload.remaining() > sizeAvailablePerMessage) {
+      // This is a very desperate edge case...
+      throw new VeniceException(
+          "This message cannot be chunked, because even its manifest is too big to go through. "
+              + "Please reconsider your life choices. " + reportSizeGenerator.get());
+    }
+
+    if (callback instanceof ChunkAwareCallback) {
+      /** We leave a handle to the key, chunks and manifest so that the {@link ChunkAwareCallback} can act on them */
+      ((ChunkAwareCallback) callback).setChunkingInfo(
+          topLevelKey,
+          valueChunksAndManifest.getPayloadChunks(),
+          valueChunksAndManifest.getChunkedValueManifest());
+    }
+
+    // We only return the last future (the one for the manifest) and assume that once this one is finished,
+    // all the chunks should also be finished, since they were sent first, and ordering should be guaranteed.
+    return sendMessage(
+        manifestKeyProvider,
+        MessageType.PUT,
+        putManifestsPayload,
+        partition,
+        callback,
+        leaderMetadataWrapper,
+        Optional.of(logicalTs));
+  }
+
+  private void validateAvailableSizePerMessage(int sizeAvailablePerMessage, Supplier<String> sizeReport) {
     if (sizeAvailablePerMessage < maxSizeForUserPayloadPerMessageInBytes / 2) {
       /**
        * If the key size is more than half the available payload per message, then we cannot even encode a
@@ -1117,19 +1179,25 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
        *
        * TODO: Implement a proper key size (and value size) quota mechanism.
        */
-      throw new VeniceException(
-          "Chunking cannot support this use case. The key is too large. "
-              + getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize));
+      throw new VeniceException("Chunking cannot support this use case. The key is too large. " + sizeReport.get());
     }
-    int numberOfChunks = (int) Math.ceil((double) serializedValue.length / (double) sizeAvailablePerMessage);
+  }
 
+  private ChunkedPayloadAndManifest chunksPayloadAndSend(
+      byte[] serializedKey,
+      byte[] payload,
+      int schemaId,
+      Callback callback,
+      int partition,
+      Supplier<String> sizeReport) {
+    int sizeAvailablePerMessage = maxSizeForUserPayloadPerMessageInBytes - serializedKey.length;
+    validateAvailableSizePerMessage(sizeAvailablePerMessage, sizeReport);
+    int numberOfChunks = (int) Math.ceil((double) payload.length / (double) sizeAvailablePerMessage);
     final ChunkedValueManifest chunkedValueManifest = new ChunkedValueManifest();
-    chunkedValueManifest.schemaId = valueSchemaId;
+    chunkedValueManifest.schemaId = schemaId;
     chunkedValueManifest.keysWithChunkIdSuffix = new ArrayList<>(numberOfChunks);
-    chunkedValueManifest.size = serializedValue.length;
+    chunkedValueManifest.size = payload.length;
 
-    int chunkStartByteIndex;
-    int chunkEndByteIndex;
     KeyProvider keyProvider, firstKeyProvider, subsequentKeyProvider;
     boolean chunkAwareCallback = callback instanceof ChunkAwareCallback;
     ByteBuffer[] chunks = null;
@@ -1161,8 +1229,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       return subsequentKeyProvider.getKey(producerMetadata);
     };
     for (int chunkIndex = 0; chunkIndex < numberOfChunks; chunkIndex++) {
-      chunkStartByteIndex = chunkIndex * sizeAvailablePerMessage;
-      chunkEndByteIndex = Math.min((chunkIndex + 1) * sizeAvailablePerMessage, serializedValue.length);
+      int chunkStartByteIndex = chunkIndex * sizeAvailablePerMessage;
+      int chunkEndByteIndex = Math.min((chunkIndex + 1) * sizeAvailablePerMessage, payload.length);
 
       /**
        * We leave 4 bytes of headroom at the beginning of the ByteBuffer so that the Venice Storage Node
@@ -1170,7 +1238,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
        */
       final int chunkLength = chunkEndByteIndex - chunkStartByteIndex;
       byte[] chunkValue = new byte[chunkLength + ByteUtils.SIZE_OF_INT];
-      System.arraycopy(serializedValue, chunkStartByteIndex, chunkValue, ByteUtils.SIZE_OF_INT, chunkLength);
+      System.arraycopy(payload, chunkStartByteIndex, chunkValue, ByteUtils.SIZE_OF_INT, chunkLength);
       ByteBuffer chunk = ByteBuffer.wrap(chunkValue);
       chunk.position(ByteUtils.SIZE_OF_INT);
 
@@ -1207,68 +1275,20 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       } catch (Exception e) {
         throw new VeniceException(
             "Caught an exception while attempting to produce a chunk of a large value into Kafka... "
-                + getDetailedSizeReport(
-                    chunkIndex,
-                    numberOfChunks,
-                    sizeAvailablePerMessage,
-                    serializedKey.length,
-                    serializedValue.length,
-                    replicationMetadataPayloadSize),
+                + getDetailedSizeReport(chunkIndex, numberOfChunks, sizeAvailablePerMessage, sizeReport),
             e);
       }
     }
-
-    // Now that we've sent all the chunks, we can take care of the final value, the manifest.
-    byte[] topLevelKey = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(serializedKey);
-    KeyProvider manifestKeyProvider = producerMetadata -> new KafkaKey(MessageType.PUT, topLevelKey);
-
-    Put putPayload = new Put();
-    putPayload.putValue = ByteBuffer.wrap(chunkedValueManifestSerializer.serialize(topicName, chunkedValueManifest));
-    putPayload.schemaId = AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
-
-    if (putPayload.putValue.remaining() + replicationMetadataPayloadSize > sizeAvailablePerMessage) {
-      // This is a very desperate edge case...
-      throw new VeniceException(
-          "This message cannot be chunked, because even its manifest is too big to go through. "
-              + "Please reconsider your life choices. "
-              + getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize));
-    }
-
-    if (chunkAwareCallback) {
-      /** We leave a handle to the key, chunks and manifest so that the {@link ChunkAwareCallback} can act on them */
-      ((ChunkAwareCallback) callback).setChunkingInfo(topLevelKey, chunks, chunkedValueManifest);
-    }
-
-    if (putMetadata.isPresent()) {
-      putPayload.replicationMetadataVersionId = putMetadata.get().getRmdVersionId();
-      putPayload.replicationMetadataPayload = putMetadata.get().getRmdPayload();
-    } else {
-      putPayload.replicationMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
-      putPayload.replicationMetadataPayload = EMPTY_BYTE_BUFFER;
-    }
-
-    // We only return the last future (the one for the manifest) and assume that once this one is finished,
-    // all the chunks should also be finished, since they were sent first, and ordering should be guaranteed.
-    return sendMessage(
-        manifestKeyProvider,
-        MessageType.PUT,
-        putPayload,
-        partition,
-        callback,
-        leaderMetadataWrapper,
-        Optional.of(logicalTs));
+    return new ChunkedPayloadAndManifest(chunkedValueManifest, chunks);
   }
 
   private String getDetailedSizeReport(
       int chunkIndex,
       int numberOfChunks,
       int sizeAvailablePerMessage,
-      int serializedKeySize,
-      int serializedValueSize,
-      int replicationMeatadataPayloadSize) {
+      Supplier<String> sizeReport) {
     return "Current chunk index: " + chunkIndex + ", " + "Number of chunks: " + numberOfChunks + ", "
-        + "Size available per message: " + sizeAvailablePerMessage + ", "
-        + getSizeReport(serializedKeySize, serializedValueSize, replicationMeatadataPayloadSize);
+        + "Size available per message: " + sizeAvailablePerMessage + ", " + sizeReport.get();
   }
 
   private String getSizeReport(int serializedKeySize, int serializedValueSize, int replicationMetadataPayloadSize) {
@@ -1657,5 +1677,23 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   public int getMaxSizeForUserPayloadPerMessageInBytes() {
     return maxSizeForUserPayloadPerMessageInBytes;
+  }
+
+  class ChunkedPayloadAndManifest {
+    ByteBuffer[] payloadChunks;
+    ChunkedValueManifest chunkedValueManifest;
+
+    public ChunkedPayloadAndManifest(ChunkedValueManifest chunkedValueManifest, ByteBuffer[] payloadChunks) {
+      this.payloadChunks = payloadChunks;
+      this.chunkedValueManifest = chunkedValueManifest;
+    }
+
+    public ByteBuffer[] getPayloadChunks() {
+      return payloadChunks;
+    }
+
+    public ChunkedValueManifest getChunkedValueManifest() {
+      return chunkedValueManifest;
+    }
   }
 }
