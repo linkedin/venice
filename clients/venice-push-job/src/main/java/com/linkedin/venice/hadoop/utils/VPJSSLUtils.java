@@ -3,9 +3,11 @@ package com.linkedin.venice.hadoop.utils;
 import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
 import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_SECURITY_PROTOCOL;
 import static com.linkedin.venice.hadoop.VenicePushJob.SSL_CONFIGURATOR_CLASS_CONFIG;
+import static com.linkedin.venice.hadoop.VenicePushJob.SSL_KEY_PASSWORD_PROPERTY_NAME;
+import static com.linkedin.venice.hadoop.VenicePushJob.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME;
+import static com.linkedin.venice.hadoop.VenicePushJob.SSL_KEY_STORE_PROPERTY_NAME;
 import static com.linkedin.venice.hadoop.VenicePushJob.SSL_PREFIX;
-import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_DISCOVER_URL_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_URL_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.SSL_TRUST_STORE_PROPERTY_NAME;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
@@ -24,32 +26,13 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * This class contains some utils methods for H2V jobs to obtain controller/SSL-related configs.
+ * This class contains some utils methods for VPJ jobs to obtain SSL-related configs.
  */
-public class ControllerUtils {
-  private static final Logger LOGGER = LogManager.getLogger(ControllerUtils.class);
-
-  public static String getVeniceControllerUrl(VeniceProperties props) {
-    String veniceControllerUrl = null;
-    if (!props.containsKey(VENICE_URL_PROP) && !props.containsKey(VENICE_DISCOVER_URL_PROP)) {
-      throw new VeniceException(
-          "At least one of the following config properties needs to be present: " + VENICE_URL_PROP + " or "
-              + VENICE_DISCOVER_URL_PROP);
-    }
-    if (props.containsKey(VENICE_URL_PROP)) {
-      veniceControllerUrl = props.getString(VENICE_URL_PROP);
-    }
-    if (props.containsKey(VENICE_DISCOVER_URL_PROP)) {
-      /**
-       * {@link VENICE_DISCOVER_URL_PROP} has higher priority than {@link VENICE_URL_PROP}.
-       */
-      veniceControllerUrl = props.getString(VENICE_DISCOVER_URL_PROP);
-    }
-    return veniceControllerUrl;
-  }
+public class VPJSSLUtils {
+  private static final Logger LOGGER = LogManager.getLogger(VPJSSLUtils.class);
 
   /**
-   * Build a Lazy ssl properties based on the hadoop token file.
+   * Build a ssl properties based on the hadoop token file.
    */
   public static Properties getSslProperties(VeniceProperties allProperties) throws IOException {
     Properties newSslProperties = new Properties();
@@ -69,7 +52,17 @@ public class ControllerUtils {
     return newSslProperties;
   }
 
-  public static Optional<SSLFactory> createSSlFactory(
+  public static void validateSslProperties(Properties vanillaProps) {
+    String[] requiredSSLPropertiesNames = new String[] { SSL_KEY_PASSWORD_PROPERTY_NAME,
+        SSL_KEY_STORE_PASSWORD_PROPERTY_NAME, SSL_KEY_STORE_PROPERTY_NAME, SSL_TRUST_STORE_PROPERTY_NAME };
+    for (String sslPropertyName: requiredSSLPropertiesNames) {
+      if (!vanillaProps.containsKey(sslPropertyName)) {
+        throw new VeniceException("Miss the require ssl property name: " + sslPropertyName);
+      }
+    }
+  }
+
+  public static Optional<SSLFactory> createSSLFactory(
       final boolean enableSsl,
       final String sslFactoryClassName,
       final Lazy<Properties> sslProps) {

@@ -29,20 +29,22 @@ public class VeniceKafkaInputTTLFilter extends AbstractVeniceFilter<KafkaInputMa
   public VeniceKafkaInputTTLFilter(VeniceProperties props) throws IOException {
     super(props);
     ttlPolicy = TTLResolutionPolicy.valueOf(props.getInt(VenicePushJob.REPUSH_TTL_POLICY));
-    ttlInMs = TimeUnit.HOURS.toMillis(props.getLong(VenicePushJob.REPUSH_TTL_IN_HOURS));
+    ttlInMs = TimeUnit.SECONDS.toMillis(props.getLong(VenicePushJob.REPUSH_TTL_IN_SECONDS));
     schemaSource = new HDFSRmdSchemaSource(props.getString(VenicePushJob.RMD_SCHEMA_DIR));
     rmdMapping = schemaSource.fetchSchemas();
   }
 
   @Override
   public boolean apply(final KafkaInputMapperValue kafkaInputMapperValue) {
+    // if the schemaId is negative, that's a chunked record. Ignore and filter in reducer stage
+    if (kafkaInputMapperValue.schemaId < 0) {
+      return false;
+    }
     Instant curTime = Instant.now();
     switch (ttlPolicy) {
       case RT_WRITE_ONLY:
         Instant timestamp = Instant.ofEpochMilli(getTimeStampFromRmd(kafkaInputMapperValue));
         return ChronoUnit.MILLIS.between(timestamp, curTime) > ttlInMs;
-      case BYPASS_BATCH_WRITE:
-      case ACCEPT_BATCH_WRITE:
       default:
         throw new UnsupportedOperationException(ttlPolicy + " policy is not supported.");
     }

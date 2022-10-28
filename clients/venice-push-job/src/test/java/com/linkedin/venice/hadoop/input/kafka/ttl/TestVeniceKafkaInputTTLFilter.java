@@ -35,7 +35,7 @@ import org.testng.annotations.Test;
 
 
 public class TestVeniceKafkaInputTTLFilter {
-  private static final long TTL_IN_HOURS_DEFAULT = 10L;
+  private static final long TTL_IN_SECONDS_DEFAULT = 10L;
   private final static String TEST_STORE = "test_store";
   private static final String VALUE_RECORD_SCHEMA_STR =
       "{\"type\":\"record\"," + "\"name\":\"User\"," + "\"namespace\":\"example.avro\"," + "\"fields\":["
@@ -44,7 +44,6 @@ public class TestVeniceKafkaInputTTLFilter {
   private Schema rmdSchema;
   private HDFSRmdSchemaSource source;
   private VeniceKafkaInputTTLFilter filterWithSupportedPolicy;
-  private VeniceKafkaInputTTLFilter filterWithUnsupportedPolicy;
 
   private FilterChain<KafkaInputMapperValue> filterChain;
 
@@ -56,24 +55,17 @@ public class TestVeniceKafkaInputTTLFilter {
     File inputDir = getTempDataDirectory();
 
     Properties validProps = new Properties();
-    validProps.put(VenicePushJob.REPUSH_TTL_IN_HOURS, TTL_IN_HOURS_DEFAULT);
+    validProps.put(VenicePushJob.REPUSH_TTL_IN_SECONDS, TTL_IN_SECONDS_DEFAULT);
     validProps.put(VenicePushJob.REPUSH_TTL_POLICY, 0);
     validProps.put(RMD_SCHEMA_DIR, inputDir.getAbsolutePath());
     validProps.put(VENICE_STORE_NAME_PROP, TEST_STORE);
     VeniceProperties valid = new VeniceProperties(validProps);
 
-    Properties invalidProps = new Properties();
-    invalidProps.put(VenicePushJob.REPUSH_TTL_IN_HOURS, TTL_IN_HOURS_DEFAULT);
-    invalidProps.put(VenicePushJob.REPUSH_TTL_POLICY, 1);
-    invalidProps.put(RMD_SCHEMA_DIR, inputDir.getAbsolutePath());
-    VeniceProperties invalid = new VeniceProperties(invalidProps);
-
     // set up HDFS schema source to write dummy RMD schemas on temp directory
     setupHDFS(valid);
 
     this.filterWithSupportedPolicy = new VeniceKafkaInputTTLFilter(valid);
-    this.filterWithUnsupportedPolicy = new VeniceKafkaInputTTLFilter(invalid);
-    this.filterChain = new FilterChain<>(filterWithSupportedPolicy, filterWithUnsupportedPolicy);
+    this.filterChain = new FilterChain<>(filterWithSupportedPolicy);
   }
 
   private void setupHDFS(VeniceProperties props) throws IOException {
@@ -107,15 +99,9 @@ public class TestVeniceKafkaInputTTLFilter {
     Assert.assertFalse(filterChain.isEmpty());
   }
 
-  @Test(expectedExceptions = UnsupportedOperationException.class, expectedExceptionsMessageRegExp = ".*policy is not supported.*")
-  public void testFilterWithUnsupportedPolicy() {
-    KafkaInputMapperValue value = new KafkaInputMapperValue();
-    filterWithUnsupportedPolicy.apply(value);
-  }
-
   @Test
   public void testFilterWithRejectBatchWritePolicyWithValidValues() {
-    List<KafkaInputMapperValue> records = generateRecord(4, 6, Instant.now(), TTL_IN_HOURS_DEFAULT);
+    List<KafkaInputMapperValue> records = generateRecord(4, 6, 4, Instant.now(), TTL_IN_SECONDS_DEFAULT);
     int validCount = 0, expiredCount = 0;
     for (KafkaInputMapperValue value: records) {
       if (filterWithSupportedPolicy.apply(value)) {
@@ -124,7 +110,7 @@ public class TestVeniceKafkaInputTTLFilter {
         validCount++;
       }
     }
-    Assert.assertEquals(validCount, 4);
+    Assert.assertEquals(validCount, 8); // 4 valid records and 4 chunked records
     Assert.assertEquals(expiredCount, 6);
   }
 
@@ -140,25 +126,35 @@ public class TestVeniceKafkaInputTTLFilter {
    * @param expired, the number of expired records
    * @return, a collection of KafkaInputMapperValue that have valid timestamp or invalid timestamp.
    */
-  private List<KafkaInputMapperValue> generateRecord(int valid, int expired, Instant curTime, long ttlInHours) {
+  private List<KafkaInputMapperValue> generateRecord(
+      int valid,
+      int expired,
+      int chunked,
+      Instant curTime,
+      long ttlInHours) {
     List<KafkaInputMapperValue> records = new ArrayList<>();
 
     // generate valid records
     for (int i = 0; i < valid; i++) {
-      records.add(generateKIMWithRmdTimeStamp(curTime.toEpochMilli()));
+      records.add(generateKIMWithRmdTimeStamp(curTime.toEpochMilli(), false));
     }
 
     // generate expired records
     Instant expiredTime = curTime.minus(ttlInHours + 1, ChronoUnit.HOURS); // add extra hour to get them expired
     for (int i = 0; i < expired; i++) {
-      records.add(generateKIMWithRmdTimeStamp(expiredTime.toEpochMilli()));
+      records.add(generateKIMWithRmdTimeStamp(expiredTime.toEpochMilli(), false));
+    }
+
+    // generate expired chunked records, which should be filtered by the filter in mapper
+    for (int i = 0; i < chunked; i++) {
+      records.add(generateKIMWithRmdTimeStamp(expiredTime.toEpochMilli(), true));
     }
     return records;
   }
 
-  private KafkaInputMapperValue generateKIMWithRmdTimeStamp(long timestamp) {
+  private KafkaInputMapperValue generateKIMWithRmdTimeStamp(long timestamp, boolean isChunkedRecord) {
     KafkaInputMapperValue value = new KafkaInputMapperValue();
-    value.schemaId = 1;
+    value.schemaId = isChunkedRecord ? -10 : 1;
     value.replicationMetadataVersionId = 1;
     value.replicationMetadataPayload =
         RmdUtils.serializeRmdRecord(rmdSchema, generateRmdRecordWithValueLevelTimeStamp(timestamp));

@@ -14,21 +14,7 @@ public enum TTLResolutionPolicy {
    * Only real-time(RT) data, which can contain the RMD, will be TTLed. If the data doesn't contain RMD,
    * it means the data comes from batch or the store is not AA-enabled, this policy will fail the VPJ job.
    */
-  RT_WRITE_ONLY(0),
-
-  /**
-   * Bypass all the batch data and don't perform TTL on them.
-   * Note this policy is NOT supported yet.
-   * In order to support this, VPJ job has to differentiate batch write and real-time write.
-   */
-  BYPASS_BATCH_WRITE(1),
-
-  /**
-   * Allow both batch writes and real-time writes be TTLed.
-   * Note this policy is NOT supported yet.
-   * In order to support this, a reliable timestamp has to be designed/identified for batch writes.
-   */
-  ACCEPT_BATCH_WRITE(2);
+  RT_WRITE_ONLY(0);
 
   private final int value;
 

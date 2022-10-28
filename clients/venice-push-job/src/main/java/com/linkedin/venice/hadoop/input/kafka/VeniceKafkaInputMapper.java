@@ -32,10 +32,11 @@ public class VeniceKafkaInputMapper extends AbstractVeniceMapper<BytesWritable, 
 
   @Override
   protected FilterChain<KafkaInputMapperValue> getFilterChain(final VeniceProperties props) {
-    FilterChain<KafkaInputMapperValue> filterChain = new FilterChain<>();
-    long ttlInHours = props.getLong(VenicePushJob.REPUSH_TTL_IN_HOURS, VenicePushJob.NOT_SET);
+    FilterChain<KafkaInputMapperValue> filterChain = null;
+    long ttlInHours = props.getLong(VenicePushJob.REPUSH_TTL_IN_SECONDS, VenicePushJob.NOT_SET);
     if (ttlInHours != VenicePushJob.NOT_SET) {
       try {
+        filterChain = new FilterChain<>();
         filterChain.add(new VeniceKafkaInputTTLFilter(props));
       } catch (IOException e) {
         throw new VeniceException("Could not instantiate the filter", e);
