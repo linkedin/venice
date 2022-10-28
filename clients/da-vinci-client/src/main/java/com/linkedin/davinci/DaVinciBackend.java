@@ -1,6 +1,7 @@
 package com.linkedin.davinci;
 
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_DERIVED_SCHEMA_ID;
+import static com.linkedin.venice.ConfigKeys.VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION;
 import static java.lang.Thread.currentThread;
 
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
@@ -44,6 +45,7 @@ import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.serialization.avro.SchemaPresenceChecker;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.stats.TehutiUtils;
@@ -165,6 +167,18 @@ public class DaVinciBackend implements Closeable {
       SchemaReader kafkaMessageEnvelopeSchemaReader = ClientFactory.getSchemaReader(
           ClientConfig.cloneConfig(clientConfig)
               .setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName()));
+
+      /**
+       * Verify that the latest {@link com.linkedin.venice.serialization.avro.AvroProtocolDefinition#KAFKA_MESSAGE_ENVELOPE}
+       * version in the code base is registered in Venice backend; if not, fail fast in start phase before start writing
+       * Kafka messages that Venice backend couldn't deserialize.
+       */
+      if (configLoader.getCombinedProperties().getBoolean(VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION, true)) {
+        LOGGER.info("Start verifying the latest protocols at runtime are valid in Venice backend.");
+        new SchemaPresenceChecker(kafkaMessageEnvelopeSchemaReader, AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE)
+            .verifySchemaVersionPresentOrExit();
+        LOGGER.info("Successfully verified the latest protocols at runtime are valid in Venice backend.");
+      }
 
       storageMetadataService = backendConfig.getIngestionMode().equals(IngestionMode.ISOLATED)
           ? new MainIngestionStorageMetadataService(
