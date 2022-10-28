@@ -25,8 +25,8 @@ import java.util.function.Function;
 /**
  * This is a fork of the standard {@link java.util.HashMap} which implements
  * {@link IndexedMap}. It is composed of an {@link ArrayList} to keep
- * track of the insertion & iteration order of the entries. The p
- * erformance of the various operations should be as follows:
+ * track of the insertion & iteration order of the entries. The
+ * performance of the various operations should be as follows:
  *
  * - The get and put performance should be constant-time, like HashMap.
  * - The iteration performance should be equal or slightly better than
