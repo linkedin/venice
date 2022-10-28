@@ -22,6 +22,17 @@ public class AvroCollectionElementComparator {
     // Singleton class.
   }
 
+  /**
+   * This function compares two objects using the provided schema.
+   * @param o1 first object to compare
+   * @param o2 second object to compare
+   * @param schema Schema of o1 and o2. Used to determine their type for the comparison
+   * @return a negative integer if o1 is less than o2, zero if o1 is equal to o2, or a positive integer if o1 is greater than o2.
+   *         When o1 and o2 are IndexedHashMaps:
+   *          returns a negative integer if o1.size() < o2.size(), a positive integer if o1.size() > o2.size, or a result of
+   *          entry-by-entry comparison which is done using positional indexes.
+   * @throws IllegalArgumentException if o1 and o2 have different schemas
+   */
   public int compare(Object o1, Object o2, Schema schema) {
     Validate.notNull(schema);
     if (isMapOrNullableMap(schema)) {
