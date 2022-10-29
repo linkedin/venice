@@ -720,9 +720,6 @@ public class ProducerTracker {
           .append(
               "; producer timestamp: " + producerMetadata.messageTimestamp + " ("
                   + new Date(producerMetadata.messageTimestamp).toString() + ")");
-      if (producerMetadata.upstreamOffset != -1) {
-        sb.append("; producer metadata's upstream offset: " + producerMetadata.upstreamOffset);
-      }
       if (consumerRecord.value().leaderMetadataFooter != null) {
         sb.append("; leader metadata's upstream offset: " + consumerRecord.value().leaderMetadataFooter.upstreamOffset)
             .append("; leader metadata's host name: " + consumerRecord.value().leaderMetadataFooter.hostName);

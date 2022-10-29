@@ -5,7 +5,7 @@
   "fields": [
     {
       "name": "messageType",
-      "doc": "Using int because Avro Enums are not evolvable. Readers should always handle the 'unknown' value edge case, to account for future evolutions of this protocol. The mapping is the following: 0 => Put, 1 => Delete, 2 => ControlMessage.",
+      "doc": "Using int because Avro Enums are not evolvable. Readers should always handle the 'unknown' value edge case, to account for future evolutions of this protocol. The mapping is the following: 0 => Put, 1 => Delete, 2 => ControlMessage, 3 => Update.",
       "type": "int"
     }, {
       "name": "producerMetadata",
@@ -34,11 +34,6 @@
             "name": "messageTimestamp",
             "doc": "The time of the producer's local system clock, at the time the message was submitted for production. This is the number of milliseconds from the unix epoch, 1 January 1970 00:00:00.000 UTC.",
             "type": "long"
-          }, {
-            "name": "upstreamOffset",
-            "doc": "this field is deprecated and superseded by the field inside the LeaderMetadata. TODO: Remove this field in the future.",
-            "type": "long",
-            "default": -1
           },
           {
             "name": "logicalTimestamp",
@@ -48,11 +43,6 @@
           }
         ]
       }
-    }, {
-      "name": "targetVersion",
-      "doc": "This field is used in incremental pushes only - the current version of the target store when the inc push starts.",
-      "type": "int",
-      "default": -1
     }, {
       "name": "payloadUnion",
       "doc": "This contains the main payload of the message. Which branch of the union is present is based on the previously-defined MessageType field.",
@@ -130,7 +120,7 @@
           "fields": [
             {
               "name": "controlMessageType",
-              "doc": "Using int because Avro Enums are not evolvable. Readers should always handle the 'unknown' value edge case, to account for future evolutions of this protocol. The mapping is the following: 0 => StartOfPush, 1 => EndOfPush, 2 => StartOfSegment, 3 => EndOfSegment, 4 => StartOfBufferReplay, 5=> StartOfIncrementalPush, 6=> EndOfIncrementalPush",
+              "doc": "Using int because Avro Enums are not evolvable. Readers should always handle the 'unknown' value edge case, to account for future evolutions of this protocol. The mapping is the following: 0 => StartOfPush, 1 => EndOfPush, 2 => StartOfSegment, 3 => EndOfSegment, 4 => StartOfIncrementalPush, 5 => EndOfIncrementalPush, 6 => TopicSwitch, 7 => VersionSwap",
               "type": "int"
             }, {
               "name": "debugInfo",
@@ -221,28 +211,6 @@
                     }
                   ]
                 }, {
-                  "name": "StartOfBufferReplay",
-                  "doc": "This ControlMessage is sent by the Controller, once per partition, after the EndOfPush ControlMessage, in Hybrid Stores that ingest from both offline and nearline sources. It contains information about the the offsets from which the Buffer Replay Service started replaying data from the real-time buffer topic onto the store-version topic. This can be used as a synchronization marker between the real-time buffer topic and the store-version topic, akin to how a clapperboard is used to synchronize sound and image in filmmaking. This synchronization marker can in turn be used by the consumer to compute an offset lag.",
-                  "type": "record",
-                  "fields": [
-                    {
-                      "name": "sourceOffsets",
-                      "doc": "Array of offsets from the real-time buffer topic at which the Buffer Replay Service started replaying data. The index position of the array corresponds to the partition number in the real-time buffer.",
-                      "type": {
-                        "type": "array",
-                        "items": "long"
-                      }
-                    }, {
-                      "name": "sourceKafkaCluster",
-                      "doc": "Kafka bootstrap servers URL of the cluster where the source buffer exists.",
-                      "type": "string"
-                    }, {
-                      "name": "sourceTopicName",
-                      "doc": "Name of the source buffer topic.",
-                      "type": "string"
-                    }
-                  ]
-                }, {
                   "name": "StartOfIncrementalPush",
                   "doc": "This ControlMessage is sent per partition by each offline incremental push job, once per partition, at the beginning of a incremental push.",
                   "type": "record",
@@ -287,8 +255,8 @@
                     }
                   ]
                 }, {
-                  "name": "ChangeCaptureTopicSwitch",
-                  "doc": "This ControlMessage is sent by the Controller and Venice Leader Server Node, once per partition; it will only be used in change capture; this control message will indicate change capture consumer client to switch to a new version topic and start consuming from offset higher than the local high watermark prepared by leader.",
+                  "name": "VersionSwap",
+                  "doc": "This controlMessage is written to the real-time topic by the controller and to the store-version topic by the leader server. It can be used by the consumer client to switch to another store-version topic and filter messages that have a lower watermark than the one dictated by the leader.",
                   "type": "record",
                   "fields": [
                     {
