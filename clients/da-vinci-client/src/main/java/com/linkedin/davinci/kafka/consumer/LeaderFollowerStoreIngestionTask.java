@@ -610,20 +610,20 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
 
     /**
-     * For user meta stores, it requires all messages in local VT topic to be consumed before switching to leader topic,
+     * For user system stores, it requires all messages in local VT topic to be consumed before switching to leader topic,
      * otherwise, it can get into an error replica issue when the followings happen:
      *
      * 1. Consumed RT data is still less than threshold thus has not been persisted to disk {@link StoreIngestionTask#shouldSyncOffset}.
      *    After host restarts, the RT offset retrieved from disk is stale.
      * 2. RT is truncated due to retention and has no data message in it.
-     * 3. Meta system store switches to RT so quickly that has not yet fully consumed data from local VT.
+     * 3. User system store switches to RT so quickly that has not yet fully consumed data from local VT.
      *
-     * When all above conditions happen together, meta system stores switch to RT, but subscribe to a stale offset and
-     * cannot consume anything from it (empty) and update, thus
+     * When all above conditions happen together, user system stores switch to RT, but subscribe to a stale offset and
+     * cannot consume anything from it (empty) nor update, thus
      *    RT end offset - offset in leader replica > threshold
-     * thus replica cannot become online {@link StoreIngestionTask#isReadyToServe}.
+     * and replica cannot become online {@link StoreIngestionTask#isReadyToServe}.
      */
-    if (VeniceSystemStoreUtils.isMetaStore(storeName) && !isLocalVersionTopicPartitionFullyConsumed(pcs)) {
+    if (isUserSystemStore && !isLocalVersionTopicPartitionFullyConsumed(pcs)) {
       return false;
     }
     return true;
@@ -645,7 +645,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return true;
     }
 
-    // endOffset is the last successful message offset + 1.
+    // End offset is the last successful message offset + 1.
     return localVTOff + 1 >= localVTEndOffset;
   }
 

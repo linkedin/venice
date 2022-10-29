@@ -168,7 +168,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final String kafkaVersionTopic;
   protected final String realTimeTopic;
   protected final String storeName;
-  private final boolean isUserSystemStore;
+  protected final boolean isUserSystemStore;
   protected final int versionNumber;
   protected final ReadOnlySchemaRepository schemaRepository;
   protected final ReadOnlyStoreRepository storeRepository;

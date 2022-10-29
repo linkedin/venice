@@ -52,13 +52,4 @@ public class VeniceSystemStoreUtils {
     VeniceSystemStoreType veniceSystemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
     return veniceSystemStoreType != null && veniceSystemStoreType.isStoreZkShared();
   }
-
-  /**
-   * @return <code>true</code> is the input store is a meta system store;
-   *         <code>false</code> otherwise.
-   */
-  public static boolean isMetaStore(String storeName) {
-    VeniceSystemStoreType metaSystemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
-    return metaSystemStoreType != null && metaSystemStoreType.equals(VeniceSystemStoreType.META_STORE);
-  }
 }
