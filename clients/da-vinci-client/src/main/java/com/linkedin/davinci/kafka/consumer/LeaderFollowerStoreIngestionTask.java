@@ -623,7 +623,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      *    RT end offset - offset in leader replica > threshold
      * and replica cannot become online {@link StoreIngestionTask#isReadyToServe}.
      */
-    if (isUserSystemStore && !isLocalVersionTopicPartitionFullyConsumed(pcs)) {
+    if (isUserSystemStore() && !isLocalVersionTopicPartitionFullyConsumed(pcs)) {
       return false;
     }
     return true;
