@@ -55,6 +55,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import javax.annotation.Nonnull;
 import org.apache.avro.specific.FixedSize;
@@ -1110,12 +1111,36 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     int replicationMetadataPayloadSize = putMetadata.map(PutMetadata::getSerializedSize).orElse(0);
     final Supplier<String> reportSizeGenerator =
         () -> getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize);
-    ChunkedPayloadAndManifest valueChunksAndManifest =
-        chunksPayloadAndSend(serializedKey, serializedValue, valueSchemaId, callback, partition, reportSizeGenerator);
+    ChunkedPayloadAndManifest valueChunksAndManifest = chunksPayloadAndSend(
+        serializedKey,
+        serializedValue,
+        valueSchemaId,
+        callback,
+        reportSizeGenerator,
+        (keyProvider, putPayload) -> sendMessage(
+            keyProvider,
+            MessageType.PUT,
+            putPayload,
+            partition,
+            null,
+            DEFAULT_LEADER_METADATA_WRAPPER,
+            Optional.empty()));
     ChunkedPayloadAndManifest rmdChunksAndManifest = null;
     if (isRmdChunkingEnabled) {
-      rmdChunksAndManifest =
-          chunksPayloadAndSend(serializedKey, serializedValue, valueSchemaId, callback, partition, reportSizeGenerator);
+      rmdChunksAndManifest = chunksPayloadAndSend(
+          serializedKey,
+          serializedValue,
+          valueSchemaId,
+          callback,
+          reportSizeGenerator,
+          (keyProvider, putPayload) -> sendMessage(
+              keyProvider,
+              MessageType.PUT,
+              putPayload,
+              partition,
+              null,
+              DEFAULT_LEADER_METADATA_WRAPPER,
+              Optional.empty()));
     }
     // Now that we've sent all the chunks, we can take care of the final value, the manifest.
     byte[] topLevelKey = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(serializedKey);
@@ -1188,8 +1213,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       byte[] payload,
       int schemaId,
       Callback callback,
-      int partition,
-      Supplier<String> sizeReport) {
+      Supplier<String> sizeReport,
+      BiFunction<KeyProvider, Put, Future<RecordMetadata>> sendMessageFunction) {
     int sizeAvailablePerMessage = maxSizeForUserPayloadPerMessageInBytes - serializedKey.length;
     validateAvailableSizePerMessage(sizeAvailablePerMessage, sizeReport);
     int numberOfChunks = (int) Math.ceil((double) payload.length / (double) sizeAvailablePerMessage);
@@ -1264,14 +1289,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
          * 3. Infinite blocking means the following 'sendMessage' call will follow the config of the internal Kafka Producer,
          * such as timeout, retries and so on;
          */
-        sendMessage(
-            keyProvider,
-            MessageType.PUT,
-            putPayload,
-            partition,
-            null,
-            DEFAULT_LEADER_METADATA_WRAPPER,
-            Optional.empty()).get();
+        sendMessageFunction.apply(keyProvider, putPayload).get();
       } catch (Exception e) {
         throw new VeniceException(
             "Caught an exception while attempting to produce a chunk of a large value into Kafka... "
