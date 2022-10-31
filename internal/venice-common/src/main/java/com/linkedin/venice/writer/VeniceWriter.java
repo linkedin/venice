@@ -2,7 +2,6 @@ package com.linkedin.venice.writer;
 
 import static com.linkedin.venice.ConfigKeys.INSTANCE_ID;
 import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
-import static com.linkedin.venice.writer.ChunkHelper.*;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.annotation.Threadsafe;
@@ -1109,11 +1108,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     int replicationMetadataPayloadSize = putMetadata.map(PutMetadata::getSerializedSize).orElse(0);
     final Supplier<String> reportSizeGenerator =
         () -> getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize);
-    ChunkedPayloadAndManifest valueChunksAndManifest = chunksPayloadAndSend(
+    ChunkedPayloadAndManifest valueChunksAndManifest = ChunkHelper.chunkPayloadAndSend(
         serializedKey,
         serializedValue,
         valueSchemaId,
-        callback,
+        callback instanceof ChunkAwareCallback,
         reportSizeGenerator,
         maxSizeForUserPayloadPerMessageInBytes,
         keyWithChunkingSuffixSerializer,
@@ -1127,11 +1126,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
             Optional.empty()));
     ChunkedPayloadAndManifest rmdChunksAndManifest = null;
     if (isRmdChunkingEnabled) {
-      rmdChunksAndManifest = chunksPayloadAndSend(
+      rmdChunksAndManifest = ChunkHelper.chunkPayloadAndSend(
           serializedKey,
-          serializedValue,
+          (putMetadata.isPresent() ? putMetadata.get().getRmdPayload() : EMPTY_BYTE_BUFFER).array(),
           valueSchemaId,
-          callback,
+          callback instanceof ChunkAwareCallback,
           reportSizeGenerator,
           maxSizeForUserPayloadPerMessageInBytes,
           keyWithChunkingSuffixSerializer,

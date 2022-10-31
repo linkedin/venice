@@ -17,38 +17,32 @@ import java.util.ArrayList;
 import java.util.concurrent.Future;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
-import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.RecordMetadata;
 
 
+/**
+ * This class is a helper class that contains writer side chunking logics.
+ */
 public class ChunkHelper {
   private static final ByteBuffer EMPTY_BYTE_BUFFER = ByteBuffer.allocate(0);
 
-  private static void validateAvailableSizePerMessage(
-      int maxSizeForUserPayloadPerMessageInBytes,
-      int sizeAvailablePerMessage,
-      Supplier<String> sizeReport) {
-    if (sizeAvailablePerMessage < maxSizeForUserPayloadPerMessageInBytes / 2) {
-      /**
-       * If the key size is more than half the available payload per message, then we cannot even encode a
-       * {@link ChunkedValueManifest} with two keys in it, hence we would fail anyway. Might as well fail fast.
-       *
-       * N.B.: The above may not be strictly true, since Kafka-level compression may squeeze us under the limit,
-       * but this is not likely to work deterministically, so it would be iffy to attempt it on a best-effort
-       * basis. That being said, allowing keys to be as large as half the available payload size is probably
-       * overly permissive anyway. Ideally, the key size should be much smaller than this.
-       *
-       * TODO: Implement a proper key size (and value size) quota mechanism.
-       */
-      throw new VeniceException("Chunking cannot support this use case. The key is too large. " + sizeReport.get());
-    }
-  }
-
-  public static ChunkedPayloadAndManifest chunksPayloadAndSend(
+  /**
+   * This method chunks payload and send each chunk out.
+   * @param serializedKey serialized key input
+   * @param payload serialized payload could be value bytes or RMD bytes.
+   * @param schemaId value schema ID
+   * @param chunkAwareCallback boolean flag indicating whether to create chunk
+   * @param sizeReport supplier function for size report.
+   * @param maxSizeForUserPayloadPerMessageInBytes maximum size for payload in a message
+   * @param keyWithChunkingSuffixSerializer Chuncking suffix serializer for key
+   * @param sendMessageFunction Pass in function for sending message
+   * @return Chunked payload arrays and manifest.
+   */
+  public static ChunkedPayloadAndManifest chunkPayloadAndSend(
       byte[] serializedKey,
       byte[] payload,
       int schemaId,
-      Callback callback,
+      boolean chunkAwareCallback,
       Supplier<String> sizeReport,
       int maxSizeForUserPayloadPerMessageInBytes,
       KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer,
@@ -62,7 +56,6 @@ public class ChunkHelper {
     chunkedValueManifest.size = payload.length;
 
     VeniceWriter.KeyProvider keyProvider, firstKeyProvider, subsequentKeyProvider;
-    boolean chunkAwareCallback = callback instanceof ChunkAwareCallback;
     ByteBuffer[] chunks = null;
     if (chunkAwareCallback) {
       // We only carry this state if it's going to be used, else we don't even instantiate this
@@ -135,7 +128,27 @@ public class ChunkHelper {
             e);
       }
     }
-    return new ChunkedPayloadAndManifest(chunkedValueManifest, chunks);
+    return new ChunkedPayloadAndManifest(chunks, chunkedValueManifest);
+  }
+
+  private static void validateAvailableSizePerMessage(
+      int maxSizeForUserPayloadPerMessageInBytes,
+      int sizeAvailablePerMessage,
+      Supplier<String> sizeReport) {
+    if (sizeAvailablePerMessage < maxSizeForUserPayloadPerMessageInBytes / 2) {
+      /**
+       * If the key size is more than half the available payload per message, then we cannot even encode a
+       * {@link ChunkedValueManifest} with two keys in it, hence we would fail anyway. Might as well fail fast.
+       *
+       * N.B.: The above may not be strictly true, since Kafka-level compression may squeeze us under the limit,
+       * but this is not likely to work deterministically, so it would be iffy to attempt it on a best-effort
+       * basis. That being said, allowing keys to be as large as half the available payload size is probably
+       * overly permissive anyway. Ideally, the key size should be much smaller than this.
+       *
+       * TODO: Implement a proper key size (and value size) quota mechanism.
+       */
+      throw new VeniceException("Chunking cannot support this use case. The key is too large. " + sizeReport.get());
+    }
   }
 
   private static String getDetailedSizeReport(
