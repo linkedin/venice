@@ -2,6 +2,7 @@ package com.linkedin.venice.kafka.partitionoffset;
 
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.utils.TestUtils;
@@ -17,15 +18,18 @@ import org.testng.annotations.Test;
 
 public class PartitionOffsetFetcherTest {
   private KafkaBrokerWrapper kafka;
+  private ZkServerWrapper zkServer;
 
   @BeforeClass
   public void setUp() {
-    this.kafka = ServiceFactory.getKafkaBroker();
+    this.zkServer = ServiceFactory.getZkServer();
+    this.kafka = ServiceFactory.getKafkaBroker(zkServer);
   }
 
   @AfterClass
   public void close() {
     this.kafka.close();
+    this.zkServer.close();
   }
 
   @Test

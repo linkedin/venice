@@ -445,14 +445,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           break;
 
         case IN_TRANSITION_FROM_STANDBY_TO_LEADER:
-          /**
-           * Potential risk: it's possible that Kafka consumer would starve one of the partitions for a long
-           * time even though there are new messages in it, so it's possible that the old leader is still producing
-           * after waiting for 5 minutes; if it does happen, followers will detect upstream offset rewind by
-           * a different producer host name.
-           */
-          long lastTimestamp = getLastConsumedMessageTimestamp(partition);
-          if (LatencyUtils.getElapsedTimeInMs(lastTimestamp) > newLeaderInactiveTime) {
+          if (canSwitchToLeaderTopic(partitionConsumptionState)) {
             LOGGER.info(
                 "{} start promoting to leader for partition {} unsubscribing from current topic: {}",
                 consumerTaskId,
@@ -579,7 +572,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
            * 1. it has been 5 minutes since the last update in the current topic
            * 2. leader is consuming SR topic right now and TS wants leader to switch to another topic.
            */
-          lastTimestamp = getLastConsumedMessageTimestamp(partition);
+          long lastTimestamp = getLastConsumedMessageTimestamp(partition);
           if (LatencyUtils.getElapsedTimeInMs(lastTimestamp) > newLeaderInactiveTime
               || switchAwayFromStreamReprocessingTopic(currentLeaderTopic, topicSwitch)) {
             leaderExecuteTopicSwitch(partitionConsumptionState, topicSwitch);
@@ -602,6 +595,75 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       LOGGER.error(errorMsg);
       throw new VeniceTimeoutException(errorMsg);
     }
+  }
+
+  private boolean canSwitchToLeaderTopic(PartitionConsumptionState pcs) {
+    /**
+     * Potential risk: it's possible that Kafka consumer would starve one of the partitions for a long
+     * time even though there are new messages in it, so it's possible that the old leader is still producing
+     * after waiting for 5 minutes; if it does happen, followers will detect upstream offset rewind by
+     * a different producer host name.
+     */
+    long lastTimestamp = getLastConsumedMessageTimestamp(pcs.getPartition());
+    if (LatencyUtils.getElapsedTimeInMs(lastTimestamp) <= newLeaderInactiveTime) {
+      return false;
+    }
+
+    /**
+     * For user system stores, it requires all messages in local VT topic to be consumed before switching to leader topic,
+     * otherwise, it can get into an error replica issue when the followings happen:
+     *
+     * 1. Consumed RT data is still less than threshold thus has not been persisted to disk {@link StoreIngestionTask#shouldSyncOffset}.
+     *    After host restarts, the RT offset retrieved from disk is stale.
+     * 2. RT is truncated due to retention and has no data message in it.
+     * 3. User system store switches to RT so quickly that has not yet fully consumed data from local VT.
+     *
+     * When all above conditions happen together, user system stores switch to RT, but subscribe to a stale offset and
+     * cannot consume anything from it (empty) nor update, thus
+     *    RT end offset - offset in leader replica > threshold
+     * and replica cannot become online {@link StoreIngestionTask#isReadyToServe}.
+     */
+    if (isUserSystemStore() && !isLocalVersionTopicPartitionFullyConsumed(pcs)) {
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * @return <code>true</code>, if local kafka topic partition is fully consumed by comparing its offset against end offset;
+   *         <code>false</code>, otherwise.
+   */
+  private boolean isLocalVersionTopicPartitionFullyConsumed(PartitionConsumptionState pcs) {
+    long localVTOff = pcs.getLatestProcessedLocalVersionTopicOffset();
+    long localVTEndOffset = getKafkaTopicPartitionEndOffSet(localKafkaServer, kafkaVersionTopic, pcs.getPartition());
+    if (localVTEndOffset == StatsErrorCode.LAG_MEASUREMENT_FAILURE.code) {
+      return false;
+    }
+
+    // If end offset == 0, then no message has been written to the partition, consider it as fully consumed.
+    if (localVTEndOffset == 0 && localVTOff == OffsetRecord.LOWEST_OFFSET) {
+      return true;
+    }
+
+    // End offset is the last successful message offset + 1.
+    return localVTOff + 1 >= localVTEndOffset;
+  }
+
+  /**
+   * @return the end offset in kafka for the topic partition in SIT.
+   */
+  private long getKafkaTopicPartitionEndOffSet(String kafkaUrl, String kafkaVersionTopic, int partition) {
+    long offsetFromConsumer = getPartitionLatestOffset(kafkaUrl, kafkaVersionTopic, partition);
+    if (offsetFromConsumer >= 0) {
+      return offsetFromConsumer;
+    }
+
+    /**
+     * The returned end offset is the last successfully replicated message plus one. If the partition has never been
+     * written to, the end offset is 0.
+     * @see CachedKafkaMetadataGetter#getOffset(TopicManager, String, int)
+     */
+    return cachedKafkaMetadataGetter.getOffset(getTopicManager(kafkaUrl), kafkaVersionTopic, partition);
   }
 
   protected void startConsumingAsLeaderInTransitionFromStandby(PartitionConsumptionState partitionConsumptionState) {
