@@ -6,7 +6,6 @@ import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.EndOfIncrementalPush;
 import com.linkedin.venice.kafka.protocol.EndOfPush;
 import com.linkedin.venice.kafka.protocol.EndOfSegment;
-import com.linkedin.venice.kafka.protocol.StartOfBufferReplay;
 import com.linkedin.venice.kafka.protocol.StartOfIncrementalPush;
 import com.linkedin.venice.kafka.protocol.StartOfPush;
 import com.linkedin.venice.kafka.protocol.StartOfSegment;
@@ -24,8 +23,8 @@ import com.linkedin.venice.utils.VeniceEnumValue;
  *       not support evolution (i.e.: adding values) properly.
  */
 public enum ControlMessageType implements VeniceEnumValue {
-  START_OF_PUSH(0), END_OF_PUSH(1), START_OF_SEGMENT(2), END_OF_SEGMENT(3), START_OF_INCREMENTAL_PUSH(4),
-  END_OF_INCREMENTAL_PUSH(5), TOPIC_SWITCH(6), VERSION_SWAP(7);
+  START_OF_PUSH(0), END_OF_PUSH(1), START_OF_SEGMENT(2), END_OF_SEGMENT(3), @Deprecated
+  START_OF_BUFFER_REPLAY(4), START_OF_INCREMENTAL_PUSH(5), END_OF_INCREMENTAL_PUSH(6), TOPIC_SWITCH(7), VERSION_SWAP(8);
 
   /** The value is the byte used on the wire format */
   private final int value;
@@ -47,7 +46,6 @@ public enum ControlMessageType implements VeniceEnumValue {
    *         - {@link EndOfPush}
    *         - {@link StartOfSegment}
    *         - {@link EndOfSegment}
-   *         - {@link StartOfBufferReplay}
    *         - {@link StartOfIncrementalPush}
    *         - {@link EndOfIncrementalPush}
    *         - {@link TopicSwitch}

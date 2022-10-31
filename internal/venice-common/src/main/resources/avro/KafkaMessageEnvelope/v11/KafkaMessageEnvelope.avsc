@@ -120,7 +120,7 @@
           "fields": [
             {
               "name": "controlMessageType",
-              "doc": "Using int because Avro Enums are not evolvable. Readers should always handle the 'unknown' value edge case, to account for future evolutions of this protocol. The mapping is the following: 0 => StartOfPush, 1 => EndOfPush, 2 => StartOfSegment, 3 => EndOfSegment, 4 => StartOfIncrementalPush, 5 => EndOfIncrementalPush, 6 => TopicSwitch, 7 => VersionSwap",
+              "doc": "Using int because Avro Enums are not evolvable. Readers should always handle the 'unknown' value edge case, to account for future evolutions of this protocol. The mapping is the following: 0 => StartOfPush, 1 => EndOfPush, 2 => StartOfSegment, 3 => EndOfSegment, 5 => StartOfIncrementalPush, 6 => EndOfIncrementalPush, 7 => TopicSwitch, 8 => VersionSwap",
               "type": "int"
             }, {
               "name": "debugInfo",
