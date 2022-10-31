@@ -79,6 +79,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         // Since we don't have sufficient information here to make any informative decisions and it's rare for both the
         // execution id and producer id edge case to occur at the same time.
         updateProducerMetadata(incomingProducerMetadata);
+        return true;
       }
       if (incomingProducerMetadata.segmentNumber != segmentNumber) {
         return false;
@@ -208,8 +209,6 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private volatile ConcurrentHashMap<String, Long> lastSucceededExecutionIdMap;
   /**
    * An in-memory DIV tracker used as a backup to execution id to verify the integrity of admin messages.
-   * TODO If the edge case: a gap is detected on the very first message that's consumed by the task then we can add
-   * additional logic such as rewind some messages or persist producer tracker info to ZK.
    */
   private ProducerInfo producerInfo = null;
 
@@ -403,7 +402,13 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       lastPersistedOffset =
           remoteConsumptionEnabled ? upstreamOffsetCheckpointAtStartTime : localOffsetCheckpointAtStartTime;
       lastPersistedExecutionId = AdminTopicMetadataAccessor.getExecutionId(metaData);
-      lastOffset = lastPersistedOffset;
+      /**
+       * For the first poll after subscription, Controller will try to consume one message older than {@link #lastPersistedOffset}
+       * to initialize the {@link #producerInfo}, which will be used to decide whether an execution id gap is a false alarm or not
+       * in {@link #checkAndValidateMessage}.
+       *
+       */
+      lastOffset = lastPersistedOffset - 1;
       lastDelegatedExecutionId = lastPersistedExecutionId;
     } else {
       LOGGER.info("Admin topic metadata is empty, will resume consumption from the starting offset");
@@ -436,6 +441,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       lastPersistedExecutionId = UNASSIGNED_VALUE;
       lastOffset = UNASSIGNED_VALUE;
       lastPersistedOffset = UNASSIGNED_VALUE;
+      producerInfo = null;
       stats.recordPendingAdminMessagesCount(UNASSIGNED_VALUE);
       stats.recordStoresWithPendingAdminMessagesCount(UNASSIGNED_VALUE);
       resetConsumptionLag();
