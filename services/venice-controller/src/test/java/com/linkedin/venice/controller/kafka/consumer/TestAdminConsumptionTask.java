@@ -713,6 +713,59 @@ public class TestAdminConsumptionTask {
   }
 
   @Test(timeOut = TIMEOUT)
+  public void testRunWithFalsePositiveMissingMessagesWhenFirstBecomeLeaderController() throws Exception {
+    String storeName0 = "test_store0";
+    String storeName1 = "test_store1";
+    String storeName2 = "test_store2";
+    String storeName3 = "test_store3";
+
+    VeniceWriter oldVeniceWriter = getVeniceWriter(inMemoryKafkaBroker);
+    Future<RecordMetadata> metadataForStoreName0Future = oldVeniceWriter.put(
+        emptyKeyBytes,
+        getStoreCreationMessage(clusterName, storeName0, owner, keySchema, valueSchema, 1),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    adminTopicMetadataAccessor.updateMetadata(
+        clusterName,
+        AdminTopicMetadataAccessor.generateMetadataMap(metadataForStoreName0Future.get().offset(), -1, 1));
+
+    // Write a message with a skipped execution id but a different producer metadata.
+    veniceWriter.put(
+        emptyKeyBytes,
+        getStoreCreationMessage(clusterName, storeName1, owner, keySchema, valueSchema, 3),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    // Write a message with a skipped execution id but valid producer metadata.
+    veniceWriter.put(
+        emptyKeyBytes,
+        getStoreCreationMessage(clusterName, storeName2, owner, keySchema, valueSchema, 4),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    veniceWriter.put(
+        emptyKeyBytes,
+        getStoreCreationMessage(clusterName, storeName3, owner, keySchema, valueSchema, 5),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    // The stores don't exist yet.
+    doReturn(false).when(admin).hasStore(clusterName, storeName0);
+    doReturn(false).when(admin).hasStore(clusterName, storeName1);
+    doReturn(false).when(admin).hasStore(clusterName, storeName2);
+    doReturn(false).when(admin).hasStore(clusterName, storeName3);
+    AdminConsumptionStats stats = mock(AdminConsumptionStats.class);
+    AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false, stats, TIMEOUT);
+    executor.submit(task);
+    // The missing data based on execution id should be ignored and everything should be processed accordingly.
+    TestUtils.waitForNonDeterministicAssertion(
+        TIMEOUT,
+        TimeUnit.MILLISECONDS,
+        () -> Assert.assertEquals(getLastOffset(clusterName), 5L));
+    Assert.assertEquals(task.getFailingOffset(), -1);
+    task.close();
+    verify(stats, never()).recordAdminTopicDIVErrorReportCount();
+    verify(admin, atLeastOnce()).createStore(clusterName, storeName1, owner, keySchema, valueSchema, false);
+    verify(admin, never()).createStore(clusterName, storeName0, owner, keySchema, valueSchema, false);
+    verify(admin, atLeastOnce()).createStore(clusterName, storeName2, owner, keySchema, valueSchema, false);
+    verify(admin, atLeastOnce()).createStore(clusterName, storeName3, owner, keySchema, valueSchema, false);
+    Assert.assertEquals(getLastExecutionId(clusterName), 5L);
+  }
+
+  @Test(timeOut = TIMEOUT)
   public void testRunWithDuplicateMessagesWithDifferentOffset() throws InterruptedException, IOException {
     veniceWriter.put(
         emptyKeyBytes,
