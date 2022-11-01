@@ -10,6 +10,7 @@ import com.github.luben.zstd.ZstdDictTrainer;
 import com.github.luben.zstd.ZstdInputStream;
 import com.linkedin.venice.compression.protocol.FakeCompressingSchema;
 import com.linkedin.venice.serializer.AvroSerializer;
+import com.linkedin.venice.utils.ByteUtils;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -38,7 +39,14 @@ public class ZstdWithDictCompressor extends VeniceCompressor {
 
   @Override
   public ByteBuffer compress(ByteBuffer data) {
-    return Zstd.compress(data, compressorDictionary);
+    if (data.isDirect()) {
+      // TODO: It might be a decent refactor to add a pool of direct memory buffers so as to always leverage the this
+      // interface and copy the results of the compression back into the passed in ByteBuffer. That would avoid
+      // some of the data copy going on here.
+      return Zstd.compress(data, compressorDictionary);
+    } else {
+      return ByteBuffer.wrap(compress(ByteUtils.extractByteArray(data)));
+    }
   }
 
   @Override
