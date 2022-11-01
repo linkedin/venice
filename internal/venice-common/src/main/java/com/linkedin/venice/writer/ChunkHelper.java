@@ -1,6 +1,6 @@
 package com.linkedin.venice.writer;
 
-import static com.linkedin.venice.writer.VeniceWriter.*;
+import static com.linkedin.venice.writer.VeniceWriter.VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.Put;
@@ -156,7 +156,11 @@ public class ChunkHelper {
       int numberOfChunks,
       int sizeAvailablePerMessage,
       Supplier<String> sizeReport) {
-    return "Current chunk index: " + chunkIndex + ", " + "Number of chunks: " + numberOfChunks + ", "
-        + "Size available per message: " + sizeAvailablePerMessage + ", " + sizeReport.get();
+    return String.format(
+        "Current chunk index: %d, Number of chunks: %d, Size available per message: %d, %s",
+        chunkIndex,
+        numberOfChunks,
+        sizeAvailablePerMessage,
+        sizeReport.get());
   }
 }
