@@ -3,12 +3,13 @@ package com.linkedin.venice.compression;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_KB;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 
-import com.github.luben.zstd.ZstdCompressCtx;
+import com.github.luben.zstd.Zstd;
+import com.github.luben.zstd.ZstdDictCompress;
+import com.github.luben.zstd.ZstdDictDecompress;
 import com.github.luben.zstd.ZstdDictTrainer;
 import com.github.luben.zstd.ZstdInputStream;
 import com.linkedin.venice.compression.protocol.FakeCompressingSchema;
 import com.linkedin.venice.serializer.AvroSerializer;
-import com.linkedin.venice.utils.ByteUtils;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -21,30 +22,23 @@ import org.apache.commons.io.IOUtils;
 
 
 public class ZstdWithDictCompressor extends VeniceCompressor {
-  private ZstdCompressCtx compressor;
-  private byte[] dictionary;
+  private ZstdDictCompress compressorDictionary;
+  private ZstdDictDecompress decompressorDictionary;
 
   public ZstdWithDictCompressor(final byte[] dictionary, int level) {
     super(CompressionStrategy.ZSTD_WITH_DICT);
-    this.dictionary = dictionary;
-    compressor = new ZstdCompressCtx().loadDict(this.dictionary).setLevel(level);
+    this.compressorDictionary = new ZstdDictCompress(dictionary, level);
+    this.decompressorDictionary = new ZstdDictDecompress(dictionary);
   }
 
   @Override
   public byte[] compress(byte[] data) {
-    return compressor.compress(data);
+    return Zstd.compress(data, compressorDictionary);
   }
 
   @Override
   public ByteBuffer compress(ByteBuffer data) {
-    if (data.isDirect()) {
-      // TODO: It might be a decent refactor to add a pool of direct memory buffers so as to always leverage the this
-      // interface and copy the results of the compression back into the passed in ByteBuffer. That would avoid
-      // some of the data copy going on here.
-      return compressor.compress(data);
-    } else {
-      return ByteBuffer.wrap(compressor.compress(ByteUtils.extractByteArray(data)));
-    }
+    return Zstd.compress(data, compressorDictionary);
   }
 
   @Override
@@ -62,12 +56,13 @@ public class ZstdWithDictCompressor extends VeniceCompressor {
 
   @Override
   public InputStream decompress(InputStream inputStream) throws IOException {
-    return new ZstdInputStream(inputStream).setDict(this.dictionary);
+    return new ZstdInputStream(inputStream).setDict(this.decompressorDictionary);
   }
 
   @Override
   public void close() throws IOException {
-    compressor.close();
+    compressorDictionary.close();
+    decompressorDictionary.close();
   }
 
   /**
