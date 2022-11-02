@@ -2031,13 +2031,15 @@ public class VenicePushJob implements AutoCloseable {
     storeSetting.isWriteComputeEnabled = storeResponse.getStore().isWriteComputationEnabled();
     storeSetting.isLeaderFollowerModelEnabled = storeResponse.getStore().isLeaderFollowerModelEnabled();
     storeSetting.isIncrementalPushEnabled = storeResponse.getStore().isIncrementalPushEnabled();
-    storeSetting.storeRewindTimeInSeconds = NOT_SET;
+    storeSetting.storeRewindTimeInSeconds = DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
 
     HybridStoreConfig hybridStoreConfig = storeResponse.getStore().getHybridStoreConfig();
-    if (setting.repushTTLEnabled && hybridStoreConfig == null) {
-      throw new VeniceException("Repush TTL is only supported for real-time only store.");
-    } else {
-      storeSetting.storeRewindTimeInSeconds = hybridStoreConfig.getRewindTimeInSeconds();
+    if (setting.repushTTLEnabled) {
+      if (hybridStoreConfig == null) {
+        throw new VeniceException("Repush TTL is only supported for real-time only store.");
+      } else {
+        storeSetting.storeRewindTimeInSeconds = hybridStoreConfig.getRewindTimeInSeconds();
+      }
     }
 
     if (setting.enableWriteCompute && !storeSetting.isWriteComputeEnabled) {

@@ -10,13 +10,19 @@ import java.io.File;
 import java.nio.ByteBuffer;
 import org.apache.avro.Schema;
 import org.testng.Assert;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
 public class TestValidateSchemaAndBuildDictMapperOutputReader {
   private static final int TEST_TIMEOUT = 10 * Time.MS_PER_SECOND;
   private static final Schema fileSchema = ValidateSchemaAndBuildDictMapperOutput.getClassSchema();
-  private final File inputDir = getTempDataDirectory();
+  private File inputDir;
+
+  @BeforeMethod
+  public void setup() {
+    inputDir = getTempDataDirectory();
+  }
 
   @Test(timeOut = TEST_TIMEOUT, expectedExceptions = NullPointerException.class, expectedExceptionsMessageRegExp = ".* output directory should not be empty")
   public void testGetWithDirAsNull() throws Exception {
