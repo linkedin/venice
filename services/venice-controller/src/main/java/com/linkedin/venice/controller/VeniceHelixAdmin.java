@@ -3228,6 +3228,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
+   * Unsupported operation in the child controller.
+   */
+  @Override
+  public void rollbackToBackupVersion(String clusterName, String storeName) {
+    throw new VeniceUnsupportedOperationException("rollbackToBackupVersion is not supported in child controller!");
+  }
+
+  /**
    * Update the largest used version number of a specified store.
    */
   @Override

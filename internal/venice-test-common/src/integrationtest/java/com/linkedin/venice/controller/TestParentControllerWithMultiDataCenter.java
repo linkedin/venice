@@ -21,6 +21,7 @@ import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
@@ -384,5 +385,67 @@ public class TestParentControllerWithMultiDataCenter {
         Assert.assertEquals(iterator.next().getSchema(), rmdSchema3);
       }
     }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testStoreRollbackToBackupVersion() {
+    String clusterName = CLUSTER_NAMES[0];
+    String storeName = Utils.getUniqueString("testStoreRollbackToBackupVersion");
+    String parentControllerURLs =
+        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
+    try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
+        ControllerClient dc0Client =
+            new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
+        ControllerClient dc1Client =
+            new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString())) {
+
+      NewStoreResponse newStoreResponse =
+          parentControllerClient.retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", "\"string\""));
+      Assert.assertFalse(
+          newStoreResponse.isError(),
+          "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+
+      List<ControllerClient> childControllerClients = new ArrayList<>();
+      childControllerClients.add(dc0Client);
+      childControllerClients.add(dc1Client);
+      emptyPushToStore(parentControllerClient, childControllerClients, storeName, 1);
+      // Rollback should fail since there is no backup version
+      ControllerResponse response = parentControllerClient.rollbackToBackupVersion(storeName);
+      Assert.assertTrue(response.isError());
+
+      emptyPushToStore(parentControllerClient, childControllerClients, storeName, 2);
+      // Should roll back to version 1
+      response = parentControllerClient.rollbackToBackupVersion(storeName);
+      Assert.assertFalse(response.isError());
+      for (ControllerClient childControllerClient: childControllerClients) {
+        TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
+          StoreResponse storeResponse = childControllerClient.getStore(storeName);
+          Assert.assertFalse(storeResponse.isError());
+          StoreInfo storeInfo = storeResponse.getStore();
+          Assert.assertEquals(storeInfo.getCurrentVersion(), 1);
+        });
+      }
+    }
+  }
+
+  private void emptyPushToStore(
+      ControllerClient parentControllerClient,
+      List<ControllerClient> childControllerClients,
+      String storeName,
+      int expectedVersion) {
+    VersionCreationResponse vcr = parentControllerClient.emptyPush(storeName, Utils.getUniqueString("empty-push"), 1L);
+    assertEquals(
+        vcr.getVersion(),
+        expectedVersion,
+        "requesting a topic for a push should provide version number " + expectedVersion);
+    for (ControllerClient childControllerClient: childControllerClients) {
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
+        StoreResponse storeResponse = childControllerClient.getStore(storeName);
+        Assert.assertFalse(storeResponse.isError());
+        StoreInfo storeInfo = storeResponse.getStore();
+        Assert.assertEquals(storeInfo.getCurrentVersion(), expectedVersion);
+      });
+    }
+    parentControllerClient.deleteKafkaTopic(Version.composeKafkaTopic(storeName, expectedVersion));
   }
 }

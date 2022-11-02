@@ -95,6 +95,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.PushStatusSystemStoreAutoCreationValidation;
 import com.linkedin.venice.controller.kafka.protocol.admin.ResumeStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.SchemaMeta;
+import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreCurrentVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreOwner;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStorePartitionCount;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
@@ -1929,6 +1930,50 @@ public class VeniceParentHelixAdmin implements Admin {
         "setStoreCurrentVersion",
         "Please use set-version only on child controllers, "
             + "setting version on parent is not supported, since the version list could be different fabric by fabric");
+  }
+
+  /**
+   * Set backup version as current version in all child regions.
+   */
+  @Override
+  public void rollbackToBackupVersion(String clusterName, String storeName) {
+    acquireAdminMessageLock(clusterName, storeName);
+    try {
+      // Check whether backup version is consistent in all child regions
+      Map<String, ControllerClient> controllerClientMap = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+      Set<Integer> backupVersionSet = new HashSet<>();
+      controllerClientMap.forEach((regionName, cc) -> {
+        StoreResponse storeResponse = cc.getStore(storeName);
+        if (storeResponse.isError()) {
+          throw new VeniceException(storeResponse.getError() + " in region " + regionName);
+        }
+        if (!storeResponse.getStore().isEnableStoreWrites()) {
+          throw new VeniceException("Unable to rollback since store writeability is false");
+        }
+        int backupVersion = storeResponse.getStore().getBackupVersionNumber();
+        if (backupVersion == Store.NON_EXISTING_VERSION) {
+          throw new VeniceException("Unable to rollback since backup version does not exist in region " + regionName);
+        } else {
+          backupVersionSet.add(backupVersion);
+          if (backupVersionSet.size() > 1) {
+            throw new VeniceException("Unable to rollback since backup version number is inconsistent across regions");
+          }
+        }
+      });
+      // Send admin message to set backup version as current version. Child controllers will execute the admin message.
+      SetStoreCurrentVersion setStoreCurrentVersion =
+          (SetStoreCurrentVersion) AdminMessageType.SET_STORE_CURRENT_VERSION.getNewInstance();
+      setStoreCurrentVersion.clusterName = clusterName;
+      setStoreCurrentVersion.storeName = storeName;
+      setStoreCurrentVersion.currentVersion = backupVersionSet.iterator().next();
+      AdminOperation message = new AdminOperation();
+      message.operationType = AdminMessageType.SET_STORE_CURRENT_VERSION.getValue();
+      message.payloadUnion = setStoreCurrentVersion;
+
+      sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
+    } finally {
+      releaseAdminMessageLock(clusterName, storeName);
+    }
   }
 
   /**

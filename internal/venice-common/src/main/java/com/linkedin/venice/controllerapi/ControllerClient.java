@@ -545,6 +545,11 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.SET_VERSION, params, VersionResponse.class);
   }
 
+  public ControllerResponse rollbackToBackupVersion(String storeName) {
+    QueryParams params = newParams().add(NAME, storeName);
+    return request(ControllerRoute.ROLLBACK_TO_BACKUP_VERSION, params, ControllerResponse.class);
+  }
+
   public ControllerResponse killOfflinePushJob(String kafkaTopic) {
     String store = Version.parseStoreFromKafkaTopicName(kafkaTopic);
     int versionNumber = Version.parseVersionFromKafkaTopicName(kafkaTopic);
