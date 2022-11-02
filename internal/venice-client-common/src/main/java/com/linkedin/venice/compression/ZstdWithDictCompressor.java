@@ -9,6 +9,7 @@ import com.github.luben.zstd.ZstdInputStream;
 import com.linkedin.venice.compression.protocol.FakeCompressingSchema;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.concurrent.CloseableThreadLocal;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -21,13 +22,13 @@ import org.apache.commons.io.IOUtils;
 
 
 public class ZstdWithDictCompressor extends VeniceCompressor {
-  private ThreadLocal<ZstdCompressCtx> compressor;
+  private CloseableThreadLocal<ZstdCompressCtx> compressor;
   private byte[] dictionary;
 
   public ZstdWithDictCompressor(final byte[] dictionary, int level) {
     super(CompressionStrategy.ZSTD_WITH_DICT);
     this.dictionary = dictionary;
-    compressor = ThreadLocal.withInitial(() -> new ZstdCompressCtx().loadDict(dictionary).setLevel(level));
+    compressor = new CloseableThreadLocal(() -> new ZstdCompressCtx().loadDict(dictionary).setLevel(level));
   }
 
   @Override
@@ -67,7 +68,7 @@ public class ZstdWithDictCompressor extends VeniceCompressor {
 
   @Override
   public void close() throws IOException {
-    compressor.get().close();
+    compressor.close();
   }
 
   /**
