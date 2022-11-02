@@ -1153,7 +1153,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     putManifestsPayload.schemaId = AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
     if (putMetadata.isPresent()) {
       putManifestsPayload.replicationMetadataVersionId = putMetadata.get().getRmdVersionId();
-      if (isChunkingEnabled) {
+      if (isRmdChunkingEnabled) {
         putManifestsPayload.replicationMetadataPayload = ByteBuffer
             .wrap(chunkedValueManifestSerializer.serialize(topicName, rmdChunksAndManifest.getChunkedValueManifest()));
       } else {
