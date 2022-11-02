@@ -100,7 +100,7 @@ public class TestVeniceKafkaInputTTLFilter {
   }
 
   @Test
-  public void testFilterWithRejectBatchWritePolicyWithValidValues() {
+  public void testFilterWithRTPolicyWithValidValues() {
     List<KafkaInputMapperValue> records = generateRecord(4, 6, 4, Instant.now(), TTL_IN_SECONDS_DEFAULT);
     int validCount = 0, expiredCount = 0;
     for (KafkaInputMapperValue value: records) {
@@ -115,7 +115,7 @@ public class TestVeniceKafkaInputTTLFilter {
   }
 
   @Test(expectedExceptions = IllegalStateException.class)
-  public void testFilterWithRejectBatchWritePolicyWithInValidValues() {
+  public void testFilterWithRTPolicyWithInValidValues() {
     KafkaInputMapperValue value = new KafkaInputMapperValue();
     Assert.assertFalse(filterWithSupportedPolicy.apply(value));
   }

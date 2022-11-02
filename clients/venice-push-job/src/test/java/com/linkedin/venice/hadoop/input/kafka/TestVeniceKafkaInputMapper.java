@@ -16,6 +16,7 @@ import com.linkedin.venice.hadoop.FilterChain;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.input.kafka.avro.MapperValueType;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Properties;
@@ -66,7 +67,11 @@ public class TestVeniceKafkaInputMapper extends AbstractTestVeniceMapper<VeniceK
     props.put(REPUSH_TTL_IN_SECONDS, 10L);
     props.put(REPUSH_TTL_POLICY, 0);
     props.put(RMD_SCHEMA_DIR, "tmp");
-    Assert.assertNotNull(newMapper().getFilterChain(new VeniceProperties(props)));
+    Assert.assertFalse(newMapper().getFilterChain(new VeniceProperties(props)).isEmpty());
+
+    // filter is also present when chunking is enabled.
+    props.put(VeniceWriter.ENABLE_CHUNKING, true);
+    Assert.assertFalse(newMapper().getFilterChain(new VeniceProperties(props)).isEmpty());
   }
 
   @Test(dataProvider = MAPPER_PARAMS_DATA_PROVIDER)

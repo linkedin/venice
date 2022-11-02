@@ -53,5 +53,6 @@ public class FilterChain<INPUT_VALUE> implements Closeable {
     for (AbstractVeniceFilter<INPUT_VALUE> filter: filterList) {
       filter.close();
     }
+    filterList = null;
   }
 }

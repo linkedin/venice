@@ -39,7 +39,7 @@ public class VeniceKafkaInputMapper extends AbstractVeniceMapper<BytesWritable, 
         filterChain = new FilterChain<>();
         filterChain.add(new VeniceKafkaInputTTLFilter(props));
       } catch (IOException e) {
-        throw new VeniceException("Could not instantiate the filter", e);
+        throw new VeniceException("failed to instantiate the ttl filter for KIF", e);
       }
     }
     return filterChain;
