@@ -73,8 +73,8 @@ public class VeniceHostHealth implements HostHealthMonitor<Instance> {
     if (unhealthyHosts.contains(identifier)) {
       unhealthyHosts.remove(identifier);
       LOGGER.info("Marking {} back to healthy host", identifier);
-      aggHostHealthStats.recordUnhealthyHostCountCausedByRouterHeartBeat(unhealthyHosts.size());
     }
+    aggHostHealthStats.recordUnhealthyHostCountCausedByRouterHeartBeat(unhealthyHosts.size());
   }
 
   @Override
@@ -124,6 +124,7 @@ public class VeniceHostHealth implements HostHealthMonitor<Instance> {
         if (pendingRequestUnhealthyTimeMap.remove(nodeId) != null) {
           routeHttpRequestStats.recordUnhealthyQueueDuration(nodeId, duration);
           aggHostHealthStats.recordPendingRequestUnhealthyDuration(nodeId, duration);
+          aggHostHealthStats.recordUnhealthyHostCountCausedByPendingQueue(pendingRequestUnhealthyTimeMap.size());
         }
         return false;
       }
