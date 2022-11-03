@@ -19,6 +19,7 @@ public class AbstractVeniceStats {
   private final MetricsRepository metricsRepository;
   private final String name;
   private final Map<String, Sensor> sensors;
+  private final boolean isTotalStats;
 
   public AbstractVeniceStats(MetricsRepository metricsRepository, String name) {
     this.metricsRepository = metricsRepository;
@@ -26,10 +27,16 @@ public class AbstractVeniceStats {
     // name and attribute name, so they cause issues if we let them slip in...
     this.name = name.replace(':', '_').replace(".", "_");
     this.sensors = new VeniceConcurrentHashMap<>();
+    this.isTotalStats = name.equals(STORE_NAME_FOR_TOTAL_STAT);
+    ;
   }
 
   public MetricsRepository getMetricsRepository() {
     return metricsRepository;
+  }
+
+  protected boolean isTotalStats() {
+    return isTotalStats;
   }
 
   public String getName() {
