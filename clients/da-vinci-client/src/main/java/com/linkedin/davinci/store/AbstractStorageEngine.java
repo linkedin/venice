@@ -101,7 +101,15 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
 
   public abstract long getStoreSizeInBytes();
 
+  public long getCachedStoreSizeInBytes() {
+    return 0;
+  }
+
   public long getRMDSizeInBytes() {
+    return 0;
+  }
+
+  public long getCachedRMDSizeInBytes() {
     return 0;
   }
 

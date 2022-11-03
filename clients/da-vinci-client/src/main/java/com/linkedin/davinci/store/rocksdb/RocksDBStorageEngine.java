@@ -39,6 +39,15 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
   private final VeniceStoreVersionConfig storeConfig;
   private final boolean replicationMetadataEnabled;
 
+  /**
+   * The cached value will be refreshed by {@link #getStoreSizeInBytes()}.
+   */
+  private long cachedDiskUsage = 0;
+  /**
+   * The cached value will be refreshed by {@link #getRMDSizeInBytes()}.
+   */
+  private long cachedRMDDiskUsage = 0;
+
   public RocksDBStorageEngine(
       VeniceStoreVersionConfig storeConfig,
       RocksDBStorageEngineFactory factory,
@@ -168,8 +177,13 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
       }
       diskUsage += partition.getRmdByteUsage();
     }
+    cachedRMDDiskUsage = diskUsage;
 
     return diskUsage;
+  }
+
+  public long getCachedRMDSizeInBytes() {
+    return cachedRMDDiskUsage;
   }
 
   @Override
@@ -179,10 +193,16 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
       /**
        * {@link FileUtils#sizeOf(File)} will throw {@link IllegalArgumentException} if the file/dir doesn't exist.
        */
-      return FileUtils.sizeOf(storeDbDir);
+      cachedDiskUsage = FileUtils.sizeOf(storeDbDir);
     } else {
-      return 0;
+      cachedDiskUsage = 0;
     }
+    return cachedDiskUsage;
+  }
+
+  @Override
+  public long getCachedStoreSizeInBytes() {
+    return cachedDiskUsage;
   }
 
   private boolean hasConflictPersistedStoreEngineConfig() {
