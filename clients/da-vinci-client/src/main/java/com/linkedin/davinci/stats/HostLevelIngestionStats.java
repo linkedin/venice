@@ -279,28 +279,35 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
     this.totalHybridRecordsConsumedByRegionId =
         Collections.unmodifiableList(Arrays.asList(tmpTotalHybridRecordsConsumedByRegionId));
 
-    // Stats which are per-store only:
-
-    this.diskQuotaSensor =
-        registerSensor("global_store_disk_quota_allowed", new Gauge(() -> diskQuotaAllowedGauge), new Max());
-
+    // Register an aggregate metric for disk_usage_in_bytes metric
+    final boolean isTotalStats = isTotalStats();
     registerSensor(
         "disk_usage_in_bytes",
         new Gauge(
             () -> ingestionTaskMap.values()
                 .stream()
-                .filter(task -> task.getStoreName().equals(storeName))
-                .mapToLong(task -> task.getStorageEngine().getStoreSizeInBytes())
+                .filter(task -> isTotalStats ? true : task.getStoreName().equals(storeName))
+                .mapToLong(
+                    task -> isTotalStats
+                        ? task.getStorageEngine().getCachedStoreSizeInBytes()
+                        : task.getStorageEngine().getStoreSizeInBytes())
                 .sum()));
-
+    // Register an aggregate metric for rmd_disk_usage_in_bytes metric
     registerSensor(
         "rmd_disk_usage_in_bytes",
         new Gauge(
             () -> ingestionTaskMap.values()
                 .stream()
-                .filter(task -> task.getStoreName().equals(storeName))
-                .mapToLong(task -> task.getStorageEngine().getRMDSizeInBytes())
+                .filter(task -> isTotalStats ? true : task.getStoreName().equals(storeName))
+                .mapToLong(
+                    task -> isTotalStats
+                        ? task.getStorageEngine().getCachedRMDSizeInBytes()
+                        : task.getStorageEngine().getRMDSizeInBytes())
                 .sum()));
+
+    // Stats which are per-store only:
+    this.diskQuotaSensor =
+        registerSensor("global_store_disk_quota_allowed", new Gauge(() -> diskQuotaAllowedGauge), new Max());
 
     String keySizeSensorName = "record_key_size_in_bytes";
     this.keySizeSensor = registerSensor(
