@@ -51,6 +51,7 @@ public class CloseableThreadLocal<T extends AutoCloseable> implements AutoClosea
   @Override
   public void close() {
     valueSet.parallelStream().forEach(this::closeQuietly);
+    valueSet.clear();
   }
 
   private Supplier<T> wrap(Supplier<T> initialValue) {
@@ -67,7 +68,5 @@ public class CloseableThreadLocal<T extends AutoCloseable> implements AutoClosea
     } catch (Exception e) {
       LOGGER.error(e);
     }
-
-    valueSet.remove(value);
   }
 }
