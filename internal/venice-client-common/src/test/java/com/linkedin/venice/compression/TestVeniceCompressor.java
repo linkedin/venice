@@ -52,11 +52,11 @@ public class TestVeniceCompressor {
 
   private void runTestInternal(VeniceCompressor compressor, SourceDataType type) {
     int threadPoolSize = 1;
-    int numThreads = 1000;
+    int numRunnables = 1000;
     ExecutorService executorService = Executors.newFixedThreadPool(threadPoolSize);
-    List<Future> compressionFutures = new ArrayList<>(numThreads);
+    List<Future> compressionFutures = new ArrayList<>(numRunnables);
     try {
-      for (int i = 0; i < numThreads; i++) {
+      for (int i = 0; i < numRunnables; i++) {
         Random rd = new Random();
         byte[] data = new byte[50];
         Runnable runnable = () -> {
@@ -92,7 +92,7 @@ public class TestVeniceCompressor {
 
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
       try {
-        executorService.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
+        executorService.awaitTermination(1, TimeUnit.SECONDS);
       } catch (InterruptedException e) {
         Assert.fail();
       }

@@ -1,6 +1,6 @@
 package com.linkedin.venice.utils.concurrent;
 
-import java.util.Set;
+import java.util.Map;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -15,7 +15,7 @@ import org.apache.logging.log4j.Logger;
  */
 public class CloseableThreadLocal<T extends AutoCloseable> implements AutoCloseable {
   private static final Logger LOGGER = LogManager.getLogger(CloseableThreadLocal.class);
-  private final Set<T> itemSet = VeniceConcurrentHashMap.newKeySet();
+  private final Map<Thread, T> threadToValueMap = new VeniceConcurrentHashMap<>();
   private final ThreadLocal<T> threadLocal;
 
   /**
@@ -26,7 +26,7 @@ public class CloseableThreadLocal<T extends AutoCloseable> implements AutoClosea
    *                     the initial value for each Thread
    */
   public CloseableThreadLocal(Supplier<T> initialValue) {
-    this.threadLocal = ThreadLocal.withInitial(initialValue);
+    this.threadLocal = ThreadLocal.withInitial(wrap(initialValue));
   }
 
   /**
@@ -38,9 +38,7 @@ public class CloseableThreadLocal<T extends AutoCloseable> implements AutoClosea
    * @return the current thread's value of this thread-local
    */
   public T get() {
-    T item = threadLocal.get();
-    itemSet.add(item);
-    return item;
+    return threadLocal.get();
   }
 
   /**
@@ -54,22 +52,29 @@ public class CloseableThreadLocal<T extends AutoCloseable> implements AutoClosea
    * {@code initialValue} method in the current thread.
    */
   public void remove() {
-    closeQuietly(threadLocal.get());
+    closeQuietly(Thread.currentThread());
     threadLocal.remove();
   }
 
   /**
    * Sets the current thread's copy of this thread-local variable
-   * to the specified value. Most subclasses will have no need to
-   * override this method, relying solely on the {@code initialValue}
-   * method to set the values of thread-locals.
+   * to the specified value. If the thread that is setting a value
+   * had a previous value set, {@code close} will be triggered on
+   * the previous value. Most subclasses will have no need to override
+   * this method, relying solely on the {@code initialValue} method to
+   * set the values of thread-locals.
    *
    * @param value the value to be stored in the current thread's copy of
    *        this thread-local.
    */
   public void set(T value) {
+    Thread currentThread = Thread.currentThread();
+    if (threadToValueMap.containsKey(currentThread)) {
+      closeQuietly(currentThread);
+    }
+
     threadLocal.set(value);
-    itemSet.add(value);
+    threadToValueMap.put(currentThread, value);
   }
 
   /**
@@ -79,17 +84,24 @@ public class CloseableThreadLocal<T extends AutoCloseable> implements AutoClosea
    */
   @Override
   public void close() {
-    itemSet.parallelStream().forEach(this::closeQuietly);
+    threadToValueMap.keySet().parallelStream().forEach(this::closeQuietly);
   }
 
-  private void closeQuietly(T closeable) {
-    if (closeable != null) {
+  private Supplier<T> wrap(Supplier<T> initialValue) {
+    return () -> {
+      T value = initialValue.get();
+      threadToValueMap.put(Thread.currentThread(), value);
+      return value;
+    };
+  }
+
+  private void closeQuietly(Thread thread) {
+    if (thread != null && threadToValueMap.containsKey(thread)) {
       try {
-        closeable.close();
+        threadToValueMap.remove(thread).close();
       } catch (Exception e) {
         LOGGER.error(e);
       }
-      itemSet.remove(closeable);
     }
   }
 }
