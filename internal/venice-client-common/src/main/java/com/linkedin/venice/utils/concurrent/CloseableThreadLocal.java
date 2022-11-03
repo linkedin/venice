@@ -1,6 +1,8 @@
 package com.linkedin.venice.utils.concurrent;
 
-import java.util.Map;
+import com.linkedin.venice.utils.HashCodeComparator;
+import java.util.Set;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -15,7 +17,7 @@ import org.apache.logging.log4j.Logger;
  */
 public class CloseableThreadLocal<T extends AutoCloseable> implements AutoCloseable {
   private static final Logger LOGGER = LogManager.getLogger(CloseableThreadLocal.class);
-  private final Map<Thread, T> threadToValueMap = new VeniceConcurrentHashMap<>();
+  private final Set<T> valueSet = new ConcurrentSkipListSet<>(new HashCodeComparator<>());
   private final ThreadLocal<T> threadLocal;
 
   /**
@@ -42,66 +44,30 @@ public class CloseableThreadLocal<T extends AutoCloseable> implements AutoClosea
   }
 
   /**
-   * Removes the current thread's value for this thread-local
-   * variable. It also triggers {@code close} on the current
-   * thread's value. If this thread-local variable is subsequently
-   * {@linkplain #get read} by the current thread, its value will be
-   * reinitialized by invoking its {@code initialValue} method,
-   * unless its value is {@linkplain #set set} by the current thread
-   * in the interim. This may result in multiple invocations of the
-   * {@code initialValue} method in the current thread.
-   */
-  public void remove() {
-    closeQuietly(Thread.currentThread());
-    threadLocal.remove();
-  }
-
-  /**
-   * Sets the current thread's copy of this thread-local variable
-   * to the specified value. If the thread that is setting a value
-   * had a previous value set, {@code close} will be triggered on
-   * the previous value. Most subclasses will have no need to override
-   * this method, relying solely on the {@code initialValue} method to
-   * set the values of thread-locals.
-   *
-   * @param value the value to be stored in the current thread's copy of
-   *        this thread-local.
-   */
-  public void set(T value) {
-    Thread currentThread = Thread.currentThread();
-    if (threadToValueMap.containsKey(currentThread)) {
-      closeQuietly(currentThread);
-    }
-
-    threadLocal.set(value);
-    threadToValueMap.put(currentThread, value);
-  }
-
-  /**
    * Clean up the resources held by this object. It triggers {@code close}
    * on each thread's value. It is the responsibility of the caller to ensure
    * that all threads have finished processing the thread-local objects.
    */
   @Override
   public void close() {
-    threadToValueMap.keySet().parallelStream().forEach(this::closeQuietly);
+    valueSet.parallelStream().forEach(this::closeQuietly);
   }
 
   private Supplier<T> wrap(Supplier<T> initialValue) {
     return () -> {
       T value = initialValue.get();
-      threadToValueMap.put(Thread.currentThread(), value);
+      valueSet.add(value);
       return value;
     };
   }
 
-  private void closeQuietly(Thread thread) {
-    if (thread != null && threadToValueMap.containsKey(thread)) {
-      try {
-        threadToValueMap.remove(thread).close();
-      } catch (Exception e) {
-        LOGGER.error(e);
-      }
+  private void closeQuietly(T value) {
+    try {
+      value.close();
+    } catch (Exception e) {
+      LOGGER.error(e);
     }
+
+    valueSet.remove(value);
   }
 }

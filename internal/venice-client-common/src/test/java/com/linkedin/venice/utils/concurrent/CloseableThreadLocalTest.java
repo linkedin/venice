@@ -6,7 +6,6 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -30,49 +29,6 @@ public class CloseableThreadLocalTest {
   public void testGet() {
     try (CloseableThreadLocal<CloseableClass> numbers = new CloseableThreadLocal<>(() -> new CloseableClass(5))) {
       Assert.assertEquals(numbers.get().value, 5);
-    }
-  }
-
-  @Test
-  public void testRemove() {
-    CloseableClass initialValue;
-    try (CloseableThreadLocal<CloseableClass> numbers = new CloseableThreadLocal<>(() -> new CloseableClass(5))) {
-      initialValue = numbers.get();
-      Assert.assertEquals(initialValue.value, 5); // Initialize the value
-      numbers.remove();
-      Assert.assertTrue(initialValue.closed);
-      // Override closed to test if the object gets closed a second time
-      initialValue.closed = false;
-    }
-
-    // A previously removed object must not get closed a second time. If it does, it indicates a memory leak.
-    Assert.assertFalse(initialValue.closed);
-  }
-
-  @Test
-  public void testSet() {
-    AtomicBoolean initializerCalled = new AtomicBoolean(false);
-    try (CloseableThreadLocal<CloseableClass> numbers = new CloseableThreadLocal<>(() -> {
-      initializerCalled.set(true);
-      return new CloseableClass(5);
-    })) {
-      numbers.set(new CloseableClass(7));
-      CloseableClass initialValue = numbers.get();
-      Assert.assertEquals(initialValue.value, 7);
-    }
-
-    // The initializer must never be invoked
-    Assert.assertFalse(initializerCalled.get());
-  }
-
-  @Test
-  public void testSetClosesPreviousValue() {
-    try (CloseableThreadLocal<CloseableClass> numbers = new CloseableThreadLocal<>(() -> new CloseableClass(5))) {
-      numbers.set(new CloseableClass(7));
-      CloseableClass initialValue = numbers.get();
-      numbers.set(new CloseableClass(8));
-      Assert.assertTrue(initialValue.closed);
-      Assert.assertEquals(numbers.get().value, 8);
     }
   }
 
