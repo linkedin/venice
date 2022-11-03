@@ -113,7 +113,7 @@ import org.testng.annotations.Test;
 
 public class TestPushJobWithNativeReplication {
   private static final Logger LOGGER = LogManager.getLogger(TestPushJobWithNativeReplication.class);
-  private static final int TEST_TIMEOUT = 120_000; // ms
+  private static final int TEST_TIMEOUT = 2 * Time.MS_PER_MINUTE;
 
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
   private static final int NUMBER_OF_CLUSTERS = 1;
@@ -361,7 +361,7 @@ public class TestPushJobWithNativeReplication {
           samzaConfig.put(configPrefix + VENICE_PUSH_TYPE, Version.PushType.STREAM.toString());
           samzaConfig.put(configPrefix + VENICE_STORE, storeName);
           samzaConfig.put(configPrefix + VENICE_AGGREGATE, "true");
-          samzaConfig.put(VENICE_CHILD_D2_ZK_HOSTS, "invalid_child_zk_address");
+          samzaConfig.put(VENICE_CHILD_D2_ZK_HOSTS, childDatacenters.get(0).getZkServerWrapper().getAddress());
           samzaConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, D2_SERVICE_NAME);
           samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, multiColoMultiClusterWrapper.getZkServerWrapper().getAddress());
           samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
@@ -865,7 +865,7 @@ public class TestPushJobWithNativeReplication {
     }
   }
 
-  private interface NativeReplTest {
+  private interface NativeReplicationTest {
     void run(
         ControllerClient parentControllerClient,
         String clusterName,
@@ -877,7 +877,7 @@ public class TestPushJobWithNativeReplication {
   private void motherOfAllTests(
       Function<UpdateStoreQueryParams, UpdateStoreQueryParams> updateStoreParamsTransformer,
       int recordCount,
-      NativeReplTest test) throws Exception {
+      NativeReplicationTest test) throws Exception {
     String clusterName = CLUSTER_NAMES[0];
     File inputDir = getTempDataDirectory();
     String parentControllerUrls =

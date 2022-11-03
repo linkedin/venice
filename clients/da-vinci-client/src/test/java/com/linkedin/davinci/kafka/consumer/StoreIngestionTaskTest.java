@@ -3052,6 +3052,29 @@ public abstract class StoreIngestionTaskTest {
         .consumerSubscribe(anyString(), anyInt(), eq(remoteVersionTopicOffset), anyString());
   }
 
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testWrappedInterruptExceptionDuringGracefulShutdown(boolean isActiveActiveReplicationEnabled)
+      throws Exception {
+    hybridStoreConfig = Optional.of(
+        new HybridStoreConfigImpl(
+            10,
+            20,
+            HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
+            DataReplicationPolicy.NON_AGGREGATE,
+            BufferReplayPolicy.REWIND_FROM_EOP));
+    VeniceException veniceException = new VeniceException("Wrapped interruptedException", new InterruptedException());
+    runTest(Utils.setOf(PARTITION_FOO), () -> {
+      doReturn(getOffsetRecord(1, true)).when(mockStorageMetadataService).getLastOffset(topic, PARTITION_FOO);
+      doThrow(veniceException).when(aggKafkaConsumerService).unsubscribeConsumerFor(eq(topic), anyString(), anyInt());
+    }, () -> {
+      verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).restarted(eq(topic), eq(PARTITION_FOO), anyLong());
+      storeIngestionTaskUnderTest.close();
+      verify(aggKafkaConsumerService, timeout(TEST_TIMEOUT_MS))
+          .unsubscribeConsumerFor(eq(topic), anyString(), anyInt());
+    }, isActiveActiveReplicationEnabled);
+    Assert.assertEquals(mockNotifierError.size(), 0);
+  }
+
   private static class MockStoreVersionConfigs {
     Store store;
     Version version;

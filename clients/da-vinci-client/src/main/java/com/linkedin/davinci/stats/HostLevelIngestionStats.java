@@ -289,6 +289,7 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         new Gauge(
             () -> ingestionTaskMap.values()
                 .stream()
+                .filter(task -> task.getStoreName().equals(storeName))
                 .mapToLong(task -> task.getStorageEngine().getStoreSizeInBytes())
                 .sum()));
 
@@ -297,6 +298,7 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         new Gauge(
             () -> ingestionTaskMap.values()
                 .stream()
+                .filter(task -> task.getStoreName().equals(storeName))
                 .mapToLong(task -> task.getStorageEngine().getRMDSizeInBytes())
                 .sum()));
 

@@ -761,7 +761,7 @@ public class TestChunkAssembler {
   }
 
   /**
-   * Create a sequence of chunks and a manifest. E.g. chunk_0, chunk_1, … chunk_N, chunk_manifest
+   * Create a sequence of chunks and a manifest. E.g. chunk_0, chunk_1, ..., chunk_N, chunk_manifest
    */
   private List<BytesWritable> createKafkaInputMapperValues(
       byte[] serializedKey,

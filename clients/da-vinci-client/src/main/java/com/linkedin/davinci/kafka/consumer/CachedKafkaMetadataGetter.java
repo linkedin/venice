@@ -9,6 +9,8 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Supplier;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -16,7 +18,8 @@ import java.util.function.Supplier;
  * retrieve such information after the predefined ttlMs
  */
 class CachedKafkaMetadataGetter {
-  private final int DEFAULT_MAX_RETRY = 10;
+  private static final Logger LOGGER = LogManager.getLogger(CachedKafkaMetadataGetter.class);
+  private static final int DEFAULT_MAX_RETRY = 10;
 
   private final long ttlNs;
   private final Map<KafkaMetadataCacheKey, ValueAndExpiryTime<Boolean>> topicExistenceCache;
@@ -45,6 +48,7 @@ class CachedKafkaMetadataGetter {
     } catch (TopicDoesNotExistException e) {
       // It's observed in production that with java based admin client the topic may not be found temporarily, return
       // error code
+      LOGGER.error("Failed to get offset for {} partition {}", topicName, partitionId, e);
       return StatsErrorCode.LAG_MEASUREMENT_FAILURE.code;
     }
   }

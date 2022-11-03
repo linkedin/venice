@@ -35,10 +35,8 @@ import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
-import com.linkedin.venice.storage.protocol.ChunkId;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
-import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Time;
@@ -234,6 +232,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   private volatile boolean isChunkingSet;
   private volatile boolean isChunkingFlagInvoked;
 
+  private boolean isRmdChunkingEnabled;
+
   protected VeniceWriter(
       VeniceWriterOptions params,
       VeniceProperties props,
@@ -271,6 +271,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         props.getLong(MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, DEFAULT_MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS);
     this.elapsedTimeForClosingSegmentEnabled = maxElapsedTimeForSegmentInMs > 0;
     this.defaultDebugInfo = Utils.getDebugInfo();
+    // Hardcoded to false for now until we finished the implementation.
+    this.isRmdChunkingEnabled = false;
 
     // if INSTANCE_ID is not set, we'd use "hostname:port" as the default writer id
     if (props.containsKey(INSTANCE_ID)) {
@@ -498,7 +500,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     byte[] serializedKey = keySerializer.serialize(topicName, key);
     isChunkingFlagInvoked = true;
 
-    int rmdPayloadSize = deleteMetadata.isPresent() ? deleteMetadata.get().getSerializedSize() : 0;
+    int rmdPayloadSize = deleteMetadata.map(DeleteMetadata::getSerializedSize).orElse(0);
     if (serializedKey.length + rmdPayloadSize > maxSizeForUserPayloadPerMessageInBytes) {
       throw new RecordTooLargeException(
           "This record exceeds the maximum size. " + getSizeReport(serializedKey.length, 0, rmdPayloadSize));
@@ -1079,7 +1081,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * An interface which enables the key to contain parts of the {@param producerMetadata} within it, which is
    * useful for control messages and chunked values.
    */
-  private interface KeyProvider {
+  public interface KeyProvider {
     KafkaKey getKey(ProducerMetadata producerMetadata);
   }
 
@@ -1103,148 +1105,79 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       LeaderMetadataWrapper leaderMetadataWrapper,
       long logicalTs,
       Optional<PutMetadata> putMetadata) {
-    int replicationMetadataPayloadSize = putMetadata.isPresent() ? putMetadata.get().getSerializedSize() : 0;
-    int sizeAvailablePerMessage = maxSizeForUserPayloadPerMessageInBytes - serializedKey.length;
-    if (sizeAvailablePerMessage < maxSizeForUserPayloadPerMessageInBytes / 2) {
-      /**
-       * If the key size is more than half the available payload per message, then we cannot even encode a
-       * {@link ChunkedValueManifest} with two keys in it, hence we would fail anyway. Might as well fail fast.
-       *
-       * N.B.: The above may not be strictly true, since Kafka-level compression may squeeze us under the limit,
-       * but this is not likely to work deterministically, so it would be iffy to attempt it on a best-effort
-       * basis. That being said, allowing keys to be as large as half the available payload size is probably
-       * overly permissive anyway. Ideally, the key size should be much smaller than this.
-       *
-       * TODO: Implement a proper key size (and value size) quota mechanism.
-       */
-      throw new VeniceException(
-          "Chunking cannot support this use case. The key is too large. "
-              + getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize));
-    }
-    int numberOfChunks = (int) Math.ceil((double) serializedValue.length / (double) sizeAvailablePerMessage);
-
-    final ChunkedValueManifest chunkedValueManifest = new ChunkedValueManifest();
-    chunkedValueManifest.schemaId = valueSchemaId;
-    chunkedValueManifest.keysWithChunkIdSuffix = new ArrayList<>(numberOfChunks);
-    chunkedValueManifest.size = serializedValue.length;
-
-    int chunkStartByteIndex;
-    int chunkEndByteIndex;
-    KeyProvider keyProvider, firstKeyProvider, subsequentKeyProvider;
-    boolean chunkAwareCallback = callback instanceof ChunkAwareCallback;
-    ByteBuffer[] chunks = null;
-    if (chunkAwareCallback) {
-      // We only carry this state if it's going to be used, else we don't even instantiate this
-      chunks = new ByteBuffer[numberOfChunks];
-    }
-
-    /**
-     * This {@link ChunkedKeySuffix} instance gets mutated along the way, first in the loop, where its
-     * chunk index is incremented at each iteration, and then also on the first iteration of the loop,
-     * the {@link firstKeyProvider} will extract {@link ProducerMetadata} information out of the first
-     * message sent, to be re-used across all chunk keys belonging to this value.
-     */
-    final ChunkedKeySuffix chunkedKeySuffix = new ChunkedKeySuffix();
-    chunkedKeySuffix.isChunk = true;
-    chunkedKeySuffix.chunkId = new ChunkId();
-
-    subsequentKeyProvider = producerMetadata -> {
-      ByteBuffer keyWithSuffix =
-          ByteBuffer.wrap(keyWithChunkingSuffixSerializer.serializeChunkedKey(serializedKey, chunkedKeySuffix));
-      chunkedValueManifest.keysWithChunkIdSuffix.add(keyWithSuffix);
-      return new KafkaKey(MessageType.PUT, keyWithSuffix.array());
-    };
-    firstKeyProvider = producerMetadata -> {
-      chunkedKeySuffix.chunkId.producerGUID = producerMetadata.producerGUID;
-      chunkedKeySuffix.chunkId.segmentNumber = producerMetadata.segmentNumber;
-      chunkedKeySuffix.chunkId.messageSequenceNumber = producerMetadata.messageSequenceNumber;
-      return subsequentKeyProvider.getKey(producerMetadata);
-    };
-    for (int chunkIndex = 0; chunkIndex < numberOfChunks; chunkIndex++) {
-      chunkStartByteIndex = chunkIndex * sizeAvailablePerMessage;
-      chunkEndByteIndex = Math.min((chunkIndex + 1) * sizeAvailablePerMessage, serializedValue.length);
-
-      /**
-       * We leave 4 bytes of headroom at the beginning of the ByteBuffer so that the Venice Storage Node
-       * can use this room to write the value header, without allocating a new byte array nor copying.
-       */
-      final int chunkLength = chunkEndByteIndex - chunkStartByteIndex;
-      byte[] chunkValue = new byte[chunkLength + ByteUtils.SIZE_OF_INT];
-      System.arraycopy(serializedValue, chunkStartByteIndex, chunkValue, ByteUtils.SIZE_OF_INT, chunkLength);
-      ByteBuffer chunk = ByteBuffer.wrap(chunkValue);
-      chunk.position(ByteUtils.SIZE_OF_INT);
-
-      if (chunks != null) {
-        chunks[chunkIndex] = chunk;
-      }
-
-      Put putPayload = new Put();
-      putPayload.putValue = chunk;
-      putPayload.schemaId = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
-      putPayload.replicationMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
-      putPayload.replicationMetadataPayload = EMPTY_BYTE_BUFFER;
-
-      chunkedKeySuffix.chunkId.chunkIndex = chunkIndex;
-      keyProvider = chunkIndex == 0 ? firstKeyProvider : subsequentKeyProvider;
-
-      try {
-        /**
-         * Here are the reasons to do a blocking call of 'sendMessage' with 'null' callback:
-         * 1. We don't want the upper layer know the chunking logic here. Right now, if we pass the callback parameter,
-         * it will cause the job failure because the message count of sent/completed in 'VeniceReducer' won't match;
-         * 2. Blocking call could guarantee correctness;
-         * 3. Infinite blocking means the following 'sendMessage' call will follow the config of the internal Kafka Producer,
-         * such as timeout, retries and so on;
-         */
-        sendMessage(
+    int replicationMetadataPayloadSize = putMetadata.map(PutMetadata::getSerializedSize).orElse(0);
+    final Supplier<String> reportSizeGenerator =
+        () -> getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize);
+    ChunkedPayloadAndManifest valueChunksAndManifest = ChunkHelper.chunkPayloadAndSend(
+        serializedKey,
+        serializedValue,
+        valueSchemaId,
+        callback instanceof ChunkAwareCallback,
+        reportSizeGenerator,
+        maxSizeForUserPayloadPerMessageInBytes,
+        keyWithChunkingSuffixSerializer,
+        (keyProvider, putPayload) -> sendMessage(
             keyProvider,
             MessageType.PUT,
             putPayload,
             partition,
             null,
             DEFAULT_LEADER_METADATA_WRAPPER,
-            Optional.empty()).get();
-      } catch (Exception e) {
-        throw new VeniceException(
-            "Caught an exception while attempting to produce a chunk of a large value into Kafka... "
-                + getDetailedSizeReport(
-                    chunkIndex,
-                    numberOfChunks,
-                    sizeAvailablePerMessage,
-                    serializedKey.length,
-                    serializedValue.length,
-                    replicationMetadataPayloadSize),
-            e);
-      }
+            Optional.empty()));
+    ChunkedPayloadAndManifest rmdChunksAndManifest = null;
+    if (isRmdChunkingEnabled) {
+      rmdChunksAndManifest = ChunkHelper.chunkPayloadAndSend(
+          serializedKey,
+          (putMetadata.isPresent() ? putMetadata.get().getRmdPayload() : EMPTY_BYTE_BUFFER).array(),
+          valueSchemaId,
+          callback instanceof ChunkAwareCallback,
+          reportSizeGenerator,
+          maxSizeForUserPayloadPerMessageInBytes,
+          keyWithChunkingSuffixSerializer,
+          (keyProvider, putPayload) -> sendMessage(
+              keyProvider,
+              MessageType.PUT,
+              putPayload,
+              partition,
+              null,
+              DEFAULT_LEADER_METADATA_WRAPPER,
+              Optional.empty()));
     }
-
     // Now that we've sent all the chunks, we can take care of the final value, the manifest.
     byte[] topLevelKey = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(serializedKey);
     KeyProvider manifestKeyProvider = producerMetadata -> new KafkaKey(MessageType.PUT, topLevelKey);
 
-    Put putPayload = new Put();
-    putPayload.putValue = ByteBuffer.wrap(chunkedValueManifestSerializer.serialize(topicName, chunkedValueManifest));
-    putPayload.schemaId = AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
-
-    if (putPayload.putValue.remaining() + replicationMetadataPayloadSize > sizeAvailablePerMessage) {
+    Put putManifestsPayload = new Put();
+    putManifestsPayload.putValue = ByteBuffer
+        .wrap(chunkedValueManifestSerializer.serialize(topicName, valueChunksAndManifest.getChunkedValueManifest()));
+    putManifestsPayload.schemaId = AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
+    if (putMetadata.isPresent()) {
+      putManifestsPayload.replicationMetadataVersionId = putMetadata.get().getRmdVersionId();
+      if (isRmdChunkingEnabled) {
+        putManifestsPayload.replicationMetadataPayload = ByteBuffer
+            .wrap(chunkedValueManifestSerializer.serialize(topicName, rmdChunksAndManifest.getChunkedValueManifest()));
+      } else {
+        putManifestsPayload.replicationMetadataPayload = putMetadata.get().getRmdPayload();
+      }
+    } else {
+      putManifestsPayload.replicationMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
+      putManifestsPayload.replicationMetadataPayload = EMPTY_BYTE_BUFFER;
+    }
+    final int sizeAvailablePerMessage = maxSizeForUserPayloadPerMessageInBytes - serializedKey.length;
+    if (putManifestsPayload.putValue.remaining()
+        + putManifestsPayload.replicationMetadataPayload.remaining() > sizeAvailablePerMessage) {
       // This is a very desperate edge case...
       throw new VeniceException(
           "This message cannot be chunked, because even its manifest is too big to go through. "
-              + "Please reconsider your life choices. "
-              + getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize));
+              + "Please reconsider your life choices. " + reportSizeGenerator.get());
     }
 
-    if (chunkAwareCallback) {
+    if (callback instanceof ChunkAwareCallback) {
       /** We leave a handle to the key, chunks and manifest so that the {@link ChunkAwareCallback} can act on them */
-      ((ChunkAwareCallback) callback).setChunkingInfo(topLevelKey, chunks, chunkedValueManifest);
-    }
-
-    if (putMetadata.isPresent()) {
-      putPayload.replicationMetadataVersionId = putMetadata.get().getRmdVersionId();
-      putPayload.replicationMetadataPayload = putMetadata.get().getRmdPayload();
-    } else {
-      putPayload.replicationMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
-      putPayload.replicationMetadataPayload = EMPTY_BYTE_BUFFER;
+      ((ChunkAwareCallback) callback).setChunkingInfo(
+          topLevelKey,
+          valueChunksAndManifest.getPayloadChunks(),
+          valueChunksAndManifest.getChunkedValueManifest());
     }
 
     // We only return the last future (the one for the manifest) and assume that once this one is finished,
@@ -1252,23 +1185,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     return sendMessage(
         manifestKeyProvider,
         MessageType.PUT,
-        putPayload,
+        putManifestsPayload,
         partition,
         callback,
         leaderMetadataWrapper,
         Optional.of(logicalTs));
-  }
-
-  private String getDetailedSizeReport(
-      int chunkIndex,
-      int numberOfChunks,
-      int sizeAvailablePerMessage,
-      int serializedKeySize,
-      int serializedValueSize,
-      int replicationMeatadataPayloadSize) {
-    return "Current chunk index: " + chunkIndex + ", " + "Number of chunks: " + numberOfChunks + ", "
-        + "Size available per message: " + sizeAvailablePerMessage + ", "
-        + getSizeReport(serializedKeySize, serializedValueSize, replicationMeatadataPayloadSize);
   }
 
   private String getSizeReport(int serializedKeySize, int serializedValueSize, int replicationMetadataPayloadSize) {
@@ -1658,4 +1579,5 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   public int getMaxSizeForUserPayloadPerMessageInBytes() {
     return maxSizeForUserPayloadPerMessageInBytes;
   }
+
 }

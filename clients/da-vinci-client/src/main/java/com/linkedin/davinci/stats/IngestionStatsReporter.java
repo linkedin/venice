@@ -4,6 +4,7 @@ import static com.linkedin.davinci.stats.IngestionStats.BATCH_FOLLOWER_OFFSET_LA
 import static com.linkedin.davinci.stats.IngestionStats.BATCH_LEADER_OFFSET_LAG;
 import static com.linkedin.davinci.stats.IngestionStats.BATCH_REPLICATION_LAG;
 import static com.linkedin.davinci.stats.IngestionStats.BYTES_CONSUMED_METRIC_NAME;
+import static com.linkedin.davinci.stats.IngestionStats.CONSUMED_RECORD_END_TO_END_PROCESSING_LATENCY;
 import static com.linkedin.davinci.stats.IngestionStats.FOLLOWER_BYTES_CONSUMED_METRIC_NAME;
 import static com.linkedin.davinci.stats.IngestionStats.FOLLOWER_OFFSET_LAG;
 import static com.linkedin.davinci.stats.IngestionStats.FOLLOWER_RECORDS_CONSUMED_METRIC_NAME;
@@ -121,6 +122,12 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
       registerSensor(
           SUBSCRIBE_ACTION_PREP_LATENCY + "_max",
           new IngestionStatsGauge(this, () -> getStats().getSubscribePrepLatencyMax(), 0));
+      registerSensor(
+          CONSUMED_RECORD_END_TO_END_PROCESSING_LATENCY + "_avg",
+          new IngestionStatsGauge(this, () -> getStats().getConsumedRecordEndToEndProcessingLatencyAvg(), 0));
+      registerSensor(
+          CONSUMED_RECORD_END_TO_END_PROCESSING_LATENCY + "_max",
+          new IngestionStatsGauge(this, () -> getStats().getConsumedRecordEndToEndProcessingLatencyMax(), 0));
     }
   }
 

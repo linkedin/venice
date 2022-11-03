@@ -299,6 +299,14 @@ public class IngestionStats {
     stalePartitionsWithoutIngestionTaskSensor.record();
   }
 
+  public double getConsumedRecordEndToEndProcessingLatencyAvg() {
+    return consumedRecordEndToEndProcessingLatencySensor.getAvg();
+  }
+
+  public double getConsumedRecordEndToEndProcessingLatencyMax() {
+    return consumedRecordEndToEndProcessingLatencySensor.getMax();
+  }
+
   public void recordConsumedRecordEndToEndProcessingLatency(double value) {
     consumedRecordEndToEndProcessingLatencySensor.record(value);
   }

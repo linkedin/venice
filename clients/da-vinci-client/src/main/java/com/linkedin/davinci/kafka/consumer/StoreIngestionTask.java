@@ -81,6 +81,7 @@ import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.DiskUsage;
+import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
@@ -1468,66 +1469,77 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       LOGGER.info("{} has been killed.", consumerTaskId);
       statusReportAdapter.reportKilled(partitionConsumptionStateMap.values(), e);
       doFlush = false;
-    } catch (org.apache.kafka.common.errors.InterruptException | InterruptedException e) {
-      // Known exceptions during graceful shutdown of storage server. Report error only if the server is still running.
-      if (isRunning()) {
-        // Report ingestion failure if it is not caused by kill operation or server restarts.
-        LOGGER.error("{} has failed.", consumerTaskId, e);
-        statusReportAdapter
-            .reportError(partitionConsumptionStateMap.values(), "Caught InterruptException during ingestion.", e);
-        hostLevelIngestionStats.recordIngestionFailure();
-      }
-    } catch (Throwable t) {
-      // After reporting error to controller, controller will ignore the message from this replica if job is aborted.
-      // So even this storage node recover eventually, controller will not confused.
-      // If job is not aborted, controller is open to get the subsequent message from this replica(if storage node was
-      // recovered, it will send STARTED message to controller again)
-
+    } catch (VeniceChecksumException e) {
       /**
        * It's possible to receive checksum verification failure exception here from the above syncOffset() call.
        * If this task is getting closed anyway (most likely due to SN being shut down), we should not report this replica
        * as ERROR. just record the relevant metrics.
        */
-      if (t instanceof VeniceChecksumException) {
-        recordChecksumVerificationFailure();
-        if (!isRunning()) {
-          LOGGER.error("{} received verifyChecksum: exception ", consumerTaskId, t);
-          return;
-        }
-      }
-
-      LOGGER.error("{} has failed.", consumerTaskId, t);
-      /**
-       * Completed partitions will remain ONLINE without a backing ingestion task. If the partition belongs to a hybrid
-       * store then it will remain stale until the host is restarted. This is because both the auto reset task and Helix
-       * controller doesn't think there is a problem with the replica since it's COMPLETED and ONLINE. Stale replicas is
-       * better than dropping availability and that's why we do not put COMPLETED replicas to ERROR state immediately.
-       */
-      for (PartitionConsumptionState pcs: partitionConsumptionStateMap.values()) {
-        if (pcs.isComplete()) {
-          versionedIngestionStats.recordStalePartitionsWithoutIngestionTask(storeName, versionNumber);
-        }
-      }
-      if (t instanceof Exception) {
-        reportError(
-            partitionConsumptionStateMap.values(),
-            errorPartitionId,
-            "Caught Exception during ingestion.",
-            (Exception) t);
-        if (t instanceof VeniceTimeoutException) {
-          versionedIngestionStats.setIngestionTaskPushTimeoutGauge(storeName, versionNumber);
-        }
+      recordChecksumVerificationFailure();
+      if (!isRunning()) {
+        LOGGER.info(
+            "{} encountered checksum verification failure, skipping error reporting because server is shutting down",
+            consumerTaskId,
+            e);
       } else {
-        reportError(
-            partitionConsumptionStateMap.values(),
-            errorPartitionId,
-            "Caught non-exception Throwable during ingestion.",
-            new VeniceException(t));
+        handleIngestionException(e);
       }
-      hostLevelIngestionStats.recordIngestionFailure();
+    } catch (VeniceTimeoutException e) {
+      versionedIngestionStats.setIngestionTaskPushTimeoutGauge(storeName, versionNumber);
+      handleIngestionException(e);
+    } catch (Exception e) {
+      // After reporting error to controller, controller will ignore the message from this replica if job is aborted.
+      // So even this storage node recover eventually, controller will not confused.
+      // If job is not aborted, controller is open to get the subsequent message from this replica(if storage node was
+      // recovered, it will send STARTED message to controller again)
+
+      if (!isRunning() && ExceptionUtils.recursiveClassEquals(
+          e,
+          InterruptedException.class,
+          org.apache.kafka.common.errors.InterruptException.class)) {
+        // Known exceptions during graceful shutdown of storage server. Report error only if the server is still
+        // running.
+        LOGGER.info("{} interrupted, skipping error reporting because server is shutting down", consumerTaskId, e);
+        return;
+      }
+      handleIngestionException(e);
+    } catch (Throwable t) {
+      handleIngestionThrowable(t);
     } finally {
       internalClose(doFlush);
     }
+  }
+
+  private void recordStalePartitionsWithoutIngestionTask() {
+    /**
+     * Completed partitions will remain ONLINE without a backing ingestion task. If the partition belongs to a hybrid
+     * store then it will remain stale until the host is restarted. This is because both the auto reset task and Helix
+     * controller doesn't think there is a problem with the replica since it's COMPLETED and ONLINE. Stale replicas is
+     * better than dropping availability and that's why we do not put COMPLETED replicas to ERROR state immediately.
+     */
+    for (PartitionConsumptionState pcs: partitionConsumptionStateMap.values()) {
+      if (pcs.isComplete()) {
+        versionedIngestionStats.recordStalePartitionsWithoutIngestionTask(storeName, versionNumber);
+      }
+    }
+  }
+
+  private void handleIngestionException(Exception e) {
+    LOGGER.error("{} has failed.", consumerTaskId, e);
+    recordStalePartitionsWithoutIngestionTask();
+    reportError(partitionConsumptionStateMap.values(), errorPartitionId, "Caught Exception during ingestion.", e);
+    hostLevelIngestionStats.recordIngestionFailure();
+  }
+
+  private void handleIngestionThrowable(Throwable t) {
+    LOGGER.error("{} has failed.", consumerTaskId, t);
+    recordStalePartitionsWithoutIngestionTask();
+    reportError(
+        partitionConsumptionStateMap.values(),
+        errorPartitionId,
+        "Caught non-exception Throwable during ingestion.",
+        new VeniceException(t));
+    hostLevelIngestionStats.recordIngestionFailure();
   }
 
   /**
