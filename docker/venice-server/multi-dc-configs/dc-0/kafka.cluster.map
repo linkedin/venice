@@ -1,0 +1,1 @@
+{"0":"{\"securityProtocol\":\"PLAINTEXT\",\"name\":\"dc-0\",\"url\":\"kafka.dc-0.venicedb.io:9092\"}","1":"{\"securityProtocol\":\"PLAINTEXT\",\"name\":\"dc-1\",\"url\":\"kafka.dc-1.venicedb.io:9092\"}"}

@@ -1,0 +1,291 @@
+version: '3.8'
+
+services:
+
+  zookeeper.dc-parent.venicedb.io:
+    image: venicedb/apache-zookeeper:3.9.0
+    container_name: zookeeper.dc-parent.venicedb.io
+    hostname: zookeeper.dc-parent.venicedb.io
+    ports:
+      - 2190:2181
+    healthcheck:
+        test: ["CMD-SHELL", "echo ruok | nc zookeeper 2181"]
+        start_period: 10s
+        interval: 5s
+        timeout: 5s
+        retries: 5
+
+
+  kafka.dc-parent.venicedb.io:
+    image: venicedb/apache-kafka:3.3.1
+    container_name: kafka.dc-parent.venicedb.io
+    hostname: kafka.dc-parent.venicedb.io
+    environment:
+      - ZOOKEEPER_ADDRESS=zookeeper.dc-parent.venicedb.io:2181
+    depends_on:
+      zookeeper.dc-parent.venicedb.io:
+        condition: service_healthy
+    healthcheck:
+        test: ["CMD-SHELL", "bash -x bin/kafka-topics.sh --bootstrap-server localhost:9092 --list"]
+        start_period: 60s
+        interval: 5s
+        timeout: 20s
+        retries: 5
+
+
+  venice-controller.dc-parent.venicedb.io:
+    image: venicedb/venice-controller:0.4.17
+    container_name: venice-controller.dc-parent.venicedb.io
+    hostname: venice-controller.dc-parent.venicedb.io
+    depends_on:
+      kafka.dc-parent.venicedb.io:
+        condition: service_healthy
+    entrypoint: java -jar /opt/venice/bin/venice-controller-all.jar /opt/venice/configs/multi-dc/dc-parent.venice.controller.properties /opt/venice/configs/multi-dc/dc-parent.venice.controller.properties
+    healthcheck:
+        test: ["CMD-SHELL", "sleep 5"]
+        start_period: 20s
+        interval: 5s
+        timeout: 20s
+        retries: 5
+
+
+
+
+##### dc-0 #####
+
+  zookeeper.dc-0.venicedb.io:
+    image: venicedb/apache-zookeeper:3.9.0
+    container_name: zookeeper.dc-0.venicedb.io
+    hostname: zookeeper.dc-0.venicedb.io
+    ports:
+      - 2191:2181
+    healthcheck:
+        test: ["CMD-SHELL", "echo ruok | nc zookeeper 2181"]
+        start_period: 10s
+        interval: 5s
+        timeout: 5s
+        retries: 5
+
+
+  kafka.dc-0.venicedb.io:
+    image: venicedb/apache-kafka:3.3.1
+    container_name: kafka.dc-0.venicedb.io
+    hostname: kafka.dc-0.venicedb.io
+    environment:
+      - ZOOKEEPER_ADDRESS=zookeeper.dc-0.venicedb.io:2181
+    depends_on:
+      zookeeper.dc-0.venicedb.io:
+        condition: service_healthy
+    healthcheck:
+        test: ["CMD-SHELL", "bash -x bin/kafka-topics.sh --bootstrap-server localhost:9092 --list"]
+        start_period: 60s
+        interval: 5s
+        timeout: 20s
+        retries: 5
+
+
+  venice-controller.dc-0.venicedb.io:
+    image: venicedb/venice-controller:0.4.17
+    container_name: venice-controller.dc-0.venicedb.io
+    hostname: venice-controller.dc-0.venicedb.io
+    depends_on:
+      kafka.dc-0.venicedb.io:
+        condition: service_healthy
+    entrypoint: java -jar /opt/venice/bin/venice-controller-all.jar /opt/venice/configs/multi-dc/dc-0.venice.controller.properties /opt/venice/configs/multi-dc/dc-0.venice.controller.properties
+    healthcheck:
+        test: ["CMD-SHELL", "sleep 5"]
+        start_period: 20s
+        interval: 5s
+        timeout: 20s
+        retries: 5
+
+
+  venice-server-0.dc-0.venicedb.io:
+    image: venicedb/venice-server:0.4.17
+    container_name: venice-server-0.dc-0.venicedb.io
+    hostname: venice-server-0.dc-0.venicedb.io
+    depends_on:
+      venice-controller.dc-0.venicedb.io:
+        condition: service_healthy
+    entrypoint: java -jar /opt/venice/bin/venice-server-all.jar /opt/venice/configs/multi-dc/dc-0
+    healthcheck:
+        test: ["CMD-SHELL", "sleep 5"]
+        start_period: 20s
+        interval: 5s
+        timeout: 20s
+        retries: 5
+
+
+  venice-server-1.dc-0.venicedb.io:
+    image: venicedb/venice-server:0.4.17
+    container_name: venice-server-1.dc-0.venicedb.io
+    hostname: venice-server-1.dc-0.venicedb.io
+    depends_on:
+      venice-controller.dc-0.venicedb.io:
+        condition: service_healthy
+    entrypoint: java -jar /opt/venice/bin/venice-server-all.jar /opt/venice/configs/multi-dc/dc-0
+    healthcheck:
+        test: ["CMD-SHELL", "sleep 5"]
+        start_period: 20s
+        interval: 5s
+        timeout: 20s
+        retries: 5
+
+
+  venice-server-2.dc-0.venicedb.io:
+    image: venicedb/venice-server:0.4.17
+    container_name: venice-server-2.dc-0.venicedb.io
+    hostname: venice-server-2.dc-0.venicedb.io
+    depends_on:
+      venice-controller.dc-0.venicedb.io:
+        condition: service_healthy
+    entrypoint: java -jar /opt/venice/bin/venice-server-all.jar /opt/venice/configs/multi-dc/dc-0
+    healthcheck:
+        test: ["CMD-SHELL", "sleep 5"]
+        start_period: 20s
+        interval: 5s
+        timeout: 20s
+        retries: 5
+
+
+  venice-router.dc-0.venicedb.io:
+    image: venicedb/venice-router:0.4.17
+    container_name: venice-router.dc-0.venicedb.io
+    hostname: venice-router.dc-0.venicedb.io
+    depends_on:
+      venice-controller.dc-0.venicedb.io:
+        condition: service_healthy
+    entrypoint: java -jar /opt/venice/bin/venice-router-all.jar /opt/venice/configs/multi-dc/dc-0.venice.router.properties
+    healthcheck:
+        test: ["CMD-SHELL", "sleep 5"]
+        start_period: 20s
+        interval: 5s
+        timeout: 20s
+        retries: 5
+
+
+
+
+##### dc-1 #####
+
+  zookeeper.dc-1.venicedb.io:
+    image: venicedb/apache-zookeeper:3.9.0
+    container_name: zookeeper.dc-1.venicedb.io
+    hostname: zookeeper.dc-1.venicedb.io
+    ports:
+      - 2192:2181
+    healthcheck:
+        test: ["CMD-SHELL", "echo ruok | nc zookeeper 2181"]
+        start_period: 10s
+        interval: 5s
+        timeout: 5s
+        retries: 5
+
+
+  kafka.dc-1.venicedb.io:
+    image: venicedb/apache-kafka:3.3.1
+    container_name: kafka.dc-1.venicedb.io
+    hostname: kafka.dc-1.venicedb.io
+    environment:
+      - ZOOKEEPER_ADDRESS=zookeeper.dc-1.venicedb.io:2181
+    depends_on:
+      zookeeper.dc-1.venicedb.io:
+        condition: service_healthy
+    healthcheck:
+        test: ["CMD-SHELL", "bash -x bin/kafka-topics.sh --bootstrap-server localhost:9092 --list"]
+        start_period: 60s
+        interval: 5s
+        timeout: 20s
+        retries: 5
+
+
+  venice-controller.dc-1.venicedb.io:
+    image: venicedb/venice-controller:0.4.17
+    container_name: venice-controller.dc-1.venicedb.io
+    hostname: venice-controller.dc-1.venicedb.io
+    depends_on:
+      kafka.dc-1.venicedb.io:
+        condition: service_healthy
+    entrypoint: java -jar /opt/venice/bin/venice-controller-all.jar /opt/venice/configs/multi-dc/dc-1.venice.controller.properties /opt/venice/configs/multi-dc/dc-1.venice.controller.properties
+    healthcheck:
+        test: ["CMD-SHELL", "sleep 5"]
+        start_period: 20s
+        interval: 5s
+        timeout: 20s
+        retries: 5
+
+
+  venice-server-0.dc-1.venicedb.io:
+    image: venicedb/venice-server:0.4.17
+    container_name: venice-server-0.dc-1.venicedb.io
+    hostname: venice-server-0.dc-1.venicedb.io
+    depends_on:
+      venice-controller.dc-1.venicedb.io:
+        condition: service_healthy
+    entrypoint: java -jar /opt/venice/bin/venice-server-all.jar /opt/venice/configs/multi-dc/dc-1
+    healthcheck:
+        test: ["CMD-SHELL", "sleep 5"]
+        start_period: 20s
+        interval: 5s
+        timeout: 20s
+        retries: 5
+
+
+  venice-server-1.dc-1.venicedb.io:
+    image: venicedb/venice-server:0.4.17
+    container_name: venice-server-1.dc-1.venicedb.io
+    hostname: venice-server-1.dc-1.venicedb.io
+    depends_on:
+      venice-controller.dc-1.venicedb.io:
+        condition: service_healthy
+    entrypoint: java -jar /opt/venice/bin/venice-server-all.jar /opt/venice/configs/multi-dc/dc-1
+    healthcheck:
+        test: ["CMD-SHELL", "sleep 5"]
+        start_period: 20s
+        interval: 5s
+        timeout: 20s
+        retries: 5
+
+
+  venice-server-2.dc-1.venicedb.io:
+    image: venicedb/venice-server:0.4.17
+    container_name: venice-server-2.dc-1.venicedb.io
+    hostname: venice-server-2.dc-1.venicedb.io
+    depends_on:
+      venice-controller.dc-1.venicedb.io:
+        condition: service_healthy
+    entrypoint: java -jar /opt/venice/bin/venice-server-all.jar /opt/venice/configs/multi-dc/dc-1
+    healthcheck:
+        test: ["CMD-SHELL", "sleep 5"]
+        start_period: 20s
+        interval: 5s
+        timeout: 20s
+        retries: 5
+
+
+  venice-router.dc-1.venicedb.io:
+    image: venicedb/venice-router:0.4.17
+    container_name: venice-router.dc-1.venicedb.io
+    hostname: venice-router.dc-1.venicedb.io
+    depends_on:
+      venice-controller.dc-1.venicedb.io:
+        condition: service_healthy
+    entrypoint: java -jar /opt/venice/bin/venice-router-all.jar /opt/venice/configs/multi-dc/dc-1.venice.router.properties
+    healthcheck:
+        test: ["CMD-SHELL", "sleep 5"]
+        start_period: 20s
+        interval: 5s
+        timeout: 20s
+        retries: 5
+
+
+  venice-client:
+    image: venicedb/venice-client:0.4.17
+    container_name: venice-client
+    hostname: venice-client
+    tty: true
+    depends_on:
+      venice-router.dc-0.venicedb.io:
+        condition: service_healthy
+      venice-router.dc-1.venicedb.io:
+        condition: service_healthy
