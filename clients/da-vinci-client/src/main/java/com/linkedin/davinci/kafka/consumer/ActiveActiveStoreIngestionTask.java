@@ -164,13 +164,16 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   protected void putInStorageEngine(int partition, byte[] keyBytes, Put put) {
     try {
       // TODO: Honor BatchConflictResolutionPolicy and maybe persist RMD for batch push records.
-      switch (getStorageOperationType(partition, put.replicationMetadataPayload)) {
-        case RMD:
+      switch (getStorageOperationType(partition, put.putValue, put.replicationMetadataPayload)) {
+        case VALUE_AND_RMD:
           byte[] metadataBytesWithValueSchemaId =
               prependReplicationMetadataBytesWithValueSchemaId(put.replicationMetadataPayload, put.schemaId);
           storageEngine.putWithReplicationMetadata(partition, keyBytes, put.putValue, metadataBytesWithValueSchemaId);
           break;
-        case NORMAL:
+        case RMD:
+          storageEngine.putReplicationMetadata(partition, keyBytes, put.replicationMetadataPayload.array());
+          break;
+        case VALUE:
           storageEngine.put(partition, keyBytes, put.putValue);
           break;
       }
@@ -183,13 +186,13 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   protected void removeFromStorageEngine(int partition, byte[] keyBytes, Delete delete) {
     try {
       // TODO: Honor BatchConflictResolutionPolicy and maybe persist RMD for batch push records.
-      switch (getStorageOperationType(partition, delete.replicationMetadataPayload)) {
-        case RMD:
+      switch (getStorageOperationType(partition, null, delete.replicationMetadataPayload)) {
+        case VALUE_AND_RMD:
           byte[] metadataBytesWithValueSchemaId =
               prependReplicationMetadataBytesWithValueSchemaId(delete.replicationMetadataPayload, delete.schemaId);
           storageEngine.deleteWithReplicationMetadata(partition, keyBytes, metadataBytesWithValueSchemaId);
           break;
-        case NORMAL:
+        case VALUE:
           storageEngine.delete(partition, keyBytes);
           break;
       }
@@ -199,20 +202,26 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   }
 
   /** @return what kind of storage operation to execute, if any. */
-  private StorageOperationType getStorageOperationType(int partition, ByteBuffer payload) {
+  private StorageOperationType getStorageOperationType(int partition, ByteBuffer valuePayload, ByteBuffer rmdPayload) {
     PartitionConsumptionState pcs = partitionConsumptionStateMap.get(partition);
     if (pcs == null) {
       logStorageOperationWhileUnsubscribed(partition);
       return StorageOperationType.NONE;
     }
-    if ((pcs.isEndOfPushReceived() || payload.remaining() != 0) && !isDaVinciClient) {
+    if (valuePayload != null && valuePayload.remaining() == 0 && rmdPayload.remaining() != 0) {
       return StorageOperationType.RMD;
     }
-    return StorageOperationType.NORMAL;
+    if ((pcs.isEndOfPushReceived() || rmdPayload.remaining() != 0) && !isDaVinciClient) {
+      return StorageOperationType.VALUE_AND_RMD;
+    }
+    return StorageOperationType.VALUE;
   }
 
   private enum StorageOperationType {
-    RMD, NORMAL, NONE;
+    VALUE_AND_RMD, // Operate on value associated with RMD
+    VALUE, // Operate on full or chunked value
+    RMD, // Operate on chunked RMD
+    NONE
   }
 
   private byte[] prependReplicationMetadataBytesWithValueSchemaId(ByteBuffer metadata, int valueSchemaId) {

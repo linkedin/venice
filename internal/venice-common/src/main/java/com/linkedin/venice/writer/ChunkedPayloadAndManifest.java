@@ -8,8 +8,8 @@ import java.nio.ByteBuffer;
  * This class contains both chunked results and manifest for a specific payload.
  */
 public class ChunkedPayloadAndManifest {
-  ByteBuffer[] payloadChunks;
-  ChunkedValueManifest chunkedValueManifest;
+  private final ByteBuffer[] payloadChunks;
+  private final ChunkedValueManifest chunkedValueManifest;
 
   public ChunkedPayloadAndManifest(ByteBuffer[] payloadChunks, ChunkedValueManifest chunkedValueManifest) {
     this.payloadChunks = payloadChunks;
