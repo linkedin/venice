@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 
 
+@Deprecated
 public class VsonSchemaAdapter extends AbstractVsonSchemaAdapter<Object> {
   public static Object parse(String vsonSchemaStr) {
     VsonSchemaAdapter adapter = new VsonSchemaAdapter(vsonSchemaStr);

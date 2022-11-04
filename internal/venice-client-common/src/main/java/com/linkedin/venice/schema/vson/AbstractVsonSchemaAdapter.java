@@ -10,7 +10,7 @@ import java.util.Map;
  * an abstraction of backend parser. It reads intermediate Object and parses it to schema.
  * It also contains a VsonReader reference so it could read from string straightly.
  */
-
+@Deprecated
 public abstract class AbstractVsonSchemaAdapter<T> {
   private Object schemaObject;
 

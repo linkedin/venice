@@ -27,6 +27,7 @@ import org.apache.avro.util.Utf8;
  * This class was inspired and referred from Voldemort.
  * https://github.com/voldemort/voldemort/blob/master/src/java/voldemort/serialization/json/JsonTypeSerializer.java
  */
+@Deprecated
 public class VsonAvroSerializer {
   private static final int MAX_SEQ_LENGTH = 0x3FFFFFFF;
 

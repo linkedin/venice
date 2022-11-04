@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 
 
+@Deprecated
 public final class VsonSchema implements Serializable {
   private static final long serialVersionUID = 1;
 

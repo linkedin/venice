@@ -10,6 +10,7 @@ import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.io.Encoder;
 
 
+@Deprecated
 public class VsonAvroDatumWriter<K> extends GenericDatumWriter<K> {
   private Map<Schema, Schema> cachedStrippedSchema;
 

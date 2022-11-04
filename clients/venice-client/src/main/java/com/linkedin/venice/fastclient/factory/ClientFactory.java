@@ -6,6 +6,7 @@ import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.fastclient.DispatchingAvroGenericStoreClient;
 import com.linkedin.venice.fastclient.DispatchingAvroSpecificStoreClient;
+import com.linkedin.venice.fastclient.DispatchingVsonStoreClient;
 import com.linkedin.venice.fastclient.DualReadAvroGenericStoreClient;
 import com.linkedin.venice.fastclient.DualReadAvroSpecificStoreClient;
 import com.linkedin.venice.fastclient.RetriableAvroGenericStoreClient;
@@ -47,8 +48,9 @@ public class ClientFactory {
   public static <K, V> AvroGenericStoreClient<K, V> getAndStartGenericStoreClient(
       StoreMetadata storeMetadata,
       ClientConfig clientConfig) {
-    final DispatchingAvroGenericStoreClient<K, V> dispatchingStoreClient =
-        new DispatchingAvroGenericStoreClient<>(storeMetadata, clientConfig);
+    final DispatchingAvroGenericStoreClient<K, V> dispatchingStoreClient = clientConfig.isVsonStore()
+        ? new DispatchingVsonStoreClient<>(storeMetadata, clientConfig)
+        : new DispatchingAvroGenericStoreClient<>(storeMetadata, clientConfig);
     StatsAvroGenericStoreClient<K, V> statsStoreClient;
     if (clientConfig.isLongTailRetryEnabledForSingleGet() || clientConfig.isLongTailRetryEnabledForBatchGet()) {
       statsStoreClient = new StatsAvroGenericStoreClient<>(
