@@ -59,6 +59,7 @@ public class ClientConfig<T extends SpecificRecord> {
     return new ClientConfig(storeName);
   }
 
+  @Deprecated
   public static ClientConfig defaultVsonGenericClientConfig(String storeName) {
     return new ClientConfig(storeName).setVsonClient(true);
   }
@@ -268,10 +269,12 @@ public class ClientConfig<T extends SpecificRecord> {
     return this;
   }
 
+  @Deprecated
   public boolean isVsonClient() {
     return isVsonClient;
   }
 
+  @Deprecated
   public ClientConfig<T> setVsonClient(boolean isVonClient) {
     this.isVsonClient = isVonClient;
     return this;

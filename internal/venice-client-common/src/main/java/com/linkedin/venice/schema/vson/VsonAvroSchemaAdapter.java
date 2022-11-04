@@ -12,7 +12,7 @@ import org.apache.avro.Schema;
 /**
  * generate Avro schema. It will be invoked when creating new stores as Venice needs to convert Vson schema strings to Avro schemas.
  */
-
+@Deprecated
 public class VsonAvroSchemaAdapter extends AbstractVsonSchemaAdapter<Schema> {
   private static final String DEFAULT_RECORD_NAME = "record";
   public static final String DEFAULT_DOC = null;

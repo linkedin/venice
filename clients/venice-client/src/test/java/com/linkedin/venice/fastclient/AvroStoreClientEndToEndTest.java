@@ -13,6 +13,7 @@ import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_VERSIO
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
 import com.linkedin.d2.balancer.D2Client;
@@ -60,7 +61,6 @@ import java.util.function.Consumer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
-import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
@@ -254,27 +254,60 @@ public class AvroStoreClientEndToEndTest {
     } else {
       fail("No valid StoreMetadata implementation provided");
     }
-    if (batchGet) {
-      for (int i = 0; i < recordCnt - 1; ++i) {
-        String key1 = keyPrefix + i;
-        String key2 = keyPrefix + (i + 1);
-        Set<String> keys = new HashSet<>();
-        keys.add(key1);
-        keys.add(key2);
-        Map<String, GenericRecord> resultMap = genericFastClient.batchGet(keys).get();
-        assertEquals(resultMap.size(), 2);
-        assertEquals((int) resultMap.get(key1).get(VALUE_FIELD_NAME), i);
-        assertEquals((int) resultMap.get(key2).get(VALUE_FIELD_NAME), i + 1);
-      }
+    // Construct a Vson store client
+    MetricsRepository metricsRepositoryForVsonClient = new MetricsRepository();
+    clientConfigBuilder.setMetricsRepository(metricsRepositoryForVsonClient);
+    AvroGenericStoreClient<String, Map> vsonClient = null;
+    ClientConfig.ClientConfigBuilder clientConfigBuilderForVsonStore = clientConfigBuilder.clone().setVsonStore(true);
+    if (useDaVinciClientBasedMetadata) {
+      clientConfigBuilderForVsonStore.setDaVinciClientForMetaStore(daVinciClientForMetaStore);
+      vsonClient = ClientFactory.getAndStartGenericStoreClient(clientConfigBuilderForVsonStore.build());
+    } else if (metadata.isPresent()) {
+      vsonClient = ClientFactory.getAndStartGenericStoreClient(metadata.get(), clientConfigBuilderForVsonStore.build());
     } else {
-      for (int i = 0; i < recordCnt; ++i) {
-        String key = keyPrefix + i;
-        GenericRecord value = genericFastClient.get(key).get();
-        assertEquals((int) value.get(VALUE_FIELD_NAME), i);
+      fail("No valid StoreMetadata implementation provided");
+    }
+    try {
+      if (batchGet) {
+        for (int i = 0; i < recordCnt - 1; ++i) {
+          String key1 = keyPrefix + i;
+          String key2 = keyPrefix + (i + 1);
+          Set<String> keys = new HashSet<>();
+          keys.add(key1);
+          keys.add(key2);
+          Map<String, GenericRecord> resultMap = genericFastClient.batchGet(keys).get();
+          assertEquals(resultMap.size(), 2);
+          assertEquals((int) resultMap.get(key1).get(VALUE_FIELD_NAME), i);
+          assertEquals((int) resultMap.get(key2).get(VALUE_FIELD_NAME), i + 1);
+
+          // Test Vson client
+          Map<String, Map> vsonResultMap = vsonClient.batchGet(keys).get();
+          assertEquals(vsonResultMap.size(), 2);
+          assertEquals((int) vsonResultMap.get(key1).get(VALUE_FIELD_NAME), i);
+          assertEquals((int) vsonResultMap.get(key2).get(VALUE_FIELD_NAME), i + 1);
+        }
+      } else {
+        for (int i = 0; i < recordCnt; ++i) {
+          String key = keyPrefix + i;
+          GenericRecord value = genericFastClient.get(key).get();
+          assertEquals((int) value.get(VALUE_FIELD_NAME), i);
+
+          // Test Vson client
+          Object vsonResult = vsonClient.get(key).get();
+          assertTrue(vsonResult instanceof Map, "VsonClient should return Map, but got" + vsonResult.getClass());
+          Map vsonValue = (Map) vsonResult;
+          assertEquals((int) vsonValue.get(VALUE_FIELD_NAME), i);
+        }
+      }
+      statsValidation.accept(metricsRepositoryForGenericClient);
+    } finally {
+      if (genericFastClient != null) {
+        genericFastClient.close();
+      }
+      if (vsonClient != null) {
+        vsonClient.close();
       }
     }
-    genericFastClient.close();
-    statsValidation.accept(metricsRepositoryForGenericClient);
 
     // Test specific store client
     MetricsRepository metricsRepositoryForSpecificClient = new MetricsRepository();
@@ -291,25 +324,31 @@ public class AvroStoreClientEndToEndTest {
     } else {
       fail("No valid StoreMetadata implementation provided");
     }
-    if (batchGet) {
-      for (int i = 0; i < recordCnt - 1; ++i) {
-        String key1 = keyPrefix + i;
-        String key2 = keyPrefix + (i + 1);
-        Set<String> keys = new HashSet<>();
-        keys.add(key1);
-        keys.add(key2);
-        Map<String, TestValueSchema> resultMap = specificFastClient.batchGet(keys).get();
-        assertEquals(resultMap.size(), 2);
-        assertEquals(resultMap.get(key1).int_field, i);
-        assertEquals(resultMap.get(key2).int_field, i + 1);
+    try {
+      if (batchGet) {
+        for (int i = 0; i < recordCnt - 1; ++i) {
+          String key1 = keyPrefix + i;
+          String key2 = keyPrefix + (i + 1);
+          Set<String> keys = new HashSet<>();
+          keys.add(key1);
+          keys.add(key2);
+          Map<String, TestValueSchema> resultMap = specificFastClient.batchGet(keys).get();
+          assertEquals(resultMap.size(), 2);
+          assertEquals(resultMap.get(key1).int_field, i);
+          assertEquals(resultMap.get(key2).int_field, i + 1);
+        }
+      } else {
+        for (int i = 0; i < recordCnt; ++i) {
+          String key = keyPrefix + i;
+          TestValueSchema value = specificFastClient.get(key).get();
+          assertEquals(value.int_field, i);
+        }
       }
-    } else {
-      for (int i = 0; i < recordCnt; ++i) {
-        String key = keyPrefix + i;
-        TestValueSchema value = specificFastClient.get(key).get();
-        assertEquals(value.int_field, i);
+      statsValidation.accept(metricsRepositoryForSpecificClient);
+    } finally {
+      if (specificFastClient != null) {
+        specificFastClient.close();
       }
-      specificFastClient.close();
       if (daVinciClientForMetaStore != null) {
         daVinciClientForMetaStore.close();
       }
@@ -317,7 +356,6 @@ public class AvroStoreClientEndToEndTest {
         daVinciClientFactory.close();
       }
     }
-    statsValidation.accept(metricsRepositoryForSpecificClient);
   }
 
   @Test(timeOut = TIME_OUT)
@@ -366,7 +404,7 @@ public class AvroStoreClientEndToEndTest {
       // Validate long-tail retry related metrics
       metricsRepository.metrics().forEach((mName, metric) -> {
         if (mName.contains("--long_tail_retry_request.OccurrenceRate")) {
-          Assert.assertTrue(metric.value() > 0, "Long tail retry for single-get should be triggered");
+          assertTrue(metric.value() > 0, "Long tail retry for single-get should be triggered");
         }
       });
     });
