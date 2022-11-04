@@ -9,6 +9,7 @@ import com.github.luben.zstd.ZstdInputStream;
 import com.linkedin.venice.compression.protocol.FakeCompressingSchema;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.concurrent.CloseableThreadLocal;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -21,18 +22,18 @@ import org.apache.commons.io.IOUtils;
 
 
 public class ZstdWithDictCompressor extends VeniceCompressor {
-  private ZstdCompressCtx compressor;
+  private CloseableThreadLocal<ZstdCompressCtx> compressor;
   private byte[] dictionary;
 
   public ZstdWithDictCompressor(final byte[] dictionary, int level) {
     super(CompressionStrategy.ZSTD_WITH_DICT);
     this.dictionary = dictionary;
-    compressor = new ZstdCompressCtx().loadDict(this.dictionary).setLevel(level);
+    compressor = new CloseableThreadLocal(() -> new ZstdCompressCtx().loadDict(dictionary).setLevel(level));
   }
 
   @Override
   public byte[] compress(byte[] data) {
-    return compressor.compress(data);
+    return compressor.get().compress(data);
   }
 
   @Override
@@ -41,9 +42,9 @@ public class ZstdWithDictCompressor extends VeniceCompressor {
       // TODO: It might be a decent refactor to add a pool of direct memory buffers so as to always leverage the this
       // interface and copy the results of the compression back into the passed in ByteBuffer. That would avoid
       // some of the data copy going on here.
-      return compressor.compress(data);
+      return compressor.get().compress(data);
     } else {
-      return ByteBuffer.wrap(compressor.compress(ByteUtils.extractByteArray(data)));
+      return ByteBuffer.wrap(compressor.get().compress(ByteUtils.extractByteArray(data)));
     }
   }
 
