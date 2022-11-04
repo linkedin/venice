@@ -499,6 +499,10 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       throw new VeniceClientException(
           "Failed to get writer schema with id: " + schemaId + " from store: " + metadata.getStoreName());
     }
+    return getValueDeserializer(writerSchema, readerSchema);
+  }
+
+  protected RecordDeserializer<V> getValueDeserializer(Schema writerSchema, Schema readerSchema) {
     return FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(writerSchema, readerSchema);
   }
 
@@ -542,7 +546,6 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   /* Short utility methods */
 
   private byte[] serializeMultiGetRequest(List<BatchGetRequestContext.KeyInfo<K>> keyList) {
-
     List<MultiGetRouterRequestKeyV1> routerRequestKeys = new ArrayList<>(keyList.size());
     AvroSerializer.ReusableObjects reusableObjects = AvroSerializer.REUSE.get();
     BatchGetRequestContext.KeyInfo<K> keyInfo;
@@ -567,9 +570,13 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   public void start() throws VeniceClientException {
     metadata.start();
     // Initialize key serializer after metadata.start().
-    this.keySerializer = FastSerializerDeserializerFactory.getAvroGenericSerializer(getKeySchema());
+    this.keySerializer = getKeySerializer(getKeySchema());
     this.multiGetSerializer =
         FastSerializerDeserializerFactory.getAvroGenericSerializer(MultiGetRouterRequestKeyV1.SCHEMA$);
+  }
+
+  protected RecordSerializer getKeySerializer(Schema keySchema) {
+    return FastSerializerDeserializerFactory.getAvroGenericSerializer(keySchema);
   }
 
   @Override

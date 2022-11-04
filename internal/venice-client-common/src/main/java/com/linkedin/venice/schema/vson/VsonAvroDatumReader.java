@@ -18,6 +18,7 @@ import org.apache.avro.io.Decoder;
 import org.apache.avro.io.ResolvingDecoder;
 
 
+@Deprecated
 public class VsonAvroDatumReader<D> extends GenericDatumReader<D> {
   public VsonAvroDatumReader(Schema schema) {
     super(schema, schema);

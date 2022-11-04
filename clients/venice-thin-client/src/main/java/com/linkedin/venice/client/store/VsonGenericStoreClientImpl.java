@@ -8,6 +8,7 @@ import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import org.apache.avro.Schema;
 
 
+@Deprecated
 public class VsonGenericStoreClientImpl<K, V> extends AvroGenericStoreClientImpl<K, V> {
   public VsonGenericStoreClientImpl(TransportClient transportClient, ClientConfig clientConfig) {
     this(transportClient, true, clientConfig);

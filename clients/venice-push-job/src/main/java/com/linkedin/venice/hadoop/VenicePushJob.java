@@ -284,6 +284,7 @@ public class VenicePushJob implements AutoCloseable {
 
   public static final String STORAGE_QUOTA_PROP = "storage.quota";
   public static final String STORAGE_ENGINE_OVERHEAD_RATIO = "storage_engine_overhead_ratio";
+  @Deprecated
   public static final String VSON_PUSH = "vson.push";
   public static final String KAFKA_SECURITY_PROTOCOL = "SSL";
   public static final String COMPRESSION_STRATEGY = "compression.strategy";
