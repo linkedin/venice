@@ -52,6 +52,7 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.serializer.AvroSerializer;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.MockCircularTime;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -132,8 +133,8 @@ public class TestActiveActiveIngestion {
     multiColoMultiClusterWrapper.close();
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testKIFRepushActiveActiveStore() throws Exception {
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testKIFRepushActiveActiveStore(boolean isChunkingEnabled) throws Exception {
     String parentControllerURLs =
         parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
     ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
@@ -154,7 +155,8 @@ public class TestActiveActiveIngestion {
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setLeaderFollowerModel(true)
         .setActiveActiveReplicationEnabled(true)
         .setHybridRewindSeconds(360)
-        .setHybridOffsetLagThreshold(2)
+        .setHybridOffsetLagThreshold(8)
+        .setChunkingEnabled(isChunkingEnabled)
         .setNativeReplicationEnabled(true);
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
 
