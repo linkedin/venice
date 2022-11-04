@@ -53,6 +53,7 @@ public class IngestionStats {
   protected static final String OFFSET_REGRESSION_DCR_ERROR = "offset_regression_dcr_error";
   protected static final String TOMBSTONE_CREATION_DCR = "tombstone_creation_dcr";
   protected static final String READY_TO_SERVE_WITH_RT_LAG_METRIC_NAME = "ready_to_serve_with_rt_lag";
+  public static final String INGESTION_OFFSET_REWIND_COUNT = "ingestion_task_offset_rewind_count";
 
   private static final MetricConfig METRIC_CONFIG = new MetricConfig();
   private StoreIngestionTask ingestionTask;
@@ -82,6 +83,8 @@ public class IngestionStats {
   private final RateSensor timestampRegressionDCRErrorSensor;
   private final RateSensor offsetRegressionDCRErrorSensor;
   private final RateSensor tombstoneCreationDCRSensor;
+  private final Count ingestionOffsetRewindCount = new Count();
+  private final Sensor ingestionOffsetRewindSensor;
 
   public IngestionStats(VeniceServerConfig serverConfig) {
 
@@ -147,6 +150,9 @@ public class IngestionStats {
         STALE_PARTITIONS_WITHOUT_INGESTION_TASK_METRIC_NAME
             + stalePartitionsWithoutIngestionTaskCount.getClass().getSimpleName(),
         stalePartitionsWithoutIngestionTaskCount);
+
+    ingestionOffsetRewindSensor = localMetricRepository.sensor(INGESTION_OFFSET_REWIND_COUNT);
+    ingestionOffsetRewindSensor.add(INGESTION_OFFSET_REWIND_COUNT, ingestionOffsetRewindCount);
 
     subscribePrepLatencySensor =
         new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, SUBSCRIBE_ACTION_PREP_LATENCY);
@@ -297,6 +303,14 @@ public class IngestionStats {
 
   public void recordStalePartitionsWithoutIngestionTask() {
     stalePartitionsWithoutIngestionTaskSensor.record();
+  }
+
+  public void recordIngestionOffsetRewind() {
+    ingestionOffsetRewindSensor.record();
+  }
+
+  public double getRecordIngestionOffsetRewindCount() {
+    return ingestionOffsetRewindCount.measure(METRIC_CONFIG, System.currentTimeMillis());
   }
 
   public double getConsumedRecordEndToEndProcessingLatencyAvg() {

@@ -10,6 +10,7 @@ import static com.linkedin.davinci.stats.IngestionStats.FOLLOWER_OFFSET_LAG;
 import static com.linkedin.davinci.stats.IngestionStats.FOLLOWER_RECORDS_CONSUMED_METRIC_NAME;
 import static com.linkedin.davinci.stats.IngestionStats.HYBRID_FOLLOWER_OFFSET_LAG;
 import static com.linkedin.davinci.stats.IngestionStats.HYBRID_LEADER_OFFSET_LAG;
+import static com.linkedin.davinci.stats.IngestionStats.INGESTION_OFFSET_REWIND_COUNT;
 import static com.linkedin.davinci.stats.IngestionStats.INGESTION_TASK_ERROR_GAUGE;
 import static com.linkedin.davinci.stats.IngestionStats.INGESTION_TASK_PUSH_TIMEOUT_GAUGE;
 import static com.linkedin.davinci.stats.IngestionStats.LEADER_BYTES_CONSUMED_METRIC_NAME;
@@ -86,6 +87,11 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
       registerSensor(
           BATCH_FOLLOWER_OFFSET_LAG,
           new IngestionStatsGauge(this, () -> (double) getStats().getBatchFollowerOffsetLag(), 0));
+
+      // Only report offset rewind count for regular user stores.
+      registerSensor(
+          INGESTION_OFFSET_REWIND_COUNT,
+          new IngestionStatsGauge(this, () -> getStats().getRecordIngestionOffsetRewindCount(), 0));
     }
 
     registerSensor(
