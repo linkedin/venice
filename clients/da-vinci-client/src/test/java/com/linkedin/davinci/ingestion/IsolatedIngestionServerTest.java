@@ -78,7 +78,14 @@ public class IsolatedIngestionServerTest {
       Assert.assertTrue(isolatedIngestionService.isAlive());
       // Make sure we have exactly 1 forked process.
       int matchIsolatedIngestionProcessCount = 0;
-      String processIds = executeShellCommand("/usr/sbin/lsof -t -i :" + servicePort);
+      String cmd = "lsof -t -i :" + servicePort;
+      // Both RHEL & CentOS require an abs path of lsof. However, this path is not the same on Ubuntu. Also, the abs
+      // path is not required on ubuntu. So we first try with the abs path and if it returns an empty string, that
+      // likely means that the command did not succeed and hence we try it again without the abs path.
+      String processIds = executeShellCommand("/usr/sbin/" + cmd);
+      if (processIds.isEmpty()) {
+        processIds = executeShellCommand(cmd);
+      }
       for (String processId: processIds.split("\n")) {
         if (!processId.equals("")) {
           int pid = Integer.parseInt(processId);
@@ -94,7 +101,8 @@ public class IsolatedIngestionServerTest {
       // Make sure forked process is killed.
       IsolatedIngestionUtils.releaseTargetPortBinding(servicePort);
       TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-        Assert.assertEquals(executeShellCommand("/usr/sbin/lsof -t -i :" + servicePort), "");
+        Assert.assertEquals(executeShellCommand("/usr/sbin/" + cmd), "");
+        Assert.assertEquals(executeShellCommand(cmd), "");
       });
     }
   }
