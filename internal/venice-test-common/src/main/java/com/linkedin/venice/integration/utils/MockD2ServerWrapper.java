@@ -20,7 +20,7 @@ public class MockD2ServerWrapper extends MockHttpServerWrapper {
     this.zkServer = ServiceFactory.getZkServer();
 
     String zkAddress = zkServer.getAddress();
-    String d2ClusterName = D2TestUtils.setupD2Config(zkAddress, false, d2ServiceName, false);
+    String d2ClusterName = D2TestUtils.setupD2Config(zkAddress, false, d2ServiceName);
     d2Server = D2TestUtils.createD2Server(zkAddress, "http://localhost:" + port, d2ClusterName);
   }
 

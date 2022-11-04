@@ -86,8 +86,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
           zkAddress,
           false,
           VeniceControllerWrapper.D2_CLUSTER_NAME,
-          VeniceControllerWrapper.D2_SERVICE_NAME,
-          false);
+          VeniceControllerWrapper.D2_SERVICE_NAME);
       D2Client clientConfigD2Client = D2TestUtils.getAndStartD2Client(zkAddress);
       controllerProperties.put(
           VeniceServerWrapper.CLIENT_CONFIG_FOR_CONSUMER,
