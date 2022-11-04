@@ -6,6 +6,7 @@
 *.project
 *.swp
 *.class
+*.jar
 .gradle
 .idea
 .reviewboardrc
