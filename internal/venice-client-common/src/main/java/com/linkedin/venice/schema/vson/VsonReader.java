@@ -15,7 +15,7 @@ import java.util.Map;
  * The intermediate objects then could be converted to either Avro or Vson Schema.
  * It throws exceptions if syntax errors incur.
  */
-
+@Deprecated
 public class VsonReader {
 
   // The java.io.Reader to use to get characters

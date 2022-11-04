@@ -59,6 +59,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final int longTailRetryThresholdForSingletGetInMicroSeconds;
   private final int longTailRetryThresholdForBatchGetInMicroSeconds;
   private final ClusterStats clusterStats;
+  private final boolean isVsonStore;
 
   private ClientConfig(
       String storeName,
@@ -83,7 +84,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       boolean longTailRetryEnabledForSingleGet,
       int longTailRetryThresholdForSingletGetInMicroSeconds,
       boolean longTailRetryEnabledForBatchGet,
-      int longTailRetryThresholdForBatchGetInMicroSeconds) {
+      int longTailRetryThresholdForBatchGetInMicroSeconds,
+      boolean isVsonStore) {
     if (storeName == null || storeName.isEmpty()) {
       throw new VeniceClientException("storeName param shouldn't be empty");
     }
@@ -161,6 +163,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       throw new VeniceClientException(
           "Speculative query feature can't be enabled together with long-tail retry for single-get");
     }
+
+    this.isVsonStore = isVsonStore;
   }
 
   public String getStoreName() {
@@ -247,6 +251,11 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return longTailRetryThresholdForBatchGetInMicroSeconds;
   }
 
+  @Deprecated
+  public boolean isVsonStore() {
+    return isVsonStore;
+  }
+
   public ClientRoutingStrategy getClientRoutingStrategy() {
     return clientRoutingStrategy;
   }
@@ -285,6 +294,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
     private boolean longTailRetryEnabledForBatchGet = false;
     private int longTailRetryThresholdForBatchtGetInMicroSeconds = 10000; // 10ms.
+
+    private boolean isVsonStore = false;
 
     public ClientConfigBuilder<K, V, T> setStoreName(String storeName) {
       this.storeName = storeName;
@@ -409,6 +420,12 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
+    @Deprecated
+    public ClientConfigBuilder<K, V, T> setVsonStore(boolean vsonStore) {
+      isVsonStore = vsonStore;
+      return this;
+    }
+
     public ClientConfigBuilder<K, V, T> clone() {
       return new ClientConfigBuilder().setStoreName(storeName)
           .setR2Client(r2Client)
@@ -432,7 +449,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setLongTailRetryEnabledForSingleGet(longTailRetryEnabledForSingleGet)
           .setLongTailRetryThresholdForSingletGetInMicroSeconds(longTailRetryThresholdForSingletGetInMicroSeconds)
           .setLongTailRetryEnabledForBatchGet(longTailRetryEnabledForBatchGet)
-          .setLongTailRetryThresholdForBatchGetInMicroSeconds(longTailRetryThresholdForBatchtGetInMicroSeconds);
+          .setLongTailRetryThresholdForBatchGetInMicroSeconds(longTailRetryThresholdForBatchtGetInMicroSeconds)
+          .setVsonStore(isVsonStore);
     }
 
     public ClientConfig<K, V, T> build() {
@@ -459,7 +477,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           longTailRetryEnabledForSingleGet,
           longTailRetryThresholdForSingletGetInMicroSeconds,
           longTailRetryEnabledForBatchGet,
-          longTailRetryThresholdForBatchtGetInMicroSeconds);
+          longTailRetryThresholdForBatchtGetInMicroSeconds,
+          isVsonStore);
     }
   }
 }
