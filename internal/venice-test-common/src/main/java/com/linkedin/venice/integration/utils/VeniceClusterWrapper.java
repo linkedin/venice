@@ -192,8 +192,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
           zkAddress,
           false,
           VeniceControllerWrapper.D2_CLUSTER_NAME,
-          VeniceControllerWrapper.D2_SERVICE_NAME,
-          false);
+          VeniceControllerWrapper.D2_SERVICE_NAME);
       for (int i = 0; i < options.getNumberOfControllers(); i++) {
         if (options.getNumberOfRouters() > 0) {
           ClientConfig clientConfig = new ClientConfig().setVeniceURL(zkAddress)
