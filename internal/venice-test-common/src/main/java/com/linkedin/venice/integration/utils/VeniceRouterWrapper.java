@@ -127,12 +127,12 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
       String httpURI = "http://localhost:" + port;
       String httpsURI = "https://localhost:" + sslPort;
       List<ServiceDiscoveryAnnouncer> d2Servers = new ArrayList<>();
-      String d2ClusterName = D2TestUtils.setupD2Config(zkAddress, https, d2ServiceName, false);
+      String d2ClusterName = D2TestUtils.setupD2Config(zkAddress, https, d2ServiceName);
       d2Servers.addAll(D2TestUtils.getD2ServersForRouter(zkAddress, d2ClusterName, httpURI, httpsURI));
 
       // Also announce to the default service name
       String clusterDiscoveryD2ClusterName =
-          D2TestUtils.setupD2Config(zkAddress, https, CLUSTER_DISCOVERY_D2_SERVICE_NAME, false);
+          D2TestUtils.setupD2Config(zkAddress, https, CLUSTER_DISCOVERY_D2_SERVICE_NAME);
       d2Servers.addAll(D2TestUtils.getD2ServersForRouter(zkAddress, clusterDiscoveryD2ClusterName, httpURI, httpsURI));
 
       RouterServer router = new RouterServer(

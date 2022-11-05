@@ -121,10 +121,10 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
       String d2ServiceName = Utils.getUniqueString("D2_SERVICE_NAME");
       if (!StringUtils.isEmpty(zkAddress)) {
         // Set up d2 config before announcing
-        String d2ClusterName = D2TestUtils.setupD2Config(zkAddress, false, d2ServiceName, false);
+        String d2ClusterName = D2TestUtils.setupD2Config(zkAddress, false, d2ServiceName);
         d2ServerList.addAll(D2TestUtils.getD2ServersForRouter(zkAddress, d2ClusterName, httpURI, httpsURI));
         String clusterDiscoveryD2ClusterName =
-            D2TestUtils.setupD2Config(zkAddress, false, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME, false);
+            D2TestUtils.setupD2Config(zkAddress, false, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME);
         d2ServerList
             .addAll(D2TestUtils.getD2ServersForRouter(zkAddress, clusterDiscoveryD2ClusterName, httpURI, httpsURI));
       }

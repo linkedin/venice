@@ -92,9 +92,8 @@ public class StoreReadThrottler {
 
     int[] addedOrUpdated = new int[1];
 
-    // Update throttler for the storage node which is a new node or the its quota has been changed.
-    // Add a buffer to per storage node quota to make our throttler more lenient, particularly once we enable sticky
-    // routing.
+    // Update throttler for the storage node which is a new node or if the quota has been changed.
+    // Add a buffer to per storage node quota to make our throttler more lenient.
     storageNodeQuotaMap.entrySet()
         .stream()
         .filter(
