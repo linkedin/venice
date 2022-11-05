@@ -240,8 +240,7 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
           zkServer.getAddress(),
           false,
           VeniceControllerWrapper.PARENT_D2_CLUSTER_NAME,
-          VeniceControllerWrapper.PARENT_D2_SERVICE_NAME,
-          false);
+          VeniceControllerWrapper.PARENT_D2_SERVICE_NAME);
       VeniceControllerCreateOptions options =
           new VeniceControllerCreateOptions.Builder(clusterNames, parentKafka).zkAddress(parentKafka.getZkAddress())
               .replicationFactor(replicationFactor)

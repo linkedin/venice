@@ -37,26 +37,17 @@ public class D2TestUtils {
    * different D2 clusters for each service name so as not to route requests to Routers in other clusters. This function
    * creates a cluster name for each service and returns the created name.
    */
-  public static String setupD2Config(
-      String zkHosts,
-      boolean https,
-      String d2ServiceName,
-      boolean stickyRoutingForSingleGet) {
+  public static String setupD2Config(String zkHosts, boolean https, String d2ServiceName) {
     // d2ClusterName must be different for routers with different d2ServiceName
     // We've consciously not set it to be deterministically derivable from service name to make sure we don't rely on
     // hardcoded values.
     String d2ClusterName =
         D2_SERVICE_TO_CLUSTER.computeIfAbsent(d2ServiceName, s -> Utils.getUniqueString(d2ServiceName + "_cluster"));
-    setupD2Config(zkHosts, https, d2ClusterName, d2ServiceName, stickyRoutingForSingleGet);
+    setupD2Config(zkHosts, https, d2ClusterName, d2ServiceName);
     return d2ClusterName;
   }
 
-  public static void setupD2Config(
-      String zkHosts,
-      boolean https,
-      String d2ClusterName,
-      String d2ServiceName,
-      boolean stickyRoutingForSingleGet) {
+  public static void setupD2Config(String zkHosts, boolean https, String d2ClusterName, String d2ServiceName) {
     String d2ClusterNameFromCache = D2_SERVICE_TO_CLUSTER.get(d2ServiceName);
     if (d2ClusterNameFromCache == null) {
       D2_SERVICE_TO_CLUSTER.put(d2ServiceName, d2ClusterName);
@@ -78,8 +69,7 @@ public class D2TestUtils {
     try {
       Map<String, Object> clusterDefaults = Collections.EMPTY_MAP;
       Map<String, Object> serviceDefaults = getD2ServiceDefaults();
-      Map<String, Object> clusterServiceConfigurations =
-          getD2ServiceConfig(d2ClusterName, d2ServiceName, https, stickyRoutingForSingleGet);
+      Map<String, Object> clusterServiceConfigurations = getD2ServiceConfig(d2ClusterName, d2ServiceName, https);
       Map<String, Object> extraClusterServiceConfigurations = Collections.EMPTY_MAP;
       Map<String, Object> serviceVariants = Collections.EMPTY_MAP;
 
@@ -289,41 +279,21 @@ public class D2TestUtils {
    *   }
    * }
    *
-   * @param cluster D2 name for the cluster of servers that provide a common set of services (this function only supports one service)
+   * @param cluster D2 name for the cluster of servers that provide a common set of services (this function only
+   *                supports one service)
    * @param service Name of the service provided by this cluster
-   * @param https true if this service should only be queried with https
-   * @param stickyRouting if the service enables the sticky routing for single-get
-   * @return
+   * @param https   true if this service should only be queried with https
+   * @return a map of cluster name to config object (which is itself a map containing more maps)
    *
    * @see <a href="https://github.com/linkedin/rest.li/blob/master/examples/d2-quickstart/config/src/main/d2Config/d2Config.json">D2 Quickstart</a>
    */
-  public static Map<String, Object> getD2ServiceConfig(
-      String cluster,
-      String service,
-      boolean https,
-      boolean stickyRouting) {
+  public static Map<String, Object> getD2ServiceConfig(String cluster, String service, boolean https) {
     Map<String, Object> serviceMap = new HashMap<>();
     serviceMap.put("path", "/");
     if (https) {
       serviceMap.put("prioritizedSchemes", Arrays.asList("https", "http"));
     } else {
       serviceMap.put("prioritizedSchemes", Arrays.asList("http"));
-    }
-
-    if (stickyRouting) {
-      /**
-       * Check this doc:
-       * https://iwww.corp.linkedin.com/wiki/cf/display/ENGS/D2+User+Manual#D2UserManual-Stickiness(howtoconfigureanduse)
-       */
-      Map<String, Object> loadBalancerStrategyProperties = new HashMap<>();
-      loadBalancerStrategyProperties.put("http.loadBalancer.hashMethod", "uriRegex");
-      Map<String, Object> hashConfig = new HashMap<>();
-      List<String> regexes = new ArrayList<>();
-      regexes.add("/storage/(.*)\\?f=b64");
-      hashConfig.put("regexes", regexes);
-      hashConfig.put("warnOnNoMatch", "false");
-      loadBalancerStrategyProperties.put("http.loadBalancer.hashConfig", hashConfig);
-      serviceMap.put("loadBalancerStrategyProperties", loadBalancerStrategyProperties);
     }
 
     Map<String, Object> servicesMap = new HashMap<>();
