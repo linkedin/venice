@@ -7,6 +7,7 @@ import com.linkedin.avro.fastserde.coldstart.ColdPrimitiveLongList;
 import com.linkedin.avro.fastserde.primitive.PrimitiveLongArrayList;
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -331,7 +332,7 @@ public class TestMergeWithValueLevelTimestamp extends TestMergeConflictResolver 
     newVector = MergeUtils.mergeOffsetVectors(Optional.ofNullable(newVector), 3L, 5);
     List<Long> expectedVector = Arrays.asList(1L, 9L, 0L, 0L, 3L, 3L);
     Assert.assertEquals(newVector, expectedVector);
-    Assert.assertEquals(MergeUtils.sumOffsetVector(newVector), 16L);
+    Assert.assertEquals(RmdUtils.sumOffsetVector(newVector), 16L);
 
     newVector.clear();
     newVector = MergeUtils.mergeOffsetVectors(Optional.of(newVector), 3L, 5);
@@ -343,7 +344,7 @@ public class TestMergeWithValueLevelTimestamp extends TestMergeConflictResolver 
     newVector = MergeUtils.mergeOffsetVectors(Optional.of(newVector), 8L, 1);
     expectedVector = Arrays.asList(1L, 8L, 0L, 0L, 3L, 3L);
     Assert.assertEquals(newVector, expectedVector);
-    Assert.assertEquals(MergeUtils.sumOffsetVector(newVector), 15L);
+    Assert.assertEquals(RmdUtils.sumOffsetVector(newVector), 15L);
   }
 
   private ByteBuffer serialize(GenericRecord record) {

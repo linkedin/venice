@@ -25,6 +25,8 @@ public class MultiSchemaResponse
      * Venice UPDATE messages instead of PUT messages.
      */
     private int derivedSchemaId = -1;
+
+    private int rmdValueSchemaId = -1;
     private String schemaStr;
 
     public int getId() {
@@ -54,6 +56,14 @@ public class MultiSchemaResponse
 
     public void setSchemaStr(String schemaStr) {
       this.schemaStr = schemaStr;
+    }
+
+    public int getRmdValueSchemaId() {
+      return rmdValueSchemaId;
+    }
+
+    public void setRmdValueSchemaId(int rmdValueSchemaId) {
+      this.rmdValueSchemaId = rmdValueSchemaId;
     }
   }
 

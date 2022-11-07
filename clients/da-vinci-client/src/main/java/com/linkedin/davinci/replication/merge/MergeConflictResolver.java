@@ -13,6 +13,8 @@ import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.SchemaUtils;
 import com.linkedin.venice.schema.merge.ValueAndRmd;
+import com.linkedin.venice.schema.rmd.RmdTimestampType;
+import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.schema.writecompute.WriteComputeOperation;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serializer.avro.MapOrderingPreservingSerDeFactory;
@@ -111,7 +113,7 @@ public class MergeConflictResolver {
     }
     final GenericRecord oldRmdRecord = rmdWithValueSchemaID.getRmdRecord();
     final Object oldTimestampObject = oldRmdRecord.get(TIMESTAMP_FIELD_NAME);
-    RmdTimestampType rmdTimestampType = MergeUtils.getRmdTimestampType(oldTimestampObject);
+    RmdTimestampType rmdTimestampType = RmdUtils.getRmdTimestampType(oldTimestampObject);
 
     switch (rmdTimestampType) {
       case VALUE_LEVEL_TIMESTAMP:
@@ -411,7 +413,7 @@ public class MergeConflictResolver {
 
     final GenericRecord oldRmdRecord = rmdWithValueSchemaID.get().getRmdRecord();
     final Object oldTimestampObject = oldRmdRecord.get(TIMESTAMP_FIELD_NAME);
-    final RmdTimestampType rmdTimestampType = MergeUtils.getRmdTimestampType(oldTimestampObject);
+    final RmdTimestampType rmdTimestampType = RmdUtils.getRmdTimestampType(oldTimestampObject);
 
     switch (rmdTimestampType) {
       case VALUE_LEVEL_TIMESTAMP:
@@ -605,7 +607,7 @@ public class MergeConflictResolver {
 
   private GenericRecord convertToPerFieldTimestampRmd(GenericRecord rmd, GenericRecord oldValueRecord) {
     Object timestampObject = rmd.get(TIMESTAMP_FIELD_NAME);
-    RmdTimestampType timestampType = MergeUtils.getRmdTimestampType(timestampObject);
+    RmdTimestampType timestampType = RmdUtils.getRmdTimestampType(timestampObject);
     switch (timestampType) {
       case PER_FIELD_TIMESTAMP:
         // Nothing needs to happen in this case.
@@ -691,7 +693,7 @@ public class MergeConflictResolver {
 
     Object oldTimestampObject = rmdWithValueSchemaId.getRmdRecord().get(TIMESTAMP_FIELD_NAME);
     Schema oldValueSchema = getValueSchema(rmdWithValueSchemaId.getValueSchemaId());
-    RmdTimestampType rmdTimestampType = MergeUtils.getRmdTimestampType(oldTimestampObject);
+    RmdTimestampType rmdTimestampType = RmdUtils.getRmdTimestampType(oldTimestampObject);
     Set<String> toUpdateFieldNames;
     switch (rmdTimestampType) {
       case VALUE_LEVEL_TIMESTAMP:

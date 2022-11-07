@@ -8,6 +8,8 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.merge.MergeRecordHelper;
 import com.linkedin.venice.schema.merge.UpdateResultStatus;
 import com.linkedin.venice.schema.merge.ValueAndRmd;
+import com.linkedin.venice.schema.rmd.RmdTimestampType;
+import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.schema.rmd.v1.RmdSchemaGeneratorV1;
 import com.linkedin.venice.schema.writecompute.WriteComputeProcessor;
 import com.linkedin.venice.utils.AvroSupersetSchemaUtils;
@@ -60,7 +62,7 @@ public class MergeGenericRecord extends AbstractMerge<GenericRecord> {
       int newValueSourceBrokerID) {
     validatePutInputParams(oldValueAndRmd, newValue);
     final Object tsObject = oldValueAndRmd.getRmd().get(TIMESTAMP_FIELD_NAME);
-    RmdTimestampType rmdTimestampType = MergeUtils.getRmdTimestampType(tsObject);
+    RmdTimestampType rmdTimestampType = RmdUtils.getRmdTimestampType(tsObject);
 
     switch (rmdTimestampType) {
       case VALUE_LEVEL_TIMESTAMP:
@@ -156,7 +158,7 @@ public class MergeGenericRecord extends AbstractMerge<GenericRecord> {
 
     final GenericRecord oldReplicationMetadata = oldValueAndRmd.getRmd();
     final Object tsObject = oldReplicationMetadata.get(TIMESTAMP_FIELD_NAME);
-    RmdTimestampType rmdTimestampType = MergeUtils.getRmdTimestampType(tsObject);
+    RmdTimestampType rmdTimestampType = RmdUtils.getRmdTimestampType(tsObject);
 
     switch (rmdTimestampType) {
       case VALUE_LEVEL_TIMESTAMP:
