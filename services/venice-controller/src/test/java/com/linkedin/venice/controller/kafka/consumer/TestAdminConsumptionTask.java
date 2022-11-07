@@ -236,6 +236,7 @@ public class TestAdminConsumptionTask {
         isParent,
         stats,
         1,
+        Optional.empty(),
         adminConsumptionCycleTimeoutMs,
         1);
   }

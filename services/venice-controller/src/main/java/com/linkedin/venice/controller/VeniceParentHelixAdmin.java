@@ -475,7 +475,10 @@ public class VeniceParentHelixAdmin implements Admin {
       topicManager.createTopic(
           topicName,
           AdminTopicUtils.PARTITION_NUM_FOR_ADMIN_TOPIC,
-          getMultiClusterConfigs().getKafkaReplicaFactor());
+          getMultiClusterConfigs().getControllerConfig(clusterName).getAdminTopicReplicationFactor(),
+          true,
+          false,
+          getMultiClusterConfigs().getControllerConfig(clusterName).getMinIsrAdminTopics());
       LOGGER.info("Created admin topic: {} for cluster: {}", topicName, clusterName);
     }
 

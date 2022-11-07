@@ -1,68 +1,7 @@
 package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
-import static com.linkedin.venice.ConfigKeys.ADMIN_TOPIC_REPLICATION_FACTOR;
-import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
-import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_D2;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_DEFAULT_READ_QUOTA_PER_ROUTER;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLE_PARENT_REQUEST_TOPIC_FOR_STREAM_PUSHES;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_JETTY_CONFIG_OVERRIDE_PREFIX;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_NAME;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_SCHEMA_VALIDATION_ENABLED;
-import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
-import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
-import static com.linkedin.venice.ConfigKeys.DEFAULT_NUMBER_OF_PARTITION;
-import static com.linkedin.venice.ConfigKeys.DEFAULT_OFFLINE_PUSH_STRATEGY;
-import static com.linkedin.venice.ConfigKeys.DEFAULT_PARTITION_SIZE;
-import static com.linkedin.venice.ConfigKeys.DEFAULT_READ_STRATEGY;
-import static com.linkedin.venice.ConfigKeys.DEFAULT_REPLICA_FACTOR;
-import static com.linkedin.venice.ConfigKeys.DEFAULT_ROUTING_STRATEGY;
-import static com.linkedin.venice.ConfigKeys.DELAY_TO_REBALANCE_MS;
-import static com.linkedin.venice.ConfigKeys.ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY_STORE;
-import static com.linkedin.venice.ConfigKeys.ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID_STORE;
-import static com.linkedin.venice.ConfigKeys.ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORE;
-import static com.linkedin.venice.ConfigKeys.ENABLE_HYBRID_PUSH_SSL_ALLOWLIST;
-import static com.linkedin.venice.ConfigKeys.ENABLE_HYBRID_PUSH_SSL_WHITELIST;
-import static com.linkedin.venice.ConfigKeys.ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_ALL_STORES;
-import static com.linkedin.venice.ConfigKeys.ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_BATCH_ONLY_STORES;
-import static com.linkedin.venice.ConfigKeys.ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_HYBRID_STORES;
-import static com.linkedin.venice.ConfigKeys.ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES;
-import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY;
-import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID;
-import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH;
-import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_FOR_BATCH_ONLY;
-import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_FOR_HYBRID;
-import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_FOR_INCREMENTAL_PUSH;
-import static com.linkedin.venice.ConfigKeys.ENABLE_OFFLINE_PUSH_SSL_ALLOWLIST;
-import static com.linkedin.venice.ConfigKeys.ENABLE_OFFLINE_PUSH_SSL_WHITELIST;
-import static com.linkedin.venice.ConfigKeys.HELIX_REBALANCE_ALG;
-import static com.linkedin.venice.ConfigKeys.HELIX_SEND_MESSAGE_TIMEOUT_MS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_LOG_COMPACTION_FOR_HYBRID_STORES;
-import static com.linkedin.venice.ConfigKeys.KAFKA_LOG_COMPACTION_FOR_INCREMENTAL_PUSH_STORES;
-import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_ISR;
-import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_LOG_COMPACTION_LAG_MS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
-import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR_LEGACY_SPELLING;
-import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
-import static com.linkedin.venice.ConfigKeys.KAFKA_ZK_ADDRESS;
-import static com.linkedin.venice.ConfigKeys.LEAKED_PUSH_STATUS_CLEAN_UP_SERVICE_SLEEP_INTERVAL_MS;
-import static com.linkedin.venice.ConfigKeys.LF_MODEL_DEPENDENCY_CHECK_DISABLED;
-import static com.linkedin.venice.ConfigKeys.MIN_ACTIVE_REPLICA;
-import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_BATCH_ONLY_STORES;
-import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_HYBRID_STORES;
-import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES;
-import static com.linkedin.venice.ConfigKeys.OFFLINE_JOB_START_TIMEOUT_MS;
-import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
-import static com.linkedin.venice.ConfigKeys.PUSH_MONITOR_TYPE;
-import static com.linkedin.venice.ConfigKeys.PUSH_SSL_ALLOWLIST;
-import static com.linkedin.venice.ConfigKeys.PUSH_SSL_WHITELIST;
-import static com.linkedin.venice.ConfigKeys.REFRESH_ATTEMPTS_FOR_ZK_RECONNECT;
-import static com.linkedin.venice.ConfigKeys.REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS;
-import static com.linkedin.venice.ConfigKeys.REPLICATION_METADATA_VERSION_ID;
-import static com.linkedin.venice.ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA;
-import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
+import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.SSLConfig.DEFAULT_CONTROLLER_SSL_ENABLED;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_PER_ROUTER_READ_QUOTA;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
@@ -244,7 +183,10 @@ public class VeniceControllerClusterConfig {
    * defined by {@value com.linkedin.venice.ConfigKeys#DEFAULT_REPLICA_FACTOR}.
    */
   private int kafkaReplicationFactor;
+  private int kafkaReplicationFactorRTTopics;
   private Optional<Integer> minIsr;
+  private Optional<Integer> minIsrRTTopics;
+  private Optional<Integer> minIsrAdminTopics;
   private boolean kafkaLogCompactionForHybridStores;
   private boolean kafkaLogCompactionForIncrementalPushStores;
   private long kafkaMinLogCompactionLagInMs;
@@ -301,7 +243,10 @@ public class VeniceControllerClusterConfig {
     } catch (UndefinedPropertyException e) {
       kafkaReplicationFactor = props.getInt(KAFKA_REPLICATION_FACTOR_LEGACY_SPELLING);
     }
+    kafkaReplicationFactorRTTopics = props.getInt(KAFKA_REPLICATION_FACTOR_RT_TOPICS, kafkaReplicationFactor);
     minIsr = props.getOptionalInt(KAFKA_MIN_ISR);
+    minIsrRTTopics = props.getOptionalInt(KAFKA_MIN_ISR_RT_TOPICS);
+    minIsrAdminTopics = props.getOptionalInt(KAFKA_MIN_ISR_ADMIN_TOPICS);
     kafkaLogCompactionForHybridStores = props.getBoolean(KAFKA_LOG_COMPACTION_FOR_HYBRID_STORES, true);
     kafkaLogCompactionForIncrementalPushStores =
         props.getBoolean(KAFKA_LOG_COMPACTION_FOR_INCREMENTAL_PUSH_STORES, true);
@@ -505,6 +450,10 @@ public class VeniceControllerClusterConfig {
     return kafkaReplicationFactor;
   }
 
+  public int getKafkaReplicationFactorRTTopics() {
+    return kafkaReplicationFactorRTTopics;
+  }
+
   public long getPartitionSize() {
     return partitionSize;
   }
@@ -599,6 +548,14 @@ public class VeniceControllerClusterConfig {
 
   public Optional<Integer> getMinIsr() {
     return minIsr;
+  }
+
+  public Optional<Integer> getMinIsrRTTopics() {
+    return minIsrRTTopics;
+  }
+
+  public Optional<Integer> getMinIsrAdminTopics() {
+    return minIsrAdminTopics;
   }
 
   public boolean isKafkaLogCompactionForHybridStoresEnabled() {
