@@ -96,7 +96,7 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
       MRJobCounterHelper.incrRepushTtlFilterCount(reporter, 1L);
       return null;
     } else {
-      // TODO: RMD Chunking is not supported, so we don't include RMD info for chunked record.
+      // TODO: RMD Chunking is not supported, so don't include RMD info in VeniceWriterMessage yet.
       return new VeniceWriterMessage(
           keyBytes,
           value.getBytes(),
@@ -171,8 +171,8 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
    */
   FilterChain<ChunkAssembler.ValueBytesAndSchemaId> initFilterChain(VeniceProperties props) {
     FilterChain<ChunkAssembler.ValueBytesAndSchemaId> filterChain = null;
-    long ttlInHours = props.getLong(VenicePushJob.REPUSH_TTL_IN_SECONDS, VenicePushJob.NOT_SET);
-    if (ttlInHours != VenicePushJob.NOT_SET) {
+    long ttlInSeconds = props.getLong(VenicePushJob.REPUSH_TTL_IN_SECONDS, VenicePushJob.NOT_SET);
+    if (isChunkingEnabled() && ttlInSeconds != VenicePushJob.NOT_SET) {
       try {
         filterChain = new FilterChain<>();
         filterChain.add(new VeniceChunkedPayloadTTLFilter(props));

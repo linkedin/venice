@@ -17,6 +17,7 @@ import com.linkedin.venice.hadoop.schema.HDFSRmdSchemaSource;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.schema.rmd.RmdUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.io.IOException;
@@ -35,7 +36,7 @@ import org.testng.annotations.Test;
 
 
 public class TestVeniceKafkaInputTTLFilter {
-  private static final long TTL_IN_SECONDS_DEFAULT = 10L;
+  private static final long TTL_IN_SECONDS_DEFAULT = Time.SECONDS_PER_HOUR;
   private final static String TEST_STORE = "test_store";
   private static final String VALUE_RECORD_SCHEMA_STR =
       "{\"type\":\"record\"," + "\"name\":\"User\"," + "\"namespace\":\"example.avro\"," + "\"fields\":["
@@ -131,7 +132,7 @@ public class TestVeniceKafkaInputTTLFilter {
       int expired,
       int chunked,
       Instant curTime,
-      long ttlInHours) {
+      long ttlInSeconds) {
     List<KafkaInputMapperValue> records = new ArrayList<>();
 
     // generate valid records
@@ -140,7 +141,7 @@ public class TestVeniceKafkaInputTTLFilter {
     }
 
     // generate expired records
-    Instant expiredTime = curTime.minus(ttlInHours + 1, ChronoUnit.HOURS); // add extra hour to get them expired
+    Instant expiredTime = curTime.minus(ttlInSeconds + 1, ChronoUnit.SECONDS);
     for (int i = 0; i < expired; i++) {
       records.add(generateKIMWithRmdTimeStamp(expiredTime.toEpochMilli(), false));
     }

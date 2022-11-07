@@ -19,6 +19,7 @@ import org.apache.avro.generic.GenericRecord;
 
 /**
  * This class is responsible to filter records based on the RMD information and the ttl config.
+ * It requires RMD schemas for a given store from an existing HDFS directory to be able to parse timestamp information in RMD.
  * @param <INPUT_VALUE>, the value contains schemaID, rmdId and rmdPayload that are required to retrieve RMD timestamp.
  */
 public abstract class VeniceRmdTTLFilter<INPUT_VALUE> extends AbstractVeniceFilter<INPUT_VALUE> {

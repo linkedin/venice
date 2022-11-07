@@ -89,7 +89,7 @@ public class ChunkAssembler {
       byte[] keyBytes,
       final ChunkedValueManifest manifest,
       List<byte[]> allChunkBytes,
-      KafkaInputMapperValue mapperValue) {
+      KafkaInputMapperValue manifestMapperValue) {
     byte[][] valueChunks = new byte[manifest.keysWithChunkIdSuffix.size()][];
     ByteBuffer[] chunkKeySuffixes = new ByteBuffer[manifest.keysWithChunkIdSuffix.size()];
     int startPosition, suffixLength;
@@ -134,8 +134,8 @@ public class ChunkAssembler {
     return new ValueBytesAndSchemaId(
         concatenateAllChunks(valueChunks, totalByteCount),
         manifest.schemaId,
-        mapperValue.replicationMetadataVersionId,
-        mapperValue.replicationMetadataPayload);
+        manifestMapperValue.replicationMetadataVersionId,
+        manifestMapperValue.replicationMetadataPayload);
   }
 
   private ChunkedKeySuffix deserializeChunkedKeySuffix(ByteBuffer chunkedKeySuffixBytes) {

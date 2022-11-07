@@ -1,5 +1,8 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
+import static com.linkedin.venice.hadoop.VenicePushJob.REPUSH_TTL_IN_SECONDS;
+import static com.linkedin.venice.hadoop.VenicePushJob.REPUSH_TTL_POLICY;
+import static com.linkedin.venice.hadoop.VenicePushJob.RMD_SCHEMA_DIR;
 import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_SCHEMA_ID_PROP;
 import static com.linkedin.venice.hadoop.VeniceReducer.MAP_REDUCE_JOB_ID_PROP;
 import static org.mockito.ArgumentMatchers.any;
@@ -35,27 +38,15 @@ public class TestVeniceKafkaInputReducer {
   private static final String VALUE_PREFIX = "value_";
   private static final String RMD_VALUE_PREFIX = "rmd_value_";
 
-  public List<BytesWritable> getValues(List<MapperValueType> valueTypes) {
-    List<BytesWritable> values = new ArrayList<>();
-    long offset = 0;
-    for (MapperValueType valueType: valueTypes) {
-      KafkaInputMapperValue value = new KafkaInputMapperValue();
-      value.offset = offset++;
-      value.schemaId = 1;
-      value.valueType = valueType;
-      value.replicationMetadataVersionId = 1;
-      value.replicationMetadataPayload = ByteBuffer.wrap(RMD_VALUE_PREFIX.getBytes());
-      if (valueType.equals(MapperValueType.DELETE)) {
-        value.value = ByteBuffer.wrap(new byte[0]);
-      } else {
-        value.value = ByteBuffer.wrap((VALUE_PREFIX + value.offset).getBytes());
-      }
-      BytesWritable valueWritable = new BytesWritable();
-      byte[] serializedValue = KAFKA_INPUT_MAPPER_VALUE_SERIALIZER.serialize(value);
-      valueWritable.set(serializedValue, 0, serializedValue.length);
-      values.add(valueWritable);
-    }
-    return values;
+  @Test
+  public void testTTLFilter() {
+    // chunking is not specified, but ttl is on.
+    VeniceKafkaInputReducer reducer = new VeniceKafkaInputReducer();
+    Assert.assertNull(reducer.initFilterChain(getTestProps()));
+
+    // both is specified so the filter is present
+    reducer.setChunkingEnabled(true);
+    Assert.assertNotNull(reducer.initFilterChain(getTestProps()));
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
@@ -118,7 +109,7 @@ public class TestVeniceKafkaInputReducer {
     keyWritable.set(keyBytes, 0, keyBytes.length);
     VeniceKafkaInputReducer reducer = spy(new VeniceKafkaInputReducer());
     doReturn(filterChain).when(reducer).initFilterChain(any());
-    reducer.configureTask(getDummyProps(), getDummyJobConf());
+    reducer.configureTask(getTestProps(), getTestJobConf());
     reducer.setChunkingEnabled(isChunkingEnabled);
 
     /**
@@ -139,13 +130,39 @@ public class TestVeniceKafkaInputReducer {
     }
   }
 
-  private VeniceProperties getDummyProps() {
+  public List<BytesWritable> getValues(List<MapperValueType> valueTypes) {
+    List<BytesWritable> values = new ArrayList<>();
+    long offset = 0;
+    for (MapperValueType valueType: valueTypes) {
+      KafkaInputMapperValue value = new KafkaInputMapperValue();
+      value.offset = offset++;
+      value.schemaId = 1;
+      value.valueType = valueType;
+      value.replicationMetadataVersionId = 1;
+      value.replicationMetadataPayload = ByteBuffer.wrap(RMD_VALUE_PREFIX.getBytes());
+      if (valueType.equals(MapperValueType.DELETE)) {
+        value.value = ByteBuffer.wrap(new byte[0]);
+      } else {
+        value.value = ByteBuffer.wrap((VALUE_PREFIX + value.offset).getBytes());
+      }
+      BytesWritable valueWritable = new BytesWritable();
+      byte[] serializedValue = KAFKA_INPUT_MAPPER_VALUE_SERIALIZER.serialize(value);
+      valueWritable.set(serializedValue, 0, serializedValue.length);
+      values.add(valueWritable);
+    }
+    return values;
+  }
+
+  private VeniceProperties getTestProps() {
     Properties props = new Properties();
     props.put(VALUE_SCHEMA_ID_PROP, 1);
+    props.put(REPUSH_TTL_IN_SECONDS, 10L);
+    props.put(REPUSH_TTL_POLICY, 0);
+    props.put(RMD_SCHEMA_DIR, "tmp");
     return new VeniceProperties(props);
   }
 
-  private JobConf getDummyJobConf() {
+  private JobConf getTestJobConf() {
     JobConf conf = new JobConf();
     conf.set(MAP_REDUCE_JOB_ID_PROP, "job_200707121733_0003");
     return conf;

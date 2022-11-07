@@ -48,7 +48,7 @@ public class HadoopUtils {
       fs.delete(p, recursive);
       fs.close();
     } catch (IOException e) {
-      LOGGER.debug("Failed to clean up the HDFS path: {}", path);
+      LOGGER.error("Failed to clean up the HDFS path: {}", path);
     }
   }
 

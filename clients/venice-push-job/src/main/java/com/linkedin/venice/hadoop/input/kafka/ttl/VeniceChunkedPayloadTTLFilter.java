@@ -6,6 +6,9 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 
 
+/**
+ * This class is responsible to filter records based on the RMD information and the ttl config by taking chunked records {@link ChunkAssembler.ValueBytesAndSchemaId}.
+ */
 public class VeniceChunkedPayloadTTLFilter extends VeniceRmdTTLFilter<ChunkAssembler.ValueBytesAndSchemaId> {
   public VeniceChunkedPayloadTTLFilter(VeniceProperties props) throws IOException {
     super(props);

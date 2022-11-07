@@ -28,7 +28,7 @@ import org.apache.logging.log4j.Logger;
  * HDFSRmdSchemaSource caches the RMD schemes for a given store on the HDFS and serve them during the Mapper stage
  * It will make API calls on Venice controller to retrieve all RMD schemes.
  * <p>
- * Borrowed some codes from HDFSSchemaSource. The difference is HDFSRmdSchemaSource is created for a single store.
+ * Borrowed some codes from {@link HDFSSchemaSource}. The difference is HDFSRmdSchemaSource is created for a single store.
  */
 @NotThreadsafe
 public class HDFSRmdSchemaSource implements RmdSchemaSource, AutoCloseable {
