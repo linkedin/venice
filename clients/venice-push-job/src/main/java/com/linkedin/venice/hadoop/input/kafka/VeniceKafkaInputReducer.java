@@ -1,13 +1,20 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.hadoop.FilterChain;
+import com.linkedin.venice.hadoop.MRJobCounterHelper;
+import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.hadoop.VeniceReducer;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.input.kafka.avro.MapperValueType;
 import com.linkedin.venice.hadoop.input.kafka.chunk.ChunkAssembler;
+import com.linkedin.venice.hadoop.input.kafka.ttl.VeniceChunkedPayloadTTLFilter;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
+import java.io.IOException;
 import java.util.Iterator;
 import javax.annotation.Nonnull;
 import org.apache.hadoop.io.BytesWritable;
@@ -25,6 +32,14 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
           .getFastAvroSpecificDeserializer(KafkaInputMapperValue.SCHEMA$, KafkaInputMapperValue.class);
   private ChunkAssembler chunkAssembler = null;
   private MessageExtractor extractor = this::extractNonChunkedMessage;
+
+  protected FilterChain<ChunkAssembler.ValueBytesAndSchemaId> veniceFilterChain;
+
+  @Override
+  protected void configureTask(VeniceProperties props, JobConf job) {
+    super.configureTask(props, job);
+    this.veniceFilterChain = initFilterChain(props);
+  }
 
   /**
    * No need to print out duplicate keys since duplicate keys are expected in Kafka topics.
@@ -45,7 +60,7 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
     if (!valueIterator.hasNext()) {
       throw new VeniceException("There is no value corresponding to key bytes: " + ByteUtils.toHexString(keyBytes));
     }
-    return extractor.extract(keyBytes, valueIterator);
+    return extractor.extract(keyBytes, valueIterator, reporter);
   }
 
   @Override
@@ -60,28 +75,42 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
     }
   }
 
+  @Override
+  public void close() throws IOException {
+    super.close();
+    Utils.closeQuietlyWithErrorLogged(veniceFilterChain);
+  }
+
   private interface MessageExtractor {
-    VeniceWriterMessage extract(byte[] keyBytes, Iterator<BytesWritable> valueIterator);
+    VeniceWriterMessage extract(byte[] keyBytes, Iterator<BytesWritable> valueIterator, Reporter reporter);
   }
 
   private VeniceWriterMessage extractChunkedMessage(
       final byte[] keyBytes,
-      @Nonnull Iterator<BytesWritable> valueIterator) {
+      @Nonnull Iterator<BytesWritable> valueIterator,
+      Reporter reporter) {
     ChunkAssembler.ValueBytesAndSchemaId value = chunkAssembler.assembleAndGetValue(keyBytes, valueIterator);
-    return value == null
-        ? null
-        : new VeniceWriterMessage(
-            keyBytes,
-            value.getBytes(),
-            value.getSchemaID(),
-            getCallback(),
-            isEnableWriteCompute(),
-            getDerivedValueSchemaId());
+    if (value == null) {
+      return null;
+    } else if (veniceFilterChain != null && veniceFilterChain.apply(value)) {
+      MRJobCounterHelper.incrRepushTtlFilterCount(reporter, 1L);
+      return null;
+    } else {
+      // TODO: RMD Chunking is not supported, so don't include RMD info in VeniceWriterMessage yet.
+      return new VeniceWriterMessage(
+          keyBytes,
+          value.getBytes(),
+          value.getSchemaID(),
+          getCallback(),
+          isEnableWriteCompute(),
+          getDerivedValueSchemaId());
+    }
   }
 
   private VeniceWriterMessage extractNonChunkedMessage(
       final byte[] keyBytes,
-      @Nonnull Iterator<BytesWritable> valueIterator) {
+      @Nonnull Iterator<BytesWritable> valueIterator,
+      Reporter reporter) {
     // Only get the value with the largest offset for the purpose of compaction
     KafkaInputMapperValue mapperValue = null;
     long largestOffset = Long.MIN_VALUE;
@@ -134,5 +163,23 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
         getCallback(),
         isEnableWriteCompute(),
         getDerivedValueSchemaId());
+  }
+
+  /**
+   * Initialize filter chains in the reducer stage to support filtering when chunking is enabled.
+   * @param props
+   */
+  FilterChain<ChunkAssembler.ValueBytesAndSchemaId> initFilterChain(VeniceProperties props) {
+    FilterChain<ChunkAssembler.ValueBytesAndSchemaId> filterChain = null;
+    long ttlInSeconds = props.getLong(VenicePushJob.REPUSH_TTL_IN_SECONDS, VenicePushJob.NOT_SET);
+    if (isChunkingEnabled() && ttlInSeconds != VenicePushJob.NOT_SET) {
+      try {
+        filterChain = new FilterChain<>();
+        filterChain.add(new VeniceChunkedPayloadTTLFilter(props));
+      } catch (IOException e) {
+        throw new VeniceException("failed to instantiate the ttl filter for chunked payload", e);
+      }
+    }
+    return filterChain;
   }
 }

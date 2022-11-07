@@ -65,13 +65,17 @@ public class ChunkAssembler {
     if (mapperValue.valueType == MapperValueType.DELETE) {
       return null;
     } else if (mapperValue.schemaId > 0) {
-      return new ValueBytesAndSchemaId(mapperValue.value, mapperValue.schemaId);
+      return new ValueBytesAndSchemaId(
+          mapperValue.value,
+          mapperValue.schemaId,
+          mapperValue.replicationMetadataVersionId,
+          mapperValue.replicationMetadataPayload);
     } else if (mapperValue.schemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
       final ChunkedValueManifest chunkedValueManifest = manifestSerializer.deserialize(
           ByteUtils.extractByteArray(mapperValue.value),
           AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion());
 
-      return assembleLargeValue(keyBytes, chunkedValueManifest, chunkBytes);
+      return assembleLargeValue(keyBytes, chunkedValueManifest, chunkBytes, mapperValue);
     } else {
       throw new VeniceException(
           String.format(
@@ -84,7 +88,8 @@ public class ChunkAssembler {
   private ValueBytesAndSchemaId assembleLargeValue(
       byte[] keyBytes,
       final ChunkedValueManifest manifest,
-      List<byte[]> allChunkBytes) {
+      List<byte[]> allChunkBytes,
+      KafkaInputMapperValue manifestMapperValue) {
     byte[][] valueChunks = new byte[manifest.keysWithChunkIdSuffix.size()][];
     ByteBuffer[] chunkKeySuffixes = new ByteBuffer[manifest.keysWithChunkIdSuffix.size()];
     int startPosition, suffixLength;
@@ -126,7 +131,11 @@ public class ChunkAssembler {
     if (totalByteCount != manifest.size) {
       throw new VeniceException(String.format("Expect %d byte(s) but got %d byte(s)", manifest.size, totalByteCount));
     }
-    return new ValueBytesAndSchemaId(concatenateAllChunks(valueChunks, totalByteCount), manifest.schemaId);
+    return new ValueBytesAndSchemaId(
+        concatenateAllChunks(valueChunks, totalByteCount),
+        manifest.schemaId,
+        manifestMapperValue.replicationMetadataVersionId,
+        manifestMapperValue.replicationMetadataPayload);
   }
 
   private ChunkedKeySuffix deserializeChunkedKeySuffix(ByteBuffer chunkedKeySuffixBytes) {
@@ -147,13 +156,18 @@ public class ChunkAssembler {
     private final byte[] bytes;
     private final int schemaID;
 
-    ValueBytesAndSchemaId(ByteBuffer byteBuffer, int schemaID) {
-      this(ByteUtils.extractByteArray(byteBuffer), schemaID);
+    private final int replicationMetadataVersionId;
+    private final ByteBuffer replicationMetadataPayload;
+
+    ValueBytesAndSchemaId(ByteBuffer byteBuffer, int schemaID, int rmdId, ByteBuffer rmdPayload) {
+      this(ByteUtils.extractByteArray(byteBuffer), schemaID, rmdId, rmdPayload);
     }
 
-    ValueBytesAndSchemaId(byte[] bytes, int schemaID) {
+    ValueBytesAndSchemaId(byte[] bytes, int schemaID, int rmdId, ByteBuffer rmdPayload) {
       this.bytes = bytes;
       this.schemaID = schemaID;
+      this.replicationMetadataVersionId = rmdId;
+      this.replicationMetadataPayload = rmdPayload;
     }
 
     public byte[] getBytes() {
@@ -162,6 +176,14 @@ public class ChunkAssembler {
 
     public int getSchemaID() {
       return schemaID;
+    }
+
+    public int getReplicationMetadataVersionId() {
+      return replicationMetadataVersionId;
+    }
+
+    public ByteBuffer getReplicationMetadataPayload() {
+      return replicationMetadataPayload;
     }
   }
 }

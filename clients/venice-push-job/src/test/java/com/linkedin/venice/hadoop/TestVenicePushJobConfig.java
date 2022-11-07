@@ -1,5 +1,6 @@
 package com.linkedin.venice.hadoop;
 
+import static com.linkedin.venice.hadoop.VenicePushJob.REPUSH_TTL_ENABLE;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
@@ -12,6 +13,7 @@ import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
@@ -38,28 +40,42 @@ public class TestVenicePushJobConfig {
   @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Repush with TTL is only supported while using Kafka Input Format.*")
   public void testRepushTTLJobWithNonKafkaInput() {
     Properties repushProps = new Properties();
-    repushProps.put(VenicePushJob.REPUSH_TTL_IN_HOURS, 10L);
+    repushProps.setProperty(REPUSH_TTL_ENABLE, "true");
     VenicePushJob pushJob = getSpyVenicePushJob(Optional.of(repushProps), Optional.empty());
     pushJob.run();
   }
 
-  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Repush TTL is not supported when the store has chunking enabled.*")
-  public void testRepushTTLJobWithChunking() {
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Repush TTL is only supported for real-time only store.*")
+  public void testRepushTTLJobWithBatchStore() {
+    Properties repushProps = getRepushReadyProps();
+
+    ControllerClient client = getClient();
+    VenicePushJob pushJob = getSpyVenicePushJob(Optional.of(repushProps), Optional.of(client));
+    pushJob.run();
+  }
+
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Repush TTL is not supported when the store has write compute enabled.*")
+  public void testRepushTTLJobWithWC() {
+    Properties repushProps = getRepushReadyProps();
+
+    ControllerClient client = getClient(storeInfo -> {
+      Version version = new VersionImpl(TEST_STORE, 0, TEST_PUSH);
+      storeInfo.setWriteComputationEnabled(true);
+      storeInfo.setVersions(Collections.singletonList(version));
+      storeInfo.setHybridStoreConfig(new HybridStoreConfigImpl(0, 0, 0, null, null));
+    });
+    VenicePushJob pushJob = getSpyVenicePushJob(Optional.of(repushProps), Optional.of(client));
+    pushJob.run();
+  }
+
+  private Properties getRepushReadyProps() {
     Properties repushProps = new Properties();
-    repushProps.put(VenicePushJob.REPUSH_TTL_IN_HOURS, 10L);
+    repushProps.setProperty(REPUSH_TTL_ENABLE, "true");
     repushProps.setProperty(VenicePushJob.SOURCE_KAFKA, "true");
     repushProps.setProperty(VenicePushJob.KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(TEST_STORE, 0));
     repushProps.setProperty(VenicePushJob.KAFKA_INPUT_BROKER_URL, "localhost");
     repushProps.setProperty(VenicePushJob.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
-
-    ControllerClient client = getClient(storeInfo -> {
-      Version version = new VersionImpl(TEST_STORE, 0, TEST_PUSH);
-      version.setChunkingEnabled(true);
-      storeInfo.setChunkingEnabled(true);
-      storeInfo.setVersions(Collections.singletonList(version));
-    });
-    VenicePushJob pushJob = getSpyVenicePushJob(Optional.of(repushProps), Optional.of(client));
-    pushJob.run();
+    return repushProps;
   }
 
   private VenicePushJob getSpyVenicePushJob() {

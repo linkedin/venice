@@ -37,6 +37,7 @@ import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.samza.VeniceObjectWithTimestamp;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonAvroSerializer;
@@ -1069,11 +1070,36 @@ public class TestPushUtils {
   }
 
   public static void sendStreamingDeleteRecord(SystemProducer producer, String storeName, String key) {
-    sendStreamingRecord(producer, storeName, key, null);
+    sendStreamingRecord(producer, storeName, key, null, null);
+  }
+
+  public static void sendStreamingDeleteRecord(
+      SystemProducer producer,
+      String storeName,
+      String key,
+      Long logicalTimeStamp) {
+    sendStreamingRecord(producer, storeName, key, null, logicalTimeStamp);
   }
 
   public static void sendStreamingRecord(SystemProducer producer, String storeName, Object key, Object message) {
-    OutgoingMessageEnvelope envelope = new OutgoingMessageEnvelope(new SystemStream("venice", storeName), key, message);
+    sendStreamingRecord(producer, storeName, key, message, null);
+  }
+
+  public static void sendStreamingRecord(
+      SystemProducer producer,
+      String storeName,
+      Object key,
+      Object message,
+      Long logicalTimeStamp) {
+    OutgoingMessageEnvelope envelope;
+    if (logicalTimeStamp == null) {
+      envelope = new OutgoingMessageEnvelope(new SystemStream("venice", storeName), key, message);
+    } else {
+      envelope = new OutgoingMessageEnvelope(
+          new SystemStream("venice", storeName),
+          key,
+          new VeniceObjectWithTimestamp(message, logicalTimeStamp));
+    }
     producer.send(storeName, envelope);
     producer.flush(storeName);
   }
