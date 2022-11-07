@@ -112,7 +112,7 @@ public class AdminConsumerService extends AbstractVeniceService {
         config.isParent(),
         new AdminConsumptionStats(metricsRepository, clusterName + "-admin_consumption_task"),
         config.getAdminTopicReplicationFactor(),
-        config.getMinIsrAdminTopics(),
+        config.getMinInSyncReplicasAdminTopics(),
         config.getAdminConsumptionCycleTimeoutMs(),
         config.getAdminConsumptionMaxWorkerThreadPoolSize());
   }

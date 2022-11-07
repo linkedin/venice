@@ -90,30 +90,33 @@ public class ConfigKeys {
   public static final String KAFKA_MIN_LOG_COMPACTION_LAG_MS = "kafka.min.log.compaction.lag.ms";
 
   /**
-   * The min. in sync replicas property to be set at topic creation time. Will not modify already-existing topics. This
-   * config only applies to store version topics.
+   * The minimum number of in sync replicas to set for store version topics.
    *
-   * If unset, will use the Kafka cluster's default.
+   * Will use the Kafka cluster's default if not set.
    */
-  public static final String KAFKA_MIN_ISR = "kafka.min.isr";
+  public static final String KAFKA_MIN_IN_SYNC_REPLICAS = "kafka.min.in.sync.replicas";
 
   /**
-   * Same as KAFKA_MIN_ISR except it applies to real-time buffer topics.
+   * The minimum number of in sync replicas to set for real-time buffer topics.
+   *
+   * Will use the Kafka cluster's default if not set.
    */
-  public static final String KAFKA_MIN_ISR_RT_TOPICS = "kafka.min.isr.rt.topics";
+  public static final String KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS = "kafka.min.in.sync.replicas.rt.topics";
 
   /**
-   * Same as KAFKA_MIN_ISR except it applies to admin topics.
+   * The minimum number of in sync replicas to set for admin topics.
+   *
+   * Will use the Kafka cluster's default if not set.
    */
-  public static final String KAFKA_MIN_ISR_ADMIN_TOPICS = "kafka.min.isr.admin.topics";
+  public static final String KAFKA_MIN_IN_SYNC_REPLICAS_ADMIN_TOPICS = "kafka.min.in.sync.replicas.admin.topics";
 
   /**
-   * The replication factor to set for store-version topics only, at topic creation time.
+   * The replication factor to set for store-version topics.
    */
   public static final String KAFKA_REPLICATION_FACTOR = "kafka.replication.factor";
 
   /**
-   * Same as KAFKA_REPLICATION_FACTOR except it applies to real-time buffer topics.
+   * The replication factor to set for real-time buffer topics.
    */
   public static final String KAFKA_REPLICATION_FACTOR_RT_TOPICS = "kafka.replication.factor.rt.topics";
 
@@ -1256,7 +1259,7 @@ public class ConfigKeys {
   public static final String HELIX_REBALANCE_ALG = "helix.rebalance.alg";
 
   /**
-   * Same as KAFKA_REPLICATION_FACTOR except it applies to admin topics.
+   * The replication factor to set for admin topics.
    */
   public static final String ADMIN_TOPIC_REPLICATION_FACTOR = "admin.topic.replication.factor";
 
