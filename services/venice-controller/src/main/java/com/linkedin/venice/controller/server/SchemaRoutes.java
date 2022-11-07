@@ -28,6 +28,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
@@ -424,17 +425,18 @@ public class SchemaRoutes extends AbstractRoute {
         AdminSparkServer.validateParams(request, GET_ALL_REPLICATION_METADATA_SCHEMAS.getParams(), admin);
         responseObject.setCluster(request.queryParams(CLUSTER));
         responseObject.setName(request.queryParams(NAME));
-        Collection<SchemaEntry> valueSchemaEntries =
+        Collection<RmdSchemaEntry> valueSchemaEntries =
             admin.getReplicationMetadataSchemas(responseObject.getCluster(), responseObject.getName())
                 .stream()
-                .sorted(Comparator.comparingInt(SchemaEntry::getId))
+                .sorted(Comparator.comparingInt(RmdSchemaEntry::getId))
                 .collect(Collectors.toList());
         MultiSchemaResponse.Schema[] schemas = new MultiSchemaResponse.Schema[valueSchemaEntries.size()];
         int cur = 0;
-        for (SchemaEntry entry: valueSchemaEntries) {
+        for (RmdSchemaEntry entry: valueSchemaEntries) {
           schemas[cur] = new MultiSchemaResponse.Schema();
           schemas[cur].setId(entry.getId());
           schemas[cur].setSchemaStr(entry.getSchema().toString());
+          schemas[cur].setRmdValueSchemaId(entry.getValueSchemaID());
           ++cur;
         }
         responseObject.setSchemas(schemas);

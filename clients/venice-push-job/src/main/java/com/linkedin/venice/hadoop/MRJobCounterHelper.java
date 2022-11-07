@@ -42,6 +42,8 @@ public class MRJobCounterHelper {
   private static final String COUNTER_GROUP_KAFKA_INPUT_FORMAT = "KafkaInputFormat";
   private static final String COUNTER_PUT_OR_DELETE_RECORDS = "put or delete records";
 
+  private static final String REPUSH_TTL_FILTERED_COUNT = "Repush ttl filtered count";
+
   static final GroupAndCounterNames WRITE_ACL_FAILURE_GROUP_COUNTER_NAME =
       new GroupAndCounterNames(COUNTER_GROUP_KAFKA, AUTHORIZATION_FAILURES);
 
@@ -98,6 +100,9 @@ public class MRJobCounterHelper {
 
   static final GroupAndCounterNames MAPPER_NUM_RECORDS_SUCCESSFULLY_PROCESSED_GROUP_COUNTER_NAME =
       new GroupAndCounterNames(MR_JOB_STATUS, MAPPER_NUM_RECORDS_SUCCESSFULLY_PROCESSED);
+
+  static final GroupAndCounterNames REPUSH_TTL_FILTER_COUNT_GROUP_COUNTER_NAME =
+      new GroupAndCounterNames(MR_JOB_STATUS, REPUSH_TTL_FILTERED_COUNT);
 
   private MRJobCounterHelper() {
     // Util class
@@ -293,6 +298,14 @@ public class MRJobCounterHelper {
 
   static long getMapperNumRecordsSuccessfullyProcessedCount(Counters counters) {
     return getCountFromCounters(counters, MAPPER_NUM_RECORDS_SUCCESSFULLY_PROCESSED_GROUP_COUNTER_NAME);
+  }
+
+  public static long getRepushTtlFilterCount(Counters counters) {
+    return getCountFromCounters(counters, REPUSH_TTL_FILTER_COUNT_GROUP_COUNTER_NAME);
+  }
+
+  public static void incrRepushTtlFilterCount(Reporter reporter, long amount) {
+    incrAmountWithGroupCounterName(reporter, REPUSH_TTL_FILTER_COUNT_GROUP_COUNTER_NAME, amount);
   }
 
   /**

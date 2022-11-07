@@ -1,7 +1,6 @@
 package com.linkedin.venice.hadoop;
 
 import com.linkedin.venice.utils.VeniceProperties;
-import java.util.Optional;
 import org.apache.hadoop.io.BytesWritable;
 
 
@@ -15,7 +14,7 @@ public class VeniceVsonMapper extends AbstractVeniceMapper<BytesWritable, BytesW
   }
 
   @Override
-  protected Optional<AbstractVeniceFilter<BytesWritable>> getFilter(final VeniceProperties props) {
-    return Optional.empty();
+  protected FilterChain<BytesWritable> getFilterChain(final VeniceProperties props) {
+    throw new UnsupportedOperationException("VeniceVsonMapper hasn't implemented the filter yet");
   }
 }

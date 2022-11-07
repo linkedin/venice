@@ -73,6 +73,7 @@ public class TestChunkAssembler {
     Assert.assertNotNull(assembledValue);
     Assert.assertEquals(assembledValue.getSchemaID(), VALUE_SCHEMA_ID);
     Assert.assertEquals(assembledValue.getBytes(), createChunkBytes(0, totalChunkCount * eachCountSizeInBytes));
+    Assert.assertEquals(assembledValue.getReplicationMetadataVersionId(), 1);
   }
 
   // E.g. chunk_0, chunk_1, … chunk_N (no manifest)
@@ -182,6 +183,7 @@ public class TestChunkAssembler {
     Assert.assertNotNull(assembledValue);
     Assert.assertEquals(assembledValue.getSchemaID(), VALUE_SCHEMA_ID);
     Assert.assertEquals(assembledValue.getBytes(), createChunkBytes(0, totalChunkCount1 * eachCountSizeInBytes1));
+    Assert.assertEquals(assembledValue.getReplicationMetadataVersionId(), 1);
   }
 
   // E.g. chunk_A_0, chunk_A_1, … chunk_A_N, chunk_A_manifest, chunk_B_0, chunk_B_2 ... chunk_B_manifest (missing chunk
@@ -754,6 +756,7 @@ public class TestChunkAssembler {
     regularValue.value = ByteBuffer.wrap(valueBytes);
     regularValue.valueType = valueType;
     regularValue.replicationMetadataPayload = ByteBuffer.wrap(new byte[0]);
+    regularValue.replicationMetadataVersionId = 1;
     return serialize(regularValue);
   }
 
@@ -806,6 +809,7 @@ public class TestChunkAssembler {
     lastMapperValue.chunkedKeySuffix = ByteBuffer
         .wrap(CHUNKED_KEY_SUFFIX_SERIALIZER.serialize("", KeyWithChunkingSuffixSerializer.NON_CHUNK_KEY_SUFFIX));
     lastMapperValue.replicationMetadataPayload = ByteBuffer.wrap(new byte[0]);
+    lastMapperValue.replicationMetadataVersionId = 1;
 
     values.add(serialize(lastMapperValue));
     return values;

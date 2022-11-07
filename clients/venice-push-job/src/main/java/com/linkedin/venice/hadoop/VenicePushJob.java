@@ -1,6 +1,5 @@
 package com.linkedin.venice.hadoop;
 
-import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
 import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.ConfigKeys.AMPLIFICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
@@ -43,9 +42,10 @@ import com.linkedin.venice.hadoop.input.kafka.VeniceKafkaInputReducer;
 import com.linkedin.venice.hadoop.input.kafka.ttl.TTLResolutionPolicy;
 import com.linkedin.venice.hadoop.output.avro.ValidateSchemaAndBuildDictMapperOutput;
 import com.linkedin.venice.hadoop.pbnj.PostBulkLoadAnalysisMapper;
-import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
+import com.linkedin.venice.hadoop.schema.HDFSRmdSchemaSource;
 import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
-import com.linkedin.venice.hadoop.ssl.UserCredentialsFactory;
+import com.linkedin.venice.hadoop.utils.HadoopUtils;
+import com.linkedin.venice.hadoop.utils.VPJSSLUtils;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -64,7 +64,6 @@ import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.PartitionUtils;
-import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -273,7 +272,7 @@ public class VenicePushJob implements AutoCloseable {
   public static final String TOPIC_PROP = "venice.kafka.topic";
   protected static final String HADOOP_PREFIX = "hadoop-conf.";
   protected static final String HADOOP_VALIDATE_SCHEMA_AND_BUILD_DICT_PREFIX = "hadoop-dict-build-conf.";
-  protected static final String SSL_PREFIX = "ssl";
+  public static final String SSL_PREFIX = "ssl";
 
   // PBNJ-related configs are all optional
   public static final String PBNJ_ENABLE = "pbnj.enable";
@@ -324,9 +323,11 @@ public class VenicePushJob implements AutoCloseable {
   /**
    * Config to control the TTL behaviors in repush.
    */
-  public static final String REPUSH_TTL_IN_HOURS = "repush.ttl.hours";
+  public static final String REPUSH_TTL_ENABLE = "repush.ttl.enable";
+  public static final String REPUSH_TTL_IN_SECONDS = "repush.ttl.seconds";
   public static final String REPUSH_TTL_POLICY = "repush.ttl.policy";
-
+  public static final String RMD_SCHEMA_DIR = "rmd.schema.dir";
+  private static final String TEMP_DIR_PREFIX = "/tmp/veniceRmdSchemas/";
   public static final int NOT_SET = -1;
   private static final Logger LOGGER = LogManager.getLogger(VenicePushJob.class);
 
@@ -430,8 +431,11 @@ public class VenicePushJob implements AutoCloseable {
     // temporary flag to host the code to use mapper to validate schema and build dictionary
     boolean useMapperToBuildDict;
     String useMapperToBuildDictOutputPath;
-    // specify ttl time to drop stale records. Only works for repush
-    long repushTtlInHours;
+    boolean repushTTLEnabled;
+    // specify ttl time to drop stale records.
+    long repushTTLInSeconds;
+    // HDFS directory to cache RMD schemas
+    String rmdSchemaDir;
   }
 
   protected PushJobSetting pushJobSetting;
@@ -470,7 +474,7 @@ public class VenicePushJob implements AutoCloseable {
     boolean isIncrementalPushEnabled;
     Version sourceKafkaInputVersionInfo;
     Version sourceKafkaOutputVersionInfo;
-
+    long storeRewindTimeInSeconds;
   }
 
   protected StoreSetting storeSetting;
@@ -515,17 +519,11 @@ public class VenicePushJob implements AutoCloseable {
     this.jobId = jobId;
     this.props = getVenicePropsFromVanillaProps(vanillaProps);
     if (isSslEnabled()) {
-      String[] requiredSSLPropertiesNames = new String[] { SSL_KEY_PASSWORD_PROPERTY_NAME,
-          SSL_KEY_STORE_PASSWORD_PROPERTY_NAME, SSL_KEY_STORE_PROPERTY_NAME, SSL_TRUST_STORE_PROPERTY_NAME };
-      for (String sslPropertyName: requiredSSLPropertiesNames) {
-        if (!vanillaProps.containsKey(sslPropertyName)) {
-          throw new VeniceException("Miss the require ssl property name: " + sslPropertyName);
-        }
-      }
+      VPJSSLUtils.validateSslProperties(vanillaProps);
     }
     this.sslProperties = Lazy.of(() -> {
       try {
-        return getSslProperties(this.props);
+        return VPJSSLUtils.getSslProperties(this.props);
       } catch (IOException e) {
         throw new VeniceException("Could not get user credential");
       }
@@ -535,7 +533,10 @@ public class VenicePushJob implements AutoCloseable {
     initControllerClient(
         props.getString(VENICE_STORE_NAME_PROP),
         props.getString(VENICE_DISCOVER_URL_PROP),
-        createSSLFactory(isSslEnabled(), props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME)),
+        VPJSSLUtils.createSSLFactory(
+            isSslEnabled(),
+            props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME),
+            this.sslProperties),
         props.getInt(CONTROLLER_REQUEST_RETRY_ATTEMPTS, 1));
     this.pushJobSetting = getPushJobSetting(veniceControllerUrl, props);
     LOGGER.info("Going to use controller URL: {}  to discover cluster.", veniceControllerUrl);
@@ -573,8 +574,10 @@ public class VenicePushJob implements AutoCloseable {
   private ControllerClient createLivenessHeartbeatControllerClient(VeniceProperties properties) {
     String heartbeatStoreName = properties.getString(HEARTBEAT_STORE_NAME_CONFIG.getConfigName()); // Required config
                                                                                                    // value
-    Optional<SSLFactory> sslFactory =
-        createSSLFactory(isSslEnabled(), properties.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME));
+    Optional<SSLFactory> sslFactory = VPJSSLUtils.createSSLFactory(
+        isSslEnabled(),
+        properties.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME),
+        this.sslProperties);
     String veniceControllerUrl = props.getString(VENICE_DISCOVER_URL_PROP);
     String heartbeatStoreClusterName = discoverCluster(heartbeatStoreName);
     ControllerClient heartbeatStoreControllerClient =
@@ -664,9 +667,10 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.kafkaInputCombinerEnabled = props.getBoolean(KAFKA_INPUT_COMBINER_ENABLED, false);
     pushJobSettingToReturn.suppressEndOfPushMessage = props.getBoolean(SUPPRESS_END_OF_PUSH_MESSAGE, false);
     pushJobSettingToReturn.deferVersionSwap = props.getBoolean(DEFER_VERSION_SWAP, false);
-    pushJobSettingToReturn.repushTtlInHours = props.getLong(REPUSH_TTL_IN_HOURS, NOT_SET);
+    pushJobSettingToReturn.repushTTLEnabled = props.getBoolean(REPUSH_TTL_ENABLE, false);
+    pushJobSettingToReturn.repushTTLInSeconds = NOT_SET;
 
-    if (pushJobSettingToReturn.repushTtlInHours != NOT_SET && !pushJobSettingToReturn.isSourceKafka) {
+    if (pushJobSettingToReturn.repushTTLEnabled && !pushJobSettingToReturn.isSourceKafka) {
       throw new VeniceException("Repush with TTL is only supported while using Kafka Input Format");
     }
 
@@ -771,9 +775,10 @@ public class VenicePushJob implements AutoCloseable {
       initControllerClient(
           pushJobSettingUnderConstruction.storeName,
           props.getString(VENICE_DISCOVER_URL_PROP),
-          createSSLFactory(
+          VPJSSLUtils.createSSLFactory(
               isSslEnabled(),
-              properties.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME)),
+              properties.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME),
+              this.sslProperties),
           pushJobSettingUnderConstruction.controllerRetries);
     }
     final Optional<String> userProvidedTopicNameOptional =
@@ -897,8 +902,10 @@ public class VenicePushJob implements AutoCloseable {
       jobStartTimeMs = System.currentTimeMillis();
       logGreeting();
       final boolean sslEnabled = isSslEnabled();
-      Optional<SSLFactory> sslFactory =
-          createSSLFactory(sslEnabled, props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME));
+      Optional<SSLFactory> sslFactory = VPJSSLUtils.createSSLFactory(
+          sslEnabled,
+          props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME),
+          this.sslProperties);
       initControllerClient(
           pushJobSetting.storeName,
           pushJobSetting.veniceControllerUrl,
@@ -912,8 +919,8 @@ public class VenicePushJob implements AutoCloseable {
       storeSetting = getSettingsFromController(controllerClient, pushJobSetting);
       inputStorageQuotaTracker = new InputStorageQuotaTracker(storeSetting.storeStorageQuota);
 
-      if (pushJobSetting.repushTtlInHours != NOT_SET && storeSetting.isChunkingEnabled) {
-        throw new VeniceException("Repush TTL is not supported when the store has chunking enabled.");
+      if (pushJobSetting.repushTTLEnabled && storeSetting.isWriteComputeEnabled) {
+        throw new VeniceException("Repush TTL is not supported when the store has write compute enabled.");
       }
 
       if (pushJobSetting.isSourceETL) {
@@ -998,7 +1005,22 @@ public class VenicePushJob implements AutoCloseable {
           if (storeSetting.sourceKafkaInputVersionInfo.getHybridStoreConfig() != null
               && pushJobSetting.rewindTimeInSecondsOverride == NOT_SET) {
             pushJobSetting.rewindTimeInSecondsOverride = DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
-            LOGGER.info("Overriding re-push rewind time in seconds to: {}", DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE);
+            LOGGER.info("Overriding re-push rewind time in seconds to: {}", pushJobSetting.rewindTimeInSecondsOverride);
+          }
+          if (pushJobSetting.repushTTLEnabled) {
+            pushJobSetting.repushTTLInSeconds = storeSetting.storeRewindTimeInSeconds;
+            // the schema path will be suffixed by the store name and time, e.g.
+            // /tmp/veniceRmdSchemas/<store_name>/<timestamp>
+            StringBuilder schemaDirBuilder = new StringBuilder();
+            schemaDirBuilder.append(TEMP_DIR_PREFIX)
+                .append(pushJobSetting.storeName)
+                .append("/")
+                .append(System.currentTimeMillis());
+            try (HDFSRmdSchemaSource rmdSchemaSource =
+                new HDFSRmdSchemaSource(schemaDirBuilder.toString(), pushJobSetting.storeName)) {
+              rmdSchemaSource.loadRmdSchemasOnDisk(controllerClient);
+              pushJobSetting.rmdSchemaDir = rmdSchemaSource.getPath();
+            }
           }
         }
         // Create new store version, topic and fetch Kafka url from backend
@@ -1154,6 +1176,9 @@ public class VenicePushJob implements AutoCloseable {
         pushJobHeartbeatSender.stop();
       }
       inputDataInfoProvider = null;
+      if (pushJobSetting.rmdSchemaDir != null) {
+        HadoopUtils.cleanUpHDFSPath(pushJobSetting.rmdSchemaDir, true);
+      }
     }
   }
 
@@ -1226,6 +1251,11 @@ public class VenicePushJob implements AutoCloseable {
             "Source kafka input topic : {} has {} records",
             pushJobSetting.kafkaInputTopic,
             totalPutOrDeleteRecordsCount);
+        if (pushJobSetting.repushTTLEnabled) {
+          LOGGER.info(
+              "Repush with ttl filtered out {} records",
+              MRJobCounterHelper.getRepushTtlFilterCount(runningJob.getCounters()));
+        }
       }
       if (reducerClosedCount < kafkaTopicInfo.partitionCount) {
         /**
@@ -1502,16 +1532,6 @@ public class VenicePushJob implements AutoCloseable {
     if (totalValueSize != 0) {
       throw new VeniceException("Expect 0 byte for total value size. Got count: " + totalValueSize);
     }
-  }
-
-  private Optional<SSLFactory> createSSLFactory(final boolean enableSsl, final String sslFactoryClassName) {
-    Optional<SSLFactory> sslFactory = Optional.empty();
-    if (enableSsl) {
-      LOGGER.info("Controller ACL is enabled.");
-      Properties sslProps = sslProperties.get();
-      sslFactory = Optional.of(SslUtils.getSSLFactory(sslProps, sslFactoryClassName));
-    }
-    return sslFactory;
   }
 
   private RunningJob runJobWithConfig(JobConf jobConf) throws IOException {
@@ -2012,6 +2032,16 @@ public class VenicePushJob implements AutoCloseable {
     storeSetting.isWriteComputeEnabled = storeResponse.getStore().isWriteComputationEnabled();
     storeSetting.isLeaderFollowerModelEnabled = storeResponse.getStore().isLeaderFollowerModelEnabled();
     storeSetting.isIncrementalPushEnabled = storeResponse.getStore().isIncrementalPushEnabled();
+    storeSetting.storeRewindTimeInSeconds = DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
+
+    HybridStoreConfig hybridStoreConfig = storeResponse.getStore().getHybridStoreConfig();
+    if (setting.repushTTLEnabled) {
+      if (hybridStoreConfig == null) {
+        throw new VeniceException("Repush TTL is only supported for real-time only store.");
+      } else {
+        storeSetting.storeRewindTimeInSeconds = hybridStoreConfig.getRewindTimeInSeconds();
+      }
+    }
 
     if (setting.enableWriteCompute && !storeSetting.isWriteComputeEnabled) {
       throw new VeniceException("Store does not have write compute enabled.");
@@ -2277,27 +2307,6 @@ public class VenicePushJob implements AutoCloseable {
       veniceWriterProperties.setProperty(KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS, Integer.toString(Integer.MAX_VALUE));
     }
     return veniceWriterProperties;
-  }
-
-  /**
-   * Build ssl properties based on the hadoop token file.
-   */
-  private Properties getSslProperties(VeniceProperties allProperties) throws IOException {
-    Properties newSslProperties = new Properties();
-    // SSL_ENABLED is needed in SSLFactory
-    newSslProperties.setProperty(SSL_ENABLED, "true");
-    newSslProperties.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, KAFKA_SECURITY_PROTOCOL);
-    allProperties.keySet()
-        .stream()
-        .filter(key -> key.toLowerCase().startsWith(SSL_PREFIX))
-        .forEach(key -> newSslProperties.setProperty(key, allProperties.getString(key)));
-    SSLConfigurator sslConfigurator = SSLConfigurator.getSSLConfigurator(
-        allProperties.getString(SSL_CONFIGURATOR_CLASS_CONFIG, TempFileSSLConfigurator.class.getName()));
-
-    Properties sslWriterProperties =
-        sslConfigurator.setupSSLConfig(newSslProperties, UserCredentialsFactory.getUserCredentialsFromTokenFile());
-    newSslProperties.putAll(sslWriterProperties);
-    return newSslProperties;
   }
 
   private synchronized void closeVeniceWriter() {
@@ -2601,9 +2610,14 @@ public class VenicePushJob implements AutoCloseable {
        */
       conf.set(KAFKA_INPUT_TOPIC, pushJobSetting.kafkaInputTopic);
       conf.set(KAFKA_INPUT_BROKER_URL, pushJobSetting.kafkaInputBrokerUrl);
-      conf.setLong(REPUSH_TTL_IN_HOURS, pushJobSetting.repushTtlInHours);
-      conf.setInt(REPUSH_TTL_POLICY, TTLResolutionPolicy.RT_WRITE_ONLY.getValue()); // only support one policy thus not
-                                                                                    // allow any value passed in.
+      conf.setLong(REPUSH_TTL_IN_SECONDS, pushJobSetting.repushTTLInSeconds);
+      if (pushJobSetting.repushTTLEnabled) {
+        conf.setInt(REPUSH_TTL_POLICY, TTLResolutionPolicy.RT_WRITE_ONLY.getValue()); // only support one policy
+                                                                                      // thus not allow any value passed
+                                                                                      // in.
+        conf.set(RMD_SCHEMA_DIR, pushJobSetting.rmdSchemaDir);
+      }
+
     } else {
       conf.setInt(VALUE_SCHEMA_ID_PROP, pushJobSchemaInfo.getValueSchemaId());
       conf.setInt(DERIVED_SCHEMA_ID_PROP, pushJobSchemaInfo.getDerivedSchemaId());
