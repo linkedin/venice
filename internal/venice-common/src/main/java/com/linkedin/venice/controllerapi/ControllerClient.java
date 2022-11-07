@@ -226,6 +226,11 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.STORE, params, StoreResponse.class);
   }
 
+  public StoreResponse getStore(String storeName, int timeoutMs) {
+    QueryParams params = newParams().add(NAME, storeName);
+    return request(ControllerRoute.STORE, params, StoreResponse.class, timeoutMs, 1, null);
+  }
+
   public RepushInfoResponse getRepushInfo(String storeName, Optional<String> fabircName) {
     QueryParams params = newParams().add(NAME, storeName);
     fabircName.ifPresent(s -> params.add(FABRIC, s));

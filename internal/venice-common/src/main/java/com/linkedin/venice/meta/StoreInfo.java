@@ -1,12 +1,10 @@
 package com.linkedin.venice.meta;
 
 import static com.linkedin.venice.meta.Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS;
-import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 import static com.linkedin.venice.meta.Store.NUM_VERSION_PRESERVE_NOT_SET;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.linkedin.venice.compression.CompressionStrategy;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -416,20 +414,6 @@ public class StoreInfo {
       }
     }
     return Optional.empty();
-  }
-
-  /**
-   * Get backup version number, the largest online version number that is less than the current version number
-   */
-  public int getBackupVersionNumber() {
-    int currentVersion = getCurrentVersion();
-    getVersions().sort(Comparator.comparingInt(Version::getNumber).reversed());
-    for (Version v: getVersions()) {
-      if (v.getNumber() < currentVersion && VersionStatus.ONLINE.equals(v.getStatus())) {
-        return v.getNumber();
-      }
-    }
-    return NON_EXISTING_VERSION;
   }
 
   public void setVersions(List<Version> versions) {

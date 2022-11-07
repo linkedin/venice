@@ -564,7 +564,7 @@ public class StoresRoutes extends AbstractRoute {
   }
 
   /**
-   * Set backup version as current version in all child regions.
+   * Set backup version as current version.
    */
   public Route rollbackToBackupVersion(Admin admin) {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {

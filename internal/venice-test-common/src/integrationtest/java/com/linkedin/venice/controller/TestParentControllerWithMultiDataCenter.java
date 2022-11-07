@@ -446,6 +446,5 @@ public class TestParentControllerWithMultiDataCenter {
         Assert.assertEquals(storeInfo.getCurrentVersion(), expectedVersion);
       });
     }
-    parentControllerClient.deleteKafkaTopic(Version.composeKafkaTopic(storeName, expectedVersion));
   }
 }
