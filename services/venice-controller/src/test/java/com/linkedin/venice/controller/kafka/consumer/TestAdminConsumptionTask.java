@@ -298,7 +298,7 @@ public class TestAdminConsumptionTask {
     verify(admin, timeout(TIMEOUT).atLeastOnce()).isLeaderControllerFor(clusterName);
     if (isParent) {
       verify(topicManager, timeout(TIMEOUT))
-          .createTopic(AdminTopicUtils.getTopicNameFromClusterName(clusterName), 1, 1, true, false, Optional.of(0));
+          .createTopic(AdminTopicUtils.getTopicNameFromClusterName(clusterName), 1, 1, true, false, Optional.empty());
       verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyInt(), anyLong());
     } else {
       verify(topicManager, never()).createTopic(anyString(), anyInt(), anyInt(), anyBoolean(), anyBoolean(), any());
