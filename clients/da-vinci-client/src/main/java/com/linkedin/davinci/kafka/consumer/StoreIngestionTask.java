@@ -2004,15 +2004,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * This function checks, for a regular user store, if its persisted offset is greater than the end offset of its
+   * This function checks, for a user store, if its persisted offset is greater than the end offset of its
    * corresponding Kafka topic (indicating an offset rewind event, thus a potential data loss in Kafka) and increases
    * related sensor counter values.
    */
   private void reportUserStoreOffsetRewindMetrics(PartitionConsumptionState pcs) {
-    if (!isUserSystemStore()) {
-      return;
-    }
-
     long offset = pcs.getLatestProcessedLocalVersionTopicOffset();
     if (offset == OffsetRecord.LOWEST_OFFSET) {
       return;
@@ -2022,8 +2018,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (endOffset != StatsErrorCode.LAG_MEASUREMENT_FAILURE.code && offset > endOffset) {
       // report offset rewind.
       LOGGER.warn(
-          "Offset rewind for version topic: {}, persisted record offset: {}, Kafka topic partition end-offset: {}",
+          "Offset rewind for version topic: {}, partition: {}, persisted record offset: {}, Kafka topic partition end-offset: {}",
           kafkaVersionTopic,
+          pcs.getPartition(),
           offset,
           endOffset);
       versionedIngestionStats.recordIngestionOffsetRewind(storeName, versionNumber);

@@ -75,6 +75,9 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
     registerSensor(
         HYBRID_FOLLOWER_OFFSET_LAG,
         new IngestionStatsGauge(this, () -> (double) getStats().getHybridFollowerOffsetLag(), 0));
+    registerSensor(
+        INGESTION_OFFSET_REWIND_COUNT,
+        new IngestionStatsGauge(this, () -> getStats().getRecordIngestionOffsetRewindCount(), 0));
 
     // System store mostly operates on hybrid partial updates so batch metrics are not useful.
     if (!VeniceSystemStoreUtils.isUserSystemStore(storeName)) {
@@ -87,11 +90,6 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
       registerSensor(
           BATCH_FOLLOWER_OFFSET_LAG,
           new IngestionStatsGauge(this, () -> (double) getStats().getBatchFollowerOffsetLag(), 0));
-
-      // Only report offset rewind count for regular user stores.
-      registerSensor(
-          INGESTION_OFFSET_REWIND_COUNT,
-          new IngestionStatsGauge(this, () -> getStats().getRecordIngestionOffsetRewindCount(), 0));
     }
 
     registerSensor(
