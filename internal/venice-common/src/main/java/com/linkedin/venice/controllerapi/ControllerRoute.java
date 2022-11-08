@@ -125,6 +125,7 @@ public enum ControllerRoute {
       REGULAR_VERSION_ETL_ENABLED, FUTURE_VERSION_ETL_ENABLED, ETLED_PROXY_USER_ACCOUNT, DISABLE_META_STORE,
       DISABLE_DAVINCI_PUSH_STATUS_STORE, PERSONA_NAME
   ), SET_VERSION("/set_version", HttpMethod.POST, Arrays.asList(NAME, VERSION)),
+  ROLLBACK_TO_BACKUP_VERSION("/rollback_to_backup_version", HttpMethod.POST, Collections.singletonList(NAME)),
   ENABLE_STORE("/enable_store", HttpMethod.POST, Arrays.asList(NAME, OPERATION, STATUS)), // status "true" or "false",
                                                                                           // operation "read" or "write"
                                                                                           // or "readwrite".

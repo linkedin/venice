@@ -144,7 +144,7 @@ public class TestStoreBackupVersionCleanupService {
     versions.put(2, VersionStatus.ONLINE);
     Store storeWithTwoVersions = mockStore(-1, System.currentTimeMillis() - defaultRetentionMs * 2, versions, 2);
     Assert.assertTrue(service.cleanupBackupVersion(storeWithTwoVersions, clusterName));
-    verify(admin).deleteOneStoreVersion(clusterName, storeWithTwoVersions.getName(), 1);
+    verify(admin).deleteOldVersionInStore(clusterName, storeWithTwoVersions.getName(), 1);
 
     // Store is qualified, but rollback was executed
     versions.clear();
@@ -186,7 +186,7 @@ public class TestStoreBackupVersionCleanupService {
     TestUtils.waitForNonDeterministicAssertion(
         1,
         TimeUnit.SECONDS,
-        () -> verify(admin, atLeast(1)).deleteOneStoreVersion(clusterName, storeWithTwoVersions.getName(), 1));
+        () -> verify(admin, atLeast(1)).deleteOldVersionInStore(clusterName, storeWithTwoVersions.getName(), 1));
   }
 
 }

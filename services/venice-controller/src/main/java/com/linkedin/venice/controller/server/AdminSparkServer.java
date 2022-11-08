@@ -79,6 +79,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.REMOVE_NODE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REMOVE_STORE_FROM_GRAVEYARD;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REPLICATE_META_DATA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REQUEST_TOPIC;
+import static com.linkedin.venice.controllerapi.ControllerRoute.ROLLBACK_TO_BACKUP_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.SEND_PUSH_JOB_DETAILS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.SET_MIGRATION_PUSH_STRATEGY;
 import static com.linkedin.venice.controllerapi.ControllerRoute.SET_OWNER;
@@ -333,6 +334,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.post(DELETE_ALL_VERSIONS.getPath(), storesRoutes.deleteAllVersions(admin));
     httpService.post(DELETE_OLD_VERSION.getPath(), storesRoutes.deleteOldVersions(admin));
     httpService.post(SET_VERSION.getPath(), storesRoutes.setCurrentVersion(admin));
+    httpService.post(ROLLBACK_TO_BACKUP_VERSION.getPath(), storesRoutes.rollbackToBackupVersion(admin));
 
     httpService.get(ClUSTER_HEALTH_INSTANCES.getPath(), nodesAndReplicas.listAllNodesStatus(admin));
     httpService.get(LIST_NODES.getPath(), nodesAndReplicas.listAllNodes(admin));
