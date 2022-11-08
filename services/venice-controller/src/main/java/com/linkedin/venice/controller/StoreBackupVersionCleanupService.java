@@ -125,7 +125,8 @@ public class StoreBackupVersionCleanupService extends AbstractVeniceService {
           storeName,
           clusterName);
       try {
-        admin.deleteOneStoreVersion(clusterName, storeName, versionNum);
+        // deleteOldVersionInStore will run additional check to avoid deleting current version
+        admin.deleteOldVersionInStore(clusterName, storeName, versionNum);
       } catch (Exception e) {
         LOGGER.error(
             "Encountered exception while trying to delete version: {}, store: {}, in cluster: {}",
