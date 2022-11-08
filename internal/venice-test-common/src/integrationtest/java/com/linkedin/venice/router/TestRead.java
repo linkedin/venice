@@ -16,6 +16,7 @@ import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
@@ -285,7 +286,7 @@ public abstract class TestRead {
         keySet.add("unknown_key");
         Map<String, GenericRecord> result = storeClient.batchGet(keySet).get();
         Assert.assertEquals(result.size(), MAX_KEY_LIMIT - 1);
-        Map<String, GenericRecord> computeResult =
+        Map<String, ComputeGenericRecord> computeResult =
             storeClient.compute().project(VALUE_FIELD_NAME).execute(keySet).get();
         Assert.assertEquals(computeResult.size(), MAX_KEY_LIMIT - 1);
 

@@ -49,16 +49,26 @@ public class RouterBackedSchemaReader implements SchemaReader {
   private Map<Schema, Integer> valueSchemaMapR = new VeniceConcurrentHashMap<>();
   private AtomicReference<SchemaEntry> latestValueSchemaEntry = new AtomicReference<>();
   private final String storeName;
+  private final boolean supersetSchemaEnabled;
   private AbstractAvroStoreClient storeClient;
 
-  public RouterBackedSchemaReader(Supplier<AbstractAvroStoreClient> clientSupplier) throws VeniceClientException {
-    this(clientSupplier, Optional.empty());
+  RouterBackedSchemaReader(Supplier<AbstractAvroStoreClient> clientSupplier) throws VeniceClientException {
+    this(clientSupplier, true);
   }
 
-  public RouterBackedSchemaReader(Supplier<AbstractAvroStoreClient> clientSupplier, Optional<Schema> readerSchema) {
+  public RouterBackedSchemaReader(Supplier<AbstractAvroStoreClient> clientSupplier, boolean supersetSchemaEnabled)
+      throws VeniceClientException {
+    this(clientSupplier, Optional.empty(), supersetSchemaEnabled);
+  }
+
+  public RouterBackedSchemaReader(
+      Supplier<AbstractAvroStoreClient> clientSupplier,
+      Optional<Schema> readerSchema,
+      boolean supersetSchemaEnabled) {
     this.storeClient = clientSupplier.get();
     this.storeName = this.storeClient.getStoreName();
     this.readerSchema = readerSchema;
+    this.supersetSchemaEnabled = supersetSchemaEnabled;
     readerSchema.ifPresent(AvroSchemaUtils::validateAvroSchemaStr);
   }
 
@@ -213,38 +223,40 @@ public class RouterBackedSchemaReader implements SchemaReader {
         LOGGER.info("Got null for request path: {}", requestPath);
         return;
       }
+
       MultiSchemaResponse schemaResponse = OBJECT_MAPPER.readValue(response, MultiSchemaResponse.class);
-      if (!schemaResponse.isError()) {
-        // Update local cache
-        int latestSchemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
-        MultiSchemaResponse.Schema[] entries = schemaResponse.getSchemas();
-        for (MultiSchemaResponse.Schema schema: entries) {
-          if (SchemaData.INVALID_VALUE_SCHEMA_ID == latestSchemaId || latestSchemaId < schema.getId()) {
-            latestSchemaId = schema.getId();
-          }
-          final String schemaStr = schema.getSchemaStr();
-          Schema writerSchema = preemptiveSchemaVerification(
-              // Use the "LOOSE" mode here since we might have registered schemas that do not pass the STRICT validation
-              // and that is allowed for now
-              parseSchemaFromJSONLooseValidation(schemaStr),
-              schemaStr,
-              schema.getId());
-          valueSchemaMap.put(schema.getId(), writerSchema);
-          valueSchemaMapR.put(writerSchema, schema.getId());
-        }
-        if (schemaResponse.getSuperSetSchemaId() != -1) {
-          latestSchemaId = schemaResponse.getSuperSetSchemaId();
-          latestValueSchemaEntry.set(new SchemaEntry(latestSchemaId, valueSchemaMap.get(latestSchemaId)));
-        } else {
-          if (SchemaData.INVALID_VALUE_SCHEMA_ID != latestSchemaId
-              && (latestValueSchemaEntry.get() == null || latestValueSchemaEntry.get().getId() < latestSchemaId)) {
-            latestValueSchemaEntry.set(new SchemaEntry(latestSchemaId, valueSchemaMap.get(latestSchemaId)));
-          }
-        }
-      } else {
+      if (schemaResponse.isError()) {
         throw new VeniceClientException(
             "Received an error while fetching schema. " + getExceptionDetails(requestPath) + ", error message: "
                 + schemaResponse.getError());
+      }
+
+      int latestSchemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
+      for (MultiSchemaResponse.Schema schema: schemaResponse.getSchemas()) {
+        if ((latestSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID || latestSchemaId < schema.getId())
+            && schema.getId() != schemaResponse.getSuperSetSchemaId()) {
+          latestSchemaId = schema.getId();
+        }
+        String schemaStr = schema.getSchemaStr();
+        Schema writerSchema = preemptiveSchemaVerification(
+            // Use the "LOOSE" mode here since we might have registered schemas that do not pass the STRICT validation
+            // and that is allowed for now
+            parseSchemaFromJSONLooseValidation(schemaStr),
+            schemaStr,
+            schema.getId());
+        valueSchemaMap.put(schema.getId(), writerSchema);
+        valueSchemaMapR.put(writerSchema, schema.getId());
+      }
+
+      synchronized (this) {
+        if (supersetSchemaEnabled && schemaResponse.getSuperSetSchemaId() != SchemaData.INVALID_VALUE_SCHEMA_ID) {
+          latestSchemaId = schemaResponse.getSuperSetSchemaId();
+          latestValueSchemaEntry.set(new SchemaEntry(latestSchemaId, valueSchemaMap.get(latestSchemaId)));
+        } else if (latestSchemaId != SchemaData.INVALID_VALUE_SCHEMA_ID) {
+          if (latestValueSchemaEntry.get() == null || latestValueSchemaEntry.get().getId() < latestSchemaId) {
+            latestValueSchemaEntry.set(new SchemaEntry(latestSchemaId, valueSchemaMap.get(latestSchemaId)));
+          }
+        }
       }
     } catch (Exception e) {
       throw new VeniceClientException(

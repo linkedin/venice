@@ -38,7 +38,6 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryEncoder;
 
 
@@ -305,9 +304,9 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
   }
 
   @Override
-  public CompletableFuture<Map<K, GenericRecord>> execute(Set<K> keys) throws VeniceClientException {
-    CompletableFuture<Map<K, GenericRecord>> resultFuture = new CompletableFuture<>();
-    CompletableFuture<VeniceResponseMap<K, GenericRecord>> streamResultFuture = streamingExecute(keys);
+  public CompletableFuture<Map<K, ComputeGenericRecord>> execute(Set<K> keys) throws VeniceClientException {
+    CompletableFuture<Map<K, ComputeGenericRecord>> resultFuture = new CompletableFuture<>();
+    CompletableFuture<VeniceResponseMap<K, ComputeGenericRecord>> streamResultFuture = streamingExecute(keys);
     streamResultFuture.whenComplete((response, throwable) -> {
       if (throwable != null) {
         resultFuture.completeExceptionally(throwable);
@@ -328,17 +327,17 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
   }
 
   @Override
-  public CompletableFuture<VeniceResponseMap<K, GenericRecord>> streamingExecute(Set<K> keys) {
-    Map<K, GenericRecord> resultMap = new VeniceConcurrentHashMap<>(keys.size());
+  public CompletableFuture<VeniceResponseMap<K, ComputeGenericRecord>> streamingExecute(Set<K> keys) {
+    Map<K, ComputeGenericRecord> resultMap = new VeniceConcurrentHashMap<>(keys.size());
     Queue<K> nonExistingKeyList = new ConcurrentLinkedQueue<>();
-    VeniceResponseCompletableFuture<VeniceResponseMap<K, GenericRecord>> resultFuture =
+    VeniceResponseCompletableFuture<VeniceResponseMap<K, ComputeGenericRecord>> resultFuture =
         new VeniceResponseCompletableFuture<>(
             () -> new VeniceResponseMapImpl(resultMap, nonExistingKeyList, false),
             keys.size(),
             streamingStats);
-    streamingExecute(keys, new StreamingCallback<K, GenericRecord>() {
+    streamingExecute(keys, new StreamingCallback<K, ComputeGenericRecord>() {
       @Override
-      public void onRecordReceived(K key, GenericRecord value) {
+      public void onRecordReceived(K key, ComputeGenericRecord value) {
         if (value != null) {
           /**
            * {@link java.util.concurrent.ConcurrentHashMap#put} won't take 'null' as the value.
@@ -364,7 +363,8 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
   }
 
   @Override
-  public void streamingExecute(Set<K> keys, StreamingCallback<K, GenericRecord> callback) throws VeniceClientException {
+  public void streamingExecute(Set<K> keys, StreamingCallback<K, ComputeGenericRecord> callback)
+      throws VeniceClientException {
     long preRequestTimeInNS = time.nanoseconds();
     Pair<Schema, String> resultSchema = getResultSchema();
     // Generate ComputeRequest object

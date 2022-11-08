@@ -47,6 +47,7 @@ public class ClientConfig<T extends SpecificRecord> {
   private boolean useBlackHoleDeserializer = false;
   private boolean reuseObjectsForSerialization = false;
   private boolean forceClusterDiscoveryAtStartTime = false;
+  private boolean supersetSchemaEnabled = true;
 
   // Security settings
   private boolean isHttps = false;
@@ -382,6 +383,15 @@ public class ClientConfig<T extends SpecificRecord> {
 
   public ClientConfig<T> setReuseObjectsForSerialization(boolean reuseObjectsForSerialization) {
     this.reuseObjectsForSerialization = reuseObjectsForSerialization;
+    return this;
+  }
+
+  public boolean isSupersetSchemaEnabled() {
+    return supersetSchemaEnabled;
+  }
+
+  public ClientConfig<T> setSupersetSchemaEnabled(boolean supersetSchemaEnabled) {
+    this.supersetSchemaEnabled = supersetSchemaEnabled;
     return this;
   }
 

@@ -34,6 +34,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -320,11 +321,11 @@ public class StoreClientPerfTest {
 
       ComputeRequestBuilder<String> computeRequestBuilder = client.compute().project(fieldNames);
       for (int call = 1; call <= numberOfCalls; call++) {
-        CompletableFuture<Map<String, GenericRecord>> future;
+        CompletableFuture<Map<String, ? extends GenericRecord>> future;
         if (compute) {
-          future = computeRequestBuilder.execute(keys);
+          future = computeRequestBuilder.execute(keys).thenApply(Function.identity());
         } else {
-          future = client.batchGet(keys);
+          future = client.batchGet(keys).thenApply(Function.identity());
         }
         futures[call % numberOfConcurrentCallsPerBatch] = future.handle((o, throwable) -> {
           if (throwable != null) {

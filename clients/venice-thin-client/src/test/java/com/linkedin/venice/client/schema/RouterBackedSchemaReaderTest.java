@@ -221,6 +221,47 @@ public class RouterBackedSchemaReaderTest {
   }
 
   @Test
+  public void testGetLatestValueSchemaWithSupersetSchema() throws Exception {
+    String storeName = "test_store";
+    int valueSchemaId1 = 1;
+    String valueSchemaStr1 = "\"string\"";
+    int valueSchemaId2 = 2;
+    String valueSchemaStr2 = "\"long\"";
+
+    MultiSchemaResponse.Schema schema1 = new MultiSchemaResponse.Schema();
+    schema1.setId(valueSchemaId1);
+    schema1.setSchemaStr(valueSchemaStr1);
+
+    MultiSchemaResponse.Schema schema2 = new MultiSchemaResponse.Schema();
+    schema2.setId(valueSchemaId2);
+    schema2.setSchemaStr(valueSchemaStr2);
+
+    MultiSchemaResponse schemaResponse = new MultiSchemaResponse();
+    schemaResponse.setSuperSetSchemaId(valueSchemaId1);
+    schemaResponse.setSchemas(new MultiSchemaResponse.Schema[] { schema1, schema2 });
+
+    AbstractAvroStoreClient<?, ?> clientMock = Mockito.mock(AbstractAvroStoreClient.class);
+    Mockito.doReturn(storeName).when(clientMock).getStoreName();
+    Mockito.doReturn(CompletableFuture.completedFuture(mapper.writeValueAsBytes(schemaResponse)))
+        .when(clientMock)
+        .getRaw("value_schema/" + storeName);
+
+    try (SchemaReader schemaReader = new RouterBackedSchemaReader(() -> clientMock, true)) {
+      Assert.assertEquals(schemaReader.getValueSchema(valueSchemaId1).toString(), valueSchemaStr1);
+      Assert.assertEquals(schemaReader.getValueSchema(valueSchemaId2).toString(), valueSchemaStr2);
+      Assert.assertEquals(schemaReader.getLatestValueSchema().toString(), valueSchemaStr1);
+      schemaReader.getLatestValueSchema();
+      Mockito.verify(clientMock, Mockito.timeout(TIMEOUT).times(1)).getRaw(Mockito.anyString());
+    }
+
+    try (SchemaReader schemaReader = new RouterBackedSchemaReader(() -> clientMock, false)) {
+      Assert.assertEquals(schemaReader.getValueSchema(valueSchemaId1).toString(), valueSchemaStr1);
+      Assert.assertEquals(schemaReader.getValueSchema(valueSchemaId2).toString(), valueSchemaStr2);
+      Assert.assertEquals(schemaReader.getLatestValueSchema().toString(), valueSchemaStr2);
+    }
+  }
+
+  @Test
   public void testGetLatestValueSchemaWhenNoValueSchema()
       throws IOException, ExecutionException, InterruptedException, VeniceClientException {
     String storeName = "test_store";

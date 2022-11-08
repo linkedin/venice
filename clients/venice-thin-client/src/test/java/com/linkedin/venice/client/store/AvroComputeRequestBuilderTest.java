@@ -119,6 +119,7 @@ public class AvroComputeRequestBuilderTest {
     Assert.assertEquals(preRequestTimeCaptor.getValue().longValue(), preRequestTimeInNS);
     ComputeRequestWrapper capturedComputeRequest = computeRequestCaptor.getValue();
     Assert.assertNotNull(capturedComputeRequest);
+    Assert.assertEquals(capturedComputeRequest.getValueSchema(), VALID_RECORD_SCHEMA);
     Assert.assertEquals(capturedComputeRequest.getResultSchemaStr().toString(), expectedSchema);
     Assert.assertEquals(capturedComputeRequest.getOperations().size(), 6);
     Assert.assertEquals(capturedComputeRequest.getComputeRequestVersion(), COMPUTE_REQUEST_VERSION_V3);
@@ -224,6 +225,7 @@ public class AvroComputeRequestBuilderTest {
     Assert.assertEquals(preRequestTimeCaptor.getValue().longValue(), preRequestTimeInNS);
     capturedComputeRequest = computeRequestCaptor.getValue();
     Assert.assertNotNull(capturedComputeRequest);
+    Assert.assertEquals(capturedComputeRequest.getValueSchema(), VALID_RECORD_SCHEMA);
     Assert.assertEquals(capturedComputeRequest.getResultSchemaStr().toString(), expectedSchema);
     Assert.assertEquals(capturedComputeRequest.getOperations().size(), 3);
     /**

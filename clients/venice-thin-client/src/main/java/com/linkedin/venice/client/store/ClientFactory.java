@@ -83,7 +83,8 @@ public class ClientFactory {
      * Closing this {@link SchemaReader} instance will also close the underlying client.
      */
     return new RouterBackedSchemaReader(
-        () -> new AvroGenericStoreClientImpl<>(getTransportClient(clientConfig), false, clientConfig));
+        () -> new AvroGenericStoreClientImpl<>(getTransportClient(clientConfig), false, clientConfig),
+        clientConfig.isSupersetSchemaEnabled());
   }
 
   public static StoreSchemaFetcher createStoreSchemaFetcher(ClientConfig clientConfig) {
