@@ -6,6 +6,7 @@ import static com.linkedin.venice.controller.UserSystemStoreLifeCycleHelper.DEFA
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REWIND_TIME_IN_SECONDS;
+import static com.linkedin.venice.meta.Store.NON_EXISTING_VERSION;
 import static com.linkedin.venice.meta.Version.PushType;
 import static com.linkedin.venice.meta.VersionStatus.ERROR;
 import static com.linkedin.venice.meta.VersionStatus.NOT_CREATED;
@@ -3228,6 +3229,38 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       return store;
     });
+  }
+
+  /**
+   * Set backup version as current version in a child region.
+   */
+  @Override
+  public void rollbackToBackupVersion(String clusterName, String storeName) {
+    storeMetadataUpdate(clusterName, storeName, store -> {
+      if (!store.isEnableWrites()) {
+        throw new VeniceException(
+            "Unable to update store:" + storeName + " current version since store does not enable write");
+      }
+      int backupVersion = getBackupVersionNumber(store.getVersions(), store.getCurrentVersion());
+      if (backupVersion == Store.NON_EXISTING_VERSION) {
+        throw new VeniceException("Backup version does not exist for store:" + storeName);
+      }
+      store.setCurrentVersion(backupVersion);
+      return store;
+    });
+  }
+
+  /**
+   * Get backup version number, the largest online version number that is less than the current version number
+   */
+  int getBackupVersionNumber(List<Version> versions, int currentVersion) {
+    versions.sort(Comparator.comparingInt(Version::getNumber).reversed());
+    for (Version v: versions) {
+      if (v.getNumber() < currentVersion && VersionStatus.ONLINE.equals(v.getStatus())) {
+        return v.getNumber();
+      }
+    }
+    return NON_EXISTING_VERSION;
   }
 
   /**

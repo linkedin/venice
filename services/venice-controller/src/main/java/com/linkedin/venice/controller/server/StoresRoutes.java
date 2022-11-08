@@ -44,6 +44,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_STORES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_STORE_PUSH_INFO;
 import static com.linkedin.venice.controllerapi.ControllerRoute.MIGRATE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REMOVE_STORE_FROM_GRAVEYARD;
+import static com.linkedin.venice.controllerapi.ControllerRoute.ROLLBACK_TO_BACKUP_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.SET_OWNER;
 import static com.linkedin.venice.controllerapi.ControllerRoute.SET_TOPIC_COMPACTION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.SET_VERSION;
@@ -558,6 +559,28 @@ public class StoresRoutes extends AbstractRoute {
         veniceResponse.setCluster(clusterName);
         veniceResponse.setName(storeName);
         veniceResponse.setVersion(version);
+      }
+    };
+  }
+
+  /**
+   * Set backup version as current version.
+   */
+  public Route rollbackToBackupVersion(Admin admin) {
+    return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
+      @Override
+      public void internalHandle(Request request, ControllerResponse veniceResponse) {
+        // Only allow allowlist users to run this command
+        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
+          return;
+        }
+        AdminSparkServer.validateParams(request, ROLLBACK_TO_BACKUP_VERSION.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+        admin.rollbackToBackupVersion(clusterName, storeName);
+
+        veniceResponse.setCluster(clusterName);
+        veniceResponse.setName(storeName);
       }
     };
   }

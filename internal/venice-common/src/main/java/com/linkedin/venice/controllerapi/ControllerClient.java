@@ -226,6 +226,11 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.STORE, params, StoreResponse.class);
   }
 
+  public StoreResponse getStore(String storeName, int timeoutMs) {
+    QueryParams params = newParams().add(NAME, storeName);
+    return request(ControllerRoute.STORE, params, StoreResponse.class, timeoutMs, 1, null);
+  }
+
   public RepushInfoResponse getRepushInfo(String storeName, Optional<String> fabircName) {
     QueryParams params = newParams().add(NAME, storeName);
     fabircName.ifPresent(s -> params.add(FABRIC, s));
@@ -543,6 +548,11 @@ public class ControllerClient implements Closeable {
   public VersionResponse overrideSetActiveVersion(String storeName, int version) {
     QueryParams params = newParams().add(NAME, storeName).add(VERSION, version);
     return request(ControllerRoute.SET_VERSION, params, VersionResponse.class);
+  }
+
+  public ControllerResponse rollbackToBackupVersion(String storeName) {
+    QueryParams params = newParams().add(NAME, storeName);
+    return request(ControllerRoute.ROLLBACK_TO_BACKUP_VERSION, params, ControllerResponse.class);
   }
 
   public ControllerResponse killOfflinePushJob(String kafkaTopic) {
