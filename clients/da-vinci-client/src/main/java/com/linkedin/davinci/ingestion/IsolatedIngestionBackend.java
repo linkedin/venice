@@ -287,6 +287,11 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
         .equals(MainPartitionIngestionStatus.MAIN);
   }
 
+  private boolean isTopicPartitionIngesting(String topicName, int partition) {
+    return !mainIngestionMonitorService.getTopicPartitionIngestionStatus(topicName, partition)
+        .equals(MainPartitionIngestionStatus.NOT_EXIST);
+  }
+
   private VeniceNotifier getIsolatedIngestionNotifier(VeniceNotifier notifier) {
     return new RelayNotifier(notifier) {
       @Override
@@ -296,11 +301,18 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
           long offset,
           String message,
           Optional<LeaderFollowerStateType> leaderState) {
-        VeniceStoreVersionConfig config = configLoader.getStoreConfig(kafkaTopic);
-        config.setRestoreDataPartitions(false);
-        config.setRestoreMetadataPartition(false);
-        // Start partition consumption locally.
-        startConsumption(config, partition, leaderState);
+        if (isTopicPartitionIngesting(kafkaTopic, partition)) {
+          VeniceStoreVersionConfig config = configLoader.getStoreConfig(kafkaTopic);
+          config.setRestoreDataPartitions(false);
+          config.setRestoreMetadataPartition(false);
+          // Start partition consumption locally.
+          startConsumption(config, partition, leaderState);
+        } else {
+          LOGGER.error(
+              "Partition: {} of topic: {} is not assigned to this host, will not resume the ingestion on main process.",
+              partition,
+              kafkaTopic);
+        }
       }
     };
   }
