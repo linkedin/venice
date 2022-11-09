@@ -115,8 +115,13 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   public void testStartWithTopicExists() {
     parentAdmin.initStorageCluster(clusterName);
     verify(internalAdmin).getTopicManager();
-    verify(topicManager, never())
-        .createTopic(topicName, AdminTopicUtils.PARTITION_NUM_FOR_ADMIN_TOPIC, KAFKA_REPLICA_FACTOR);
+    verify(topicManager, never()).createTopic(
+        topicName,
+        AdminTopicUtils.PARTITION_NUM_FOR_ADMIN_TOPIC,
+        KAFKA_REPLICA_FACTOR,
+        true,
+        false,
+        Optional.empty());
   }
 
   @Test
@@ -124,7 +129,13 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(false).when(topicManager).containsTopicAndAllPartitionsAreOnline(topicName);
     parentAdmin.initStorageCluster(clusterName);
     verify(internalAdmin).getTopicManager();
-    verify(topicManager).createTopic(topicName, AdminTopicUtils.PARTITION_NUM_FOR_ADMIN_TOPIC, KAFKA_REPLICA_FACTOR);
+    verify(topicManager).createTopic(
+        topicName,
+        AdminTopicUtils.PARTITION_NUM_FOR_ADMIN_TOPIC,
+        KAFKA_REPLICA_FACTOR,
+        true,
+        false,
+        Optional.empty());
   }
 
   /**

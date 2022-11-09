@@ -145,10 +145,6 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getBatchJobHeartbeatInitialBufferTime();
   }
 
-  public int getKafkaReplicaFactor() {
-    return getCommonConfig().getKafkaReplicationFactor();
-  }
-
   public long getTopicCreationThrottlingTimeWindowMs() {
     return getCommonConfig().getTopicCreationThrottlingTimeWindowMs();
   }
