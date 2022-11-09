@@ -31,7 +31,7 @@ public class CloseableThreadLocalTest {
     }
   }
 
-  @Test(timeOut = 30)
+  @Test(timeOut = 5_000)
   public void testClose() throws InterruptedException {
     int threadPoolSize = 10;
     int numRunnables = 1000;
