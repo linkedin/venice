@@ -661,7 +661,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         isDaVinciClient,
         repairService);
     storeIngestionService.start();
-    storeIngestionService.addCommonNotifier(new IsolatedIngestionNotifier(this));
+    storeIngestionService.addIngestionNotifier(new IsolatedIngestionNotifier(this));
     ingestionBackend = new DefaultIngestionBackend(storageMetadataService, storeIngestionService, storageService);
 
     LOGGER.info(

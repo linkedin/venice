@@ -249,7 +249,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
            */
         }
       };
-      getStoreIngestionService().addCommonNotifier(localPushStatusNotifier);
+      getStoreIngestionService().addIngestionNotifier(localPushStatusNotifier);
 
       VeniceNotifier isolatedPushStatusNotifier = new RelayNotifier(pushStatusNotifier) {
         @Override
