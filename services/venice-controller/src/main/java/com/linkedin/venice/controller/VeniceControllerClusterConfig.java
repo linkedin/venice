@@ -40,10 +40,13 @@ import static com.linkedin.venice.ConfigKeys.HELIX_SEND_MESSAGE_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_LOG_COMPACTION_FOR_HYBRID_STORES;
 import static com.linkedin.venice.ConfigKeys.KAFKA_LOG_COMPACTION_FOR_INCREMENTAL_PUSH_STORES;
-import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_ISR;
+import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS_ADMIN_TOPICS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_LOG_COMPACTION_LAG_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR_LEGACY_SPELLING;
+import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR_RT_TOPICS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.KAFKA_ZK_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.LEAKED_PUSH_STATUS_CLEAN_UP_SERVICE_SLEEP_INTERVAL_MS;
@@ -244,7 +247,10 @@ public class VeniceControllerClusterConfig {
    * defined by {@value com.linkedin.venice.ConfigKeys#DEFAULT_REPLICA_FACTOR}.
    */
   private int kafkaReplicationFactor;
-  private Optional<Integer> minIsr;
+  private int kafkaReplicationFactorRTTopics;
+  private Optional<Integer> minInSyncReplicas;
+  private Optional<Integer> minInSyncReplicasRealTimeTopics;
+  private Optional<Integer> minInSyncReplicasAdminTopics;
   private boolean kafkaLogCompactionForHybridStores;
   private boolean kafkaLogCompactionForIncrementalPushStores;
   private long kafkaMinLogCompactionLagInMs;
@@ -301,7 +307,10 @@ public class VeniceControllerClusterConfig {
     } catch (UndefinedPropertyException e) {
       kafkaReplicationFactor = props.getInt(KAFKA_REPLICATION_FACTOR_LEGACY_SPELLING);
     }
-    minIsr = props.getOptionalInt(KAFKA_MIN_ISR);
+    kafkaReplicationFactorRTTopics = props.getInt(KAFKA_REPLICATION_FACTOR_RT_TOPICS, kafkaReplicationFactor);
+    minInSyncReplicas = props.getOptionalInt(KAFKA_MIN_IN_SYNC_REPLICAS);
+    minInSyncReplicasRealTimeTopics = props.getOptionalInt(KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS);
+    minInSyncReplicasAdminTopics = props.getOptionalInt(KAFKA_MIN_IN_SYNC_REPLICAS_ADMIN_TOPICS);
     kafkaLogCompactionForHybridStores = props.getBoolean(KAFKA_LOG_COMPACTION_FOR_HYBRID_STORES, true);
     kafkaLogCompactionForIncrementalPushStores =
         props.getBoolean(KAFKA_LOG_COMPACTION_FOR_INCREMENTAL_PUSH_STORES, true);
@@ -505,6 +514,10 @@ public class VeniceControllerClusterConfig {
     return kafkaReplicationFactor;
   }
 
+  public int getKafkaReplicationFactorRTTopics() {
+    return kafkaReplicationFactorRTTopics;
+  }
+
   public long getPartitionSize() {
     return partitionSize;
   }
@@ -597,8 +610,16 @@ public class VeniceControllerClusterConfig {
     return pushMonitorType;
   }
 
-  public Optional<Integer> getMinIsr() {
-    return minIsr;
+  public Optional<Integer> getMinInSyncReplicas() {
+    return minInSyncReplicas;
+  }
+
+  public Optional<Integer> getMinInSyncReplicasRealTimeTopics() {
+    return minInSyncReplicasRealTimeTopics;
+  }
+
+  public Optional<Integer> getMinInSyncReplicasAdminTopics() {
+    return minInSyncReplicasAdminTopics;
   }
 
   public boolean isKafkaLogCompactionForHybridStoresEnabled() {
