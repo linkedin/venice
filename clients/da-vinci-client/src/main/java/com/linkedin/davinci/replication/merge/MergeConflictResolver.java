@@ -624,7 +624,7 @@ public class MergeConflictResolver {
     }
   }
 
-  private GenericRecord createPerFieldTimestampRecord(
+  protected GenericRecord createPerFieldTimestampRecord(
       Schema rmdSchema,
       long fieldTimestamp,
       GenericRecord oldValueRecord) {
