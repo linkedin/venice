@@ -203,12 +203,6 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
    * @return a set of existing operations result field name
    */
   protected Set<String> commonValidityCheck() {
-    // Projection
-    projectFields.forEach(projectField -> {
-      if (latestValueSchema.getField(projectField) == null) {
-        throw new VeniceClientException("Unknown project field: " + projectField);
-      }
-    });
     // DotProduct
     Set<String> computeResultFields = new HashSet<>();
     dotProducts.forEach(
@@ -255,7 +249,9 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
        *    value in Java format, but the {@link Schema.Field#equals} will compare the underlying {@link com.fasterxml.jackson.databind.JsonNode}
        *    format of the default value.
        */
-      resultSchemaFields.add(AvroCompatibilityHelper.newField(existingField).setDoc("").build());
+      if (existingField != null) {
+        resultSchemaFields.add(AvroCompatibilityHelper.newField(existingField).setDoc("").build());
+      }
     });
     dotProducts.forEach(dotProduct -> {
       Schema.Field dotProductField = AvroCompatibilityHelper

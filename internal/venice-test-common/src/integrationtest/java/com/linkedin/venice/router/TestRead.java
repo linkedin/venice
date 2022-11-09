@@ -260,6 +260,7 @@ public abstract class TestRead {
 
   @Test // (timeOut = 50 * Time.MS_PER_SECOND)
   public void testRead() throws Exception {
+    final String UNKNOWN_FIELD_NAME = "unknown_field";
     if (!isTestEnabled()) {
       return;
     }
@@ -287,7 +288,7 @@ public abstract class TestRead {
         Map<String, GenericRecord> result = storeClient.batchGet(keySet).get();
         Assert.assertEquals(result.size(), MAX_KEY_LIMIT - 1);
         Map<String, ComputeGenericRecord> computeResult =
-            storeClient.compute().project(VALUE_FIELD_NAME).execute(keySet).get();
+            storeClient.compute().project(VALUE_FIELD_NAME, UNKNOWN_FIELD_NAME).execute(keySet).get();
         Assert.assertEquals(computeResult.size(), MAX_KEY_LIMIT - 1);
 
         for (int i = 0; i < MAX_KEY_LIMIT - 1; ++i) {
@@ -295,6 +296,7 @@ public abstract class TestRead {
           record.put(VALUE_FIELD_NAME, i);
           Assert.assertEquals(result.get(KEY_PREFIX + i), record);
           Assert.assertEquals(computeResult.get(KEY_PREFIX + i).get(VALUE_FIELD_NAME), i);
+          Assert.assertNull(computeResult.get(KEY_PREFIX + i).get(UNKNOWN_FIELD_NAME));
         }
 
         /**

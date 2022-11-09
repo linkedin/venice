@@ -256,7 +256,7 @@ public class AvroComputeRequestBuilderTest {
         new AvroComputeRequestBuilderV3(ARRAY_SCHEMA, mockClient, Optional.empty(), Optional.empty());
   }
 
-  @Test(expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = "Unknown project field.*")
+  @Test
   public void testProjectUnknownField() {
     AbstractAvroStoreClient mockClient = getMockClient();
     AvroComputeRequestBuilderV3<String> computeRequestBuilder =
