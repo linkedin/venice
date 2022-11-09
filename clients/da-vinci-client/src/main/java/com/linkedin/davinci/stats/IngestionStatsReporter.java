@@ -10,7 +10,6 @@ import static com.linkedin.davinci.stats.IngestionStats.FOLLOWER_OFFSET_LAG;
 import static com.linkedin.davinci.stats.IngestionStats.FOLLOWER_RECORDS_CONSUMED_METRIC_NAME;
 import static com.linkedin.davinci.stats.IngestionStats.HYBRID_FOLLOWER_OFFSET_LAG;
 import static com.linkedin.davinci.stats.IngestionStats.HYBRID_LEADER_OFFSET_LAG;
-import static com.linkedin.davinci.stats.IngestionStats.INGESTION_OFFSET_REWIND_COUNT;
 import static com.linkedin.davinci.stats.IngestionStats.INGESTION_TASK_ERROR_GAUGE;
 import static com.linkedin.davinci.stats.IngestionStats.INGESTION_TASK_PUSH_TIMEOUT_GAUGE;
 import static com.linkedin.davinci.stats.IngestionStats.LEADER_BYTES_CONSUMED_METRIC_NAME;
@@ -28,6 +27,7 @@ import static com.linkedin.davinci.stats.IngestionStats.TIMESTAMP_REGRESSION_DCR
 import static com.linkedin.davinci.stats.IngestionStats.TOMBSTONE_CREATION_DCR;
 import static com.linkedin.davinci.stats.IngestionStats.TOTAL_DCR;
 import static com.linkedin.davinci.stats.IngestionStats.UPDATE_IGNORED_DCR;
+import static com.linkedin.davinci.stats.IngestionStats.VERSION_TOPIC_INGESTION_OFFSET_REWIND_COUNT;
 import static com.linkedin.davinci.stats.IngestionStats.WRITE_COMPUTE_OPERATION_FAILURE;
 import static com.linkedin.venice.stats.StatsErrorCode.NULL_INGESTION_STATS;
 
@@ -76,7 +76,7 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
         HYBRID_FOLLOWER_OFFSET_LAG,
         new IngestionStatsGauge(this, () -> (double) getStats().getHybridFollowerOffsetLag(), 0));
     registerSensor(
-        INGESTION_OFFSET_REWIND_COUNT,
+        VERSION_TOPIC_INGESTION_OFFSET_REWIND_COUNT,
         new IngestionStatsGauge(this, () -> getStats().getRecordIngestionOffsetRewindCount(), 0));
 
     // System store mostly operates on hybrid partial updates so batch metrics are not useful.

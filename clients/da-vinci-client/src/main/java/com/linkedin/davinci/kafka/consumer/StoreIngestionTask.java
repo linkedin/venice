@@ -1882,7 +1882,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           startConsumingAsLeader(newPartitionConsumptionState);
         } else {
           updateLeaderTopicOnFollower(newPartitionConsumptionState);
-          reportUserStoreOffsetRewindMetrics(newPartitionConsumptionState);
+          reportStoreVersionTopicOffsetRewindMetrics(newPartitionConsumptionState);
 
           // Subscribe to local version topic.
           consumerSubscribe(
@@ -2004,11 +2004,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * This function checks, for a user store, if its persisted offset is greater than the end offset of its
+   * This function checks, for a store, if its persisted offset is greater than the end offset of its
    * corresponding Kafka topic (indicating an offset rewind event, thus a potential data loss in Kafka) and increases
    * related sensor counter values.
    */
-  private void reportUserStoreOffsetRewindMetrics(PartitionConsumptionState pcs) {
+  private void reportStoreVersionTopicOffsetRewindMetrics(PartitionConsumptionState pcs) {
     long offset = pcs.getLatestProcessedLocalVersionTopicOffset();
     if (offset == OffsetRecord.LOWEST_OFFSET) {
       return;
@@ -2023,7 +2023,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           pcs.getPartition(),
           offset,
           endOffset);
-      versionedIngestionStats.recordIngestionOffsetRewind(storeName, versionNumber);
+      versionedIngestionStats.recordVerstionTopicIngestionOffsetRewind(storeName, versionNumber);
     }
   }
 
