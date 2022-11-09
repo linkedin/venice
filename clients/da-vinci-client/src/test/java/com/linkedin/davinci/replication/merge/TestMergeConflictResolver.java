@@ -1,5 +1,8 @@
 package com.linkedin.davinci.replication.merge;
 
+import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.PUT_ONLY_PART_LENGTH_FIELD_NAME;
+import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL_COLO_ID_FIELD_NAME;
+import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL_TS_FIELD_NAME;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
@@ -8,6 +11,7 @@ import static org.mockito.Mockito.mock;
 import com.linkedin.davinci.replication.merge.helper.utils.ValueAndRmdSchema;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.SchemaUtils;
 import com.linkedin.venice.schema.rmd.RmdConstants;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
@@ -16,6 +20,7 @@ import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.avro.MapOrderingPreservingSerDeFactory;
 import com.linkedin.venice.utils.AvroSupersetSchemaUtils;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Map;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -94,11 +99,30 @@ public class TestMergeConflictResolver {
   protected GenericRecord createRmdWithFieldLevelTimestamp(
       Schema rmdSchema,
       Map<String, Long> fieldNameToTimestampMap) {
+    return createRmdWithFieldLevelTimestamp(rmdSchema, fieldNameToTimestampMap, Collections.emptyMap());
+  }
+
+  protected GenericRecord createRmdWithFieldLevelTimestamp(
+      Schema rmdSchema,
+      Map<String, Long> fieldNameToTimestampMap,
+      Map<String, Integer> fieldNameToExistingPutPartLengthMap) {
     final GenericRecord rmdRecord = new GenericData.Record(rmdSchema);
     final Schema fieldLevelTimestampSchema = rmdSchema.getFields().get(0).schema().getTypes().get(1);
     GenericRecord fieldTimestampsRecord = new GenericData.Record(fieldLevelTimestampSchema);
     fieldNameToTimestampMap.forEach((fieldName, fieldTimestamp) -> {
-      fieldTimestampsRecord.put(fieldName, fieldTimestamp);
+      Schema.Field field = fieldLevelTimestampSchema.getField(fieldName);
+      if (field.schema().getType().equals(Schema.Type.LONG)) {
+        fieldTimestampsRecord.put(fieldName, fieldTimestamp);
+      } else {
+        GenericRecord collectionFieldTimestampRecord = SchemaUtils.createGenericRecord(field.schema());
+        // Only need to set the top-level field timestamp on collection timestamp record.
+        collectionFieldTimestampRecord.put(TOP_LEVEL_TS_FIELD_NAME, fieldTimestamp);
+        // When a collection field metadata is created, its top-level colo ID is always -1.
+        collectionFieldTimestampRecord.put(TOP_LEVEL_COLO_ID_FIELD_NAME, -1);
+        collectionFieldTimestampRecord
+            .put(PUT_ONLY_PART_LENGTH_FIELD_NAME, fieldNameToExistingPutPartLengthMap.getOrDefault(fieldName, 0));
+        fieldTimestampsRecord.put(field.name(), collectionFieldTimestampRecord);
+      }
     });
     rmdRecord.put(RmdConstants.TIMESTAMP_FIELD_NAME, fieldTimestampsRecord);
     rmdRecord.put(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD, new ArrayList<>());
