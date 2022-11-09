@@ -89,6 +89,27 @@ public class ReplicationMetadataRocksDBStoragePartition extends RocksDBStoragePa
     }
   }
 
+  @Override
+  public synchronized void putReplicationMetadata(byte[] key, byte[] metadata) {
+    makeSureRocksDBIsStillOpen();
+    if (readOnly) {
+      throw new VeniceException(
+          "Cannot make writes while partition is opened in read-only mode" + ", partition=" + storeName + "_"
+              + partitionId);
+    }
+    try {
+      if (deferredWrite) {
+        rocksDBSstFileWriter.put(key, ByteBuffer.wrap(metadata));
+      } else {
+        rocksDB.put(columnFamilyHandleList.get(REPLICATION_METADATA_COLUMN_FAMILY_INDEX), writeOptions, key, metadata);
+      }
+    } catch (RocksDBException e) {
+      throw new VeniceException(
+          "Failed to put key/value pair to store: " + storeName + ", partition id: " + partitionId,
+          e);
+    }
+  }
+
   public long getRmdByteUsage() {
     readCloseRWLock.readLock().lock();
     try {

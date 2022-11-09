@@ -6,21 +6,22 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
-public class ChunkHelperTest {
+public class WriterChunkingHelperTest {
   @Test
   public void testChunkPayload() {
     byte[] keyBytes = new byte[10];
     byte[] valueBytes = new byte[100];
     int maxSizeForUserPayloadPerMessageInBytes = 30;
-    ChunkedPayloadAndManifest result = ChunkHelper.chunkPayloadAndSend(
+    ChunkedPayloadAndManifest result = WriterChunkingHelper.chunkPayloadAndSend(
         keyBytes,
         valueBytes,
+        true,
         1,
         true,
         () -> "",
         maxSizeForUserPayloadPerMessageInBytes,
         new KeyWithChunkingSuffixSerializer(),
         (x, y) -> CompletableFuture.completedFuture(null));
-    Assert.assertEquals(result.payloadChunks.length, 5);
+    Assert.assertEquals(result.getPayloadChunks().length, 5);
   }
 }
