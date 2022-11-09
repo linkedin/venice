@@ -23,7 +23,7 @@ import org.apache.kafka.clients.producer.RecordMetadata;
 /**
  * This class is a helper class that contains writer side chunking logics.
  */
-public class ChunkHelper {
+public class WriterChunkingHelper {
   private static final ByteBuffer EMPTY_BYTE_BUFFER = ByteBuffer.allocate(0);
 
   /**
@@ -31,7 +31,7 @@ public class ChunkHelper {
    * @param serializedKey serialized key input
    * @param payload serialized payload could be value bytes or RMD bytes.
    * @param schemaId value schema ID
-   * @param chunkAwareCallback boolean flag indicating whether to create chunk
+   * @param isChunkAwareCallback boolean flag indicating whether to create chunk
    * @param sizeReport supplier function for size report.
    * @param maxSizeForUserPayloadPerMessageInBytes maximum size for payload in a message
    * @param keyWithChunkingSuffixSerializer Chuncking suffix serializer for key
@@ -41,8 +41,9 @@ public class ChunkHelper {
   public static ChunkedPayloadAndManifest chunkPayloadAndSend(
       byte[] serializedKey,
       byte[] payload,
+      boolean isValuePayload,
       int schemaId,
-      boolean chunkAwareCallback,
+      boolean isChunkAwareCallback,
       Supplier<String> sizeReport,
       int maxSizeForUserPayloadPerMessageInBytes,
       KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer,
@@ -57,7 +58,7 @@ public class ChunkHelper {
 
     VeniceWriter.KeyProvider keyProvider, firstKeyProvider, subsequentKeyProvider;
     ByteBuffer[] chunks = null;
-    if (chunkAwareCallback) {
+    if (isChunkAwareCallback) {
       // We only carry this state if it's going to be used, else we don't even instantiate this
       chunks = new ByteBuffer[numberOfChunks];
     }
@@ -103,10 +104,15 @@ public class ChunkHelper {
       }
 
       Put putPayload = new Put();
-      putPayload.putValue = chunk;
       putPayload.schemaId = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
       putPayload.replicationMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
-      putPayload.replicationMetadataPayload = EMPTY_BYTE_BUFFER;
+      if (isValuePayload) {
+        putPayload.putValue = chunk;
+        putPayload.replicationMetadataPayload = EMPTY_BYTE_BUFFER;
+      } else {
+        putPayload.putValue = EMPTY_BYTE_BUFFER;
+        putPayload.replicationMetadataPayload = chunk;
+      }
 
       chunkedKeySuffix.chunkId.chunkIndex = chunkIndex;
       keyProvider = chunkIndex == 0 ? firstKeyProvider : subsequentKeyProvider;
