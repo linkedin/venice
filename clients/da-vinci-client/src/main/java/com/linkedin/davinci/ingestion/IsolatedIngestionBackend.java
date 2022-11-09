@@ -6,6 +6,7 @@ import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.ingestion.main.MainIngestionMonitorService;
 import com.linkedin.davinci.ingestion.main.MainIngestionRequestClient;
 import com.linkedin.davinci.ingestion.main.MainIngestionStorageMetadataService;
+import com.linkedin.davinci.ingestion.main.MainPartitionIngestionStatus;
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
@@ -25,7 +26,7 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * IsolatedIngestionBackend is the implementation of ingestion backend designed for ingestion isolation.
+ * This class is the implementation of ingestion backend designed for ingestion isolation.
  * It contains references to local ingestion components - including storage metadata service, storage service and store
  * ingestion service that serves local ingestion, as well as ingestion request client that sends commands to isolated
  * ingestion service process and ingestion listener that listens to ingestion reports from child process.
@@ -89,18 +90,20 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       VeniceStoreVersionConfig storeConfig,
       int partition,
       Optional<LeaderFollowerStateType> leaderState) {
-    if (isTopicPartitionInLocal(storeConfig.getStoreVersionName(), partition)) {
+    // TODO: Make sure if this is even possible?
+    if (isTopicPartitionHostedInMainProcess(storeConfig.getStoreVersionName(), partition)) {
       LOGGER.info(
           "Start consumption of topic: {}, partition: {} in main process.",
           storeConfig.getStoreVersionName(),
           partition);
+      mainIngestionMonitorService.setVersionPartitionToLocalIngestion(storeConfig.getStoreVersionName(), partition);
       super.startConsumption(storeConfig, partition, leaderState);
     } else {
       LOGGER.info(
           "Sending consumption request of topic: {}, partition: {} to fork process.",
           storeConfig.getStoreVersionName(),
           partition);
-      mainIngestionMonitorService.addVersionPartitionToIngestionMap(storeConfig.getStoreVersionName(), partition);
+      mainIngestionMonitorService.setVersionPartitionToIsolatedIngestion(storeConfig.getStoreVersionName(), partition);
       mainIngestionRequestClient.startConsumption(storeConfig.getStoreVersionName(), partition);
     }
   }
@@ -132,14 +135,15 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       int timeoutInSeconds,
       boolean removeEmptyStorageEngine) {
     String topicName = storeConfig.getStoreVersionName();
-    if (isTopicPartitionInLocal(topicName, partition)) {
+    boolean partitionHostedInMainProcess = isTopicPartitionHostedInMainProcess(topicName, partition);
+    mainIngestionMonitorService.cleanupTopicPartitionState(topicName, partition);
+    if (partitionHostedInMainProcess) {
       LOGGER.info("Dropping partition: {} of topic: {} in main process.", partition, topicName);
       super.dropStoragePartitionGracefully(storeConfig, partition, timeoutInSeconds, removeEmptyStorageEngine);
     } else {
       LOGGER.info("Dropping partition: {} of topic: {} in forked ingestion process.", partition, topicName);
       mainIngestionRequestClient.unsubscribeTopicPartition(topicName, partition);
     }
-    mainIngestionMonitorService.cleanupTopicPartitionState(topicName, partition);
     if (mainIngestionMonitorService.getTopicPartitionCount(topicName) == 0) {
       LOGGER.info("No serving partitions exist for topic: {}, dropping the topic storage.", topicName);
       mainIngestionRequestClient.removeStorageEngine(topicName);
@@ -155,7 +159,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
     boolean messageCompleted = false;
     while (!messageCompleted) {
       /**
-       * The reason to add this check is to avoid an edge case that - when a promote message is sent to isolated
+       * The reason to add this check is to avoid an edge case that - when a PROMOTE message is sent to isolated
        * ingestion process, the partition is completed but not reported to ingestion report listener. However,
        * unsubscribe() might have been kicking in, and delete the partitionConsumptionState before promote/demote
        * action is processed. This will result in NPE on PCS during action process stage.
@@ -164,7 +168,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
        * end up reporting completion the ingestion in isolatedIngestionBackend, and then we will add this command
        * to local queue.
        */
-      if (isTopicPartitionInLocal(storeConfig.getStoreVersionName(), partition)) {
+      if (isTopicPartitionHostedInMainProcess(storeConfig.getStoreVersionName(), partition)) {
         super.promoteToLeader(storeConfig, partition, leaderSessionIdChecker);
         messageCompleted = true;
       } else {
@@ -196,7 +200,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker leaderSessionIdChecker) {
     boolean messageCompleted = false;
     while (!messageCompleted) {
-      if (isTopicPartitionInLocal(storeConfig.getStoreVersionName(), partition)) {
+      if (isTopicPartitionHostedInMainProcess(storeConfig.getStoreVersionName(), partition)) {
         super.demoteToStandby(storeConfig, partition, leaderSessionIdChecker);
         messageCompleted = true;
       } else {
@@ -221,7 +225,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
   public void addIngestionNotifier(VeniceNotifier ingestionListener) {
     if (ingestionListener != null) {
       super.addIngestionNotifier(ingestionListener);
-      mainIngestionMonitorService.addLeaderFollowerIngestionNotifier(getIsolatedIngestionNotifier(ingestionListener));
+      mainIngestionMonitorService.addIngestionNotifier(getIsolatedIngestionNotifier(ingestionListener));
     }
   }
 
@@ -229,7 +233,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
   public void addLeaderFollowerIngestionNotifier(VeniceNotifier ingestionListener) {
     if (ingestionListener != null) {
       super.addLeaderFollowerIngestionNotifier(ingestionListener);
-      mainIngestionMonitorService.addLeaderFollowerIngestionNotifier(getIsolatedIngestionNotifier(ingestionListener));
+      mainIngestionMonitorService.addIngestionNotifier(getIsolatedIngestionNotifier(ingestionListener));
     }
   }
 
@@ -278,8 +282,9 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
     }
   }
 
-  private boolean isTopicPartitionInLocal(String topicName, int partition) {
-    return mainIngestionMonitorService.isTopicPartitionIngestedInIsolatedProcess(topicName, partition);
+  private boolean isTopicPartitionHostedInMainProcess(String topicName, int partition) {
+    return mainIngestionMonitorService.getTopicPartitionIngestionStatus(topicName, partition)
+        .equals(MainPartitionIngestionStatus.MAIN);
   }
 
   private VeniceNotifier getIsolatedIngestionNotifier(VeniceNotifier notifier) {

@@ -35,7 +35,7 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * MainIngestionRequestClient sends requests to isolated ingestion process and retrieves responses.
+ * This class sends requests to isolated ingestion process and retrieves responses.
  */
 public class MainIngestionRequestClient implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(MainIngestionRequestClient.class);
