@@ -1960,7 +1960,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             clusterConfig.getKafkaReplicationFactor(),
             true,
             false,
-            clusterConfig.getMinIsr(),
+            clusterConfig.getMinInSyncReplicas(),
             useFastKafkaOperationTimeout));
   }
 
@@ -2150,10 +2150,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 getTopicManager().createTopic(
                     realTimeTopic,
                     numberOfPartitions,
-                    clusterConfig.getKafkaReplicationFactor(),
+                    clusterConfig.getKafkaReplicationFactorRTTopics(),
                     TopicManager.getExpectedRetentionTimeInMs(store, store.getHybridStoreConfig()),
                     false, // Note: do not enable RT compaction! Might make jobs in Online/Offline model stuck
-                    clusterConfig.getMinIsr(),
+                    clusterConfig.getMinInSyncReplicasRealTimeTopics(),
                     false);
               } else {
                 // If real-time topic already exists, check whether its retention time is correct.
@@ -2513,10 +2513,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         getTopicManager().createTopic(
             realTimeTopic,
             partitionCount,
-            clusterConfig.getKafkaReplicationFactor(),
+            clusterConfig.getKafkaReplicationFactorRTTopics(),
             store.getRetentionTime(),
             false, // Note: do not enable RT compaction! Might make jobs in Online/Offline model stuck
-            clusterConfig.getMinIsr(),
+            clusterConfig.getMinInSyncReplicasRealTimeTopics(),
             false);
         // TODO: if there is an online version from a batch push before this store was hybrid then we won't start
         // replicating to it. A new version must be created.

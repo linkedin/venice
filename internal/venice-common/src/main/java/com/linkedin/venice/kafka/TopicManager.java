@@ -178,17 +178,6 @@ public class TopicManager implements Closeable {
    * Create a topic, and block until the topic is created, with a default timeout of
    * {@value #DEFAULT_KAFKA_OPERATION_TIMEOUT_MS}, after which this function will throw a VeniceException.
    *
-   * @see {@link #createTopic(String, int, int, boolean)}
-   */
-  @Deprecated
-  public void createTopic(String topicName, int numPartitions, int replication) {
-    createTopic(topicName, numPartitions, replication, true);
-  }
-
-  /**
-   * Create a topic, and block until the topic is created, with a default timeout of
-   * {@value #DEFAULT_KAFKA_OPERATION_TIMEOUT_MS}, after which this function will throw a VeniceException.
-   *
    * @see {@link #createTopic(String, int, int, boolean, boolean, Optional)}
    */
   public void createTopic(String topicName, int numPartitions, int replication, boolean eternal) {
