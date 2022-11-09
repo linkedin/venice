@@ -284,6 +284,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         this.writerId += ":" + props.getInt(LISTENER_PORT);
       }
     }
+    this.producerGUID = GuidUtils.getGUID(props);
+    this.logger =
+        LogManager.getLogger(VeniceWriter.class.getSimpleName() + " [" + GuidUtils.getHexFromGuid(producerGUID) + "]");
 
     try {
       this.producer = producerWrapperSupplier.get();
@@ -304,14 +307,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         partitionLocks[i] = new Object();
         segmentsCreationTimeArray[i] = -1L;
       }
-      this.producerGUID = GuidUtils.getGUID(props);
-      this.logger = LogManager
-          .getLogger(VeniceWriter.class.getSimpleName() + " [" + GuidUtils.getHexFromGuid(producerGUID) + "]");
       OPEN_VENICE_WRITER_COUNT.incrementAndGet();
     } catch (Exception e) {
-      throw new VeniceException(
-          "Error while constructing VeniceWriter for store name: " + topicName + ", props: " + props.toString(),
-          e);
+      logger.error("VeniceWriter cannot be constructed with the props: {}", props);
+      throw new VeniceException("Error while constructing VeniceWriter for store name: " + topicName, e);
     }
   }
 
