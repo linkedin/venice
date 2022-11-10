@@ -1,5 +1,6 @@
 package com.linkedin.venice.utils.concurrent;
 
+import com.linkedin.venice.utils.Time;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
@@ -31,7 +32,7 @@ public class CloseableThreadLocalTest {
     }
   }
 
-  @Test(timeOut = 5_000)
+  @Test(timeOut = 30 * Time.MS_PER_SECOND)
   public void testClose() throws InterruptedException {
     int threadPoolSize = 10;
     int numRunnables = 1000;
