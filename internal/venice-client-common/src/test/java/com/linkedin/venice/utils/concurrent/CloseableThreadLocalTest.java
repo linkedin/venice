@@ -1,11 +1,11 @@
 package com.linkedin.venice.utils.concurrent;
 
-import com.linkedin.venice.utils.TestUtils;
-import java.util.HashSet;
+import com.linkedin.venice.utils.Time;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -32,33 +32,29 @@ public class CloseableThreadLocalTest {
     }
   }
 
-  @Test
-  public void testClose() {
-    CloseableThreadLocal<CloseableClass> numbers = new CloseableThreadLocal<>(() -> new CloseableClass(5));
-    Set<CloseableClass> closeableObjects = new HashSet<>();
+  @Test(timeOut = 30 * Time.MS_PER_SECOND)
+  public void testClose() throws InterruptedException {
     int threadPoolSize = 10;
     int numRunnables = 1000;
-    ExecutorService executorService = Executors.newFixedThreadPool(threadPoolSize);
-    try {
-      for (int i = 0; i < numRunnables; i++) {
-        executorService.submit(() -> {
-          closeableObjects.add(numbers.get());
-        });
-      }
-    } finally {
-      executorService.shutdown();
-    }
 
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
-      try {
-        executorService.awaitTermination(1, TimeUnit.SECONDS);
-      } catch (InterruptedException e) {
-        Assert.fail();
-      }
-    });
+    CloseableThreadLocal<CloseableClass> numbers = new CloseableThreadLocal<>(() -> new CloseableClass(5));
+    ExecutorService executorService = Executors.newFixedThreadPool(threadPoolSize);
+    Set<CloseableClass> closeableObjects = ConcurrentHashMap.newKeySet();
+    Set<Thread> threadIds = ConcurrentHashMap.newKeySet();
+    CountDownLatch latch = new CountDownLatch(numRunnables);
+
+    for (int i = 0; i < numRunnables; i++) {
+      executorService.submit(() -> {
+        closeableObjects.add(numbers.get());
+        threadIds.add(Thread.currentThread());
+        latch.countDown();
+      });
+    }
+    latch.await();
+    executorService.shutdownNow();
 
     // Assert there are separate objects created for each thread
-    Assert.assertEquals(closeableObjects.size(), threadPoolSize);
+    Assert.assertEquals(closeableObjects.size(), threadIds.size());
 
     // Verify that the objects have not been closed yet
     for (CloseableClass object: closeableObjects) {
