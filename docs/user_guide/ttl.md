@@ -22,12 +22,20 @@ TTL parameters. The time to live is defined by N, which acts as a "minimum TTL",
 between each empty push. For example, if you schedule a daily empty push, and N = 6 days, then the oldest data in your 
 store will be at least 6 days old, and at most 7 days old.
 
+The N is as known as the store-level rewind time, that's a part of hybrid store configuration.
+
 ### [Experimental] Repush with TTL
 Similarly to empty push, the repush with TTL can also be configured and scheduled periodically to achieve the TTL behavior.
-The major difference between this and empty push is empty push would create a fresh store and replay the real-time data (N),
-whereas the repush firstly scans through entries in the current version, and uses store-level rewind time as TTL time to 
-evict stale records based on the write timestamp, and finally replays the real-time data. This brings two major benefits:
-1. The version topic enables log compaction, so the total amount of entries produced to the new store version will be reduced.
+The major differences between this and empty push are original data source and how real-time buffer is replayed.
+
+The empty push literally has no original data, i.e. starts from scratch, and then replay real-time buffer from past N days,
+whereas the repush scans through entries in the current version, as its original data, and evict stale records based on 
+the write timestamp, and finally replays the real-time buffer from past M days. The M is known as version-level rewind time,
+that's a configurable value, 1 day by default, and normally smaller than the N(store-level rewind time).
+
+This brings two major benefits:
+1. The version topic, which is the data origin of repush, enables log compaction, plus the replayed records are less than 
+empty push, so the total amount of entries produced to the new store version will be reduced.
 2. The data format produced by the repush with TTL will be more efficient since it will be sorted and de-duped.
 
 Please note that this feature only supports Venice stores that enable active-active replication, empty push doesn't have
