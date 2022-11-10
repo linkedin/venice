@@ -131,6 +131,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private final AdminOperationSerializer deserializer;
   private final AdminConsumptionStats stats;
   private final int adminTopicReplicationFactor;
+  private final Optional<Integer> minInSyncReplicas;
   private final boolean remoteConsumptionEnabled;
 
   private boolean isSubscribed;
@@ -237,6 +238,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       boolean isParentController,
       AdminConsumptionStats stats,
       int adminTopicReplicationFactor,
+      Optional<Integer> minInSyncReplicas,
       long processingCycleTimeoutInMs,
       int maxWorkerThreadPoolSize) {
     this.clusterName = clusterName;
@@ -251,6 +253,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     this.topicExists = false;
     this.stats = stats;
     this.adminTopicReplicationFactor = adminTopicReplicationFactor;
+    this.minInSyncReplicas = minInSyncReplicas;
     this.consumer = consumer;
     this.remoteConsumptionEnabled = remoteConsumptionEnabled;
     this.adminTopicMetadataAccessor = adminTopicMetadataAccessor;
@@ -314,14 +317,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
               continue;
             }
             LOGGER.info(logMessageFormat, topic, "Since this is the parent controller, it will be created now.");
-            admin.getTopicManager()
-                .createTopic(
-                    topic,
-                    1,
-                    adminTopicReplicationFactor,
-                    true,
-                    false,
-                    Optional.of(adminTopicReplicationFactor - 1));
+            admin.getTopicManager().createTopic(topic, 1, adminTopicReplicationFactor, true, false, minInSyncReplicas);
             LOGGER.info("Admin topic {} is created.", topic);
           }
           subscribe();

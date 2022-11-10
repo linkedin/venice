@@ -159,6 +159,10 @@ public abstract class AbstractStoragePartition {
     throw new VeniceUnsupportedOperationException("putWithReplicationMetadata");
   }
 
+  public void putReplicationMetadata(byte[] key, byte[] metadata) {
+    throw new VeniceUnsupportedOperationException("putReplicationMetadata");
+  }
+
   /**
    * This API retrieves replication metadata from replicationMetadataColumnFamily.
    * Only {@link ReplicationMetadataRocksDBStoragePartition} will execute this method,

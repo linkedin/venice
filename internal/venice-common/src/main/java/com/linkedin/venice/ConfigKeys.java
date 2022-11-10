@@ -90,16 +90,35 @@ public class ConfigKeys {
   public static final String KAFKA_MIN_LOG_COMPACTION_LAG_MS = "kafka.min.log.compaction.lag.ms";
 
   /**
-   * The min.isr property to be set at topic creation time. Will not modify already-existing topics.
+   * The minimum number of in sync replicas to set for store version topics.
    *
-   * If unset, will use the Kafka cluster's default.
+   * Will use the Kafka cluster's default if not set.
    */
-  public static final String KAFKA_MIN_ISR = "kafka.min.isr";
+  public static final String KAFKA_MIN_IN_SYNC_REPLICAS = "kafka.min.in.sync.replicas";
 
   /**
-   * The replication factor to set for real-time buffer topics and store-version topics, at topic creation time.
+   * The minimum number of in sync replicas to set for real-time buffer topics.
+   *
+   * Will use the Kafka cluster's default if not set.
+   */
+  public static final String KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS = "kafka.min.in.sync.replicas.rt.topics";
+
+  /**
+   * The minimum number of in sync replicas to set for admin topics.
+   *
+   * Will use the Kafka cluster's default if not set.
+   */
+  public static final String KAFKA_MIN_IN_SYNC_REPLICAS_ADMIN_TOPICS = "kafka.min.in.sync.replicas.admin.topics";
+
+  /**
+   * The replication factor to set for store-version topics.
    */
   public static final String KAFKA_REPLICATION_FACTOR = "kafka.replication.factor";
+
+  /**
+   * The replication factor to set for real-time buffer topics.
+   */
+  public static final String KAFKA_REPLICATION_FACTOR_RT_TOPICS = "kafka.replication.factor.rt.topics";
 
   /**
    * TODO: the following 3 configs will be deprecated after the native replication migration is changed to a two-step
@@ -1240,7 +1259,7 @@ public class ConfigKeys {
   public static final String HELIX_REBALANCE_ALG = "helix.rebalance.alg";
 
   /**
-   * What replication factor should the admin topics have, upon creation.
+   * The replication factor to set for admin topics.
    */
   public static final String ADMIN_TOPIC_REPLICATION_FACTOR = "admin.topic.replication.factor";
 

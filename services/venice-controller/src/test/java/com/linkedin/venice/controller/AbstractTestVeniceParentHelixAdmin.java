@@ -176,6 +176,7 @@ public class AbstractTestVeniceParentHelixAdmin {
     VeniceControllerConfig config = mock(VeniceControllerConfig.class);
     doReturn(clusterName).when(config).getClusterName();
     doReturn(KAFKA_REPLICA_FACTOR).when(config).getKafkaReplicationFactor();
+    doReturn(KAFKA_REPLICA_FACTOR).when(config).getAdminTopicReplicationFactor();
     doReturn(10000).when(config).getParentControllerWaitingTimeForConsumptionMs();
     doReturn("fake_kafka_bootstrap_servers").when(config).getKafkaBootstrapServers();
     // PushJobStatusStore and participant message store are disabled in this unit test by default because many

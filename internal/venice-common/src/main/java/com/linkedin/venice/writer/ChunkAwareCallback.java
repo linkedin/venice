@@ -17,8 +17,13 @@ public interface ChunkAwareCallback extends Callback {
    * is not chunked.
    *
    * @param key A byte[] corresponding to the top-level key written to Kafka, potentially including a chunking suffix
-   * @param chunks An array of {@link ByteBuffer} where the backing array has sufficient headroom to prepend Venice's header
+   * @param valueChunks An array of {@link ByteBuffer} where the backing array has sufficient headroom to prepend Venice's header
    * @param chunkedValueManifest The {@link ChunkedValueManifest} of the chunked value
    */
-  void setChunkingInfo(byte[] key, ByteBuffer[] chunks, ChunkedValueManifest chunkedValueManifest);
+  void setChunkingInfo(
+      byte[] key,
+      ByteBuffer[] valueChunks,
+      ChunkedValueManifest chunkedValueManifest,
+      ByteBuffer[] rmdChunks,
+      ChunkedValueManifest chunkedRmdManifest);
 }

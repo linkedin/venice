@@ -405,6 +405,11 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     partition.putWithReplicationMetadata(key, value, replicationMetadata);
   }
 
+  public void putReplicationMetadata(int partitionId, byte[] key, byte[] replicationMetadata) throws VeniceException {
+    AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
+    partition.putReplicationMetadata(key, replicationMetadata);
+  }
+
   public <K, V> void put(int partitionId, K key, V value) {
     AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
     partition.put(key, value);

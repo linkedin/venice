@@ -95,6 +95,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.PushStatusSystemStoreAutoCreationValidation;
 import com.linkedin.venice.controller.kafka.protocol.admin.ResumeStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.SchemaMeta;
+import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreCurrentVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreOwner;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStorePartitionCount;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
@@ -215,7 +216,9 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -475,7 +478,10 @@ public class VeniceParentHelixAdmin implements Admin {
       topicManager.createTopic(
           topicName,
           AdminTopicUtils.PARTITION_NUM_FOR_ADMIN_TOPIC,
-          getMultiClusterConfigs().getKafkaReplicaFactor());
+          getMultiClusterConfigs().getControllerConfig(clusterName).getAdminTopicReplicationFactor(),
+          true,
+          false,
+          getMultiClusterConfigs().getControllerConfig(clusterName).getMinInSyncReplicasAdminTopics());
       LOGGER.info("Created admin topic: {} for cluster: {}", topicName, clusterName);
     }
 
@@ -1929,6 +1935,65 @@ public class VeniceParentHelixAdmin implements Admin {
         "setStoreCurrentVersion",
         "Please use set-version only on child controllers, "
             + "setting version on parent is not supported, since the version list could be different fabric by fabric");
+  }
+
+  /**
+   * Set backup version as current version in all child regions.
+   */
+  @Override
+  public void rollbackToBackupVersion(String clusterName, String storeName) {
+    acquireAdminMessageLock(clusterName, storeName);
+    try {
+      getVeniceHelixAdmin().checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
+      // Call child controllers in parallel to check whether backup version is consistent in all child regions
+      Map<String, ControllerClient> controllerClientMap = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+      List<Callable<Integer>> tasks = new ArrayList<>();
+      controllerClientMap.forEach((region, cc) -> tasks.add(() -> {
+        StoreResponse storeResponse = cc.getStore(storeName, waitingTimeForConsumptionMs);
+        if (storeResponse.isError()) {
+          throw new VeniceException(storeResponse.getError() + " in region " + region);
+        }
+        StoreInfo store = storeResponse.getStore();
+        if (!store.isEnableStoreWrites()) {
+          throw new VeniceException("Unable to rollback since store does not enable write in region " + region);
+        }
+        int backupVersion =
+            getVeniceHelixAdmin().getBackupVersionNumber(store.getVersions(), store.getCurrentVersion());
+        if (backupVersion == Store.NON_EXISTING_VERSION) {
+          throw new VeniceException("Unable to rollback since backup version does not exist in region " + region);
+        }
+        return backupVersion;
+      }));
+
+      ExecutorService executor = Executors.newFixedThreadPool(tasks.size());
+      int backupVersion = Store.NON_EXISTING_VERSION;
+      List<Future<Integer>> results = executor.invokeAll(tasks);
+      for (Future<Integer> future: results) {
+        int backupVersionInChild = future.get();
+        if (backupVersion != Store.NON_EXISTING_VERSION && backupVersion != backupVersionInChild) {
+          throw new VeniceException("Unable to rollback since backup version number is inconsistent across regions");
+        }
+        backupVersion = backupVersionInChild;
+      }
+
+      // Send admin message to set backup version as current version. Child controllers will execute the admin message.
+      SetStoreCurrentVersion setStoreCurrentVersion =
+          (SetStoreCurrentVersion) AdminMessageType.SET_STORE_CURRENT_VERSION.getNewInstance();
+      setStoreCurrentVersion.clusterName = clusterName;
+      setStoreCurrentVersion.storeName = storeName;
+      setStoreCurrentVersion.currentVersion = backupVersion;
+      AdminOperation message = new AdminOperation();
+      message.operationType = AdminMessageType.SET_STORE_CURRENT_VERSION.getValue();
+      message.payloadUnion = setStoreCurrentVersion;
+
+      sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
+    } catch (InterruptedException e) {
+      throw new VeniceException("Unable to rollback since thread is interrupted");
+    } catch (ExecutionException e) {
+      throw new VeniceException(e.getMessage());
+    } finally {
+      releaseAdminMessageLock(clusterName, storeName);
+    }
   }
 
   /**
