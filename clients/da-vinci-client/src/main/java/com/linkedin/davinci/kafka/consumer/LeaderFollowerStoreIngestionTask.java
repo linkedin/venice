@@ -649,23 +649,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     return localVTOff + 1 >= localVTEndOffset;
   }
 
-  /**
-   * @return the end offset in kafka for the topic partition in SIT.
-   */
-  private long getKafkaTopicPartitionEndOffSet(String kafkaUrl, String kafkaVersionTopic, int partition) {
-    long offsetFromConsumer = getPartitionLatestOffset(kafkaUrl, kafkaVersionTopic, partition);
-    if (offsetFromConsumer >= 0) {
-      return offsetFromConsumer;
-    }
-
-    /**
-     * The returned end offset is the last successfully replicated message plus one. If the partition has never been
-     * written to, the end offset is 0.
-     * @see CachedKafkaMetadataGetter#getOffset(TopicManager, String, int)
-     */
-    return cachedKafkaMetadataGetter.getOffset(getTopicManager(kafkaUrl), kafkaVersionTopic, partition);
-  }
-
   protected void startConsumingAsLeaderInTransitionFromStandby(PartitionConsumptionState partitionConsumptionState) {
     if (partitionConsumptionState.getLeaderFollowerState() != IN_TRANSITION_FROM_STANDBY_TO_LEADER) {
       throw new VeniceException(
@@ -2258,14 +2241,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   // per partition.
   private static final Predicate<? super PartitionConsumptionState> BATCH_REPLICATION_LAG_FILTER =
       pcs -> !pcs.isEndOfPushReceived() && pcs.consumeRemotely() && pcs.getLeaderFollowerState().equals(LEADER);
-
-  protected long getPartitionOffsetLag(String kafkaSourceAddress, String topic, int partition) {
-    return aggKafkaConsumerService.getOffsetLagFor(kafkaSourceAddress, kafkaVersionTopic, topic, partition);
-  }
-
-  private long getPartitionLatestOffset(String kafkaSourceAddress, String topic, int partition) {
-    return aggKafkaConsumerService.getLatestOffsetFor(kafkaSourceAddress, kafkaVersionTopic, topic, partition);
-  }
 
   @Override
   public long getBatchReplicationLag() {
