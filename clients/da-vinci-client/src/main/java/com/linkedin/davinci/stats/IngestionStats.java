@@ -53,7 +53,7 @@ public class IngestionStats {
   protected static final String OFFSET_REGRESSION_DCR_ERROR = "offset_regression_dcr_error";
   protected static final String TOMBSTONE_CREATION_DCR = "tombstone_creation_dcr";
   protected static final String READY_TO_SERVE_WITH_RT_LAG_METRIC_NAME = "ready_to_serve_with_rt_lag";
-  public static final String VERSION_TOPIC_INGESTION_OFFSET_REWIND_COUNT = "vt_ingestion_task_offset_rewind_count";
+  public static final String VERSION_TOPIC_END_OFFSET_REWIND_COUNT = "version_topic_end_offset_rewind_count";
 
   private static final MetricConfig METRIC_CONFIG = new MetricConfig();
   private StoreIngestionTask ingestionTask;
@@ -85,8 +85,8 @@ public class IngestionStats {
   private final RateSensor tombstoneCreationDCRSensor;
 
   /** Record a version-level offset rewind events for VTs across all stores. */
-  private final Count vtIngestionOffsetRewindCount = new Count();
-  private final Sensor vtIngestionOffsetRewindSensor;
+  private final Count versionTopicEndOffsetRewindCount = new Count();
+  private final Sensor versionTopicEndOffsetRewindSensor;
 
   public IngestionStats(VeniceServerConfig serverConfig) {
 
@@ -153,8 +153,8 @@ public class IngestionStats {
             + stalePartitionsWithoutIngestionTaskCount.getClass().getSimpleName(),
         stalePartitionsWithoutIngestionTaskCount);
 
-    vtIngestionOffsetRewindSensor = localMetricRepository.sensor(VERSION_TOPIC_INGESTION_OFFSET_REWIND_COUNT);
-    vtIngestionOffsetRewindSensor.add(VERSION_TOPIC_INGESTION_OFFSET_REWIND_COUNT, vtIngestionOffsetRewindCount);
+    versionTopicEndOffsetRewindSensor = localMetricRepository.sensor(VERSION_TOPIC_END_OFFSET_REWIND_COUNT);
+    versionTopicEndOffsetRewindSensor.add(VERSION_TOPIC_END_OFFSET_REWIND_COUNT, versionTopicEndOffsetRewindCount);
 
     subscribePrepLatencySensor =
         new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, SUBSCRIBE_ACTION_PREP_LATENCY);
@@ -307,12 +307,12 @@ public class IngestionStats {
     stalePartitionsWithoutIngestionTaskSensor.record();
   }
 
-  public void recordVersionTopicIngestionOffsetRewind() {
-    vtIngestionOffsetRewindSensor.record();
+  public void recordVersionTopicEndOffsetRewind() {
+    versionTopicEndOffsetRewindSensor.record();
   }
 
-  public double getRecordIngestionOffsetRewindCount() {
-    return vtIngestionOffsetRewindCount.measure(METRIC_CONFIG, System.currentTimeMillis());
+  public double getVersionTopicEndOffsetRewindCount() {
+    return versionTopicEndOffsetRewindCount.measure(METRIC_CONFIG, System.currentTimeMillis());
   }
 
   public double getConsumedRecordEndToEndProcessingLatencyAvg() {

@@ -48,7 +48,7 @@ public class AggVersionedIngestionStatsTest {
   @BeforeTest
   public void setUp() {
     String prefix = "." + STORE_FOO;
-    String postfix = IngestionStats.VERSION_TOPIC_INGESTION_OFFSET_REWIND_COUNT + ".IngestionStatsGauge";
+    String postfix = IngestionStats.VERSION_TOPIC_END_OFFSET_REWIND_COUNT + ".IngestionStatsGauge";
     totalKey = prefix + "_total--" + postfix;
     backupKey = prefix + "_backup--" + postfix;
     currentKey = prefix + "_current--" + postfix;
@@ -100,17 +100,17 @@ public class AggVersionedIngestionStatsTest {
 
     int backupVerCnt = 2, curVerCnt = 3, futureVerCnt = 4;
     for (int i = 0; i < backupVerCnt; i++) {
-      aggIngestionStats.recordVerstionTopicIngestionOffsetRewind(STORE_FOO, backupVer.getNumber());
+      aggIngestionStats.recordVersionTopicEndOffsetRewind(STORE_FOO, backupVer.getNumber());
     }
     verifyCounters(backupVerCnt, backupVerCnt, 0, 0);
 
     for (int i = 0; i < curVerCnt; i++) {
-      aggIngestionStats.recordVerstionTopicIngestionOffsetRewind(STORE_FOO, currentVer.getNumber());
+      aggIngestionStats.recordVersionTopicEndOffsetRewind(STORE_FOO, currentVer.getNumber());
     }
     verifyCounters(backupVerCnt + curVerCnt, backupVerCnt, curVerCnt, 0);
 
     for (int i = 0; i < futureVerCnt; i++) {
-      aggIngestionStats.recordVerstionTopicIngestionOffsetRewind(STORE_FOO, futureVer.getNumber());
+      aggIngestionStats.recordVersionTopicEndOffsetRewind(STORE_FOO, futureVer.getNumber());
     }
     verifyCounters(backupVerCnt + curVerCnt + futureVerCnt, backupVerCnt, curVerCnt, futureVerCnt);
 

@@ -133,7 +133,7 @@ public class AggVersionedIngestionStats
     recordVersionedAndTotalStat(storeName, version, stat -> stat.recordConsumedRecordEndToEndProcessingLatency(value));
   }
 
-  public void recordVerstionTopicIngestionOffsetRewind(String storeName, int version) {
-    recordVersionedAndTotalStat(storeName, version, IngestionStats::recordVersionTopicIngestionOffsetRewind);
+  public void recordVersionTopicEndOffsetRewind(String storeName, int version) {
+    recordVersionedAndTotalStat(storeName, version, IngestionStats::recordVersionTopicEndOffsetRewind);
   }
 }

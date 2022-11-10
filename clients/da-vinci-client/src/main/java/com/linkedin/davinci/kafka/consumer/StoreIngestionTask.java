@@ -2023,7 +2023,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           pcs.getPartition(),
           offset,
           endOffset);
-      versionedIngestionStats.recordVerstionTopicIngestionOffsetRewind(storeName, versionNumber);
+      versionedIngestionStats.recordVersionTopicEndOffsetRewind(storeName, versionNumber);
     }
   }
 
