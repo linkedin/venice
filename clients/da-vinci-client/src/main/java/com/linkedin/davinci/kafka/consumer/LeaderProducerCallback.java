@@ -46,13 +46,15 @@ class LeaderProducerCallback implements ChunkAwareCallback {
   private final long beforeProcessingRecordTimestamp;
 
   /**
-   * The three mutable fields below are determined by the {@link com.linkedin.venice.writer.VeniceWriter},
-   * which populates them via {@link ChunkAwareCallback#setChunkingInfo(byte[], ByteBuffer[], ChunkedValueManifest)}.
-   *
+   * The mutable fields below are determined by the {@link com.linkedin.venice.writer.VeniceWriter},
+   * which populates them via {@link ChunkAwareCallback#setChunkingInfo(byte[], ByteBuffer[],
+   * ChunkedValueManifest, ByteBuffer[], ChunkedValueManifest)}.
    */
   private byte[] key = null;
   private ChunkedValueManifest chunkedValueManifest = null;
-  private ByteBuffer[] chunks = null;
+  private ByteBuffer[] valueChunks = null;
+  private ChunkedValueManifest chunkedRmdManifest = null;
+  private ByteBuffer[] rmdChunks = null;
 
   public LeaderProducerCallback(
       LeaderFollowerStoreIngestionTask ingestionTask,
@@ -110,10 +112,19 @@ class LeaderProducerCallback implements ChunkAwareCallback {
        * {@link VeniceWriter#SendControlMessage} or {@link VeniceWriter#asyncSendControlMessage}
        */
       if (chunkedValueManifest != null) {
-        if (chunks == null) {
-          throw new IllegalStateException("chunking info not initialized.");
-        } else if (chunkedValueManifest.keysWithChunkIdSuffix.size() != chunks.length) {
-          throw new IllegalStateException("chunkedValueManifest.keysWithChunkIdSuffix is not in sync with chunks.");
+        if (valueChunks == null) {
+          throw new IllegalStateException("Value chunking info not initialized.");
+        } else if (chunkedValueManifest.keysWithChunkIdSuffix.size() != valueChunks.length) {
+          throw new IllegalStateException(
+              "keysWithChunkIdSuffix in chunkedValueManifest is not in sync with value chunks.");
+        }
+      }
+      if (chunkedRmdManifest != null) {
+        if (rmdChunks == null) {
+          throw new IllegalStateException("RMD chunking info not initialized.");
+        } else if (chunkedRmdManifest.keysWithChunkIdSuffix.size() != rmdChunks.length) {
+          throw new IllegalStateException(
+              "keysWithChunkIdSuffix in chunkedRmdManifest is not in sync with RMD chunks.");
         }
       }
 
@@ -156,7 +167,7 @@ class LeaderProducerCallback implements ChunkAwareCallback {
           int schemaId = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
           for (int i = 0; i < chunkedValueManifest.keysWithChunkIdSuffix.size(); i++) {
             ByteBuffer chunkKey = chunkedValueManifest.keysWithChunkIdSuffix.get(i);
-            ByteBuffer chunkValue = chunks[i];
+            ByteBuffer chunkValue = valueChunks[i];
 
             Put chunkPut = new Put();
             chunkPut.putValue = chunkValue;
@@ -233,10 +244,17 @@ class LeaderProducerCallback implements ChunkAwareCallback {
   }
 
   @Override
-  public void setChunkingInfo(byte[] key, ByteBuffer[] chunks, ChunkedValueManifest chunkedValueManifest) {
+  public void setChunkingInfo(
+      byte[] key,
+      ByteBuffer[] valueChunks,
+      ChunkedValueManifest chunkedValueManifest,
+      ByteBuffer[] rmdChunks,
+      ChunkedValueManifest chunkedRmdManifest) {
     this.key = key;
     this.chunkedValueManifest = chunkedValueManifest;
-    this.chunks = chunks;
+    this.valueChunks = valueChunks;
+    this.chunkedRmdManifest = chunkedRmdManifest;
+    this.rmdChunks = rmdChunks;
   }
 
   private void recordProducerStats(int producedRecordSize, int producedRecordNum) {

@@ -510,7 +510,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     }
 
     if (callback instanceof ChunkAwareCallback) {
-      ((ChunkAwareCallback) callback).setChunkingInfo(serializedKey, null, null);
+      ((ChunkAwareCallback) callback).setChunkingInfo(serializedKey, null, null, null, null);
     }
 
     KafkaKey kafkaKey = new KafkaKey(MessageType.DELETE, serializedKey);
@@ -665,7 +665,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     }
 
     if (callback instanceof ChunkAwareCallback) {
-      ((ChunkAwareCallback) callback).setChunkingInfo(serializedKey, null, null);
+      ((ChunkAwareCallback) callback).setChunkingInfo(serializedKey, null, null, null, null);
     }
 
     KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, serializedKey);
@@ -716,7 +716,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         getKafkaMessageEnvelopeProvider(kafkaMessageEnvelope, leaderMetadataWrapper);
 
     if (callback instanceof ChunkAwareCallback) {
-      ((ChunkAwareCallback) callback).setChunkingInfo(serializedKey, null, null);
+      ((ChunkAwareCallback) callback).setChunkingInfo(serializedKey, null, null, null, null);
     }
 
     return sendMessage(producerMetadata -> kafkaKey, kafkaMessageEnvelopeProvider, upstreamPartition, callback, false);
@@ -754,7 +754,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
     if (callback instanceof ChunkAwareCallback) {
       byte[] serializedKey = kafkaKey.getKey();
-      ((ChunkAwareCallback) callback).setChunkingInfo(serializedKey, null, null);
+      ((ChunkAwareCallback) callback).setChunkingInfo(serializedKey, null, null, null, null);
     }
 
     return sendMessage(producerMetadata -> kafkaKey, kafkaMessageEnvelopeProvider, upstreamPartition, callback, false);
@@ -1107,9 +1107,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     int replicationMetadataPayloadSize = putMetadata.map(PutMetadata::getSerializedSize).orElse(0);
     final Supplier<String> reportSizeGenerator =
         () -> getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize);
-    ChunkedPayloadAndManifest valueChunksAndManifest = ChunkHelper.chunkPayloadAndSend(
+    ChunkedPayloadAndManifest valueChunksAndManifest = WriterChunkingHelper.chunkPayloadAndSend(
         serializedKey,
         serializedValue,
+        true,
         valueSchemaId,
         callback instanceof ChunkAwareCallback,
         reportSizeGenerator,
@@ -1125,9 +1126,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
             Optional.empty()));
     ChunkedPayloadAndManifest rmdChunksAndManifest = null;
     if (isRmdChunkingEnabled) {
-      rmdChunksAndManifest = ChunkHelper.chunkPayloadAndSend(
+      rmdChunksAndManifest = WriterChunkingHelper.chunkPayloadAndSend(
           serializedKey,
           (putMetadata.isPresent() ? putMetadata.get().getRmdPayload() : EMPTY_BYTE_BUFFER).array(),
+          false,
           valueSchemaId,
           callback instanceof ChunkAwareCallback,
           reportSizeGenerator,
@@ -1176,7 +1178,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       ((ChunkAwareCallback) callback).setChunkingInfo(
           topLevelKey,
           valueChunksAndManifest.getPayloadChunks(),
-          valueChunksAndManifest.getChunkedValueManifest());
+          valueChunksAndManifest.getChunkedValueManifest(),
+          rmdChunksAndManifest == null ? null : rmdChunksAndManifest.getPayloadChunks(),
+          rmdChunksAndManifest == null ? null : rmdChunksAndManifest.getChunkedValueManifest());
     }
 
     // We only return the last future (the one for the manifest) and assume that once this one is finished,
