@@ -25,8 +25,8 @@ store will be at least 6 days old, and at most 7 days old.
 ### [Experimental] Repush with TTL
 Similarly to empty push, the repush with TTL can also be configured and scheduled periodically to achieve the TTL behavior.
 The major difference between this and empty push is empty push would create a fresh store and replay the real-time data (N),
-whereas the repush firstly scans through entries in the current version, and use store-level rewind time as TTL time to 
-evict stale records based on the write timestamp, and finally replay the real-time data. This brings two major benefits:
+whereas the repush firstly scans through entries in the current version, and uses store-level rewind time as TTL time to 
+evict stale records based on the write timestamp, and finally replays the real-time data. This brings two major benefits:
 1. The version topic enables log compaction, so the total amount of entries produced to the new store version will be reduced.
 2. The data format produced by the repush with TTL will be more efficient since it will be sorted and de-duped.
 
