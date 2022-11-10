@@ -188,25 +188,27 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   }
 
   public MainPartitionIngestionStatus getTopicPartitionIngestionStatus(String topicName, int partitionId) {
-    if (topicIngestionStatusMap.containsKey(topicName)) {
-      return topicIngestionStatusMap.get(topicName).getPartitionIngestionStatus(partitionId);
+    MainTopicIngestionStatus topicIngestionStatus = topicIngestionStatusMap.get(topicName);
+    if (topicIngestionStatus != null) {
+      return topicIngestionStatus.getPartitionIngestionStatus(partitionId);
     }
     return MainPartitionIngestionStatus.NOT_EXIST;
   }
 
   public void setVersionPartitionToLocalIngestion(String topicName, int partitionId) {
-    topicIngestionStatusMap.putIfAbsent(topicName, new MainTopicIngestionStatus(topicName));
-    topicIngestionStatusMap.get(topicName).setPartitionIngestionStatusToLocalIngestion(partitionId);
+    topicIngestionStatusMap.computeIfAbsent(topicName, x -> new MainTopicIngestionStatus(topicName))
+        .setPartitionIngestionStatusToLocalIngestion(partitionId);
   }
 
   public void setVersionPartitionToIsolatedIngestion(String topicName, int partitionId) {
-    topicIngestionStatusMap.putIfAbsent(topicName, new MainTopicIngestionStatus(topicName));
-    topicIngestionStatusMap.get(topicName).setPartitionIngestionStatusToIsolatedIngestion(partitionId);
+    topicIngestionStatusMap.computeIfAbsent(topicName, x -> new MainTopicIngestionStatus(topicName))
+        .setPartitionIngestionStatusToIsolatedIngestion(partitionId);
   }
 
   public void cleanupTopicPartitionState(String topicName, int partitionId) {
-    if (topicIngestionStatusMap.containsKey(topicName)) {
-      topicIngestionStatusMap.get(topicName).removePartitionIngestionStatus(partitionId);
+    MainTopicIngestionStatus topicIngestionStatus = topicIngestionStatusMap.get(topicName);
+    if (topicIngestionStatus != null) {
+      topicIngestionStatus.removePartitionIngestionStatus(partitionId);
     }
   }
 
@@ -215,8 +217,9 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   }
 
   public long getTopicPartitionCount(String topicName) {
-    if (topicIngestionStatusMap.containsKey(topicName)) {
-      return topicIngestionStatusMap.get(topicName).getIngestingPartitionCount();
+    MainTopicIngestionStatus topicIngestionStatus = topicIngestionStatusMap.get(topicName);
+    if (topicIngestionStatus != null) {
+      return topicIngestionStatus.getIngestingPartitionCount();
     }
     return 0;
   }
