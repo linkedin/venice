@@ -627,19 +627,14 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       final Optional<ClientStats> streamingStats,
       final InternalAvroStoreClient computeStoreClient,
       final long preRequestTimeInNS) {
+    AbstractAvroComputeRequestBuilder<K> builder =
+        new AvroComputeRequestBuilderV3<K>(computeStoreClient, getLatestValueSchema()).setStats(stats, streamingStats)
+            .setValidateProjectionFields(clientConfig.isProjectionFieldValidationEnabled());
     if (reuseObjectsForSerialization) {
       AvroSerializer.ReusableObjects reusableObjects = AvroSerializer.REUSE.get();
-      return new AvroComputeRequestBuilderV3<>(
-          getLatestValueSchema(),
-          computeStoreClient,
-          stats,
-          streamingStats,
-          true,
-          reusableObjects.getBinaryEncoder(),
-          reusableObjects.getByteArrayOutputStream());
-    } else {
-      return new AvroComputeRequestBuilderV3<>(getLatestValueSchema(), computeStoreClient, stats, streamingStats);
+      builder.setReuseObjects(reusableObjects.getBinaryEncoder(), reusableObjects.getByteArrayOutputStream());
     }
+    return builder;
   }
 
   private byte[] serializeComputeRequest(List<K> keyList, byte[] serializedComputeRequest) {

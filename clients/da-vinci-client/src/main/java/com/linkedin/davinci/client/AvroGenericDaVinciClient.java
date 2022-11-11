@@ -355,7 +355,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       Optional<ClientStats> stats,
       Optional<ClientStats> streamingStats,
       final long preRequestTimeInNS) {
-    return new AvroComputeRequestBuilderV4<>(getLatestValueSchema(), this, stats, streamingStats);
+    return new AvroComputeRequestBuilderV4<K>(this, getLatestValueSchema()).setStats(stats, streamingStats);
   }
 
   private Schema getComputeResultSchema(ComputeRequestWrapper computeRequestWrapper) {

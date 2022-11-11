@@ -48,6 +48,7 @@ public class ClientConfig<T extends SpecificRecord> {
   private boolean reuseObjectsForSerialization = false;
   private boolean forceClusterDiscoveryAtStartTime = false;
   private boolean supersetSchemaEnabled = true;
+  private boolean projectionFieldValidation = true;
 
   // Security settings
   private boolean isHttps = false;
@@ -392,6 +393,15 @@ public class ClientConfig<T extends SpecificRecord> {
 
   public ClientConfig<T> setSupersetSchemaEnabled(boolean supersetSchemaEnabled) {
     this.supersetSchemaEnabled = supersetSchemaEnabled;
+    return this;
+  }
+
+  public boolean isProjectionFieldValidationEnabled() {
+    return projectionFieldValidation;
+  }
+
+  public ClientConfig<T> setProjectionFieldValidationEnabled(boolean projectionFieldValidation) {
+    this.projectionFieldValidation = projectionFieldValidation;
     return this;
   }
 

@@ -3,7 +3,6 @@ package com.linkedin.venice.client.store;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.client.schema.RouterBackedSchemaReader;
-import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.utils.StoreClientTestUtils;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import com.linkedin.venice.integration.utils.D2TestUtils;
@@ -29,7 +28,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -202,13 +200,8 @@ public class StoreClientPerfTest {
   }
 
   private static class TestComputeRequestBuilder extends AvroComputeRequestBuilderV3<String> {
-    public TestComputeRequestBuilder(
-        Schema latestValueSchema,
-        InternalAvroStoreClient storeClient,
-        Optional<ClientStats> stats,
-        Optional<ClientStats> streamingStats,
-        long preRequestTimeInNS) {
-      super(latestValueSchema, storeClient, stats, streamingStats);
+    public TestComputeRequestBuilder(InternalAvroStoreClient storeClient, Schema latestValueSchema) {
+      super(storeClient, latestValueSchema);
     }
 
     public Pair<Schema, String> getResultSchema() {
@@ -230,18 +223,14 @@ public class StoreClientPerfTest {
       Schema valueSchema = new Schema.Parser().parse(valueSchemaStr);
       Set<String> keys = new HashSet<>();
       setupSchemaAndRequest(valueSchemaId, valueSchemaStr);
-      // Construct response
 
+      // Construct response
       RecordSerializer<Object> valueSerializer =
           SerializerDeserializerFactory.getAvroGenericSerializer(Schema.parse(valueSchemaStr));
       List<MultiGetResponseRecordV1> records = new ArrayList<>();
 
-      TestComputeRequestBuilder testComputeRequestBuilder = new TestComputeRequestBuilder(
-          client.getLatestValueSchema(),
-          (InternalAvroStoreClient) client,
-          Optional.empty(),
-          Optional.empty(),
-          0);
+      TestComputeRequestBuilder testComputeRequestBuilder =
+          new TestComputeRequestBuilder((InternalAvroStoreClient) client, client.getLatestValueSchema());
       Collection<String> fieldNames =
           valueSchema.getFields().stream().map(field -> field.name()).collect(Collectors.toList());
       testComputeRequestBuilder.project(fieldNames);
