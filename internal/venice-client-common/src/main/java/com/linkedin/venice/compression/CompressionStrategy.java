@@ -15,7 +15,7 @@ public enum CompressionStrategy implements VeniceEnumValue {
   private final int value;
   private final boolean compressionEnabled;
 
-  private static final CompressionStrategy[] TYPES_ARRAY = EnumUtils.getEnumValuesArray(CompressionStrategy.class);
+  public static final CompressionStrategy[] TYPES_ARRAY = EnumUtils.getEnumValuesArray(CompressionStrategy.class);
 
   CompressionStrategy(int value, boolean compressionEnabled) {
     this.value = value;

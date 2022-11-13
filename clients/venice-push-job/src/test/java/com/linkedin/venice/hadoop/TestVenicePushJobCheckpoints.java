@@ -400,20 +400,13 @@ public class TestVenicePushJobCheckpoints {
         Arrays.asList(
             VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
             VenicePushJob.PushJobCheckpoints.DATASET_CHANGED));
+
+    /** Below case will be changed to (true,true) internally */
+    expectedReportedCheckpoints.put(new Pair(false, true), expectedReportedCheckpoints.get(new Pair(true, true)));
+
     /** Uses {@link ValidateSchemaAndBuildDictMapper} to validate schema and build dictionary which will checkpoint DATASET_CHANGED before NEW_VERSION_CREATED */
-    expectedReportedCheckpoints.put(
-        new Pair(true, false),
-        Arrays.asList(
-            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
-            VenicePushJob.PushJobCheckpoints.DATASET_CHANGED));
-    /** {@link InputDataInfoProvider#validateInputAndGetInfo} in VPJ driver validates schema and build dictionary which will checkpoint NEW_VERSION_CREATED before DATASET_CHANGED.
-     * DATASET_CHANGED will only be checked in the MR job to process data after creating the new version */
-    expectedReportedCheckpoints.put(
-        new Pair(false, true),
-        Arrays.asList(
-            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
-            VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
-            VenicePushJob.PushJobCheckpoints.DATASET_CHANGED));
+    expectedReportedCheckpoints.put(new Pair(true, false), expectedReportedCheckpoints.get(new Pair(true, true)));
+
     /** {@link InputDataInfoProvider#validateInputAndGetInfo} in VPJ driver validates schema and build dictionary which will checkpoint NEW_VERSION_CREATED before DATASET_CHANGED.
      * DATASET_CHANGED will only be checked in the MR job to process data after creating the new version */
     expectedReportedCheckpoints.put(

@@ -13,6 +13,8 @@ public class MRJobCounterHelper {
   private static final String COUNTER_TOTAL_KEY_SIZE = "total key size";
   private static final String COUNTER_TOTAL_UNCOMPRESSED_VALUE_SIZE = "total uncompressed value size";
   private static final String COUNTER_TOTAL_VALUE_SIZE = "total value size";
+  private static final String COUNTER_TOTAL_GZIP_COMPRESSED_VALUE_SIZE = "total GZIP compressed value size";
+  private static final String COUNTER_TOTAL_ZSTD_COMPRESSED_VALUE_SIZE = "total ZSTD compressed value size";
 
   private static final String COUNTER_GROUP_KAFKA = "Kafka";
   private static final String COUNTER_OUTPUT_RECORDS = "Output Records";
@@ -53,6 +55,15 @@ public class MRJobCounterHelper {
   static final GroupAndCounterNames TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME =
       new GroupAndCounterNames(COUNTER_GROUP_QUOTA, COUNTER_TOTAL_VALUE_SIZE);
 
+  static final GroupAndCounterNames TOTAL_UNCOMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME =
+      new GroupAndCounterNames(COUNTER_GROUP_QUOTA, COUNTER_TOTAL_UNCOMPRESSED_VALUE_SIZE);
+
+  static final GroupAndCounterNames TOTAL_GZIP_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME =
+      new GroupAndCounterNames(COUNTER_GROUP_QUOTA, COUNTER_TOTAL_GZIP_COMPRESSED_VALUE_SIZE);
+
+  static final GroupAndCounterNames TOTAL_ZSTD_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME =
+      new GroupAndCounterNames(COUNTER_GROUP_QUOTA, COUNTER_TOTAL_ZSTD_COMPRESSED_VALUE_SIZE);
+
   static final GroupAndCounterNames DUP_KEY_WITH_IDENTICAL_VALUE_GROUP_COUNTER_NAME =
       new GroupAndCounterNames(COUNTER_GROUP_DATA_QUALITY, DUPLICATE_KEY_WITH_IDENTICAL_VALUE);
 
@@ -67,9 +78,6 @@ public class MRJobCounterHelper {
 
   static final GroupAndCounterNames EMPTY_RECORD_COUNTER_NAME =
       new GroupAndCounterNames(COUNTER_GROUP_KAFKA, EMPTY_RECORD);
-
-  static final GroupAndCounterNames TOTAL_UNCOMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME =
-      new GroupAndCounterNames(COUNTER_GROUP_QUOTA, COUNTER_TOTAL_UNCOMPRESSED_VALUE_SIZE);
 
   static final GroupAndCounterNames REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME =
       new GroupAndCounterNames(MR_JOB_STATUS, REDUCER_JOB_CLOSED_COUNT);
@@ -132,6 +140,18 @@ public class MRJobCounterHelper {
     incrAmountWithGroupCounterName(reporter, TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, amount);
   }
 
+  static void incrTotalUncompressedValueSize(Reporter reporter, long amount) {
+    incrAmountWithGroupCounterName(reporter, TOTAL_UNCOMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME, amount);
+  }
+
+  static void incrTotalGzipCompressedValueSize(Reporter reporter, long amount) {
+    incrAmountWithGroupCounterName(reporter, TOTAL_GZIP_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME, amount);
+  }
+
+  static void incrTotalZstdCompressedValueSize(Reporter reporter, long amount) {
+    incrAmountWithGroupCounterName(reporter, TOTAL_ZSTD_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME, amount);
+  }
+
   static void incrDuplicateKeyWithIdenticalValue(Reporter reporter, long amount) {
     incrAmountWithGroupCounterName(reporter, DUP_KEY_WITH_IDENTICAL_VALUE_GROUP_COUNTER_NAME, amount);
   }
@@ -146,10 +166,6 @@ public class MRJobCounterHelper {
 
   static void incrEmptyRecordCount(Reporter reporter, long amount) {
     incrAmountWithGroupCounterName(reporter, EMPTY_RECORD_COUNTER_NAME, amount);
-  }
-
-  static void incrTotalUncompressedValueSize(Reporter reporter, long amount) {
-    incrAmountWithGroupCounterName(reporter, TOTAL_UNCOMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME, amount);
   }
 
   public static void incrTotalPutOrDeleteRecordCount(Reporter reporter, long amount) {
@@ -214,6 +230,14 @@ public class MRJobCounterHelper {
 
   static long getTotalUncompressedValueSize(Counters counters) {
     return getCountFromCounters(counters, TOTAL_UNCOMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME);
+  }
+
+  static long getTotalGzipCompressedValueSize(Counters counters) {
+    return getCountFromCounters(counters, TOTAL_GZIP_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME);
+  }
+
+  static long getTotalZstdCompressedValueSize(Counters counters) {
+    return getCountFromCounters(counters, TOTAL_ZSTD_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME);
   }
 
   static long getTotalPutOrDeleteRecordsCount(Counters counters) {

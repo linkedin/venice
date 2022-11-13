@@ -234,8 +234,11 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
     return vsonSchema;
   }
 
-  protected Pair<VsonSchema, VsonSchema> getVsonFileHeader(FileSystem fs, Path path, boolean buildDictionary) {
-    Map<String, String> fileMetadata = getMetadataFromSequenceFile(fs, path, buildDictionary);
+  protected Pair<VsonSchema, VsonSchema> getVsonFileHeader(
+      FileSystem fs,
+      Path path,
+      boolean isZstdDictCreationRequired) {
+    Map<String, String> fileMetadata = getMetadataFromSequenceFile(fs, path, isZstdDictCreationRequired);
     if (!fileMetadata.containsKey(FILE_KEY_SCHEMA) || !fileMetadata.containsKey(FILE_VALUE_SCHEMA)) {
       throw new VeniceException("Can't find Vson schema from file: " + path.getName());
     }
@@ -274,21 +277,24 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
     }
   }
 
-  private Map<String, String> getMetadataFromSequenceFile(FileSystem fs, Path path, boolean buildDictionary) {
+  private Map<String, String> getMetadataFromSequenceFile(
+      FileSystem fs,
+      Path path,
+      boolean isZstdDictCreationRequired) {
     LOGGER.debug("path:{}", path.toUri().getPath());
     VeniceVsonRecordReader recordReader = getVeniceVsonRecordReader(fs, path);
 
-    if (!pushJobSetting.isIncrementalPush) {
-      if (!pushJobSetting.useMapperToBuildDict) {
-        /** If dictionary compression is enabled for version, read the records to get training samples */
-        if (buildDictionary && storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
-          loadZstdTrainingSamples(recordReader);
-        }
-      } else {
-        /** If dictionary compression is enabled for version or compression metric collection is enabled,
-         * read the records to get training samples
-         */
-        if (buildDictionary) {
+    if (isZstdDictCreationRequired) {
+      if (!pushJobSetting.isIncrementalPush) {
+        if (!pushJobSetting.useMapperToBuildDict) {
+          /** If dictionary compression is enabled for version, read the records to get training samples */
+          if (storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
+            loadZstdTrainingSamples(recordReader);
+          }
+        } else {
+          /** If dictionary compression is enabled for version or compression metric collection is enabled,
+           * read the records to get training samples
+           */
           loadZstdTrainingSamples(recordReader);
         }
       }
@@ -405,21 +411,21 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
     return avroSchema;
   }
 
-  protected Pair<Schema, Schema> getAvroFileHeader(FileSystem fs, Path path, boolean buildDictionary) {
+  protected Pair<Schema, Schema> getAvroFileHeader(FileSystem fs, Path path, boolean isZstdDictCreationRequired) {
     LOGGER.debug("path:{}", path.toUri().getPath());
     VeniceAvroRecordReader recordReader = getVeniceAvroRecordReader(fs, path);
 
-    if (!pushJobSetting.isIncrementalPush) {
-      if (!pushJobSetting.useMapperToBuildDict) {
-        /** If dictionary compression is enabled for version, read the records to get training samples */
-        if (buildDictionary && storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
-          loadZstdTrainingSamples(recordReader);
-        }
-      } else {
-        /** If dictionary compression is enabled for version or compression metric collection is enabled,
-         * read the records to get training samples
-         */
-        if (buildDictionary) {
+    if (isZstdDictCreationRequired) {
+      if (!pushJobSetting.isIncrementalPush) {
+        if (!pushJobSetting.useMapperToBuildDict) {
+          /** If dictionary compression is enabled for version, read the records to get training samples */
+          if (storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
+            loadZstdTrainingSamples(recordReader);
+          }
+        } else {
+          /** If dictionary compression is enabled for version or compression metric collection is enabled,
+           * read the records to get training samples
+           */
           loadZstdTrainingSamples(recordReader);
         }
       }

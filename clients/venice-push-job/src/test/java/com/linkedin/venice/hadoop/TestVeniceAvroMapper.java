@@ -1,7 +1,10 @@
 package com.linkedin.venice.hadoop;
 
+import static com.linkedin.venice.hadoop.VenicePushJob.COMPRESSION_METRIC_COLLECTION_ENABLED;
 import static com.linkedin.venice.hadoop.VenicePushJob.STORAGE_ENGINE_OVERHEAD_RATIO;
 import static com.linkedin.venice.hadoop.VenicePushJob.STORAGE_QUOTA_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.ZSTD_DICTIONARY_CREATION_REQUIRED;
+import static com.linkedin.venice.hadoop.VenicePushJob.ZSTD_DICTIONARY_CREATION_SUCCESS;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.anyString;
@@ -44,7 +47,8 @@ public class TestVeniceAvroMapper extends AbstractTestVeniceMapper<VeniceAvroMap
     try {
       mapper.configure(job);
     } catch (Exception e) {
-      Assert.fail("VeniceAvroMapper#configure should not throw any exception when all the required props are there");
+      Assert.fail(
+          "VeniceAvroMapper#configure should not throw any exception when all the required props are there\n" + e);
     }
   }
 
@@ -163,27 +167,90 @@ public class TestVeniceAvroMapper extends AbstractTestVeniceMapper<VeniceAvroMap
     mapper.map(wrapper, NullWritable.get(), output, mockReporter);
 
     verify(mockReporter, times(1)).incrCounter(
+        eq(MRJobCounterHelper.TOTAL_KEY_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+        eq(MRJobCounterHelper.TOTAL_KEY_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+        eq(16L));
+
+    verify(mockReporter, times(1)).incrCounter(
         eq(MRJobCounterHelper.TOTAL_UNCOMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
         eq(MRJobCounterHelper.TOTAL_UNCOMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
         eq(18L));
+
+    // No compression: so same as uncompressed value
+    verify(mockReporter, times(1)).incrCounter(
+        eq(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+        eq(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+        eq(18L));
+
+    // compressionMetricCollectionEnabled not enabled, so the below 2 should not be incremented
+    verify(mockReporter, never()).incrCounter(
+        eq(MRJobCounterHelper.TOTAL_GZIP_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+        eq(MRJobCounterHelper.TOTAL_GZIP_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+        anyLong());
+
+    verify(mockReporter, never()).incrCounter(
+        eq(MRJobCounterHelper.TOTAL_ZSTD_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+        eq(MRJobCounterHelper.TOTAL_ZSTD_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+        anyLong());
 
     // Not write ACL failure
     verify(mockReporter, never()).incrCounter(
         eq(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME.getGroupName()),
         eq(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME.getCounterName()),
         anyLong());
-    // Expect reporter to record these counters due to no early termination
-    verify(mockReporter, times(1)).incrCounter(
-        eq(MRJobCounterHelper.TOTAL_KEY_SIZE_GROUP_COUNTER_NAME.getGroupName()),
-        eq(MRJobCounterHelper.TOTAL_KEY_SIZE_GROUP_COUNTER_NAME.getCounterName()),
-        anyLong());
-    verify(mockReporter, times(1)).incrCounter(
-        eq(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
-        eq(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
-        anyLong());
+
     // Expect the output collect to collect output due to no early termination
     verify(output, times(getNumberOfCollectorInvocationForFirstMapInvocation(numReducers, taskId)))
         .collect(any(), any());
+  }
+
+  @Test
+  public void testMapWithCompressionMetricCollectionEnabled() throws IOException {
+    final String keyFieldValue = "key_field_value";
+    final String valueFieldValue = "value_field_value";
+    AvroWrapper<IndexedRecord> wrapper = getAvroWrapper(keyFieldValue, valueFieldValue);
+    OutputCollector<BytesWritable, BytesWritable> output = mock(OutputCollector.class);
+    Reporter mockReporter = createMockReporterWithCount(1L);
+
+    // No need of reducers to test these metrics
+    int numReducers = 0;
+    int taskId = 0;
+
+    VeniceAvroMapper mapper = getMapper(numReducers, taskId, mapperJobConfig -> {
+      mapperJobConfig.set(COMPRESSION_METRIC_COLLECTION_ENABLED, "true");
+      mapperJobConfig.set(ZSTD_DICTIONARY_CREATION_REQUIRED, "true");
+      // TODO need to figure out how to mock a real object's method or a static method to test this
+      mapperJobConfig.set(ZSTD_DICTIONARY_CREATION_SUCCESS, "false");
+    });
+    mapper.map(wrapper, NullWritable.get(), output, mockReporter);
+
+    verify(mockReporter, times(1)).incrCounter(
+        eq(MRJobCounterHelper.TOTAL_KEY_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+        eq(MRJobCounterHelper.TOTAL_KEY_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+        eq(16L));
+
+    verify(mockReporter, times(1)).incrCounter(
+        eq(MRJobCounterHelper.TOTAL_UNCOMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+        eq(MRJobCounterHelper.TOTAL_UNCOMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+        eq(18L));
+
+    // No compression: so same as uncompressed value
+    verify(mockReporter, times(1)).incrCounter(
+        eq(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+        eq(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+        eq(18L));
+
+    // compressionMetricCollectionEnabled is enabled, but Zstd dict is not mocked, so gzip
+    // will be incremented, but not zstd
+    verify(mockReporter, times(1)).incrCounter(
+        eq(MRJobCounterHelper.TOTAL_GZIP_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+        eq(MRJobCounterHelper.TOTAL_GZIP_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+        eq(34L));
+
+    verify(mockReporter, never()).incrCounter(
+        eq(MRJobCounterHelper.TOTAL_ZSTD_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+        eq(MRJobCounterHelper.TOTAL_ZSTD_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+        anyLong());
   }
 
   @Test(expectedExceptions = UnsupportedOperationException.class)
