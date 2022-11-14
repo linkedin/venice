@@ -15,7 +15,6 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.ComputeGenericRecord;
-import com.linkedin.venice.client.store.ComputeRequestBuilder;
 import com.linkedin.venice.client.store.StatTrackingStoreClient;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
@@ -282,26 +281,26 @@ public class TestStreaming {
         AtomicInteger computeResultCnt = new AtomicInteger(0);
         Map<String, ComputeGenericRecord> finalComputeResultMap = new VeniceConcurrentHashMap<>();
         CountDownLatch computeLatch = new CountDownLatch(1);
-        ComputeRequestBuilder<String> computeRequestBuilder =
-            trackingStoreClient.compute().project("int_field", "nullable_string_field");
-        computeRequestBuilder.streamingExecute(keySet, new StreamingCallback<String, ComputeGenericRecord>() {
-          @Override
-          public void onRecordReceived(String key, ComputeGenericRecord value) {
-            computeResultCnt.incrementAndGet();
-            if (value != null) {
-              finalComputeResultMap.put(key, value);
-            }
-          }
+        trackingStoreClient.compute()
+            .project("int_field", "nullable_string_field")
+            .streamingExecute(keySet, new StreamingCallback<String, ComputeGenericRecord>() {
+              @Override
+              public void onRecordReceived(String key, ComputeGenericRecord value) {
+                computeResultCnt.incrementAndGet();
+                if (value != null) {
+                  finalComputeResultMap.put(key, value);
+                }
+              }
 
-          @Override
-          public void onCompletion(Optional<Exception> exception) {
-            computeLatch.countDown();
-            if (exception.isPresent()) {
-              LOGGER.info("Compute onCompletion invoked with Venice Exception", exception.get());
-              fail("Exception: " + exception.get() + " is not expected");
-            }
-          }
-        });
+              @Override
+              public void onCompletion(Optional<Exception> exception) {
+                computeLatch.countDown();
+                if (exception.isPresent()) {
+                  LOGGER.info("Compute onCompletion invoked with Venice Exception", exception.get());
+                  fail("Exception: " + exception.get() + " is not expected");
+                }
+              }
+            });
         computeLatch.await();
         Assert.assertEquals(computeResultCnt.get(), MAX_KEY_LIMIT);
         Assert.assertEquals(finalComputeResultMap.size(), MAX_KEY_LIMIT - NON_EXISTING_KEY_NUM); // Without non-existing
@@ -309,7 +308,7 @@ public class TestStreaming {
         verifyComputeResult(finalComputeResultMap);
         // Test compute with streaming implementation
         CompletableFuture<VeniceResponseMap<String, ComputeGenericRecord>> computeFuture =
-            computeRequestBuilder.streamingExecute(keySet);
+            trackingStoreClient.compute().project("int_field", "nullable_string_field").streamingExecute(keySet);
         Map<String, ComputeGenericRecord> computeResultMap = computeFuture.get();
         Assert.assertEquals(computeResultMap.size(), MAX_KEY_LIMIT - NON_EXISTING_KEY_NUM);
         verifyComputeResult(computeResultMap);

@@ -22,7 +22,6 @@ import com.linkedin.davinci.client.StorageClass;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.ComputeGenericRecord;
-import com.linkedin.venice.client.store.ComputeRequestBuilder;
 import com.linkedin.venice.client.store.predicate.Predicate;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
@@ -570,22 +569,23 @@ public class DaVinciComputeTest {
       Map<String, ComputeGenericRecord> finalComputeResultMap = new VeniceConcurrentHashMap<>();
       CountDownLatch computeLatch = new CountDownLatch(1);
 
-      ComputeRequestBuilder<String> computeRequestBuilder = client.compute().project("int_field");
-      computeRequestBuilder.streamingExecute(keySet, new StreamingCallback<String, ComputeGenericRecord>() {
-        @Override
-        public void onRecordReceived(String key, ComputeGenericRecord value) {
-          computeResultCnt.incrementAndGet();
-          if (value != null) {
-            finalComputeResultMap.put(key, value);
-          }
-        }
+      client.compute()
+          .project("int_field")
+          .streamingExecute(keySet, new StreamingCallback<String, ComputeGenericRecord>() {
+            @Override
+            public void onRecordReceived(String key, ComputeGenericRecord value) {
+              computeResultCnt.incrementAndGet();
+              if (value != null) {
+                finalComputeResultMap.put(key, value);
+              }
+            }
 
-        @Override
-        public void onCompletion(Optional<Exception> exception) {
-          computeLatch.countDown();
-          exception.ifPresent(e -> Assert.fail("Exception: " + e + " is not expected"));
-        }
-      });
+            @Override
+            public void onCompletion(Optional<Exception> exception) {
+              computeLatch.countDown();
+              exception.ifPresent(e -> Assert.fail("Exception: " + e + " is not expected"));
+            }
+          });
       computeLatch.await();
 
       Assert.assertEquals(computeResultCnt.get(), MAX_KEY_LIMIT);
@@ -595,7 +595,7 @@ public class DaVinciComputeTest {
 
       // Test compute with streaming execute using default callback
       CompletableFuture<VeniceResponseMap<String, ComputeGenericRecord>> computeFuture =
-          computeRequestBuilder.streamingExecute(keySet);
+          client.compute().project("int_field").streamingExecute(keySet);
       Map<String, ComputeGenericRecord> computeResultMap = computeFuture.get();
       Assert.assertEquals(computeResultMap.size(), MAX_KEY_LIMIT - NON_EXISTING_KEY_NUM);
       verifyStreamingComputeResult(computeResultMap);
