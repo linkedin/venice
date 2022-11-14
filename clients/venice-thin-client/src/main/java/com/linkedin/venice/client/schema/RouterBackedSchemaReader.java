@@ -2,7 +2,6 @@ package com.linkedin.venice.client.schema;
 
 import static com.linkedin.venice.schema.AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation;
 
-import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
@@ -25,6 +24,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import org.apache.avro.Schema;
 import org.apache.commons.io.IOUtils;
@@ -35,40 +35,30 @@ import org.apache.logging.log4j.Logger;
 public class RouterBackedSchemaReader implements SchemaReader {
   public static final String TYPE_KEY_SCHEMA = "key_schema";
   public static final String TYPE_VALUE_SCHEMA = "value_schema";
-  private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
-
-  // Ignore the unknown field while parsing the json response.
-  static {
-    OBJECT_MAPPER.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-  }
 
   private static final Logger LOGGER = LogManager.getLogger(RouterBackedSchemaReader.class);
+  private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
   private final Optional<Schema> readerSchema;
   private Schema keySchema;
-  private Map<Integer, Schema> valueSchemaMap = new VeniceConcurrentHashMap<>();
-  private Map<Schema, Integer> valueSchemaMapR = new VeniceConcurrentHashMap<>();
-  private AtomicReference<SchemaEntry> latestValueSchemaEntry = new AtomicReference<>();
+  private final Map<Integer, Schema> valueSchemaMap = new VeniceConcurrentHashMap<>();
+  private final Map<Schema, Integer> valueSchemaMapR = new VeniceConcurrentHashMap<>();
+  private final AtomicReference<SchemaEntry> latestValueSchemaEntry = new AtomicReference<>();
   private final String storeName;
-  private final boolean supersetSchemaEnabled;
-  private AbstractAvroStoreClient storeClient;
+  private final AbstractAvroStoreClient storeClient;
+  private final Predicate<Schema> preferredSchemaFilter;
 
   RouterBackedSchemaReader(Supplier<AbstractAvroStoreClient> clientSupplier) throws VeniceClientException {
-    this(clientSupplier, true);
-  }
-
-  public RouterBackedSchemaReader(Supplier<AbstractAvroStoreClient> clientSupplier, boolean supersetSchemaEnabled)
-      throws VeniceClientException {
-    this(clientSupplier, Optional.empty(), supersetSchemaEnabled);
+    this(clientSupplier, Optional.empty(), Optional.empty());
   }
 
   public RouterBackedSchemaReader(
       Supplier<AbstractAvroStoreClient> clientSupplier,
       Optional<Schema> readerSchema,
-      boolean supersetSchemaEnabled) {
+      Optional<Predicate<Schema>> preferredSchemaFilter) {
     this.storeClient = clientSupplier.get();
     this.storeName = this.storeClient.getStoreName();
     this.readerSchema = readerSchema;
-    this.supersetSchemaEnabled = supersetSchemaEnabled;
+    this.preferredSchemaFilter = preferredSchemaFilter.orElse(schema -> true);
     readerSchema.ifPresent(AvroSchemaUtils::validateAvroSchemaStr);
   }
 
@@ -232,24 +222,34 @@ public class RouterBackedSchemaReader implements SchemaReader {
       }
 
       int latestSchemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
+      int latestPreferredSchemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
       for (MultiSchemaResponse.Schema schema: schemaResponse.getSchemas()) {
-        if ((latestSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID || latestSchemaId < schema.getId())
-            && schema.getId() != schemaResponse.getSuperSetSchemaId()) {
-          latestSchemaId = schema.getId();
-        }
+        int schemaId = schema.getId();
         String schemaStr = schema.getSchemaStr();
         Schema writerSchema = preemptiveSchemaVerification(
             // Use the "LOOSE" mode here since we might have registered schemas that do not pass the STRICT validation
             // and that is allowed for now
             parseSchemaFromJSONLooseValidation(schemaStr),
             schemaStr,
-            schema.getId());
-        valueSchemaMap.put(schema.getId(), writerSchema);
-        valueSchemaMapR.put(writerSchema, schema.getId());
+            schemaId);
+        valueSchemaMap.put(schemaId, writerSchema);
+        valueSchemaMapR.put(writerSchema, schemaId);
+        if (latestSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID || latestSchemaId < schemaId) {
+          latestSchemaId = schemaId;
+        }
+        if (preferredSchemaFilter.test(writerSchema)
+            && (latestPreferredSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID || latestPreferredSchemaId < schemaId)) {
+          latestPreferredSchemaId = schemaId;
+        }
       }
 
       synchronized (this) {
-        if (supersetSchemaEnabled && schemaResponse.getSuperSetSchemaId() != SchemaData.INVALID_VALUE_SCHEMA_ID) {
+        if (latestPreferredSchemaId != SchemaData.INVALID_VALUE_SCHEMA_ID) {
+          latestSchemaId = latestPreferredSchemaId;
+          if (latestValueSchemaEntry.get() == null || latestValueSchemaEntry.get().getId() < latestSchemaId) {
+            latestValueSchemaEntry.set(new SchemaEntry(latestSchemaId, valueSchemaMap.get(latestSchemaId)));
+          }
+        } else if (schemaResponse.getSuperSetSchemaId() != SchemaData.INVALID_VALUE_SCHEMA_ID) {
           latestSchemaId = schemaResponse.getSuperSetSchemaId();
           latestValueSchemaEntry.set(new SchemaEntry(latestSchemaId, valueSchemaMap.get(latestSchemaId)));
         } else if (latestSchemaId != SchemaData.INVALID_VALUE_SCHEMA_ID) {

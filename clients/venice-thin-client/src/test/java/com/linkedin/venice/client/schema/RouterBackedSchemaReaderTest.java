@@ -9,6 +9,7 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.io.IOException;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import org.apache.avro.Schema;
@@ -18,7 +19,7 @@ import org.testng.annotations.Test;
 
 
 public class RouterBackedSchemaReaderTest {
-  private static ObjectMapper mapper = ObjectMapperFactory.getInstance();
+  private static final ObjectMapper mapper = ObjectMapperFactory.getInstance();
   private final int TIMEOUT = 3;
 
   @Test
@@ -246,7 +247,10 @@ public class RouterBackedSchemaReaderTest {
         .when(clientMock)
         .getRaw("value_schema/" + storeName);
 
-    try (SchemaReader schemaReader = new RouterBackedSchemaReader(() -> clientMock, true)) {
+    try (SchemaReader schemaReader = new RouterBackedSchemaReader(
+        () -> clientMock,
+        Optional.empty(),
+        Optional.of(schema -> schema.toString().equals(valueSchemaStr1)))) {
       Assert.assertEquals(schemaReader.getValueSchema(valueSchemaId1).toString(), valueSchemaStr1);
       Assert.assertEquals(schemaReader.getValueSchema(valueSchemaId2).toString(), valueSchemaStr2);
       Assert.assertEquals(schemaReader.getLatestValueSchema().toString(), valueSchemaStr1);
@@ -254,7 +258,8 @@ public class RouterBackedSchemaReaderTest {
       Mockito.verify(clientMock, Mockito.timeout(TIMEOUT).times(1)).getRaw(Mockito.anyString());
     }
 
-    try (SchemaReader schemaReader = new RouterBackedSchemaReader(() -> clientMock, false)) {
+    try (SchemaReader schemaReader =
+        new RouterBackedSchemaReader(() -> clientMock, Optional.empty(), Optional.empty())) {
       Assert.assertEquals(schemaReader.getValueSchema(valueSchemaId1).toString(), valueSchemaStr1);
       Assert.assertEquals(schemaReader.getValueSchema(valueSchemaId2).toString(), valueSchemaStr2);
       Assert.assertEquals(schemaReader.getLatestValueSchema().toString(), valueSchemaStr2);
