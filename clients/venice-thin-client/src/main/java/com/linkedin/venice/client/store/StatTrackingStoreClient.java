@@ -25,7 +25,6 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryEncoder;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -235,7 +234,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
       ComputeRequestWrapper computeRequestWrapper,
       Set<K> keys,
       Schema resultSchema,
-      StreamingCallback<K, GenericRecord> callback,
+      StreamingCallback<K, ComputeGenericRecord> callback,
       final long preRequestTimeInNS) throws VeniceClientException {
     computeStreamingStats.recordRequestKeyCount(keys.size());
     super.compute(
@@ -251,7 +250,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
       ComputeRequestWrapper computeRequestWrapper,
       Set<K> keys,
       Schema resultSchema,
-      StreamingCallback<K, GenericRecord> callback,
+      StreamingCallback<K, ComputeGenericRecord> callback,
       final long preRequestTimeInNS,
       BinaryEncoder reusedEncoder,
       ByteArrayOutputStream reusedOutputStream) throws VeniceClientException {
