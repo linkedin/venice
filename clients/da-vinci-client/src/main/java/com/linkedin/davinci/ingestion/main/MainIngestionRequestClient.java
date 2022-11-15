@@ -102,20 +102,30 @@ public class MainIngestionRequestClient implements Closeable {
     return forkedIngestionProcess;
   }
 
-  public void startConsumption(String topicName, int partitionId) {
+  public boolean startConsumption(String topicName, int partitionId) {
     IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
     ingestionTaskCommand.commandType = START_CONSUMPTION.getValue();
     ingestionTaskCommand.topicName = topicName;
     ingestionTaskCommand.partitionId = partitionId;
-    sendIngestionCommandWithRetry(ingestionTaskCommand, topicName, Optional.of(partitionId), REQUEST_MAX_ATTEMPT, true);
+    return sendIngestionCommandWithRetry(
+        ingestionTaskCommand,
+        topicName,
+        Optional.of(partitionId),
+        REQUEST_MAX_ATTEMPT,
+        true);
   }
 
-  public void stopConsumption(String topicName, int partitionId) {
+  public boolean stopConsumption(String topicName, int partitionId) {
     IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
     ingestionTaskCommand.commandType = IngestionCommandType.STOP_CONSUMPTION.getValue();
     ingestionTaskCommand.topicName = topicName;
     ingestionTaskCommand.partitionId = partitionId;
-    sendIngestionCommandWithRetry(ingestionTaskCommand, topicName, Optional.of(partitionId), REQUEST_MAX_ATTEMPT, true);
+    return sendIngestionCommandWithRetry(
+        ingestionTaskCommand,
+        topicName,
+        Optional.of(partitionId),
+        REQUEST_MAX_ATTEMPT,
+        true);
   }
 
   public void killConsumptionTask(String topicName) {
@@ -141,12 +151,12 @@ public class MainIngestionRequestClient implements Closeable {
     sendIngestionCommandWithRetry(ingestionTaskCommand, topicName, Optional.empty(), REQUEST_MAX_ATTEMPT, true);
   }
 
-  public void unsubscribeTopicPartition(String topicName, int partitionId) {
+  public boolean unsubscribeTopicPartition(String topicName, int partitionId) {
     IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
     ingestionTaskCommand.commandType = IngestionCommandType.REMOVE_PARTITION.getValue();
     ingestionTaskCommand.topicName = topicName;
     ingestionTaskCommand.partitionId = partitionId;
-    sendIngestionCommandWithRetry(ingestionTaskCommand, topicName, Optional.empty(), REQUEST_MAX_ATTEMPT, true);
+    return sendIngestionCommandWithRetry(ingestionTaskCommand, topicName, Optional.empty(), REQUEST_MAX_ATTEMPT, true);
   }
 
   public boolean promoteToLeader(String topicName, int partition) {

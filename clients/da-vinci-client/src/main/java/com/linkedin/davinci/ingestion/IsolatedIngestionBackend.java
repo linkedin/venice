@@ -21,6 +21,7 @@ import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.Time;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
+import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -46,7 +47,6 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
   private final MainIngestionRequestClient mainIngestionRequestClient;
   private final MainIngestionMonitorService mainIngestionMonitorService;
   private final VeniceConfigLoader configLoader;
-  private final Optional<SSLFactory> sslFactory;
 
   private Process isolatedIngestionServiceProcess;
 
@@ -61,8 +61,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
     int servicePort = configLoader.getVeniceServerConfig().getIngestionServicePort();
     int listenerPort = configLoader.getVeniceServerConfig().getIngestionApplicationPort();
     this.configLoader = configLoader;
-    this.sslFactory = IsolatedIngestionUtils.getSSLFactory(configLoader);
-
+    Optional<SSLFactory> sslFactory = IsolatedIngestionUtils.getSSLFactory(configLoader);
     // Create the ingestion request client.
     mainIngestionRequestClient = new MainIngestionRequestClient(sslFactory, servicePort);
     // Create the forked isolated ingestion process.
@@ -90,28 +89,25 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       VeniceStoreVersionConfig storeConfig,
       int partition,
       Optional<LeaderFollowerStateType> leaderState) {
-    // TODO: Make sure if this is even possible?
-    if (isTopicPartitionHostedInMainProcess(storeConfig.getStoreVersionName(), partition)) {
-      LOGGER.info(
-          "Start consumption of topic: {}, partition: {} in main process.",
-          storeConfig.getStoreVersionName(),
-          partition);
+    String topicName = storeConfig.getStoreVersionName();
+    executeCommandWithRetry(topicName, partition, () -> {
+      mainIngestionMonitorService.setVersionPartitionToIsolatedIngestion(storeConfig.getStoreVersionName(), partition);
+      return mainIngestionRequestClient.startConsumption(storeConfig.getStoreVersionName(), partition);
+    }, () -> {
+      // TODO: I believe this is not needed. Check back.
       mainIngestionMonitorService.setVersionPartitionToLocalIngestion(storeConfig.getStoreVersionName(), partition);
       super.startConsumption(storeConfig, partition, leaderState);
-    } else {
-      LOGGER.info(
-          "Sending consumption request of topic: {}, partition: {} to fork process.",
-          storeConfig.getStoreVersionName(),
-          partition);
-      mainIngestionMonitorService.setVersionPartitionToIsolatedIngestion(storeConfig.getStoreVersionName(), partition);
-      mainIngestionRequestClient.startConsumption(storeConfig.getStoreVersionName(), partition);
-    }
+    });
   }
 
   @Override
   public void stopConsumption(VeniceStoreVersionConfig storeConfig, int partition) {
-    mainIngestionRequestClient.stopConsumption(storeConfig.getStoreVersionName(), partition);
-    super.stopConsumption(storeConfig, partition);
+    String topicName = storeConfig.getStoreVersionName();
+    executeCommandWithRetry(
+        topicName,
+        partition,
+        () -> mainIngestionRequestClient.stopConsumption(storeConfig.getStoreVersionName(), partition),
+        () -> super.stopConsumption(storeConfig, partition));
   }
 
   @Override
@@ -135,15 +131,14 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       int timeoutInSeconds,
       boolean removeEmptyStorageEngine) {
     String topicName = storeConfig.getStoreVersionName();
-    boolean partitionHostedInMainProcess = isTopicPartitionHostedInMainProcess(topicName, partition);
     mainIngestionMonitorService.cleanupTopicPartitionState(topicName, partition);
-    if (partitionHostedInMainProcess) {
+    executeCommandWithRetry(topicName, partition, () -> {
+      LOGGER.info("Dropping partition: {} of topic: {} in forked ingestion process.", partition, topicName);
+      return mainIngestionRequestClient.unsubscribeTopicPartition(topicName, partition);
+    }, () -> {
       LOGGER.info("Dropping partition: {} of topic: {} in main process.", partition, topicName);
       super.dropStoragePartitionGracefully(storeConfig, partition, timeoutInSeconds, removeEmptyStorageEngine);
-    } else {
-      LOGGER.info("Dropping partition: {} of topic: {} in forked ingestion process.", partition, topicName);
-      mainIngestionRequestClient.unsubscribeTopicPartition(topicName, partition);
-    }
+    });
     if (mainIngestionMonitorService.getTopicPartitionCount(topicName) == 0) {
       LOGGER.info("No serving partitions exist for topic: {}, dropping the topic storage.", topicName);
       mainIngestionRequestClient.removeStorageEngine(topicName);
@@ -156,41 +151,12 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       VeniceStoreVersionConfig storeConfig,
       int partition,
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker leaderSessionIdChecker) {
-    boolean messageCompleted = false;
-    while (!messageCompleted) {
-      /**
-       * The reason to add this check is to avoid an edge case that - when a PROMOTE message is sent to isolated
-       * ingestion process, the partition is completed but not reported to ingestion report listener. However,
-       * unsubscribe() might have been kicking in, and delete the partitionConsumptionState before promote/demote
-       * action is processed. This will result in NPE on PCS during action process stage.
-       * In the isolated ingestion process, we add a data structure to capture if unsubscribe command is being added
-       * to this specific topic partition, if so, we should reject the message and wait for a while. Ideally it will
-       * end up reporting completion the ingestion in isolatedIngestionBackend, and then we will add this command
-       * to local queue.
-       */
-      if (isTopicPartitionHostedInMainProcess(storeConfig.getStoreVersionName(), partition)) {
-        super.promoteToLeader(storeConfig, partition, leaderSessionIdChecker);
-        messageCompleted = true;
-      } else {
-        /**
-         * LeaderSessionIdChecker logic for ingestion isolation is included in {@link IsolatedIngestionServer}.
-         * TODO: Separate exception and command rejection for ingestion report in the next RB.
-         */
-        messageCompleted = mainIngestionRequestClient.promoteToLeader(storeConfig.getStoreVersionName(), partition);
-      }
-      if (!messageCompleted) {
-        LOGGER.info(
-            "Leader promotion message rejected by remote ingestion server, will retry in {} ms.",
-            RETRY_WAIT_TIME_IN_MS);
-        try {
-          Thread.sleep(RETRY_WAIT_TIME_IN_MS);
-        } catch (InterruptedException e) {
-          Thread.currentThread().interrupt();
-          LOGGER.info("Retry in leader promotion is interrupted.");
-          break;
-        }
-      }
-    }
+    String topicName = storeConfig.getStoreVersionName();
+    executeCommandWithRetry(
+        topicName,
+        partition,
+        () -> mainIngestionRequestClient.promoteToLeader(topicName, partition),
+        () -> super.promoteToLeader(storeConfig, partition, leaderSessionIdChecker));
   }
 
   @Override
@@ -198,27 +164,12 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       VeniceStoreVersionConfig storeConfig,
       int partition,
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker leaderSessionIdChecker) {
-    boolean messageCompleted = false;
-    while (!messageCompleted) {
-      if (isTopicPartitionHostedInMainProcess(storeConfig.getStoreVersionName(), partition)) {
-        super.demoteToStandby(storeConfig, partition, leaderSessionIdChecker);
-        messageCompleted = true;
-      } else {
-        messageCompleted = mainIngestionRequestClient.demoteToStandby(storeConfig.getStoreVersionName(), partition);
-      }
-      if (!messageCompleted) {
-        LOGGER.info(
-            "Leader demotion message rejected by remote ingestion server, will retry in {} ms.",
-            RETRY_WAIT_TIME_IN_MS);
-        try {
-          Thread.sleep(RETRY_WAIT_TIME_IN_MS);
-        } catch (InterruptedException e) {
-          Thread.currentThread().interrupt();
-          LOGGER.info("Retry in leader demotion is interrupted.");
-          break;
-        }
-      }
-    }
+    String topicName = storeConfig.getStoreVersionName();
+    executeCommandWithRetry(
+        topicName,
+        partition,
+        () -> mainIngestionRequestClient.demoteToStandby(topicName, partition),
+        () -> super.demoteToStandby(storeConfig, partition, leaderSessionIdChecker));
   }
 
   @Override
@@ -315,5 +266,34 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
         }
       }
     };
+  }
+
+  private void executeCommandWithRetry(
+      String topicName,
+      int partition,
+      Supplier<Boolean> remoteCommandSupplier,
+      Runnable localCommandRunnable) {
+    boolean messageCompleted = false;
+    while (!messageCompleted) {
+      if (isTopicPartitionHostedInMainProcess(topicName, partition)) {
+        LOGGER.info("Executing command of topic: {}, partition: {} in main process process.", topicName, partition);
+
+        localCommandRunnable.run();
+        messageCompleted = true;
+      } else {
+        LOGGER.info("Sending command of topic: {}, partition: {} to fork process.", topicName, partition);
+        messageCompleted = remoteCommandSupplier.get();
+      }
+      if (!messageCompleted) {
+        LOGGER.info("Command not completed by remote ingestion process, will retry in {} ms.", RETRY_WAIT_TIME_IN_MS);
+        try {
+          Thread.sleep(RETRY_WAIT_TIME_IN_MS);
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          LOGGER.info("Retry of the command execution is interrupted.");
+          break;
+        }
+      }
+    }
   }
 }
