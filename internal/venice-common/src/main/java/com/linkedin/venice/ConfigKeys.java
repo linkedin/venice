@@ -750,7 +750,6 @@ public class ConfigKeys {
   // TODO the config names are same as the names in application.src, some of them should be changed to keep consistent
   // TODO with controller and server.
   public static final String LISTENER_SSL_PORT = "listener.ssl.port";
-  public static final String CLIENT_TIMEOUT = "client.timeout";
   public static final String HEARTBEAT_TIMEOUT = "heartbeat.timeout";
   public static final String HEARTBEAT_CYCLE = "heartbeat.cycle";
   public static final String MAX_READ_CAPACITY = "max.read.capacity";
@@ -1754,16 +1753,6 @@ public class ConfigKeys {
    * Prefix of configs to configure Jetty server in Controller.
    */
   public static final String CONTROLLER_JETTY_CONFIG_OVERRIDE_PREFIX = "controller.jetty.";
-
-  /**
-   * The number of threads that will be used to decompress multi-get records in routers.
-   */
-  public static final String ROUTER_MULTI_KEY_DECOMPRESSION_THREADS = "router.multi.key.decompression.threads";
-
-  /**
-   * The number of records per batch of records that will be decompressed in a multi-get request in routers.
-   */
-  public static final String ROUTER_MULTI_KEY_DECOMPRESSION_BATCH_SIZE = "router.multi.key.decompression.batch.size";
 
   /**
    * The number of records

@@ -1,6 +1,5 @@
 package com.linkedin.venice.router;
 
-import static com.linkedin.venice.ConfigKeys.CLIENT_TIMEOUT;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_D2;
 import static com.linkedin.venice.ConfigKeys.ENFORCE_SECURE_ROUTER;
@@ -67,8 +66,6 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_MAX_PENDING_REQUEST;
 import static com.linkedin.venice.ConfigKeys.ROUTER_MAX_READ_CAPACITY;
 import static com.linkedin.venice.ConfigKeys.ROUTER_META_STORE_SHADOW_READ_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_MULTIGET_TARDY_LATENCY_MS;
-import static com.linkedin.venice.ConfigKeys.ROUTER_MULTI_KEY_DECOMPRESSION_BATCH_SIZE;
-import static com.linkedin.venice.ConfigKeys.ROUTER_MULTI_KEY_DECOMPRESSION_THREADS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_MULTI_KEY_ROUTING_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_PENDING_CONNECTION_RESUME_THRESHOLD_PER_ROUTE;
@@ -120,7 +117,6 @@ public class VeniceRouterConfig {
   private String zkConnection;
   private int port;
   private int sslPort;
-  private int clientTimeoutMs;
   private double heartbeatTimeoutMs;
   private long heartbeatCycleMs;
   private boolean sslToStorageNodes;
@@ -195,8 +191,6 @@ public class VeniceRouterConfig {
   private int httpClient5PoolSize;
   private int httpClient5TotalIOThreadCount;
   private boolean httpClient5SkipCipherCheck;
-  private int routerMultiGetDecompressionThreads;
-  private int routerMultiGetDecompressionBatchSize;
   private boolean http2InboundEnabled;
   private int http2MaxConcurrentStreams;
   private int http2MaxFrameSize;
@@ -225,7 +219,6 @@ public class VeniceRouterConfig {
     zkConnection = props.getString(ZOOKEEPER_ADDRESS);
     kafkaZkAddress = props.getString(KAFKA_ZK_ADDRESS);
     kafkaBootstrapServers = props.getString(KAFKA_BOOTSTRAP_SERVERS);
-    clientTimeoutMs = props.getInt(CLIENT_TIMEOUT, 10000); // 10s
     heartbeatTimeoutMs = props.getDouble(HEARTBEAT_TIMEOUT, TimeUnit.MINUTES.toMillis(1));
     heartbeatCycleMs = props.getLong(HEARTBEAT_CYCLE, TimeUnit.SECONDS.toMillis(5));
     sslToStorageNodes = props.getBoolean(SSL_TO_STORAGE_NODES, false);
@@ -367,8 +360,6 @@ public class VeniceRouterConfig {
     httpClient5TotalIOThreadCount =
         props.getInt(ROUTER_HTTP_CLIENT5_TOTAL_IO_THREAD_COUNT, Runtime.getRuntime().availableProcessors());
     httpClient5SkipCipherCheck = props.getBoolean(ROUTER_HTTP_CLIENT5_SKIP_CIPHER_CHECK_ENABLED, false);
-    routerMultiGetDecompressionThreads = props.getInt(ROUTER_MULTI_KEY_DECOMPRESSION_THREADS, 10);
-    routerMultiGetDecompressionBatchSize = props.getInt(ROUTER_MULTI_KEY_DECOMPRESSION_BATCH_SIZE, 5);
     http2InboundEnabled = props.getBoolean(ROUTER_HTTP2_INBOUND_ENABLED, false);
     http2MaxConcurrentStreams = props.getInt(ROUTER_HTTP2_MAX_CONCURRENT_STREAMS, 100);
     http2MaxFrameSize = props.getInt(ROUTER_HTTP2_MAX_FRAME_SIZE, 8 * 1024 * 1024);
@@ -399,10 +390,6 @@ public class VeniceRouterConfig {
 
   public int getSslPort() {
     return sslPort;
-  }
-
-  public int getClientTimeoutMs() {
-    return clientTimeoutMs;
   }
 
   public double getHeartbeatTimeoutMs() {
@@ -672,9 +659,6 @@ public class VeniceRouterConfig {
   /**
    * The expected config format is like the following:
    * "1-10:20,11-50:50,51-200:80,201-:1000"
-   *
-   * @param retryThresholdStr
-   * @return
    */
   public static TreeMap<Integer, Integer> parseRetryThresholdForBatchGet(String retryThresholdStr) {
     final String retryThresholdListSeparator = ",\\s*";
@@ -685,8 +669,8 @@ public class VeniceRouterConfig {
     // Sort by the lower bound of the key ranges.
     retryThresholdList.sort((range1, range2) -> {
       // Find the lower bound of the key ranges
-      String keyRange1[] = range1.split(keyRangeSeparator);
-      String keyRange2[] = range2.split(keyRangeSeparator);
+      String[] keyRange1 = range1.split(keyRangeSeparator);
+      String[] keyRange2 = range2.split(keyRangeSeparator);
       if (keyRange1.length != 2) {
         throw new VeniceException(
             "Invalid single retry threshold config: " + range1 + ", which contains two parts separated by '"
@@ -783,14 +767,6 @@ public class VeniceRouterConfig {
 
   public boolean isHttpClient5SkipCipherCheck() {
     return httpClient5SkipCipherCheck;
-  }
-
-  public int getRouterMultiGetDecompressionThreads() {
-    return routerMultiGetDecompressionThreads;
-  }
-
-  public int getRouterMultiGetDecompressionBatchSize() {
-    return routerMultiGetDecompressionBatchSize;
   }
 
   public boolean isHttp2InboundEnabled() {

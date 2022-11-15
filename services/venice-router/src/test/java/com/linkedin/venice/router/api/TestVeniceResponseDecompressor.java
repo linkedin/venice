@@ -14,7 +14,6 @@ import io.netty.buffer.CompositeByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
-import java.util.concurrent.ExecutorService;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -35,16 +34,8 @@ public class TestVeniceResponseDecompressor {
     request.headers().add(VENICE_SUPPORTED_COMPRESSION_STRATEGY, CompressionStrategy.GZIP.getValue());
 
     CompressorFactory compressorFactory = mock(CompressorFactory.class);
-    ExecutorService decompressionExecutor = mock(ExecutorService.class);
-    VeniceResponseDecompressor responseDecompressor = new VeniceResponseDecompressor(
-        true,
-        null,
-        request,
-        "test-store",
-        1,
-        compressorFactory,
-        decompressionExecutor,
-        10);
+    VeniceResponseDecompressor responseDecompressor =
+        new VeniceResponseDecompressor(true, null, request, "test-store", 1, compressorFactory);
 
     CompositeByteBuf content = Unpooled.compositeBuffer();
 
@@ -75,23 +66,14 @@ public class TestVeniceResponseDecompressor {
 
     RouterExceptionAndTrackingUtils.setRouterStats(routerStats);
 
-    ExecutorService decompressionExecutor = mock(ExecutorService.class);
-
     try (CompressorFactory compressorFactory = new CompressorFactory()) {
       compressorFactory.createVersionSpecificCompressorIfNotExist(
           CompressionStrategy.ZSTD_WITH_DICT,
           "test-store_v1",
           new byte[] {});
 
-      VeniceResponseDecompressor responseDecompressor = new VeniceResponseDecompressor(
-          true,
-          routerStats,
-          request,
-          "test-store",
-          1,
-          compressorFactory,
-          decompressionExecutor,
-          10);
+      VeniceResponseDecompressor responseDecompressor =
+          new VeniceResponseDecompressor(true, routerStats, request, "test-store", 1, compressorFactory);
 
       CompositeByteBuf content = Unpooled.compositeBuffer();
 
@@ -124,23 +106,14 @@ public class TestVeniceResponseDecompressor {
 
     RouterExceptionAndTrackingUtils.setRouterStats(routerStats);
 
-    ExecutorService decompressionExecutor = mock(ExecutorService.class);
-
     try (CompressorFactory compressorFactory = new CompressorFactory()) {
       compressorFactory.createVersionSpecificCompressorIfNotExist(
           CompressionStrategy.ZSTD_WITH_DICT,
           "test-store_v1",
           new byte[] {});
 
-      VeniceResponseDecompressor responseDecompressor = new VeniceResponseDecompressor(
-          true,
-          routerStats,
-          request,
-          "test-store",
-          1,
-          compressorFactory,
-          decompressionExecutor,
-          10);
+      VeniceResponseDecompressor responseDecompressor =
+          new VeniceResponseDecompressor(true, routerStats, request, "test-store", 1, compressorFactory);
       CompositeByteBuf content1 = Unpooled.compositeBuffer();
       ContentDecompressResult result =
           responseDecompressor.decompressMultiGetContent(CompressionStrategy.ZSTD_WITH_DICT, content1);

@@ -1,6 +1,7 @@
 package com.linkedin.venice.compression;
 
 import com.github.luben.zstd.Zstd;
+import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import java.io.IOException;
@@ -63,18 +64,27 @@ public class TestVeniceCompressor {
           rd.nextBytes(data);
           try {
             ByteBuffer dataBuffer;
+            ByteBuffer deflatedData;
+            ByteBuffer reinflatedData;
             switch (type) {
               case DIRECT_BYTE_BUFFER:
                 dataBuffer = ByteBuffer.allocateDirect(data.length);
                 dataBuffer.put(data);
-                compressor.compress(dataBuffer);
+                dataBuffer.position(0);
+                deflatedData = compressor.compress(dataBuffer, ByteUtils.SIZE_OF_INT);
+                reinflatedData = compressor.decompress(deflatedData);
+                Assert.assertEquals(reinflatedData, dataBuffer);
                 break;
               case NON_DIRECT_BYTE_BUFFER:
                 dataBuffer = ByteBuffer.wrap(data);
-                compressor.compress(dataBuffer);
+                deflatedData = compressor.compress(dataBuffer, ByteUtils.SIZE_OF_INT);
+                reinflatedData = compressor.decompress(deflatedData);
+                Assert.assertEquals(reinflatedData, dataBuffer);
                 break;
               case BYTE_ARRAY:
-                compressor.compress(data);
+                byte[] deflated = compressor.compress(data);
+                reinflatedData = compressor.decompress(deflated, 0, deflated.length);
+                Assert.assertEquals(reinflatedData.array(), data);
                 break;
               default: // Defensive code
                 break;

@@ -19,15 +19,30 @@ public class GzipCompressor extends VeniceCompressor {
   @Override
   public byte[] compress(byte[] data) throws IOException {
     ByteArrayOutputStream bos = new ByteArrayOutputStream();
-    GZIPOutputStream gos = new GZIPOutputStream(bos);
-    gos.write(data);
-    gos.close();
-    return bos.toByteArray();
+    try (GZIPOutputStream gos = new GZIPOutputStream(bos)) {
+      gos.write(data);
+      gos.finish();
+      return bos.toByteArray();
+    }
   }
 
   @Override
-  public ByteBuffer compress(ByteBuffer data) throws IOException {
-    return ByteBuffer.wrap(compress(ByteUtils.extractByteArray(data)));
+  public ByteBuffer compress(ByteBuffer data, int startPositionOfOutput) throws IOException {
+    ByteArrayOutputStream bos = new ByteArrayOutputStream();
+    for (int i = 0; i < startPositionOfOutput; i++) {
+      bos.write(0);
+    }
+    try (GZIPOutputStream gos = new GZIPOutputStream(bos)) {
+      if (data.hasArray()) {
+        gos.write(data.array(), data.position(), data.remaining());
+      } else {
+        gos.write(ByteUtils.extractByteArray(data));
+      }
+      gos.finish();
+      ByteBuffer output = ByteBuffer.wrap(bos.toByteArray());
+      output.position(startPositionOfOutput);
+      return output;
+    }
   }
 
   @Override
@@ -37,10 +52,9 @@ public class GzipCompressor extends VeniceCompressor {
 
   @Override
   public ByteBuffer decompress(byte[] data, int offset, int length) throws IOException {
-    InputStream gis = decompress(new ByteArrayInputStream(data, offset, length));
-    ByteBuffer decompressed = ByteBuffer.wrap(IOUtils.toByteArray(gis));
-    gis.close();
-    return decompressed;
+    try (InputStream gis = decompress(new ByteArrayInputStream(data, offset, length))) {
+      return ByteBuffer.wrap(IOUtils.toByteArray(gis));
+    }
   }
 
   @Override

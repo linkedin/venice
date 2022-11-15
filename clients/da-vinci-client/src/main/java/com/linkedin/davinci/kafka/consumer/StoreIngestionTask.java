@@ -3216,9 +3216,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         try {
           deserializeValue(put.schemaId, put.putValue, record);
         } catch (Exception e) {
+          PartitionConsumptionState pcs = partitionConsumptionStateMap.get(record.partition());
+          LeaderFollowerStateType state = pcs == null ? null : pcs.getLeaderFollowerState();
           throw new VeniceException(
               "Failed to deserialize PUT for topic: " + record.topic() + ", partition: " + record.partition()
-                  + ", offset: " + record.offset() + ", schema id: " + put.schemaId,
+                  + ", offset: " + record.offset() + ", schema id: " + put.schemaId + ", LF state: " + state,
               e);
         }
         break;

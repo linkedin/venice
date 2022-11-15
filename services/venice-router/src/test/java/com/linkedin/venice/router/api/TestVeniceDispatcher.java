@@ -58,7 +58,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Executor;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import org.apache.http.client.methods.HttpGet;
 import org.testng.Assert;
@@ -428,17 +427,9 @@ public class TestVeniceDispatcher {
       return modifyingCompressor;
     })).when(compressorFactory).getCompressor(any());
 
-    ExecutorService decompressionExecutor = mock(ExecutorService.class);
-    doReturn(
-        new VeniceResponseDecompressor(
-            true,
-            routerStats,
-            mockRequest,
-            "test_store",
-            1,
-            compressorFactory,
-            decompressionExecutor,
-            10)).when(mockPath).getResponseDecompressor();
+    doReturn(new VeniceResponseDecompressor(true, routerStats, mockRequest, "test_store", 1, compressorFactory))
+        .when(mockPath)
+        .getResponseDecompressor();
 
     AsyncPromise mockHostSelected = mock(AsyncPromise.class);
     AsyncPromise mockTimeoutFuture = mock(AsyncPromise.class);

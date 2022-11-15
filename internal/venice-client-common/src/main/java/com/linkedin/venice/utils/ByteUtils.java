@@ -1,8 +1,6 @@
 package com.linkedin.venice.utils;
 
-import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
-import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.text.CharacterIterator;
 import java.text.StringCharacterIterator;
@@ -25,8 +23,6 @@ public class ByteUtils {
 
   public static final int SIZE_OF_BOOLEAN = 1;
 
-  private static final int MAX_LENGTH_TO_LOG = 50;
-
   /**
    * Translate the given byte array into a hexadecimal string
    *
@@ -44,25 +40,6 @@ public class ByteUtils {
     byte[] newBytes = new byte[len];
     System.arraycopy(bytes, start, newBytes, 0, len);
     return Hex.encodeHexString(newBytes);
-  }
-
-  /**
-   * Translate the given byte array to a String so that it can be used in logging.
-   * This function handles truncation of the String to prevent log from overflowing.
-   *
-   * @param bytes
-   * @return String
-   */
-  public static String toLogString(byte[] bytes) {
-    if (bytes == null) {
-      return "null";
-    }
-
-    String str = toHexString(bytes);
-    if (str.length() > MAX_LENGTH_TO_LOG) {
-      return str.substring(0, MAX_LENGTH_TO_LOG) + "...truncated";
-    }
-    return str;
   }
 
   /**
@@ -282,22 +259,6 @@ public class ByteUtils {
     enlargedByteBuffer.position(ByteUtils.SIZE_OF_INT);
     byteBuffer.position(originalPosition);
     return enlargedByteBuffer;
-  }
-
-  public static ByteBuffer compressByteBuffer(ByteBuffer originalBuffer, VeniceCompressor compressor)
-      throws IOException {
-
-    // TODO: ByteUtils.extractByteArray does an extra copy in some of the compressor compress implementations.
-    // We 'might' be able to avoid this in the future but unfortunately ZSTD compression requires direct memory buffers
-    // if you want to leverage the byte buffer interface to compress. A good refactor in the future might be to keep a
-    // pool of direct memory buffers and use them as a means to hold temporary copys of data like this for compression
-    // and avoid heap GC additionally, we're not always sure that the resulting compressed data is always smaller then
-    // the data we're compressing. This means we can't always rely on the original bytebuffer array to hold the
-    // resulting
-    // compressed data. To accommodate this, we'd have to make a copy of the compressed data in another byte array,
-    // check it's size, and then store or resize the buffer in the originalBuffer, which would negate any savings that
-    // might be had trying to squeeze the result back into the original array.
-    return compressor.compress(originalBuffer);
   }
 
   /**
