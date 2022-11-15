@@ -1,6 +1,7 @@
 package com.linkedin.venice.controllerapi;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.linkedin.venice.schema.SchemaData;
 
 
 public class MultiSchemaResponse
@@ -8,7 +9,7 @@ public class MultiSchemaResponse
   /**
    * If this is set it should be used to replace latestValueSchema to deserialize during read.
    */
-  private int superSetSchemaId = -1;
+  private int superSetSchemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
 
   public void setSuperSetSchemaId(int id) {
     superSetSchemaId = id;
@@ -24,9 +25,9 @@ public class MultiSchemaResponse
      * An uninitialized primitive defaults to 0, which could cause the Venice Samza System producer starts sending
      * Venice UPDATE messages instead of PUT messages.
      */
-    private int derivedSchemaId = -1;
+    private int derivedSchemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
 
-    private int rmdValueSchemaId = -1;
+    private int rmdValueSchemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
     private String schemaStr;
 
     public int getId() {
@@ -43,7 +44,7 @@ public class MultiSchemaResponse
 
     @JsonIgnore
     public boolean isDerivedSchema() {
-      return derivedSchemaId != -1;
+      return derivedSchemaId != SchemaData.INVALID_VALUE_SCHEMA_ID;
     }
 
     public void setDerivedSchemaId(int derivedSchemaId) {

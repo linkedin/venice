@@ -9,6 +9,7 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
@@ -235,7 +236,7 @@ public class StorageNodeComputeTest {
       List<Float> hadamardP = Arrays.asList(135.7f, 246.8f);
 
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
-        Map<String, GenericRecord> computeResult = storeClient.compute()
+        Map<String, ComputeGenericRecord> computeResult = storeClient.compute()
             .project("id")
             .dotProduct("member_feature", p, "member_score")
             .cosineSimilarity("member_feature", cosP, "cosine_similarity_result")
@@ -347,7 +348,7 @@ public class StorageNodeComputeTest {
           p.add((float) (i * 0.1));
         }
 
-        Map<String, GenericRecord> computeResult = storeClient.compute()
+        Map<String, ComputeGenericRecord> computeResult = storeClient.compute()
             .dotProduct("member_feature", p, "member_score")
             .execute(keySet)
             /**

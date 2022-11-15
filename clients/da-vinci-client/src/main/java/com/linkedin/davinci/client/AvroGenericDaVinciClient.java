@@ -34,6 +34,7 @@ import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.store.AvroComputeRequestBuilderV4;
 import com.linkedin.venice.client.store.AvroGenericReadComputeStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.client.store.ComputeRequestBuilder;
 import com.linkedin.venice.client.store.D2ServiceDiscovery;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
@@ -354,7 +355,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       Optional<ClientStats> stats,
       Optional<ClientStats> streamingStats,
       final long preRequestTimeInNS) {
-    return new AvroComputeRequestBuilderV4<>(getLatestValueSchema(), this, stats, streamingStats);
+    return new AvroComputeRequestBuilderV4<K>(this, getLatestValueSchema()).setStats(stats, streamingStats);
   }
 
   private Schema getComputeResultSchema(ComputeRequestWrapper computeRequestWrapper) {
@@ -379,7 +380,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       ComputeRequestWrapper computeRequestWrapper,
       Set<K> keys,
       Schema resultSchema,
-      StreamingCallback<K, GenericRecord> callback,
+      StreamingCallback<K, ComputeGenericRecord> callback,
       long preRequestTimeInNS) throws VeniceClientException {
     compute(computeRequestWrapper, keys, resultSchema, callback, preRequestTimeInNS, null, null);
   }
@@ -389,7 +390,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       ComputeRequestWrapper computeRequestWrapper,
       Set<K> keys,
       Schema resultSchema,
-      StreamingCallback<K, GenericRecord> callback,
+      StreamingCallback<K, ComputeGenericRecord> callback,
       long preRequestTimeInNS,
       BinaryEncoder reusedEncoder,
       ByteArrayOutputStream reusedOutputStream) throws VeniceClientException {
@@ -446,7 +447,13 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
               computeRequestWrapper,
               computeResultSchema);
 
-          callback.onRecordReceived(key, computeResultValue);
+          if (computeResultValue != null) {
+            callback.onRecordReceived(
+                key,
+                new ComputeGenericRecord(computeResultValue, computeRequestWrapper.getValueSchema()));
+          } else {
+            callback.onRecordReceived(key, null);
+          }
         } else if (isVeniceQueryAllowed()) {
           missingKeys.add(key);
         } else if (!isPartitionSubscribed(versionBackend, partition)) {

@@ -14,7 +14,7 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
-import com.linkedin.venice.client.store.ComputeRequestBuilder;
+import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.client.store.StatTrackingStoreClient;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
@@ -279,37 +279,37 @@ public class TestStreaming {
         verifyMultiGetResult(multiGetResultMap);
         // Test compute streaming
         AtomicInteger computeResultCnt = new AtomicInteger(0);
-        Map<String, GenericRecord> finalComputeResultMap = new VeniceConcurrentHashMap<>();
+        Map<String, ComputeGenericRecord> finalComputeResultMap = new VeniceConcurrentHashMap<>();
         CountDownLatch computeLatch = new CountDownLatch(1);
-        ComputeRequestBuilder<String> computeRequestBuilder =
-            trackingStoreClient.compute().project("int_field", "nullable_string_field");
-        computeRequestBuilder.streamingExecute(keySet, new StreamingCallback<String, GenericRecord>() {
-          @Override
-          public void onRecordReceived(String key, GenericRecord value) {
-            computeResultCnt.incrementAndGet();
-            if (value != null) {
-              finalComputeResultMap.put(key, value);
-            }
-          }
+        trackingStoreClient.compute()
+            .project("int_field", "nullable_string_field")
+            .streamingExecute(keySet, new StreamingCallback<String, ComputeGenericRecord>() {
+              @Override
+              public void onRecordReceived(String key, ComputeGenericRecord value) {
+                computeResultCnt.incrementAndGet();
+                if (value != null) {
+                  finalComputeResultMap.put(key, value);
+                }
+              }
 
-          @Override
-          public void onCompletion(Optional<Exception> exception) {
-            computeLatch.countDown();
-            if (exception.isPresent()) {
-              LOGGER.info("Compute onCompletion invoked with Venice Exception", exception.get());
-              fail("Exception: " + exception.get() + " is not expected");
-            }
-          }
-        });
+              @Override
+              public void onCompletion(Optional<Exception> exception) {
+                computeLatch.countDown();
+                if (exception.isPresent()) {
+                  LOGGER.info("Compute onCompletion invoked with Venice Exception", exception.get());
+                  fail("Exception: " + exception.get() + " is not expected");
+                }
+              }
+            });
         computeLatch.await();
         Assert.assertEquals(computeResultCnt.get(), MAX_KEY_LIMIT);
         Assert.assertEquals(finalComputeResultMap.size(), MAX_KEY_LIMIT - NON_EXISTING_KEY_NUM); // Without non-existing
                                                                                                  // key
         verifyComputeResult(finalComputeResultMap);
         // Test compute with streaming implementation
-        CompletableFuture<VeniceResponseMap<String, GenericRecord>> computeFuture =
-            computeRequestBuilder.streamingExecute(keySet);
-        Map<String, GenericRecord> computeResultMap = computeFuture.get();
+        CompletableFuture<VeniceResponseMap<String, ComputeGenericRecord>> computeFuture =
+            trackingStoreClient.compute().project("int_field", "nullable_string_field").streamingExecute(keySet);
+        Map<String, ComputeGenericRecord> computeResultMap = computeFuture.get();
         Assert.assertEquals(computeResultMap.size(), MAX_KEY_LIMIT - NON_EXISTING_KEY_NUM);
         verifyComputeResult(computeResultMap);
       }
@@ -368,7 +368,7 @@ public class TestStreaming {
     }
   }
 
-  private void verifyComputeResult(Map<String, GenericRecord> resultMap) {
+  private void verifyComputeResult(Map<String, ComputeGenericRecord> resultMap) {
     for (int i = 0; i < MAX_KEY_LIMIT - NON_EXISTING_KEY_NUM; ++i) {
       String key = KEY_PREFIX + i;
       GenericRecord record = resultMap.get(key);

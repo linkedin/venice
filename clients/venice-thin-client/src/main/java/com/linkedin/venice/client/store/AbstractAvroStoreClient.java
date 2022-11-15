@@ -137,6 +137,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   private final CompletableFuture<Map<K, GenericRecord>> COMPLETABLE_FUTURE_FOR_EMPTY_KEY_IN_COMPUTE =
       CompletableFuture.completedFuture(new HashMap<>());
 
+  private final ClientConfig clientConfig;
   protected final boolean needSchemaReader;
   /** Used to communicate with Venice backend to retrieve necessary store schemas */
   private SchemaReader schemaReader;
@@ -161,7 +162,6 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   private final boolean reuseObjectsForSerialization;
 
   private final boolean forceClusterDiscoveryAtStartTime;
-
   private volatile boolean isServiceDiscovered;
 
   /**
@@ -204,6 +204,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       ClientConfig clientConfig) {
     this.transportClient = transportClient;
     this.storeName = clientConfig.getStoreName();
+    this.clientConfig = clientConfig;
     this.needSchemaReader = needSchemaReader;
     this.deserializationExecutor =
         Optional.ofNullable(clientConfig.getDeserializationExecutor()).orElse(getDefaultDeserializationExecutor());
@@ -626,19 +627,14 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       final Optional<ClientStats> streamingStats,
       final InternalAvroStoreClient computeStoreClient,
       final long preRequestTimeInNS) {
+    AbstractAvroComputeRequestBuilder<K> builder =
+        new AvroComputeRequestBuilderV3<K>(computeStoreClient, getLatestValueSchema()).setStats(stats, streamingStats)
+            .setValidateProjectionFields(clientConfig.isProjectionFieldValidationEnabled());
     if (reuseObjectsForSerialization) {
       AvroSerializer.ReusableObjects reusableObjects = AvroSerializer.REUSE.get();
-      return new AvroComputeRequestBuilderV3<>(
-          getLatestValueSchema(),
-          computeStoreClient,
-          stats,
-          streamingStats,
-          true,
-          reusableObjects.getBinaryEncoder(),
-          reusableObjects.getByteArrayOutputStream());
-    } else {
-      return new AvroComputeRequestBuilderV3<>(getLatestValueSchema(), computeStoreClient, stats, streamingStats);
+      builder.setReuseObjects(reusableObjects.getBinaryEncoder(), reusableObjects.getByteArrayOutputStream());
     }
+    return builder;
   }
 
   private byte[] serializeComputeRequest(List<K> keyList, byte[] serializedComputeRequest) {
@@ -670,7 +666,10 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   @Override
   public void start() throws VeniceClientException {
     if (needSchemaReader) {
-      this.schemaReader = new RouterBackedSchemaReader(this::getStoreClientForSchemaReader, this.getReaderSchema());
+      this.schemaReader = new RouterBackedSchemaReader(
+          this::getStoreClientForSchemaReader,
+          getReaderSchema(),
+          clientConfig.getPreferredSchemaFilter());
     }
     warmUpVeniceClient();
   }
@@ -1073,7 +1072,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       ComputeRequestWrapper computeRequestWrapper,
       Set<K> keys,
       Schema resultSchema,
-      StreamingCallback<K, GenericRecord> callback,
+      StreamingCallback<K, ComputeGenericRecord> callback,
       long preRequestTimeInNS) throws VeniceClientException {
     compute(computeRequestWrapper, keys, resultSchema, callback, preRequestTimeInNS, null, null);
   }
@@ -1083,7 +1082,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       ComputeRequestWrapper computeRequestWrapper,
       Set<K> keys,
       Schema resultSchema,
-      StreamingCallback<K, GenericRecord> callback,
+      StreamingCallback<K, ComputeGenericRecord> callback,
       long preRequestTimeInNS,
       BinaryEncoder reusedEncoder,
       ByteArrayOutputStream reusedOutputStream) throws VeniceClientException {
@@ -1132,7 +1131,9 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
                 // Safeguard to handle empty value, which indicates non-existing key.
                 return null;
               }
-              return ComputeGenericRecord.wrap(computeResultRecordDeserializer.deserialize(envelope.value));
+              return new ComputeGenericRecord(
+                  computeResultRecordDeserializer.deserialize(envelope.value),
+                  computeRequestWrapper.getValueSchema());
             },
             envelope -> envelope.keyIndex,
             envelope -> streamingFooterRecordDeserializer.deserialize(envelope.value)),

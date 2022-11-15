@@ -46,6 +46,7 @@ import com.linkedin.venice.routerapi.HybridStoreQuotaStatusResponse;
 import com.linkedin.venice.routerapi.PushStatusResponse;
 import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.routerapi.ResourceStateResponse;
+import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.utils.ExceptionUtils;
@@ -215,7 +216,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       responseObject.setCluster(clusterName);
       responseObject.setName(storeName);
       int superSetSchemaId = storeRepository.getStore(storeName).getLatestSuperSetValueSchemaId();
-      if (superSetSchemaId != -1) {
+      if (superSetSchemaId != SchemaData.INVALID_VALUE_SCHEMA_ID) {
         responseObject.setSuperSetSchemaId(superSetSchemaId);
       }
       Collection<SchemaEntry> valueSchemaEntries = schemaRepo.getValueSchemas(storeName);

@@ -8,7 +8,10 @@ import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.utils.SystemTime;
 import io.tehuti.utils.Time;
+import java.util.Optional;
 import java.util.concurrent.Executor;
+import java.util.function.Predicate;
+import org.apache.avro.Schema;
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -17,6 +20,7 @@ import org.apache.logging.log4j.Logger;
 public class ClientConfig<T extends SpecificRecord> {
   private static final Logger LOGGER = LogManager.getLogger(ClientConfig.class);
   private static final String HTTPS = "https";
+
   public static final int DEFAULT_ZK_TIMEOUT_MS = 5000;
   public static final String DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME = "venice-discovery";
   public static final String DEFAULT_D2_ZK_BASE_PATH = "/d2";
@@ -47,6 +51,9 @@ public class ClientConfig<T extends SpecificRecord> {
   private boolean useBlackHoleDeserializer = false;
   private boolean reuseObjectsForSerialization = false;
   private boolean forceClusterDiscoveryAtStartTime = false;
+  private boolean projectionFieldValidation = true;
+
+  private Optional<Predicate<Schema>> preferredSchemaFilter = Optional.empty();
 
   // Security settings
   private boolean isHttps = false;
@@ -382,6 +389,24 @@ public class ClientConfig<T extends SpecificRecord> {
 
   public ClientConfig<T> setReuseObjectsForSerialization(boolean reuseObjectsForSerialization) {
     this.reuseObjectsForSerialization = reuseObjectsForSerialization;
+    return this;
+  }
+
+  public boolean isProjectionFieldValidationEnabled() {
+    return projectionFieldValidation;
+  }
+
+  public ClientConfig<T> setProjectionFieldValidationEnabled(boolean projectionFieldValidation) {
+    this.projectionFieldValidation = projectionFieldValidation;
+    return this;
+  }
+
+  public Optional<Predicate<Schema>> getPreferredSchemaFilter() {
+    return preferredSchemaFilter;
+  }
+
+  public ClientConfig<T> setPreferredSchemaFilter(Predicate<Schema> preferredSchemaFilter) {
+    this.preferredSchemaFilter = Optional.ofNullable(preferredSchemaFilter);
     return this;
   }
 

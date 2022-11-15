@@ -71,21 +71,23 @@ public class AbstractAvroStoreClientTest {
 
     @Override
     public Schema getLatestValueSchema() {
-      return Schema.parse(VALUE_SCHEMA);
+      return VALUE_SCHEMA;
     }
   }
 
-  private static final String VALUE_SCHEMA = "{\n" + "\t\"type\": \"record\",\n" + "\t\"name\": \"record_schema\",\n"
-      + "\t\"fields\": [\n"
-      + "\t\t{\"name\": \"int_field\", \"type\": \"int\", \"default\": 0, \"doc\": \"doc for int_field\"},\n"
-      + "\t\t{\"name\": \"float_field\", \"type\": \"float\", \"doc\": \"doc for float_field\"},\n" + "\t\t{\n"
-      + "\t\t\t\"name\": \"record_field\",\n" + "\t\t\t\"namespace\": \"com.linkedin.test\",\n" + "\t\t\t\"type\": {\n"
-      + "\t\t\t\t\"name\": \"Record1\",\n" + "\t\t\t\t\"type\": \"record\",\n" + "\t\t\t\t\"fields\": [\n"
-      + "\t\t\t\t\t{\"name\": \"nested_field1\", \"type\": \"double\", \"doc\": \"doc for nested field\"}\n"
-      + "\t\t\t\t]\n" + "\t\t\t}\n" + "\t\t},\n"
-      + "\t\t{\"name\": \"float_array_field1\", \"type\": {\"type\": \"array\", \"items\": \"float\"}},\n"
-      + "\t\t{\"name\": \"float_array_field2\", \"type\": {\"type\": \"array\", \"items\": \"float\"}},\n"
-      + "\t\t{\"name\": \"int_array_field2\", \"type\": {\"type\": \"array\", \"items\": \"int\"}}\n" + "\t]\n" + "}";
+  private static final Schema VALUE_SCHEMA = Schema.parse(
+      "{\n" + "\t\"type\": \"record\",\n" + "\t\"name\": \"record_schema\",\n" + "\t\"fields\": [\n"
+          + "\t\t{\"name\": \"int_field\", \"type\": \"int\", \"default\": 0, \"doc\": \"doc for int_field\"},\n"
+          + "\t\t{\"name\": \"float_field\", \"type\": \"float\", \"doc\": \"doc for float_field\"},\n" + "\t\t{\n"
+          + "\t\t\t\"name\": \"record_field\",\n" + "\t\t\t\"namespace\": \"com.linkedin.test\",\n"
+          + "\t\t\t\"type\": {\n" + "\t\t\t\t\"name\": \"Record1\",\n" + "\t\t\t\t\"type\": \"record\",\n"
+          + "\t\t\t\t\"fields\": [\n"
+          + "\t\t\t\t\t{\"name\": \"nested_field1\", \"type\": \"double\", \"doc\": \"doc for nested field\"}\n"
+          + "\t\t\t\t]\n" + "\t\t\t}\n" + "\t\t},\n"
+          + "\t\t{\"name\": \"float_array_field1\", \"type\": {\"type\": \"array\", \"items\": \"float\"}},\n"
+          + "\t\t{\"name\": \"float_array_field2\", \"type\": {\"type\": \"array\", \"items\": \"float\"}},\n"
+          + "\t\t{\"name\": \"int_array_field2\", \"type\": {\"type\": \"array\", \"items\": \"int\"}}\n" + "\t]\n"
+          + "}");
 
   private static final Set<String> keys = new HashSet<>();
   static {
@@ -205,23 +207,25 @@ public class AbstractAvroStoreClientTest {
     ClientStats stats = ClientStats.getClientStats(metricsRepository, storeName, RequestType.COMPUTE, null);
     ClientStats streamingStats =
         ClientStats.getClientStats(metricsRepository, storeName, RequestType.COMPUTE_STREAMING, null);
-    CompletableFuture<Map<String, GenericRecord>> computeFuture =
+    CompletableFuture<Map<String, ComputeGenericRecord>> computeFuture =
         storeClient.compute(Optional.of(stats), Optional.of(streamingStats), 0)
             .project("int_field")
             .dotProduct("float_array_field1", dotProductParam, "dot_product_for_float_array_field1")
             .cosineSimilarity("float_array_field2", cosineSimilarityParam, "cosine_similarity_for_float_array_field2")
             .hadamardProduct("float_array_field1", hadamardProductParam, "hadamard_product_for_float_array_field1")
             .execute(keys);
-    Map<String, GenericRecord> computeResult = computeFuture.get();
+    Map<String, ComputeGenericRecord> computeResult = computeFuture.get();
     Assert.assertEquals(computeResult.size(), 2);
     Assert.assertNotNull(computeResult.get("key1"));
-    GenericRecord resultForKey1 = computeResult.get("key1");
+    ComputeGenericRecord resultForKey1 = computeResult.get("key1");
+    Assert.assertEquals(resultForKey1.getValueSchema(), VALUE_SCHEMA);
     Assert.assertEquals(resultForKey1.get("int_field"), 1);
     Assert.assertEquals(resultForKey1.get("dot_product_for_float_array_field1"), 1.1f);
     Assert.assertEquals(resultForKey1.get("cosine_similarity_for_float_array_field2"), 2.1f);
     Assert.assertEquals(resultForKey1.get("hadamard_product_for_float_array_field1"), hadamardProductResult);
     Assert.assertNotNull(computeResult.get("key2"));
-    GenericRecord resultForKey2 = computeResult.get("key2");
+    ComputeGenericRecord resultForKey2 = computeResult.get("key2");
+    Assert.assertEquals(resultForKey2.getValueSchema(), VALUE_SCHEMA);
     Assert.assertEquals(resultForKey2.get("int_field"), 2);
     Assert.assertEquals(resultForKey2.get("dot_product_for_float_array_field1"), 1.2f);
     Assert.assertEquals(resultForKey2.get("cosine_similarity_for_float_array_field2"), 2.2f);
@@ -272,13 +276,13 @@ public class AbstractAvroStoreClientTest {
     ClientStats stats = ClientStats.getClientStats(metricsRepository, storeName, RequestType.COMPUTE, null);
     ClientStats streamingStats =
         ClientStats.getClientStats(metricsRepository, storeName, RequestType.COMPUTE_STREAMING, null);
-    CompletableFuture<Map<String, GenericRecord>> computeFuture =
+    CompletableFuture<Map<String, ComputeGenericRecord>> computeFuture =
         storeClient.compute(Optional.of(stats), Optional.of(streamingStats), 0)
             .project("int_field")
             .dotProduct("float_array_field1", dotProductParam, "dot_product_for_float_array_field1")
             .cosineSimilarity("float_array_field2", cosineSimilarityParam, "cosine_similarity_for_float_array_field2")
             .execute(keys);
-    Map<String, GenericRecord> computeResult = computeFuture.get();
+    Map<String, ComputeGenericRecord> computeResult = computeFuture.get();
     Assert.assertEquals(computeResult.size(), 1);
     Assert.assertNotNull(computeResult.get("key1"));
     GenericRecord resultForKey1 = computeResult.get("key1");
@@ -322,7 +326,7 @@ public class AbstractAvroStoreClientTest {
         storeName,
         true,
         AbstractAvroStoreClient.getDefaultDeserializationExecutor());
-    CompletableFuture<Map<String, GenericRecord>> computeFuture =
+    CompletableFuture<Map<String, ComputeGenericRecord>> computeFuture =
         storeClient.compute(Optional.empty(), Optional.empty(), 0).project("int_field").execute(keys);
     computeFuture.get();
   }

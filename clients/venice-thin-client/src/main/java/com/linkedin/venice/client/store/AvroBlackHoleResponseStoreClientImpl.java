@@ -17,7 +17,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryEncoder;
 
 
@@ -37,7 +36,7 @@ public class AvroBlackHoleResponseStoreClientImpl<K, V> extends AvroGenericStore
       ComputeRequestWrapper computeRequestWrapper,
       Set<K> keys,
       Schema resultSchema,
-      StreamingCallback<K, GenericRecord> callback,
+      StreamingCallback<K, ComputeGenericRecord> callback,
       long preRequestTimeInNS) throws VeniceClientException {
     compute(computeRequestWrapper, keys, resultSchema, callback, preRequestTimeInNS, null, null);
   }
@@ -52,7 +51,7 @@ public class AvroBlackHoleResponseStoreClientImpl<K, V> extends AvroGenericStore
       ComputeRequestWrapper computeRequestWrapper,
       Set<K> keys,
       Schema resultSchema,
-      StreamingCallback<K, GenericRecord> callback,
+      StreamingCallback<K, ComputeGenericRecord> callback,
       long preRequestTimeInNS,
       BinaryEncoder reusedEncoder,
       ByteArrayOutputStream reusedOutputStream) throws VeniceClientException {

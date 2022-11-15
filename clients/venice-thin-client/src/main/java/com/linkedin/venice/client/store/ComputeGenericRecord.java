@@ -16,9 +16,13 @@ import org.apache.avro.generic.GenericRecord;
 public class ComputeGenericRecord implements GenericRecord {
   private final GenericRecord innerRecord;
   private final Optional<Map<String, String>> computationErrorMap;
+  private final Schema valueSchema;
 
-  private ComputeGenericRecord(GenericRecord record) {
+  /** Schema of the original record that was used to compute the result */
+
+  public ComputeGenericRecord(GenericRecord record, Schema valueSchema) {
     this.innerRecord = record;
+    this.valueSchema = valueSchema;
     Object errorMap = record.get(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME);
     if (errorMap != null && errorMap instanceof Map && !((Map) errorMap).isEmpty()) {
       /**
@@ -33,10 +37,6 @@ public class ComputeGenericRecord implements GenericRecord {
     } else {
       computationErrorMap = Optional.empty();
     }
-  }
-
-  public static GenericRecord wrap(GenericRecord record) {
-    return new ComputeGenericRecord(record);
   }
 
   @Override
@@ -67,5 +67,9 @@ public class ComputeGenericRecord implements GenericRecord {
   @Override
   public Schema getSchema() {
     return innerRecord.getSchema();
+  }
+
+  public Schema getValueSchema() {
+    return valueSchema;
   }
 }
