@@ -2555,7 +2555,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     if (shouldCompressData(partitionConsumptionState)) {
       try {
         // We need to expand the front of the returned bytebuffer to make room for schema header insertion
-        return ByteUtils.enlargeByteBufferForIntHeader(ByteUtils.compressByteBuffer(data, compressor.get()));
+        return compressor.get().compress(data, ByteUtils.SIZE_OF_INT);
       } catch (IOException e) {
         // throw a loud exception if something goes wrong here
         throw new RuntimeException(

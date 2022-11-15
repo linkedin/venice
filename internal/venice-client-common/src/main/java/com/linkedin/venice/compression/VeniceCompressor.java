@@ -15,7 +15,7 @@ public abstract class VeniceCompressor implements Closeable {
 
   public abstract byte[] compress(byte[] data) throws IOException;
 
-  public abstract ByteBuffer compress(ByteBuffer data) throws IOException;
+  public abstract ByteBuffer compress(ByteBuffer src, int startPositionOfOutput) throws IOException;
 
   public abstract ByteBuffer decompress(ByteBuffer data) throws IOException;
 

@@ -13,7 +13,6 @@ import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.LatencyUtils;
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -345,19 +344,14 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
 
   private final DecoderWrapper<byte[], T> decompressingByteArrayDecoder =
       (reusedDecoder, bytes, inputBytesLength, reusedValue, deserializer, readResponse, compressor) -> {
-        try (InputStream inputStream = new ByteArrayInputStream(
-            bytes,
-            ValueRecord.SCHEMA_HEADER_LENGTH,
-            inputBytesLength - ValueRecord.SCHEMA_HEADER_LENGTH)) {
-
-          return decompressingInputStreamDecoder.decode(
-              reusedDecoder,
-              inputStream,
-              inputBytesLength,
+        try {
+          return deserializer.deserialize(
               reusedValue,
-              deserializer,
-              readResponse,
-              compressor);
+              compressor.decompress(
+                  bytes,
+                  ValueRecord.SCHEMA_HEADER_LENGTH,
+                  inputBytesLength - ValueRecord.SCHEMA_HEADER_LENGTH),
+              reusedDecoder);
         } catch (IOException e) {
           throw new VeniceException(
               "Failed to decompress, compressionStrategy: " + compressor.getCompressionStrategy().name(),
@@ -369,10 +363,10 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
       new InstrumentedDecoderWrapper<>(byteArrayDecoder);
 
   private final DecoderWrapper<byte[], T> instrumentedDecompressingByteArrayDecoder =
-      new InstrumentedDecoderWrapper(decompressingByteArrayDecoder);
+      new InstrumentedDecoderWrapper<>(decompressingByteArrayDecoder);
 
   private final DecoderWrapper<InputStream, T> instrumentedDecompressingInputStreamDecoder =
-      new InstrumentedDecoderWrapper(decompressingInputStreamDecoder);
+      new InstrumentedDecoderWrapper<>(decompressingInputStreamDecoder);
 
   private DecoderWrapper<byte[], T> getByteArrayDecoder(
       CompressionStrategy compressionStrategy,

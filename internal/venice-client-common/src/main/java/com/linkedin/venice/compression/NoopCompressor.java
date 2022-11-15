@@ -16,7 +16,7 @@ public class NoopCompressor extends VeniceCompressor {
   }
 
   @Override
-  public ByteBuffer compress(ByteBuffer data) throws IOException {
+  public ByteBuffer compress(ByteBuffer data, int startPositionOfOutput) throws IOException {
     return data;
   }
 
