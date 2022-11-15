@@ -267,6 +267,11 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
           .createSchemaField(hadamardProduct.resultFieldName.toString(), HADAMARD_PRODUCT_RESULT_SCHEMA, "", null);
       resultSchemaFields.add(hadamardProductField);
     });
+    /**
+     * Error map field can not be a static variable; after setting the error map field in a schema, the position of the
+     * field will be updated, so the next time when we set the field in a new schema, it would fail because
+     * {@link Schema#setFields(List)} check whether the position is -1.
+     */
     resultSchemaFields.add(
         AvroCompatibilityHelper.createSchemaField(
             VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME,
