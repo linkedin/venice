@@ -5,7 +5,6 @@ import static org.apache.avro.Schema.Type.RECORD;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
-import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.store.predicate.AndPredicate;
 import com.linkedin.venice.client.store.predicate.EqualsRelationalOperator;
 import com.linkedin.venice.client.store.predicate.Predicate;
@@ -16,42 +15,21 @@ import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.Pair;
-import io.tehuti.utils.SystemTime;
-import io.tehuti.utils.Time;
-import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.avro.io.BinaryEncoder;
 
 
 public class AvroComputeRequestBuilderV4<K> extends AvroComputeRequestBuilderV3<K> {
   private static final int COMPUTE_REQUEST_VERSION = COMPUTE_REQUEST_VERSION_V4;
 
-  public AvroComputeRequestBuilderV4(
-      Schema latestValueSchema,
-      AvroGenericReadComputeStoreClient storeClient,
-      Optional<ClientStats> stats,
-      Optional<ClientStats> streamingStats) {
-    this(latestValueSchema, storeClient, stats, streamingStats, new SystemTime(), false, null, null);
-  }
-
-  public AvroComputeRequestBuilderV4(
-      Schema latestValueSchema,
-      AvroGenericReadComputeStoreClient storeClient,
-      Optional<ClientStats> stats,
-      Optional<ClientStats> streamingStats,
-      Time time,
-      boolean reuseObjects,
-      BinaryEncoder reusedEncoder,
-      ByteArrayOutputStream reusedOutputStream) {
-    super(latestValueSchema, storeClient, stats, streamingStats, time, reuseObjects, reusedEncoder, reusedOutputStream);
+  public AvroComputeRequestBuilderV4(AvroGenericReadComputeStoreClient storeClient, Schema latestValueSchema) {
+    super(storeClient, latestValueSchema);
   }
 
   @Override
@@ -61,7 +39,6 @@ public class AvroComputeRequestBuilderV4<K> extends AvroComputeRequestBuilderV3<
     computeRequestWrapper.setResultSchemaStr(resultSchemaStr);
     computeRequestWrapper.setOperations(getComputeRequestOperations());
     computeRequestWrapper.setValueSchema(latestValueSchema);
-
     return computeRequestWrapper;
   }
 
@@ -72,7 +49,6 @@ public class AvroComputeRequestBuilderV4<K> extends AvroComputeRequestBuilderV3<
     byte[] prefixBytes = extractKeyPrefixBytesFromPredicate(requiredPrefixFields, storeClient.getKeySchema());
     Pair<Schema, String> resultSchema = getResultSchema();
     ComputeRequestWrapper computeRequestWrapper = generateComputeRequest(resultSchema.getSecond());
-
     storeClient.computeWithKeyPrefixFilter(prefixBytes, computeRequestWrapper, callback);
   }
 

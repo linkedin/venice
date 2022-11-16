@@ -75,7 +75,7 @@ public interface ComputeRequestBuilder<K> {
    * @return
    * @throws VeniceClientException
    */
-  CompletableFuture<Map<K, GenericRecord>> execute(Set<K> keys) throws VeniceClientException;
+  CompletableFuture<Map<K, ComputeGenericRecord>> execute(Set<K> keys) throws VeniceClientException;
 
   /**
    * Send compute request to Venice, and this should be the last step of the compute specification.
@@ -87,7 +87,8 @@ public interface ComputeRequestBuilder<K> {
    * @return
    * @throws VeniceClientException
    */
-  CompletableFuture<VeniceResponseMap<K, GenericRecord>> streamingExecute(Set<K> keys) throws VeniceClientException;
+  CompletableFuture<VeniceResponseMap<K, ComputeGenericRecord>> streamingExecute(Set<K> keys)
+      throws VeniceClientException;
 
   /**
    * Streaming interface for {@link #execute(Set)}, and you could find more info in {@link StreamingCallback}.
@@ -95,7 +96,7 @@ public interface ComputeRequestBuilder<K> {
    * @param callback
    * @throws VeniceClientException
    */
-  void streamingExecute(Set<K> keys, StreamingCallback<K, GenericRecord> callback) throws VeniceClientException;
+  void streamingExecute(Set<K> keys, StreamingCallback<K, ComputeGenericRecord> callback) throws VeniceClientException;
 
   /**
    * Streaming interface that sends compute request to Venice, which will be executed on values whose keys satisfy

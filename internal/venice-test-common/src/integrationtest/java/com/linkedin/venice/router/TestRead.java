@@ -16,6 +16,7 @@ import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
@@ -259,6 +260,7 @@ public abstract class TestRead {
 
   @Test // (timeOut = 50 * Time.MS_PER_SECOND)
   public void testRead() throws Exception {
+    final String UNKNOWN_FIELD_NAME = "unknown_field";
     if (!isTestEnabled()) {
       return;
     }
@@ -272,7 +274,8 @@ public abstract class TestRead {
     try (AvroGenericStoreClient<String, GenericRecord> storeClient = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
             .setD2Client(d2Client)
-            .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME))) {
+            .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+            .setProjectionFieldValidationEnabled(false))) {
 
       // Run multiple rounds
       int rounds = 100;
@@ -285,8 +288,8 @@ public abstract class TestRead {
         keySet.add("unknown_key");
         Map<String, GenericRecord> result = storeClient.batchGet(keySet).get();
         Assert.assertEquals(result.size(), MAX_KEY_LIMIT - 1);
-        Map<String, GenericRecord> computeResult =
-            storeClient.compute().project(VALUE_FIELD_NAME).execute(keySet).get();
+        Map<String, ComputeGenericRecord> computeResult =
+            storeClient.compute().project(VALUE_FIELD_NAME, UNKNOWN_FIELD_NAME).execute(keySet).get();
         Assert.assertEquals(computeResult.size(), MAX_KEY_LIMIT - 1);
 
         for (int i = 0; i < MAX_KEY_LIMIT - 1; ++i) {
@@ -294,6 +297,7 @@ public abstract class TestRead {
           record.put(VALUE_FIELD_NAME, i);
           Assert.assertEquals(result.get(KEY_PREFIX + i), record);
           Assert.assertEquals(computeResult.get(KEY_PREFIX + i).get(VALUE_FIELD_NAME), i);
+          Assert.assertNull(computeResult.get(KEY_PREFIX + i).get(UNKNOWN_FIELD_NAME));
         }
 
         /**
