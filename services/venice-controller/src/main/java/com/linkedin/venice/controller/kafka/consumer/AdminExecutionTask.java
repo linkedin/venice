@@ -488,17 +488,18 @@ public class AdminExecutionTask implements Callable<Void> {
         .setAutoSchemaPushJobEnabled(message.schemaAutoRegisterFromPushJobEnabled)
         .setHybridStoreDiskQuotaEnabled(message.hybridStoreDiskQuotaEnabled)
         .setReplicationFactor(message.replicationFactor)
-        .setMigrationDuplicateStore(message.migrationDuplicateStore)
-        // TODO: This probably needs to be a bit more robust, for now this is fine.
-        .setStoreViews(
-            message.views.entrySet()
-                .stream()
-                .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().toString())));
+        .setMigrationDuplicateStore(message.migrationDuplicateStore);
 
     if (message.ETLStoreConfig != null) {
       params.setRegularVersionETLEnabled(message.ETLStoreConfig.regularVersionETLEnabled)
           .setFutureVersionETLEnabled(message.ETLStoreConfig.futureVersionETLEnabled)
           .setEtledProxyUserAccount(message.ETLStoreConfig.etledUserProxyAccount.toString());
+    }
+
+    if (message.views != null) {
+      // TODO: This probably needs to be a bit more robust, for now this is fine.
+      params.setStoreViews(
+          message.views.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().toString())));
     }
 
     if (message.largestUsedVersionNumber != null) {
