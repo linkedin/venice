@@ -88,7 +88,66 @@ public class ChunkingUtils {
         null,
         null,
         null,
+        false,
         false);
+  }
+
+  static <VALUE, ASSEMBLED_VALUE_CONTAINER> VALUE getReplicationMetadataFromStorage(
+      ChunkingAdapter<ASSEMBLED_VALUE_CONTAINER, VALUE> adapter,
+      AbstractStorageEngine store,
+      int partition,
+      ByteBuffer keyBuffer,
+      ReadResponse response) {
+    return getFromStorage(
+        adapter,
+        store,
+        -1,
+        partition,
+        keyBuffer,
+        response,
+        null,
+        null,
+        null,
+        false,
+        null,
+        null,
+        null,
+        false,
+        true);
+  }
+
+  /**
+   * TODO: ADD API DOC + CHECK EACH ARG
+   * @param adapter
+   * @param store
+   * @param partition
+   * @param keyBuffer
+   * @param response
+   * @return
+   * @param <VALUE>
+   * @param <ASSEMBLED_VALUE_CONTAINER>
+   */
+  static <VALUE, ASSEMBLED_VALUE_CONTAINER> VALUE getReplicationMetadataFromStorage(
+      ChunkingAdapter<ASSEMBLED_VALUE_CONTAINER, VALUE> adapter,
+      AbstractStorageEngine store,
+      int partition,
+      ByteBuffer keyBuffer) {
+    return getFromStorage(
+        adapter,
+        store,
+        -1,
+        partition,
+        keyBuffer,
+        null,
+        null,
+        null,
+        CompressionStrategy.NO_OP,
+        false,
+        null,
+        null,
+        null,
+        false,
+        true);
   }
 
   static <VALUE, CHUNKS_CONTAINER> VALUE getFromStorage(
@@ -126,6 +185,7 @@ public class ChunkingUtils {
         schemaRepo,
         storeName,
         compressor,
+        false,
         false);
   }
 
@@ -225,9 +285,19 @@ public class ChunkingUtils {
       ReadOnlySchemaRepository schemaRepo,
       String storeName,
       VeniceCompressor compressor,
-      boolean skipCache) {
+      boolean skipCache,
+      boolean isRmdValue) {
     long databaseLookupStartTimeInNS = (response != null) ? System.nanoTime() : 0;
-    byte[] value = store.get(partition, keyBuffer, skipCache);
+    /*
+    LogManager.getLogger().info("DEBUGGING is RMD? " + isRmdValue);
+    if (isRmdValue) {
+      LogManager.getLogger().info("DEBUGGING RMD STACK: " + Arrays.toString(Thread.currentThread().getStackTrace()));
+    }
+    
+     */
+    byte[] value = isRmdValue
+        ? store.getReplicationMetadata(partition, keyBuffer.array())
+        : store.get(partition, keyBuffer, skipCache);
 
     return getFromStorage(
         value,
@@ -245,7 +315,8 @@ public class ChunkingUtils {
         schemaRepo,
         storeName,
         compressor,
-        skipCache);
+        skipCache,
+        isRmdValue);
   }
 
   /**
@@ -277,7 +348,8 @@ public class ChunkingUtils {
       ReadOnlySchemaRepository schemaRepo,
       String storeName,
       VeniceCompressor compressor,
-      boolean skipCache) {
+      boolean skipCache,
+      boolean isRmdValue) {
 
     if (value == null) {
       return null;
@@ -290,7 +362,11 @@ public class ChunkingUtils {
       if (response != null) {
         response.addDatabaseLookupLatency(LatencyUtils.getLatencyInMS(databaseLookupStartTimeInNS));
       }
-
+      /*
+      LogManager.getLogger()
+          .info("DEBUGGING: NOT CHUNKED BYTES isRmdValue: " + isRmdValue + " " + value.length + " " + writerSchemaId);
+      
+       */
       return adapter.constructValue(
           writerSchemaId,
           readerSchemaId,
@@ -311,6 +387,12 @@ public class ChunkingUtils {
     // End of initial sanity checks. We have a chunked value, so we need to fetch all chunks
 
     ChunkedValueManifest chunkedValueManifest = CHUNKED_VALUE_MANIFEST_SERIALIZER.deserialize(value, writerSchemaId);
+    /*
+    LogManager.getLogger()
+        .info(
+            "DEBUGGING: CHUNK MANIFEST RMD CHUNK? " + isRmdValue + " " + chunkedValueManifest.size + " "
+                + writerSchemaId + " " + chunkedValueManifest.keysWithChunkIdSuffix.size());
+    */
     CHUNKS_CONTAINER assembledValueContainer = adapter.constructChunksContainer(chunkedValueManifest);
     int actualSize = 0;
 
@@ -320,8 +402,9 @@ public class ChunkingUtils {
       // optimize large value retrieval in the future, it's unclear whether the concurrent retrieval approach
       // is optimal (as opposed to streaming the response out incrementally, for example). Since this is a
       // premature optimization, we are not addressing it right now.
+      byte[] chunkKey = chunkedValueManifest.keysWithChunkIdSuffix.get(chunkIndex).array();
       byte[] valueChunk =
-          store.get(partition, chunkedValueManifest.keysWithChunkIdSuffix.get(chunkIndex).array(), skipCache);
+          isRmdValue ? store.getReplicationMetadata(partition, chunkKey) : store.get(partition, chunkKey, skipCache);
 
       if (valueChunk == null) {
         throw new VeniceException("Chunk not found in " + getExceptionMessageDetails(store, partition, chunkIndex));
@@ -333,6 +416,12 @@ public class ChunkingUtils {
       }
 
       actualSize += valueChunk.length - ValueRecord.SCHEMA_HEADER_LENGTH;
+      /*
+      LogManager.getLogger()
+          .info(
+              "DEBUGGING GETTING CHUNK: " + chunkIndex + " " + actualSize + " " + chunkKey.length + " "
+                  + valueChunk.length);
+       */
       adapter.addChunkIntoContainer(assembledValueContainer, chunkIndex, valueChunk);
     }
 

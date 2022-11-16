@@ -46,6 +46,7 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -583,6 +584,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     }
 
     byte[] key = serializeObject(topicName, keyObject);
+    LogManager.getLogger().info("DEBUGGING SENDING PRODUCE KEY: " + keyObject + " " + Arrays.toString(key));
     final CompletableFuture<Void> completableFuture = new CompletableFuture<>();
     final Callback callback = new CompletableFutureCallback(completableFuture);
 

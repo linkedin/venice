@@ -409,6 +409,10 @@ public class ProducerTracker {
         segment.setLastRecordProducerTimestamp(consumerRecord.value().producerMetadata.messageTimestamp);
         return;
       }
+      LogManager.getLogger()
+          .info(
+              "DEBUGGING DIV GET DUPLICATE MESSAGE: " + incomingSequenceNumber + " " + previousSequenceNumber + " "
+                  + consumerRecord.value().producerMetadata.segmentNumber + " " + segment.getSegmentNumber());
       // This is a duplicate message, which we can safely ignore.
 
       // Although data duplication is a benign fault, we need to bubble up for two reasons:

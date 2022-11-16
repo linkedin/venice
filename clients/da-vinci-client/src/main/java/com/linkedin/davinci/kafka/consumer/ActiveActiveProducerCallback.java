@@ -1,9 +1,11 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.writer.VeniceWriter;
+import java.nio.ByteBuffer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 
@@ -37,9 +39,17 @@ public class ActiveActiveProducerCallback extends LeaderProducerCallback {
   }
 
   @Override
-  protected Put instantiateChunkPut() {
+  protected Put instantiateValueChunkPut() {
     Put chunkPut = new Put();
     chunkPut.replicationMetadataPayload = EMPTY_BYTE_BUFFER;
+    chunkPut.replicationMetadataVersionId = VeniceWriter.VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
+    return chunkPut;
+  }
+
+  @Override
+  protected Put instantiateRmdChunkPut() {
+    Put chunkPut = new Put();
+    chunkPut.putValue = EMPTY_BYTE_BUFFER;
     chunkPut.replicationMetadataVersionId = VeniceWriter.VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
     return chunkPut;
   }
@@ -49,7 +59,15 @@ public class ActiveActiveProducerCallback extends LeaderProducerCallback {
     Put manifestPut = new Put();
     Put leaderProducedRecordContextPut = (Put) leaderProducedRecordContext.getValueUnion();
     manifestPut.replicationMetadataVersionId = leaderProducedRecordContextPut.replicationMetadataVersionId;
-    manifestPut.replicationMetadataPayload = leaderProducedRecordContextPut.replicationMetadataPayload;
+    if (chunkedRmdManifest == null) {
+      manifestPut.replicationMetadataPayload = leaderProducedRecordContextPut.replicationMetadataPayload;
+    } else {
+      ByteBuffer rmdManifest = ByteBuffer
+          .wrap(CHUNKED_VALUE_MANIFEST_SERIALIZER.serialize(ingestionTask.getVersionTopic(), chunkedRmdManifest));
+      rmdManifest.position(ValueRecord.SCHEMA_HEADER_LENGTH);
+      manifestPut.replicationMetadataPayload = rmdManifest;
+    }
+
     return manifestPut;
   }
 

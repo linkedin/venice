@@ -16,6 +16,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.function.BiConsumer;
 import java.util.function.Supplier;
+import org.apache.logging.log4j.LogManager;
 
 
 /**
@@ -49,6 +50,8 @@ public class WriterChunkingHelper {
     int sizeAvailablePerMessage = maxSizeForUserPayloadPerMessageInBytes - serializedKey.length;
     validateAvailableSizePerMessage(maxSizeForUserPayloadPerMessageInBytes, sizeAvailablePerMessage, sizeReport);
     int numberOfChunks = (int) Math.ceil((double) payload.length / (double) sizeAvailablePerMessage);
+    LogManager.getLogger()
+        .info("DEBUGGING CHUNKING PAYLOAD: " + isValuePayload + " " + payload.length + " " + numberOfChunks);
     final ChunkedValueManifest chunkedValueManifest = new ChunkedValueManifest();
     chunkedValueManifest.schemaId = schemaId;
     chunkedValueManifest.keysWithChunkIdSuffix = new ArrayList<>(numberOfChunks);
@@ -111,7 +114,6 @@ public class WriterChunkingHelper {
         putPayload.putValue = EMPTY_BYTE_BUFFER;
         putPayload.replicationMetadataPayload = chunk;
       }
-
       chunkedKeySuffix.chunkId.chunkIndex = chunkIndex;
       keyProvider = chunkIndex == 0 ? firstKeyProvider : subsequentKeyProvider;
 
