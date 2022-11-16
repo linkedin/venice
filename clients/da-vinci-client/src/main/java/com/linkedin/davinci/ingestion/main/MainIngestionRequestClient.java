@@ -159,28 +159,41 @@ public class MainIngestionRequestClient implements Closeable {
     return sendIngestionCommandWithRetry(ingestionTaskCommand, topicName, Optional.empty(), REQUEST_MAX_ATTEMPT, true);
   }
 
-  public boolean promoteToLeader(String topicName, int partition) {
+  public boolean promoteToLeader(String topicName, int partitionId) {
     IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
     ingestionTaskCommand.commandType = IngestionCommandType.PROMOTE_TO_LEADER.getValue();
     ingestionTaskCommand.topicName = topicName;
-    ingestionTaskCommand.partitionId = partition;
+    ingestionTaskCommand.partitionId = partitionId;
     return sendIngestionCommandWithRetry(
         ingestionTaskCommand,
         topicName,
-        Optional.of(partition),
+        Optional.of(partitionId),
         REQUEST_MAX_ATTEMPT,
         false);
   }
 
-  public boolean demoteToStandby(String topicName, int partition) {
+  public boolean demoteToStandby(String topicName, int partitionId) {
     IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
     ingestionTaskCommand.commandType = IngestionCommandType.DEMOTE_TO_STANDBY.getValue();
     ingestionTaskCommand.topicName = topicName;
-    ingestionTaskCommand.partitionId = partition;
+    ingestionTaskCommand.partitionId = partitionId;
     return sendIngestionCommandWithRetry(
         ingestionTaskCommand,
         topicName,
-        Optional.of(partition),
+        Optional.of(partitionId),
+        REQUEST_MAX_ATTEMPT,
+        false);
+  }
+
+  public void resetTopicPartition(String topicName, int partitionId) {
+    IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
+    ingestionTaskCommand.commandType = IngestionCommandType.RESET_PARTITION.getValue();
+    ingestionTaskCommand.topicName = topicName;
+    ingestionTaskCommand.partitionId = partitionId;
+    sendIngestionCommandWithRetry(
+        ingestionTaskCommand,
+        topicName,
+        Optional.of(partitionId),
         REQUEST_MAX_ATTEMPT,
         false);
   }

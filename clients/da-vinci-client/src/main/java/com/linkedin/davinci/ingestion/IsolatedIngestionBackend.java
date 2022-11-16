@@ -146,7 +146,11 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
         topicName,
         partition,
         () -> mainIngestionRequestClient.unsubscribeTopicPartition(topicName, partition),
-        () -> super.dropStoragePartitionGracefully(storeConfig, partition, timeoutInSeconds, removeEmptyStorageEngine));
+        () -> {
+          super.dropStoragePartitionGracefully(storeConfig, partition, timeoutInSeconds, removeEmptyStorageEngine);
+          // Clean up the topic partition ingestion status.
+          mainIngestionRequestClient.resetTopicPartition(topicName, partition);
+        });
     if (mainIngestionMonitorService.getTopicPartitionCount(topicName) == 0) {
       LOGGER.info("No serving partitions exist for topic: {}, dropping the topic storage.", topicName);
       mainIngestionMonitorService.cleanupTopicState(topicName);

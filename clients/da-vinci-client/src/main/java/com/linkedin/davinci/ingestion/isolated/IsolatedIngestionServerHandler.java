@@ -228,6 +228,9 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
                       partitionId,
                       isolatedIngestionServer.getLeaderSectionIdChecker(topicName, partitionId)));
           break;
+        case RESET_PARTITION:
+          isolatedIngestionServer.cleanupTopicPartitionState(topicName, partitionId);
+          break;
         default:
           break;
       }
