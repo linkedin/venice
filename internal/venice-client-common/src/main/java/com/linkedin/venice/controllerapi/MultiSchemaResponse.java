@@ -28,6 +28,7 @@ public class MultiSchemaResponse
     private int derivedSchemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
 
     private int rmdValueSchemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
+
     private String schemaStr;
 
     public int getId() {

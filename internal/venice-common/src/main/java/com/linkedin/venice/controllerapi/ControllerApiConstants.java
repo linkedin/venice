@@ -87,6 +87,8 @@ public class ControllerApiConstants {
   public static final String LEADER_FOLLOWER_MODEL_ENABLED = "leader_follower_model_enabled";
   public static final String INCLUDE_SYSTEM_STORES = "include_system_stores";
 
+  public static final String STORE_VIEW = "store_view";
+
   public static final String NATIVE_REPLICATION_ENABLED = "native_replication_enabled";
   public static final String PUSH_STREAM_SOURCE_ADDRESS = "push_stream_source_address";
 
@@ -198,5 +200,4 @@ public class ControllerApiConstants {
   public static final String PERSONA_OWNERS = "persona_owners";
   public static final String PERSONA_STORES = "persona_stores";
   public static final String PERSONA_QUOTA = "persona_quota";
-
 }
