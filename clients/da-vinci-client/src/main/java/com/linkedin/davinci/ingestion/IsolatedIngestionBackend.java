@@ -43,11 +43,9 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
     implements DaVinciIngestionBackend, VeniceIngestionBackend {
   private static final Logger LOGGER = LogManager.getLogger(IsolatedIngestionBackend.class);
   private static final int RETRY_WAIT_TIME_IN_MS = 10 * Time.MS_PER_SECOND;
-
   private final MainIngestionRequestClient mainIngestionRequestClient;
   private final MainIngestionMonitorService mainIngestionMonitorService;
   private final VeniceConfigLoader configLoader;
-
   private Process isolatedIngestionServiceProcess;
 
   public IsolatedIngestionBackend(
@@ -111,42 +109,6 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
   }
 
   @Override
-  public void killConsumptionTask(String topicName) {
-    mainIngestionRequestClient.killConsumptionTask(topicName);
-    super.killConsumptionTask(topicName);
-    mainIngestionMonitorService.cleanupTopicState(topicName);
-  }
-
-  @Override
-  public void removeStorageEngine(String topicName) {
-    mainIngestionRequestClient.removeStorageEngine(topicName);
-    super.removeStorageEngine(topicName);
-    mainIngestionMonitorService.cleanupTopicState(topicName);
-  }
-
-  @Override
-  public void dropStoragePartitionGracefully(
-      VeniceStoreVersionConfig storeConfig,
-      int partition,
-      int timeoutInSeconds,
-      boolean removeEmptyStorageEngine) {
-    String topicName = storeConfig.getStoreVersionName();
-    mainIngestionMonitorService.cleanupTopicPartitionState(topicName, partition);
-    executeCommandWithRetry(topicName, partition, () -> {
-      LOGGER.info("Dropping partition: {} of topic: {} in forked ingestion process.", partition, topicName);
-      return mainIngestionRequestClient.unsubscribeTopicPartition(topicName, partition);
-    }, () -> {
-      LOGGER.info("Dropping partition: {} of topic: {} in main process.", partition, topicName);
-      super.dropStoragePartitionGracefully(storeConfig, partition, timeoutInSeconds, removeEmptyStorageEngine);
-    });
-    if (mainIngestionMonitorService.getTopicPartitionCount(topicName) == 0) {
-      LOGGER.info("No serving partitions exist for topic: {}, dropping the topic storage.", topicName);
-      mainIngestionRequestClient.removeStorageEngine(topicName);
-      mainIngestionMonitorService.cleanupTopicState(topicName);
-    }
-  }
-
-  @Override
   public void promoteToLeader(
       VeniceStoreVersionConfig storeConfig,
       int partition,
@@ -170,6 +132,40 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
         partition,
         () -> mainIngestionRequestClient.demoteToStandby(topicName, partition),
         () -> super.demoteToStandby(storeConfig, partition, leaderSessionIdChecker));
+  }
+
+  @Override
+  public void dropStoragePartitionGracefully(
+      VeniceStoreVersionConfig storeConfig,
+      int partition,
+      int timeoutInSeconds,
+      boolean removeEmptyStorageEngine) {
+    String topicName = storeConfig.getStoreVersionName();
+    mainIngestionMonitorService.cleanupTopicPartitionState(topicName, partition);
+    executeCommandWithRetry(
+        topicName,
+        partition,
+        () -> mainIngestionRequestClient.unsubscribeTopicPartition(topicName, partition),
+        () -> super.dropStoragePartitionGracefully(storeConfig, partition, timeoutInSeconds, removeEmptyStorageEngine));
+    if (mainIngestionMonitorService.getTopicPartitionCount(topicName) == 0) {
+      LOGGER.info("No serving partitions exist for topic: {}, dropping the topic storage.", topicName);
+      mainIngestionMonitorService.cleanupTopicState(topicName);
+      mainIngestionRequestClient.removeStorageEngine(topicName);
+    }
+  }
+
+  @Override
+  public void removeStorageEngine(String topicName) {
+    mainIngestionRequestClient.removeStorageEngine(topicName);
+    super.removeStorageEngine(topicName);
+    mainIngestionMonitorService.cleanupTopicState(topicName);
+  }
+
+  @Override
+  public void killConsumptionTask(String topicName) {
+    mainIngestionRequestClient.killConsumptionTask(topicName);
+    super.killConsumptionTask(topicName);
+    mainIngestionMonitorService.cleanupTopicState(topicName);
   }
 
   @Override
@@ -277,7 +273,6 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
     while (!messageCompleted) {
       if (isTopicPartitionHostedInMainProcess(topicName, partition)) {
         LOGGER.info("Executing command of topic: {}, partition: {} in main process process.", topicName, partition);
-
         localCommandRunnable.run();
         messageCompleted = true;
       } else {
@@ -285,7 +280,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
         messageCompleted = remoteCommandSupplier.get();
       }
       if (!messageCompleted) {
-        LOGGER.info("Command not completed by remote ingestion process, will retry in {} ms.", RETRY_WAIT_TIME_IN_MS);
+        LOGGER.info("Command not executed by remote ingestion process, will retry in {} ms.", RETRY_WAIT_TIME_IN_MS);
         try {
           Thread.sleep(RETRY_WAIT_TIME_IN_MS);
         } catch (InterruptedException e) {

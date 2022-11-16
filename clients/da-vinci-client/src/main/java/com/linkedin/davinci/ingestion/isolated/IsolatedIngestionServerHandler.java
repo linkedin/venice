@@ -152,18 +152,26 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
       storeConfig.setRestoreDataPartitions(false);
       switch (ingestionCommandType) {
         case START_CONSUMPTION:
-          ReadOnlyStoreRepository storeRepository = isolatedIngestionServer.getStoreRepository();
-          // For subscription based store repository, we will need to subscribe to the store explicitly.
-          if (storeRepository instanceof SubscriptionBasedReadOnlyStoreRepository) {
-            LOGGER.info("Ingestion Service subscribing to store: {}", storeName);
-            ((SubscriptionBasedReadOnlyStoreRepository) storeRepository).subscribe(storeName);
-          }
-          LOGGER.info("Start ingesting partition: {} of topic: {}", partitionId, topicName);
-          isolatedIngestionServer.setPartitionToBeSubscribed(topicName, partitionId);
-          isolatedIngestionServer.getIngestionBackend().startConsumption(storeConfig, partitionId);
+          validateAndExecuteCommand(report, () -> {
+            ReadOnlyStoreRepository storeRepository = isolatedIngestionServer.getStoreRepository();
+            // For subscription based store repository, we will need to subscribe to the store explicitly.
+            if (storeRepository instanceof SubscriptionBasedReadOnlyStoreRepository) {
+              LOGGER.info("Ingestion Service subscribing to store: {}", storeName);
+              try {
+                ((SubscriptionBasedReadOnlyStoreRepository) storeRepository).subscribe(storeName);
+              } catch (InterruptedException e) {
+                LOGGER.warn("Subscription to store: {} is interrupted. ", storeName);
+              }
+            }
+            LOGGER.info("Start ingesting partition: {} of topic: {}", partitionId, topicName);
+            isolatedIngestionServer.setPartitionToBeSubscribed(topicName, partitionId);
+            isolatedIngestionServer.getIngestionBackend().startConsumption(storeConfig, partitionId);
+          });
           break;
         case STOP_CONSUMPTION:
-          isolatedIngestionServer.getIngestionBackend().stopConsumption(storeConfig, partitionId);
+          validateAndExecuteCommand(
+              report,
+              () -> isolatedIngestionServer.getIngestionBackend().stopConsumption(storeConfig, partitionId));
           break;
         case KILL_CONSUMPTION:
           isolatedIngestionServer.getIngestionBackend().killConsumptionTask(topicName);
@@ -177,21 +185,23 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
           isolatedIngestionServer.cleanupTopicState(topicName);
           break;
         case REMOVE_PARTITION:
-          /**
-           * Here we do not allow storage service to clean up "empty" storage engine. When ingestion isolation is turned on,
-           * storage partition will be re-opened in main process after COMPLETED is announced by StoreIngestionTask. Although
-           * it might indicate there is no remaining data partitions in the forked process storage engine, it still holds the
-           * metadata partition. Cleaning up the "empty storage engine" will (1) delete metadata partition (2) remove storage
-           * engine from the map. When a new ingestion request comes in, it will create another metadata partition, but all
-           * the metadata stored previously is gone forever...
-           */
-          isolatedIngestionServer.getIngestionBackend()
-              .dropStoragePartitionGracefully(
-                  storeConfig,
-                  partitionId,
-                  isolatedIngestionServer.getStopConsumptionWaitRetriesNum(),
-                  false);
-          isolatedIngestionServer.cleanupTopicPartitionState(topicName, partitionId);
+          validateAndExecuteCommand(report, () -> {
+            /**
+             * Here we do not allow storage service to clean up "empty" storage engine. When ingestion isolation is turned on,
+             * storage partition will be re-opened in main process after COMPLETED is announced by StoreIngestionTask. Although
+             * it might indicate there is no remaining data partitions in the forked process storage engine, it still holds the
+             * metadata partition. Cleaning up the "empty storage engine" will (1) delete metadata partition (2) remove storage
+             * engine from the map. When a new ingestion request comes in, it will create another metadata partition, but all
+             * the metadata stored previously is gone forever...
+             */
+            isolatedIngestionServer.getIngestionBackend()
+                .dropStoragePartitionGracefully(
+                    storeConfig,
+                    partitionId,
+                    isolatedIngestionServer.getStopConsumptionWaitRetriesNum(),
+                    false);
+            isolatedIngestionServer.cleanupTopicPartitionState(topicName, partitionId);
+          });
           break;
         case OPEN_STORAGE_ENGINE:
           // Open metadata partition of the store engine.
@@ -201,36 +211,22 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
           LOGGER.info("Metadata partition of topic: {} restored.", ingestionTaskCommand.topicName);
           break;
         case PROMOTE_TO_LEADER:
-          // This is to avoid the race condition. When partition is being unsubscribed, we should not add it to the
-          // action queue, but instead fail the command fast.
-          if (isolatedIngestionServer.isPartitionSubscribed(topicName, partitionId)) {
-            isolatedIngestionServer.getIngestionBackend()
-                .promoteToLeader(
-                    storeConfig,
-                    partitionId,
-                    isolatedIngestionServer.getLeaderSectionIdChecker(topicName, partitionId));
-          } else {
-            report.isPositive = false;
-            LOGGER.info(
-                "Partition {} of topic: {} is being unsubscribed, reject leader promotion request",
-                partitionId,
-                topicName);
-          }
+          validateAndExecuteCommand(
+              report,
+              () -> isolatedIngestionServer.getIngestionBackend()
+                  .promoteToLeader(
+                      storeConfig,
+                      partitionId,
+                      isolatedIngestionServer.getLeaderSectionIdChecker(topicName, partitionId)));
           break;
         case DEMOTE_TO_STANDBY:
-          if (isolatedIngestionServer.isPartitionSubscribed(topicName, partitionId)) {
-            isolatedIngestionServer.getIngestionBackend()
-                .demoteToStandby(
-                    storeConfig,
-                    partitionId,
-                    isolatedIngestionServer.getLeaderSectionIdChecker(topicName, partitionId));
-          } else {
-            report.isPositive = false;
-            LOGGER.info(
-                "Partition {} of topic: {} is being unsubscribed, reject leader demotion request",
-                partitionId,
-                topicName);
-          }
+          validateAndExecuteCommand(
+              report,
+              () -> isolatedIngestionServer.getIngestionBackend()
+                  .demoteToStandby(
+                      storeConfig,
+                      partitionId,
+                      isolatedIngestionServer.getLeaderSectionIdChecker(topicName, partitionId)));
           break;
         default:
           break;
@@ -369,6 +365,17 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
           "Only able to parse POST requests for actions: init, command, report.  Cannot support action: "
               + requestParts[1],
           e);
+    }
+  }
+
+  private void validateAndExecuteCommand(IngestionTaskReport report, Runnable commandRunnable) {
+    String topic = report.topicName.toString();
+    int partition = report.partitionId;
+    if (isolatedIngestionServer.isPartitionSubscribed(topic, partition)) {
+      commandRunnable.run();
+    } else {
+      report.isPositive = false;
+      LOGGER.info("Topic: {}, partition {} is being unsubscribed, will reject command", topic, partition);
     }
   }
 }

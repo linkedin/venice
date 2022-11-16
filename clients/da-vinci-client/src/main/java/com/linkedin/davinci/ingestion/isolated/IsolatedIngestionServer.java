@@ -79,7 +79,7 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * IsolatedIngestionServer is the server service of the isolated ingestion service. It is a Netty based server that listens to
+ * This class is the server service of the isolated ingestion service. It is a Netty based server that listens to
  * all the requests sent from {@link IsolatedIngestionBackend} in main process and spawn {@link IsolatedIngestionServerHandler}
  * to handle the request.
  *
@@ -94,7 +94,7 @@ import org.apache.logging.log4j.Logger;
  *  -- For COMPLETED status, it will stop ingestion and shutdown corresponding storage so main process can re-subscribe it for serving purpose.
  *  -- For ERROR status, it will also stop ingestion and shutdown storage, and it will also forward the ERROR status for main process to handle.
  * IsolatedIngestionServer itself is stateless and will not persist any ingestion status. When the child process encounters failure
- * and crash, {@link MainIngestionMonitorService} will be responsible of respawning a new instance and resume all ongoing ingestion
+ * and crash, {@link MainIngestionMonitorService} will be responsible for respawning a new instance and resume all ongoing ingestion
  * tasks for fault tolerance purpose.
  */
 public class IsolatedIngestionServer extends AbstractVeniceService {
@@ -110,7 +110,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   private final int servicePort;
   private final ExecutorService longRunningTaskExecutor = Executors.newFixedThreadPool(10);
   private final ExecutorService statusReportingExecutor = Executors.newSingleThreadExecutor();
-  // Leader section Id map helps to verify if the PROMOTE_TO_LEADER/DEMOTE_TO_STANDBY is valid or not when processing
+  // Leader section id map helps to verify if the leader state transition is valid or not when processing
   // the message in the queue.
   private final Map<String, Map<Integer, AtomicLong>> leaderSessionIdMap = new VeniceConcurrentHashMap<>();
   /**
@@ -126,7 +126,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
 
   private ChannelFuture serverFuture;
   private MetricsRepository metricsRepository = null;
-  private VeniceConfigLoader configLoader = null;
+  private VeniceConfigLoader configLoader;
   private ReadOnlyStoreRepository storeRepository = null;
   private ReadOnlyLiveClusterConfigRepository liveConfigRepository = null;
   private StorageService storageService = null;
@@ -197,7 +197,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     LOGGER.info("All ingestion components are initialized.");
 
     heartbeatCheckScheduler.scheduleAtFixedRate(this::checkHeartbeatTimeout, 0, 5, TimeUnit.SECONDS);
-    // There is no async process in this function, so we are completely finished with the start up process.
+    // There is no async process in this function, so we are completely finished with the start-up process.
     repairService.start();
     return true;
   }
@@ -259,10 +259,6 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     this.storageService = storageService;
   }
 
-  public void setStoreIngestionService(KafkaStoreIngestionService storeIngestionService) {
-    this.storeIngestionService = storeIngestionService;
-  }
-
   public void setStorageMetadataService(StorageMetadataService storageMetadataService) {
     this.storageMetadataService = storageMetadataService;
   }
@@ -278,14 +274,6 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   public void setStoreVersionStateSerializer(
       InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer) {
     this.storeVersionStateSerializer = storeVersionStateSerializer;
-  }
-
-  public void setIngestionBackend(DefaultIngestionBackend ingestionBackend) {
-    this.ingestionBackend = ingestionBackend;
-  }
-
-  public void setInitiated(boolean initiated) {
-    isInitiated = initiated;
   }
 
   public boolean isInitiated() {
