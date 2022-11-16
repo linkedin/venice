@@ -5,6 +5,7 @@ import static com.linkedin.venice.meta.Store.NUM_VERSION_PRESERVE_NOT_SET;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.linkedin.venice.compression.CompressionStrategy;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -61,6 +62,7 @@ public class StoreInfo {
     storeInfo.setVersions(store.getVersions());
     storeInfo.setWriteComputationEnabled(store.isWriteComputationEnabled());
     storeInfo.setReplicationMetadataVersionId(store.getRmdVersionID().orElse(-1));
+    storeInfo.setViewConfigs(store.getViewConfigs());
     return storeInfo;
   }
 
@@ -290,6 +292,8 @@ public class StoreInfo {
   private boolean activeActiveReplicationEnabled;
 
   private String kafkaBrokerUrl;
+
+  private Map<String, ViewConfig> viewConfigs = new HashMap<>();
 
   public StoreInfo() {
   }
@@ -546,6 +550,14 @@ public class StoreInfo {
 
   public void setWriteComputationEnabled(boolean writeComputationEnabled) {
     this.writeComputationEnabled = writeComputationEnabled;
+  }
+
+  public Map<String, ViewConfig> getViewConfigs() {
+    return viewConfigs;
+  }
+
+  public void setViewConfigs(Map<String, ViewConfig> viewConfigs) {
+    this.viewConfigs = viewConfigs;
   }
 
   public int getReplicationMetadataVersionId() {
