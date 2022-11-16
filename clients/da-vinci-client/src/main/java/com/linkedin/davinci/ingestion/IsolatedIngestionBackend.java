@@ -42,7 +42,7 @@ import org.apache.logging.log4j.Logger;
 public class IsolatedIngestionBackend extends DefaultIngestionBackend
     implements DaVinciIngestionBackend, VeniceIngestionBackend {
   private static final Logger LOGGER = LogManager.getLogger(IsolatedIngestionBackend.class);
-  private static final int RETRY_WAIT_TIME_IN_MS = 10 * Time.MS_PER_SECOND;
+  private static final int RETRY_WAIT_TIME_IN_MS = Time.MS_PER_SECOND;
   private final MainIngestionRequestClient mainIngestionRequestClient;
   private final MainIngestionMonitorService mainIngestionMonitorService;
   private final VeniceConfigLoader configLoader;
