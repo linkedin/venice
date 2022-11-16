@@ -1,11 +1,13 @@
 package com.linkedin.venice.meta;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.linkedin.venice.systemstore.schemas.StoreViewConfig;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
 
 
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class ViewConfigImpl implements ViewConfig {
   private final StoreViewConfig viewConfig;
 

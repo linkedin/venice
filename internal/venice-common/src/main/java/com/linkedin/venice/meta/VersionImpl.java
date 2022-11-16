@@ -294,6 +294,7 @@ public class VersionImpl implements Version {
     }
   }
 
+  @JsonProperty("views")
   @Override
   public Map<String, ViewConfig> getViewConfigs() {
 
@@ -302,6 +303,7 @@ public class VersionImpl implements Version {
         .collect(Collectors.toMap(Map.Entry::getKey, e -> new ViewConfigImpl(e.getValue())));
   }
 
+  @JsonProperty("views")
   @Override
   public void setViewConfig(Map<String, ViewConfig> viewConfigList) {
     this.storeVersion.views = viewConfigList.entrySet()

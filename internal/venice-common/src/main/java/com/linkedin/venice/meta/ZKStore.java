@@ -450,17 +450,19 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     }
   }
 
+  @JsonProperty("views")
   @Override
   public Map<String, ViewConfig> getViewConfigs() {
     if (this.storeProperties.views == null) {
       return null;
     }
+
     return this.storeProperties.views.entrySet()
         .stream()
         .collect(Collectors.toMap(e -> e.getKey().toString(), e -> new ViewConfigImpl(e.getValue())));
-
   }
 
+  @JsonProperty("views")
   @Override
   public void setViewConfigs(Map<String, ViewConfig> viewConfigList) {
     if (viewConfigList == null) {

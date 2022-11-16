@@ -152,7 +152,7 @@
             },
             {
               "name": "views",
-              "doc": "A map of views which describe and configure a downstream view of a venice store. Keys in this map are for convenience of managing configs.",
+              "doc": "A map of views which describe and configure a downstream view of a venice store. Keys in this map are for convenience of managing configs, and will be the handle by which this view is referred to by clients and admin operators.",
               "type": {
               "type":"map",
               "values": {
