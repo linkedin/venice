@@ -555,38 +555,39 @@
             {
               "name": "views",
               "doc": "A map of views which describe and configure a downstream view of a venice store. Keys in this map are for convenience of managing configs.",
-              "type": {
-              "type":"map",
-              "java-key-class": "java.lang.String",
-              "avro.java.string": "String",
-              "values": {
-                "name": "StoreViewConfigRecord",
-                "type": "record",
-                "doc": "A configuration for a particular view.  This config should inform Venice leaders how to transform and transmit data to destination views.",
-                "fields": [
-                  {
-                    "name": "viewType",
-                    "type": "int",
-                    "doc": "This informs what kind of view we are materializing.  This then informs what kind of parameters are passed to parse this input. Defaults to CHANGE_CAPTURE",
-                    "default": 0
-                  },
-                  {
-                    "name": "viewParameters",
-                    "doc": "Optional parameters to be passed to the given view config.",
-                    "type": ["null",
+              "type": ["null",
+                {
+                  "type":"map",
+                  "java-key-class": "java.lang.String",
+                  "avro.java.string": "String",
+                  "values": {
+                    "name": "StoreViewConfigRecord",
+                    "type": "record",
+                    "doc": "A configuration for a particular view.  This config should inform Venice leaders how to transform and transmit data to destination views.",
+                    "fields": [
                       {
-                        "type": "map",
-                        "java-key-class": "java.lang.String",
-                        "avro.java.string": "String",
-                        "values": { "type": "string", "avro.java.string": "String" }
+                        "name": "viewType",
+                        "type": "int",
+                        "doc": "This informs what kind of view we are materializing.  This then informs what kind of parameters are passed to parse this input. Defaults to CHANGE_CAPTURE",
+                        "default": 0
+                      },
+                      {
+                        "name": "viewParameters",
+                        "doc": "Optional parameters to be passed to the given view config.",
+                        "type": ["null",
+                          {
+                            "type": "map",
+                            "java-key-class": "java.lang.String",
+                            "avro.java.string": "String",
+                            "values": { "type": "string", "avro.java.string": "String" }
+                          }
+                        ],
+                        "default": null
                       }
-                    ],
-                    "default": null
-                  }
-                ]
-                }
-              },
-              "default": {}
+                    ]
+                    }
+                }],
+              "default": null
             }
           ]
         },
