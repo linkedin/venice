@@ -15,6 +15,7 @@ import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionComponentType;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.security.SSLFactory;
@@ -88,14 +89,10 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       int partition,
       Optional<LeaderFollowerStateType> leaderState) {
     String topicName = storeConfig.getStoreVersionName();
-    executeCommandWithRetry(topicName, partition, () -> {
+    executeCommandWithRetry(topicName, partition, IngestionCommandType.START_CONSUMPTION, () -> {
       mainIngestionMonitorService.setVersionPartitionToIsolatedIngestion(storeConfig.getStoreVersionName(), partition);
       return mainIngestionRequestClient.startConsumption(storeConfig.getStoreVersionName(), partition);
-    }, () -> {
-      // TODO: I believe this is not needed. Check back.
-      mainIngestionMonitorService.setVersionPartitionToLocalIngestion(storeConfig.getStoreVersionName(), partition);
-      super.startConsumption(storeConfig, partition, leaderState);
-    });
+    }, () -> super.startConsumption(storeConfig, partition, leaderState));
   }
 
   @Override
@@ -104,6 +101,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
     executeCommandWithRetry(
         topicName,
         partition,
+        IngestionCommandType.STOP_CONSUMPTION,
         () -> mainIngestionRequestClient.stopConsumption(storeConfig.getStoreVersionName(), partition),
         () -> super.stopConsumption(storeConfig, partition));
   }
@@ -117,6 +115,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
     executeCommandWithRetry(
         topicName,
         partition,
+        IngestionCommandType.PROMOTE_TO_LEADER,
         () -> mainIngestionRequestClient.promoteToLeader(topicName, partition),
         () -> super.promoteToLeader(storeConfig, partition, leaderSessionIdChecker));
   }
@@ -130,6 +129,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
     executeCommandWithRetry(
         topicName,
         partition,
+        IngestionCommandType.DEMOTE_TO_STANDBY,
         () -> mainIngestionRequestClient.demoteToStandby(topicName, partition),
         () -> super.demoteToStandby(storeConfig, partition, leaderSessionIdChecker));
   }
@@ -145,6 +145,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
     executeCommandWithRetry(
         topicName,
         partition,
+        IngestionCommandType.REMOVE_PARTITION,
         () -> mainIngestionRequestClient.unsubscribeTopicPartition(topicName, partition),
         () -> {
           super.dropStoragePartitionGracefully(storeConfig, partition, timeoutInSeconds, removeEmptyStorageEngine);
@@ -176,14 +177,6 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
   public void addIngestionNotifier(VeniceNotifier ingestionListener) {
     if (ingestionListener != null) {
       super.addIngestionNotifier(ingestionListener);
-      mainIngestionMonitorService.addIngestionNotifier(getIsolatedIngestionNotifier(ingestionListener));
-    }
-  }
-
-  @Override
-  public void addLeaderFollowerIngestionNotifier(VeniceNotifier ingestionListener) {
-    if (ingestionListener != null) {
-      super.addLeaderFollowerIngestionNotifier(ingestionListener);
       mainIngestionMonitorService.addIngestionNotifier(getIsolatedIngestionNotifier(ingestionListener));
     }
   }
@@ -271,20 +264,28 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
   private void executeCommandWithRetry(
       String topicName,
       int partition,
+      IngestionCommandType command,
       Supplier<Boolean> remoteCommandSupplier,
       Runnable localCommandRunnable) {
     boolean messageCompleted = false;
     while (!messageCompleted) {
       if (isTopicPartitionHostedInMainProcess(topicName, partition)) {
-        LOGGER.info("Executing command of topic: {}, partition: {} in main process process.", topicName, partition);
+        LOGGER.info(
+            "Executing command {} of topic: {}, partition: {} in main process process.",
+            command,
+            topicName,
+            partition);
         localCommandRunnable.run();
         messageCompleted = true;
       } else {
-        LOGGER.info("Sending command of topic: {}, partition: {} to fork process.", topicName, partition);
+        LOGGER.info("Sending command {} of topic: {}, partition: {} to fork process.", command, topicName, partition);
         messageCompleted = remoteCommandSupplier.get();
       }
       if (!messageCompleted) {
-        LOGGER.info("Command not executed by remote ingestion process, will retry in {} ms.", RETRY_WAIT_TIME_IN_MS);
+        LOGGER.info(
+            "Command {} rejected by remote ingestion process, will retry in {} ms.",
+            command,
+            RETRY_WAIT_TIME_IN_MS);
         try {
           Thread.sleep(RETRY_WAIT_TIME_IN_MS);
         } catch (InterruptedException e) {

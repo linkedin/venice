@@ -120,11 +120,6 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
   }
 
   @Override
-  public void addLeaderFollowerIngestionNotifier(VeniceNotifier ingestionListener) {
-    getStoreIngestionService().addIngestionNotifier(ingestionListener);
-  }
-
-  @Override
   public void addPushStatusNotifier(VeniceNotifier pushStatusNotifier) {
     getStoreIngestionService().addIngestionNotifier(pushStatusNotifier);
   }
