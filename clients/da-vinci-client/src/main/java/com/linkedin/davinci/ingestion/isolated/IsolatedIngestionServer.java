@@ -64,6 +64,7 @@ import io.tehuti.metrics.MetricsRepository;
 import java.io.FileNotFoundException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
@@ -448,14 +449,16 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
 
   // Check if topic partition is being subscribed.
   public boolean isPartitionSubscribed(String topicName, int partition) {
-    if (!topicPartitionSubscriptionMap.containsKey(topicName)) {
+    AtomicBoolean subscription =
+        getTopicPartitionSubscriptionMap().getOrDefault(topicName, Collections.emptyMap()).get(partition);
+    if (subscription == null) {
       return false;
     }
-    Map<Integer, AtomicBoolean> partitionSubscriptionMap = topicPartitionSubscriptionMap.get(topicName);
-    if (!partitionSubscriptionMap.containsKey(partition)) {
-      return false;
-    }
-    return partitionSubscriptionMap.get(partition).get();
+    return subscription.get();
+  }
+
+  public Map<String, Map<Integer, AtomicBoolean>> getTopicPartitionSubscriptionMap() {
+    return topicPartitionSubscriptionMap;
   }
 
   /**

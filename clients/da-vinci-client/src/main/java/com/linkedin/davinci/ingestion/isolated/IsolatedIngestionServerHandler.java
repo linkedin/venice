@@ -39,7 +39,7 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * IsolatedIngestionServerHandler is the handler class for {@link IsolatedIngestionServer}. This handler will be spawn to handle
+ * This is the handler class for {@link IsolatedIngestionServer}. This handler will be spawn to handle
  * the following {@link IngestionAction} request from main process:
  * (1) INIT: Initialization request that pass all the configs to initialize the {@link IsolatedIngestionServer} components.
  * (2) COMMAND: Different kinds of ingestion commands to control the ingestion of a given topic (partition)
@@ -49,7 +49,7 @@ import org.apache.logging.log4j.Logger;
  * of current ingestion isolation design, metadata partition of a topic will always be opened in child process.
  * {@link MainIngestionStorageMetadataService} maintains in-memory cache of metadata in main
  * process, and it will persist metadata updates via UPDATE_METADATA requests.
- * (6) SHUTDOWN_COMPONENT: Request to shutdown a specific ingestion component gracefully.
+ * (6) SHUTDOWN_COMPONENT: Request to shut down a specific ingestion component gracefully.
  *
  * This class contains all the logic details to handle above requests. Also, it registers ingestion listener which relays
  * status reporting to main process.
@@ -371,7 +371,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
     }
   }
 
-  private void validateAndExecuteCommand(IngestionTaskReport report, Runnable commandRunnable) {
+  protected void validateAndExecuteCommand(IngestionTaskReport report, Runnable commandRunnable) {
     String topic = report.topicName.toString();
     int partition = report.partitionId;
     if (isolatedIngestionServer.isPartitionSubscribed(topic, partition)) {
