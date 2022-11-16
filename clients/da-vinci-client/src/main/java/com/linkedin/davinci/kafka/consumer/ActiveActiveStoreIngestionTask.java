@@ -260,7 +260,18 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     }
 
     final long lookupStartTimeInNS = System.nanoTime();
-    byte[] replicationMetadataWithValueSchemaBytes = storageEngine.getReplicationMetadata(subPartition, key);
+    ByteBuffer rmdWithValueSchemaByteBuffer = RawBytesChunkingAdapter.INSTANCE.getReplicationMetadata(
+        storageEngine,
+        storeName,
+        subPartition,
+        key,
+        isChunked,
+        serverConfig.isComputeFastAvroEnabled(),
+        compressionStrategy,
+        compressor.get(),
+        schemaRepository);
+    byte[] replicationMetadataWithValueSchemaBytes =
+        rmdWithValueSchemaByteBuffer == null ? null : rmdWithValueSchemaByteBuffer.array();
     hostLevelIngestionStats
         .recordIngestionReplicationMetadataLookUpLatency(LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
     if (replicationMetadataWithValueSchemaBytes == null) {
@@ -458,8 +469,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    * is that the {@link PartitionConsumptionState.TransientRecord} only contains the full value.
    * @param partitionConsumptionState The {@link PartitionConsumptionState} of the current partition
    * @param key The key bytes of the incoming record.
-   * @param topic The topic from which the incomign record was consumed
-   * @param partition The Kafka partition from which the incomign record was consumed
+   * @param topic The topic from which the incoming record was consumed
+   * @param partition The Kafka partition from which the incoming record was consumed
    * @return
    */
   private ByteBuffer getValueBytesForKey(
@@ -1288,8 +1299,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             ChunkedValueManifest chunkedValueManifest,
             ByteBuffer[] rmdChunks,
             ChunkedValueManifest chunkedRmdManifest) {
-          ((ChunkAwareCallback) callback)
-              .setChunkingInfo(key, valueChunks, chunkedValueManifest, rmdChunks, chunkedRmdManifest);
+          callback.setChunkingInfo(key, valueChunks, chunkedValueManifest, rmdChunks, chunkedRmdManifest);
         }
 
         @Override

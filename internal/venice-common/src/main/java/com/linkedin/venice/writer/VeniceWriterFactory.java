@@ -55,6 +55,7 @@ public class VeniceWriterFactory {
       writerProperties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, localKafkaBootstrapServers);
     }
     writerProperties.put(VeniceWriter.ENABLE_CHUNKING, options.isChunkingEnabled());
+    writerProperties.put(VeniceWriter.ENABLE_RMD_CHUNKING, options.isRmdChunkingEnabled());
     VeniceProperties props = new VeniceProperties(writerProperties);
     return new VeniceWriter<>(options, props, () -> {
       if (sharedKafkaProducerService.isPresent()) {

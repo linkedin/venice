@@ -81,6 +81,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   public static final String CLOSE_TIMEOUT_MS = VENICE_WRITER_CONFIG_PREFIX + "close.timeout.ms";
   public static final String CHECK_SUM_TYPE = VENICE_WRITER_CONFIG_PREFIX + "checksum.type";
   public static final String ENABLE_CHUNKING = VENICE_WRITER_CONFIG_PREFIX + "chunking.enabled";
+  public static final String ENABLE_RMD_CHUNKING =
+      VENICE_WRITER_CONFIG_PREFIX + "replication.metadata.chunking.enabled";
   public static final String MAX_ATTEMPTS_WHEN_TOPIC_MISSING =
       VENICE_WRITER_CONFIG_PREFIX + "max.attemps.when.topic.missing";
   public static final String SLEEP_TIME_MS_WHEN_TOPIC_MISSING =
@@ -249,6 +251,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     this.checkSumType = CheckSumType.valueOf(props.getString(CHECK_SUM_TYPE, DEFAULT_CHECK_SUM_TYPE));
     this.isChunkingEnabled = props.getBoolean(ENABLE_CHUNKING, false);
     this.isChunkingSet = props.containsKey(ENABLE_CHUNKING);
+    this.isRmdChunkingEnabled = props.getBoolean(ENABLE_RMD_CHUNKING, false);
     this.maxSizeForUserPayloadPerMessageInBytes = props
         .getInt(MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES, DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES);
     if (maxSizeForUserPayloadPerMessageInBytes > DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES) {
@@ -272,8 +275,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         props.getLong(MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, DEFAULT_MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS);
     this.elapsedTimeForClosingSegmentEnabled = maxElapsedTimeForSegmentInMs > 0;
     this.defaultDebugInfo = Utils.getDebugInfo();
-    // Hardcoded to false for now until we finished the implementation.
-    this.isRmdChunkingEnabled = false;
 
     // if INSTANCE_ID is not set, we'd use "hostname:port" as the default writer id
     if (props.containsKey(INSTANCE_ID)) {
@@ -640,7 +641,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     byte[] serializedValue = valueSerializer.serialize(topicName, value);
     int partition = getPartition(serializedKey);
 
-    int replicationMetadataPayloadSize = putMetadata.isPresent() ? putMetadata.get().getSerializedSize() : 0;
+    int replicationMetadataPayloadSize = putMetadata.map(PutMetadata::getSerializedSize).orElse(0);
     isChunkingFlagInvoked = true;
     if (serializedKey.length + serializedValue.length
         + replicationMetadataPayloadSize > maxSizeForUserPayloadPerMessageInBytes) {
