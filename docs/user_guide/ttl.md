@@ -38,8 +38,8 @@ This brings two major benefits:
 empty push, so the total amount of entries produced to the new store version will be reduced.
 2. The data format produced by the repush with TTL will be more efficient since it will be sorted and de-duped.
 
-Please note that this feature only supports Venice stores that enable active-active replication, empty push doesn't have
-this requirement.
+Please note that this feature only supports Venice stores that enable active-active replication and doesn't enable 
+write compute yet, empty push doesn't have this requirement.
 
 ## Use Cases
 TTL can serve as a storage efficiency optimization for use cases where the data is transient in nature, and not useful
