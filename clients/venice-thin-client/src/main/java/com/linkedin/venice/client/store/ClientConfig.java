@@ -108,6 +108,7 @@ public class ClientConfig<T extends SpecificRecord> {
         .setSslFactory(config.getSslFactory())
 
         .setForceClusterDiscoveryAtStartTime(config.isForceClusterDiscoveryAtStartTime())
+        .setProjectionFieldValidationEnabled(config.isProjectionFieldValidationEnabled())
         .setPreferredSchemaFilter(config.getPreferredSchemaFilter().orElse(null))
 
         // Test settings
