@@ -20,6 +20,7 @@ import com.linkedin.venice.ingestion.protocol.enums.IngestionComponentType;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
 import java.util.function.Supplier;
@@ -267,8 +268,8 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       IngestionCommandType command,
       Supplier<Boolean> remoteCommandSupplier,
       Runnable localCommandRunnable) {
-    boolean messageCompleted = false;
-    while (!messageCompleted) {
+    while (true) {
+      boolean isCommandSucceeded;
       if (isTopicPartitionHostedInMainProcess(topicName, partition)) {
         LOGGER.info(
             "Executing command {} of topic: {}, partition: {} in main process process.",
@@ -276,23 +277,20 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
             topicName,
             partition);
         localCommandRunnable.run();
-        messageCompleted = true;
+        isCommandSucceeded = true;
       } else {
         LOGGER.info("Sending command {} of topic: {}, partition: {} to fork process.", command, topicName, partition);
-        messageCompleted = remoteCommandSupplier.get();
+        isCommandSucceeded = remoteCommandSupplier.get();
       }
-      if (!messageCompleted) {
-        LOGGER.info(
-            "Command {} rejected by remote ingestion process, will retry in {} ms.",
-            command,
-            RETRY_WAIT_TIME_IN_MS);
-        try {
-          Thread.sleep(RETRY_WAIT_TIME_IN_MS);
-        } catch (InterruptedException e) {
-          Thread.currentThread().interrupt();
-          LOGGER.info("Retry of the command execution is interrupted.");
-          break;
-        }
+      if (isCommandSucceeded) {
+        break;
+      }
+      LOGGER.info(
+          "Command {} rejected by remote ingestion process, will retry in {} ms.",
+          command,
+          RETRY_WAIT_TIME_IN_MS);
+      if (!Utils.sleep(RETRY_WAIT_TIME_IN_MS)) {
+        break;
       }
     }
   }

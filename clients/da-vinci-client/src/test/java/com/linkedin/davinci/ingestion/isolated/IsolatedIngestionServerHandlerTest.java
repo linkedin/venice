@@ -2,6 +2,7 @@ package com.linkedin.davinci.ingestion.isolated;
 
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
+import com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -24,9 +25,10 @@ public class IsolatedIngestionServerHandlerTest {
     IsolatedIngestionServerHandler isolatedIngestionServerHandler = new IsolatedIngestionServerHandler(mockedServer);
     IngestionTaskReport ingestionTaskReport = IsolatedIngestionUtils.createIngestionTaskReport(topic, partitionId);
     AtomicInteger executionCount = new AtomicInteger(0);
-
+    IngestionCommandType command = IngestionCommandType.REMOVE_PARTITION;
     // Validate that a non-subscribed topic partition should reject the command.
-    isolatedIngestionServerHandler.validateAndExecuteCommand(ingestionTaskReport, () -> executionCount.addAndGet(1));
+    isolatedIngestionServerHandler
+        .validateAndExecuteCommand(command, ingestionTaskReport, () -> executionCount.addAndGet(1));
     Assert.assertEquals(executionCount.get(), 0);
     Assert.assertFalse(ingestionTaskReport.isPositive);
 
@@ -35,14 +37,16 @@ public class IsolatedIngestionServerHandlerTest {
     Map<Integer, AtomicBoolean> topicMap = new VeniceConcurrentHashMap<>();
     topicMap.put(partitionId, new AtomicBoolean(false));
     topicPartitionSubscriptionMap.put(topic, topicMap);
-    isolatedIngestionServerHandler.validateAndExecuteCommand(ingestionTaskReport, () -> executionCount.addAndGet(1));
+    isolatedIngestionServerHandler
+        .validateAndExecuteCommand(command, ingestionTaskReport, () -> executionCount.addAndGet(1));
     Assert.assertEquals(executionCount.get(), 0);
     Assert.assertFalse(ingestionTaskReport.isPositive);
 
     // Validate that an active topic partition subscription should execute the command.
     ingestionTaskReport.setIsPositive(true);
     topicPartitionSubscriptionMap.get(topic).get(partitionId).set(true);
-    isolatedIngestionServerHandler.validateAndExecuteCommand(ingestionTaskReport, () -> executionCount.addAndGet(1));
+    isolatedIngestionServerHandler
+        .validateAndExecuteCommand(command, ingestionTaskReport, () -> executionCount.addAndGet(1));
     Assert.assertEquals(executionCount.get(), 1);
     Assert.assertTrue(ingestionTaskReport.isPositive);
   }
