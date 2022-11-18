@@ -91,7 +91,6 @@ public abstract class TestRead {
   private VeniceKafkaSerializer keySerializer;
   private VeniceKafkaSerializer valueSerializer;
   private VeniceWriter<Object, Object, Object> veniceWriter;
-
   private static final String KEY_SCHEMA_STR = "\"string\"";
   private static final String VALUE_FIELD_NAME = "int_field";
   private static final String VALUE_SCHEMA_STR =
