@@ -268,8 +268,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       IngestionCommandType command,
       Supplier<Boolean> remoteCommandSupplier,
       Runnable localCommandRunnable) {
-    while (true) {
-      boolean isCommandSucceeded;
+    do {
       if (isTopicPartitionHostedInMainProcess(topicName, partition)) {
         LOGGER.info(
             "Executing command {} of topic: {}, partition: {} in main process process.",
@@ -280,15 +279,13 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
         return;
       }
       LOGGER.info("Sending command {} of topic: {}, partition: {} to fork process.", command, topicName, partition);
-      if (!remoteCommandSupplier.get()) {
-        LOGGER.info(
-            "Command {} rejected by remote ingestion process, will retry in {} ms.",
-            command,
-            RETRY_WAIT_TIME_IN_MS);
-        if (!Utils.sleep(RETRY_WAIT_TIME_IN_MS)) {
-          break;
-        }
+      if (remoteCommandSupplier.get()) {
+        return;
       }
-    }
+      LOGGER.info(
+          "Command {} rejected by remote ingestion process, will retry in {} ms.",
+          command,
+          RETRY_WAIT_TIME_IN_MS);
+    } while (Utils.sleep(RETRY_WAIT_TIME_IN_MS));
   }
 }
