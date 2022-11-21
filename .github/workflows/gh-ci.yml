@@ -18,6 +18,7 @@ jobs:
             git remote set-head origin --auto
             git remote add upstream https://github.com/linkedin/venice
             git fetch upstream
+            git fetch origin
       - name: Validate Gradle wrapper
         uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
       - name: Build with Gradle
@@ -43,6 +44,7 @@ jobs:
           distribution: 'microsoft'
       - shell: bash
         run: |
+          git fetch origin
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
@@ -73,6 +75,7 @@ jobs:
       - shell: bash
         run: |
           git remote set-head origin --auto
+          git fetch origin
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
