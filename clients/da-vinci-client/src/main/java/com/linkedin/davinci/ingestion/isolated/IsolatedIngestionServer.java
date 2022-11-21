@@ -94,7 +94,7 @@ import org.apache.logging.log4j.Logger;
  *  -- For COMPLETED status, it will stop ingestion and shutdown corresponding storage so main process can re-subscribe it for serving purpose.
  *  -- For ERROR status, it will also stop ingestion and shutdown storage, and it will also forward the ERROR status for main process to handle.
  * The server will not persist any ingestion status to the disk. When the child process crashes, {@link MainIngestionMonitorService}
- * will be responsible for respawning a new instance and resume all ongoing ingestion tasks for fault tolerance purpose.
+ * will be responsible for respawning a new instance and resuming all ongoing ingestion tasks for fault tolerance purpose.
  */
 public class IsolatedIngestionServer extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(IsolatedIngestionServer.class);
@@ -459,7 +459,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     return subscription.get();
   }
 
-  public Map<String, Map<Integer, AtomicBoolean>> getTopicPartitionSubscriptionMap() {
+  Map<String, Map<Integer, AtomicBoolean>> getTopicPartitionSubscriptionMap() {
     return topicPartitionSubscriptionMap;
   }
 

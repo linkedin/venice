@@ -41,7 +41,7 @@ import org.apache.logging.log4j.Logger;
 /**
  * This is the handler class for {@link IsolatedIngestionServer}. This handler will be spawn to handle
  * the following {@link IngestionAction} request from main process:
- * (1) {@link IngestionAction#COMMAND}: Different kinds of ingestion commands to control the ingestion of a topic (partition)
+ * (1) {@link IngestionAction#COMMAND}: Different kinds of ingestion commands to control the ingestion of a topic (partition).
  * (2) {@link IngestionAction#METRIC}: Request to collect metrics from child process and report to InGraph service.
  * (3) {@link IngestionAction#HEARTBEAT}: Request to check the health of child process for monitoring purpose.
  * (4) {@link IngestionAction#UPDATE_METADATA}: A special kind of request to update metadata of topic partitions opened
@@ -51,8 +51,7 @@ import org.apache.logging.log4j.Logger;
  * (5) {@link IngestionAction#SHUTDOWN_COMPONENT}: Request to shut down a specific ingestion component gracefully.
  *
  * This class contains all the logic details to handle above requests and sends back {@link IngestionAction#REPORT}
- * Also, it registers ingestion listener which relays
- * status reporting to main process.
+ * Also, it registers ingestion listener which relays status reporting to main process.
  */
 public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
   private static final Logger LOGGER = LogManager.getLogger(IsolatedIngestionServerHandler.class);

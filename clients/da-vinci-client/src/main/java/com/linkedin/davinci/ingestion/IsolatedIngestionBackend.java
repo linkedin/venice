@@ -277,20 +277,17 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
             topicName,
             partition);
         localCommandRunnable.run();
-        isCommandSucceeded = true;
-      } else {
-        LOGGER.info("Sending command {} of topic: {}, partition: {} to fork process.", command, topicName, partition);
-        isCommandSucceeded = remoteCommandSupplier.get();
+        return;
       }
-      if (isCommandSucceeded) {
-        break;
-      }
-      LOGGER.info(
-          "Command {} rejected by remote ingestion process, will retry in {} ms.",
-          command,
-          RETRY_WAIT_TIME_IN_MS);
-      if (!Utils.sleep(RETRY_WAIT_TIME_IN_MS)) {
-        break;
+      LOGGER.info("Sending command {} of topic: {}, partition: {} to fork process.", command, topicName, partition);
+      if (!remoteCommandSupplier.get()) {
+        LOGGER.info(
+            "Command {} rejected by remote ingestion process, will retry in {} ms.",
+            command,
+            RETRY_WAIT_TIME_IN_MS);
+        if (!Utils.sleep(RETRY_WAIT_TIME_IN_MS)) {
+          break;
+        }
       }
     }
   }
