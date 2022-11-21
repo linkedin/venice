@@ -62,7 +62,9 @@ public class NativeReplicationTestUtils {
           .getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
         for (int i = 1; i <= maxKey; ++i) {
           String expected = i <= 50 ? "test_name_" + i : "test_name_" + (i * valueMultiplier);
-          String actual = client.get(Integer.toString(i)).get().toString();
+          Object valueObject = client.get(Integer.toString(i)).get();
+          Assert.assertNotNull(valueObject, String.format("Unexpected null value for key: %s", i));
+          String actual = valueObject.toString();
           Assert.assertEquals(actual, expected);
         }
       }
