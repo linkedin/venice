@@ -14,7 +14,9 @@ jobs:
         with:
           java-version: '11'
           distribution: 'microsoft'
-      - shell: bash
+      - name: Fetch upstream
+        if: github.repository != 'linkedin/venice'
+        shell: bash
         run: |
             git remote add upstream https://github.com/linkedin/venice
             git fetch upstream
@@ -41,7 +43,9 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
-      - shell: bash
+      - name: Fetch upstream
+        if: github.repository != 'linkedin/venice'
+        shell: bash
         run: |
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
@@ -69,7 +73,9 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
-      - shell: bash
+      - name: Fetch upstream
+        if: github.repository != 'linkedin/venice'
+        shell: bash
         run: |
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
