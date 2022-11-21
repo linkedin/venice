@@ -3,7 +3,7 @@ name: VeniceJavaCI
 on: [push, pull_request]
 
 jobs:
-  veniceSpotcheck:
+  Check:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -27,7 +27,7 @@ jobs:
         with:
           arguments: "clean check -x spotlessCheck --continue --no-daemon -Pspotallbugs -Pspotbugs.xml -Pspotbugs.ignoreFailures -x integrationTest -x test"
 
-  veniceUnitTests:
+  UnitTests:
     strategy:
       fail-fast: false
       matrix:
@@ -37,7 +37,8 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v3
-
+        with:
+          fetch-depth: 0
       - name: Set up JDK
         uses: actions/setup-java@v3
         with:
@@ -45,7 +46,6 @@ jobs:
           distribution: 'microsoft'
       - shell: bash
         run: |
-          git fetch origin
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
@@ -57,7 +57,7 @@ jobs:
           arguments: "build --continue --no-daemon -DforkEvery=25 -DmaxParallelForks=25 -x shadowDistTar -x shadowDistZip -x shadowJar -x startShadowScripts -x distTar -x distZip -x integrationTest"
 
 
-  veniceE2ETests:
+  E2ETests:
     strategy:
       fail-fast: false
       matrix:
@@ -67,7 +67,8 @@ jobs:
     timeout-minutes: 180
     steps:
       - uses: actions/checkout@v3
-
+        with:
+          fetch-depth: 0
       - name: Set up JDK
         uses: actions/setup-java@v3
         with:
@@ -75,7 +76,6 @@ jobs:
           distribution: 'microsoft'
       - shell: bash
         run: |
-          git fetch origin
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
