@@ -14,10 +14,9 @@ jobs:
         with:
           java-version: '11'
           distribution: 'microsoft'
-      - name: Fetch upstream
-        if: github.repository != 'linkedin/venice'
-        shell: bash
+      - shell: bash
         run: |
+            git remote set-head origin main
             git remote add upstream https://github.com/linkedin/venice
             git fetch upstream
       - name: Validate Gradle wrapper
@@ -43,10 +42,9 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
-      - name: Fetch upstream
-        if: github.repository != 'linkedin/venice'
-        shell: bash
+      - shell: bash
         run: |
+          git remote set-head origin main
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
@@ -73,10 +71,9 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
-      - name: Fetch upstream
-        if: github.repository != 'linkedin/venice'
-        shell: bash
+      - shell: bash
         run: |
+          git remote set-head origin main
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
