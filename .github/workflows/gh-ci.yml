@@ -8,7 +8,6 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v3
-
       - name: Set up JDK
         uses: actions/setup-java@v3
         with:
@@ -16,7 +15,7 @@ jobs:
           distribution: 'microsoft'
       - shell: bash
         run: |
-            git remote set-head origin main
+            git remote set-head origin --auto
             git remote add upstream https://github.com/linkedin/venice
             git fetch upstream
       - name: Validate Gradle wrapper
@@ -44,7 +43,7 @@ jobs:
           distribution: 'microsoft'
       - shell: bash
         run: |
-          git remote set-head origin main
+          git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
@@ -73,7 +72,7 @@ jobs:
           distribution: 'microsoft'
       - shell: bash
         run: |
-          git remote set-head origin main
+          git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
