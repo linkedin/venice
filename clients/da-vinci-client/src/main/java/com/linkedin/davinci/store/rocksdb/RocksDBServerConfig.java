@@ -206,7 +206,7 @@ public class RocksDBServerConfig {
   public static final String ROCKSDB_AUTO_TUNED_RATE_LIMITER_ENABLED = "rocksdb.auto.tuned.rate.limited.enabled";
   public static final String ROCKSDB_ATOMIC_FLUSH_ENABLED = "rocksdb.atomic.flush.enabled";
   public static final String ROCKSDB_SEPRATE_RMD_CACHE_ENABLED = "rocksdb.separate.rmd.cache.enabled";
-  public static final String ROCKSDB_BLOCK_BASE_FORMAT_VERSION = "rocksdb.separate.rmd.cache.enabled";
+  public static final String ROCKSDB_BLOCK_BASE_FORMAT_VERSION = "rocksdb.block.base.format.version";
 
   private final boolean rocksDBUseDirectReads;
 
