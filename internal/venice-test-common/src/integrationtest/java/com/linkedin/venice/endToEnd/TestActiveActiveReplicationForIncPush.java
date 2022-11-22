@@ -311,8 +311,8 @@ public class TestActiveActiveReplicationForIncPush {
         String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
         try (AvroGenericStoreClient<String, Object> client = ClientFactory
             .getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
-          for (int i = 1; i <= 150; ++i) {
-            String expected = i <= 50 ? "first_name_" + i : "first_name_inc_" + i;
+          for (int i = 51; i <= 150; ++i) {
+            String expected = "first_name_inc_" + i;
             GenericRecord readValue = (GenericRecord) client.get(Integer.toString(i)).get();
             Assert.assertNotNull(readValue, String.format("Unexpected null value for key: %s", i));
             Assert.assertEquals(readValue.get("firstName").toString(), expected);
