@@ -112,7 +112,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private final VeniceConfigLoader veniceConfigLoader;
 
-  private final Queue<VeniceNotifier> onlineOfflineNotifiers = new ConcurrentLinkedQueue<>();
   private final Queue<VeniceNotifier> leaderFollowerNotifiers = new ConcurrentLinkedQueue<>();
 
   private final StorageMetadataService storageMetadataService;
@@ -331,7 +330,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         metricsRepository);
 
     VeniceNotifier notifier = new LogNotifier();
-    this.onlineOfflineNotifiers.add(notifier);
     this.leaderFollowerNotifiers.add(notifier);
 
     /**
@@ -492,7 +490,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     if (this.metaSystemStoreReplicaStatusNotifier == null) {
       throw new VeniceException("MetaSystemStoreReplicaStatusNotifier wasn't initialized properly");
     }
-    addCommonNotifier(this.metaSystemStoreReplicaStatusNotifier);
+    addIngestionNotifier(this.metaSystemStoreReplicaStatusNotifier);
     metaSystemStoreReplicaStatusNotifierQueued = true;
   }
 
@@ -605,7 +603,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     Utils.closeQuietlyWithErrorLogged(aggKafkaConsumerService);
 
-    onlineOfflineNotifiers.forEach(VeniceNotifier::close);
     leaderFollowerNotifiers.forEach(VeniceNotifier::close);
     Utils.closeQuietlyWithErrorLogged(metaStoreWriter);
 
@@ -924,13 +921,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   @Override
-  public void addCommonNotifier(VeniceNotifier notifier) {
-    onlineOfflineNotifiers.add(notifier);
-    leaderFollowerNotifiers.add(notifier);
-  }
-
-  @Override
-  public void addLeaderFollowerModelNotifier(VeniceNotifier notifier) {
+  public void addIngestionNotifier(VeniceNotifier notifier) {
     leaderFollowerNotifiers.add(notifier);
   }
 
