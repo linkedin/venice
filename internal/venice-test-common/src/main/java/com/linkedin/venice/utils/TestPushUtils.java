@@ -503,6 +503,32 @@ public class TestPushUtils {
   }
 
   /**
+   * This file overrides half of the value in {@link #writeSimpleAvroFileWithStringToRecordSchema(File, boolean)}
+   * and add some new values.
+   * It's designed to test incremental push
+   */
+  public static Schema writeSimpleAvroFileWithStringToRecordSchema2(File parentDir) throws IOException {
+    return writeAvroFile(
+        parentDir,
+        "simple_string2record.avro",
+        STRING_RECORD_SCHEMA_STRING,
+        (recordSchema, writer) -> {
+          Schema valueSchema = AvroCompatibilityHelper.parse(NESTED_SCHEMA_STRING);
+          String firstName = "first_name_inc_";
+          String lastName = "last_name_inc_";
+          for (int i = 51; i <= 150; ++i) {
+            GenericRecord keyValueRecord = new GenericData.Record(recordSchema);
+            keyValueRecord.put(DEFAULT_KEY_FIELD_PROP, String.valueOf(i)); // Key
+            GenericRecord valueRecord = new GenericData.Record(valueSchema);
+            valueRecord.put("firstName", firstName + i);
+            valueRecord.put("lastName", lastName + i);
+            keyValueRecord.put(DEFAULT_VALUE_FIELD_PROP, valueRecord); // Value
+            writer.append(keyValueRecord);
+          }
+        });
+  }
+
+  /**
    * This file overrides half of the value in {@link #writeSimpleAvroFileWithUserSchema(File)}
    * and add some new values.
    * It's designed to test incremental push
