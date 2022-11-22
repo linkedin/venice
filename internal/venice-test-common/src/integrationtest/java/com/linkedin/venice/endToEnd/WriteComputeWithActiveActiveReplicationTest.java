@@ -443,9 +443,9 @@ public class WriteComputeWithActiveActiveReplicationTest {
   @Test(timeOut = TEST_TIMEOUT, invocationCount = 1)
   public void testAAReplicationForPartialUpdateOnMapField() throws IOException {
     Schema valueSchemaV1 = AvroCompatibilityHelper.parse(loadFileAsString("writecompute/test/TestRecordWithFLM.avsc"));
-    String regularFieldDefault = valueSchemaV1.getField(REGULAR_FIELD).defaultVal().toString();
-    List<Integer> intArrayFieldDefault = (List<Integer>) valueSchemaV1.getField(INT_ARRAY_FIELD).defaultVal();
-    Map<String, Integer> mapFieldDefault = (Map<String, Integer>) valueSchemaV1.getField(MAP_FIELD).defaultVal();
+    String regularFieldDefault = "default_venice";
+    List<Integer> intArrayFieldDefault = Collections.emptyList();
+    Map<String, Integer> mapFieldDefault = Collections.emptyMap();
     Schema wcSchemaV1 = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchemaV1);
 
     assertCommand(parentControllerClient.createNewStore(storeName, "owner", KEY_SCHEMA_STR, valueSchemaV1.toString()));
@@ -853,9 +853,9 @@ public class WriteComputeWithActiveActiveReplicationTest {
   @Test(timeOut = TEST_TIMEOUT, invocationCount = 1)
   public void testAAReplicationForPartialUpdateOnListField() throws IOException {
     Schema valueSchemaV1 = AvroCompatibilityHelper.parse(loadFileAsString("writecompute/test/TestRecordWithFLM.avsc"));
-    String regularFieldDefault = valueSchemaV1.getField(REGULAR_FIELD).defaultVal().toString();
-    List<Integer> intArrayFieldDefault = (List<Integer>) valueSchemaV1.getField(INT_ARRAY_FIELD).defaultVal();
-    Map<String, Integer> mapFieldDefault = (Map<String, Integer>) valueSchemaV1.getField(MAP_FIELD).defaultVal();
+    String regularFieldDefault = "default_venice";
+    List<Integer> intArrayFieldDefault = Collections.emptyList();
+    Map<String, Integer> mapFieldDefault = Collections.emptyMap();
     Schema wcSchemaV1 = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchemaV1);
 
     assertCommand(parentControllerClient.createNewStore(storeName, "owner", KEY_SCHEMA_STR, valueSchemaV1.toString()));
@@ -1007,8 +1007,6 @@ public class WriteComputeWithActiveActiveReplicationTest {
     String key2 = "key2";
     VeniceObjectWithTimestamp timestampedOp;
     // AddToSet is processed before PUT
-    // todo: Currently this test fails. We need to fix the code otherwise replicas in different regions will diverge
-    // Update: works with hotfix, i.e., using incomingValueSchemaId when oldSchemaId is -1
     ubV1 = new UpdateBuilderImpl(wcSchemaV1);
     expectedArrayFieldVal = Arrays.asList(11, 22, 33);
     ubV1.setElementsToAddToListField(INT_ARRAY_FIELD, expectedArrayFieldVal);
@@ -1050,7 +1048,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     verifyFLMRecord(storeName, dc1RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
 
     // AddToSet: adding an element that was deleted with the same timestamp should not succeed as DELETE takes
-    // precedence
+    // precedence.
     // existingEntry: [11:2, 22:2, 33:2, tombstone(44:3), 55:3] & incomingUpdate addToList[44:3].
     // Here 44 should not be added back since tombstone for it has the same timestamp as that of the incoming op
     ubV1 = new UpdateBuilderImpl(wcSchemaV1);
@@ -1062,7 +1060,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     verifyFLMRecord(storeName, dc0RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
     verifyFLMRecord(storeName, dc1RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
 
-    // RemoveFromSet: update with lower timestamp should be ignored
+    // RemoveFromSet: update with lower timestamp should be ignored.
     // Incoming op has timestamp 2 for removeFromList(55) but its timestamp in the entry is 3.
     ubV1 = new UpdateBuilderImpl(wcSchemaV1);
     ubV1.setElementsToRemoveFromListField(INT_ARRAY_FIELD, Collections.singletonList(55));
@@ -1110,28 +1108,20 @@ public class WriteComputeWithActiveActiveReplicationTest {
     verifyFLMRecord(storeName, dc0RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
     verifyFLMRecord(storeName, dc1RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
 
-    // ubV1 = new UpdateBuilderImpl(wcSchemaV1);
-    // ubV1.setElementsToRemoveFromListField(INT_ARRAY_FIELD, Arrays.asList(66));
-    // expectedArrayFieldVal = Arrays.asList(11, 77, 88);
-    // timestampedOp = new VeniceObjectWithTimestamp(ubV1.build(), 4);
-    // sendStreamingRecord(systemProducerMap.get(childDatacenters.get(1)), storeName, key2, timestampedOp);
-    // verifyFLMRecord(storeName, dc0RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
-    // verifyFLMRecord(storeName, dc1RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
-
-    // should be replaced with elements in PartialPut.
-    ubV1 = new UpdateBuilderImpl(wcSchemaV1);
-    ubV1.setNewFieldValue(INT_ARRAY_FIELD, Arrays.asList(66, 99));
-    expectedArrayFieldVal = Arrays.asList(66, 99);
-    timestampedOp = new VeniceObjectWithTimestamp(ubV1.build(), 4);
-    sendStreamingRecord(systemProducerMap.get(childDatacenters.get(0)), storeName, key2, timestampedOp);
-    verifyFLMRecord(storeName, dc0RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
-    verifyFLMRecord(storeName, dc1RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
-    // the following RemoveFromList doesn't succeed
     ubV1 = new UpdateBuilderImpl(wcSchemaV1);
     ubV1.setElementsToRemoveFromListField(INT_ARRAY_FIELD, Arrays.asList(66));
-    expectedArrayFieldVal = Arrays.asList(66, 99);
+    expectedArrayFieldVal = Arrays.asList(11, 77, 88);
     timestampedOp = new VeniceObjectWithTimestamp(ubV1.build(), 4);
     sendStreamingRecord(systemProducerMap.get(childDatacenters.get(1)), storeName, key2, timestampedOp);
+    verifyFLMRecord(storeName, dc0RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
+    verifyFLMRecord(storeName, dc1RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
+
+    // The deleted element with the same timestamp should not be added back with PartialPut
+    ubV1 = new UpdateBuilderImpl(wcSchemaV1);
+    ubV1.setNewFieldValue(INT_ARRAY_FIELD, Arrays.asList(66, 99));
+    expectedArrayFieldVal = Arrays.asList(99);
+    timestampedOp = new VeniceObjectWithTimestamp(ubV1.build(), 4);
+    sendStreamingRecord(systemProducerMap.get(childDatacenters.get(0)), storeName, key2, timestampedOp);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
     verifyFLMRecord(storeName, dc1RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
 

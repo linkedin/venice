@@ -933,7 +933,6 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     final List<ElementAndTimestamp> newDeletedKeyAndTsList = new ArrayList<>(deletedKeyToTsMap.size());
 
     // Keys in deletedKeyToTsMap are actually of type Utf-8 and not String
-    // todo: We should consider wildcard capture throughout MCR code path <?>.
     for (Map.Entry entry: deletedKeyToTsMap.entrySet()) {
       newDeletedKeyAndTsList.add(new ElementAndTimestamp(entry.getKey().toString(), (Long) entry.getValue()));
     }
