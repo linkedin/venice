@@ -205,7 +205,7 @@ public class RocksDBServerConfig {
   public static final String ROCKSDB_WRITE_QUOTA_BYTES_PER_SECOND = "rocksdb.write.quota.bytes.per.second";
   public static final String ROCKSDB_AUTO_TUNED_RATE_LIMITER_ENABLED = "rocksdb.auto.tuned.rate.limited.enabled";
   public static final String ROCKSDB_ATOMIC_FLUSH_ENABLED = "rocksdb.atomic.flush.enabled";
-  public static final String ROCKSDB_SEPRATE_RMD_CACHE_ENABLED = "rocksdb.separate.rmd.cache.enabled";
+  public static final String ROCKSDB_SEPARATE_RMD_CACHE_ENABLED = "rocksdb.separate.rmd.cache.enabled";
   public static final String ROCKSDB_BLOCK_BASE_FORMAT_VERSION = "rocksdb.block.base.format.version";
 
   private final boolean rocksDBUseDirectReads;
@@ -265,7 +265,7 @@ public class RocksDBServerConfig {
   private final boolean putReuseByteBufferEnabled;
   private final boolean atomicFlushEnabled;
   private final boolean separateRMDCacheEnabled;
-  private final int blockBaseFormatVersion;
+  private int blockBaseFormatVersion;
 
   private final RocksDBComputeAccessMode serverStorageOperation;
 
@@ -373,7 +373,7 @@ public class RocksDBServerConfig {
 
     this.putReuseByteBufferEnabled = props.getBoolean(ROCKSDB_PUT_REUSE_BYTE_BUFFER, false);
     this.atomicFlushEnabled = props.getBoolean(ROCKSDB_ATOMIC_FLUSH_ENABLED, true);
-    this.separateRMDCacheEnabled = props.getBoolean(ROCKSDB_SEPRATE_RMD_CACHE_ENABLED, false);
+    this.separateRMDCacheEnabled = props.getBoolean(ROCKSDB_SEPARATE_RMD_CACHE_ENABLED, false);
 
     this.blockBaseFormatVersion = props.getInt(ROCKSDB_BLOCK_BASE_FORMAT_VERSION, 2);
     String rocksDBOperationType =
@@ -564,5 +564,10 @@ public class RocksDBServerConfig {
 
   public int getBlockBaseFormatVersion() {
     return blockBaseFormatVersion;
+  }
+
+  // For test only
+  public void setBlockBaseFormatVersion(int version) {
+    this.blockBaseFormatVersion = version;
   }
 }

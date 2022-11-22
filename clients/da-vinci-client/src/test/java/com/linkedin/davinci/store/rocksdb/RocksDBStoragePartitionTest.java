@@ -220,6 +220,8 @@ public class RocksDBStoragePartitionTest {
     storagePartition.close();
     partitionConfig.setDeferredWrite(false);
     partitionConfig.setWriteOnlyConfig(false);
+    // Set format version to 5
+    rocksDBServerConfig.setBlockBaseFormatVersion(5);
     storagePartition = new RocksDBStoragePartition(
         partitionConfig,
         factory,
@@ -227,6 +229,12 @@ public class RocksDBStoragePartitionTest {
         null,
         ROCKSDB_THROTTLER,
         rocksDBServerConfig);
+
+    // Verify all the key/value pairs can be read using the new format
+    for (Map.Entry<String, String> entry: inputRecords.entrySet()) {
+      Assert.assertEquals(storagePartition.get(entry.getKey().getBytes(), false), entry.getValue().getBytes());
+    }
+
     // Test deletion
     String toBeDeletedKey = KEY_PREFIX + 10;
     Assert.assertNotNull(storagePartition.get(toBeDeletedKey.getBytes(), false));
