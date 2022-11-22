@@ -14,7 +14,7 @@ import java.util.concurrent.ExecutorService;
  */
 
 public class LeaderFollowerPartitionStateModelFactory extends AbstractStateModelFactory {
-  private LeaderFollowerIngestionProgressNotifier leaderFollowerStateModelNotifier =
+  private final LeaderFollowerIngestionProgressNotifier leaderFollowerStateModelNotifier =
       new LeaderFollowerIngestionProgressNotifier();
 
   public LeaderFollowerPartitionStateModelFactory(
@@ -33,9 +33,8 @@ public class LeaderFollowerPartitionStateModelFactory extends AbstractStateModel
         instanceName);
 
     // Add a new notifier to let state model knows ingestion has caught up the lag so that it can complete the offline
-    // to
-    // standby state transition.
-    ingestionBackend.addLeaderFollowerIngestionNotifier(leaderFollowerStateModelNotifier);
+    // to standby state transition.
+    ingestionBackend.addIngestionNotifier(leaderFollowerStateModelNotifier);
     logger.info("LeaderFollowerParticipantModelFactory Created");
   }
 

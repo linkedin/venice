@@ -39,20 +39,19 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * IsolatedIngestionServerHandler is the handler class for {@link IsolatedIngestionServer}. This handler will be spawn to handle
+ * This is the handler class for {@link IsolatedIngestionServer}. This handler will be spawn to handle
  * the following {@link IngestionAction} request from main process:
- * (1) INIT: Initialization request that pass all the configs to initialize the {@link IsolatedIngestionServer} components.
- * (2) COMMAND: Different kinds of ingestion commands to control the ingestion of a given topic (partition)
- * (3) METRIC: Request to collect metrics from child process and report to InGraph service.
- * (4) HEARTBEAT: Request to check the health of child process for monitoring purpose.
- * (5) UPDATE_METADATA: A special kind of request to update metadata of topic partitions opened in main process. As
- * of current ingestion isolation design, metadata partition of a topic will always be opened in child process.
- * {@link MainIngestionStorageMetadataService} maintains in-memory cache of metadata in main
- * process, and it will persist metadata updates via UPDATE_METADATA requests.
- * (6) SHUTDOWN_COMPONENT: Request to shutdown a specific ingestion component gracefully.
+ * (1) {@link IngestionAction#COMMAND}: Different kinds of ingestion commands to control the ingestion of a topic (partition).
+ * (2) {@link IngestionAction#METRIC}: Request to collect metrics from child process and report to InGraph service.
+ * (3) {@link IngestionAction#HEARTBEAT}: Request to check the health of child process for monitoring purpose.
+ * (4) {@link IngestionAction#UPDATE_METADATA}: A special kind of request to update metadata of topic partitions opened
+ * in main process. As of current ingestion isolation design, metadata partition of a topic will always be opened in child process.
+ * {@link MainIngestionStorageMetadataService} maintains in-memory cache of metadata in main process, and it will persist
+ * metadata updates via this requests.
+ * (5) {@link IngestionAction#SHUTDOWN_COMPONENT}: Request to shut down a specific ingestion component gracefully.
  *
- * This class contains all the logic details to handle above requests. Also, it registers ingestion listener which relays
- * status reporting to main process.
+ * This class contains all the logic details to handle above requests and sends back {@link IngestionAction#REPORT}
+ * Also, it registers ingestion listener which relays status reporting to main process.
  */
 public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
   private static final Logger LOGGER = LogManager.getLogger(IsolatedIngestionServerHandler.class);
@@ -152,18 +151,27 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
       storeConfig.setRestoreDataPartitions(false);
       switch (ingestionCommandType) {
         case START_CONSUMPTION:
-          ReadOnlyStoreRepository storeRepository = isolatedIngestionServer.getStoreRepository();
-          // For subscription based store repository, we will need to subscribe to the store explicitly.
-          if (storeRepository instanceof SubscriptionBasedReadOnlyStoreRepository) {
-            LOGGER.info("Ingestion Service subscribing to store: {}", storeName);
-            ((SubscriptionBasedReadOnlyStoreRepository) storeRepository).subscribe(storeName);
-          }
-          LOGGER.info("Start ingesting partition: {} of topic: {}", partitionId, topicName);
-          isolatedIngestionServer.setPartitionToBeSubscribed(topicName, partitionId);
-          isolatedIngestionServer.getIngestionBackend().startConsumption(storeConfig, partitionId);
+          validateAndExecuteCommand(ingestionCommandType, report, () -> {
+            ReadOnlyStoreRepository storeRepository = isolatedIngestionServer.getStoreRepository();
+            // For subscription based store repository, we will need to subscribe to the store explicitly.
+            if (storeRepository instanceof SubscriptionBasedReadOnlyStoreRepository) {
+              LOGGER.info("Ingestion Service subscribing to store: {}", storeName);
+              try {
+                ((SubscriptionBasedReadOnlyStoreRepository) storeRepository).subscribe(storeName);
+              } catch (InterruptedException e) {
+                LOGGER.warn("Subscription to store: {} is interrupted. ", storeName);
+              }
+            }
+            LOGGER.info("Start ingesting partition: {} of topic: {}", partitionId, topicName);
+            isolatedIngestionServer.setPartitionToBeSubscribed(topicName, partitionId);
+            isolatedIngestionServer.getIngestionBackend().startConsumption(storeConfig, partitionId);
+          });
           break;
         case STOP_CONSUMPTION:
-          isolatedIngestionServer.getIngestionBackend().stopConsumption(storeConfig, partitionId);
+          validateAndExecuteCommand(
+              ingestionCommandType,
+              report,
+              () -> isolatedIngestionServer.getIngestionBackend().stopConsumption(storeConfig, partitionId));
           break;
         case KILL_CONSUMPTION:
           isolatedIngestionServer.getIngestionBackend().killConsumptionTask(topicName);
@@ -177,21 +185,23 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
           isolatedIngestionServer.cleanupTopicState(topicName);
           break;
         case REMOVE_PARTITION:
-          /**
-           * Here we do not allow storage service to clean up "empty" storage engine. When ingestion isolation is turned on,
-           * storage partition will be re-opened in main process after COMPLETED is announced by StoreIngestionTask. Although
-           * it might indicate there is no remaining data partitions in the forked process storage engine, it still holds the
-           * metadata partition. Cleaning up the "empty storage engine" will (1) delete metadata partition (2) remove storage
-           * engine from the map. When a new ingestion request comes in, it will create another metadata partition, but all
-           * the metadata stored previously is gone forever...
-           */
-          isolatedIngestionServer.getIngestionBackend()
-              .dropStoragePartitionGracefully(
-                  storeConfig,
-                  partitionId,
-                  isolatedIngestionServer.getStopConsumptionWaitRetriesNum(),
-                  false);
-          isolatedIngestionServer.cleanupTopicPartitionState(topicName, partitionId);
+          validateAndExecuteCommand(ingestionCommandType, report, () -> {
+            /**
+             * Here we do not allow storage service to clean up "empty" storage engine. When ingestion isolation is turned on,
+             * storage partition will be re-opened in main process after COMPLETED is announced by StoreIngestionTask. Although
+             * it might indicate there is no remaining data partitions in the forked process storage engine, it still holds the
+             * metadata partition. Cleaning up the "empty storage engine" will (1) delete metadata partition (2) remove storage
+             * engine from the map. When a new ingestion request comes in, it will create another metadata partition, but all
+             * the metadata stored previously is gone forever...
+             */
+            isolatedIngestionServer.getIngestionBackend()
+                .dropStoragePartitionGracefully(
+                    storeConfig,
+                    partitionId,
+                    isolatedIngestionServer.getStopConsumptionWaitRetriesNum(),
+                    false);
+            isolatedIngestionServer.cleanupTopicPartitionState(topicName, partitionId);
+          });
           break;
         case OPEN_STORAGE_ENGINE:
           // Open metadata partition of the store engine.
@@ -201,36 +211,27 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
           LOGGER.info("Metadata partition of topic: {} restored.", ingestionTaskCommand.topicName);
           break;
         case PROMOTE_TO_LEADER:
-          // This is to avoid the race condition. When partition is being unsubscribed, we should not add it to the
-          // action queue, but instead fail the command fast.
-          if (isolatedIngestionServer.isPartitionSubscribed(topicName, partitionId)) {
-            isolatedIngestionServer.getIngestionBackend()
-                .promoteToLeader(
-                    storeConfig,
-                    partitionId,
-                    isolatedIngestionServer.getLeaderSectionIdChecker(topicName, partitionId));
-          } else {
-            report.isPositive = false;
-            LOGGER.info(
-                "Partition {} of topic: {} is being unsubscribed, reject leader promotion request",
-                partitionId,
-                topicName);
-          }
+          validateAndExecuteCommand(
+              ingestionCommandType,
+              report,
+              () -> isolatedIngestionServer.getIngestionBackend()
+                  .promoteToLeader(
+                      storeConfig,
+                      partitionId,
+                      isolatedIngestionServer.getLeaderSectionIdChecker(topicName, partitionId)));
           break;
         case DEMOTE_TO_STANDBY:
-          if (isolatedIngestionServer.isPartitionSubscribed(topicName, partitionId)) {
-            isolatedIngestionServer.getIngestionBackend()
-                .demoteToStandby(
-                    storeConfig,
-                    partitionId,
-                    isolatedIngestionServer.getLeaderSectionIdChecker(topicName, partitionId));
-          } else {
-            report.isPositive = false;
-            LOGGER.info(
-                "Partition {} of topic: {} is being unsubscribed, reject leader demotion request",
-                partitionId,
-                topicName);
-          }
+          validateAndExecuteCommand(
+              ingestionCommandType,
+              report,
+              () -> isolatedIngestionServer.getIngestionBackend()
+                  .demoteToStandby(
+                      storeConfig,
+                      partitionId,
+                      isolatedIngestionServer.getLeaderSectionIdChecker(topicName, partitionId)));
+          break;
+        case RESET_PARTITION:
+          isolatedIngestionServer.cleanupTopicPartitionState(topicName, partitionId);
           break;
         default:
           break;
@@ -369,6 +370,29 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
           "Only able to parse POST requests for actions: init, command, report.  Cannot support action: "
               + requestParts[1],
           e);
+    }
+  }
+
+  protected void validateAndExecuteCommand(
+      IngestionCommandType command,
+      IngestionTaskReport report,
+      Runnable commandRunnable) {
+    String topic = report.topicName.toString();
+    int partition = report.partitionId;
+    if (isolatedIngestionServer.isPartitionSubscribed(topic, partition)) {
+      commandRunnable.run();
+    } else {
+      /**
+       * Reject the command here as ingestion is completed in isolated process and is being reported into main process.
+       * Command will be retried in the main process until topic partition resource is re-opened in main process, and
+       * it will be executed inside main process.
+       */
+      report.isPositive = false;
+      LOGGER.info(
+          "Topic: {}, partition {} is being unsubscribed, will reject command {}",
+          topic,
+          partition,
+          command.name());
     }
   }
 }
