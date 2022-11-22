@@ -308,14 +308,27 @@ public class WriteComputeWithActiveActiveReplicationTest {
     // For the field level updates with matching timestamp, winning update is decided using data type comparator
     // (specifically GenericData.compare for non-map types). Since in this case "val2f1_b" < "val2f1_b_prime"
     // "val2f1_b_prime" should win DCR.
-    // todo: what happens when deleted value and updated values are the same? Order in which delete and update were
-    // processed will matter?
     UpdateBuilder ub2Prime = new UpdateBuilderImpl(wcSchemaV1);
     ub2Prime.setNewFieldValue(PERSON_F1_NAME, "val2f1_b_prime");
     VeniceObjectWithTimestamp val2T2Prime = new VeniceObjectWithTimestamp(ub2Prime.build(), 2);
     sendStreamingRecord(systemProducerMap.get(childDatacenters.get(0)), storeName, key2, val2T2Prime);
     validatePersonV1Record(storeName, dc0RouterUrl, key2, "val2f1_b_prime", 40);
     validatePersonV1Record(storeName, dc1RouterUrl, key2, "val2f1_b_prime", 40);
+
+    // Delete then PartialPut
+    VeniceObjectWithTimestamp timestampedOp = new VeniceObjectWithTimestamp(null, 3);
+    sendStreamingRecord(systemProducerMap.get(childDatacenters.get(1)), storeName, key2, timestampedOp);
+    ub = new UpdateBuilderImpl(wcSchemaV1);
+    ub.setNewFieldValue(PERSON_F1_NAME, "DeleteThenPartialPut");
+    timestampedOp = new VeniceObjectWithTimestamp(ub.build(), 3);
+    sendStreamingRecord(systemProducerMap.get(childDatacenters.get(1)), storeName, key2, timestampedOp);
+    validatePersonV1Record(storeName, dc0RouterUrl, key2, null, null);
+    validatePersonV1Record(storeName, dc1RouterUrl, key2, null, null);
+    ub.setNewFieldValue(PERSON_F2_NAME, 42);
+    timestampedOp = new VeniceObjectWithTimestamp(ub.build(), 4);
+    sendStreamingRecord(systemProducerMap.get(childDatacenters.get(0)), storeName, key2, timestampedOp);
+    validatePersonV1Record(storeName, dc0RouterUrl, key2, "default_name", 42);
+    validatePersonV1Record(storeName, dc1RouterUrl, key2, "default_name", 42);
 
     /*
     * Case: Add a new field and remove an existing field in the new schema.
