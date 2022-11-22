@@ -1,4 +1,4 @@
-name: VeniceJavaCI
+name: VeniceCI
 
 on: [push, pull_request]
 
@@ -31,7 +31,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macOS-12, ubuntu-latest]
+        os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
@@ -61,7 +61,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macOS-12, ubuntu-latest]
+        os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 180
