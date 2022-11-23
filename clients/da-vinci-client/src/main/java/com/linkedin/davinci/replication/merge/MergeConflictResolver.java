@@ -541,10 +541,8 @@ public class MergeConflictResolver {
         supersetValueSchemaEntry);
 
     int oldValueSchemaID = oldValueAndRmd.getValueSchemaID();
-    // todo(Sushant): Discuss with Jialin if we can use incomingValueSchemaId (or supersetSchemaId?) when
-    // oldValueSchemaID is -1
     if (oldValueSchemaID == -1) {
-      oldValueSchemaID = incomingValueSchemaId;
+      oldValueSchemaID = supersetValueSchemaEntry.getId();
     }
     Schema oldValueSchema = getValueSchema(oldValueSchemaID);
     ValueAndRmd<GenericRecord> updatedValueAndRmd = mergeGenericRecord.update(
