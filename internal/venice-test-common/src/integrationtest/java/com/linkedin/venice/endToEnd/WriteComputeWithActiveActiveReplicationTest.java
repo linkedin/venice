@@ -81,7 +81,6 @@ public class WriteComputeWithActiveActiveReplicationTest {
       IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
   public static final String REGULAR_FIELD = "RegularField";
   public static final String INT_ARRAY_FIELD = "IntArrayField";
-  public static final String STRING_ARRAY_FIELD = "StringArrayField";
   public static final String MAP_FIELD = "MapField";
 
   private List<VeniceMultiClusterWrapper> childDatacenters;
@@ -315,20 +314,22 @@ public class WriteComputeWithActiveActiveReplicationTest {
     validatePersonV1Record(storeName, dc0RouterUrl, key2, "val2f1_b_prime", 40);
     validatePersonV1Record(storeName, dc1RouterUrl, key2, "val2f1_b_prime", 40);
 
-    // Delete then PartialPut
-    VeniceObjectWithTimestamp timestampedOp = new VeniceObjectWithTimestamp(null, 3);
-    sendStreamingRecord(systemProducerMap.get(childDatacenters.get(1)), storeName, key2, timestampedOp);
+    VeniceObjectWithTimestamp timestampedOp;
+
+    // Delete then PartialPut with the same timestamp
+    timestampedOp = new VeniceObjectWithTimestamp(null, 3);
+    sendStreamingRecord(systemProducerMap.get(childDatacenters.get(0)), storeName, key2, timestampedOp);
+    validatePersonV1Record(storeName, dc0RouterUrl, key2, null, null);
+    validatePersonV1Record(storeName, dc1RouterUrl, key2, null, null);
     ub = new UpdateBuilderImpl(wcSchemaV1);
     ub.setNewFieldValue(PERSON_F1_NAME, "DeleteThenPartialPut");
     timestampedOp = new VeniceObjectWithTimestamp(ub.build(), 3);
     sendStreamingRecord(systemProducerMap.get(childDatacenters.get(1)), storeName, key2, timestampedOp);
-    validatePersonV1Record(storeName, dc0RouterUrl, key2, null, null);
-    validatePersonV1Record(storeName, dc1RouterUrl, key2, null, null);
     ub.setNewFieldValue(PERSON_F2_NAME, 42);
     timestampedOp = new VeniceObjectWithTimestamp(ub.build(), 4);
     sendStreamingRecord(systemProducerMap.get(childDatacenters.get(0)), storeName, key2, timestampedOp);
-    validatePersonV1Record(storeName, dc0RouterUrl, key2, "default_name", 42);
-    validatePersonV1Record(storeName, dc1RouterUrl, key2, "default_name", 42);
+    validatePersonV1Record(storeName, dc0RouterUrl, key2, "DeleteThenPartialPut", 42);
+    validatePersonV1Record(storeName, dc1RouterUrl, key2, "DeleteThenPartialPut", 42);
 
     /*
     * Case: Add a new field and remove an existing field in the new schema.
@@ -678,8 +679,12 @@ public class WriteComputeWithActiveActiveReplicationTest {
     verifyFLMRecord(storeName, dc1RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
 
-    // AddToMap: The following update is ignored.
     // todo: We need to have tie-breaking mechanism based on value when timestamps of modifications are the same
+    // AddToMap: Key four's current (AddToMap) timestamp is 3 and the following operations is trying to add a new
+    // value for the key four again. Currently this second update is ignored. However, tie breaking should not be
+    // first come first server based as that leads to non-deterministic output. To keep this consistent with our
+    // approach we should use value-based tie breaking in case of concurrent AddToMap for the same key with the same
+    // timestamp
     /*
     ub = new UpdateBuilderImpl(wcSchemaV1);
     mapFieldValue = new HashMap<>();
@@ -741,8 +746,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
 
     // RemoveFromMap:
     // key('one'): Update should be ignored as 'one' was added by PUT and when timestamps are same PUT takes precedence
-    // over WC
-    // key('four'): Update should be ignored as DELETE has lower timestamp then the current timestamp of four
+    // over WC key('four'): Update should be ignored as DELETE has lower timestamp then the current timestamp of four
     ub = new UpdateBuilderImpl(wcSchemaV1);
     ub.setKeysToRemoveFromMapField(MAP_FIELD, Arrays.asList("one", "four"));
     timestampedOp = new VeniceObjectWithTimestamp(ub.build(), 2);
@@ -764,10 +768,10 @@ public class WriteComputeWithActiveActiveReplicationTest {
     verifyFLMRecord(storeName, dc1RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
 
-    /*
+    // todo: Fix/add a tie breaker for RemoveFromMap and AddToMap for the same key with the same timestamp
     // AddToMap: adding an element that was deleted with the same timestamp should not succeed as DELETE takes
-    // precedence. However, in this case that doesn't happen. todo: We need to have operation based tie-breaker in case
-    // of the same timestamp on map's key
+    // precedence. However, in this case that doesn't happen.
+    /*
     ub = new UpdateBuilderImpl(wcSchemaV1);
     mapFieldValue = new HashMap<>();
     mapFieldValue.put("four", 404);
@@ -796,9 +800,8 @@ public class WriteComputeWithActiveActiveReplicationTest {
     verifyFLMRecord(storeName, dc1RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
 
-    // PartialPut: When PartialPut with the same timestamp as PUT
-    // todo: Currently this wipes out the data with the timestamp <= t2 including Puts timestamp. This
-    // creates a race between PartialPut and PUT
+    // TODO: When PartialPut with the same timestamp as PUT is processed, it wipes out the data with the
+    // timestamp <= t2 including PUTs timestamp. This creates a race between PartialPut and PUT
     /*
     ub = new UpdateBuilderImpl(wcSchemaV1);
     mapFieldValue = new HashMap<>();
@@ -831,9 +834,8 @@ public class WriteComputeWithActiveActiveReplicationTest {
     verifyFLMRecord(storeName, dc1RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
 
-    // PartialPut
-    // todo: Yet another race between two partial updates
-    /*
+    // todo: Two partial puts with the same timestamp
+
     ub = new UpdateBuilderImpl(wcSchemaV1);
     mapFieldValue = new HashMap<>();
     mapFieldValue.put("eight", 88);
@@ -844,7 +846,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     expectedMapFieldValue.putAll(mapFieldValue);
     verifyFLMRecord(storeName, dc1RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
-    */
+
   }
 
   /*
