@@ -256,7 +256,7 @@
                   ]
                 }, {
                   "name": "VersionSwap",
-                  "doc": "This controlMessage is written to the real-time topic by the controller and to the store-version topic by the leader server. It can be used by the consumer client to switch to another store-version topic and filter messages that have a lower watermark than the one dictated by the leader.",
+                  "doc": "This controlMessage is written to the real-time topic by the controller or to the store-version topic by the current version's leader server. It can be used to let current version and future version synchronize on a specific point for all regions' real-time topics, to guarantee there is only one store version producing to change capture topic all the time. It can also be used by the consumer client to switch to another store-version topic and filter messages that have a lower watermark than the one dictated by the leader.",
                   "type": "record",
                   "fields": [
                     {
