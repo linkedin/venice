@@ -13,6 +13,12 @@ import org.apache.avro.Schema;
  * Inside Fast-Client, we choose to use n-tier architecture style to build a pipeline to separate different
  * types of logic in different layer.
  * We should follow this pattern if we don't have any strong concerns in the future development.
+ *
+ * n-tier architecture => Having multiple layers where each layer wraps the next inner one.
+ * Each layer provides some functionality, e.g. stats collection, etc.
+ *
+ * Fast-Client's layers include:
+ *
  */
 public class DelegatingAvroStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
   private final InternalAvroStoreClient<K, V> delegate;

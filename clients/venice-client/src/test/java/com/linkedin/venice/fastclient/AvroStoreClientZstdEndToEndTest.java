@@ -7,6 +7,7 @@ import com.github.luben.zstd.ZstdDictTrainer;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
+import com.linkedin.venice.utils.DataProviderUtils;
 import java.nio.ByteBuffer;
 import java.util.AbstractMap;
 import java.util.Map;
@@ -18,19 +19,24 @@ import org.testng.annotations.DataProvider;
 
 
 public class AvroStoreClientZstdEndToEndTest extends AvroStoreClientEndToEndTest {
-  @DataProvider(name = "useDaVinciClientBasedMetadata")
-  public static Object[][] useDaVinciClientBasedMetadata() {
-    return new Object[][] { { true } };
+
+  // useDaVinciClientBasedMetadata is always true as router based metadata store is considered legacy
+  @Override
+  @DataProvider(name = "FastClient-Four-Boolean-And-A-Number")
+  public Object[][] fourBooleanAndANumber() {
+    return DataProviderUtils.allPermutationGenerator(
+        DataProviderUtils.BOOLEAN_TRUE,
+        DataProviderUtils.BOOLEAN,
+        DataProviderUtils.BOOLEAN,
+        DataProviderUtils.BOOLEAN,
+        BATCH_GET_KEY_SIZE);
   }
 
+  @Override
   protected void prepareData() throws Exception {
     keySerializer = new VeniceAvroKafkaSerializer(KEY_SCHEMA_STR);
     valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_STR);
 
-    for (int i = 0; i < recordCnt; ++i) {
-      GenericRecord record = new GenericData.Record(VALUE_SCHEMA);
-      record.put(VALUE_FIELD_NAME, i);
-    }
     Stream<Map.Entry> genericRecordStream = IntStream.range(0, recordCnt).mapToObj(i -> {
       GenericRecord record = new GenericData.Record(VALUE_SCHEMA);
       record.put(VALUE_FIELD_NAME, i);
@@ -55,5 +61,4 @@ public class AvroStoreClientZstdEndToEndTest extends AvroStoreClientEndToEndTest
         });
     valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
   }
-
 }

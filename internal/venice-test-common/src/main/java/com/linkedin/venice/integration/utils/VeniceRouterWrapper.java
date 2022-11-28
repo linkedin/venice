@@ -47,7 +47,7 @@ import java.util.concurrent.TimeUnit;
 
 
 /**
- * A wrapper for the {@link VeniceRouterWrapper}.
+ * A wrapper for the {@link RouterServer}.
  */
 public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware {
   public static final String SERVICE_NAME = "VeniceRouter";

@@ -63,8 +63,8 @@ import org.apache.logging.log4j.Logger;
 /**
  * A wrapper with a DaVinci client subscribed to the corresponding Meta store to serve data required by {@link StoreMetadata}.
  * TODO All data are cached locally and refreshed periodically for performance reasons before either object cache becomes
- * available for meta system store or a decorator class of the underlying rocksDB classes is made available for consuming
- * deserialized meta system store data directly.
+ *  available for meta system store or a decorator class of the underlying rocksDB classes is made available for consuming
+ *  deserialized meta system store data directly.
  */
 public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
   private static final Logger LOGGER = LogManager.getLogger(DaVinciClientBasedMetadata.class);

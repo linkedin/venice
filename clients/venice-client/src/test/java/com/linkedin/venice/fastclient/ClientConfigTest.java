@@ -8,6 +8,11 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import org.testng.annotations.Test;
 
 
+/**
+ * TODO:
+ *  setMaxAllowedKeyCntInBatchGetReq
+ */
+
 public class ClientConfigTest {
   @Test(expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = ".*Speculative query feature can't be enabled together with.*")
   public void testLongTailRetryWithSpeculativeQuery() {
@@ -18,7 +23,6 @@ public class ClientConfigTest {
         .setLongTailRetryEnabledForSingleGet(true)
         .setLongTailRetryThresholdForSingletGetInMicroSeconds(1000)
         .build();
-
   }
 
   @Test
@@ -31,6 +35,5 @@ public class ClientConfigTest {
         .setLongTailRetryEnabledForSingleGet(true)
         .setLongTailRetryThresholdForSingletGetInMicroSeconds(1000)
         .build();
-
   }
 }

@@ -14,7 +14,6 @@ import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
-import static org.testng.Assert.fail;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.DaVinciClient;
@@ -27,6 +26,7 @@ import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.fastclient.factory.ClientFactory;
 import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import com.linkedin.venice.fastclient.schema.TestValueSchema;
@@ -42,6 +42,7 @@ import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -53,7 +54,6 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -79,6 +79,8 @@ public class AvroStoreClientEndToEndTest {
   private Client r2Client;
   private VeniceProperties daVinciBackendConfig;
   private D2Client d2Client;
+  DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore;
+  CachingDaVinciClientFactory daVinciClientFactory;
 
   private static final long TIME_OUT = 60 * Time.MS_PER_SECOND;
   protected static final String KEY_SCHEMA_STR = "\"string\"";
@@ -88,18 +90,23 @@ public class AvroStoreClientEndToEndTest {
       + "\"fields\": [\n" + "  {\"name\": \"" + VALUE_FIELD_NAME + "\", \"type\": \"int\"}]\n" + "}";
   protected static final Schema VALUE_SCHEMA = new Schema.Parser().parse(VALUE_SCHEMA_STR);
 
-  @DataProvider(name = "useDualRead")
-  public static Object[][] useDualRead() {
-    return new Object[][] { { false }, { true } };
-  }
-
-  @DataProvider(name = "useDaVinciClientBasedMetadata")
-  public static Object[][] useDaVinciClientBasedMetadata() {
-    return new Object[][] { { false }, { true } };
-  }
-
   protected final String keyPrefix = "key_";
   protected final int recordCnt = 100;
+
+  // two sizes: default 2 and max of recordCnt
+  // TODO figure out where this count is checked and limited to a global or store based max value
+  public final Object[] BATCH_GET_KEY_SIZE = { 2, recordCnt };
+
+  // useDaVinciClientBasedMetadata is true/false. Testing both legacy and the current implementation
+  @DataProvider(name = "FastClient-Four-Boolean-And-A-Number")
+  public Object[][] fourBooleanAndANumber() {
+    return DataProviderUtils.allPermutationGenerator(
+        DataProviderUtils.BOOLEAN,
+        DataProviderUtils.BOOLEAN,
+        DataProviderUtils.BOOLEAN,
+        DataProviderUtils.BOOLEAN,
+        BATCH_GET_KEY_SIZE);
+  }
 
   protected Client constructR2Client() throws Exception {
     return ClientTestUtils.getR2Client(true);
@@ -135,7 +142,7 @@ public class AvroStoreClientEndToEndTest {
         .createVeniceWriter(storeVersionName, keySerializer, valueSerializer);
     final int pushVersion = Version.parseVersionFromKafkaTopicName(storeVersionName);
     veniceWriter.broadcastStartOfPush(new HashMap<>());
-    // Insert test record and wait synchronously for it to succeed
+    // Insert test record and wait synchronously for it to succeed by calling get() on the future
     for (int i = 0; i < recordCnt; ++i) {
       GenericRecord record = new GenericData.Record(VALUE_SCHEMA);
       record.put(VALUE_FIELD_NAME, i);
@@ -155,7 +162,7 @@ public class AvroStoreClientEndToEndTest {
   }
 
   private void prepareMetaSystemStore() throws Exception {
-    String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
+    final String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
     veniceCluster.useControllerClient(controllerClient -> {
       VersionCreationResponse metaSystemStoreVersionCreationResponse =
           controllerClient.emptyPush(metaSystemStoreName, "test_bootstrap_meta_system_store", 10000);
@@ -213,78 +220,99 @@ public class AvroStoreClientEndToEndTest {
 
   private void runTest(
       ClientConfig.ClientConfigBuilder clientConfigBuilder,
-      Optional<StoreMetadata> metadata,
-      boolean useDaVinciClientBasedMetadata,
-      boolean batchGet) throws Exception {
-    runTest(clientConfigBuilder, metadata, useDaVinciClientBasedMetadata, batchGet, (metricsRepository) -> {});
-  }
-
-  // Only RouterBasedStoreMetadata can be reused. Other StoreMetadata implementation cannot be used after close() is
-  // called.
-  private void runTest(
-      ClientConfig.ClientConfigBuilder clientConfigBuilder,
-      Optional<StoreMetadata> metadata,
       boolean useDaVinciClientBasedMetadata,
       boolean batchGet,
+      int batchGetKeySize) throws Exception {
+    runTest(clientConfigBuilder, useDaVinciClientBasedMetadata, batchGet, batchGetKeySize, (metricsRepository) -> {});
+  }
+
+  /**
+   * Run fast client tests based on the input parameters.
+   * Only RouterBasedStoreMetadata can be reused. Other StoreMetadata implementation cannot be used after close() is called.
+   *
+   * @param clientConfigBuilder config to build client
+   * @param useDaVinciClientBasedMetadata true: use DaVinci based meta data, false: use Router based meta data
+   * @param batchGet singleGet or batchGet
+   * @throws Exception
+   */
+  private void runTest(
+      ClientConfig.ClientConfigBuilder clientConfigBuilder,
+      boolean useDaVinciClientBasedMetadata,
+      boolean batchGet,
+      int batchGetKeySize,
       Consumer<MetricsRepository> statsValidation) throws Exception {
-    DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore = null;
-    CachingDaVinciClientFactory daVinciClientFactory = null;
+    // setting up storeMetaData for either DVC based or router based metadata
+    StoreMetadata routerBasedStoreMetadata = null;
     if (useDaVinciClientBasedMetadata) {
-      daVinciClientFactory = new CachingDaVinciClientFactory(
-          d2Client,
-          VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
-          new MetricsRepository(),
-          daVinciBackendConfig);
-      daVinciClientForMetaStore = daVinciClientFactory.getAndStartSpecificAvroClient(
-          VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName),
-          new DaVinciConfig(),
-          StoreMetaValue.class);
+      setupDaVinciClientForMetaStore();
+      clientConfigBuilder.setDaVinciClientForMetaStore(daVinciClientForMetaStore);
+    } else {
+      routerBasedStoreMetadata = getRouterBasedStoreMetadata(clientConfigBuilder);
     }
 
-    // always specify a different MetricsRepository to avoid conflict.
+    // clientConfigBuilder will be used for building multiple clients over this test flow,
+    // so, always specify a new MetricsRepository to avoid conflicts.
     MetricsRepository metricsRepositoryForGenericClient = new MetricsRepository();
     clientConfigBuilder.setMetricsRepository(metricsRepositoryForGenericClient);
     // Test generic store client first
-    AvroGenericStoreClient<String, GenericRecord> genericFastClient = null;
-    if (useDaVinciClientBasedMetadata) {
-      clientConfigBuilder.setDaVinciClientForMetaStore(daVinciClientForMetaStore);
-      genericFastClient = ClientFactory.getAndStartGenericStoreClient(clientConfigBuilder.build());
-    } else if (metadata.isPresent()) {
-      genericFastClient = ClientFactory.getAndStartGenericStoreClient(metadata.get(), clientConfigBuilder.build());
-    } else {
-      fail("No valid StoreMetadata implementation provided");
-    }
+    AvroGenericStoreClient<String, GenericRecord> genericFastClient = useDaVinciClientBasedMetadata
+        ? ClientFactory.getAndStartGenericStoreClient(clientConfigBuilder.build())
+        : ClientFactory.getAndStartGenericStoreClient(routerBasedStoreMetadata, clientConfigBuilder.build());
+
     // Construct a Vson store client
-    MetricsRepository metricsRepositoryForVsonClient = new MetricsRepository();
-    clientConfigBuilder.setMetricsRepository(metricsRepositoryForVsonClient);
-    AvroGenericStoreClient<String, Map> vsonClient = null;
+    clientConfigBuilder.setMetricsRepository(new MetricsRepository());
     ClientConfig.ClientConfigBuilder clientConfigBuilderForVsonStore = clientConfigBuilder.clone().setVsonStore(true);
-    if (useDaVinciClientBasedMetadata) {
-      clientConfigBuilderForVsonStore.setDaVinciClientForMetaStore(daVinciClientForMetaStore);
-      vsonClient = ClientFactory.getAndStartGenericStoreClient(clientConfigBuilderForVsonStore.build());
-    } else if (metadata.isPresent()) {
-      vsonClient = ClientFactory.getAndStartGenericStoreClient(metadata.get(), clientConfigBuilderForVsonStore.build());
-    } else {
-      fail("No valid StoreMetadata implementation provided");
-    }
+    AvroGenericStoreClient<String, Map> genericFastVsonClient = useDaVinciClientBasedMetadata
+        ? ClientFactory.getAndStartGenericStoreClient(clientConfigBuilderForVsonStore.build())
+        : ClientFactory
+            .getAndStartGenericStoreClient(routerBasedStoreMetadata, clientConfigBuilderForVsonStore.build());
+
     try {
       if (batchGet) {
-        for (int i = 0; i < recordCnt - 1; ++i) {
-          String key1 = keyPrefix + i;
-          String key2 = keyPrefix + (i + 1);
-          Set<String> keys = new HashSet<>();
-          keys.add(key1);
-          keys.add(key2);
-          Map<String, GenericRecord> resultMap = genericFastClient.batchGet(keys).get();
-          assertEquals(resultMap.size(), 2);
-          assertEquals((int) resultMap.get(key1).get(VALUE_FIELD_NAME), i);
-          assertEquals((int) resultMap.get(key2).get(VALUE_FIELD_NAME), i + 1);
+        // test batch get of size 2 (default)
+        if (batchGetKeySize == 2) {
+          for (int i = 0; i < recordCnt - 1; ++i) {
+            String key1 = keyPrefix + i;
+            String key2 = keyPrefix + (i + 1);
+            Set<String> keys = new HashSet<>();
+            keys.add(key1);
+            keys.add(key2);
+            Map<String, GenericRecord> resultMap = genericFastClient.batchGet(keys).get();
+            assertEquals(resultMap.size(), 2);
+            assertEquals((int) resultMap.get(key1).get(VALUE_FIELD_NAME), i);
+            assertEquals((int) resultMap.get(key2).get(VALUE_FIELD_NAME), i + 1);
 
-          // Test Vson client
-          Map<String, Map> vsonResultMap = vsonClient.batchGet(keys).get();
-          assertEquals(vsonResultMap.size(), 2);
-          assertEquals((int) vsonResultMap.get(key1).get(VALUE_FIELD_NAME), i);
-          assertEquals((int) vsonResultMap.get(key2).get(VALUE_FIELD_NAME), i + 1);
+            // Test Vson client
+            Map<String, Map> vsonResultMap = genericFastVsonClient.batchGet(keys).get();
+            assertEquals(vsonResultMap.size(), 2);
+            assertEquals((int) vsonResultMap.get(key1).get(VALUE_FIELD_NAME), i);
+            assertEquals((int) vsonResultMap.get(key2).get(VALUE_FIELD_NAME), i + 1);
+          }
+        } else if (batchGetKeySize == recordCnt) {
+          // test batch get of size recordCnt (configured)
+          Set<String> keys = new HashSet<>();
+          for (int i = 0; i < recordCnt; ++i) {
+            String key = keyPrefix + i;
+            keys.add(key);
+          }
+          Map<String, GenericRecord> resultMap = genericFastClient.batchGet(keys).get();
+          assertEquals(resultMap.size(), recordCnt);
+
+          for (int i = 0; i < recordCnt; ++i) {
+            String key = keyPrefix + i;
+            assertEquals((int) resultMap.get(key).get(VALUE_FIELD_NAME), i);
+          }
+
+          // vson
+          Map<String, Map> vsonResultMap = genericFastVsonClient.batchGet(keys).get();
+          assertEquals(vsonResultMap.size(), recordCnt);
+
+          for (int i = 0; i < recordCnt; ++i) {
+            String key = keyPrefix + i;
+            assertEquals((int) vsonResultMap.get(key).get(VALUE_FIELD_NAME), i);
+          }
+        } else {
+          throw new VeniceException("unsupported batchGetKeySize: " + batchGetKeySize);
         }
       } else {
         for (int i = 0; i < recordCnt; ++i) {
@@ -293,7 +321,7 @@ public class AvroStoreClientEndToEndTest {
           assertEquals((int) value.get(VALUE_FIELD_NAME), i);
 
           // Test Vson client
-          Object vsonResult = vsonClient.get(key).get();
+          Object vsonResult = genericFastVsonClient.get(key).get();
           assertTrue(vsonResult instanceof Map, "VsonClient should return Map, but got" + vsonResult.getClass());
           Map vsonValue = (Map) vsonResult;
           assertEquals((int) vsonValue.get(VALUE_FIELD_NAME), i);
@@ -304,8 +332,8 @@ public class AvroStoreClientEndToEndTest {
       if (genericFastClient != null) {
         genericFastClient.close();
       }
-      if (vsonClient != null) {
-        vsonClient.close();
+      if (genericFastVsonClient != null) {
+        genericFastVsonClient.close();
       }
     }
 
@@ -314,28 +342,41 @@ public class AvroStoreClientEndToEndTest {
     ClientConfig.ClientConfigBuilder specificClientConfigBuilder = clientConfigBuilder.clone()
         .setSpecificValueClass(TestValueSchema.class)
         .setMetricsRepository(metricsRepositoryForSpecificClient); // To avoid metric registration conflict.
-    AvroSpecificStoreClient<String, TestValueSchema> specificFastClient = null;
-    if (useDaVinciClientBasedMetadata) {
-      clientConfigBuilder.setDaVinciClientForMetaStore(daVinciClientForMetaStore);
-      specificFastClient = ClientFactory.getAndStartSpecificStoreClient(specificClientConfigBuilder.build());
-    } else if (metadata.isPresent()) {
-      specificFastClient =
-          ClientFactory.getAndStartSpecificStoreClient(metadata.get(), specificClientConfigBuilder.build());
-    } else {
-      fail("No valid StoreMetadata implementation provided");
-    }
+    AvroSpecificStoreClient<String, TestValueSchema> specificFastClient = useDaVinciClientBasedMetadata
+        ? ClientFactory.getAndStartSpecificStoreClient(specificClientConfigBuilder.build())
+        : ClientFactory.getAndStartSpecificStoreClient(routerBasedStoreMetadata, specificClientConfigBuilder.build());
+
     try {
       if (batchGet) {
-        for (int i = 0; i < recordCnt - 1; ++i) {
-          String key1 = keyPrefix + i;
-          String key2 = keyPrefix + (i + 1);
+        // test batch get of size 2 (default)
+        if (batchGetKeySize == 2) {
+          for (int i = 0; i < recordCnt - 1; ++i) {
+            String key1 = keyPrefix + i;
+            String key2 = keyPrefix + (i + 1);
+            Set<String> keys = new HashSet<>();
+            keys.add(key1);
+            keys.add(key2);
+            Map<String, TestValueSchema> resultMap = specificFastClient.batchGet(keys).get();
+            assertEquals(resultMap.size(), 2);
+            assertEquals(resultMap.get(key1).int_field, i);
+            assertEquals(resultMap.get(key2).int_field, i + 1);
+          }
+        } else if (batchGetKeySize == recordCnt) {
+          // test batch get of size recordCnt (configured)
           Set<String> keys = new HashSet<>();
-          keys.add(key1);
-          keys.add(key2);
+          for (int i = 0; i < recordCnt; ++i) {
+            String key = keyPrefix + i;
+            keys.add(key);
+          }
           Map<String, TestValueSchema> resultMap = specificFastClient.batchGet(keys).get();
-          assertEquals(resultMap.size(), 2);
-          assertEquals(resultMap.get(key1).int_field, i);
-          assertEquals(resultMap.get(key2).int_field, i + 1);
+          assertEquals(resultMap.size(), recordCnt);
+
+          for (int i = 0; i < recordCnt; ++i) {
+            String key = keyPrefix + i;
+            assertEquals(resultMap.get(key).int_field, i);
+          }
+        } else {
+          throw new VeniceException("unsupported batchGetKeySize: " + batchGetKeySize);
         }
       } else {
         for (int i = 0; i < recordCnt; ++i) {
@@ -349,144 +390,44 @@ public class AvroStoreClientEndToEndTest {
       if (specificFastClient != null) {
         specificFastClient.close();
       }
-      if (daVinciClientForMetaStore != null) {
-        daVinciClientForMetaStore.close();
-      }
-      if (daVinciClientFactory != null) {
-        daVinciClientFactory.close();
-      }
+      if (useDaVinciClientBasedMetadata)
+        cleanupDaVinciClientForMetaStore();
     }
   }
 
-  @Test(timeOut = TIME_OUT)
-  public void testSingleGetWithoutDualRead() throws Exception {
-    VeniceRouterWrapper routerWrapper = veniceCluster.getRandomVeniceRouter();
-
-    ClientConfig.ClientConfigBuilder clientConfigBuilder = new ClientConfig.ClientConfigBuilder<>();
-    clientConfigBuilder.setStoreName(storeName);
-    clientConfigBuilder.setR2Client(r2Client);
-    clientConfigBuilder.setMetricsRepository(new MetricsRepository());
-    clientConfigBuilder.setSpeculativeQueryEnabled(true);
-
-    ClientConfig clientConfig = clientConfigBuilder.build();
-    RouterBasedStoreMetadata storeMetadata = new RouterBasedStoreMetadata(
-        routerWrapper.getMetaDataRepository(),
-        routerWrapper.getSchemaRepository(),
-        routerWrapper.getRoutingDataRepository(),
-        storeName,
-        clientConfig);
-
-    runTest(clientConfigBuilder, Optional.of(storeMetadata), true, false);
+  // Helper for runTest()
+  void setupDaVinciClientForMetaStore() {
+    daVinciClientFactory = new CachingDaVinciClientFactory(
+        d2Client,
+        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
+        new MetricsRepository(),
+        daVinciBackendConfig);
+    daVinciClientForMetaStore = daVinciClientFactory.getAndStartSpecificAvroClient(
+        VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName),
+        new DaVinciConfig(),
+        StoreMetaValue.class);
   }
 
-  @Test
-  public void testSingleGetLongTailRetry() throws Exception {
-    VeniceRouterWrapper routerWrapper = veniceCluster.getRandomVeniceRouter();
-
-    ClientConfig.ClientConfigBuilder clientConfigBuilder =
-        new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
-            .setR2Client(r2Client)
-            .setMetricsRepository(new MetricsRepository())
-            .setSpeculativeQueryEnabled(false)
-            .setLongTailRetryEnabledForSingleGet(true)
-            .setLongTailRetryThresholdForSingletGetInMicroSeconds(10); // Try to trigger long-tail retry as much as
-                                                                       // possible.
-
-    ClientConfig clientConfig = clientConfigBuilder.build();
-    RouterBasedStoreMetadata storeMetadata = new RouterBasedStoreMetadata(
-        routerWrapper.getMetaDataRepository(),
-        routerWrapper.getSchemaRepository(),
-        routerWrapper.getRoutingDataRepository(),
-        storeName,
-        clientConfig);
-
-    runTest(clientConfigBuilder, Optional.of(storeMetadata), true, false, metricsRepository -> {
-      // Validate long-tail retry related metrics
-      metricsRepository.metrics().forEach((mName, metric) -> {
-        if (mName.contains("--long_tail_retry_request.OccurrenceRate")) {
-          assertTrue(metric.value() > 0, "Long tail retry for single-get should be triggered");
-        }
-      });
-    });
+  // Helper for runTest()
+  void cleanupDaVinciClientForMetaStore() {
+    if (daVinciClientForMetaStore != null) {
+      daVinciClientForMetaStore.close();
+    }
+    if (daVinciClientFactory != null) {
+      daVinciClientFactory.close();
+    }
   }
 
-  @Test(dataProvider = "useDaVinciClientBasedMetadata", timeOut = TIME_OUT)
-  public void testSingleGetWithoutDualReadWithMetadataImpl(boolean useDaVinciClientBasedMetadata) throws Exception {
-    // Test generic store client
-    ClientConfig.ClientConfigBuilder clientConfigBuilder = new ClientConfig.ClientConfigBuilder<>();
-    clientConfigBuilder.setStoreName(storeName);
-    clientConfigBuilder.setR2Client(r2Client);
+  private RouterBasedStoreMetadata getRouterBasedStoreMetadata(ClientConfig.ClientConfigBuilder clientConfigBuilder) {
     clientConfigBuilder.setMetricsRepository(new MetricsRepository());
-    clientConfigBuilder.setSpeculativeQueryEnabled(true);
-
     ClientConfig clientConfig = clientConfigBuilder.build();
     VeniceRouterWrapper routerWrapper = veniceCluster.getRandomVeniceRouter();
-    RouterBasedStoreMetadata storeMetadata = new RouterBasedStoreMetadata(
+    return new RouterBasedStoreMetadata(
         routerWrapper.getMetaDataRepository(),
         routerWrapper.getSchemaRepository(),
         routerWrapper.getRoutingDataRepository(),
         storeName,
         clientConfig);
-
-    runTest(clientConfigBuilder, Optional.of(storeMetadata), useDaVinciClientBasedMetadata, false);
-  }
-
-  @Test(dataProvider = "useDaVinciClientBasedMetadata", timeOut = TIME_OUT)
-  public void testSingleGetWithDualRead(boolean useDaVinciClientBasedMetadata) throws Exception {
-    VeniceRouterWrapper routerWrapper = veniceCluster.getRandomVeniceRouter();
-
-    // Test generic store client
-    ClientConfig.ClientConfigBuilder clientConfigBuilder = new ClientConfig.ClientConfigBuilder<>();
-    clientConfigBuilder.setStoreName(storeName);
-    clientConfigBuilder.setR2Client(r2Client);
-    clientConfigBuilder.setMetricsRepository(new MetricsRepository());
-    clientConfigBuilder.setSpeculativeQueryEnabled(true);
-    clientConfigBuilder.setDualReadEnabled(true);
-    AvroGenericStoreClient<String, GenericRecord> genericThinClient = getGenericThinClient();
-    clientConfigBuilder.setGenericThinClient(genericThinClient);
-    AvroSpecificStoreClient<String, TestValueSchema> specificThinClient = getSpecificThinClient();
-    clientConfigBuilder.setSpecificThinClient(specificThinClient);
-
-    ClientConfig clientConfig = clientConfigBuilder.build();
-    RouterBasedStoreMetadata storeMetadata = new RouterBasedStoreMetadata(
-        routerWrapper.getMetaDataRepository(),
-        routerWrapper.getSchemaRepository(),
-        routerWrapper.getRoutingDataRepository(),
-        storeName,
-        clientConfig);
-    runTest(clientConfigBuilder, Optional.of(storeMetadata), useDaVinciClientBasedMetadata, false);
-
-    genericThinClient.close();
-    specificThinClient.close();
-  }
-
-  @Test(dataProvider = "useDualRead")
-  public void testBatchGet(boolean dualRead) throws Exception {
-    VeniceRouterWrapper routerWrapper = veniceCluster.getRandomVeniceRouter();
-
-    // Test generic store client
-    ClientConfig.ClientConfigBuilder clientConfigBuilder = new ClientConfig.ClientConfigBuilder<>();
-    clientConfigBuilder.setStoreName(storeName);
-    clientConfigBuilder.setR2Client(r2Client);
-    clientConfigBuilder.setMetricsRepository(new MetricsRepository());
-    clientConfigBuilder.setSpeculativeQueryEnabled(true);
-    clientConfigBuilder.setDualReadEnabled(dualRead);
-    AvroGenericStoreClient<String, GenericRecord> genericThinClient = getGenericThinClient();
-    clientConfigBuilder.setGenericThinClient(genericThinClient);
-    AvroSpecificStoreClient<String, TestValueSchema> specificThinClient = getSpecificThinClient();
-    clientConfigBuilder.setSpecificThinClient(specificThinClient);
-
-    ClientConfig clientConfig = clientConfigBuilder.build();
-    RouterBasedStoreMetadata storeMetadata = new RouterBasedStoreMetadata(
-        routerWrapper.getMetaDataRepository(),
-        routerWrapper.getSchemaRepository(),
-        routerWrapper.getRoutingDataRepository(),
-        storeName,
-        clientConfig);
-    runTest(clientConfigBuilder, Optional.of(storeMetadata), true, true);
-
-    genericThinClient.close();
-    specificThinClient.close();
   }
 
   private AvroGenericStoreClient<String, GenericRecord> getGenericThinClient() {
@@ -502,5 +443,65 @@ public class AvroStoreClientEndToEndTest {
             .setSpecificValueClass(TestValueSchema.class)
             .setVeniceURL(veniceCluster.getRandomRouterSslURL())
             .setSslFactory(SslUtils.getVeniceLocalSslFactory()));
+  }
+
+  @Test(dataProvider = "FastClient-Four-Boolean", timeOut = TIME_OUT)
+  public void testFastClientGet(
+      boolean useDaVinciClientBasedMetadata,
+      boolean multiGet,
+      boolean dualRead,
+      boolean speculativeQueryEnabled,
+      int batchGetKeySize) throws Exception {
+    if (multiGet == false && batchGetKeySize != 2) {
+      // redundant case as batchGetKeySize doesn't apply for single gets, so run only once
+      return;
+    }
+    ClientConfig.ClientConfigBuilder clientConfigBuilder =
+        new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
+            .setR2Client(r2Client)
+            .setSpeculativeQueryEnabled(speculativeQueryEnabled)
+            .setDualReadEnabled(dualRead)
+            // default maxAllowedKeyCntInBatchGetReq is 2. configuring it to test different cases.
+            .setMaxAllowedKeyCntInBatchGetReq(recordCnt);
+
+    // dualRead also needs thinClient
+    AvroGenericStoreClient<String, GenericRecord> genericThinClient = null;
+    AvroSpecificStoreClient<String, TestValueSchema> specificThinClient = null;
+    if (dualRead) {
+      genericThinClient = getGenericThinClient();
+      clientConfigBuilder.setGenericThinClient(genericThinClient);
+      specificThinClient = getSpecificThinClient();
+      clientConfigBuilder.setSpecificThinClient(specificThinClient);
+    }
+
+    runTest(clientConfigBuilder, useDaVinciClientBasedMetadata, multiGet, batchGetKeySize);
+
+    if (genericThinClient != null) {
+      genericThinClient.close();
+    }
+    if (specificThinClient != null) {
+      specificThinClient.close();
+    }
+  }
+
+  @Test
+  public void testFastClientSingleGetLongTailRetry() throws Exception {
+    ClientConfig.ClientConfigBuilder clientConfigBuilder =
+        new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
+            .setR2Client(r2Client)
+            .setSpeculativeQueryEnabled(false)
+            .setMaxAllowedKeyCntInBatchGetReq(recordCnt)
+            .setLongTailRetryEnabledForSingleGet(true)
+            .setLongTailRetryThresholdForSingletGetInMicroSeconds(10); // Try to trigger long-tail retry as much as
+                                                                       // possible.
+
+    runTest(clientConfigBuilder, true, false, 2, metricsRepository -> {
+      // Validate long-tail retry related metrics
+      metricsRepository.metrics().forEach((mName, metric) -> {
+        if (mName.contains("--long_tail_retry_request.OccurrenceRate")) {
+          assertTrue(metric.value() > 0, "Long tail retry for single-get should be triggered");
+        }
+      });
+    });
   }
 }
