@@ -280,6 +280,79 @@ public class VeniceWriterTest {
   }
 
   @Test(timeOut = 30000)
+  public void testReplicationMetadataChunking() throws ExecutionException, InterruptedException, TimeoutException {
+    KafkaProducerWrapper mockedProducer = mock(KafkaProducerWrapper.class);
+    Future mockedFuture = mock(Future.class);
+    when(mockedProducer.getNumberOfPartitions(any())).thenReturn(1);
+    when(mockedProducer.getNumberOfPartitions(any(), anyInt(), any())).thenReturn(1);
+    when(mockedProducer.sendMessage(anyString(), any(), any(), anyInt(), any())).thenReturn(mockedFuture);
+    Properties writerProperties = new Properties();
+    String stringSchema = "\"string\"";
+    VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
+    String testTopic = "test";
+    VeniceWriterOptions veniceWriterOptions = new VeniceWriterOptions.Builder(testTopic).setKeySerializer(serializer)
+        .setValueSerializer(serializer)
+        .setWriteComputeSerializer(serializer)
+        .setPartitioner(new DefaultVenicePartitioner())
+        .setTime(SystemTime.INSTANCE)
+        // .setChunkingEnabled(true)
+        // .setRmdChunkingEnabled(true)
+        .build();
+    VeniceWriter<Object, Object, Object> writer =
+        new VeniceWriter(veniceWriterOptions, new VeniceProperties(writerProperties), () -> mockedProducer);
+
+    long ctime = System.currentTimeMillis();
+    ByteBuffer replicationMetadata = ByteBuffer.wrap(new byte[] { 0xa, 0xb });
+    PutMetadata putMetadata = new PutMetadata(1, replicationMetadata);
+    DeleteMetadata deleteMetadata = new DeleteMetadata(1, 1, replicationMetadata);
+
+    /*
+    writer.put(
+        Integer.toString(1),
+        Integer.toString(1),
+        1,
+        null,
+        VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER,
+        ctime,
+        Optional.empty());
+    */
+    writer.put(
+        Integer.toString(2),
+        Integer.toString(2),
+        1,
+        null,
+        VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER,
+        VeniceWriter.APP_DEFAULT_LOGICAL_TS,
+        Optional.of(putMetadata));
+    // writer.update(Integer.toString(3), Integer.toString(2), 1, 1, null, ctime);
+    // writer.delete(Integer.toString(4), null, VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER, ctime);
+    // writer.delete(Integer.toString(5), null, VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER, deleteMetadata);
+    // writer.put(Integer.toString(6), Integer.toString(1), 1, null, VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER);
+    ArgumentCaptor<KafkaKey> kafkaKeyArgumentCaptor = ArgumentCaptor.forClass(KafkaKey.class);
+
+    ArgumentCaptor<KafkaMessageEnvelope> kafkaMessageEnvelopeArgumentCaptor =
+        ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
+    verify(mockedProducer, atLeast(2)).sendMessage(
+        eq(testTopic),
+        kafkaKeyArgumentCaptor.capture(),
+        kafkaMessageEnvelopeArgumentCaptor.capture(),
+        anyInt(),
+        any());
+
+    // verify replicationMetadata is encoded correctly for Put.
+    KafkaMessageEnvelope value2 = kafkaMessageEnvelopeArgumentCaptor.getAllValues().get(1);
+    Assert.assertEquals(value2.messageType, MessageType.PUT.getValue());
+    Put put = (Put) value2.payloadUnion;
+    Assert.assertEquals(put.schemaId, 1);
+    Assert.assertEquals(put.replicationMetadataVersionId, 1);
+    Assert.assertEquals(put.replicationMetadataPayload, ByteBuffer.wrap(new byte[] { 0xa, 0xb }));
+    Assert.assertEquals(value2.producerMetadata.logicalTimestamp, VeniceWriter.APP_DEFAULT_LOGICAL_TS);
+    KafkaKey key2 = kafkaKeyArgumentCaptor.getAllValues().get(1);
+    Assert.assertEquals(key2.getKey(), serializer.serialize(testTopic, Integer.toString(2)));
+
+  }
+
+  @Test(timeOut = 30000)
   public void testProducerClose() {
     String topicName = Utils.getUniqueString("topic-for-vw-thread-safety");
     int partitionCount = 1;

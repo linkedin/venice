@@ -235,7 +235,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   private volatile boolean isChunkingSet;
   private volatile boolean isChunkingFlagInvoked;
 
-  private boolean isRmdChunkingEnabled;
+  private final boolean isRmdChunkingEnabled;
 
   public VeniceWriter(
       VeniceWriterOptions params,
