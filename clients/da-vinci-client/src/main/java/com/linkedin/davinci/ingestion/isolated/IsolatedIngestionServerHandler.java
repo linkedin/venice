@@ -387,7 +387,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
        */
       report.isPositive = false;
       report.message = String.format(
-          "Topic: {}, partition {} is being unsubscribed, will reject command {}",
+          "Topic: %s, partition %d is being unsubscribed, will reject command %s",
           topic,
           partition,
           command.name());
