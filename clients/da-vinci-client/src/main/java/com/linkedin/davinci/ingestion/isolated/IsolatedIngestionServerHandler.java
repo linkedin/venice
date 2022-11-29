@@ -151,21 +151,19 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
       storeConfig.setRestoreDataPartitions(false);
       switch (ingestionCommandType) {
         case START_CONSUMPTION:
-          validateAndExecuteCommand(ingestionCommandType, report, () -> {
-            ReadOnlyStoreRepository storeRepository = isolatedIngestionServer.getStoreRepository();
-            // For subscription based store repository, we will need to subscribe to the store explicitly.
-            if (storeRepository instanceof SubscriptionBasedReadOnlyStoreRepository) {
-              LOGGER.info("Ingestion Service subscribing to store: {}", storeName);
-              try {
-                ((SubscriptionBasedReadOnlyStoreRepository) storeRepository).subscribe(storeName);
-              } catch (InterruptedException e) {
-                LOGGER.warn("Subscription to store: {} is interrupted. ", storeName);
-              }
+          ReadOnlyStoreRepository storeRepository = isolatedIngestionServer.getStoreRepository();
+          // For subscription based store repository, we will need to subscribe to the store explicitly.
+          if (storeRepository instanceof SubscriptionBasedReadOnlyStoreRepository) {
+            LOGGER.info("Ingestion Service subscribing to store: {}", storeName);
+            try {
+              ((SubscriptionBasedReadOnlyStoreRepository) storeRepository).subscribe(storeName);
+            } catch (InterruptedException e) {
+              LOGGER.warn("Subscription to store: {} is interrupted. ", storeName);
             }
-            LOGGER.info("Start ingesting partition: {} of topic: {}", partitionId, topicName);
-            isolatedIngestionServer.setPartitionToBeSubscribed(topicName, partitionId);
-            isolatedIngestionServer.getIngestionBackend().startConsumption(storeConfig, partitionId);
-          });
+          }
+          LOGGER.info("Start ingesting partition: {} of topic: {}", partitionId, topicName);
+          isolatedIngestionServer.setPartitionToBeSubscribed(topicName, partitionId);
+          isolatedIngestionServer.getIngestionBackend().startConsumption(storeConfig, partitionId);
           break;
         case STOP_CONSUMPTION:
           validateAndExecuteCommand(
@@ -388,11 +386,12 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
        * it will be executed inside main process.
        */
       report.isPositive = false;
-      LOGGER.info(
+      report.message = String.format(
           "Topic: {}, partition {} is being unsubscribed, will reject command {}",
           topic,
           partition,
           command.name());
+      LOGGER.info(report.message);
     }
   }
 }
