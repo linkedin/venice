@@ -216,6 +216,10 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
     return isolatedIngestionServiceProcess;
   }
 
+  public MainIngestionMonitorService getMainIngestionMonitorService() {
+    return mainIngestionMonitorService;
+  }
+
   public void close() {
     try {
       mainIngestionMonitorService.stopInner();
@@ -230,12 +234,12 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
   }
 
   private boolean isTopicPartitionHostedInMainProcess(String topicName, int partition) {
-    return mainIngestionMonitorService.getTopicPartitionIngestionStatus(topicName, partition)
+    return getMainIngestionMonitorService().getTopicPartitionIngestionStatus(topicName, partition)
         .equals(MainPartitionIngestionStatus.MAIN);
   }
 
   private boolean isTopicPartitionIngesting(String topicName, int partition) {
-    return !mainIngestionMonitorService.getTopicPartitionIngestionStatus(topicName, partition)
+    return !getMainIngestionMonitorService().getTopicPartitionIngestionStatus(topicName, partition)
         .equals(MainPartitionIngestionStatus.NOT_EXIST);
   }
 
@@ -264,7 +268,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
     };
   }
 
-  private void executeCommandWithRetry(
+  void executeCommandWithRetry(
       String topicName,
       int partition,
       IngestionCommandType command,
