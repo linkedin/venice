@@ -142,7 +142,6 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       int timeoutInSeconds,
       boolean removeEmptyStorageEngine) {
     String topicName = storeConfig.getStoreVersionName();
-    mainIngestionMonitorService.cleanupTopicPartitionState(topicName, partition);
     executeCommandWithRetry(
         topicName,
         partition,
@@ -153,10 +152,11 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
           // Clean up the topic partition ingestion status.
           mainIngestionRequestClient.resetTopicPartition(topicName, partition);
         });
+    mainIngestionMonitorService.cleanupTopicPartitionState(topicName, partition);
     if (mainIngestionMonitorService.getTopicPartitionCount(topicName) == 0) {
       LOGGER.info("No serving partitions exist for topic: {}, dropping the topic storage.", topicName);
-      mainIngestionMonitorService.cleanupTopicState(topicName);
       mainIngestionRequestClient.removeStorageEngine(topicName);
+      mainIngestionMonitorService.cleanupTopicState(topicName);
     }
   }
 
@@ -269,7 +269,8 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       Supplier<Boolean> remoteCommandSupplier,
       Runnable localCommandRunnable) {
     do {
-      if (isTopicPartitionHostedInMainProcess(topicName, partition)) {
+      if (isTopicPartitionHostedInMainProcess(topicName, partition) || (!isTopicPartitionIngesting(topicName, partition)
+          && (!command.equals(IngestionCommandType.START_CONSUMPTION)))) {
         LOGGER.info(
             "Executing command {} of topic: {}, partition: {} in main process process.",
             command,

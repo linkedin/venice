@@ -112,7 +112,7 @@ public class MainIngestionRequestClient implements Closeable {
         topicName,
         Optional.of(partitionId),
         REQUEST_MAX_ATTEMPT,
-        true);
+        false);
   }
 
   public boolean stopConsumption(String topicName, int partitionId) {
@@ -125,7 +125,7 @@ public class MainIngestionRequestClient implements Closeable {
         topicName,
         Optional.of(partitionId),
         REQUEST_MAX_ATTEMPT,
-        true);
+        false);
   }
 
   public void killConsumptionTask(String topicName) {
@@ -134,21 +134,21 @@ public class MainIngestionRequestClient implements Closeable {
     ingestionTaskCommand.topicName = topicName;
 
     // We do not need to retry here. Retry will slow down DaVinciBackend's shutdown speed severely.
-    sendIngestionCommandWithRetry(ingestionTaskCommand, topicName, Optional.empty(), 1, true);
+    sendIngestionCommandWithRetry(ingestionTaskCommand, topicName, Optional.empty(), 1, false);
   }
 
   public void removeStorageEngine(String topicName) {
     IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
     ingestionTaskCommand.commandType = IngestionCommandType.REMOVE_STORAGE_ENGINE.getValue();
     ingestionTaskCommand.topicName = topicName;
-    sendIngestionCommandWithRetry(ingestionTaskCommand, topicName, Optional.empty(), REQUEST_MAX_ATTEMPT, true);
+    sendIngestionCommandWithRetry(ingestionTaskCommand, topicName, Optional.empty(), REQUEST_MAX_ATTEMPT, false);
   }
 
   public void openStorageEngine(String topicName) {
     IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
     ingestionTaskCommand.commandType = IngestionCommandType.OPEN_STORAGE_ENGINE.getValue();
     ingestionTaskCommand.topicName = topicName;
-    sendIngestionCommandWithRetry(ingestionTaskCommand, topicName, Optional.empty(), REQUEST_MAX_ATTEMPT, true);
+    sendIngestionCommandWithRetry(ingestionTaskCommand, topicName, Optional.empty(), REQUEST_MAX_ATTEMPT, false);
   }
 
   public boolean unsubscribeTopicPartition(String topicName, int partitionId) {
@@ -156,7 +156,7 @@ public class MainIngestionRequestClient implements Closeable {
     ingestionTaskCommand.commandType = IngestionCommandType.REMOVE_PARTITION.getValue();
     ingestionTaskCommand.topicName = topicName;
     ingestionTaskCommand.partitionId = partitionId;
-    return sendIngestionCommandWithRetry(ingestionTaskCommand, topicName, Optional.empty(), REQUEST_MAX_ATTEMPT, true);
+    return sendIngestionCommandWithRetry(ingestionTaskCommand, topicName, Optional.empty(), REQUEST_MAX_ATTEMPT, false);
   }
 
   public boolean promoteToLeader(String topicName, int partitionId) {

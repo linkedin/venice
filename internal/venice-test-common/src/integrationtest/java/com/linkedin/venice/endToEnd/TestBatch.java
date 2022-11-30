@@ -122,12 +122,12 @@ public abstract class TestBatch {
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
     if (veniceCluster != null) {
-      veniceCluster.close();
+      Utils.closeQuietlyWithErrorLogged(veniceCluster);
     }
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void storeWithNoVersionThrows400() {
+  public void testStoreWithNoVersionThrows400() {
 
     // Create store
     File inputDir = getTempDataDirectory();
@@ -471,7 +471,7 @@ public abstract class TestBatch {
     }, storeName, null);
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT, enabled = false)
   public void testIncrementalPushWritesToRealTimeTopicWithPolicy() throws Exception {
     /**
      * N.B. This test has some flaky issues where it occasionally times out... It seems to be specific to
