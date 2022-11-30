@@ -471,7 +471,7 @@ public abstract class TestBatch {
     }, storeName, null);
   }
 
-  @Test(timeOut = TEST_TIMEOUT, enabled = false)
+  @Test(timeOut = TEST_TIMEOUT)
   public void testIncrementalPushWritesToRealTimeTopicWithPolicy() throws Exception {
     /**
      * N.B. This test has some flaky issues where it occasionally times out... It seems to be specific to
