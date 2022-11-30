@@ -151,6 +151,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
       storeConfig.setRestoreDataPartitions(false);
       switch (ingestionCommandType) {
         case START_CONSUMPTION:
+          isolatedIngestionServer.maybeSubscribeNewResource(topicName, partitionId);
           validateAndExecuteCommand(ingestionCommandType, report, () -> {
             ReadOnlyStoreRepository storeRepository = isolatedIngestionServer.getStoreRepository();
             // For subscription based store repository, we will need to subscribe to the store explicitly.
@@ -163,7 +164,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
               }
             }
             LOGGER.info("Start ingesting partition: {} of topic: {}", partitionId, topicName);
-            isolatedIngestionServer.setPartitionToBeSubscribed(topicName, partitionId);
+            isolatedIngestionServer.setResourceToBeSubscribed(topicName, partitionId);
             isolatedIngestionServer.getIngestionBackend().startConsumption(storeConfig, partitionId);
           });
           break;
@@ -379,7 +380,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
       Runnable commandRunnable) {
     String topic = report.topicName.toString();
     int partition = report.partitionId;
-    if (isolatedIngestionServer.isPartitionSubscribed(topic, partition)) {
+    if (isolatedIngestionServer.isResourceSubscribed(topic, partition)) {
       commandRunnable.run();
     } else {
       /**

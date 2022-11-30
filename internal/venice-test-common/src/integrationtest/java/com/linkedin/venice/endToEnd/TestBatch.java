@@ -121,13 +121,11 @@ public abstract class TestBatch {
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    if (veniceCluster != null) {
-      veniceCluster.close();
-    }
+    Utils.closeQuietlyWithErrorLogged(veniceCluster);
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void storeWithNoVersionThrows400() {
+  public void testStoreWithNoVersionThrows400() {
 
     // Create store
     File inputDir = getTempDataDirectory();
