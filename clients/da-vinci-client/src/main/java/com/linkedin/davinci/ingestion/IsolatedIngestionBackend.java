@@ -1,6 +1,10 @@
 package com.linkedin.davinci.ingestion;
 
-import static com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType.*;
+import static com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType.DEMOTE_TO_STANDBY;
+import static com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType.PROMOTE_TO_LEADER;
+import static com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType.REMOVE_PARTITION;
+import static com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType.START_CONSUMPTION;
+import static com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType.STOP_CONSUMPTION;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -104,7 +108,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
     executeCommandWithRetry(
         topicName,
         partition,
-        IngestionCommandType.STOP_CONSUMPTION,
+        STOP_CONSUMPTION,
         () -> mainIngestionRequestClient.stopConsumption(storeConfig.getStoreVersionName(), partition),
         () -> super.stopConsumption(storeConfig, partition));
   }
@@ -118,7 +122,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
     executeCommandWithRetry(
         topicName,
         partition,
-        IngestionCommandType.PROMOTE_TO_LEADER,
+        PROMOTE_TO_LEADER,
         () -> mainIngestionRequestClient.promoteToLeader(topicName, partition),
         () -> super.promoteToLeader(storeConfig, partition, leaderSessionIdChecker));
   }
@@ -132,7 +136,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
     executeCommandWithRetry(
         topicName,
         partition,
-        IngestionCommandType.DEMOTE_TO_STANDBY,
+        DEMOTE_TO_STANDBY,
         () -> mainIngestionRequestClient.demoteToStandby(topicName, partition),
         () -> super.demoteToStandby(storeConfig, partition, leaderSessionIdChecker));
   }
@@ -147,7 +151,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
     executeCommandWithRetry(
         topicName,
         partition,
-        IngestionCommandType.REMOVE_PARTITION,
+        REMOVE_PARTITION,
         () -> mainIngestionRequestClient.unsubscribeTopicPartition(topicName, partition),
         () -> {
           super.dropStoragePartitionGracefully(storeConfig, partition, timeoutInSeconds, removeEmptyStorageEngine);

@@ -460,8 +460,8 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   }
 
   public void maybeSubscribeNewResource(String topicName, int partition) {
-    topicPartitionSubscriptionMap.putIfAbsent(topicName, new VeniceConcurrentHashMap<>());
-    topicPartitionSubscriptionMap.get(topicName).putIfAbsent(partition, new AtomicBoolean(true));
+    topicPartitionSubscriptionMap.computeIfAbsent(topicName, s -> new VeniceConcurrentHashMap<>())
+        .computeIfAbsent(partition, p -> new AtomicBoolean(true));
   }
 
   Map<String, Map<Integer, AtomicBoolean>> getTopicPartitionSubscriptionMap() {
