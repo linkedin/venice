@@ -121,9 +121,7 @@ public abstract class TestBatch {
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    if (veniceCluster != null) {
-      Utils.closeQuietlyWithErrorLogged(veniceCluster);
-    }
+    Utils.closeQuietlyWithErrorLogged(veniceCluster);
   }
 
   @Test(timeOut = TEST_TIMEOUT)

@@ -1,5 +1,7 @@
 package com.linkedin.davinci.ingestion;
 
+import static com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType.*;
+
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
@@ -90,7 +92,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       int partition,
       Optional<LeaderFollowerStateType> leaderState) {
     String topicName = storeConfig.getStoreVersionName();
-    executeCommandWithRetry(topicName, partition, IngestionCommandType.START_CONSUMPTION, () -> {
+    executeCommandWithRetry(topicName, partition, START_CONSUMPTION, () -> {
       mainIngestionMonitorService.setVersionPartitionToIsolatedIngestion(storeConfig.getStoreVersionName(), partition);
       return mainIngestionRequestClient.startConsumption(storeConfig.getStoreVersionName(), partition);
     }, () -> super.startConsumption(storeConfig, partition, leaderState));
@@ -269,8 +271,8 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       Supplier<Boolean> remoteCommandSupplier,
       Runnable localCommandRunnable) {
     do {
-      if (isTopicPartitionHostedInMainProcess(topicName, partition) || (!isTopicPartitionIngesting(topicName, partition)
-          && (!command.equals(IngestionCommandType.START_CONSUMPTION)))) {
+      if (isTopicPartitionHostedInMainProcess(topicName, partition)
+          || (!isTopicPartitionIngesting(topicName, partition) && command != START_CONSUMPTION)) {
         LOGGER.info(
             "Executing command {} of topic: {}, partition: {} in main process process.",
             command,
