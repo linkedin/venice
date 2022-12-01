@@ -1,5 +1,7 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
@@ -70,6 +72,10 @@ public class PushStatusStoreMultiColoTest {
     // all tests in this class will be reading incremental push status from push status store.
     extraProperties.setProperty(USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH, String.valueOf(true));
 
+    // Enable auto materialize for meta and da-vinci push status system stores.
+    extraProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, String.valueOf(true));
+    extraProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, String.valueOf(true));
+
     multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
         NUMBER_OF_CLUSTERS,
@@ -79,7 +85,7 @@ public class PushStatusStoreMultiColoTest {
         NUMBER_OF_ROUTERS,
         REPLICATION_FACTOR,
         Optional.of(new VeniceProperties(extraProperties)),
-        Optional.empty(),
+        Optional.of(extraProperties),
         Optional.empty(),
         false);
     childDatacenters = multiColoMultiClusterWrapper.getClusters();
