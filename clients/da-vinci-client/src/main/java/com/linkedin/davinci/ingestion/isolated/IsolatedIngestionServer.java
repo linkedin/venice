@@ -400,7 +400,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
             report.message);
       }
 
-      setPartitionToBeUnsubscribed(topicName, partitionId);
+      setResourceToBeUnsubscribed(topicName, partitionId);
 
       Future<?> executionFuture = submitStopConsumptionAndCloseStorageTask(report);
       statusReportingExecutor.execute(() -> {
@@ -436,27 +436,32 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   }
 
   // Set the topic partition state to be unsubscribed.
-  public void setPartitionToBeUnsubscribed(String topicName, int partition) {
-    topicPartitionSubscriptionMap.putIfAbsent(topicName, new VeniceConcurrentHashMap<>());
-    topicPartitionSubscriptionMap.get(topicName).putIfAbsent(partition, new AtomicBoolean(false));
-    topicPartitionSubscriptionMap.get(topicName).get(partition).set(false);
+  public void setResourceToBeUnsubscribed(String topicName, int partition) {
+    topicPartitionSubscriptionMap.computeIfAbsent(topicName, s -> new VeniceConcurrentHashMap<>())
+        .computeIfAbsent(partition, p -> new AtomicBoolean(false))
+        .set(false);
   }
 
   // Set the topic partition state to be subscribed.
-  public void setPartitionToBeSubscribed(String topicName, int partition) {
-    topicPartitionSubscriptionMap.putIfAbsent(topicName, new VeniceConcurrentHashMap<>());
-    topicPartitionSubscriptionMap.get(topicName).putIfAbsent(partition, new AtomicBoolean(true));
-    topicPartitionSubscriptionMap.get(topicName).get(partition).set(true);
+  public void setResourceToBeSubscribed(String topicName, int partition) {
+    topicPartitionSubscriptionMap.computeIfAbsent(topicName, s -> new VeniceConcurrentHashMap<>())
+        .computeIfAbsent(partition, p -> new AtomicBoolean(true))
+        .set(true);
   }
 
   // Check if topic partition is being subscribed.
-  public boolean isPartitionSubscribed(String topicName, int partition) {
+  public boolean isResourceSubscribed(String topicName, int partition) {
     AtomicBoolean subscription =
         getTopicPartitionSubscriptionMap().getOrDefault(topicName, Collections.emptyMap()).get(partition);
     if (subscription == null) {
       return false;
     }
     return subscription.get();
+  }
+
+  public void maybeSubscribeNewResource(String topicName, int partition) {
+    topicPartitionSubscriptionMap.computeIfAbsent(topicName, s -> new VeniceConcurrentHashMap<>())
+        .computeIfAbsent(partition, p -> new AtomicBoolean(true));
   }
 
   Map<String, Map<Integer, AtomicBoolean>> getTopicPartitionSubscriptionMap() {

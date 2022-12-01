@@ -20,7 +20,7 @@ public class IsolatedIngestionServerHandlerTest {
 
     Map<String, Map<Integer, AtomicBoolean>> topicPartitionSubscriptionMap = new VeniceConcurrentHashMap<>();
     IsolatedIngestionServer mockedServer = Mockito.mock(IsolatedIngestionServer.class);
-    Mockito.when(mockedServer.isPartitionSubscribed(topic, partitionId)).thenCallRealMethod();
+    Mockito.when(mockedServer.isResourceSubscribed(topic, partitionId)).thenCallRealMethod();
     Mockito.when(mockedServer.getTopicPartitionSubscriptionMap()).thenReturn(topicPartitionSubscriptionMap);
     IsolatedIngestionServerHandler isolatedIngestionServerHandler = new IsolatedIngestionServerHandler(mockedServer);
     IngestionTaskReport ingestionTaskReport = IsolatedIngestionUtils.createIngestionTaskReport(topic, partitionId);

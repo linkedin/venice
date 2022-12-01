@@ -1,5 +1,11 @@
 package com.linkedin.davinci.ingestion;
 
+import static com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType.DEMOTE_TO_STANDBY;
+import static com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType.PROMOTE_TO_LEADER;
+import static com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType.REMOVE_PARTITION;
+import static com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType.START_CONSUMPTION;
+import static com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType.STOP_CONSUMPTION;
+
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
@@ -90,7 +96,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       int partition,
       Optional<LeaderFollowerStateType> leaderState) {
     String topicName = storeConfig.getStoreVersionName();
-    executeCommandWithRetry(topicName, partition, IngestionCommandType.START_CONSUMPTION, () -> {
+    executeCommandWithRetry(topicName, partition, START_CONSUMPTION, () -> {
       mainIngestionMonitorService.setVersionPartitionToIsolatedIngestion(storeConfig.getStoreVersionName(), partition);
       return mainIngestionRequestClient.startConsumption(storeConfig.getStoreVersionName(), partition);
     }, () -> super.startConsumption(storeConfig, partition, leaderState));
@@ -102,7 +108,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
     executeCommandWithRetry(
         topicName,
         partition,
-        IngestionCommandType.STOP_CONSUMPTION,
+        STOP_CONSUMPTION,
         () -> mainIngestionRequestClient.stopConsumption(storeConfig.getStoreVersionName(), partition),
         () -> super.stopConsumption(storeConfig, partition));
   }
@@ -116,7 +122,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
     executeCommandWithRetry(
         topicName,
         partition,
-        IngestionCommandType.PROMOTE_TO_LEADER,
+        PROMOTE_TO_LEADER,
         () -> mainIngestionRequestClient.promoteToLeader(topicName, partition),
         () -> super.promoteToLeader(storeConfig, partition, leaderSessionIdChecker));
   }
@@ -130,7 +136,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
     executeCommandWithRetry(
         topicName,
         partition,
-        IngestionCommandType.DEMOTE_TO_STANDBY,
+        DEMOTE_TO_STANDBY,
         () -> mainIngestionRequestClient.demoteToStandby(topicName, partition),
         () -> super.demoteToStandby(storeConfig, partition, leaderSessionIdChecker));
   }
@@ -142,21 +148,21 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       int timeoutInSeconds,
       boolean removeEmptyStorageEngine) {
     String topicName = storeConfig.getStoreVersionName();
-    mainIngestionMonitorService.cleanupTopicPartitionState(topicName, partition);
     executeCommandWithRetry(
         topicName,
         partition,
-        IngestionCommandType.REMOVE_PARTITION,
+        REMOVE_PARTITION,
         () -> mainIngestionRequestClient.unsubscribeTopicPartition(topicName, partition),
         () -> {
           super.dropStoragePartitionGracefully(storeConfig, partition, timeoutInSeconds, removeEmptyStorageEngine);
           // Clean up the topic partition ingestion status.
           mainIngestionRequestClient.resetTopicPartition(topicName, partition);
         });
+    mainIngestionMonitorService.cleanupTopicPartitionState(topicName, partition);
     if (mainIngestionMonitorService.getTopicPartitionCount(topicName) == 0) {
       LOGGER.info("No serving partitions exist for topic: {}, dropping the topic storage.", topicName);
-      mainIngestionMonitorService.cleanupTopicState(topicName);
       mainIngestionRequestClient.removeStorageEngine(topicName);
+      mainIngestionMonitorService.cleanupTopicState(topicName);
     }
   }
 
@@ -214,6 +220,10 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
     return isolatedIngestionServiceProcess;
   }
 
+  public MainIngestionMonitorService getMainIngestionMonitorService() {
+    return mainIngestionMonitorService;
+  }
+
   public void close() {
     try {
       mainIngestionMonitorService.stopInner();
@@ -228,12 +238,12 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
   }
 
   private boolean isTopicPartitionHostedInMainProcess(String topicName, int partition) {
-    return mainIngestionMonitorService.getTopicPartitionIngestionStatus(topicName, partition)
+    return getMainIngestionMonitorService().getTopicPartitionIngestionStatus(topicName, partition)
         .equals(MainPartitionIngestionStatus.MAIN);
   }
 
   private boolean isTopicPartitionIngesting(String topicName, int partition) {
-    return !mainIngestionMonitorService.getTopicPartitionIngestionStatus(topicName, partition)
+    return !getMainIngestionMonitorService().getTopicPartitionIngestionStatus(topicName, partition)
         .equals(MainPartitionIngestionStatus.NOT_EXIST);
   }
 
@@ -262,14 +272,15 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
     };
   }
 
-  private void executeCommandWithRetry(
+  void executeCommandWithRetry(
       String topicName,
       int partition,
       IngestionCommandType command,
       Supplier<Boolean> remoteCommandSupplier,
       Runnable localCommandRunnable) {
     do {
-      if (isTopicPartitionHostedInMainProcess(topicName, partition)) {
+      if (isTopicPartitionHostedInMainProcess(topicName, partition)
+          || (!isTopicPartitionIngesting(topicName, partition) && command != START_CONSUMPTION)) {
         LOGGER.info(
             "Executing command {} of topic: {}, partition: {} in main process process.",
             command,
