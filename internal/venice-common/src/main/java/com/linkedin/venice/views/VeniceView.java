@@ -4,6 +4,8 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Collections;
 import java.util.Map;
+import org.apache.avro.Schema;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 
 
 public abstract class VeniceView {
@@ -26,6 +28,9 @@ public abstract class VeniceView {
     return Collections.emptyMap();
   }
 
-  // TODO: Add things like apply event interface (holding off on that for now)
-
+  // TODO: This might not be the final interface for this, but it stands to reason that a view might have to
+  // deserialize a key/value in the record and perform some action based on the value of certain fields.
+  public void processRecord(ConsumerRecord record, int version, Schema keySchema, Schema valueSchema) {
+    // query local transientRecord/rockdb for current value.
+  }
 }
