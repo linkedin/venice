@@ -185,6 +185,80 @@ public class RealTimeTopicSwitcher {
     }
   }
 
+  public void transmitVersionSwapMessage(Store store, int previousVersion, int nextVersion) {
+
+    if (previousVersion == Store.NON_EXISTING_VERSION || nextVersion == Store.NON_EXISTING_VERSION) {
+      // NoOp
+      return;
+    }
+
+    Version previousStoreVersion = store.getVersion(previousVersion)
+        .orElseThrow(
+            () -> new VeniceException(
+                "Corresponding version " + previousVersion + "does not exist for store: " + store.getName()));
+    Version nextStoreVersion = store.getVersion(nextVersion)
+        .orElseThrow(
+            () -> new VeniceException(
+                "Corresponding version " + nextVersion + "does not exist for store: " + store.getName()));
+
+    // Only transmit version swap message to RT's if there is a view config (temporary check)
+    if (!hasViewConfigs(nextStoreVersion, previousStoreVersion)) {
+      // NoOp for now
+      return;
+    }
+
+    // Only transmit version swap for stores which have an RT (hybrid)
+    if (!hasHybridTopics(store, nextStoreVersion, previousStoreVersion)) {
+      // NoOp
+      return;
+    }
+
+    // Write the thing!
+    try (VeniceWriter veniceWriter = getVeniceWriterFactory().createBasicVeniceWriter(
+        Version.composeRealTimeTopic(store.getName()),
+        getTimer(),
+        new DefaultVenicePartitioner(),
+        previousStoreVersion.getPartitionCount())) {
+      veniceWriter.broadcastVersionSwap(
+          previousStoreVersion.kafkaTopicName(),
+          nextStoreVersion.kafkaTopicName(),
+          Collections.emptyMap());
+    }
+    LOGGER.info(
+        "Successfully sent VersionTopicSwitch for store {} from version {} to version {}",
+        store.getName(),
+        previousVersion,
+        nextVersion);
+  }
+
+  // TODO: Delete this function once we have confidence in version swap to not stipulate views as a precondition for
+  // transmitting version swap messages on RT.
+  public boolean hasViewConfigs(Version nextStoreVersion, Version previousStoreVersion) {
+    return ((previousStoreVersion.getViewConfigs() != null) && !previousStoreVersion.getViewConfigs().isEmpty())
+        || ((nextStoreVersion.getViewConfigs() != null) && !nextStoreVersion.getViewConfigs().isEmpty());
+  }
+
+  public boolean hasHybridTopics(Store store, Version nextStoreVersion, Version previousStoreVersion) {
+    HybridStoreConfig hybridStoreConfig;
+    if (nextStoreVersion.isUseVersionLevelHybridConfig()) {
+      hybridStoreConfig = nextStoreVersion.getHybridStoreConfig();
+    } else {
+      hybridStoreConfig = store.getHybridStoreConfig();
+    }
+    if (hybridStoreConfig != null) {
+      return true;
+    }
+    if (previousStoreVersion.isUseVersionLevelHybridConfig()) {
+      hybridStoreConfig = previousStoreVersion.getHybridStoreConfig();
+    } else {
+      hybridStoreConfig = store.getHybridStoreConfig();
+    }
+    if (hybridStoreConfig != null) {
+      return true;
+    }
+    return false;
+  }
+
   public void switchToRealTimeTopic(
       String realTimeTopicName,
       String topicWhereToSendTheTopicSwitch,

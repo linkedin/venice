@@ -3225,8 +3225,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               "Unable to update store:" + storeName + " current version since store writeability is false");
         }
       }
+      int previousVersion = store.getCurrentVersion();
       store.setCurrentVersion(versionNumber);
-
+      realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
       return store;
     });
   }
@@ -3245,7 +3246,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       if (backupVersion == Store.NON_EXISTING_VERSION) {
         throw new VeniceException("Backup version does not exist for store:" + storeName);
       }
+      int previousVersion = store.getCurrentVersion();
       store.setCurrentVersion(backupVersion);
+      realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, backupVersion);
       return store;
     });
   }
