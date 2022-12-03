@@ -890,7 +890,9 @@ public abstract class AbstractPushMonitor
                 store.getName(),
                 versionNumber);
           } else {
+            int previousVersion = store.getCurrentVersion();
             store.setCurrentVersion(versionNumber);
+            realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
           }
         } else {
           LOGGER.info(
