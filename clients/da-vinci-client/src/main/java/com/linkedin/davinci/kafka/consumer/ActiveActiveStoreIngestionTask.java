@@ -25,6 +25,7 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.TopicSwitch;
 import com.linkedin.venice.kafka.protocol.Update;
+import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.message.KafkaKey;
@@ -942,6 +943,25 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       partitionConsumptionState.getOffsetRecord().setLeaderTopic(newSourceTopicName);
       this.defaultReadyToServeChecker.apply(partitionConsumptionState);
     }
+  }
+
+  @Override
+  protected void processVersionSwapMessage(
+      ControlMessage controlMessage,
+      int partition,
+      PartitionConsumptionState partitionConsumptionState) {
+
+    VersionSwap versionSwapMessage = (VersionSwap) controlMessage.getControlMessageUnion();
+    if (this.versionNumber == Version
+        .parseVersionFromVersionTopicName(versionSwapMessage.newServingVersionTopic.toString())) {
+      // TODO: In the next enhancement of this feature, the future version will pause ingestion at this point.
+      // for now, we NoOp.
+      return;
+    }
+
+    // Broadcast version swap to view topics
+    // veniceWriter
+    // Probably needs a veniceWriterFactory
   }
 
   @Override

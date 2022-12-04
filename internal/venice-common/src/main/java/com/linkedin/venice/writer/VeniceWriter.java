@@ -918,7 +918,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     VersionSwap versionSwap = new VersionSwap();
     versionSwap.oldServingVersionTopic = oldServingVersionTopic;
     versionSwap.newServingVersionTopic = newServingVersionTopic;
-
     controlMessage.controlMessageUnion = versionSwap;
     broadcastControlMessage(controlMessage, debugInfo);
     producer.flush();
