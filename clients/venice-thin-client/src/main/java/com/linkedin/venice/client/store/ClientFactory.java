@@ -35,8 +35,6 @@ public class ClientFactory {
     }
 
     StatTrackingStoreClient<K, V> client = new StatTrackingStoreClient<>(internalClient, clientConfig);
-    ;
-
     if (clientConfig.isRetryOnRouterErrorEnabled() || clientConfig.isRetryOnAllErrorsEnabled()) {
       return new RetriableStoreClient<>(client, clientConfig);
     }

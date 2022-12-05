@@ -69,8 +69,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
         .createMergeConflictResolver(
             readOnlySchemaRepository,
             new RmdSerDe(readOnlySchemaRepository, storeName, RMD_VERSION_ID),
-            storeName,
-            true);
+            storeName);
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
         Lazy.of(() -> null),
         Optional.of(rmdWithValueSchemaId),
@@ -120,8 +119,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
         .createMergeConflictResolver(
             readOnlySchemaRepository,
             new RmdSerDe(readOnlySchemaRepository, storeName, RMD_VERSION_ID),
-            storeName,
-            true);
+            storeName);
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
         Lazy.of(() -> null),
         Optional.of(rmdWithValueSchemaId),
@@ -188,8 +186,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
         .createMergeConflictResolver(
             readOnlySchemaRepository,
             new RmdSerDe(readOnlySchemaRepository, storeName, RMD_VERSION_ID),
-            storeName,
-            true);
+            storeName);
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
         Lazy.of(() -> oldValueBytes),
         Optional.of(rmdWithValueSchemaId),
@@ -296,8 +293,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
         .createMergeConflictResolver(
             readOnlySchemaRepository,
             new RmdSerDe(readOnlySchemaRepository, storeName, RMD_VERSION_ID),
-            storeName,
-            true);
+            storeName);
 
     final int newColoID = 3;
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
@@ -460,8 +456,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
         .createMergeConflictResolver(
             readOnlySchemaRepository,
             new RmdSerDe(readOnlySchemaRepository, storeName, RMD_VERSION_ID),
-            storeName,
-            true);
+            storeName);
     final int newValueColoID = 3;
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
         Lazy.of(() -> oldValueBytes),
@@ -605,8 +600,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
         .createMergeConflictResolver(
             readOnlySchemaRepository,
             new RmdSerDe(readOnlySchemaRepository, storeName, RMD_VERSION_ID),
-            storeName,
-            true);
+            storeName);
     final int newValueColoID = 3;
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
         Lazy.of(() -> oldValueBytes),
