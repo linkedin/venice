@@ -75,8 +75,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         .createMergeConflictResolver(
             readOnlySchemaRepository,
             new RmdSerDe(readOnlySchemaRepository, storeName, RMD_VERSION_ID),
-            storeName,
-            true);
+            storeName);
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
         Lazy.of(() -> null),
         Optional.of(rmdWithValueSchemaId),
@@ -133,8 +132,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         .createMergeConflictResolver(
             readOnlySchemaRepository,
             new RmdSerDe(readOnlySchemaRepository, storeName, RMD_VERSION_ID),
-            storeName,
-            true);
+            storeName);
 
     GenericRecord updateFieldPartialUpdateRecord1 = SchemaUtils.createGenericRecord(writeComputeSchema);
     updateFieldPartialUpdateRecord1.put("age", 66);
@@ -260,8 +258,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         .createMergeConflictResolver(
             readOnlySchemaRepository,
             new RmdSerDe(readOnlySchemaRepository, storeName, RMD_VERSION_ID),
-            storeName,
-            true);
+            storeName);
 
     final int newColoID = 3;
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
