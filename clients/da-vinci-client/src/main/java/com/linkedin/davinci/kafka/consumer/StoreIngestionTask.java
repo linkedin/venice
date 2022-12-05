@@ -3742,6 +3742,22 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return versionedIngestionStats;
   }
 
+  protected CompressionStrategy getCompressionStrategy() {
+    return compressionStrategy;
+  }
+
+  protected Lazy<VeniceCompressor> getCompressor() {
+    return compressor;
+  }
+
+  protected boolean isChunked() {
+    return isChunked;
+  }
+
+  protected ReadOnlySchemaRepository getSchemaRepo() {
+    return schemaRepository;
+  }
+
   protected HostLevelIngestionStats getHostLevelIngestionStats() {
     return hostLevelIngestionStats;
   }

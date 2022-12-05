@@ -2,6 +2,7 @@ package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.STANDBY;
+import static com.linkedin.davinci.store.record.ValueRecord.*;
 import static com.linkedin.venice.VeniceConstants.REWIND_TIME_DECIDED_BY_SERVER;
 
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -13,7 +14,9 @@ import com.linkedin.davinci.replication.merge.RmdSerDe;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.storage.chunking.ChunkingUtils;
 import com.linkedin.davinci.storage.chunking.RawBytesChunkingAdapter;
+import com.linkedin.davinci.storage.chunking.SingleGetChunkingAdapter;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
+import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.utils.ByteArrayKey;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -245,39 +248,42 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    * @param subPartition The partition to fetch the replication metadata from storage engine
    * @return The object containing RMD and value schema id. If nothing is found, return {@code Optional.empty()}
    */
-  private Optional<RmdWithValueSchemaId> getReplicationMetadataAndSchemaId(
+  Optional<RmdWithValueSchemaId> getReplicationMetadataAndSchemaId(
       PartitionConsumptionState partitionConsumptionState,
       byte[] key,
       int subPartition) {
     PartitionConsumptionState.TransientRecord cachedRecord = partitionConsumptionState.getTransientRecord(key);
     if (cachedRecord != null) {
-      hostLevelIngestionStats.recordIngestionReplicationMetadataCacheHitCount();
+      getHostLevelIngestionStats().recordIngestionReplicationMetadataCacheHitCount();
       return Optional.of(
           new RmdWithValueSchemaId(
               cachedRecord.getValueSchemaId(),
-              rmdProtocolVersionID,
+              getRmdProtocolVersionID(),
               cachedRecord.getReplicationMetadataRecord()));
     }
 
     final long lookupStartTimeInNS = System.nanoTime();
-    ByteBuffer rmdWithValueSchemaByteBuffer = RawBytesChunkingAdapter.INSTANCE.getReplicationMetadata(
-        storageEngine,
-        storeName,
-        subPartition,
-        key,
-        isChunked,
-        serverConfig.isComputeFastAvroEnabled(),
-        compressionStrategy,
-        compressor.get(),
-        schemaRepository);
+
+    ByteBuffer rmdWithValueSchemaByteBuffer = getRmdWithValueSchemaByteBufferFromStorage(subPartition, key);
     byte[] replicationMetadataWithValueSchemaBytes =
         rmdWithValueSchemaByteBuffer == null ? null : rmdWithValueSchemaByteBuffer.array();
-    hostLevelIngestionStats
+    getHostLevelIngestionStats()
         .recordIngestionReplicationMetadataLookUpLatency(LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
-    if (replicationMetadataWithValueSchemaBytes == null) {
+    if (rmdWithValueSchemaByteBuffer == null) {
       return Optional.empty(); // No RMD for this key
     }
-    return Optional.of(rmdSerDe.deserializeValueSchemaIdPrependedRmdBytes(replicationMetadataWithValueSchemaBytes));
+    return Optional
+        .of(getRmdSerDe().deserializeValueSchemaIdPrependedRmdBytes(replicationMetadataWithValueSchemaBytes));
+  }
+
+  ByteBuffer getRmdWithValueSchemaByteBufferFromStorage(int subPartition, byte[] key) {
+    ValueRecord result =
+        SingleGetChunkingAdapter.getReplicationMetadata(getStorageEngine(), subPartition, key, isChunked(), null);
+    if (result == null) {
+      return null;
+    }
+    return ByteBuffer
+        .wrap(result.getDataBytesPrependedWithWriterSchemaId(), SCHEMA_HEADER_LENGTH, result.getDataSize());
   }
 
   // This function may modify the original record in KME and it is unsafe to use the payload from KME directly after
@@ -1336,21 +1342,13 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       long beforeProcessingRecordTimestamp) {
     int partition = consumerRecord.partition();
     String leaderTopic = consumerRecord.topic();
-    return new LeaderProducerCallback(
-        this,
-        consumerRecord,
-        partitionConsumptionState,
-        leaderProducedRecordContext,
-        leaderTopic,
-        getKafkaVersionTopic(),
-        partition,
-        subPartition,
-        kafkaUrl,
-        getVersionedDIVStats(),
-        getVersionIngestionStats(),
-        getHostLevelIngestionStats(),
-        System.nanoTime(),
-        beforeProcessingRecordTimestamp,
+    return new LeaderProducerCallback(this, consumerRecord, partitionConsumptionState, leaderProducedRecordContext,
+        leaderTopic, getKafkaVersionTopic(), partition, subPartition, kafkaUrl, getVersionedDIVStats(),
+        getVersionIngestionStats(), getHostLevelIngestionStats(), System.nanoTime(), beforeProcessingRecordTimestamp,
         true);
+  }
+
+  protected RmdSerDe getRmdSerDe() {
+    return rmdSerDe;
   }
 }

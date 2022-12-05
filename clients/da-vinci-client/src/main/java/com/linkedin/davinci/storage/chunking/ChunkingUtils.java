@@ -21,6 +21,7 @@ import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
+import org.apache.logging.log4j.LogManager;
 
 
 /**
@@ -90,6 +91,30 @@ public class ChunkingUtils {
         null,
         false,
         false);
+  }
+
+  static <VALUE, ASSEMBLED_VALUE_CONTAINER> VALUE getReplicationMetadataFromStorage(
+      ChunkingAdapter<ASSEMBLED_VALUE_CONTAINER, VALUE> adapter,
+      AbstractStorageEngine store,
+      int partition,
+      ByteBuffer keyBuffer,
+      ReadResponse response) {
+    return getFromStorage(
+        adapter,
+        store,
+        -1,
+        partition,
+        keyBuffer,
+        response,
+        null,
+        null,
+        null,
+        false,
+        null,
+        null,
+        null,
+        false,
+        true);
   }
 
   /**
@@ -264,6 +289,7 @@ public class ChunkingUtils {
       boolean skipCache,
       boolean isRmdValue) {
     long databaseLookupStartTimeInNS = (response != null) ? System.nanoTime() : 0;
+    LogManager.getLogger().info("DEBUGGING: " + isRmdValue + " " + keyBuffer);
     byte[] value = isRmdValue
         ? store.getReplicationMetadata(partition, keyBuffer.array())
         : store.get(partition, keyBuffer, skipCache);
@@ -331,7 +357,7 @@ public class ChunkingUtils {
       if (response != null) {
         response.addDatabaseLookupLatency(LatencyUtils.getLatencyInMS(databaseLookupStartTimeInNS));
       }
-
+      LogManager.getLogger().info("DEBUGGING: NOT CHUNKED BYTES" + value + " " + writerSchemaId);
       return adapter.constructValue(
           writerSchemaId,
           readerSchemaId,
@@ -375,6 +401,10 @@ public class ChunkingUtils {
       }
 
       actualSize += valueChunk.length - ValueRecord.SCHEMA_HEADER_LENGTH;
+      LogManager.getLogger()
+          .info(
+              "DEBUGGING GETTING CHUNK: " + chunkIndex + " " + actualSize + " " + chunkKey.length + " "
+                  + valueChunk.length);
       adapter.addChunkIntoContainer(assembledValueContainer, chunkIndex, valueChunk);
     }
 

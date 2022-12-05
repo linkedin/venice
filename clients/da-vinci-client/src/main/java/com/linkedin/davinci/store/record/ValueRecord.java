@@ -5,6 +5,7 @@ import com.linkedin.venice.utils.ByteUtils;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import java.nio.ByteBuffer;
+import org.apache.logging.log4j.LogManager;
 
 
 /**
@@ -39,6 +40,7 @@ public class ValueRecord {
     this.schemaId = schemaId;
     this.data = data;
     this.dataSize = data.readableBytes();
+    LogManager.getLogger().info("DEBUGGING VALUE RECORD: " + schemaId + "" + this.dataSize);
   }
 
   private ValueRecord(byte[] combinedData) {
@@ -112,5 +114,13 @@ public class ValueRecord {
     System.arraycopy(dataArr, 0, serializedArr, SCHEMA_HEADER_LENGTH, dataArr.length);
 
     return serializedArr;
+  }
+
+  public byte[] getDataBytesPrependedWithWriterSchemaId() {
+    byte[] result = new byte[SCHEMA_HEADER_LENGTH + dataSize];
+    ByteUtils.writeInt(result, schemaId, 0);
+    LogManager.getLogger().info("DEBUGGING RUN: " + data.readerIndex() + " " + data.readableBytes());
+    data.getBytes(data.readerIndex(), result, SCHEMA_HEADER_LENGTH, data.readableBytes());
+    return result;
   }
 }
