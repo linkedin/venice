@@ -297,6 +297,7 @@ subprojects {
   }
 
   def ALPINI_TEST_FILTER = 'com.linkedin.alpini.*'
+  def ALPINI_NETTY_TEST_FILTER = 'io.netty.*'
 
   tasks.withType(Test) {
     mustRunAfter tasks.withType(SpotBugsTask)
@@ -329,7 +330,8 @@ subprojects {
 
     filter {
       excludeTestsMatching ALPINI_TEST_FILTER
-      setFailOnNoMatchingTests(false)
+      excludeTestsMatching ALPINI_NETTY_TEST_FILTER
+      failOnNoMatchingTests = false
     }
 
     useTestNG {
@@ -357,12 +359,12 @@ subprojects {
   }
 
   task alpiniTest(type: Test) {
+    useTestNG()
     filter {
       includeTestsMatching ALPINI_TEST_FILTER
-      setFailOnNoMatchingTests(false)
+      includeTestsMatching ALPINI_NETTY_TEST_FILTER
+      failOnNoMatchingTests = false
     }
-
-    useTestNG()
   }
 
   tasks.withType(Jar) {
