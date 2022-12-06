@@ -219,6 +219,15 @@ public enum Arg {
       "Type of system store to backfill. Supported types are davinci_push_status_store and meta_store"
   ), RETRY("retry", "r", false, "Retry this operation"),
   DISABLE_LOG("disable-log", "dl", false, "Disable logs from internal classes. Only print command output on console"),
+  STORE_VIEW_CONFIGS(
+      "storage-view-configs", "svc", true,
+      "Config that describes views to be added for a store.  Input is a json map.  Example: {\"ExampleView\": {\"viewType\": \"CHANGE_CAPTURE\",\"params\": {}}}"
+  ),
+
+  START_DATE("start-date", "sd", true, "Start date in PST. Example: 2020-10-10 10:10:10"),
+  END_DATE("end-date", "ed", true, "End date in PST. Example: 2020-10-10 10:10:10"),
+  PROGRESS_INTERVAL("progress-interval", "pi", true, "Dump progress after processing this number of messages"),
+
   STORAGE_PERSONA("storage-persona", "sp", true, "Name of Storage Persona");
 
   private final String argName;

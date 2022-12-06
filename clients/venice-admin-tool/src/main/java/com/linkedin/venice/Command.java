@@ -22,6 +22,7 @@ import static com.linkedin.venice.Arg.DERIVED_SCHEMA_ID;
 import static com.linkedin.venice.Arg.DEST_FABRIC;
 import static com.linkedin.venice.Arg.DISABLE_DAVINCI_PUSH_STATUS_STORE;
 import static com.linkedin.venice.Arg.DISABLE_META_STORE;
+import static com.linkedin.venice.Arg.END_DATE;
 import static com.linkedin.venice.Arg.ETLED_PROXY_USER_ACCOUNT;
 import static com.linkedin.venice.Arg.EXECUTION;
 import static com.linkedin.venice.Arg.EXPECTED_ROUTER_COUNT;
@@ -62,6 +63,7 @@ import static com.linkedin.venice.Arg.PARTITIONER_CLASS;
 import static com.linkedin.venice.Arg.PARTITIONER_PARAMS;
 import static com.linkedin.venice.Arg.PARTITION_COUNT;
 import static com.linkedin.venice.Arg.PRINCIPAL;
+import static com.linkedin.venice.Arg.PROGRESS_INTERVAL;
 import static com.linkedin.venice.Arg.PUSH_ID;
 import static com.linkedin.venice.Arg.PUSH_STREAM_SOURCE_ADDRESS;
 import static com.linkedin.venice.Arg.READABILITY;
@@ -76,12 +78,14 @@ import static com.linkedin.venice.Arg.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECON
 import static com.linkedin.venice.Arg.SKIP_DIV;
 import static com.linkedin.venice.Arg.SOURCE_FABRIC;
 import static com.linkedin.venice.Arg.STARTING_OFFSET;
+import static com.linkedin.venice.Arg.START_DATE;
 import static com.linkedin.venice.Arg.STORAGE_NODE;
 import static com.linkedin.venice.Arg.STORAGE_PERSONA;
 import static com.linkedin.venice.Arg.STORAGE_QUOTA;
 import static com.linkedin.venice.Arg.STORE;
 import static com.linkedin.venice.Arg.STORE_SIZE;
 import static com.linkedin.venice.Arg.STORE_TYPE;
+import static com.linkedin.venice.Arg.STORE_VIEW_CONFIGS;
 import static com.linkedin.venice.Arg.SYSTEM_STORE_TYPE;
 import static com.linkedin.venice.Arg.URL;
 import static com.linkedin.venice.Arg.VALUE_SCHEMA;
@@ -199,7 +203,7 @@ public enum Command {
           ETLED_PROXY_USER_ACCOUNT, NATIVE_REPLICATION_ENABLED, PUSH_STREAM_SOURCE_ADDRESS,
           BACKUP_VERSION_RETENTION_DAY, REPLICATION_FACTOR, NATIVE_REPLICATION_SOURCE_FABRIC, REPLICATE_ALL_CONFIGS,
           ACTIVE_ACTIVE_REPLICATION_ENABLED, REGIONS_FILTER, DISABLE_META_STORE, DISABLE_DAVINCI_PUSH_STATUS_STORE,
-          STORAGE_PERSONA }
+          STORAGE_PERSONA, STORE_VIEW_CONFIGS }
   ),
   UPDATE_CLUSTER_CONFIG(
       "update-cluster-config", "Update live cluster configs", new Arg[] { URL, CLUSTER },
@@ -278,6 +282,13 @@ public enum Command {
       "Dump a Kafka topic for a Venice cluster.  If start offset and message count are not specified, the entire partition will be dumped.  PLEASE REFRAIN FROM USING SERVER CERTIFICATES, IT IS A GDPR VIOLATION, GET ADDED TO THE STORE ACL'S OR GET FAST ACCESS TO THE KAFKA TOPIC!!",
       new Arg[] { KAFKA_BOOTSTRAP_SERVERS, KAFKA_CONSUMER_CONFIG_FILE, KAFKA_TOPIC_NAME, CLUSTER, URL }
   ),
+
+  QUERY_KAFKA_TOPIC(
+      "query-kafka-topic", "Query some specific keys from the Venice Topic",
+      new Arg[] { KAFKA_BOOTSTRAP_SERVERS, KAFKA_CONSUMER_CONFIG_FILE, KAFKA_TOPIC_NAME, CLUSTER, URL, START_DATE,
+          END_DATE, PROGRESS_INTERVAL, KEY }
+  ),
+
   MIGRATE_STORE(
       "migrate-store", "Migrate store from one cluster to another within the same fabric",
       new Arg[] { URL, STORE, CLUSTER_SRC, CLUSTER_DEST }

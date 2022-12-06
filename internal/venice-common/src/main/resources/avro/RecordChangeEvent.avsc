@@ -1,0 +1,48 @@
+{
+  "name": "RecordChangeEvent",
+  "doc": "Schema which describes a record change event in a Venice store.",
+  "namespace": "com.linkedin.venice.client.change.capture.protocol",
+  "type": "record",
+  "fields":
+  [
+    {
+      "name": "previousValue",
+      "doc": "",
+      "default": null,
+      "type": [
+        "null",
+        {
+          "name": "ValueBytes",
+          "doc": "Optional field which describes the previous state of a given row.  Can be null if before image isn't enabled, or if the record was null to begin with.",
+          "type": "record",
+          "fields": [
+            {
+              "name": "value",
+              "type": "bytes"
+            },
+            {
+              "name": "schemaId",
+              "type": "int"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "currentValue",
+      "doc": "The current value of this record as of this change event.  Can be null to signify a delete.",
+      "type": ["null","ValueBytes"]
+    },
+    {
+      "name": "key",
+      "doc": "The key which corresponds to this record which was just updated.",
+      "type": "bytes"
+    },
+    {
+      "name": "replicationCheckpointVector",
+      "doc": "The array which represents where",
+      "type": {"type":  "array", "items": "long"},
+      "default": []
+    }
+  ]
+}

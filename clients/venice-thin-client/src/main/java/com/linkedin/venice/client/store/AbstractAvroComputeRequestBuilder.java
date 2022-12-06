@@ -22,6 +22,7 @@ import com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType;
 import com.linkedin.venice.utils.ComputeUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import io.tehuti.utils.SystemTime;
 import io.tehuti.utils.Time;
 import java.io.ByteArrayOutputStream;
 import java.util.Arrays;
@@ -38,7 +39,6 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryEncoder;
 
 
@@ -49,66 +49,39 @@ import org.apache.avro.io.BinaryEncoder;
  * @param <K>
  */
 public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeRequestBuilder<K> {
-  /**
-   * Error map field can not be a static variable; after setting the error map field in a schema, the position of the
-   * field will be updated, so the next time when we set the field in a new schema, it would fail because
-   * {@link Schema#setFields(List)} check whether the position is -1.
-   */
-  protected final Schema.Field VENICE_COMPUTATION_ERROR_MAP_FIELD = AvroCompatibilityHelper.createSchemaField(
-      VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME,
-      Schema.createMap(Schema.create(Schema.Type.STRING)),
-      "",
-      null);
-
   protected static final Map<Map<String, Object>, Pair<Schema, String>> RESULT_SCHEMA_CACHE =
       new VeniceConcurrentHashMap<>();
   protected static final String PROJECTION_SPEC = "projection_spec";
   protected static final String DOT_PRODUCT_SPEC = "dotProduct_spec";
   protected static final String COSINE_SIMILARITY_SPEC = "cosineSimilarity_spec";
-  private static final String HADAMARD_PRODUCT_SPEC = "hadamardProduct_spec";
+  protected static final String HADAMARD_PRODUCT_SPEC = "hadamardProduct_spec";
 
-  private static final Schema HADAMARD_PRODUCT_RESULT_SCHEMA = Schema.createUnion(
+  protected static final Schema HADAMARD_PRODUCT_RESULT_SCHEMA = Schema.createUnion(
       Arrays.asList(Schema.create(Schema.Type.NULL), Schema.createArray(Schema.create(Schema.Type.FLOAT))));
-
   protected static final Schema DOT_PRODUCT_RESULT_SCHEMA =
       Schema.createUnion(Arrays.asList(Schema.create(Schema.Type.NULL), Schema.create(Schema.Type.FLOAT)));
   protected static final Schema COSINE_SIMILARITY_RESULT_SCHEMA =
       Schema.createUnion(Arrays.asList(Schema.create(Schema.Type.NULL), Schema.create(Schema.Type.FLOAT)));
 
-  private final Time time;
-  protected final Schema latestValueSchema;
   protected final AvroGenericReadComputeStoreClient storeClient;
+  protected final Schema latestValueSchema;
   protected final String resultSchemaName;
-  private final Optional<ClientStats> stats;
-  private final Optional<ClientStats> streamingStats;
+
+  private boolean executed = false;
+  private Time time = new SystemTime();
+  private Optional<ClientStats> stats = Optional.empty();
+  private Optional<ClientStats> streamingStats = Optional.empty();
+
+  private boolean reuseObjects = false;
+  private BinaryEncoder reusedEncoder;
+  private ByteArrayOutputStream reusedOutputStream;
+  private boolean projectionFieldValidation = true;
+  private Set<String> projectFields = new HashSet<>();
+  private List<DotProduct> dotProducts = new LinkedList<>();
+  private List<CosineSimilarity> cosineSimilarities = new LinkedList<>();
   private List<HadamardProduct> hadamardProducts = new LinkedList<>();
 
-  private final boolean reuseObjects;
-  private final BinaryEncoder reusedEncoder;
-  private final ByteArrayOutputStream reusedOutputStream;
-
-  protected Set<String> projectFields = new HashSet<>();
-  protected List<DotProduct> dotProducts = new LinkedList<>();
-  protected List<CosineSimilarity> cosineSimilarities = new LinkedList<>();
-
-  public AbstractAvroComputeRequestBuilder(
-      Schema latestValueSchema,
-      AvroGenericReadComputeStoreClient storeClient,
-      Optional<ClientStats> stats,
-      Optional<ClientStats> streamingStats,
-      Time time) {
-    this(latestValueSchema, storeClient, stats, streamingStats, time, false, null, null);
-  }
-
-  public AbstractAvroComputeRequestBuilder(
-      Schema latestValueSchema,
-      AvroGenericReadComputeStoreClient storeClient,
-      Optional<ClientStats> stats,
-      Optional<ClientStats> streamingStats,
-      Time time,
-      boolean reuseObjects,
-      BinaryEncoder reusedEncoder,
-      ByteArrayOutputStream reusedOutputStream) {
+  public AbstractAvroComputeRequestBuilder(AvroGenericReadComputeStoreClient storeClient, Schema latestValueSchema) {
 
     if (latestValueSchema.getType() != Schema.Type.RECORD) {
       throw new VeniceClientException("Only value schema with 'RECORD' type is supported");
@@ -118,33 +91,50 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
           "Field name: " + VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME
               + " is reserved, please don't use it in value schema: " + latestValueSchema);
     }
-    this.time = time;
-    this.latestValueSchema = latestValueSchema;
+
     this.storeClient = storeClient;
-    this.stats = stats;
-    this.streamingStats = streamingStats;
+    this.latestValueSchema = latestValueSchema;
     this.resultSchemaName =
         ComputeUtils.removeAvroIllegalCharacter(storeClient.getStoreName()) + "_VeniceComputeResult";
-    this.reuseObjects = reuseObjects;
-    this.reusedEncoder = reusedEncoder;
-    this.reusedOutputStream = reusedOutputStream;
+
   }
 
-  @Override
-  public ComputeRequestBuilder<K> project(String... fieldNames) throws VeniceClientException {
-    for (String fieldName: fieldNames) {
-      projectFields.add(fieldName);
-    }
+  /** test-only*/
+  public AbstractAvroComputeRequestBuilder<K> setTime(Time time) {
+    this.time = time;
+    return this;
+  }
 
+  public AbstractAvroComputeRequestBuilder<K> setStats(
+      Optional<ClientStats> stats,
+      Optional<ClientStats> streamingStats) {
+    this.stats = stats;
+    this.streamingStats = streamingStats;
+    return this;
+  }
+
+  public AbstractAvroComputeRequestBuilder<K> setReuseObjects(
+      BinaryEncoder reusedEncoder,
+      ByteArrayOutputStream reusedOutputStream) {
+    this.reuseObjects = true;
+    this.reusedEncoder = reusedEncoder;
+    this.reusedOutputStream = reusedOutputStream;
+    return this;
+  }
+
+  public AbstractAvroComputeRequestBuilder<K> setValidateProjectionFields(boolean projectionFieldValidation) {
+    this.projectionFieldValidation = projectionFieldValidation;
     return this;
   }
 
   @Override
-  public ComputeRequestBuilder<K> project(Collection<String> fieldNames) throws VeniceClientException {
-    for (String fieldName: fieldNames) {
-      projectFields.add(fieldName);
-    }
+  public ComputeRequestBuilder<K> project(String... fieldNames) throws VeniceClientException {
+    return project(Arrays.asList(fieldNames));
+  }
 
+  @Override
+  public ComputeRequestBuilder<K> project(Collection<String> fieldNames) throws VeniceClientException {
+    projectFields.addAll(fieldNames);
     return this;
   }
 
@@ -205,11 +195,13 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
    */
   protected Set<String> commonValidityCheck() {
     // Projection
-    projectFields.forEach(projectField -> {
-      if (latestValueSchema.getField(projectField) == null) {
-        throw new VeniceClientException("Unknown project field: " + projectField);
-      }
-    });
+    if (projectionFieldValidation) {
+      projectFields.forEach(projectField -> {
+        if (latestValueSchema.getField(projectField) == null) {
+          throw new VeniceClientException("Unknown project field: " + projectField);
+        }
+      });
+    }
     // DotProduct
     Set<String> computeResultFields = new HashSet<>();
     dotProducts.forEach(
@@ -256,16 +248,18 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
        *    value in Java format, but the {@link Schema.Field#equals} will compare the underlying {@link com.fasterxml.jackson.databind.JsonNode}
        *    format of the default value.
        */
-      resultSchemaFields.add(AvroCompatibilityHelper.newField(existingField).setDoc("").build());
+      if (existingField != null) {
+        resultSchemaFields.add(AvroCompatibilityHelper.newField(existingField).setDoc("").build());
+      }
     });
     dotProducts.forEach(dotProduct -> {
       Schema.Field dotProductField = AvroCompatibilityHelper
-          .createSchemaField(dotProduct.resultFieldName.toString(), getDotProductResultSchema(), "", null);
+          .createSchemaField(dotProduct.resultFieldName.toString(), DOT_PRODUCT_RESULT_SCHEMA, "", null);
       resultSchemaFields.add(dotProductField);
     });
     cosineSimilarities.forEach(cosineSimilarity -> {
       Schema.Field cosineSimilarityField = AvroCompatibilityHelper
-          .createSchemaField(cosineSimilarity.resultFieldName.toString(), getCosineSimilarityResultSchema(), "", null);
+          .createSchemaField(cosineSimilarity.resultFieldName.toString(), COSINE_SIMILARITY_RESULT_SCHEMA, "", null);
       resultSchemaFields.add(cosineSimilarityField);
     });
     hadamardProducts.forEach(hadamardProduct -> {
@@ -273,7 +267,17 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
           .createSchemaField(hadamardProduct.resultFieldName.toString(), HADAMARD_PRODUCT_RESULT_SCHEMA, "", null);
       resultSchemaFields.add(hadamardProductField);
     });
-    resultSchemaFields.add(VENICE_COMPUTATION_ERROR_MAP_FIELD);
+    /**
+     * Error map field can not be a static variable; after setting the error map field in a schema, the position of the
+     * field will be updated, so the next time when we set the field in a new schema, it would fail because
+     * {@link Schema#setFields(List)} check whether the position is -1.
+     */
+    resultSchemaFields.add(
+        AvroCompatibilityHelper.createSchemaField(
+            VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME,
+            Schema.createMap(Schema.create(Schema.Type.STRING)),
+            "",
+            null));
     return resultSchemaFields;
   }
 
@@ -305,9 +309,9 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
   }
 
   @Override
-  public CompletableFuture<Map<K, GenericRecord>> execute(Set<K> keys) throws VeniceClientException {
-    CompletableFuture<Map<K, GenericRecord>> resultFuture = new CompletableFuture<>();
-    CompletableFuture<VeniceResponseMap<K, GenericRecord>> streamResultFuture = streamingExecute(keys);
+  public CompletableFuture<Map<K, ComputeGenericRecord>> execute(Set<K> keys) throws VeniceClientException {
+    CompletableFuture<Map<K, ComputeGenericRecord>> resultFuture = new CompletableFuture<>();
+    CompletableFuture<VeniceResponseMap<K, ComputeGenericRecord>> streamResultFuture = streamingExecute(keys);
     streamResultFuture.whenComplete((response, throwable) -> {
       if (throwable != null) {
         resultFuture.completeExceptionally(throwable);
@@ -328,17 +332,17 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
   }
 
   @Override
-  public CompletableFuture<VeniceResponseMap<K, GenericRecord>> streamingExecute(Set<K> keys) {
-    Map<K, GenericRecord> resultMap = new VeniceConcurrentHashMap<>(keys.size());
+  public CompletableFuture<VeniceResponseMap<K, ComputeGenericRecord>> streamingExecute(Set<K> keys) {
+    Map<K, ComputeGenericRecord> resultMap = new VeniceConcurrentHashMap<>(keys.size());
     Queue<K> nonExistingKeyList = new ConcurrentLinkedQueue<>();
-    VeniceResponseCompletableFuture<VeniceResponseMap<K, GenericRecord>> resultFuture =
+    VeniceResponseCompletableFuture<VeniceResponseMap<K, ComputeGenericRecord>> resultFuture =
         new VeniceResponseCompletableFuture<>(
             () -> new VeniceResponseMapImpl(resultMap, nonExistingKeyList, false),
             keys.size(),
             streamingStats);
-    streamingExecute(keys, new StreamingCallback<K, GenericRecord>() {
+    streamingExecute(keys, new StreamingCallback<K, ComputeGenericRecord>() {
       @Override
-      public void onRecordReceived(K key, GenericRecord value) {
+      public void onRecordReceived(K key, ComputeGenericRecord value) {
         if (value != null) {
           /**
            * {@link java.util.concurrent.ConcurrentHashMap#put} won't take 'null' as the value.
@@ -364,7 +368,13 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
   }
 
   @Override
-  public void streamingExecute(Set<K> keys, StreamingCallback<K, GenericRecord> callback) throws VeniceClientException {
+  public void streamingExecute(Set<K> keys, StreamingCallback<K, ComputeGenericRecord> callback)
+      throws VeniceClientException {
+    if (executed) {
+      throw new VeniceClientException(getClass().getName() + " reuse is not supported.");
+    }
+    executed = true;
+
     long preRequestTimeInNS = time.nanoseconds();
     Pair<Schema, String> resultSchema = getResultSchema();
     // Generate ComputeRequest object
@@ -493,12 +503,4 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
   }
 
   protected abstract ComputeRequestWrapper generateComputeRequest(String resultSchemaStr);
-
-  protected Schema getDotProductResultSchema() {
-    return DOT_PRODUCT_RESULT_SCHEMA;
-  }
-
-  protected Schema getCosineSimilarityResultSchema() {
-    return COSINE_SIMILARITY_RESULT_SCHEMA;
-  }
 }

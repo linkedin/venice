@@ -21,7 +21,7 @@ import com.linkedin.davinci.client.NonLocalAccessPolicy;
 import com.linkedin.davinci.client.StorageClass;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.D2.D2ClientUtils;
-import com.linkedin.venice.client.store.ComputeRequestBuilder;
+import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.client.store.predicate.Predicate;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
@@ -184,7 +184,7 @@ public class DaVinciComputeTest {
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(DEFAULT_KEY_SCHEMA);
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_FOR_COMPUTE_NULLABLE_LIST_FIELD);
 
-    Map<Integer, GenericRecord> computeResult;
+    Map<Integer, ComputeGenericRecord> computeResult;
     final int key1 = 1;
     final int key2 = 2;
     Set<Integer> keySetForCompute = new HashSet<Integer>() {
@@ -227,7 +227,7 @@ public class DaVinciComputeTest {
       pushRecordsToStore(valuesByKey, veniceWriter, 1);
       client.subscribeAll().get();
 
-      final Consumer<Map<Integer, GenericRecord>> assertComputeResults = (readComputeResult) -> {
+      final Consumer<Map<Integer, ComputeGenericRecord>> assertComputeResults = (readComputeResult) -> {
         // Expect no error
         readComputeResult.forEach(
             (key, value) -> Assert.assertEquals(
@@ -291,7 +291,7 @@ public class DaVinciComputeTest {
         new VeniceAvroKafkaSerializer(VALUE_SCHEMA_FOR_COMPUTE_MISSING_FIELD);
 
     int numRecords = 100;
-    Map<Integer, GenericRecord> computeResult;
+    Map<Integer, ComputeGenericRecord> computeResult;
     Set<Integer> keySetForCompute = new HashSet<Integer>() {
       {
         add(1);
@@ -419,7 +419,7 @@ public class DaVinciComputeTest {
     VeniceKafkaSerializer valueSerializerSwapped = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_FOR_COMPUTE_SWAPPED);
 
     int numRecords = 100;
-    Map<Integer, GenericRecord> computeResult;
+    Map<Integer, ComputeGenericRecord> computeResult;
     Set<Integer> keySetForCompute = new HashSet<Integer>() {
       {
         add(1);
@@ -566,25 +566,26 @@ public class DaVinciComputeTest {
 
       // Test compute with streaming execute using custom provided callback
       AtomicInteger computeResultCnt = new AtomicInteger(0);
-      Map<String, GenericRecord> finalComputeResultMap = new VeniceConcurrentHashMap<>();
+      Map<String, ComputeGenericRecord> finalComputeResultMap = new VeniceConcurrentHashMap<>();
       CountDownLatch computeLatch = new CountDownLatch(1);
 
-      ComputeRequestBuilder<String> computeRequestBuilder = client.compute().project("int_field");
-      computeRequestBuilder.streamingExecute(keySet, new StreamingCallback<String, GenericRecord>() {
-        @Override
-        public void onRecordReceived(String key, GenericRecord value) {
-          computeResultCnt.incrementAndGet();
-          if (value != null) {
-            finalComputeResultMap.put(key, value);
-          }
-        }
+      client.compute()
+          .project("int_field")
+          .streamingExecute(keySet, new StreamingCallback<String, ComputeGenericRecord>() {
+            @Override
+            public void onRecordReceived(String key, ComputeGenericRecord value) {
+              computeResultCnt.incrementAndGet();
+              if (value != null) {
+                finalComputeResultMap.put(key, value);
+              }
+            }
 
-        @Override
-        public void onCompletion(Optional<Exception> exception) {
-          computeLatch.countDown();
-          exception.ifPresent(e -> Assert.fail("Exception: " + e + " is not expected"));
-        }
-      });
+            @Override
+            public void onCompletion(Optional<Exception> exception) {
+              computeLatch.countDown();
+              exception.ifPresent(e -> Assert.fail("Exception: " + e + " is not expected"));
+            }
+          });
       computeLatch.await();
 
       Assert.assertEquals(computeResultCnt.get(), MAX_KEY_LIMIT);
@@ -593,9 +594,9 @@ public class DaVinciComputeTest {
       verifyStreamingComputeResult(finalComputeResultMap);
 
       // Test compute with streaming execute using default callback
-      CompletableFuture<VeniceResponseMap<String, GenericRecord>> computeFuture =
-          computeRequestBuilder.streamingExecute(keySet);
-      Map<String, GenericRecord> computeResultMap = computeFuture.get();
+      CompletableFuture<VeniceResponseMap<String, ComputeGenericRecord>> computeFuture =
+          client.compute().project("int_field").streamingExecute(keySet);
+      Map<String, ComputeGenericRecord> computeResultMap = computeFuture.get();
       Assert.assertEquals(computeResultMap.size(), MAX_KEY_LIMIT - NON_EXISTING_KEY_NUM);
       verifyStreamingComputeResult(computeResultMap);
 
@@ -850,7 +851,7 @@ public class DaVinciComputeTest {
     writer.broadcastEndOfPush(Collections.emptyMap());
   }
 
-  private void verifyStreamingComputeResult(Map<String, GenericRecord> resultMap) {
+  private void verifyStreamingComputeResult(Map<String, ComputeGenericRecord> resultMap) {
     for (int i = 0; i < MAX_KEY_LIMIT - NON_EXISTING_KEY_NUM; ++i) {
       String key = KEY_PREFIX + i;
       GenericRecord record = resultMap.get(key);

@@ -43,6 +43,7 @@ import com.linkedin.venice.controller.init.SystemSchemaInitializationRoutine;
 import com.linkedin.venice.controller.kafka.StoreStatusDecider;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.ControllerKafkaClientFactory;
+import com.linkedin.venice.controller.kafka.protocol.admin.StoreViewConfigRecord;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.ControllerRoute;
@@ -2177,6 +2178,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
           version.setVersionSwapDeferred(versionSwapDeferred);
 
+          version.setViewConfig(store.getViewConfigs());
+
           repository.updateStore(store);
           LOGGER.info("Add version: {} for store: {}", version.getNumber(), storeName);
 
@@ -3559,6 +3562,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     });
   }
 
+  private void addStoreViews(String clusterName, String storeName, Map<String, String> viewConfigMap) {
+    storeMetadataUpdate(clusterName, storeName, store -> {
+      store.setViewConfigs(StoreViewUtils.convertStringMapViewToViewConfig(viewConfigMap));
+      return store;
+    });
+  }
+
   private void setBackupStrategy(String clusterName, String storeName, BackupStrategy backupStrategy) {
     storeMetadataUpdate(clusterName, storeName, store -> {
       store.setBackupStrategy(backupStrategy);
@@ -3749,6 +3759,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<String> nativeReplicationSourceFabric = params.getNativeReplicationSourceFabric();
     Optional<Boolean> activeActiveReplicationEnabled = params.getActiveActiveReplicationEnabled();
     Optional<String> personaName = params.getStoragePersona();
+    Optional<Map<String, String>> storeViews = params.getStoreViews();
 
     final Optional<HybridStoreConfig> newHybridStoreConfig;
     if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent() || hybridTimeLagThreshold.isPresent()
@@ -4055,6 +4066,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         repository.addStoresToPersona(personaName.get(), Arrays.asList(storeName));
       }
 
+      if (storeViews.isPresent()) {
+        addStoreViews(clusterName, storeName, storeViews.get());
+      }
+
       LOGGER.info("Finished updating store: {} in cluster: {}", storeName, clusterName);
     } catch (VeniceException e) {
       LOGGER.error(
@@ -4223,6 +4238,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         partitionerClass.orElse(originalPartitionerConfig.getPartitionerClass()),
         partitionerParams.orElse(originalPartitionerConfig.getPartitionerParams()),
         amplificationFactor.orElse(originalPartitionerConfig.getAmplificationFactor()));
+  }
+
+  static Map<String, StoreViewConfigRecord> mergeNewViewConfigsIntoOldConfigs(
+      Store oldStore,
+      Map<String, String> viewParameters) {
+    // TODO: This should do some kind of merge logic based on what kind of views are being set up.
+    // since we only support one kind of view, we just overwrite the entire map. Merging logic should
+    // be some heuristic based on the type of view. For example, we may want multiple different kinds
+    // of projecting views, but only 1 change capture view potentially.
+    return StoreViewUtils.convertStringMapViewToStoreViewConfigRecord(viewParameters);
   }
 
   /**

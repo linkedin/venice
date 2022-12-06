@@ -2,8 +2,8 @@ package com.linkedin.venice.schema.vson;
 
 import static com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter.stripFromUnion;
 
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.IOException;
-import java.util.HashMap;
 import java.util.Map;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumWriter;
@@ -16,7 +16,7 @@ public class VsonAvroDatumWriter<K> extends GenericDatumWriter<K> {
 
   public VsonAvroDatumWriter(Schema root) {
     super(root);
-    cachedStrippedSchema = new HashMap<>();
+    cachedStrippedSchema = new VeniceConcurrentHashMap<>();
   }
 
   @Override

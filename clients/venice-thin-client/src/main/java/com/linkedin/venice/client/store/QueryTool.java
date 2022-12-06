@@ -85,31 +85,7 @@ public class QueryTool {
       while (keySchema.getType().equals(Schema.Type.UNION)) {
         keySchema = VsonAvroSchemaAdapter.stripFromUnion(keySchema);
       }
-      switch (keySchema.getType()) {
-        case INT:
-          key = Integer.parseInt(keyString);
-          break;
-        case DOUBLE:
-          key = Double.parseDouble(keyString);
-          break;
-        case LONG:
-          key = Long.parseLong(keyString);
-          break;
-        case STRING:
-          key = keyString;
-          break;
-        case RECORD:
-          try {
-            key = new GenericDatumReader<>(keySchema, keySchema).read(
-                null,
-                AvroCompatibilityHelper.newJsonDecoder(keySchema, new ByteArrayInputStream(keyString.getBytes())));
-          } catch (IOException e) {
-            throw new VeniceException("Invalid input key:" + keyString, e);
-          }
-          break;
-        default:
-          throw new VeniceException("Cannot handle key type, found key schema: " + keySchema);
-      }
+      key = convertKey(keyString, keySchema);
       System.out.println("Key string parsed successfully. About to make the query.");
 
       Object value = client.get(key).get(15, TimeUnit.SECONDS);
@@ -123,7 +99,37 @@ public class QueryTool {
     }
   }
 
-  private static String removeQuotes(String str) {
+  public static Object convertKey(String keyString, Schema keySchema) {
+    Object key;
+    switch (keySchema.getType()) {
+      case INT:
+        key = Integer.parseInt(keyString);
+        break;
+      case DOUBLE:
+        key = Double.parseDouble(keyString);
+        break;
+      case LONG:
+        key = Long.parseLong(keyString);
+        break;
+      case STRING:
+        key = keyString;
+        break;
+      case RECORD:
+        try {
+          key = new GenericDatumReader<>(keySchema, keySchema).read(
+              null,
+              AvroCompatibilityHelper.newJsonDecoder(keySchema, new ByteArrayInputStream(keyString.getBytes())));
+        } catch (IOException e) {
+          throw new VeniceException("Invalid input key:" + keyString, e);
+        }
+        break;
+      default:
+        throw new VeniceException("Cannot handle key type, found key schema: " + keySchema);
+    }
+    return key;
+  }
+
+  public static String removeQuotes(String str) {
     String result = str;
     if (result.startsWith("\"")) {
       result = result.substring(1);

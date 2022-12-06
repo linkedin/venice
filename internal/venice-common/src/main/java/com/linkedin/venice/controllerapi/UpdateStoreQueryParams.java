@@ -45,6 +45,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATI
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TIME_IN_SECONDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_QUOTA_IN_BYTE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_MIGRATION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIEW;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_TO_GO_ONLINE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UPDATED_CONFIGS_LIST;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
@@ -67,6 +68,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 
 public class UpdateStoreQueryParams extends QueryParams {
@@ -118,7 +120,14 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setReplicationFactor(srcStore.getReplicationFactor())
             .setAutoSchemaPushJobEnabled(srcStore.isSchemaAutoRegisterFromPushJobEnabled())
             .setStorageQuotaInByte(srcStore.getStorageQuotaInByte())
-            .setWriteComputationEnabled(srcStore.isWriteComputationEnabled());
+            .setWriteComputationEnabled(srcStore.isWriteComputationEnabled())
+            // TODO: This needs probably some refinement, but since we only support one kind of view type today, this is
+            // still easy to parse
+            .setStoreViews(
+                srcStore.getViewConfigs()
+                    .entrySet()
+                    .stream()
+                    .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().toString())));
 
     if (srcStore.getReplicationMetadataVersionId() != -1) {
       updateStoreQueryParams.setReplicationMetadataVersionID(srcStore.getReplicationMetadataVersionId());
@@ -435,6 +444,14 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public UpdateStoreQueryParams setNativeReplicationEnabled(boolean nativeReplicationEnabled) {
     return putBoolean(NATIVE_REPLICATION_ENABLED, nativeReplicationEnabled);
+  }
+
+  public UpdateStoreQueryParams setStoreViews(Map<String, String> viewMap) {
+    return (UpdateStoreQueryParams) putStringMap(STORE_VIEW, viewMap);
+  }
+
+  public Optional<Map<String, String>> getStoreViews() {
+    return getStringMap(STORE_VIEW);
   }
 
   public UpdateStoreQueryParams setPushStreamSourceAddress(String pushStreamSourceAddress) {

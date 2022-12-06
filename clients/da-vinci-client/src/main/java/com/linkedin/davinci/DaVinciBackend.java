@@ -216,7 +216,7 @@ public class DaVinciBackend implements Closeable {
           null);
 
       ingestionService.start();
-      ingestionService.addCommonNotifier(ingestionListener);
+      ingestionService.addIngestionNotifier(ingestionListener);
 
       if (isIsolatedIngestion() && cacheConfig.isPresent()) {
         // TODO: There are 'some' cases where this mix might be ok, (like a batch only store, or with certain TTL

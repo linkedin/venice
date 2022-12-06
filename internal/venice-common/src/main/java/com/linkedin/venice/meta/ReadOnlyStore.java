@@ -491,6 +491,24 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public Map<String, ViewConfig> getViewConfigs() {
+      if (this.delegate.getViewConfigs() == null) {
+        return new HashMap<>();
+      } else {
+        return Collections.unmodifiableMap(
+            this.delegate.getViewConfigs()
+                .entrySet()
+                .stream()
+                .collect(Collectors.toMap(Map.Entry::getKey, e -> new ReadOnlyViewConfig(e.getValue()))));
+      }
+    }
+
+    @Override
+    public void setViewConfig(Map<String, ViewConfig> viewConfigList) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
     public boolean isUseVersionLevelHybridConfig() {
       return this.delegate.isUseVersionLevelHybridConfig();
     }
@@ -817,6 +835,21 @@ public class ReadOnlyStore implements Store {
 
   @Override
   public void setHybridStoreConfig(HybridStoreConfig hybridStoreConfig) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public Map<String, ViewConfig> getViewConfigs() {
+
+    return Collections.unmodifiableMap(
+        this.delegate.getViewConfigs()
+            .entrySet()
+            .stream()
+            .collect(Collectors.toMap(Map.Entry::getKey, e -> new ReadOnlyViewConfig(e.getValue()))));
+  }
+
+  @Override
+  public void setViewConfigs(Map<String, ViewConfig> viewConfigList) {
     throw new UnsupportedOperationException();
   }
 

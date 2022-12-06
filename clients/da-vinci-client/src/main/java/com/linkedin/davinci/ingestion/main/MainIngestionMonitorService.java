@@ -11,8 +11,6 @@ import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.IsolatedIngestionProcessHeartbeatStats;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Time;
@@ -26,12 +24,9 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -41,7 +36,7 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * MainIngestionMonitorService is the listener service in main process which handles various kinds of reports sent from
+ * This class is the listener service in main process which handles various kinds of reports sent from
  * isolated ingestion service. MainIngestionMonitorService itself is a Netty based server implementation, and the main
  * report handling logics happens in {@link MainIngestionReportHandler}.
  * Besides reports handling, it also maintains two executor services to send heartbeat check and collect metrics to/from
@@ -64,14 +59,8 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   private final ExecutorService longRunningTaskExecutor = Executors.newSingleThreadExecutor();
   private final MainIngestionRequestClient metricsClient;
   private final MainIngestionRequestClient heartbeatClient;
-  // Topic name to partition set map, representing all topic partitions being ingested in Isolated Ingestion Backend.
-  private final Map<String, Set<Integer>> topicNameToPartitionSetMap = new VeniceConcurrentHashMap<>();
-  // Topic name to partition set map, representing all topic partitions that have completed ingestion in isolated
-  // process.
-  private final Map<String, Set<Integer>> completedTopicPartitions = new VeniceConcurrentHashMap<>();
-  private final Map<String, Boolean> topicNameToLeaderFollowerEnabledFlagMap = new VeniceConcurrentHashMap<>();
-  private final List<VeniceNotifier> onlineOfflineIngestionNotifierList = new ArrayList<>();
-  private final List<VeniceNotifier> leaderFollowerIngestionNotifierList = new ArrayList<>();
+  private final Map<String, MainTopicIngestionStatus> topicIngestionStatusMap = new VeniceConcurrentHashMap<>();
+  private final List<VeniceNotifier> ingestionNotifierList = new ArrayList<>();
   private final List<VeniceNotifier> pushStatusNotifierList = new ArrayList<>();
   private final Optional<SSLFactory> sslFactory;
 
@@ -142,28 +131,14 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
     shutdown.sync();
   }
 
-  public boolean isTopicInLeaderFollowerMode(String topicName) {
-    return topicNameToLeaderFollowerEnabledFlagMap.getOrDefault(topicName, false);
-  }
-
-  public void addLeaderFollowerIngestionNotifier(VeniceNotifier ingestionListener) {
+  public void addIngestionNotifier(VeniceNotifier ingestionListener) {
     if (ingestionListener != null) {
-      leaderFollowerIngestionNotifierList.add(ingestionListener);
+      ingestionNotifierList.add(ingestionListener);
     }
   }
 
-  public List<VeniceNotifier> getLeaderFollowerIngestionNotifier() {
-    return leaderFollowerIngestionNotifierList;
-  }
-
-  public void addOnlineOfflineIngestionNotifier(VeniceNotifier ingestionListener) {
-    if (ingestionListener != null) {
-      onlineOfflineIngestionNotifierList.add(ingestionListener);
-    }
-  }
-
-  public List<VeniceNotifier> getOnlineOfflineIngestionNotifier() {
-    return onlineOfflineIngestionNotifierList;
+  public List<VeniceNotifier> getIngestionNotifier() {
+    return ingestionNotifierList;
   }
 
   public void addPushStatusNotifier(VeniceNotifier pushStatusNotifier) {
@@ -212,56 +187,41 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
     return storeRepository;
   }
 
-  public boolean isTopicPartitionIngestedInIsolatedProcess(String topicName, int partitionId) {
-    if (completedTopicPartitions.containsKey(topicName)) {
-      return completedTopicPartitions.get(topicName).contains(partitionId);
+  public MainPartitionIngestionStatus getTopicPartitionIngestionStatus(String topicName, int partitionId) {
+    MainTopicIngestionStatus topicIngestionStatus = topicIngestionStatusMap.get(topicName);
+    if (topicIngestionStatus != null) {
+      return topicIngestionStatus.getPartitionIngestionStatus(partitionId);
     }
-    return false;
+    return MainPartitionIngestionStatus.NOT_EXIST;
   }
 
-  public void removeVersionPartitionFromIngestionMap(String topicName, int partitionId) {
-    if (topicNameToPartitionSetMap.getOrDefault(topicName, Collections.emptySet()).contains(partitionId)) {
-      // Add topic partition to completed task pool.
-      completedTopicPartitions.putIfAbsent(topicName, new HashSet<>());
-      completedTopicPartitions.computeIfPresent(topicName, (key, val) -> {
-        val.add(partitionId);
-        return val;
-      });
-      // Remove topic partition from ongoing task pool.
-      topicNameToPartitionSetMap.computeIfPresent(topicName, (key, val) -> {
-        val.remove(partitionId);
-        return val;
-      });
-    } else {
-      LOGGER
-          .error("Topic partition not found in ongoing ingestion tasks: {}, partition id: {}", topicName, partitionId);
-    }
+  public void setVersionPartitionToLocalIngestion(String topicName, int partitionId) {
+    topicIngestionStatusMap.computeIfAbsent(topicName, x -> new MainTopicIngestionStatus(topicName))
+        .setPartitionIngestionStatusToLocalIngestion(partitionId);
   }
 
-  public void addVersionPartitionToIngestionMap(String topicName, int partitionId) {
-    topicNameToLeaderFollowerEnabledFlagMap.putIfAbsent(topicName, isTopicLeaderFollowerModeEnabled(topicName));
-    // Add topic partition to ongoing task pool.
-    topicNameToPartitionSetMap.putIfAbsent(topicName, new HashSet<>());
-    topicNameToPartitionSetMap.computeIfPresent(topicName, (key, val) -> {
-      val.add(partitionId);
-      return val;
-    });
+  public void setVersionPartitionToIsolatedIngestion(String topicName, int partitionId) {
+    topicIngestionStatusMap.computeIfAbsent(topicName, x -> new MainTopicIngestionStatus(topicName))
+        .setPartitionIngestionStatusToIsolatedIngestion(partitionId);
   }
 
   public void cleanupTopicPartitionState(String topicName, int partitionId) {
-    topicNameToPartitionSetMap.getOrDefault(topicName, Collections.emptySet()).remove(partitionId);
-    completedTopicPartitions.getOrDefault(topicName, Collections.emptySet()).remove(partitionId);
+    MainTopicIngestionStatus topicIngestionStatus = topicIngestionStatusMap.get(topicName);
+    if (topicIngestionStatus != null) {
+      topicIngestionStatus.removePartitionIngestionStatus(partitionId);
+    }
   }
 
   public void cleanupTopicState(String topicName) {
-    topicNameToPartitionSetMap.remove(topicName);
-    completedTopicPartitions.remove(topicName);
-    topicNameToLeaderFollowerEnabledFlagMap.remove(topicName);
+    topicIngestionStatusMap.remove(topicName);
   }
 
-  public int getTopicPartitionCount(String topicName) {
-    return topicNameToPartitionSetMap.getOrDefault(topicName, Collections.emptySet()).size()
-        + completedTopicPartitions.getOrDefault(topicName, Collections.emptySet()).size();
+  public long getTopicPartitionCount(String topicName) {
+    MainTopicIngestionStatus topicIngestionStatus = topicIngestionStatusMap.get(topicName);
+    if (topicIngestionStatus != null) {
+      return topicIngestionStatus.getIngestingPartitionCount();
+    }
+    return 0;
   }
 
   private void setupMetricsCollection() {
@@ -301,23 +261,28 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
       ingestionBackend.setIsolatedIngestionServiceProcess(newIsolatedIngestionProcess);
       LOGGER.info("Forked process has been recovered.");
     }
-    // Re-initialize latest heartbeat timestamp.
+    // Re-initialize the latest heartbeat timestamp.
     latestHeartbeatTimestamp = System.currentTimeMillis();
     heartbeatStats.recordHeartbeatAge(0);
-    // Use async long running task scheduler to avoid blocking periodic heartbeat jobs.
+    // Use async long-running task scheduler to avoid blocking periodic heartbeat jobs.
     longRunningTaskExecutor.execute(this::resumeOngoingIngestionTasks);
   }
 
   private void resumeOngoingIngestionTasks() {
     try (MainIngestionRequestClient client = new MainIngestionRequestClient(sslFactory, servicePort)) {
-      LOGGER.info("Start to recover ongoing ingestion tasks: {}", topicNameToPartitionSetMap);
-      // Open metadata partitions in child process for all previously subscribed topics.
-      topicNameToPartitionSetMap.keySet().forEach(client::openStorageEngine);
+      LOGGER.info("Start to recover ongoing ingestion tasks: {}", topicIngestionStatusMap);
+      // Re-open metadata partitions in child process for all previously subscribed topics.
+      topicIngestionStatusMap.keySet().forEach(client::openStorageEngine);
       // All previously subscribed topics are stored in the keySet of this topic partition map.
-      topicNameToPartitionSetMap.forEach((topicName, partitionSet) -> {
-        partitionSet.forEach(partitionId -> {
-          client.startConsumption(topicName, partitionId);
-          LOGGER.info("Recovered ingestion task for topic: {}, partition: {}", topicName, partitionId);
+      topicIngestionStatusMap.forEach((topicName, partitionStatus) -> {
+        partitionStatus.getPartitionIngestionStatusSet().forEach((partitionId, status) -> {
+          if (status.equals(MainPartitionIngestionStatus.ISOLATED)) {
+            client.startConsumption(topicName, partitionId);
+            LOGGER.info(
+                "Recovered ingestion task for topic: {}, partition: {} in isolated process.",
+                topicName,
+                partitionId);
+          }
         });
       });
       LOGGER.info("All ongoing ingestion tasks has resumed.");
@@ -367,23 +332,5 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
     } catch (InterruptedException e) {
       currentThread().interrupt();
     }
-  }
-
-  /**
-   * Return whether a topic is L/F enabled.
-   * The current LeaderFollowerIngestionProgressNotifier and OnlineOfflineIngestionProgressNotifier is actually the same
-   * and we are in process of deprecating OBO mode, so in the future we will only have one StateModelNotifier implementation.
-   * Thus, we don't throw exception here and fail ingestion when store/version could not be found in StoreRepository in
-   * any case, but instead just simply return false.
-   */
-  private boolean isTopicLeaderFollowerModeEnabled(String topicName) {
-    String storeName = Version.parseStoreFromKafkaTopicName(topicName);
-    int versionNumber = Version.parseVersionFromKafkaTopicName(topicName);
-    Store store = storeRepository.getStore(storeName);
-    if (store == null) {
-      return false;
-    }
-    Optional<Version> versionOptional = store.getVersion(versionNumber);
-    return versionOptional.map(Version::isLeaderFollowerModelEnabled).orElse(false);
   }
 }

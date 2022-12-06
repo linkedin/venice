@@ -426,11 +426,11 @@ public class StatTrackingStoreClientTest {
         storeClient,
         ClientConfig.defaultGenericClientConfig(storeName).setMetricsRepository(repository));
 
-    CompletableFuture<Map<String, GenericRecord>> computeFuture = statTrackingStoreClient.compute()
+    CompletableFuture<Map<String, ComputeGenericRecord>> computeFuture = statTrackingStoreClient.compute()
         .project("int_field")
         .dotProduct("float_array_field1", dotProductParam, "dot_product_for_float_array_field1")
         .execute(keys);
-    Map<String, GenericRecord> computeResult = computeFuture.get();
+    Map<String, ComputeGenericRecord> computeResult = computeFuture.get();
     Assert.assertEquals(computeResult.size(), 2);
     Assert.assertNotNull(computeResult.get("key1"));
     GenericRecord resultForKey1 = computeResult.get("key1");
@@ -642,13 +642,13 @@ public class StatTrackingStoreClientTest {
           ComputeRequestWrapper computeRequestWrapper,
           Set<K> keys,
           Schema resultSchema,
-          StreamingCallback<K, GenericRecord> callback,
+          StreamingCallback<K, ComputeGenericRecord> callback,
           long preRequestTimeInNS,
           BinaryEncoder reusedEncoder,
           ByteArrayOutputStream reusedOutputStream) {
         Thread callbackThread = new Thread(() -> {
           for (int i = 0; i < 10; i += 2) {
-            callback.onRecordReceived((K) ("key_" + i), mock(GenericRecord.class));
+            callback.onRecordReceived((K) ("key_" + i), mock(ComputeGenericRecord.class));
             callback.onRecordReceived((K) ("key_" + (i + 1)), null);
           }
           if (callback instanceof TrackingStreamingCallback) {
@@ -678,7 +678,7 @@ public class StatTrackingStoreClientTest {
     for (int i = 0; i < 10; ++i) {
       keys.add("key_" + i);
     }
-    CompletableFuture<VeniceResponseMap<String, GenericRecord>> resultFuture =
+    CompletableFuture<VeniceResponseMap<String, ComputeGenericRecord>> resultFuture =
         statTrackingStoreClient.compute().project("int_field").streamingExecute(keys);
     // Make the behavior deterministic
     resultLatch.await();

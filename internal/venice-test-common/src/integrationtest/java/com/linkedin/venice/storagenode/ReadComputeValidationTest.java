@@ -7,6 +7,7 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compute.ComputeOperationUtils;
@@ -190,7 +191,7 @@ public class ReadComputeValidationTest {
       veniceCluster.stopAndRestartVeniceServer(veniceCluster.getVeniceServers().get(0).getPort());
 
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
-        Map<Integer, GenericRecord> computeResult = storeClient.compute()
+        Map<Integer, ComputeGenericRecord> computeResult = storeClient.compute()
             .cosineSimilarity("companiesEmbedding", PYMK_COSINE_SIMILARITY_EMBEDDING, "companiesEmbedding_score")
             .cosineSimilarity("member_feature", PYMK_COSINE_SIMILARITY_EMBEDDING, "member_feature_score")
             .execute(keySet)
@@ -267,7 +268,8 @@ public class ReadComputeValidationTest {
       // Restart the server to get new schemas
       veniceCluster.stopAndRestartVeniceServer(veniceCluster.getVeniceServers().get(0).getPort());
 
-      Map<Integer, GenericRecord> computeResult = storeClient.compute().project("member_feature").execute(keySet).get();
+      Map<Integer, ComputeGenericRecord> computeResult =
+          storeClient.compute().project("member_feature").execute(keySet).get();
 
       computeResult.forEach(
           (key, value) -> Assert
@@ -343,7 +345,7 @@ public class ReadComputeValidationTest {
       Set<Integer> keySet = Utils.setOf(key1, key2);
 
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
-        Map<Integer, GenericRecord> computeResult = storeClient.compute()
+        Map<Integer, ComputeGenericRecord> computeResult = storeClient.compute()
             .dotProduct("member_feature", memberFeatureEmbedding, "dot_product_result")
             .hadamardProduct("member_feature", memberFeatureEmbedding, "hadamard_product_result")
             .cosineSimilarity("member_feature", memberFeatureEmbedding, "cosine_similarity_result")

@@ -194,6 +194,10 @@ public interface Store {
 
   void setHybridStoreConfig(HybridStoreConfig hybridStoreConfig);
 
+  Map<String, ViewConfig> getViewConfigs();
+
+  void setViewConfigs(Map<String, ViewConfig> viewConfigMap);
+
   boolean isHybrid();
 
   CompressionStrategy getCompressionStrategy();

@@ -14,6 +14,7 @@ dependencies {
   implementation libraries.commonsCli
   implementation libraries.kafka
   implementation libraries.log4j2api
+  implementation libraries.log4j2core
 }
 
 apply from: "$rootDir/gradle/helper/publishing.gradle"

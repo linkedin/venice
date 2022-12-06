@@ -28,7 +28,7 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * MainIngestionReportHandler is the handler class for {@link MainIngestionMonitorService}. It handles {@link IngestionTaskReport}
+ * This class is the handler class for {@link MainIngestionMonitorService}. It handles {@link IngestionTaskReport}
  * sent from child process and triggers corresponding notifier actions. For all these status, the handler will notify all
  * the registered notifiers in main process.
  */
@@ -65,7 +65,7 @@ public class MainIngestionReportHandler extends SimpleChannelInboundHandler<Full
     // Relay the notification to parent service's listener.
     switch (reportType) {
       case COMPLETED:
-        mainIngestionMonitorService.removeVersionPartitionFromIngestionMap(topicName, partitionId);
+        mainIngestionMonitorService.setVersionPartitionToLocalIngestion(topicName, partitionId);
         // Set LeaderState passed from child process to cache.
         LeaderFollowerStateType leaderFollowerStateType = LeaderFollowerStateType.valueOf(report.leaderFollowerState);
         notifierHelper(
@@ -73,7 +73,7 @@ public class MainIngestionReportHandler extends SimpleChannelInboundHandler<Full
                 .completed(topicName, partitionId, report.offset, "", Optional.of(leaderFollowerStateType)));
         break;
       case ERROR:
-        mainIngestionMonitorService.removeVersionPartitionFromIngestionMap(topicName, partitionId);
+        mainIngestionMonitorService.setVersionPartitionToLocalIngestion(topicName, partitionId);
         notifierHelper(
             notifier -> notifier.error(
                 topicName,
@@ -121,7 +121,7 @@ public class MainIngestionReportHandler extends SimpleChannelInboundHandler<Full
 
   private void notifierHelper(Consumer<VeniceNotifier> lambda) {
     mainIngestionMonitorService.getPushStatusNotifierList().forEach(lambda);
-    mainIngestionMonitorService.getLeaderFollowerIngestionNotifier().forEach(lambda);
+    mainIngestionMonitorService.getIngestionNotifier().forEach(lambda);
   }
 
   private void updateLocalStorageMetadata(IngestionTaskReport report) {

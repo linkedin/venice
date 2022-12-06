@@ -220,6 +220,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setStoreMetaSystemStoreEnabled(store.isStoreMetaSystemStoreEnabled());
     setActiveActiveReplicationEnabled(store.isActiveActiveReplicationEnabled());
     setRmdVersionID(store.getRmdVersionID());
+    setViewConfigs(store.getViewConfigs());
 
     for (Version storeVersion: store.getVersions()) {
       forceAddVersion(storeVersion.cloneVersion(), true);
@@ -446,6 +447,30 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
       this.storeProperties.hybridConfig = null;
     } else {
       this.storeProperties.hybridConfig = hybridStoreConfig.dataModel();
+    }
+  }
+
+  @JsonProperty("views")
+  @Override
+  public Map<String, ViewConfig> getViewConfigs() {
+    if (this.storeProperties.views == null) {
+      return null;
+    }
+
+    return this.storeProperties.views.entrySet()
+        .stream()
+        .collect(Collectors.toMap(e -> e.getKey().toString(), e -> new ViewConfigImpl(e.getValue())));
+  }
+
+  @JsonProperty("views")
+  @Override
+  public void setViewConfigs(Map<String, ViewConfig> viewConfigList) {
+    if (viewConfigList == null) {
+      this.storeProperties.views = new HashMap<>();
+    } else {
+      this.storeProperties.views = viewConfigList.entrySet()
+          .stream()
+          .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().dataModel()));
     }
   }
 

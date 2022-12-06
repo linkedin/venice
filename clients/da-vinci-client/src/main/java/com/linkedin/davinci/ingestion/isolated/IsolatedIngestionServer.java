@@ -64,6 +64,7 @@ import io.tehuti.metrics.MetricsRepository;
 import java.io.FileNotFoundException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
@@ -79,23 +80,21 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * IsolatedIngestionServer is the server service of the isolated ingestion service. It is a Netty based server that listens to
- * all the requests sent from {@link IsolatedIngestionBackend} in main process and spawn {@link IsolatedIngestionServerHandler}
+ * This class is the server service of the isolated ingestion. It is a Netty based server that listens to
+ * all the requests sent from {@link IsolatedIngestionBackend} in main process and spawns {@link IsolatedIngestionServerHandler}
  * to handle the request.
  *
  * The general workflow goes as follows:
- * (1) When IsolatedIngestionServer instance is created in child process, it will remain idle until it receives initialization
+ * (1) When server instance is created in child process, it will remain idle until it receives initialization
  * request from main process, which pass in all the configs needed to initialize all ingestion components.
- * (2) Once initialization completes, it starts listening to ingestion command sent from main process, such as startConsumption,
- * stopConsumption, killConsumption, updateMetadata and so on.
- * (3) When ingestion notifier in child process is notified, it will use its {@link MainIngestionRequestClient} to relay status
- * back to {@link MainIngestionMonitorService} in main process. {@link MainIngestionMonitorService} will further dispatch status
- * reporting to all registered notifiers in main process.
+ * (2) Once initialization completes, it starts listening to ingestion command sent from main process.
+ * (3) When ingestion notifier in child process is notified, it will use its {@link MainIngestionRequestClient} to relay
+ * status back to {@link MainIngestionMonitorService} in main process. {@link MainIngestionMonitorService} will further
+ * dispatch status reporting to all registered notifiers in main process.
  *  -- For COMPLETED status, it will stop ingestion and shutdown corresponding storage so main process can re-subscribe it for serving purpose.
  *  -- For ERROR status, it will also stop ingestion and shutdown storage, and it will also forward the ERROR status for main process to handle.
- * IsolatedIngestionServer itself is stateless and will not persist any ingestion status. When the child process encounters failure
- * and crash, {@link MainIngestionMonitorService} will be responsible of respawning a new instance and resume all ongoing ingestion
- * tasks for fault tolerance purpose.
+ * The server will not persist any ingestion status to the disk. When the child process crashes, {@link MainIngestionMonitorService}
+ * will be responsible for respawning a new instance and resuming all ongoing ingestion tasks for fault tolerance purpose.
  */
 public class IsolatedIngestionServer extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(IsolatedIngestionServer.class);
@@ -110,14 +109,16 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   private final int servicePort;
   private final ExecutorService longRunningTaskExecutor = Executors.newFixedThreadPool(10);
   private final ExecutorService statusReportingExecutor = Executors.newSingleThreadExecutor();
-  // Leader section Id map helps to verify if the PROMOTE_TO_LEADER/DEMOTE_TO_STANDBY is valid or not when processing
+  // Leader section id map helps to verify if the leader state transition is valid or not when processing
   // the message in the queue.
   private final Map<String, Map<Integer, AtomicLong>> leaderSessionIdMap = new VeniceConcurrentHashMap<>();
   /**
-   * The boolean value of this map indicates whether we have added UNSUBSCRIBE message to the processing queue.
-   * We should not add leader change message into the queue if we have added UNSUBSCRIBE message to the queue, otherwise
-   * it won't get processed and the request may be missed. This will help leader promo/demote request from parent process
-   * fail out early and avoid race condition.
+   * This map data structure keeps track of a specific topic-partition (resource) is being ingested in the isolated process.
+   * (1) If the topic partition value does not exist, this means this resource is not being maintained in the host.
+   * (2) If the topic partition value equals to true, this means the resource is being ingested in the isolated process.
+   * (3) If the topic partition value equals to false, this means the resource has completed ingestion in the process and
+   * is either maintained in the process or in the process of being reported back. All ingestion commands regarding this
+   * resource will be rejected and retried in the main process.
    */
   private final Map<String, Map<Integer, AtomicBoolean>> topicPartitionSubscriptionMap =
       new VeniceConcurrentHashMap<>();
@@ -126,7 +127,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
 
   private ChannelFuture serverFuture;
   private MetricsRepository metricsRepository = null;
-  private VeniceConfigLoader configLoader = null;
+  private VeniceConfigLoader configLoader;
   private ReadOnlyStoreRepository storeRepository = null;
   private ReadOnlyLiveClusterConfigRepository liveConfigRepository = null;
   private StorageService storageService = null;
@@ -197,7 +198,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     LOGGER.info("All ingestion components are initialized.");
 
     heartbeatCheckScheduler.scheduleAtFixedRate(this::checkHeartbeatTimeout, 0, 5, TimeUnit.SECONDS);
-    // There is no async process in this function, so we are completely finished with the start up process.
+    // There is no async process in this function, so we are completely finished with the start-up process.
     repairService.start();
     return true;
   }
@@ -259,10 +260,6 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     this.storageService = storageService;
   }
 
-  public void setStoreIngestionService(KafkaStoreIngestionService storeIngestionService) {
-    this.storeIngestionService = storeIngestionService;
-  }
-
   public void setStorageMetadataService(StorageMetadataService storageMetadataService) {
     this.storageMetadataService = storageMetadataService;
   }
@@ -278,14 +275,6 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   public void setStoreVersionStateSerializer(
       InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer) {
     this.storeVersionStateSerializer = storeVersionStateSerializer;
-  }
-
-  public void setIngestionBackend(DefaultIngestionBackend ingestionBackend) {
-    this.ingestionBackend = ingestionBackend;
-  }
-
-  public void setInitiated(boolean initiated) {
-    isInitiated = initiated;
   }
 
   public boolean isInitiated() {
@@ -342,11 +331,13 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   }
 
   public void cleanupTopicPartitionState(String topicName, int partitionId) {
-    if (topicPartitionSubscriptionMap.containsKey(topicName)) {
-      topicPartitionSubscriptionMap.get(topicName).remove(partitionId);
+    Map<Integer, AtomicBoolean> partitionSubscriptionMap = topicPartitionSubscriptionMap.get(topicName);
+    if (partitionSubscriptionMap != null) {
+      partitionSubscriptionMap.remove(partitionId);
     }
-    if (leaderSessionIdMap.containsKey(topicName)) {
-      leaderSessionIdMap.get(topicName).remove(partitionId);
+    Map<Integer, AtomicLong> partitionLeaderSessionIdMap = leaderSessionIdMap.get(topicName);
+    if (partitionLeaderSessionIdMap != null) {
+      partitionLeaderSessionIdMap.remove(partitionId);
     }
   }
 
@@ -409,7 +400,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
             report.message);
       }
 
-      setPartitionToBeUnsubscribed(topicName, partitionId);
+      setResourceToBeUnsubscribed(topicName, partitionId);
 
       Future<?> executionFuture = submitStopConsumptionAndCloseStorageTask(report);
       statusReportingExecutor.execute(() -> {
@@ -444,30 +435,37 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         leaderSessionId);
   }
 
-  // Set the topic partition state to be unsubscribed(false)
-  public void setPartitionToBeUnsubscribed(String topicName, int partition) {
-    topicPartitionSubscriptionMap.putIfAbsent(topicName, new VeniceConcurrentHashMap<>());
-    topicPartitionSubscriptionMap.get(topicName).putIfAbsent(partition, new AtomicBoolean(false));
-    topicPartitionSubscriptionMap.get(topicName).get(partition).set(false);
+  // Set the topic partition state to be unsubscribed.
+  public void setResourceToBeUnsubscribed(String topicName, int partition) {
+    topicPartitionSubscriptionMap.computeIfAbsent(topicName, s -> new VeniceConcurrentHashMap<>())
+        .computeIfAbsent(partition, p -> new AtomicBoolean(false))
+        .set(false);
   }
 
-  // Set the topic partition state to be subscribed(true)
-  public void setPartitionToBeSubscribed(String topicName, int partition) {
-    topicPartitionSubscriptionMap.putIfAbsent(topicName, new VeniceConcurrentHashMap<>());
-    topicPartitionSubscriptionMap.get(topicName).putIfAbsent(partition, new AtomicBoolean(true));
-    topicPartitionSubscriptionMap.get(topicName).get(partition).set(true);
+  // Set the topic partition state to be subscribed.
+  public void setResourceToBeSubscribed(String topicName, int partition) {
+    topicPartitionSubscriptionMap.computeIfAbsent(topicName, s -> new VeniceConcurrentHashMap<>())
+        .computeIfAbsent(partition, p -> new AtomicBoolean(true))
+        .set(true);
   }
 
   // Check if topic partition is being subscribed.
-  public boolean isPartitionSubscribed(String topicName, int partition) {
-    if (!topicPartitionSubscriptionMap.containsKey(topicName)) {
+  public boolean isResourceSubscribed(String topicName, int partition) {
+    AtomicBoolean subscription =
+        getTopicPartitionSubscriptionMap().getOrDefault(topicName, Collections.emptyMap()).get(partition);
+    if (subscription == null) {
       return false;
     }
-    Map<Integer, AtomicBoolean> partitionSubscriptionMap = topicPartitionSubscriptionMap.get(topicName);
-    if (!partitionSubscriptionMap.containsKey(partition)) {
-      return false;
-    }
-    return partitionSubscriptionMap.get(partition).get();
+    return subscription.get();
+  }
+
+  public void maybeSubscribeNewResource(String topicName, int partition) {
+    topicPartitionSubscriptionMap.computeIfAbsent(topicName, s -> new VeniceConcurrentHashMap<>())
+        .computeIfAbsent(partition, p -> new AtomicBoolean(true));
+  }
+
+  Map<String, Map<Integer, AtomicBoolean>> getTopicPartitionSubscriptionMap() {
+    return topicPartitionSubscriptionMap;
   }
 
   /**
@@ -661,7 +659,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         isDaVinciClient,
         repairService);
     storeIngestionService.start();
-    storeIngestionService.addCommonNotifier(new IsolatedIngestionNotifier(this));
+    storeIngestionService.addIngestionNotifier(new IsolatedIngestionNotifier(this));
     ingestionBackend = new DefaultIngestionBackend(storageMetadataService, storeIngestionService, storageService);
 
     LOGGER.info(

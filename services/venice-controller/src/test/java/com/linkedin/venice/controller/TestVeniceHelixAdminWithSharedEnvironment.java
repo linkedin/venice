@@ -1888,4 +1888,36 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == 3);
     Assert.assertTrue(veniceAdmin.isTopicTruncated(rtTopic));
   }
+
+  @Test
+  public void testUpdateStoreWithVersionInheritedConfigs() {
+    // This test is meant to test those configurations applied to a store that get applied to specific versions as they
+    // are created.
+    String storeName = Utils.getUniqueString("test_param_inheritance");
+    veniceAdmin.createStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
+    Map<String, String> viewConfig = new HashMap<>();
+    viewConfig.put("changeCapture", "\"viewType\" : \"CHANGE_CAPTURE\"");
+    veniceAdmin.updateStore(
+        clusterName,
+        storeName,
+        new UpdateStoreQueryParams().setHybridOffsetLagThreshold(1)
+            .setHybridRewindSeconds(1)
+            .setStoreViews(viewConfig));
+    veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
+    TestUtils.waitForNonDeterministicCompletion(
+        TOTAL_TIMEOUT_FOR_SHORT_TEST_MS,
+        TimeUnit.MILLISECONDS,
+        () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == 1);
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setStoreViews(new HashMap<>()));
+    veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
+    TestUtils.waitForNonDeterministicCompletion(
+        TOTAL_TIMEOUT_FOR_SHORT_TEST_MS,
+        TimeUnit.MILLISECONDS,
+        () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == 2);
+    Store store = veniceAdmin.getStore(clusterName, storeName);
+    // Verify that version 1 has the config
+    Assert.assertTrue(store.getVersion(1).get().getViewConfigs().containsKey("changeCapture"));
+    // Verify that version 2 does NOT have the config
+    Assert.assertFalse(store.getVersion(2).get().getViewConfigs().containsKey("changeCapture"));
+  }
 }
