@@ -49,6 +49,7 @@ import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
@@ -100,6 +101,75 @@ public class PartialUpdateTest {
       throw new IllegalStateException("Expect only one parent controller. Got: " + parentControllers.size());
     }
     this.parentController = parentControllers.get(0);
+  }
+
+  @Test(timeOut = TEST_TIMEOUT_MS)
+  public void testReplicationMetadataChunkingE2E() throws IOException {
+    final String storeName = Utils.getUniqueString("rmdChunking");
+    String parentControllerUrl = parentController.getControllerUrl();
+    String keySchemaStr = "{\"type\" : \"string\"}";
+    Schema valueSchema = AvroCompatibilityHelper.parse(loadFileAsString("CollectionRecordV1.avsc"));
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
+      assertCommand(
+          parentControllerClient.createNewStore(storeName, "test_owner", keySchemaStr, valueSchema.toString()));
+
+      UpdateStoreQueryParams updateStoreParams =
+          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+              .setCompressionStrategy(CompressionStrategy.NO_OP)
+              .setWriteComputationEnabled(true)
+              .setActiveActiveReplicationEnabled(true)
+              .setChunkingEnabled(true)
+              .setHybridRewindSeconds(10L)
+              .setHybridOffsetLagThreshold(2L);
+      ControllerResponse updateStoreResponse =
+          parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams));
+      Assert.assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
+
+      VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test_push_id", 1000);
+      assertEquals(response.getVersion(), 1);
+      assertFalse(response.isError(), "Empty push to parent colo should succeed");
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 1),
+          parentControllerClient,
+          30,
+          TimeUnit.SECONDS);
+    }
+
+    VeniceClusterWrapper veniceCluster = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
+    SystemProducer veniceProducer = getSamzaProducer(veniceCluster, storeName, Version.PushType.STREAM);
+
+    String key = "key1";
+    String primitiveFieldName = "name";
+    String listFieldName = "intArray";
+    String mapFieldName = "stringMap";
+
+    try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
+      Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);
+      UpdateBuilder updateBuilder = new UpdateBuilderImpl(writeComputeSchema);
+      updateBuilder.setNewFieldValue(primitiveFieldName, "Tottenham");
+      updateBuilder.setEntriesToAddToMapField(mapFieldName, Collections.singletonMap("Location", "London"));
+      GenericRecord partialUpdateRecord = updateBuilder.build();
+      sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord);
+
+      // Verify the value record has been partially updated and it uses V3 superset value schema now.
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+        try {
+          GenericRecord retrievedValue = readValue(storeReader, key);
+          assertNotNull(retrievedValue);
+          assertEquals(retrievedValue.get(mapFieldName).toString(), "Tottenham"); // Updated field
+          assertEquals(retrievedValue.get(mapFieldName), Collections.singletonMap("Location", "London"));
+
+        } catch (Exception e) {
+          throw new VeniceException(e);
+        }
+      });
+
+    } finally {
+      if (veniceProducer != null) {
+        veniceProducer.stop();
+      }
+    }
   }
 
   /**
