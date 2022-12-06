@@ -46,6 +46,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -1149,6 +1150,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
             DEFAULT_LEADER_METADATA_WRAPPER,
             Optional.empty()));
     ChunkedPayloadAndManifest rmdChunksAndManifest = null;
+    LogManager.getLogger()
+        .info(
+            "DEBUGGING RMD CHUNKING ENABLED " + isRmdChunkingEnabled + " "
+                + putMetadata.get().getRmdPayload().remaining() + " "
+                + Arrays.toString(Thread.currentThread().getStackTrace()));
     if (isRmdChunkingEnabled) {
       rmdChunksAndManifest = WriterChunkingHelper.chunkPayloadAndSend(
           serializedKey,

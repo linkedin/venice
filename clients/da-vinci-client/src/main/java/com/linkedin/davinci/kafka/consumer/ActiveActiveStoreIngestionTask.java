@@ -47,6 +47,7 @@ import com.linkedin.venice.writer.PutMetadata;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -173,12 +174,21 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         case VALUE_AND_RMD:
           byte[] metadataBytesWithValueSchemaId =
               prependReplicationMetadataBytesWithValueSchemaId(put.replicationMetadataPayload, put.schemaId);
+          LogManager.getLogger()
+              .info(
+                  "STORING VALUE AND RMD: " + keyBytes + " " + put.putValue.remaining() + " "
+                      + metadataBytesWithValueSchemaId.length);
           storageEngine.putWithReplicationMetadata(partition, keyBytes, put.putValue, metadataBytesWithValueSchemaId);
           break;
         case RMD:
-          storageEngine.putReplicationMetadata(partition, keyBytes, put.replicationMetadataPayload.array());
+          metadataBytesWithValueSchemaId =
+              prependReplicationMetadataBytesWithValueSchemaId(put.replicationMetadataPayload, put.schemaId);
+          LogManager.getLogger()
+              .info("STORING RMD ONLY DATA: " + keyBytes + " " + put.replicationMetadataPayload.array().length);
+          storageEngine.putReplicationMetadata(partition, keyBytes, metadataBytesWithValueSchemaId);
           break;
         case VALUE:
+          LogManager.getLogger().info("STORING VALUE ONLY DATA: " + keyBytes + " " + put.putValue.remaining());
           storageEngine.put(partition, keyBytes, put.putValue);
           break;
       }
@@ -213,7 +223,11 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       logStorageOperationWhileUnsubscribed(partition);
       return StorageOperationType.NONE;
     }
-    if (valuePayload != null && valuePayload.remaining() == 0 && rmdPayload.remaining() != 0) {
+    LogManager.getLogger()
+        .info(
+            "DEBUGGING getStorageOperationType: " + valuePayload.remaining() + " " + rmdPayload.remaining() + " "
+                + Arrays.toString(Thread.currentThread().getStackTrace()));
+    if (valuePayload.remaining() == 0 && rmdPayload.remaining() != 0) {
       return StorageOperationType.RMD;
     }
     if ((pcs.isEndOfPushReceived() || rmdPayload.remaining() != 0) && !isDaVinciClient) {
@@ -255,6 +269,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     PartitionConsumptionState.TransientRecord cachedRecord = partitionConsumptionState.getTransientRecord(key);
     if (cachedRecord != null) {
       getHostLevelIngestionStats().recordIngestionReplicationMetadataCacheHitCount();
+      // LogManager.getLogger().info("DEBUGGING GET RMD IN MEMORY SIZE: " +
+      // ((cachedRecord.getReplicationMetadataRecord() == null) ? 0 );
       return Optional.of(
           new RmdWithValueSchemaId(
               cachedRecord.getValueSchemaId(),
@@ -267,6 +283,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     ByteBuffer rmdWithValueSchemaByteBuffer = getRmdWithValueSchemaByteBufferFromStorage(subPartition, key);
     byte[] replicationMetadataWithValueSchemaBytes =
         rmdWithValueSchemaByteBuffer == null ? null : rmdWithValueSchemaByteBuffer.array();
+
     getHostLevelIngestionStats()
         .recordIngestionReplicationMetadataLookUpLatency(LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
     if (rmdWithValueSchemaByteBuffer == null) {
@@ -279,6 +296,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   ByteBuffer getRmdWithValueSchemaByteBufferFromStorage(int subPartition, byte[] key) {
     ValueRecord result =
         SingleGetChunkingAdapter.getReplicationMetadata(getStorageEngine(), subPartition, key, isChunked(), null);
+    LogManager.getLogger()
+        .info("DEBUGGING GET RMD FROM STORAGE SIZE: " + ((result == null) ? 0 : result.getDataSize()));
+
     if (result == null) {
       return null;
     }
@@ -504,6 +524,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           storeName,
           compressor.get(),
           false);
+      LogManager.getLogger()
+          .info("DEBUGGING GET VALUE SIZE FROM STORAGE: " + ((originalValue == null) ? 0 : originalValue.remaining()));
       hostLevelIngestionStats.recordIngestionValueBytesLookUpLatency(LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
     } else {
       hostLevelIngestionStats.recordIngestionValueBytesCacheHitCount();
@@ -512,6 +534,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         originalValue = ByteBuffer
             .wrap(transientRecord.getValue(), transientRecord.getValueOffset(), transientRecord.getValueLen());
       }
+      LogManager.getLogger()
+          .info(
+              "DEBUGGING GET VALUE SIZE IN MEMORY: "
+                  + ((transientRecord.getValue() == null) ? 0 : transientRecord.getValue().length));
     }
     return originalValue;
   }

@@ -1,5 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.fasterxml.jackson.databind.type.LogicalType.Map;
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.utils.TestPushUtils.NESTED_SCHEMA_STRING;
@@ -49,8 +50,9 @@ import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
-import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
@@ -58,6 +60,7 @@ import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.util.Utf8;
 import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -103,7 +106,7 @@ public class PartialUpdateTest {
     this.parentController = parentControllers.get(0);
   }
 
-  @Test(timeOut = TEST_TIMEOUT_MS)
+  @Test(timeOut = TEST_TIMEOUT_MS * 2)
   public void testReplicationMetadataChunkingE2E() throws IOException {
     final String storeName = Utils.getUniqueString("rmdChunking");
     String parentControllerUrl = parentController.getControllerUrl();
@@ -119,6 +122,7 @@ public class PartialUpdateTest {
               .setWriteComputationEnabled(true)
               .setActiveActiveReplicationEnabled(true)
               .setChunkingEnabled(true)
+              .setReplicationMetadataChunkingEnabled(true)
               .setHybridRewindSeconds(10L)
               .setHybridOffsetLagThreshold(2L);
       ControllerResponse updateStoreResponse =
@@ -133,6 +137,13 @@ public class PartialUpdateTest {
           parentControllerClient,
           30,
           TimeUnit.SECONDS);
+      Assert.assertTrue(parentControllerClient.getStore(storeName).getStore().isReplicationMetadataChunkingEnabled());
+      Assert.assertTrue(
+          parentControllerClient.getStore(storeName)
+              .getStore()
+              .getVersion(1)
+              .get()
+              .isReplicationMetadataChunkingEnabled());
     }
 
     VeniceClusterWrapper veniceCluster = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
@@ -143,23 +154,35 @@ public class PartialUpdateTest {
     String listFieldName = "intArray";
     String mapFieldName = "stringMap";
 
+    int updateCount = 30;
+    int singleUpdateEntryCount = 10000;
     try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
       Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);
-      UpdateBuilder updateBuilder = new UpdateBuilderImpl(writeComputeSchema);
-      updateBuilder.setNewFieldValue(primitiveFieldName, "Tottenham");
-      updateBuilder.setEntriesToAddToMapField(mapFieldName, Collections.singletonMap("Location", "London"));
-      GenericRecord partialUpdateRecord = updateBuilder.build();
-      sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord);
+      Map<String, String> newEntries = new HashMap<>();
+      for (int i = 0; i < updateCount; i++) {
+        UpdateBuilder updateBuilder = new UpdateBuilderImpl(writeComputeSchema);
+        updateBuilder.setNewFieldValue(primitiveFieldName, "Tottenham");
+        newEntries.clear();
+        for (int j = 0; j < singleUpdateEntryCount; j++) {
+          String idx = String.valueOf(i * singleUpdateEntryCount + j);
+          newEntries.put("key_" + idx, "value_" + idx);
+        }
+        updateBuilder.setEntriesToAddToMapField(mapFieldName, newEntries);
+        GenericRecord partialUpdateRecord = updateBuilder.build();
+        sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord);
+      }
 
       // Verify the value record has been partially updated and it uses V3 superset value schema now.
-      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+      TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, () -> {
         try {
           GenericRecord retrievedValue = readValue(storeReader, key);
           assertNotNull(retrievedValue);
-          assertEquals(retrievedValue.get(mapFieldName).toString(), "Tottenham"); // Updated field
-          assertEquals(retrievedValue.get(mapFieldName), Collections.singletonMap("Location", "London"));
-
+          assertEquals(retrievedValue.get(primitiveFieldName).toString(), "Tottenham"); // Updated field
+          Map<String, String> mapFieldResult = new HashMap<>();
+          ((Map<Utf8, Utf8>) retrievedValue.get(mapFieldName))
+              .forEach((x, y) -> mapFieldResult.put(x.toString(), y.toString()));
+          assertEquals(mapFieldResult.size(), updateCount * singleUpdateEntryCount);
         } catch (Exception e) {
           throw new VeniceException(e);
         }

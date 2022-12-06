@@ -19,6 +19,7 @@ import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.logging.log4j.LogManager;
@@ -289,7 +290,10 @@ public class ChunkingUtils {
       boolean skipCache,
       boolean isRmdValue) {
     long databaseLookupStartTimeInNS = (response != null) ? System.nanoTime() : 0;
-    LogManager.getLogger().info("DEBUGGING: " + isRmdValue + " " + keyBuffer);
+    LogManager.getLogger().info("DEBUGGING is RMD? " + isRmdValue);
+    if (isRmdValue) {
+      LogManager.getLogger().info("DEBUGGING RMD STACK: " + Arrays.toString(Thread.currentThread().getStackTrace()));
+    }
     byte[] value = isRmdValue
         ? store.getReplicationMetadata(partition, keyBuffer.array())
         : store.get(partition, keyBuffer, skipCache);
@@ -357,7 +361,8 @@ public class ChunkingUtils {
       if (response != null) {
         response.addDatabaseLookupLatency(LatencyUtils.getLatencyInMS(databaseLookupStartTimeInNS));
       }
-      LogManager.getLogger().info("DEBUGGING: NOT CHUNKED BYTES" + value + " " + writerSchemaId);
+      LogManager.getLogger()
+          .info("DEBUGGING: NOT CHUNKED BYTES isRmdValue: " + isRmdValue + " " + value.length + " " + writerSchemaId);
       return adapter.constructValue(
           writerSchemaId,
           readerSchemaId,
@@ -378,6 +383,11 @@ public class ChunkingUtils {
     // End of initial sanity checks. We have a chunked value, so we need to fetch all chunks
 
     ChunkedValueManifest chunkedValueManifest = CHUNKED_VALUE_MANIFEST_SERIALIZER.deserialize(value, writerSchemaId);
+    LogManager.getLogger()
+        .info(
+            "DEBUGGING: CHUNK MANIFEST RMD CHUNK? " + isRmdValue + " " + chunkedValueManifest.size + " "
+                + writerSchemaId + " " + chunkedValueManifest.keysWithChunkIdSuffix.size());
+
     CHUNKS_CONTAINER assembledValueContainer = adapter.constructChunksContainer(chunkedValueManifest);
     int actualSize = 0;
 

@@ -2934,13 +2934,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   private void prependHeaderAndWriteToStorageEngine(int partition, byte[] keyBytes, Put put) {
     ByteBuffer putValue = put.putValue;
+    LogManager.getLogger()
+        .info(
+            "DEBUGGING prependHeaderAndWriteToStorageEngine before: " + putValue.remaining() + " "
+                + put.replicationMetadataPayload.remaining());
     /*
      * Since {@link com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer} reuses the original byte
      * array, which is big enough to pre-append schema id, so we just reuse it to avoid unnecessary byte array allocation.
      * This value encoding scheme is used in {@link PartitionConsumptionState#maybeUpdateExpectedChecksum(byte[], Put)} to
      * calculate checksum for all the kafka PUT messages seen so far. Any change here needs to be reflected in that function.
      */
-    if (putValue.position() < ValueRecord.SCHEMA_HEADER_LENGTH) {
+    if ((put.putValue.remaining() == 0) && (put.replicationMetadataPayload.remaining() > 0)) {
+      LogManager.getLogger().info("DEBUGGING putting RMD only data" + put.replicationMetadataPayload.remaining());
+      writeToStorageEngine(partition, keyBytes, put);
+    } else if (putValue.position() < ValueRecord.SCHEMA_HEADER_LENGTH) {
       throw new VeniceException(
           "Start position of 'putValue' ByteBuffer shouldn't be less than " + ValueRecord.SCHEMA_HEADER_LENGTH);
     } else {
@@ -2949,11 +2956,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int backupBytes = putValue.getInt();
       putValue.position(putValue.position() - ValueRecord.SCHEMA_HEADER_LENGTH);
       ByteUtils.writeInt(putValue.array(), put.schemaId, putValue.position());
+      LogManager.getLogger().info("DEBUGGING prependHeaderAndWriteToStorageEngine between: " + putValue.remaining());
 
       writeToStorageEngine(partition, keyBytes, put);
 
       /* We still want to recover the original position to make this function idempotent. */
       putValue.putInt(backupBytes);
+      LogManager.getLogger().info("DEBUGGING prependHeaderAndWriteToStorageEngine after: " + putValue.remaining());
     }
   }
 
@@ -3106,7 +3115,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
         valueLen = put.putValue.remaining();
         keyLen = keyBytes.length;
-
+        LogManager.getLogger()
+            .info(
+                "DEBUGGING processKafkaDataMessage " + put.putValue.remaining() + " "
+                    + put.replicationMetadataPayload.remaining());
         // update checksum for this PUT message if needed.
         partitionConsumptionState.maybeUpdateExpectedChecksum(keyBytes, put);
         prependHeaderAndWriteToStorageEngine(

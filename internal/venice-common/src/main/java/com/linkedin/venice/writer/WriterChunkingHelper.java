@@ -18,6 +18,7 @@ import java.util.concurrent.Future;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import org.apache.kafka.clients.producer.RecordMetadata;
+import org.apache.logging.log4j.LogManager;
 
 
 /**
@@ -51,6 +52,8 @@ public class WriterChunkingHelper {
     int sizeAvailablePerMessage = maxSizeForUserPayloadPerMessageInBytes - serializedKey.length;
     validateAvailableSizePerMessage(maxSizeForUserPayloadPerMessageInBytes, sizeAvailablePerMessage, sizeReport);
     int numberOfChunks = (int) Math.ceil((double) payload.length / (double) sizeAvailablePerMessage);
+    LogManager.getLogger()
+        .info("DEBUGGING CHUNKING PAYLOAD: " + isValuePayload + " " + payload.length + " " + numberOfChunks);
     final ChunkedValueManifest chunkedValueManifest = new ChunkedValueManifest();
     chunkedValueManifest.schemaId = schemaId;
     chunkedValueManifest.keysWithChunkIdSuffix = new ArrayList<>(numberOfChunks);
@@ -113,6 +116,10 @@ public class WriterChunkingHelper {
         putPayload.putValue = EMPTY_BYTE_BUFFER;
         putPayload.replicationMetadataPayload = chunk;
       }
+      LogManager.getLogger()
+          .info(
+              "SENDING CHUNK: " + putPayload.putValue.remaining() + " "
+                  + putPayload.replicationMetadataPayload.remaining());
 
       chunkedKeySuffix.chunkId.chunkIndex = chunkIndex;
       keyProvider = chunkIndex == 0 ? firstKeyProvider : subsequentKeyProvider;

@@ -152,6 +152,10 @@ class LeaderProducerCallback implements ChunkAwareCallback {
          * Otherwise queue the chunks and manifest individually to drainer service.
          */
         if (chunkedValueManifest == null) {
+          LogManager.getLogger()
+              .info(
+                  "DEBUGGING CALLBACK NOT CHUNKED: " + leaderProducedRecordContext.getConsumedOffset() + " "
+                      + leaderProducedRecordContext.getProducedOffset());
           // update the keyBytes for the ProducedRecord in case it was changed due to isChunkingEnabled flag in
           // VeniceWriter.
           if (key != null) {
@@ -193,6 +197,10 @@ class LeaderProducerCallback implements ChunkAwareCallback {
                 beforeProcessingRecordTimestamp);
             producedRecordNum++;
             producedRecordSize += chunkKey.remaining() + chunkValue.remaining();
+            LogManager.getLogger()
+                .info(
+                    "DEBUGGING CALLBACK CHUNKED PUT CHUNK: " + chunkValue.remaining() + " " + i + " "
+                        + chunkPut.replicationMetadataPayload);
           }
 
           // produce the manifest inside the top-level key
@@ -231,6 +239,11 @@ class LeaderProducerCallback implements ChunkAwareCallback {
               beforeProcessingRecordTimestamp);
           producedRecordNum++;
           producedRecordSize += key.length + manifest.remaining();
+          LogManager.getLogger()
+              .info(
+                  "DEBUGGING CALLBACK CHUNKED MANIFEST: " + manifest.remaining() + " "
+                      + manifestPut.replicationMetadataPayload);
+
         }
         recordProducerStats(producedRecordSize, producedRecordNum);
 

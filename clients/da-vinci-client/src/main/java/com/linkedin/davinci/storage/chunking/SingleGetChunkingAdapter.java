@@ -7,6 +7,7 @@ import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import io.netty.buffer.CompositeByteBuf;
 import io.netty.buffer.Unpooled;
 import java.nio.ByteBuffer;
+import org.apache.logging.log4j.LogManager;
 
 
 /**
@@ -63,6 +64,7 @@ public class SingleGetChunkingAdapter implements ChunkingAdapter<CompositeByteBu
     ByteBuffer keyBuffer = null;
     if (isChunked) {
       keyBuffer = ByteBuffer.wrap(ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(key));
+      LogManager.getLogger().info("GETTING CHUNKED KEY: " + keyBuffer);
     } else {
       keyBuffer = ByteBuffer.wrap(key);
     }

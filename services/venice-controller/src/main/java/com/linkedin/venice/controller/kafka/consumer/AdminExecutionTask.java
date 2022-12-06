@@ -59,6 +59,7 @@ import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
+import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
@@ -472,11 +473,16 @@ public class AdminExecutionTask implements Callable<Void> {
               DataReplicationPolicy.valueOf(message.hybridStoreConfig.dataReplicationPolicy))
           .setHybridBufferReplayPolicy(BufferReplayPolicy.valueOf(message.hybridStoreConfig.bufferReplayPolicy));
     }
+    LogManager.getLogger().info("DEBUGGING ADMIN EXECUTION TASK: " + message.replicationMetadataChunkingEnabled);
     params.setAccessControlled(message.accessControlled)
         .setCompressionStrategy(CompressionStrategy.valueOf(message.compressionStrategy))
         .setClientDecompressionEnabled(message.clientDecompressionEnabled)
         .setChunkingEnabled(message.chunkingEnabled)
+<<<<<<< HEAD
         .setRmdChunkingEnabled(message.rmdChunkingEnabled)
+=======
+        .setReplicationMetadataChunkingEnabled(message.replicationMetadataChunkingEnabled)
+>>>>>>> bbc2eb98e (Add new update store command for RMD chunking)
         .setBatchGetLimit(message.batchGetLimit)
         .setNumVersionsToPreserve(message.numVersionsToPreserve)
         .setIncrementalPushEnabled(message.incrementalPushEnabled)
