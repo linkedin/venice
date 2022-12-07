@@ -6,10 +6,9 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.atLeast;
-import static org.mockito.Mockito.atMost;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -22,9 +21,11 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
+import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.writer.ChunkAwareCallback;
 import com.linkedin.venice.writer.KafkaProducerWrapper;
 import com.linkedin.venice.writer.PutMetadata;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -130,7 +131,18 @@ public class ActiveActiveStoreIngestionTaskTest {
         valueSchemaId,
         rmdProtocolVersionID,
         writer,
-        resultReuseInput);
+        resultReuseInput,
+        false);
+    StoreIngestionTask.ProduceToTopic produceFunction2 = getProduceFunction(
+        updatedKeyBytes,
+        updatedValueBytes,
+        updatedRmdBytes,
+        valueSchemaId,
+        rmdProtocolVersionID,
+        writer,
+        resultReuseInput,
+        true);
+
     int subPartition = 0;
     String kafkaUrl = "kafkaUrl";
     int kafkaClusterId = 0;
@@ -146,12 +158,25 @@ public class ActiveActiveStoreIngestionTaskTest {
         beforeProcessingRecordTimestamp);
 
     // Send 1 SOS, 2 Chunks, 1 Manifest.
-    verify(mockedProducer, atLeast(4)).sendMessage(eq(testTopic), any(), any(), anyInt(), any());
+    verify(mockedProducer, times(4)).sendMessage(eq(testTopic), any(), any(), anyInt(), any());
     // Exactly once onCompletion call for manifest
-    verify(mockLeaderProducerCallback, atMost(1)).onCompletion(any(), any());
-    verify(mockLeaderProducerCallback, atLeast(1)).onCompletion(any(), any());
+    verify(mockLeaderProducerCallback, times(1)).onCompletion(any(), any());
     // No Chunking Manifest is set.
-    verify(mockLeaderProducerCallback, atMost(0)).setChunkingInfo(any(), any(), any(), any(), any());
+    verify(mockLeaderProducerCallback, times(0)).setChunkingInfo(any(), any(), any(), any(), any());
+
+    // With ChunkAwareCallback type A/A producer call back, it should set the chunking info correctly.
+    ingestionTask.produceToLocalKafka(
+        consumerRecord,
+        partitionConsumptionState,
+        leaderProducedRecordContext,
+        produceFunction2,
+        subPartition,
+        kafkaUrl,
+        kafkaClusterId,
+        beforeProcessingRecordTimestamp);
+    // 1 Chunking Manifest is set.
+    verify(mockLeaderProducerCallback, times(1)).setChunkingInfo(any(), any(), any(), any(), any());
+
   }
 
   public StoreIngestionTask.ProduceToTopic getProduceFunction(
@@ -161,19 +186,47 @@ public class ActiveActiveStoreIngestionTaskTest {
       int valueSchemaId,
       int rmdProtocolVersionID,
       VeniceWriter veniceWriter,
-      boolean resultReuseInput) {
+      boolean resultReuseInput,
+      boolean createChunkAwareCallback) {
     return (callback, sourceTopicOffset) -> {
-      final Callback newCallback = (recordMetadata, exception) -> {
-        if (resultReuseInput) {
-          // Restore the original header so this function is eventually idempotent as the original KME ByteBuffer
-          // will be recovered after producing the message to Kafka or if the production failing.
-          ByteUtils.prependIntHeaderToByteBuffer(
-              updatedValueBytes,
-              ByteUtils.getIntHeaderFromByteBuffer(updatedValueBytes),
-              true);
-        }
-        callback.onCompletion(recordMetadata, exception);
-      };
+
+      final Callback newCallback =
+
+          createChunkAwareCallback ? new ChunkAwareCallback() {
+            @Override
+            public void setChunkingInfo(
+                byte[] key,
+                ByteBuffer[] valueChunks,
+                ChunkedValueManifest chunkedValueManifest,
+                ByteBuffer[] rmdChunks,
+                ChunkedValueManifest chunkedRmdManifest) {
+              ((ChunkAwareCallback) callback)
+                  .setChunkingInfo(key, valueChunks, chunkedValueManifest, rmdChunks, chunkedRmdManifest);
+            }
+
+            @Override
+            public void onCompletion(RecordMetadata recordMetadata, Exception exception) {
+              if (resultReuseInput) {
+                // Restore the original header so this function is eventually idempotent as the original KME ByteBuffer
+                // will be recovered after producing the message to Kafka or if the production failing.
+                ByteUtils.prependIntHeaderToByteBuffer(
+                    updatedValueBytes,
+                    ByteUtils.getIntHeaderFromByteBuffer(updatedValueBytes),
+                    true);
+              }
+              callback.onCompletion(recordMetadata, exception);
+            }
+          } : (recordMetadata, exception) -> {
+            if (resultReuseInput) {
+              // Restore the original header so this function is eventually idempotent as the original KME ByteBuffer
+              // will be recovered after producing the message to Kafka or if the production failing.
+              ByteUtils.prependIntHeaderToByteBuffer(
+                  updatedValueBytes,
+                  ByteUtils.getIntHeaderFromByteBuffer(updatedValueBytes),
+                  true);
+            }
+            callback.onCompletion(recordMetadata, exception);
+          };
       return veniceWriter.put(
           updatedKeyBytes,
           ByteUtils.extractByteArray(updatedValueBytes),
