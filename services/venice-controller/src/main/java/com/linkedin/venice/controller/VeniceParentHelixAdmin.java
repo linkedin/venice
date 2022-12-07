@@ -4441,18 +4441,13 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * @return the largest used version number by the given store.
+   * @return the largest used version number for the given store from the store graveyard.
    */
   @Override
-  public int getStoreLargestUsedVersion(String clusterName, String storeName) {
+  public int getLargestUsedVersionFromStoreGraveyard(String clusterName, String storeName) {
     Map<String, ControllerClient> childControllers = getVeniceHelixAdmin().getControllerClientMap(clusterName);
-    int aggregatedLargestUsedVersionNumber;
-    if (hasStore(clusterName, storeName)) {
-      aggregatedLargestUsedVersionNumber = getStore(clusterName, storeName).getLargestUsedVersionNumber();
-    } else {
-      aggregatedLargestUsedVersionNumber =
-          getVeniceHelixAdmin().getStoreGraveyard().getLargestUsedVersionNumber(storeName);
-    }
+    int aggregatedLargestUsedVersionNumber =
+        getVeniceHelixAdmin().getStoreGraveyard().getLargestUsedVersionNumber(storeName);
     for (Map.Entry<String, ControllerClient> controller: childControllers.entrySet()) {
       VersionResponse response = controller.getValue().getStoreLargestUsedVersion(clusterName, storeName);
       if (response.getVersion() > aggregatedLargestUsedVersionNumber) {

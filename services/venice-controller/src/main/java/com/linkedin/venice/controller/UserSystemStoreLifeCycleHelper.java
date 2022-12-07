@@ -78,7 +78,7 @@ public class UserSystemStoreLifeCycleHelper {
       String systemStoreName = systemStoreType.getSystemStoreName(userStoreName);
       String pushJobId = AUTO_META_SYSTEM_STORE_PUSH_ID_PREFIX + System.currentTimeMillis();
       final int systemStoreLargestUsedVersionNumber =
-          parentAdmin.getStoreLargestUsedVersion(clusterName, systemStoreName);
+          parentAdmin.getLargestUsedVersionFromStoreGraveyard(clusterName, systemStoreName);
 
       int partitionCount =
           parentAdmin.calculateNumberOfPartitions(clusterName, systemStoreName, DEFAULT_META_SYSTEM_STORE_SIZE);
