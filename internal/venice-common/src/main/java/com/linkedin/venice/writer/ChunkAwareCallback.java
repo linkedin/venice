@@ -6,9 +6,9 @@ import org.apache.kafka.clients.producer.Callback;
 
 
 /**
- *  The {@link VeniceWriter}, upon detecting an instance of this class being passed to it, will always call
- *  the {@link #setChunkingInfo(byte[], ByteBuffer[], ChunkedValueManifest)} API whenever processing a
- *  {@link com.linkedin.venice.kafka.protocol.enums.MessageType#PUT}, whether it is chunked or not.
+ *  The {@link VeniceWriter}, upon detecting an instance of this class being passed to it, will always call the
+ *  {@link #setChunkingInfo(byte[], ByteBuffer[], ChunkedValueManifest, ByteBuffer[], ChunkedValueManifest)} API whenever
+ *  processing a {@link com.linkedin.venice.kafka.protocol.enums.MessageType#PUT}, whether it is chunked or not.
  */
 public interface ChunkAwareCallback extends Callback {
   /**

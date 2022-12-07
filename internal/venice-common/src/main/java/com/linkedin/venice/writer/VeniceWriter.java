@@ -1203,6 +1203,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
               + "Please reconsider your life choices. " + reportSizeGenerator.get());
     }
 
+    LogManager.getLogger()
+        .info("DEBUGGING SUPPOSE TO do call back" + (callback instanceof ChunkAwareCallback) + " " + callback);
     if (callback instanceof ChunkAwareCallback) {
       /** We leave a handle to the key, chunks and manifest so that the {@link ChunkAwareCallback} can act on them */
       ((ChunkAwareCallback) callback).setChunkingInfo(

@@ -19,6 +19,7 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.writer.ChunkAwareCallback;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.logging.log4j.LogManager;
@@ -282,6 +283,11 @@ class LeaderProducerCallback implements ChunkAwareCallback {
     this.valueChunks = valueChunks;
     this.chunkedRmdManifest = chunkedRmdManifest;
     this.rmdChunks = rmdChunks;
+    LogManager.getLogger()
+        .info(
+            "DEBUGGING SET CHUNKING INFO: " + (valueChunks != null ? valueChunks.length : 0) + " "
+                + chunkedValueManifest + " " + (rmdChunks != null ? rmdChunks.length : 0) + " " + chunkedRmdManifest
+                + " " + Arrays.toString(Thread.currentThread().getStackTrace()));
   }
 
   private void recordProducerStats(int producedRecordSize, int producedRecordNum) {
