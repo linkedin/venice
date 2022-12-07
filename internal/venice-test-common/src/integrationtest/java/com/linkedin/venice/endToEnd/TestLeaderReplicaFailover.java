@@ -34,12 +34,10 @@ import java.io.File;
 import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
-import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -83,6 +81,7 @@ public class TestLeaderReplicaFailover {
     serverProperties.setProperty(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1));
     serverProperties.put(LF_MODEL_DEPENDENCY_CHECK_DISABLED, "true");
     serverProperties.put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false);
+    serverProperties.put(LEADER_DOOM_NOTIFIER_TEST_ONLY_ENABLED, true);
     serverProperties.put(
         CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + DEFAULT_PARENT_DATA_CENTER_REGION_NAME,
         "localhost:" + Utils.getFreePort());
@@ -115,7 +114,7 @@ public class TestLeaderReplicaFailover {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void testReplicaDisable() throws Exception {
+  public void testLeaderReplicaFailover() throws Exception {
     String parentControllerURLs =
         parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
     ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
@@ -132,7 +131,7 @@ public class TestLeaderReplicaFailover {
     props.setProperty(
         DEFAULT_OFFLINE_PUSH_STRATEGY,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION.toString());
-    String keySchemaStr = recordSchema.getField(props.getProperty(VenicePushJob.KEY_FIELD_PROP)).schema().toString();
+    String keySchemaStr = recordSchema.getField(VenicePushJob.DEFAULT_KEY_FIELD_PROP).schema().toString();
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
         .setHybridRewindSeconds(5)
         .setHybridOffsetLagThreshold(2)
@@ -158,18 +157,17 @@ public class TestLeaderReplicaFailover {
     String topic = versionCreationResponse.getKafkaTopic();
     String kafkaUrl = versionCreationResponse.getKafkaBootstrapServers();
     VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(kafkaUrl);
+    HelixAdmin admin = new ZKHelixAdmin(clusterWrapper.getZk().getAddress());
     try (VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterFactory.createBasicVeniceWriter(topic)) {
       veniceWriter.broadcastStartOfPush(true, Collections.emptyMap());
       Map<byte[], byte[]> sortedInputRecords = generateData(100, true, 0, serializer);
-
       for (Map.Entry<byte[], byte[]> entry: sortedInputRecords.entrySet()) {
         veniceWriter.put(entry.getKey(), entry.getValue(), 1, null);
       }
       veniceWriter.broadcastEndOfPush(Collections.emptyMap());
     }
-
     // Wait push completed.
-    TestUtils.waitForNonDeterministicCompletion(20, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicCompletion(60, TimeUnit.SECONDS, () -> {
       try {
         return clusterWrapper.getLeaderVeniceController()
             .getVeniceAdmin()
@@ -180,27 +178,14 @@ public class TestLeaderReplicaFailover {
         return false;
       }
     });
-    HelixAdmin admin = new ZKHelixAdmin(clusterWrapper.getZk().getAddress());
+
     HelixBaseRoutingRepository routingDataRepo = clusterWrapper.getLeaderVeniceController()
         .getVeniceHelixAdmin()
         .getHelixVeniceClusterResources(clusterName)
         .getRoutingDataRepository();
-    Instance leader = routingDataRepo.getLeaderInstance(topic, 0);
-    InstanceConfig instanceConfig = admin.getInstanceConfig(clusterName, leader.getNodeId());
 
-    try (VeniceWriter<byte[], byte[], byte[]> veniceWriter =
-        veniceWriterFactory.createBasicVeniceWriter(Version.composeRealTimeTopic(storeName))) {
-      Map<byte[], byte[]> sortedInputRecords = generateData(10, true, 0, serializer);
-      Set<Integer> insertCorruptData = new HashSet<>();
-      insertCorruptData.add(5);
-      int cur = 0;
-      for (Map.Entry<byte[], byte[]> entry: sortedInputRecords.entrySet()) {
-        if (insertCorruptData.contains(++cur)) {
-          veniceWriter.put(entry.getKey(), serializer.serialize("junk"), 1, null);
-        }
-        veniceWriter.put(entry.getKey(), entry.getValue(), 1, null);
-      }
-    }
+    Instance leader = routingDataRepo.getLeaderInstance(topic, 0);
+
     // Wait until all partitions have ready-to-serve instances
     TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, () -> {
       RoutingDataRepository routingDataRepository = clusterWrapper.getRandomVeniceRouter().getRoutingDataRepository();
@@ -217,7 +202,7 @@ public class TestLeaderReplicaFailover {
         3,
         TimeUnit.SECONDS,
         () -> clusterWrapper.getLeaderVeniceController().getVeniceAdmin().getReplicas(clusterName, topic).size() == 3);
-    instanceConfig = admin.getInstanceConfig(clusterName, leader.getNodeId());
+    InstanceConfig instanceConfig = admin.getInstanceConfig(clusterName, leader.getNodeId());
     Assert.assertEquals(instanceConfig.getDisabledPartitionsMap().size(), 0);
   }
 

@@ -10,6 +10,7 @@ import com.linkedin.davinci.ingestion.IsolatedIngestionBackend;
 import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
+import com.linkedin.davinci.notifier.LeaderDoomNotifier;
 import com.linkedin.davinci.notifier.PartitionPushStatusNotifier;
 import com.linkedin.davinci.notifier.PushMonitorNotifier;
 import com.linkedin.davinci.stats.ThreadPoolStats;
@@ -334,6 +335,11 @@ public class HelixParticipationService extends AbstractVeniceService
       PartitionPushStatusNotifier partitionPushStatusNotifier =
           new PartitionPushStatusNotifier(partitionPushStatusAccessor);
       ingestionBackend.addPushStatusNotifier(partitionPushStatusNotifier);
+      if (veniceConfigLoader.getVeniceServerConfig().isLeaderDoomNotifierEnabledTestOnlyEnabled()) {
+        LeaderDoomNotifier leaderDoomNotifier = new LeaderDoomNotifier(partitionPushStatusAccessor);
+        ingestionBackend.addPushStatusNotifier(leaderDoomNotifier);
+      }
+
       /**
        * Complete the accessor future after the accessor is created && the notifier is added.
        * This is for blocking the {@link AbstractPartitionStateModel #setupNewStorePartition()} until
