@@ -311,9 +311,7 @@ public class VersionImpl implements Version {
         .collect(
             Collectors.toMap(
                 Map.Entry::getKey,
-                e -> new StoreViewConfig(
-                    e.getValue().getViewType().value,
-                    e.getValue().dataModel().getViewParameters())));
+                e -> new StoreViewConfig(e.getValue().getClassName(), e.getValue().dataModel().getViewParameters())));
   }
 
   @Override
