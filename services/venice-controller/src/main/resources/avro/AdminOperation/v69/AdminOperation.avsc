@@ -568,7 +568,8 @@
                       {
                         "name": "viewClassName",
                         "type": "string",
-                        "doc": "This informs what kind of view we are materializing.  This then informs what kind of parameters are passed to parse this input.  This is expected to be a fully formed class path name for materialization."
+                        "doc": "This informs what kind of view we are materializing.  This then informs what kind of parameters are passed to parse this input.  This is expected to be a fully formed class path name for materialization.",
+                        "default": ""
                       },
                       {
                         "name": "viewParameters",
