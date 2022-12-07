@@ -18,8 +18,8 @@ public class ReadOnlyViewConfig implements ViewConfig {
   }
 
   @Override
-  public String getClassName() {
-    return delegate.getClassName();
+  public ViewType getViewType() {
+    return delegate.getViewType();
   }
 
   @Override
