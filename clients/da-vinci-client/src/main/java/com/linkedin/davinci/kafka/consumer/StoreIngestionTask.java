@@ -3735,4 +3735,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected void setPartitionConsumptionState(int partition, PartitionConsumptionState pcs) {
     partitionConsumptionStateMap.put(partition, pcs);
   }
+
+  protected AggVersionedDIVStats getVersionedDIVStats() {
+    return versionedDIVStats;
+  }
+
+  protected AggVersionedIngestionStats getVersionIngestionStats() {
+    return versionedIngestionStats;
+  }
+
+  protected HostLevelIngestionStats getHostLevelIngestionStats() {
+    return hostLevelIngestionStats;
+  }
+
+  protected String getKafkaVersionTopic() {
+    return kafkaVersionTopic;
+  }
 }

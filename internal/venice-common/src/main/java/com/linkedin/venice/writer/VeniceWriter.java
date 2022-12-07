@@ -234,7 +234,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   private boolean isRmdChunkingEnabled;
 
-  protected VeniceWriter(
+  public VeniceWriter(
       VeniceWriterOptions params,
       VeniceProperties props,
       Supplier<KafkaProducerWrapper> producerWrapperSupplier) {
@@ -1052,6 +1052,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         }
         segment.addToCheckSum(key, kafkaValue);
       }
+      LogManager.getLogger().info("DEBUGGING: INCOMING CALLBACK: " + callback);
       Callback messageCallback = callback;
       if (callback == null) {
         messageCallback = new KafkaMessageCallback(kafkaValue, logger);
@@ -1063,6 +1064,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       }
 
       try {
+        LogManager.getLogger()
+            .info(
+                "DEBUGGING SENDING: " + producer + " " + topicName + " " + key + " " + partition + " "
+                    + messageCallback);
         return producer.sendMessage(topicName, key, kafkaValue, partition, messageCallback);
       } catch (Exception e) {
         if (ExceptionUtils.recursiveClassEquals(e, TopicAuthorizationException.class)) {
@@ -1107,6 +1112,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     int replicationMetadataPayloadSize = putMetadata.map(PutMetadata::getSerializedSize).orElse(0);
     final Supplier<String> reportSizeGenerator =
         () -> getSizeReport(serializedKey.length, serializedValue.length, replicationMetadataPayloadSize);
+    LogManager.getLogger()
+        .info(
+            "DEBUGGING: PUT LARGE VALUE " + serializedKey.length + " " + serializedValue.length + " "
+                + replicationMetadataPayloadSize);
     ChunkedPayloadAndManifest valueChunksAndManifest = WriterChunkingHelper.chunkPayloadAndSend(
         serializedKey,
         serializedValue,

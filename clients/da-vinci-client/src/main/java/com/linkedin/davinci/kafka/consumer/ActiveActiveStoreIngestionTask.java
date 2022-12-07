@@ -603,7 +603,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
                 newCallback,
                 sourceTopicOffset,
                 VeniceWriter.APP_DEFAULT_LOGICAL_TS,
-                Optional.ofNullable(new PutMetadata(rmdProtocolVersionID, updatedRmdBytes)));
+                Optional.of(new PutMetadata(rmdProtocolVersionID, updatedRmdBytes)));
       };
 
       produceToLocalKafka(

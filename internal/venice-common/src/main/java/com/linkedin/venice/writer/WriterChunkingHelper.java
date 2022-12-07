@@ -18,6 +18,7 @@ import java.util.concurrent.Future;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import org.apache.kafka.clients.producer.RecordMetadata;
+import org.apache.logging.log4j.LogManager;
 
 
 /**
@@ -55,6 +56,7 @@ public class WriterChunkingHelper {
     chunkedValueManifest.schemaId = schemaId;
     chunkedValueManifest.keysWithChunkIdSuffix = new ArrayList<>(numberOfChunks);
     chunkedValueManifest.size = payload.length;
+    LogManager.getLogger().info("DEBUGGING: CHUNK COUNT: " + numberOfChunks);
 
     VeniceWriter.KeyProvider keyProvider, firstKeyProvider, subsequentKeyProvider;
     ByteBuffer[] chunks = null;
