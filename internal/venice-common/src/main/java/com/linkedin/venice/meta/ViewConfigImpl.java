@@ -21,8 +21,8 @@ public class ViewConfigImpl implements ViewConfig {
   }
 
   @Override
-  public String getClassName() {
-    return this.viewConfig.getViewClassName().toString();
+  public ViewType getViewType() {
+    return ViewType.getViewTypeFromInt(this.viewConfig.getViewType());
   }
 
   @Override

@@ -161,9 +161,10 @@
                 "doc": "A configuration for a particular view.  This config should inform Venice leaders how to transform and transmit data to destination views.",
                 "fields": [
                   {
-                    "name": "viewClassName",
-                    "type": "string",
-                    "doc": "This informs what kind of view we are materializing.  This then informs what kind of parameters are passed to parse this input.  This is expected to be a fully formed class path name for materialization."
+                    "name": "viewType",
+                    "type": "int",
+                    "doc": "This informs what kind of view we are materializing.  This then informs what kind of parameters are passed to parse this input. Defaults to CHANGE_CAPTURE",
+                    "default": 0
                   },
                   {
                     "name": "viewParameters",
