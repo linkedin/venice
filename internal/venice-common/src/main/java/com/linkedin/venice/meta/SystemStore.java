@@ -314,6 +314,16 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
+  public boolean isReplicationMetadataChunkingEnabled() {
+    return zkSharedStore.isReplicationMetadataChunkingEnabled();
+  }
+
+  @Override
+  public void setReplicationMetadataChunkingEnabled(boolean replicationMetadataChunkingEnabled) {
+    throwUnsupportedOperationException("setReplicationMetadataChunkingEnabled");
+  }
+
+  @Override
   public int getBatchGetLimit() {
     return zkSharedStore.getBatchGetLimit();
   }

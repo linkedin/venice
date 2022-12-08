@@ -209,6 +209,12 @@
               "default": false
             },
             {
+              "name": "replicationMetadataChunkingEnabled",
+              "type": "boolean",
+              "doc": "Whether current store supports large replication metadata (typically more than 1MB). By default, the chunking feature is disabled.",
+              "default": false
+            },
+            {
               "name": "batchGetLimit",
               "type": "int",
               "doc": "Batch get key number limit, and Venice will use cluster-level config if it is not positive.",
@@ -488,6 +494,12 @@
                     },
                     {
                       "name": "chunkingEnabled",
+                      "type": "boolean",
+                      "doc": "Whether or not large values are supported (via chunking).",
+                      "default": false
+                    },
+                    {
+                      "name": "replicationMetadataChunkingEnabled",
                       "type": "boolean",
                       "doc": "Whether or not large values are supported (via chunking).",
                       "default": false

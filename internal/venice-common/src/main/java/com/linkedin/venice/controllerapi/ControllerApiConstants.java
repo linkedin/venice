@@ -51,6 +51,7 @@ public class ControllerApiConstants {
   public static final String COMPRESSION_STRATEGY = "compression_strategy";
   public static final String CLIENT_DECOMPRESSION_ENABLED = "client_decompression_enabled";
   public static final String CHUNKING_ENABLED = "chunking_enabled";
+  public static final String RMD_CHUNKING_ENABLED = "rmd_chunking_enabled";
   public static final String INCREMENTAL_PUSH_ENABLED = "incremental_push_enabled";
   public static final String SINGLE_GET_ROUTER_CACHE_ENABLED = "single_get_router_cache_enabled";
   public static final String BATCH_GET_ROUTER_CACHE_ENABLED = "batch_get_router_cache_enabled";

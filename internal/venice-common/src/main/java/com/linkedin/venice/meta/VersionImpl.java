@@ -170,6 +170,16 @@ public class VersionImpl implements Version {
   }
 
   @Override
+  public boolean isReplicationMetadataChunkingEnabled() {
+    return this.storeVersion.replicationMetadataChunkingEnabled;
+  }
+
+  @Override
+  public void setReplicationMetadataChunkingEnabled(boolean replicationMetadataChunkingEnabled) {
+    this.storeVersion.replicationMetadataChunkingEnabled = replicationMetadataChunkingEnabled;
+  }
+
+  @Override
   public String getStoreName() {
     return this.storeVersion.storeName.toString();
   }
@@ -423,6 +433,7 @@ public class VersionImpl implements Version {
     clonedVersion.setCompressionStrategy(getCompressionStrategy());
     clonedVersion.setLeaderFollowerModelEnabled(isLeaderFollowerModelEnabled());
     clonedVersion.setChunkingEnabled(isChunkingEnabled());
+    clonedVersion.setReplicationMetadataChunkingEnabled(isReplicationMetadataChunkingEnabled());
     clonedVersion.setPushType(getPushType());
     clonedVersion.setNativeReplicationEnabled(isNativeReplicationEnabled());
     clonedVersion.setPushStreamSourceAddress(getPushStreamSourceAddress());

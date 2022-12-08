@@ -26,6 +26,7 @@ public class StoreInfo {
     storeInfo.setBatchGetLimit(store.getBatchGetLimit());
     storeInfo.setBootstrapToOnlineTimeoutInHours(store.getBootstrapToOnlineTimeoutInHours());
     storeInfo.setChunkingEnabled(store.isChunkingEnabled());
+    storeInfo.setReplicationMetadataChunkingEnabled(store.isReplicationMetadataChunkingEnabled());
     storeInfo.setClientDecompressionEnabled(store.getClientDecompressionEnabled());
     storeInfo.setCompressionStrategy(store.getCompressionStrategy());
     storeInfo.setCurrentVersion(store.getCurrentVersion());
@@ -142,6 +143,11 @@ public class StoreInfo {
    * Whether the chunking is enabled, and this is for large value store.
    */
   private boolean chunkingEnabled = false;
+
+  /**
+   * Whether the replication metadata chunking is enabled for Active/Active replication enabled store.
+   */
+  private boolean replicationMetadataChunkingEnabled = false;
 
   /**
    * Whether cache is enabled in Router.
@@ -470,6 +476,14 @@ public class StoreInfo {
 
   public void setChunkingEnabled(boolean chunkingEnabled) {
     this.chunkingEnabled = chunkingEnabled;
+  }
+
+  public boolean isReplicationMetadataChunkingEnabled() {
+    return replicationMetadataChunkingEnabled;
+  }
+
+  public void setReplicationMetadataChunkingEnabled(boolean replicationMetadataChunkingEnabled) {
+    this.replicationMetadataChunkingEnabled = replicationMetadataChunkingEnabled;
   }
 
   public boolean isSingleGetRouterCacheEnabled() {

@@ -41,6 +41,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.REGULAR_V
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_FACTOR;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_METADATA_PROTOCOL_VERSION_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TIME_IN_SECONDS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.RMD_CHUNKING_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_QUOTA_IN_BYTE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_TO_GO_ONLINE;
@@ -2190,6 +2191,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<CompressionStrategy> compressionStrategy = params.getCompressionStrategy();
       Optional<Boolean> clientDecompressionEnabled = params.getClientDecompressionEnabled();
       Optional<Boolean> chunkingEnabled = params.getChunkingEnabled();
+      Optional<Boolean> replicationMetadataChunkingEnabled = params.getReplicationMetadataChunkingEnabled();
       Optional<Integer> batchGetLimit = params.getBatchGetLimit();
       Optional<Integer> numVersionsToPreserve = params.getNumVersionsToPreserve();
       Optional<Boolean> incrementalPushEnabled = params.getIncrementalPushEnabled();
@@ -2424,6 +2426,9 @@ public class VeniceParentHelixAdmin implements Admin {
               .orElseGet(currStore::getClientDecompressionEnabled);
       setStore.chunkingEnabled = chunkingEnabled.map(addToUpdatedConfigList(updatedConfigsList, CHUNKING_ENABLED))
           .orElseGet(currStore::isChunkingEnabled);
+      setStore.replicationMetadataChunkingEnabled =
+          replicationMetadataChunkingEnabled.map(addToUpdatedConfigList(updatedConfigsList, RMD_CHUNKING_ENABLED))
+              .orElseGet(currStore::isReplicationMetadataChunkingEnabled);
       setStore.batchGetLimit = batchGetLimit.map(addToUpdatedConfigList(updatedConfigsList, BATCH_GET_LIMIT))
           .orElseGet(currStore::getBatchGetLimit);
       setStore.numVersionsToPreserve =

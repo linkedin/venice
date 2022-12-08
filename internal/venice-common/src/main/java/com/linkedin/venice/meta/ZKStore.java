@@ -194,6 +194,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setCompressionStrategy(store.getCompressionStrategy());
     setClientDecompressionEnabled(store.getClientDecompressionEnabled());
     setChunkingEnabled(store.isChunkingEnabled());
+    setReplicationMetadataChunkingEnabled(store.isReplicationMetadataChunkingEnabled());
     setBatchGetLimit(store.getBatchGetLimit());
     setNumVersionsToPreserve(store.getNumVersionsToPreserve());
     setIncrementalPushEnabled(store.isIncrementalPushEnabled());
@@ -506,6 +507,16 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @Override
   public void setChunkingEnabled(boolean chunkingEnabled) {
     this.storeProperties.chunkingEnabled = chunkingEnabled;
+  }
+
+  @Override
+  public boolean isReplicationMetadataChunkingEnabled() {
+    return this.storeProperties.replicationMetadataChunkingEnabled;
+  }
+
+  @Override
+  public void setReplicationMetadataChunkingEnabled(boolean replicationMetadataChunkingEnabled) {
+    this.storeProperties.replicationMetadataChunkingEnabled = replicationMetadataChunkingEnabled;
   }
 
   @Override

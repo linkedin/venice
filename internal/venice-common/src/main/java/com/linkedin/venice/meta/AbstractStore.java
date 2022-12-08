@@ -155,6 +155,7 @@ public abstract class AbstractStore implements Store {
       version.setLeaderFollowerModelEnabled(isLeaderFollowerModelEnabled());
 
       version.setChunkingEnabled(isChunkingEnabled());
+      version.setReplicationMetadataChunkingEnabled(isReplicationMetadataChunkingEnabled());
 
       PartitionerConfig partitionerConfig = getPartitionerConfig();
       if (partitionerConfig != null) {
