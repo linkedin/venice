@@ -3034,16 +3034,20 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         this,
         consumerRecord,
         partitionConsumptionState,
+        leaderProducedRecordContext,
         leaderTopic,
         getKafkaVersionTopic(),
         partition,
         subPartition,
         kafkaUrl,
         getVersionedDIVStats(),
-        leaderProducedRecordContext,
         getVersionIngestionStats(),
         getHostLevelIngestionStats(),
         System.nanoTime(),
         beforeProcessingRecordTimestamp);
+  }
+
+  protected Lazy<VeniceWriter<byte[], byte[], byte[]>> getVeniceWriter() {
+    return veniceWriter;
   }
 }

@@ -78,6 +78,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
+import org.apache.avro.util.Utf8;
 import org.apache.samza.config.MapConfig;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -163,7 +164,9 @@ public class TestActiveActiveIngestion {
     TestPushUtils.runPushJob("Run push job", props);
 
     // run samza to stream put and delete
-    runSamzaStreamJob(storeName);
+    int numberOfPuts = 10;
+    int numberOfDeletes = 10;
+    runSamzaStreamJob(storeName, null, numberOfPuts, numberOfDeletes, 0);
 
     // run repush
     props.setProperty(SOURCE_KAFKA, "true");
@@ -178,31 +181,42 @@ public class TestActiveActiveIngestion {
         5,
         TimeUnit.SECONDS,
         () -> Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 2));
-
     clusterWrapper.refreshAllRouterMetaData();
+
     // Validate repush from version 2
     MetricsRepository metricsRepository = new MetricsRepository();
-    try (AvroGenericStoreClient avroClient = ClientFactory.getAndStartGenericAvroClient(
+    try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
             .setVeniceURL(clusterWrapper.getRandomRouterURL())
             .setMetricsRepository(metricsRepository))) {
-      // test single get
-      for (int i = 0; i < 10; i++) {
-        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "stream_" + i);
-      }
-      // test deletes
-      for (int i = 10; i < 20; i++) {
-        Assert.assertNull(avroClient.get(Integer.toString(i)).get());
-      }
-      // test old data
-      for (int i = 20; i < 100; i++) {
-        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
-      }
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        // test single get
+        for (int i = 0; i < numberOfPuts; i++) {
+          String key = Integer.toString(i);
+          Utf8 value = client.get(key).get();
+          Assert.assertNotNull(value);
+          Assert.assertEquals(value.toString(), "stream_" + i);
+        }
+        // test deletes
+        for (int i = numberOfPuts; i < (numberOfPuts + numberOfDeletes); i++) {
+          String key = Integer.toString(i);
+          Utf8 value = client.get(key).get();
+          Assert.assertNull(value);
+        }
+        // test old data
+        for (int i = numberOfPuts + numberOfDeletes; i < 100; i++) {
+          String key = Integer.toString(i);
+          Utf8 value = client.get(key).get();
+          Assert.assertNotNull(value);
+          Assert.assertEquals(value.toString(), "test_name_" + i);
+        }
+      });
     }
 
     /**
      * Test Repush with TTL
      */
+
     // run empty push to clean up batch data
     parentControllerClient.sendEmptyPushAndWait(storeName, "Run empty push job", 1000, 30 * Time.MS_PER_SECOND);
 
@@ -258,6 +272,7 @@ public class TestActiveActiveIngestion {
         Assert.assertNull(avroClient.get(Integer.toString(i)).get());
       }
     }
+
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -341,7 +356,8 @@ public class TestActiveActiveIngestion {
   }
 
   private void runSamzaStreamJob(String storeName) {
-    runSamzaStreamJob(storeName, null, 10, 10, 0);
+    // runSamzaStreamJob(storeName, null, 10, 10, 0);
+    runSamzaStreamJob(storeName, null, 10, 0, 0);
   }
 
   private void runSamzaStreamJob(String storeName, Time mockedTime, int numPuts, int numDels, int startIdx) {

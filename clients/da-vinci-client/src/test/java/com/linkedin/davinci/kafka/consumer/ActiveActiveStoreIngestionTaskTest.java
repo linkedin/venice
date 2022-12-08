@@ -2,6 +2,7 @@ package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.venice.writer.VeniceWriter.ENABLE_CHUNKING;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -17,21 +18,18 @@ import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.storage.chunking.ChunkingUtils;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.Put;
+import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
-import com.linkedin.venice.serialization.VeniceKafkaSerializer;
-import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
-import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.writer.ChunkAwareCallback;
+import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.KafkaProducerWrapper;
-import com.linkedin.venice.writer.PutMetadata;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.nio.ByteBuffer;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
@@ -40,9 +38,9 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.RecordMetadata;
-import org.apache.logging.log4j.LogManager;
-import org.mockito.invocation.InvocationOnMock;
+import org.mockito.ArgumentCaptor;
 import org.mockito.stubbing.Answer;
+import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
@@ -51,14 +49,23 @@ public class ActiveActiveStoreIngestionTaskTest {
   public void testLeaderCanSendValueChunksIntoDrainer()
       throws ExecutionException, InterruptedException, TimeoutException {
     String testTopic = "test";
+    int valueSchemaId = 1;
+    int rmdProtocolVersionID = 1;
+    int kafkaClusterId = 0;
+    int subPartition = 0;
+    String kafkaUrl = "kafkaUrl";
+    long beforeProcessingRecordTimestamp = 0;
+    boolean resultReuseInput = true;
+
     ActiveActiveStoreIngestionTask ingestionTask = mock(ActiveActiveStoreIngestionTask.class);
     when(ingestionTask.getHostLevelIngestionStats()).thenReturn(mock(HostLevelIngestionStats.class));
     when(ingestionTask.getVersionIngestionStats()).thenReturn(mock(AggVersionedIngestionStats.class));
     when(ingestionTask.getVersionedDIVStats()).thenReturn(mock(AggVersionedDIVStats.class));
     when(ingestionTask.getKafkaVersionTopic()).thenReturn(testTopic);
-    LeaderProducerCallback mockLeaderProducerCallback = mock(LeaderProducerCallback.class);
     when(ingestionTask.createLeaderProducerCallback(any(), any(), any(), anyInt(), anyString(), anyLong()))
-        .thenReturn(mockLeaderProducerCallback);
+        .thenCallRealMethod();
+    when(ingestionTask.getProduceToTopicFunction(any(), any(), any(), anyInt(), anyBoolean())).thenCallRealMethod();
+    when(ingestionTask.getRmdProtocolVersionID()).thenReturn(rmdProtocolVersionID);
     doCallRealMethod().when(ingestionTask)
         .produceToLocalKafka(any(), any(), any(), any(), anyInt(), anyString(), anyInt(), anyLong());
     byte[] key = "foo".getBytes();
@@ -69,49 +76,45 @@ public class ActiveActiveStoreIngestionTaskTest {
     when(mockedProducer.getNumberOfPartitions(any())).thenReturn(1);
     when(mockedProducer.getNumberOfPartitions(any(), anyInt(), any())).thenReturn(1);
     AtomicLong offset = new AtomicLong(0);
-    when(mockedProducer.sendMessage(anyString(), any(), any(), anyInt(), any())).thenAnswer(new Answer<Future>() {
-      @Override
-      public Future answer(InvocationOnMock invocation) throws Throwable {
-        KafkaKey kafkaKey = (KafkaKey) invocation.getArgument(1);
-        KafkaMessageEnvelope kafkaMessageEnvelope = (KafkaMessageEnvelope) invocation.getArgument(2);
-        Callback callback = (Callback) invocation.getArgument(4);
-        RecordMetadata recordMetadata = mock(RecordMetadata.class);
-        offset.addAndGet(1);
-        when(recordMetadata.offset()).thenReturn(offset.get());
-        when(recordMetadata.serializedKeySize()).thenReturn(kafkaKey.getKeyLength());
-        // when(recordMetadata.serializedValueSize()).thenReturn(((Put)(kafkaMessageEnvelope.payloadUnion)).putValue.remaining());
-        when(recordMetadata.serializedValueSize()).thenReturn(123);
-        LogManager.getLogger()
-            .info(
-                "DEBUGGING: GET CALLBACK: " + callback + " " + recordMetadata.offset() + " "
-                    + recordMetadata.serializedKeySize() + " " + recordMetadata.serializedValueSize());
-        callback.onCompletion(recordMetadata, null);
-        return mockedFuture;
-      }
-
-    });
+    ArgumentCaptor<KafkaKey> kafkaKeyArgumentCaptor = ArgumentCaptor.forClass(KafkaKey.class);
+    ArgumentCaptor<KafkaMessageEnvelope> kafkaMessageEnvelopeArgumentCaptor =
+        ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
+    when(
+        mockedProducer.sendMessage(
+            anyString(),
+            kafkaKeyArgumentCaptor.capture(),
+            kafkaMessageEnvelopeArgumentCaptor.capture(),
+            anyInt(),
+            any())).thenAnswer((Answer<Future>) invocation -> {
+              KafkaKey kafkaKey = invocation.getArgument(1);
+              KafkaMessageEnvelope kafkaMessageEnvelope = invocation.getArgument(2);
+              Callback callback = invocation.getArgument(4);
+              RecordMetadata recordMetadata = mock(RecordMetadata.class);
+              offset.addAndGet(1);
+              when(recordMetadata.offset()).thenReturn(offset.get());
+              when(recordMetadata.serializedKeySize()).thenReturn(kafkaKey.getKeyLength());
+              MessageType messageType = MessageType.valueOf(kafkaMessageEnvelope.messageType);
+              when(recordMetadata.serializedValueSize()).thenReturn(
+                  messageType.equals(MessageType.PUT)
+                      ? ((Put) (kafkaMessageEnvelope.payloadUnion)).putValue.remaining()
+                      : 0);
+              callback.onCompletion(recordMetadata, null);
+              return mockedFuture;
+            });
     Properties writerProperties = new Properties();
     writerProperties.put(ENABLE_CHUNKING, true);
 
-    String stringSchema = "\"string\"";
-    VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
-    VeniceWriterOptions veniceWriterOptions = new VeniceWriterOptions.Builder(testTopic)
-        // .setKeySerializer(serializer)
-        // .setValueSerializer(serializer)
-        // .setWriteComputeSerializer(serializer)
-        .setPartitioner(new DefaultVenicePartitioner())
-        .setTime(SystemTime.INSTANCE)
-        .build();
-    VeniceWriter<Object, Object, Object> writer =
+    VeniceWriterOptions veniceWriterOptions =
+        new VeniceWriterOptions.Builder(testTopic).setPartitioner(new DefaultVenicePartitioner())
+            .setTime(SystemTime.INSTANCE)
+            .build();
+    VeniceWriter<byte[], byte[], byte[]> writer =
         new VeniceWriter(veniceWriterOptions, new VeniceProperties(writerProperties), () -> mockedProducer);
-
+    when(ingestionTask.getVeniceWriter()).thenReturn(Lazy.of(() -> writer));
     StringBuilder stringBuilder = new StringBuilder();
     for (int i = 0; i < 50000; i++) {
       stringBuilder.append("abcdefghabcdefghabcdefghabcdefgh");
     }
-    int valueSchemaId = 1;
-    int rmdProtocolVersionID = 1;
-    boolean resultReuseInput = true;
     String valueString = stringBuilder.toString();
     byte[] valueBytes = valueString.getBytes();
     byte[] schemaIdPrependedValueBytes = new byte[4 + valueBytes.length];
@@ -119,39 +122,28 @@ public class ActiveActiveStoreIngestionTaskTest {
     System.arraycopy(valueBytes, 0, schemaIdPrependedValueBytes, 4, valueBytes.length);
     ByteBuffer updatedValueBytes = ByteBuffer.wrap(schemaIdPrependedValueBytes, 4, valueBytes.length);
     ByteBuffer updatedRmdBytes = ByteBuffer.wrap(new byte[] { 0xa, 0xb });
-    PutMetadata putMetadata = new PutMetadata(1, updatedRmdBytes);
-
     ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord = mock(ConsumerRecord.class);
-    PartitionConsumptionState partitionConsumptionState = mock(PartitionConsumptionState.class);
-    LeaderProducedRecordContext leaderProducedRecordContext = mock(LeaderProducedRecordContext.class);
-    StoreIngestionTask.ProduceToTopic produceFunction = getProduceFunction(
-        updatedKeyBytes,
-        updatedValueBytes,
-        updatedRmdBytes,
-        valueSchemaId,
-        rmdProtocolVersionID,
-        writer,
-        resultReuseInput,
-        false);
-    StoreIngestionTask.ProduceToTopic produceFunction2 = getProduceFunction(
-        updatedKeyBytes,
-        updatedValueBytes,
-        updatedRmdBytes,
-        valueSchemaId,
-        rmdProtocolVersionID,
-        writer,
-        resultReuseInput,
-        true);
+    when(consumerRecord.offset()).thenReturn(100L);
 
-    int subPartition = 0;
-    String kafkaUrl = "kafkaUrl";
-    int kafkaClusterId = 0;
-    long beforeProcessingRecordTimestamp = 0;
+    Put updatedPut = new Put();
+    updatedPut.putValue = ByteUtils.prependIntHeaderToByteBuffer(updatedValueBytes, valueSchemaId, resultReuseInput);
+    updatedPut.schemaId = valueSchemaId;
+    updatedPut.replicationMetadataVersionId = rmdProtocolVersionID;
+    updatedPut.replicationMetadataPayload = updatedRmdBytes;
+    LeaderProducedRecordContext leaderProducedRecordContext =
+        LeaderProducedRecordContext.newPutRecord(kafkaClusterId, consumerRecord.offset(), updatedKeyBytes, updatedPut);
+
+    PartitionConsumptionState partitionConsumptionState = mock(PartitionConsumptionState.class);
     ingestionTask.produceToLocalKafka(
         consumerRecord,
         partitionConsumptionState,
         leaderProducedRecordContext,
-        produceFunction,
+        ingestionTask.getProduceToTopicFunction(
+            updatedKeyBytes,
+            updatedValueBytes,
+            updatedRmdBytes,
+            valueSchemaId,
+            resultReuseInput),
         subPartition,
         kafkaUrl,
         kafkaClusterId,
@@ -159,82 +151,33 @@ public class ActiveActiveStoreIngestionTaskTest {
 
     // Send 1 SOS, 2 Chunks, 1 Manifest.
     verify(mockedProducer, times(4)).sendMessage(eq(testTopic), any(), any(), anyInt(), any());
-    // Exactly once onCompletion call for manifest
-    verify(mockLeaderProducerCallback, times(1)).onCompletion(any(), any());
-    // No Chunking Manifest is set.
-    verify(mockLeaderProducerCallback, times(0)).setChunkingInfo(any(), any(), any(), any(), any());
+    ArgumentCaptor<LeaderProducedRecordContext> leaderProducedRecordContextArgumentCaptor =
+        ArgumentCaptor.forClass(LeaderProducedRecordContext.class);
+    verify(ingestionTask, times(3)).produceToStoreBufferService(
+        any(),
+        leaderProducedRecordContextArgumentCaptor.capture(),
+        anyInt(),
+        anyString(),
+        anyLong());
 
-    // With ChunkAwareCallback type A/A producer call back, it should set the chunking info correctly.
-    ingestionTask.produceToLocalKafka(
-        consumerRecord,
-        partitionConsumptionState,
-        leaderProducedRecordContext,
-        produceFunction2,
-        subPartition,
-        kafkaUrl,
-        kafkaClusterId,
-        beforeProcessingRecordTimestamp);
-    // 1 Chunking Manifest is set.
-    verify(mockLeaderProducerCallback, times(1)).setChunkingInfo(any(), any(), any(), any(), any());
-
-  }
-
-  public StoreIngestionTask.ProduceToTopic getProduceFunction(
-      byte[] updatedKeyBytes,
-      ByteBuffer updatedValueBytes,
-      ByteBuffer updatedRmdBytes,
-      int valueSchemaId,
-      int rmdProtocolVersionID,
-      VeniceWriter veniceWriter,
-      boolean resultReuseInput,
-      boolean createChunkAwareCallback) {
-    return (callback, sourceTopicOffset) -> {
-
-      final Callback newCallback =
-
-          createChunkAwareCallback ? new ChunkAwareCallback() {
-            @Override
-            public void setChunkingInfo(
-                byte[] key,
-                ByteBuffer[] valueChunks,
-                ChunkedValueManifest chunkedValueManifest,
-                ByteBuffer[] rmdChunks,
-                ChunkedValueManifest chunkedRmdManifest) {
-              ((ChunkAwareCallback) callback)
-                  .setChunkingInfo(key, valueChunks, chunkedValueManifest, rmdChunks, chunkedRmdManifest);
-            }
-
-            @Override
-            public void onCompletion(RecordMetadata recordMetadata, Exception exception) {
-              if (resultReuseInput) {
-                // Restore the original header so this function is eventually idempotent as the original KME ByteBuffer
-                // will be recovered after producing the message to Kafka or if the production failing.
-                ByteUtils.prependIntHeaderToByteBuffer(
-                    updatedValueBytes,
-                    ByteUtils.getIntHeaderFromByteBuffer(updatedValueBytes),
-                    true);
-              }
-              callback.onCompletion(recordMetadata, exception);
-            }
-          } : (recordMetadata, exception) -> {
-            if (resultReuseInput) {
-              // Restore the original header so this function is eventually idempotent as the original KME ByteBuffer
-              // will be recovered after producing the message to Kafka or if the production failing.
-              ByteUtils.prependIntHeaderToByteBuffer(
-                  updatedValueBytes,
-                  ByteUtils.getIntHeaderFromByteBuffer(updatedValueBytes),
-                  true);
-            }
-            callback.onCompletion(recordMetadata, exception);
-          };
-      return veniceWriter.put(
-          updatedKeyBytes,
-          ByteUtils.extractByteArray(updatedValueBytes),
-          valueSchemaId,
-          newCallback,
-          sourceTopicOffset,
-          VeniceWriter.APP_DEFAULT_LOGICAL_TS,
-          Optional.of(new PutMetadata(rmdProtocolVersionID, updatedRmdBytes)));
-    };
+    // Make sure the chunks && manifest are exactly the same for both produced to VT and drain to leader storage.
+    Assert.assertEquals(
+        leaderProducedRecordContextArgumentCaptor.getAllValues().get(0).getValueUnion(),
+        kafkaMessageEnvelopeArgumentCaptor.getAllValues().get(1).payloadUnion);
+    Assert.assertEquals(
+        leaderProducedRecordContextArgumentCaptor.getAllValues().get(1).getValueUnion(),
+        kafkaMessageEnvelopeArgumentCaptor.getAllValues().get(2).payloadUnion);
+    Assert.assertEquals(
+        leaderProducedRecordContextArgumentCaptor.getAllValues().get(2).getValueUnion(),
+        kafkaMessageEnvelopeArgumentCaptor.getAllValues().get(3).payloadUnion);
+    Assert.assertEquals(
+        leaderProducedRecordContextArgumentCaptor.getAllValues().get(0).getKeyBytes(),
+        kafkaKeyArgumentCaptor.getAllValues().get(1).getKey());
+    Assert.assertEquals(
+        leaderProducedRecordContextArgumentCaptor.getAllValues().get(1).getKeyBytes(),
+        kafkaKeyArgumentCaptor.getAllValues().get(2).getKey());
+    Assert.assertEquals(
+        leaderProducedRecordContextArgumentCaptor.getAllValues().get(2).getKeyBytes(),
+        kafkaKeyArgumentCaptor.getAllValues().get(3).getKey());
   }
 }

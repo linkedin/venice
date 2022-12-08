@@ -44,6 +44,7 @@ class LeaderProducerCallback implements ChunkAwareCallback {
   private final HostLevelIngestionStats hostLevelIngestionStats;
   private final long produceTimeNs;
   private final long beforeProcessingRecordTimestamp;
+  private final boolean hasReplicationMetadata;
 
   /**
    * The mutable fields below are determined by the {@link com.linkedin.venice.writer.VeniceWriter},
@@ -60,13 +61,13 @@ class LeaderProducerCallback implements ChunkAwareCallback {
       LeaderFollowerStoreIngestionTask ingestionTask,
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> sourceConsumerRecord,
       PartitionConsumptionState partitionConsumptionState,
+      LeaderProducedRecordContext leaderProducedRecordContext,
       String leaderTopic,
       String versionTopic,
       int partition,
       int subPartition,
       String kafkaUrl,
       AggVersionedDIVStats versionedDIVStats,
-      LeaderProducedRecordContext leaderProducedRecordContext,
       AggVersionedIngestionStats versionedStorageIngestionStats,
       HostLevelIngestionStats hostLevelIngestionStats,
       long produceTimeNs,
@@ -85,6 +86,7 @@ class LeaderProducerCallback implements ChunkAwareCallback {
     this.versionedStorageIngestionStats = versionedStorageIngestionStats;
     this.hostLevelIngestionStats = hostLevelIngestionStats;
     this.beforeProcessingRecordTimestamp = beforeProcessingRecordTimestamp;
+    this.hasReplicationMetadata = ingestionTask instanceof ActiveActiveStoreIngestionTask;
   }
 
   @Override
@@ -172,11 +174,14 @@ class LeaderProducerCallback implements ChunkAwareCallback {
             Put chunkPut = new Put();
             chunkPut.putValue = chunkValue;
             chunkPut.schemaId = schemaId;
+            if (hasReplicationMetadata) {
+              chunkPut.replicationMetadataPayload = ByteBuffer.allocate(0);
+              chunkPut.replicationMetadataVersionId = -1;
+            }
 
             LeaderProducedRecordContext producedRecordForChunk =
                 LeaderProducedRecordContext.newPutRecord(-1, -1, ByteUtils.extractByteArray(chunkKey), chunkPut);
             producedRecordForChunk.setProducedOffset(-1);
-
             ingestionTask.produceToStoreBufferService(
                 sourceConsumerRecord,
                 producedRecordForChunk,
@@ -201,6 +206,12 @@ class LeaderProducerCallback implements ChunkAwareCallback {
           Put manifestPut = new Put();
           manifestPut.putValue = manifest;
           manifestPut.schemaId = schemaId;
+          if (hasReplicationMetadata) {
+            manifestPut.replicationMetadataVersionId =
+                ((Put) leaderProducedRecordContext.getValueUnion()).replicationMetadataVersionId;
+            manifestPut.replicationMetadataPayload =
+                ((Put) leaderProducedRecordContext.getValueUnion()).replicationMetadataPayload;
+          }
 
           LeaderProducedRecordContext producedRecordForManifest = LeaderProducedRecordContext.newPutRecordWithFuture(
               leaderProducedRecordContext.getConsumedKafkaClusterId(),
