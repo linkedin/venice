@@ -10,7 +10,6 @@ import com.linkedin.davinci.ingestion.IsolatedIngestionBackend;
 import com.linkedin.davinci.ingestion.VeniceIngestionBackend;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
-import com.linkedin.davinci.notifier.LeaderDoomNotifier;
 import com.linkedin.davinci.notifier.PartitionPushStatusNotifier;
 import com.linkedin.davinci.notifier.PushMonitorNotifier;
 import com.linkedin.davinci.stats.ThreadPoolStats;
@@ -83,6 +82,7 @@ public class HelixParticipationService extends AbstractVeniceService
   private AbstractStateModelFactory leaderFollowerParticipantModelFactory;
   private HelixPartitionStatusAccessor partitionPushStatusAccessor;
   private ThreadPoolExecutor leaderFollowerHelixStateTransitionThreadPool;
+  private VeniceOfflinePushMonitorAccessor veniceOfflinePushMonitorAccessor;
 
   // This is ONLY for testing purpose.
   public ThreadPoolExecutor getLeaderFollowerHelixStateTransitionThreadPool() {
@@ -296,13 +296,15 @@ public class HelixParticipationService extends AbstractVeniceService
 
     // Record replica status in Zookeeper.
     // Need to be started before connecting to ZK, otherwise some notification will not be sent by this notifier.
+    veniceOfflinePushMonitorAccessor = new VeniceOfflinePushMonitorAccessor(
+        clusterName,
+        zkClient,
+        new HelixAdapterSerializer(),
+        veniceConfigLoader.getVeniceClusterConfig().getRefreshAttemptsForZkReconnect(),
+        veniceConfigLoader.getVeniceClusterConfig().getRefreshIntervalForZkReconnectInMs());
+
     PushMonitorNotifier pushMonitorNotifier = new PushMonitorNotifier(
-        new VeniceOfflinePushMonitorAccessor(
-            clusterName,
-            zkClient,
-            new HelixAdapterSerializer(),
-            veniceConfigLoader.getVeniceClusterConfig().getRefreshAttemptsForZkReconnect(),
-            veniceConfigLoader.getVeniceClusterConfig().getRefreshIntervalForZkReconnectInMs()),
+        veniceOfflinePushMonitorAccessor,
         statusStoreWriter,
         helixReadOnlyStoreRepository,
         instance.getNodeId());
@@ -335,11 +337,6 @@ public class HelixParticipationService extends AbstractVeniceService
       PartitionPushStatusNotifier partitionPushStatusNotifier =
           new PartitionPushStatusNotifier(partitionPushStatusAccessor);
       ingestionBackend.addPushStatusNotifier(partitionPushStatusNotifier);
-      if (veniceConfigLoader.getVeniceServerConfig().isLeaderDoomNotifierEnabledTestOnlyEnabled()) {
-        LeaderDoomNotifier leaderDoomNotifier = new LeaderDoomNotifier(partitionPushStatusAccessor);
-        ingestionBackend.addPushStatusNotifier(leaderDoomNotifier);
-      }
-
       /**
        * Complete the accessor future after the accessor is created && the notifier is added.
        * This is for blocking the {@link AbstractPartitionStateModel #setupNewStorePartition()} until
@@ -351,6 +348,18 @@ public class HelixParticipationService extends AbstractVeniceService
       serviceState.set(ServiceState.STARTED);
       LOGGER.info("Successfully started Helix Participation Service.");
     });
+  }
+
+  public VeniceIngestionBackend getIngestionBackend() {
+    return ingestionBackend;
+  }
+
+  public Instance getInstance() {
+    return instance;
+  }
+
+  public VeniceOfflinePushMonitorAccessor getVeniceOfflinePushMonitorAccessor() {
+    return veniceOfflinePushMonitorAccessor;
   }
 
   @Override

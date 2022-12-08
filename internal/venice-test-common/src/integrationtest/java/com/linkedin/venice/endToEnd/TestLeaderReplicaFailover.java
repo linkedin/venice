@@ -6,6 +6,8 @@ import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.davinci.helix.HelixParticipationService;
+import com.linkedin.davinci.notifier.LeaderDoomNotifier;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -14,12 +16,9 @@ import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
-import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
-import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -27,26 +26,24 @@ import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.File;
 import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.model.InstanceConfig;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.rocksdb.ComparatorOptions;
 import org.rocksdb.util.BytewiseComparator;
 import org.testng.Assert;
@@ -57,6 +54,8 @@ import org.testng.annotations.Test;
 
 @Test(singleThreaded = true)
 public class TestLeaderReplicaFailover {
+  private static final Logger LOGGER = LogManager.getLogger(TestLeaderReplicaFailover.class);
+
   String stringSchemaStr = "\"string\"";
   String valueSchemaStr =
       "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\"}]}";
@@ -64,13 +63,7 @@ public class TestLeaderReplicaFailover {
   AvroSerializer valueSerializer = new AvroSerializer(AvroCompatibilityHelper.parse(valueSchemaStr));
 
   private static final int TEST_TIMEOUT = 360 * Time.MS_PER_SECOND;
-  private static final String[] CLUSTER_NAMES =
-      IntStream.range(0, 1).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
-
-  private List<VeniceMultiClusterWrapper> childDatacenters;
-  private List<VeniceControllerWrapper> parentControllers;
-  private VeniceTwoLayerMultiColoMultiClusterWrapper multiColoMultiClusterWrapper;
-  private String clusterName;
+  private static String clusterName;
   private VeniceClusterWrapper clusterWrapper;
 
   @BeforeClass
@@ -81,43 +74,30 @@ public class TestLeaderReplicaFailover {
     serverProperties.setProperty(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1));
     serverProperties.put(LF_MODEL_DEPENDENCY_CHECK_DISABLED, "true");
     serverProperties.put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false);
-    serverProperties.put(LEADER_DOOM_NOTIFIER_TEST_ONLY_ENABLED, true);
-    serverProperties.put(
-        CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + DEFAULT_PARENT_DATA_CENTER_REGION_NAME,
-        "localhost:" + Utils.getFreePort());
+    serverProperties.put(DEFAULT_OFFLINE_PUSH_STRATEGY, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+
     Properties controllerPropery = new Properties();
     Properties parent = new Properties();
     controllerPropery.put(DEFAULT_OFFLINE_PUSH_STRATEGY, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
     parent.put(DEFAULT_PARTITION_SIZE, 10000);
-    multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
-        1,
-        1,
-        1,
-        1,
-        3,
-        1,
-        3,
-        Optional.of(new VeniceProperties(parent)),
-        Optional.of(controllerPropery),
-        Optional.of(new VeniceProperties(serverProperties)),
-        false);
+    int numberOfController = 1;
+    int numberOfServer = 3;
+    int numberOfRouter = 1;
 
-    childDatacenters = multiColoMultiClusterWrapper.getClusters();
-    parentControllers = multiColoMultiClusterWrapper.getParentControllers();
-    clusterName = CLUSTER_NAMES[0];
-    clusterWrapper = childDatacenters.get(0).getClusters().get(clusterName);
+    clusterWrapper = ServiceFactory
+        .getVeniceCluster(numberOfController, numberOfServer, numberOfRouter, 3, 1, false, false, serverProperties);
+    clusterName = clusterWrapper.getClusterName();
   }
 
   @AfterClass
   public void cleanUp() {
-    multiColoMultiClusterWrapper.close();
+    clusterWrapper.close();
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testLeaderReplicaFailover() throws Exception {
-    String parentControllerURLs =
-        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
-    ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
+    ControllerClient parentControllerClient =
+        new ControllerClient(clusterWrapper.getClusterName(), clusterWrapper.getAllControllersURLs());
     TestUtils.assertCommand(
         parentControllerClient.configureActiveActiveReplicationForCluster(
             true,
@@ -127,7 +107,7 @@ public class TestLeaderReplicaFailover {
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
-    Properties props = defaultVPJProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
+    Properties props = defaultVPJProps(clusterWrapper, inputDirPath, storeName);
     props.setProperty(
         DEFAULT_OFFLINE_PUSH_STRATEGY,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION.toString());
@@ -158,6 +138,23 @@ public class TestLeaderReplicaFailover {
     String kafkaUrl = versionCreationResponse.getKafkaBootstrapServers();
     VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(kafkaUrl);
     HelixAdmin admin = new ZKHelixAdmin(clusterWrapper.getZk().getAddress());
+    HelixBaseRoutingRepository routingDataRepo = clusterWrapper.getLeaderVeniceController()
+        .getVeniceHelixAdmin()
+        .getHelixVeniceClusterResources(clusterWrapper.getClusterName())
+        .getRoutingDataRepository();
+    Instance leader = routingDataRepo.getLeaderInstance(topic, 0);
+    for (VeniceServerWrapper serverWrapper: clusterWrapper.getVeniceServers()) {
+      // Add a doom notifier which will report leader to be in ERROR instead of COMPLETE
+      if (serverWrapper.getPort() == leader.getPort()) {
+        HelixParticipationService participationService = serverWrapper.getVeniceServer().getHelixParticipationService();
+        LeaderDoomNotifier leaderDoomNotifier = new LeaderDoomNotifier(
+            participationService.getVeniceOfflinePushMonitorAccessor(),
+            participationService.getInstance().getNodeId());
+        participationService.getIngestionBackend().addLeaderFollowerIngestionNotifier(leaderDoomNotifier);
+      }
+    }
+    Instance finalLeader1 = leader;
+
     try (VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterFactory.createBasicVeniceWriter(topic)) {
       veniceWriter.broadcastStartOfPush(true, Collections.emptyMap());
       Map<byte[], byte[]> sortedInputRecords = generateData(100, true, 0, serializer);
@@ -166,6 +163,7 @@ public class TestLeaderReplicaFailover {
       }
       veniceWriter.broadcastEndOfPush(Collections.emptyMap());
     }
+
     // Wait push completed.
     TestUtils.waitForNonDeterministicCompletion(60, TimeUnit.SECONDS, () -> {
       try {
@@ -179,31 +177,37 @@ public class TestLeaderReplicaFailover {
       }
     });
 
-    HelixBaseRoutingRepository routingDataRepo = clusterWrapper.getLeaderVeniceController()
+    // Verify the leader is disabled.
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      InstanceConfig instanceConfig = admin.getInstanceConfig(clusterName, finalLeader1.getNodeId());
+      Assert.assertEquals(instanceConfig.getDisabledPartitionsMap().size(), 1);
+    });
+    routingDataRepo = clusterWrapper.getLeaderVeniceController()
         .getVeniceHelixAdmin()
-        .getHelixVeniceClusterResources(clusterName)
+        .getHelixVeniceClusterResources(clusterWrapper.getClusterName())
         .getRoutingDataRepository();
+    leader = routingDataRepo.getLeaderInstance(topic, 0);
 
-    Instance leader = routingDataRepo.getLeaderInstance(topic, 0);
-
-    // Wait until all partitions have ready-to-serve instances
-    TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, () -> {
-      RoutingDataRepository routingDataRepository = clusterWrapper.getRandomVeniceRouter().getRoutingDataRepository();
-      Assert.assertTrue(routingDataRepository.containsKafkaTopic(topic));
-      int partitionCount = routingDataRepository.getPartitionAssignments(topic).getAllPartitions().size();
-      for (int partition = 0; partition < partitionCount; partition++) {
-        Assert.assertTrue(routingDataRepository.getReadyToServeInstances(topic, partition).size() > 2);
-      }
+    // Stop the server
+    clusterWrapper.stopVeniceServer(leader.getPort());
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
+      LOGGER.info(
+          "Size " + clusterWrapper.getLeaderVeniceController().getVeniceAdmin().getReplicas(clusterName, topic).size());
+      Assert.assertTrue(
+          clusterWrapper.getLeaderVeniceController().getVeniceAdmin().getReplicas(clusterName, topic).size() == 6);
     });
 
-    // Restart server, the disabled replica should be reenabled.
-    clusterWrapper.stopAndRestartVeniceServer(leader.getPort());
-    TestUtils.waitForNonDeterministicCompletion(
-        3,
-        TimeUnit.SECONDS,
-        () -> clusterWrapper.getLeaderVeniceController().getVeniceAdmin().getReplicas(clusterName, topic).size() == 3);
-    InstanceConfig instanceConfig = admin.getInstanceConfig(clusterName, leader.getNodeId());
-    Assert.assertEquals(instanceConfig.getDisabledPartitionsMap().size(), 0);
+    // Restart server, the disabled replica should be re-enabled.
+    clusterWrapper.restartVeniceServer(leader.getPort());
+    HelixBaseRoutingRepository finalRoutingDataRepo1 = routingDataRepo;
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
+      Instance newLeaderNode = finalRoutingDataRepo1.getLeaderInstance(topic, 0);
+      Assert.assertNotNull(newLeaderNode);
+      Assert.assertTrue(
+          clusterWrapper.getLeaderVeniceController().getVeniceAdmin().getReplicas(clusterName, topic).size() == 9);
+      InstanceConfig instanceConfig1 = admin.getInstanceConfig(clusterName, newLeaderNode.getNodeId());
+      Assert.assertEquals(instanceConfig1.getDisabledPartitionsMap().size(), 0);
+    });
   }
 
   private Map<byte[], byte[]> generateData(int recordCnt, boolean sorted, int startId, AvroSerializer serializer) {

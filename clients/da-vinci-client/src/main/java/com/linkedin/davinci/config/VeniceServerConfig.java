@@ -274,7 +274,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final long optimizeDatabaseServiceScheduleIntervalSeconds;
   private final boolean unregisterMetricForDeletedStoreEnabled;
   private final boolean readOnlyForBatchOnlyStoreEnabled; // TODO: remove this config as its never used in prod
-  private final boolean leaderDoomNotifierEnabledTestOnlyEnabled;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -504,8 +503,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
         .getLong(SERVER_OPTIMIZE_DATABASE_SERVICE_SCHEDULE_INTERNAL_SECONDS, TimeUnit.MINUTES.toSeconds(1));
     unregisterMetricForDeletedStoreEnabled =
         serverProperties.getBoolean(UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED, false);
-    leaderDoomNotifierEnabledTestOnlyEnabled =
-        serverProperties.getBoolean(LEADER_DOOM_NOTIFIER_TEST_ONLY_ENABLED, false);
   }
 
   public int getListenerPort() {
@@ -917,9 +914,5 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isReadOnlyForBatchOnlyStoreEnabled() {
     return readOnlyForBatchOnlyStoreEnabled;
-  }
-
-  public boolean isLeaderDoomNotifierEnabledTestOnlyEnabled() {
-    return leaderDoomNotifierEnabledTestOnlyEnabled;
   }
 }

@@ -1665,7 +1665,6 @@ public class ConfigKeys {
   public static final String PUSH_STATUS_STORE_HEARTBEAT_EXPIRATION_TIME_IN_SECONDS =
       "push.status.store.heartbeat.expiration.seconds";
 
-  public static final String LEADER_DOOM_NOTIFIER_TEST_ONLY_ENABLED = "leader.doom.notifier.test.only.enabled";
   /**
    * Derived schemaId for push status store write compute.
    */
