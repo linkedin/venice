@@ -5,11 +5,11 @@ plugins {
   id 'idea'
   id 'java'
   id 'maven-publish'
-  id 'com.diffplug.spotless' version '6.9.1'
+  id 'com.diffplug.spotless' version '6.12.0'
   id 'com.dorongold.task-tree' version '2.1.0'
   id 'com.github.johnrengelman.shadow' version '6.1.0' apply false
   id 'com.github.spotbugs' version '4.8.0' apply false
-  id 'org.gradle.test-retry' version '1.4.1' apply false
+  id 'org.gradle.test-retry' version '1.5.0' apply false
 }
 
 apply from: "$rootDir/gradle/helper/git.gradle"
@@ -297,6 +297,7 @@ subprojects {
   }
 
   def ALPINI_TEST_FILTER = 'com.linkedin.alpini.*'
+  def ALPINI_NETTY_TEST_FILTER = 'io.netty.*'
 
   tasks.withType(Test) {
     mustRunAfter tasks.withType(SpotBugsTask)
@@ -329,7 +330,8 @@ subprojects {
 
     filter {
       excludeTestsMatching ALPINI_TEST_FILTER
-      setFailOnNoMatchingTests(false)
+      excludeTestsMatching ALPINI_NETTY_TEST_FILTER
+      failOnNoMatchingTests = false
     }
 
     useTestNG {
@@ -357,12 +359,12 @@ subprojects {
   }
 
   task alpiniTest(type: Test) {
+    useTestNG()
     filter {
       includeTestsMatching ALPINI_TEST_FILTER
-      setFailOnNoMatchingTests(false)
+      includeTestsMatching ALPINI_NETTY_TEST_FILTER
+      failOnNoMatchingTests = false
     }
-
-    useTestNG()
   }
 
   tasks.withType(Jar) {
