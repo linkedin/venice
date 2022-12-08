@@ -21,6 +21,7 @@ import org.testng.annotations.DataProvider;
 public class AvroStoreClientZstdEndToEndTest extends AvroStoreClientEndToEndTest {
 
   // useDaVinciClientBasedMetadata is always true as router based metadata store is considered legacy
+  // The tests fails on zstd fetching side if it's set to false. Deprioritized debugging this as its legacy.
   @Override
   @DataProvider(name = "FastClient-Four-Boolean-And-A-Number")
   public Object[][] fourBooleanAndANumber() {

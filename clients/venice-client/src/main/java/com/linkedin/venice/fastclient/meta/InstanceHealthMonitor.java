@@ -34,6 +34,7 @@ public class InstanceHealthMonitor implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(InstanceHealthMonitor.class);
   private final ClientConfig clientConfig;
 
+  // Map/set of per store replica instances
   private final Map<String, Integer> pendingRequestCounterMap = new VeniceConcurrentHashMap<>();
   private final Set<String> unhealthyInstanceSet = new ConcurrentSkipListSet<>();
 
@@ -66,6 +67,7 @@ public class InstanceHealthMonitor implements Closeable {
     return this.timeoutProcessor;
   }
 
+  // TODO name looks misleading as we are not really sending any request to instance here?
   public CompletableFuture<HttpStatus> sendRequestToInstance(String instance) {
     CompletableFuture<HttpStatus> requestFuture = new CompletableFuture<>();
     pendingRequestCounterMap.compute(instance, (k, v) -> {
@@ -82,19 +84,22 @@ public class InstanceHealthMonitor implements Closeable {
         TimeUnit.MILLISECONDS);
 
     requestFuture.whenComplete((httpStatus, throwable) -> {
-      /**
-       * In theory, throwable should be null all the time since {@link DispatchingAvroGenericStoreClient}
-       * will always set a http status in every code path, and the below is the defensive code.
-       */
       if (throwable != null) {
+        /**
+         * In theory, throwable should be null all the time since {@link DispatchingAvroGenericStoreClient}
+         * will always set a http status in every code path, and the below is the defensive code.
+         */
         LOGGER.error(
             "Received unexpected throwable in replica request future since DispatchingAvroGenericStoreClient"
                 + " should always setup a http status");
         return;
       }
+
       if (!timeoutFuture.isDone()) {
+        // TODO QQ: can there be a race condition here?
         timeoutFuture.cancel();
       }
+
       long counterResetDelayMS = 0;
       boolean unhealthyInstance = false;
       switch (httpStatus) {
@@ -103,6 +108,7 @@ public class InstanceHealthMonitor implements Closeable {
           break;
         case S_429_TOO_MANY_REQUESTS:
           // Specific to a store
+          // TODO: QQ: when will this be considered unhealthy? only when it reaches one of the below cases?
           counterResetDelayMS = clientConfig.getRoutingQuotaExceededRequestCounterResetDelayMS();
           break;
         case S_410_GONE:
@@ -118,6 +124,10 @@ public class InstanceHealthMonitor implements Closeable {
       if (counterResetDelayMS == 0) {
         counterResetConsumer.accept(instance);
       } else {
+        /**
+         * Even when httpStatus is not 200/404, we want to reset the counter after some delay those
+         * stores can be rechecked for health once in a while rather than being permanently blocked
+         */
         timeoutProcessor.schedule(
             () -> counterResetConsumer.accept(instance),
             counterResetDelayMS,

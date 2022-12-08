@@ -21,7 +21,7 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * R2 based Transport Client.
+ * R2 based Transport Client Interface.
  * So far, this class doesn't do anything special about the connection management, such as connection pool (size),
  * and connection warming and so on, and we will rely on the features offered by R2.
  * If we notice anything specific required to be implemented outside of R2, we will improve the implementation here.

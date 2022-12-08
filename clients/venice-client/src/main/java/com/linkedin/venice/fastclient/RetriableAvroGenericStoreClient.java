@@ -83,10 +83,15 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
   /**
    * TODO:
    * 1. Limit the retry volume.
+   *
+   * QQ based on above TODO: Looks like the retry is being scheduled once via scheduler (LONG_TAIL_RETRY) and
+   *                    once instant (ERROR_RETRY) if originalRequestFuture fails, so the retry volume is already
+   *                    limited to max of 2 right?
    */
   @Override
   protected CompletableFuture<V> get(GetRequestContext requestContext, K key) throws VeniceClientException {
     if (!longTailRetryEnabledForSingleGet) {
+      // TODO QQ: why special case for this?
       return super.get(requestContext, key);
     }
     final CompletableFuture<V> originalRequestFuture = super.get(requestContext, key);
@@ -137,11 +142,13 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
     });
 
     CompletableFuture.allOf(originalRequestFuture, retryFuture).whenComplete((value, throwable) -> {
+      /**
+       * If any of the futures completes with a successful result, {@link finalFuture} should
+       * have been completed with the successful result, so don't have to do anything else here.
+       */
       if (originalRequestFuture.isCompletedExceptionally() && retryFuture.isCompletedExceptionally()) {
         /**
-         * If any of the futures completes with a successful result, {@link finalFuture} should be completed
-         * with the successful result, and the following statement will have no effect.
-         * If non of the futures completes with a successful result, {@link finalFuture} must haven't completed
+         * If none of the futures completes with a successful result, {@link finalFuture} must haven't completed
          * yet, so {@link finalFuture} will be completed with an exception thrown by either future.
          */
         finalFuture.completeExceptionally(throwable);

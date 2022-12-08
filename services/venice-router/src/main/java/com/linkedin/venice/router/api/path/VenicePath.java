@@ -49,7 +49,7 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
    * And this set is mostly used to decide whether we should send retry request to any specific storage node or not.
    *
    * The detailed steps:
-   * 1. Add all the storage nodes which the original scattered request will be sent to to the set.
+   * 1. Add all the storage nodes which the original scattered request will be sent to the set.
    * 2. Remove the storage node from the set if the corresponding request is finished.
    * When retry happens, the set will contain the storage nodes, which haven't finished the original scattered requests,
    * which will be treated as slow storage nodes, and Router will try to avoid retry requests to the storage nodes from this set.

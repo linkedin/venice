@@ -10,7 +10,7 @@ import org.testng.annotations.Test;
 
 /**
  * TODO:
- *  setMaxAllowedKeyCntInBatchGetReq
+ *  Add tests for options like setMaxAllowedKeyCntInBatchGetReq
  */
 
 public class ClientConfigTest {

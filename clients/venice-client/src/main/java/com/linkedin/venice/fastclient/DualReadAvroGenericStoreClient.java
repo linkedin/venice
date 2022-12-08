@@ -59,7 +59,7 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
 
     CompletableFuture<T> latencyFuture = requestFuture.handle((response, throwable) -> {
       /**
-       * We need to record the latency metric before trying to complete {@link valueFuture} since the the pre-registered
+       * We need to record the latency metric before trying to complete {@link valueFuture} since the pre-registered
        * callbacks to {@link valueFuture} could be executed in the same thread.
        */
       latency.set(LatencyUtils.getLatencyInMS(startTimeNS));
@@ -90,7 +90,7 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
   private static <T> CompletableFuture<T> dualExecute(
       Supplier<CompletableFuture<T>> fastClientFutureSupplier,
       Supplier<CompletableFuture<T>> thinClientFutureSupplier,
-      ClientStats clientStats) {
+      ClientStats clientStats) throws VeniceClientException {
     CompletableFuture<T> valueFuture = new CompletableFuture<>();
     long startTimeNS = System.nanoTime();
     AtomicBoolean fastClientError = new AtomicBoolean(false);
@@ -128,13 +128,19 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
     return valueFuture;
   }
 
+  /* TODO both get(key) and get(ctx,key) fetches non map for vson to start with and needs some type of lazy loading? */
   @Override
   protected CompletableFuture<V> get(GetRequestContext requestContext, K key) throws VeniceClientException {
     return dualExecute(() -> super.get(requestContext, key), () -> thinClient.get(key), clientStatsForSingleGet);
   }
 
+  /* TODO both batchGet(key) and batchGet(ctx,key) fetches non map for vson to start with and needs some type of lazy loading */
   @Override
-  public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
-    return dualExecute(() -> super.batchGet(keys), () -> thinClient.batchGet(keys), clientStatsForMultiGet);
+  public CompletableFuture<Map<K, V>> batchGet(BatchGetRequestContext<K, V> requestContext, Set<K> keys)
+      throws VeniceClientException {
+    return dualExecute(
+        () -> super.batchGet(requestContext, keys),
+        () -> thinClient.batchGet(keys),
+        clientStatsForMultiGet);
   }
 }

@@ -12,41 +12,21 @@ import java.util.concurrent.CompletableFuture;
 
 /**
  * All the internal implementations of different tiers should extend this class.
+ * This class adds in {@link RequestContext} object for the communication among different tiers.
  */
+
 public abstract class InternalAvroStoreClient<K, V> implements AvroGenericStoreClient<K, V> {
   public CompletableFuture<V> get(K key) throws VeniceClientException {
     return get(new GetRequestContext(), key);
   }
 
-  /**
-   * This function is using a {@link RequestContext} object for the communication among different tiers.
-   */
   protected abstract CompletableFuture<V> get(GetRequestContext requestContext, K key) throws VeniceClientException;
 
-  /**
-   * Use StatsAvroGenericStoreClient to get a client instance.
-   * Once batchGet with streaming has stabilized the function of this class is to kickstart the internal
-   * scaffolding. When ready, uncomment the line indicated and then the new implementation will
-   * get wired in
-   * @param keys
-   * @return
-   * @throws VeniceClientException
-   */
   public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
 
-    // Uncomment below line when batchGet with streaming has stabillized
-    // return batchGet(new BatchGetRequestContext<K,V>(keys), keys);
-    throw new VeniceClientException("'batchGet' is not supported.");
+    return batchGet(new BatchGetRequestContext<K, V>(), keys);
   }
 
-  /**
-   * This implementation is for future use. It will get wired in via
-   * InternalAvroStoreClient.batchGet(Set<K> keys)
-   * @param requestContext
-   * @param keys
-   * @return
-   * @throws VeniceClientException
-   */
   protected abstract CompletableFuture<Map<K, V>> batchGet(BatchGetRequestContext<K, V> requestContext, Set<K> keys)
       throws VeniceClientException;
 

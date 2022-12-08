@@ -47,6 +47,8 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -68,6 +70,7 @@ public class DaVinciClientBasedMetadataTest {
   private CachingDaVinciClientFactory daVinciClientFactory;
   private DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore;
   protected ClientConfig clientConfig;
+  private static final Logger LOGGER = LogManager.getLogger(DaVinciClientBasedMetadataTest.class);
 
   @BeforeClass
   public void setUp() throws Exception {
@@ -76,7 +79,6 @@ public class DaVinciClientBasedMetadataTest {
     d2Client = D2TestUtils.getAndStartD2Client(veniceCluster.getZk().getAddress());
     createStore();
     String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
-
     veniceCluster.useControllerClient(controllerClient -> {
       VersionCreationResponse metaSystemStoreVersionCreationResponse =
           controllerClient.emptyPush(metaSystemStoreName, "test_bootstrap_meta_system_store", 10000);

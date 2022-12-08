@@ -37,6 +37,7 @@ import org.apache.hc.core5.io.CloseMode;
  * TODO: get rid of R2 Client inferface completely from venice-client.
  */
 public class HttpClient5BasedR2Client {
+  // TODO why not use com.linkedin.venice.SSLConfig?
   public static class SSLConfig {
     // SSL related config
     private String sslKeyStoreType;
