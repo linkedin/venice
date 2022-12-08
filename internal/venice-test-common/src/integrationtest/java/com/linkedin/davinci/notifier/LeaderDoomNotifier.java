@@ -6,6 +6,9 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
 import com.linkedin.venice.pushmonitor.OfflinePushAccessor;
 
 
+/**
+ * A test only notifier to simulate ERROR in leader replica to test single leader replica failover scenario.
+ */
 public class LeaderDoomNotifier implements VeniceNotifier {
   private static boolean doOne = true;
   private final OfflinePushAccessor accessor;
