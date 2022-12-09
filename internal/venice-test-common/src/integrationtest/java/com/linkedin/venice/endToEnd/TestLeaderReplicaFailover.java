@@ -93,7 +93,7 @@ public class TestLeaderReplicaFailover {
     clusterWrapper.close();
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT, invocationCount = 5)
   public void testLeaderReplicaFailover() throws Exception {
     ControllerClient parentControllerClient =
         new ControllerClient(clusterWrapper.getClusterName(), clusterWrapper.getAllControllersURLs());
@@ -156,7 +156,7 @@ public class TestLeaderReplicaFailover {
 
     try (VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterFactory.createBasicVeniceWriter(topic)) {
       veniceWriter.broadcastStartOfPush(true, Collections.emptyMap());
-      Map<byte[], byte[]> sortedInputRecords = generateData(100, true, 0, serializer);
+      Map<byte[], byte[]> sortedInputRecords = generateData(1000, true, 0, serializer);
       for (Map.Entry<byte[], byte[]> entry: sortedInputRecords.entrySet()) {
         veniceWriter.put(entry.getKey(), entry.getValue(), 1, null);
       }
@@ -181,11 +181,6 @@ public class TestLeaderReplicaFailover {
       InstanceConfig instanceConfig = admin.getInstanceConfig(clusterName, finalLeader1.getNodeId());
       Assert.assertEquals(instanceConfig.getDisabledPartitionsMap().size(), 1);
     });
-    routingDataRepo = clusterWrapper.getLeaderVeniceController()
-        .getVeniceHelixAdmin()
-        .getHelixVeniceClusterResources(clusterWrapper.getClusterName())
-        .getRoutingDataRepository();
-    leader = routingDataRepo.getLeaderInstance(topic, 0);
 
     // Stop the server
     clusterWrapper.stopVeniceServer(leader.getPort());

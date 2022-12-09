@@ -13,7 +13,6 @@ public class LeaderDoomNotifier implements VeniceNotifier {
   private static boolean doOne = true;
   private final OfflinePushAccessor accessor;
   private final String instanceId;
-  private static int count = 0;
 
   public LeaderDoomNotifier(OfflinePushAccessor accessor, String instanceId) {
     this.accessor = accessor;
@@ -27,6 +26,7 @@ public class LeaderDoomNotifier implements VeniceNotifier {
       doOne = false;
     } else {
       accessor.updateReplicaStatus(topic, partitionId, instanceId, COMPLETED, offset, "");
+      doOne = true;
     }
   }
 }
