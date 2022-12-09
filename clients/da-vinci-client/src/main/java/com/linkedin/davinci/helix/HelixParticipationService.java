@@ -12,6 +12,7 @@ import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
 import com.linkedin.davinci.notifier.PartitionPushStatusNotifier;
 import com.linkedin.davinci.notifier.PushMonitorNotifier;
+import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.ThreadPoolStats;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
@@ -350,8 +351,8 @@ public class HelixParticipationService extends AbstractVeniceService
     });
   }
 
-  public VeniceIngestionBackend getIngestionBackend() {
-    return ingestionBackend;
+  public void addTestIngestionNotifier(VeniceNotifier notifier) {
+    ingestionBackend.addPushStatusNotifier(notifier);
   }
 
   public Instance getInstance() {

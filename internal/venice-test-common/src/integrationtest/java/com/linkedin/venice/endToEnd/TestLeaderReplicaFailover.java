@@ -149,7 +149,7 @@ public class TestLeaderReplicaFailover {
         LeaderDoomNotifier leaderDoomNotifier = new LeaderDoomNotifier(
             participationService.getVeniceOfflinePushMonitorAccessor(),
             participationService.getInstance().getNodeId());
-        participationService.getIngestionBackend().addLeaderFollowerIngestionNotifier(leaderDoomNotifier);
+        participationService.addTestIngestionNotifier(leaderDoomNotifier);
       }
     }
     Instance finalLeader1 = leader;
