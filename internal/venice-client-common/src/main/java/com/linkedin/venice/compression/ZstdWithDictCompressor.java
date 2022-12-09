@@ -14,7 +14,6 @@ import com.github.luben.zstd.ZstdInputStream;
 import com.linkedin.venice.compression.protocol.FakeCompressingSchema;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.utils.concurrent.CloseableThreadLocal;
-import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -22,21 +21,21 @@ import java.util.ArrayList;
 import java.util.List;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.commons.io.IOUtils;
 
 
 public class ZstdWithDictCompressor extends VeniceCompressor {
   private final CloseableThreadLocal<ZstdCompressCtx> compressor;
   private final CloseableThreadLocal<ZstdDecompressCtx> decompressor;
-  private final Lazy<ZstdDictCompress> zstdDictCompress;
-  private final Lazy<ZstdDictDecompress> zstdDictDecompress;
+  private final ZstdDictCompress dictCompress;
+  private final ZstdDictDecompress dictDecompress;
 
   public ZstdWithDictCompressor(final byte[] dictionary, int level) {
     super(CompressionStrategy.ZSTD_WITH_DICT);
-    this.zstdDictCompress = Lazy.of(() -> new ZstdDictCompress(dictionary, level));
-    this.zstdDictDecompress = Lazy.of(() -> new ZstdDictDecompress(dictionary));
-    this.compressor =
-        new CloseableThreadLocal<>(() -> new ZstdCompressCtx().loadDict(zstdDictCompress.get()).setLevel(level));
-    this.decompressor = new CloseableThreadLocal<>(() -> new ZstdDecompressCtx().loadDict(zstdDictDecompress.get()));
+    this.dictCompress = new ZstdDictCompress(dictionary, level);
+    this.dictDecompress = new ZstdDictDecompress(dictionary);
+    this.compressor = new CloseableThreadLocal<>(() -> new ZstdCompressCtx().loadDict(dictCompress).setLevel(level));
+    this.decompressor = new CloseableThreadLocal<>(() -> new ZstdDecompressCtx().loadDict(dictDecompress));
   }
 
   @Override
@@ -47,11 +46,22 @@ public class ZstdWithDictCompressor extends VeniceCompressor {
   @Override
   public ByteBuffer compress(ByteBuffer data, int startPositionOfOutput) throws IOException {
     long maxDstSize = Zstd.compressBound(data.remaining());
-    if (maxDstSize > Integer.MAX_VALUE) {
+    if (maxDstSize + startPositionOfOutput > Integer.MAX_VALUE) {
       throw new ZstdException(Zstd.errGeneric(), "Max output size is greater than Integer.MAX_VALUE");
     }
     int sizeOfOutput = (int) maxDstSize + startPositionOfOutput;
-    if (data.isDirect()) {
+    if (data.hasArray()) {
+      byte[] dst = new byte[sizeOfOutput];
+      int size = compressor.get()
+          .compressByteArray(
+              dst,
+              startPositionOfOutput,
+              (int) maxDstSize,
+              data.array(),
+              data.position(),
+              data.remaining());
+      return ByteBuffer.wrap(dst, startPositionOfOutput, size);
+    } else if (data.isDirect()) {
       // TODO: It might be a decent refactor to add a pool of direct memory buffers so as to always leverage the this
       // interface and copy the results of the compression back into the passed in ByteBuffer. That would avoid
       // some of the data copy going on here.
@@ -64,23 +74,16 @@ public class ZstdWithDictCompressor extends VeniceCompressor {
       data.reset();
       return output;
     } else {
-      byte[] dst = new byte[sizeOfOutput];
-      int size = compressor.get()
-          .compressByteArray(
-              dst,
-              startPositionOfOutput,
-              (int) maxDstSize,
-              data.array(),
-              data.position(),
-              data.remaining());
-      return ByteBuffer.wrap(dst, startPositionOfOutput, size);
+      throw new IllegalArgumentException("The passed in ByteBuffer must be either direct or be backed by an array!");
     }
   }
 
   @Override
   public ByteBuffer decompress(ByteBuffer data) throws IOException {
     if (data.hasRemaining()) {
-      if (data.isDirect()) {
+      if (data.hasArray()) {
+        return decompress(data.array(), data.position(), data.remaining());
+      } else if (data.isDirect()) {
         int expectedSize = validateExpectedDecompressedSize(Zstd.decompressedSize(data));
         ByteBuffer output = ByteBuffer.allocateDirect(expectedSize);
         int actualSize = decompressor.get().decompress(output, data);
@@ -88,7 +91,7 @@ public class ZstdWithDictCompressor extends VeniceCompressor {
         validateActualDecompressedSize(actualSize, expectedSize);
         return output;
       } else {
-        return decompress(data.array(), data.position(), data.remaining());
+        throw new IllegalArgumentException("The passed in ByteBuffer must be either direct or be backed by an array!");
       }
     } else {
       return data;
@@ -114,15 +117,15 @@ public class ZstdWithDictCompressor extends VeniceCompressor {
 
   @Override
   public InputStream decompress(InputStream inputStream) throws IOException {
-    return new ZstdInputStream(inputStream).setDict(this.zstdDictDecompress.get());
+    return new ZstdInputStream(inputStream).setDict(this.dictDecompress);
   }
 
   @Override
   public void close() throws IOException {
-    this.zstdDictCompress.ifPresent(ZstdDictCompress::close);
-    this.zstdDictDecompress.ifPresent(ZstdDictDecompress::close);
     this.compressor.close();
     this.decompressor.close();
+    IOUtils.closeQuietly(this.dictCompress);
+    IOUtils.closeQuietly(this.dictDecompress);
   }
 
   private int validateExpectedDecompressedSize(long expectedSize) {

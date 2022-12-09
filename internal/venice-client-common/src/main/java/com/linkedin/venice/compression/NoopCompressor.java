@@ -17,6 +17,9 @@ public class NoopCompressor extends VeniceCompressor {
 
   @Override
   public ByteBuffer compress(ByteBuffer data, int startPositionOfOutput) throws IOException {
+    if (startPositionOfOutput != 0) {
+      throw new UnsupportedOperationException("Compression with front padding is not supported for NO_OP.");
+    }
     return data;
   }
 
