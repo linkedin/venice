@@ -19,6 +19,7 @@ import org.openjdk.jmh.annotations.Measurement;
 import org.openjdk.jmh.annotations.Mode;
 import org.openjdk.jmh.annotations.OperationsPerInvocation;
 import org.openjdk.jmh.annotations.OutputTimeUnit;
+import org.openjdk.jmh.annotations.Param;
 import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
@@ -35,21 +36,23 @@ import org.openjdk.jmh.runner.options.OptionsBuilder;
 @State(Scope.Benchmark)
 @BenchmarkMode(Mode.AverageTime)
 @OutputTimeUnit(TimeUnit.NANOSECONDS)
-public class RouterDecompressionBenchmark {
+public class ZstdDecompressionBenchmark {
   private static final int NUMBER_OF_PAYLOADS = 10_000;
-  VeniceCompressor compressor;
-  ByteBuffer[] compressedPayloads;
-  byte[] dictionary;
+  @Param({ "500", "65536" })
+  private static int PAYLOAD_SIZE;
+  private VeniceCompressor compressor;
+  private ByteBuffer[] compressedPayloads;
+  private byte[] dictionary;
+  private Random rd = new Random();
 
   @Setup
   public void setUp() throws Exception {
     this.dictionary = ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData();
     this.compressor = new CompressorFactory().createCompressorWithDictionary(dictionary, Zstd.maxCompressionLevel());
     this.compressedPayloads = new ByteBuffer[NUMBER_OF_PAYLOADS];
-    Random rd = new Random();
     for (int i = 0; i < NUMBER_OF_PAYLOADS; i++) {
-      byte[] data = new byte[64 * 1024];
-      rd.nextBytes(data);
+      byte[] data = new byte[PAYLOAD_SIZE];
+      this.rd.nextBytes(data);
       this.compressedPayloads[i] = compressor.compress(ByteBuffer.wrap(data), 0);
     }
   }
@@ -84,7 +87,7 @@ public class RouterDecompressionBenchmark {
   }
 
   public static void main(String[] args) throws Exception {
-    Options opt = new OptionsBuilder().include(RouterDecompressionBenchmark.class.getSimpleName())
+    Options opt = new OptionsBuilder().include(ZstdDecompressionBenchmark.class.getSimpleName())
         .addProfiler(GCProfiler.class)
         .build();
     new Runner(opt).run();
