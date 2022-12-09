@@ -30,7 +30,9 @@ public class HttpClientTransport implements AutoCloseable {
   private static final int DEFAULT_CONNECTION_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
   private static final int DEFAULT_SOCKET_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
   private static final int DEFAULT_REQUEST_TIMEOUT_MS = 60 * Time.MS_PER_SECOND;
-  private static final int DEFAULT_REQUEST_RETRY_WAIT_TIME_MS = 30 * Time.MS_PER_SECOND;
+  private static final int DEFAULT_REQUEST_RETRY_WAIT_TIME_MS = 1 * Time.MS_PER_SECOND;
+
+  private static final int DEFAULT_REQUEST_RETRY_COUNT = 10;
   private static final int DEFAULT_MAX_CONNECTION_PER_ROUTE = 2;
   private static final int DEFAULT_MAX_CONNECTION_TOTAL = 10;
   private static final int DEFAULT_IDLE_CONNECTION_CLEANUP_THRESHOLD_IN_MINUTES = 3 * Time.MINUTES_PER_HOUR;
@@ -111,7 +113,7 @@ public class HttpClientTransport implements AutoCloseable {
   }
 
   public <T extends SpecificRecordBase, S extends SpecificRecordBase> T sendRequest(IngestionAction action, S param) {
-    return sendRequestWithRetry(action, param, DEFAULT_REQUEST_TIMEOUT_MS, 1);
+    return sendRequestWithRetry(action, param, DEFAULT_REQUEST_TIMEOUT_MS, DEFAULT_REQUEST_RETRY_COUNT);
   }
 
   public <T extends SpecificRecordBase, S extends SpecificRecordBase> T sendRequestWithRetry(

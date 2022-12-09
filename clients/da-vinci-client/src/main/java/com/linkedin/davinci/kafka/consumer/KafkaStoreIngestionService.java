@@ -73,6 +73,7 @@ import com.linkedin.venice.writer.SharedKafkaProducerService;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -1105,12 +1106,19 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   /**
    * This method should only be called when the forked ingestion process is handing over ingestion task to main process.
-   * It will collect the user partition's latest offsetRecords from partition consumption states.
+   * It collects the user partition's latest OffsetRecords from partition consumption states (PCS).
    * In theory, PCS should be available in this situation as we haven't unsubscribed from topic. If it is not available,
    * we will throw exception as this is not as expected.
    */
   public List<ByteBuffer> getPartitionOffsetRecords(String topicName, int partition) {
-    return getStoreIngestionTask(topicName).getStatusReportAdapter().getOffsetRecordArray(partition);
+    List<ByteBuffer> offsetRecordArray = new ArrayList<>();
+    int amplificationFactor = getStoreIngestionTask(topicName).getAmplificationFactor();
+    for (int i = 0; i < amplificationFactor; i++) {
+      int subPartitionId = amplificationFactor * partition + i;
+      PartitionConsumptionState pcs = getStoreIngestionTask(topicName).getPartitionConsumptionState(subPartitionId);
+      offsetRecordArray.add(ByteBuffer.wrap(pcs.getOffsetRecord().toBytes()));
+    }
+    return offsetRecordArray;
   }
 
   public ReadOnlyStoreRepository getMetadataRepo() {

@@ -58,11 +58,11 @@ public class OffsetRecord {
     PartitionState emptyPartitionState = new PartitionState();
     emptyPartitionState.offset = LOWEST_OFFSET;
     emptyPartitionState.offsetLag = LOWEST_OFFSET_LAG;
-    emptyPartitionState.producerStates = new HashMap<>();
+    emptyPartitionState.producerStates = new VeniceConcurrentHashMap<>();
     emptyPartitionState.endOfPush = false;
     emptyPartitionState.lastUpdate = 0;
-    emptyPartitionState.databaseInfo = new HashMap<>();
-    emptyPartitionState.previousStatuses = new HashMap<>();
+    emptyPartitionState.databaseInfo = new VeniceConcurrentHashMap<>();
+    emptyPartitionState.previousStatuses = new VeniceConcurrentHashMap<>();
     emptyPartitionState.leaderOffset = DEFAULT_UPSTREAM_OFFSET;
     emptyPartitionState.upstreamOffsetMap = new VeniceConcurrentHashMap<>();
     emptyPartitionState.upstreamVersionTopicOffset = DEFAULT_UPSTREAM_OFFSET;

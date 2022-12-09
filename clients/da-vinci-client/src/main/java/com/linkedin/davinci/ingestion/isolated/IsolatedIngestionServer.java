@@ -369,7 +369,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
       int partitionId = report.partitionId;
       long offset = report.offset;
 
-      // Collect offsetRecord array and store version state after consumption stops.
+      // Collect the latest OffsetRecord ByteBuffer array and store version state before consumption stops.
       if (ingestionReportType.equals(IngestionReportType.COMPLETED)) {
         // Set offset record in ingestion report.
         report.offsetRecordArray = getStoreIngestionService().getPartitionOffsetRecords(topicName, partitionId);
