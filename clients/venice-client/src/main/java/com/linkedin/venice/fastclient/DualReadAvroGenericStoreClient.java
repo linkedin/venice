@@ -90,7 +90,7 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
   private static <T> CompletableFuture<T> dualExecute(
       Supplier<CompletableFuture<T>> fastClientFutureSupplier,
       Supplier<CompletableFuture<T>> thinClientFutureSupplier,
-      ClientStats clientStats) throws VeniceClientException {
+      ClientStats clientStats) {
     CompletableFuture<T> valueFuture = new CompletableFuture<>();
     long startTimeNS = System.nanoTime();
     AtomicBoolean fastClientError = new AtomicBoolean(false);

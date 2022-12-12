@@ -131,7 +131,7 @@ public class RetriableAvroGenericStoreClientTest {
     ClientConfig clientConfig = mock(ClientConfig.class);
     doReturn(true).when(clientConfig).isLongTailRetryEnabledForSingleGet();
     doReturn((int) TimeUnit.MILLISECONDS.toMicros(LONG_TAIL_RETRY_THRESHOLD_IN_MS)).when(clientConfig)
-        .getLongTailRetryThresholdForSingletGetInMicroSeconds();
+        .getLongTailRetryThresholdForSingleGetInMicroSeconds();
     String value;
     GetRequestContext getRequestContext;
 

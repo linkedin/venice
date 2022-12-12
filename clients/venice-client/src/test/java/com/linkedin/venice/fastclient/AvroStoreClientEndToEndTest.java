@@ -290,8 +290,8 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
             .setR2Client(r2Client)
             .setSpeculativeQueryEnabled(false)
             .setLongTailRetryEnabledForSingleGet(true)
-            .setLongTailRetryThresholdForSingletGetInMicroSeconds(10); // Try to trigger long-tail retry as much as
-                                                                       // possible.
+            .setLongTailRetryThresholdForSingleGetInMicroSeconds(10); // Try to trigger long-tail retry as much as
+                                                                      // possible.
 
     runTest(clientConfigBuilder, true, false, 2, metricsRepository -> {
       // Validate long-tail retry related metrics

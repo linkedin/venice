@@ -44,7 +44,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
     this.longTailRetryEnabledForSingleGet = clientConfig.isLongTailRetryEnabledForSingleGet();
     this.longTailRetryEnabledForBatchGet = clientConfig.isLongTailRetryEnabledForBatchGet();
     this.longTailRetryThresholdForSingleGetInMicroseconds =
-        clientConfig.getLongTailRetryThresholdForSingletGetInMicroSeconds();
+        clientConfig.getLongTailRetryThresholdForSingleGetInMicroSeconds();
     this.longTailRetryThresholdForBatchGetInMicroseconds =
         clientConfig.getLongTailRetryThresholdForBatchGetInMicroSeconds();
   }

@@ -125,8 +125,8 @@ public class InstanceHealthMonitor implements Closeable {
         counterResetConsumer.accept(instance);
       } else {
         /**
-         * Even when httpStatus is not 200/404, we want to reset the counter after some delay those
-         * stores can be rechecked for health once in a while rather than being permanently blocked
+         * Even when httpStatus is not 200/404, we want to reset the counter after some delay by
+         * rechecking for health once in a while rather than being permanently blocking it
          */
         timeoutProcessor.schedule(
             () -> counterResetConsumer.accept(instance),

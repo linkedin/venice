@@ -20,7 +20,6 @@ import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.fastclient.factory.ClientFactory;
 import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import com.linkedin.venice.fastclient.schema.TestValueSchema;
-import com.linkedin.venice.fastclient.transport.HttpClient5BasedR2Client;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -120,10 +119,6 @@ public abstract class AbstractClientEndToEndSetup {
     return new Object[][] { { false }, { true }, { false }, { true }, { false }, { true }, { false }, { true } };
   }
 
-  protected Client constructR2Client() throws Exception {
-    return HttpClient5BasedR2Client.getR2Client(SslUtils.getVeniceLocalSslFactory().getSSLContext(), 8);
-  }
-
   @BeforeClass(alwaysRun = true)
   public void setUp() throws Exception {
     Utils.thisIsLocalhost();
@@ -131,7 +126,7 @@ public abstract class AbstractClientEndToEndSetup {
     props.put(SERVER_HTTP2_INBOUND_ENABLED, "true");
     veniceCluster = ServiceFactory.getVeniceCluster(1, 2, 1, 2, 100, true, false, props);
 
-    r2Client = constructR2Client();
+    r2Client = ClientTestUtils.getR2Client(ClientTestUtils.ClientType.HTTP_2_BASED_HTTPCLIENT5);
 
     d2Client = D2TestUtils.getAndStartD2Client(veniceCluster.getZk().getAddress());
 

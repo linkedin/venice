@@ -55,15 +55,18 @@ import org.testng.internal.collections.Ints;
 
 
 /**
+ * This class simulates fastclient
  * Time is expressed as timeticks conventionally between 0 and 99. This is meant to simulate timed ordering of
  * events while allowing control over the ordering itself. Each timetick is executed approx 1 ms apart
  * The simulator guarantees that every event with a lower timetick will be executed BEFORE one with higher timetick.
- * If events have same timetick they can be executed in any order. Events can be executed in different threads
+ * If events have same timetick they can be executed in any order. Events can be executed in different threads.
  * Initially the simulator is designed to simulate interactions with the R2 client . Later on more events can
  * be supported.
- * ExpectedRequestEvent  simulates timed expectation that some request to a remote host was sent. The timetick
- * supplied by the event means that as soon as the expected request is matched , time will be set to the given timetick
- * SendResponseEvent simulates responses from that host at the given time.
+ *
+ * {@link ExpectedRequestEvent} simulates timed expectation that some request to a remote host was sent. The timetick
+ * supplied by the event means that as soon as the expected request is matched, time will be set to the given timetick.
+ *
+ * {@link SendResponseEvent} simulates responses from that host at the given time.
  */
 public class TestClientSimulator implements Client {
   private static final Logger LOGGER = LogManager.getLogger(TestClientSimulator.class);
@@ -92,13 +95,15 @@ public class TestClientSimulator implements Client {
   private int longTailRetryThresholdForBatchGetInMicroseconds = 0;
 
   public TestClientSimulator() {
+    // get()
     this.keySerializer = FastSerializerDeserializerFactory.getAvroGenericSerializer(KEY_VALUE_SCHEMA);
     this.keyDeserializer =
         FastSerializerDeserializerFactory.getAvroGenericDeserializer(KEY_VALUE_SCHEMA, KEY_VALUE_SCHEMA);
-    this.multiGetRequestDeserializer = FastSerializerDeserializerFactory
-        .getFastAvroSpecificDeserializer(MultiGetRouterRequestKeyV1.SCHEMA$, MultiGetRouterRequestKeyV1.class);
+    // multiGet()
     this.multiGetResponseSerializer =
         FastSerializerDeserializerFactory.getFastAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
+    this.multiGetRequestDeserializer = FastSerializerDeserializerFactory
+        .getFastAvroSpecificDeserializer(MultiGetRouterRequestKeyV1.SCHEMA$, MultiGetRouterRequestKeyV1.class);
   }
 
   /**
@@ -115,7 +120,7 @@ public class TestClientSimulator implements Client {
   }
 
   /**
-   * Partition Given keys into equal partitions
+   * Partition given keys into equal partitions
    * @param numPartitions number of partitions
    * @return partitioned Keys with partition numbers from 0 to numPartitions - 1
    */
@@ -227,10 +232,10 @@ public class TestClientSimulator implements Client {
 
   }
 
-  public TestClientSimulator setKeysToPartitions(Map<String, Integer> keysToPartitions) {
+  /*public TestClientSimulator setKeysToPartitions(Map<String, Integer> keysToPartitions) {
     this.keysToPartitions = keysToPartitions;
     return this;
-  }
+  }*/
 
   public TestClientSimulator assignRouteToPartitions(String route, int... partitions) {
     Set<Integer> partitionSet = this.routeToPartitions.computeIfAbsent(route, r -> new HashSet<>());
@@ -240,10 +245,10 @@ public class TestClientSimulator implements Client {
     return this;
   }
 
-  public TestClientSimulator setRouteToPartitions(Map<String, Set<Integer>> routeToPartitions) {
+  /*public TestClientSimulator setRouteToPartitions(Map<String, Set<Integer>> routeToPartitions) {
     this.routeToPartitions = routeToPartitions;
     return this;
-  }
+  }*/
 
   public Map<String, String> getKeyValues() {
     return keyValues;
@@ -422,6 +427,7 @@ public class TestClientSimulator implements Client {
     return simulatorComplete;
   }
 
+  // TODO need to add tests for this
   public TestClientSimulator setSpeculativeQueryEnabled(boolean speculativeQueryEnabled) {
     this.speculativeQueryEnabled = speculativeQueryEnabled;
     return this;
@@ -462,6 +468,7 @@ public class TestClientSimulator implements Client {
       }
     });
 
+    // TODO: Tests for simulating dual read?
     clientConfigBuilder.setDualReadEnabled(false);
     clientConfig = clientConfigBuilder.build();
 

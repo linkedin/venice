@@ -105,8 +105,8 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
           "'DaVinciClientForMetaStore' should not be null in 'ClientConfig' when DaVinciClientBasedMetadata is being used.");
     }
     this.daVinciClient = clientConfig.getDaVinciClientForMetaStore();
-    this.refreshIntervalInSeconds = clientConfig.getMetadataRefreshInvervalInSeconds() > 0
-        ? clientConfig.getMetadataRefreshInvervalInSeconds()
+    this.refreshIntervalInSeconds = clientConfig.getMetadataRefreshIntervalInSeconds() > 0
+        ? clientConfig.getMetadataRefreshIntervalInSeconds()
         : DEFAULT_REFRESH_INTERVAL_IN_SECONDS;
     this.storeMetaKeyMap
         .put(STORE_KEY_SCHEMAS_KEY, MetaStoreDataType.STORE_KEY_SCHEMAS.getStoreMetaKey(new HashMap<String, String>() {

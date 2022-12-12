@@ -53,10 +53,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
    */
   private final int maxAllowedKeyCntInBatchGetReq;
   private final DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore;
-  private final long metadataRefreshInvervalInSeconds;
+  private final long metadataRefreshIntervalInSeconds;
   private final boolean longTailRetryEnabledForSingleGet;
   private final boolean longTailRetryEnabledForBatchGet;
-  private final int longTailRetryThresholdForSingletGetInMicroSeconds;
+  private final int longTailRetryThresholdForSingleGetInMicroSeconds;
   private final int longTailRetryThresholdForBatchGetInMicroSeconds;
   private final ClusterStats clusterStats;
   private final boolean isVsonStore;
@@ -80,9 +80,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       int routingPendingRequestCounterInstanceBlockThreshold,
       int maxAllowedKeyCntInBatchGetReq,
       DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore,
-      long metadataRefreshInvervalInSeconds,
+      long metadataRefreshIntervalInSeconds,
       boolean longTailRetryEnabledForSingleGet,
-      int longTailRetryThresholdForSingletGetInMicroSeconds,
+      int longTailRetryThresholdForSingleGetInMicroSeconds,
       boolean longTailRetryEnabledForBatchGet,
       int longTailRetryThresholdForBatchGetInMicroSeconds,
       boolean isVsonStore) {
@@ -112,10 +112,18 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     this.dualReadEnabled = dualReadEnabled;
     this.genericThinClient = genericThinClient;
     this.specificThinClient = specificThinClient;
-    if (this.dualReadEnabled && this.specificThinClient == null && this.genericThinClient == null) {
-      throw new VeniceClientException(
-          "Either param: specificThinClient or param: genericThinClient"
-              + " should be specified when dual read is enabled");
+    if (this.dualReadEnabled) {
+      if (this.specificThinClient == null && this.genericThinClient == null) {
+        throw new VeniceClientException(
+            "Either param: specificThinClient or param: genericThinClient"
+                + " should be specified when dual read is enabled");
+      }
+    } else {
+      if (this.specificThinClient != null || this.genericThinClient != null) {
+        throw new VeniceClientException(
+            "Both param: specificThinClient and param: genericThinClient"
+                + " should not be specified when dual read is not enabled");
+      }
     }
 
     this.routingLeakedRequestCleanupThresholdMS = routingLeakedRequestCleanupThresholdMS > 0
@@ -139,26 +147,31 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     this.maxAllowedKeyCntInBatchGetReq = maxAllowedKeyCntInBatchGetReq;
 
     this.daVinciClientForMetaStore = daVinciClientForMetaStore;
-    this.metadataRefreshInvervalInSeconds = metadataRefreshInvervalInSeconds;
+    this.metadataRefreshIntervalInSeconds = metadataRefreshIntervalInSeconds;
 
     this.longTailRetryEnabledForSingleGet = longTailRetryEnabledForSingleGet;
-    this.longTailRetryThresholdForSingletGetInMicroSeconds = longTailRetryThresholdForSingletGetInMicroSeconds;
+    this.longTailRetryThresholdForSingleGetInMicroSeconds = longTailRetryThresholdForSingleGetInMicroSeconds;
 
     this.longTailRetryEnabledForBatchGet = longTailRetryEnabledForBatchGet;
     this.longTailRetryThresholdForBatchGetInMicroSeconds = longTailRetryThresholdForBatchGetInMicroSeconds;
 
-    if (this.longTailRetryThresholdForSingletGetInMicroSeconds <= 0) {
-      throw new VeniceClientException(
-          "longTailRetryThresholdForSingletGetInMicroSeconds must be positive, but got: "
-              + this.longTailRetryThresholdForSingletGetInMicroSeconds);
+    if (this.longTailRetryEnabledForSingleGet) {
+      if (this.longTailRetryThresholdForSingleGetInMicroSeconds <= 0) {
+        throw new VeniceClientException(
+            "longTailRetryThresholdForSingleGetInMicroSeconds must be positive, but got: "
+                + this.longTailRetryThresholdForSingleGetInMicroSeconds);
+      }
     }
 
-    if (this.longTailRetryThresholdForBatchGetInMicroSeconds <= 0) {
-      throw new VeniceClientException(
-          "longTailRetryThresholdForBatchGetInMicroSeconds must be positive, but got: "
-              + this.longTailRetryThresholdForBatchGetInMicroSeconds);
+    if (this.longTailRetryEnabledForBatchGet) {
+      if (this.longTailRetryThresholdForBatchGetInMicroSeconds <= 0) {
+        throw new VeniceClientException(
+            "longTailRetryThresholdForBatchGetInMicroSeconds must be positive, but got: "
+                + this.longTailRetryThresholdForBatchGetInMicroSeconds);
+      }
     }
 
+    // TODO: QQ what about this case for BatchGet?
     if (this.speculativeQueryEnabled && this.longTailRetryEnabledForSingleGet) {
       throw new VeniceClientException(
           "Speculative query feature can't be enabled together with long-tail retry for single-get");
@@ -231,16 +244,16 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return daVinciClientForMetaStore;
   }
 
-  public long getMetadataRefreshInvervalInSeconds() {
-    return metadataRefreshInvervalInSeconds;
+  public long getMetadataRefreshIntervalInSeconds() {
+    return metadataRefreshIntervalInSeconds;
   }
 
   public boolean isLongTailRetryEnabledForSingleGet() {
     return longTailRetryEnabledForSingleGet;
   }
 
-  public int getLongTailRetryThresholdForSingletGetInMicroSeconds() {
-    return longTailRetryThresholdForSingletGetInMicroSeconds;
+  public int getLongTailRetryThresholdForSingleGetInMicroSeconds() {
+    return longTailRetryThresholdForSingleGetInMicroSeconds;
   }
 
   public boolean isLongTailRetryEnabledForBatchGet() {
@@ -283,6 +296,12 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private long routingUnavailableRequestCounterResetDelayMS = -1;
     private int routingPendingRequestCounterInstanceBlockThreshold = -1;
 
+    // TODO: 2 was set initially for singleGet based multiGet for a specific use case.
+    // Now as streaming batchGet is validated, this number should be increased further.
+    // Check how thinclient handles this: Global setting or per store setting.
+    // Setting this in fastclient which uses this in the client itself vs thinclient
+    // which uses this in router should be considered before setting this default limit.
+    // TODO: Add testcases once this is finalized.
     private int maxAllowedKeyCntInBatchGetReq = 2;
 
     private DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore;
@@ -290,7 +309,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private long metadataRefreshIntervalInSeconds = -1;
 
     private boolean longTailRetryEnabledForSingleGet = false;
-    private int longTailRetryThresholdForSingletGetInMicroSeconds = 1000; // 1ms.
+    private int longTailRetryThresholdForSingleGetInMicroSeconds = 1000; // 1ms.
 
     private boolean longTailRetryEnabledForBatchGet = false;
     private int longTailRetryThresholdForBatchtGetInMicroSeconds = 10000; // 10ms.
@@ -403,9 +422,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
-    public ClientConfigBuilder<K, V, T> setLongTailRetryThresholdForSingletGetInMicroSeconds(
-        int longTailRetryThresholdForSingletGetInMicroSeconds) {
-      this.longTailRetryThresholdForSingletGetInMicroSeconds = longTailRetryThresholdForSingletGetInMicroSeconds;
+    public ClientConfigBuilder<K, V, T> setLongTailRetryThresholdForSingleGetInMicroSeconds(
+        int longTailRetryThresholdForSingleGetInMicroSeconds) {
+      this.longTailRetryThresholdForSingleGetInMicroSeconds = longTailRetryThresholdForSingleGetInMicroSeconds;
       return this;
     }
 
@@ -447,7 +466,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setDaVinciClientForMetaStore(daVinciClientForMetaStore)
           .setMetadataRefreshIntervalInSeconds(metadataRefreshIntervalInSeconds)
           .setLongTailRetryEnabledForSingleGet(longTailRetryEnabledForSingleGet)
-          .setLongTailRetryThresholdForSingletGetInMicroSeconds(longTailRetryThresholdForSingletGetInMicroSeconds)
+          .setLongTailRetryThresholdForSingleGetInMicroSeconds(longTailRetryThresholdForSingleGetInMicroSeconds)
           .setLongTailRetryEnabledForBatchGet(longTailRetryEnabledForBatchGet)
           .setLongTailRetryThresholdForBatchGetInMicroSeconds(longTailRetryThresholdForBatchtGetInMicroSeconds)
           .setVsonStore(isVsonStore);
@@ -475,7 +494,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           daVinciClientForMetaStore,
           metadataRefreshIntervalInSeconds,
           longTailRetryEnabledForSingleGet,
-          longTailRetryThresholdForSingletGetInMicroSeconds,
+          longTailRetryThresholdForSingleGetInMicroSeconds,
           longTailRetryEnabledForBatchGet,
           longTailRetryThresholdForBatchtGetInMicroSeconds,
           isVsonStore);
