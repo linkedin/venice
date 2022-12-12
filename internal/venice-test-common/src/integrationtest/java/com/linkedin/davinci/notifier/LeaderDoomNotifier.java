@@ -21,12 +21,11 @@ public class LeaderDoomNotifier implements VeniceNotifier {
 
   @Override
   public void completed(String topic, int partitionId, long offset, String message) {
-    if (doOne && "LEADER".equals(message) && !isSystemStore(topic)) {
+    if (doOne && message.equals("LEADER") && !isSystemStore(topic)) {
       accessor.updateReplicaStatus(topic, partitionId, instanceId, ERROR, "");
       doOne = false;
     } else {
       accessor.updateReplicaStatus(topic, partitionId, instanceId, COMPLETED, offset, "");
-      doOne = true;
     }
   }
 }
