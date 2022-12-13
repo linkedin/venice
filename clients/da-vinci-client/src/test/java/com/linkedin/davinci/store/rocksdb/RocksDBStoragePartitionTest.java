@@ -33,6 +33,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.rocksdb.ComparatorOptions;
 import org.rocksdb.Options;
+import org.rocksdb.RocksDBException;
 import org.rocksdb.util.BytewiseComparator;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
@@ -244,7 +245,7 @@ public class RocksDBStoragePartitionTest {
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testIngestionFormatVersionChange(boolean sorted) {
+  public void testIngestionFormatVersionChange(boolean sorted) throws RocksDBException {
     Optional<CheckSum> runningChecksum = CheckSum.getInstance(CheckSumType.MD5);
     String storeName = Utils.getUniqueString("test_store");
     String storeDir = getTempDatabaseDir(storeName);
@@ -347,6 +348,7 @@ public class RocksDBStoragePartitionTest {
     // Verify current ingestion mode is in deferred-write mode
     Assert.assertTrue(storagePartition.verifyConfig(partitionConfig));
 
+    storagePartition.rocksDB.compactRange();
     // Re-open it in read/write mode
     storagePartition.close();
     partitionConfig.setDeferredWrite(false);
@@ -360,6 +362,8 @@ public class RocksDBStoragePartitionTest {
         null,
         ROCKSDB_THROTTLER,
         rocksDBServerConfig);
+
+    storagePartition.rocksDB.compactRange();
 
     // Verify all the key/value pairs can be read using the new format
     for (Map.Entry<String, String> entry: inputRecords.entrySet()) {
