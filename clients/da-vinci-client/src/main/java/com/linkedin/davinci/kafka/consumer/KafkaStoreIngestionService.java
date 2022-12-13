@@ -1112,10 +1112,11 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    */
   public List<ByteBuffer> getPartitionOffsetRecords(String topicName, int partition) {
     List<ByteBuffer> offsetRecordArray = new ArrayList<>();
-    int amplificationFactor = getStoreIngestionTask(topicName).getAmplificationFactor();
+    StoreIngestionTask storeIngestionTask = getStoreIngestionTask(topicName);
+    int amplificationFactor = storeIngestionTask.getAmplificationFactor();
     for (int i = 0; i < amplificationFactor; i++) {
       int subPartitionId = amplificationFactor * partition + i;
-      PartitionConsumptionState pcs = getStoreIngestionTask(topicName).getPartitionConsumptionState(subPartitionId);
+      PartitionConsumptionState pcs = storeIngestionTask.getPartitionConsumptionState(subPartitionId);
       offsetRecordArray.add(ByteBuffer.wrap(pcs.getOffsetRecord().toBytes()));
     }
     return offsetRecordArray;

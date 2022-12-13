@@ -146,9 +146,12 @@ public class StatusReportAdapter {
    * status in subPartition level and report once a status is ready to report for this partition.
    */
   class PartitionReportStatus {
-    private final Map<String, AtomicInteger> statusRecordCounter = new VeniceConcurrentHashMap<>();
-    private final Map<String, List<AtomicBoolean>> statusRecordMap = new VeniceConcurrentHashMap<>();
-    private final Map<String, AtomicBoolean> statusReportMap = new VeniceConcurrentHashMap<>();
+    // This data structure indicates how many subPartitions have recorded this ingestion status.
+    private final Map<String, AtomicInteger> statusRecordCounterMap = new VeniceConcurrentHashMap<>();
+    // This data structure stores the details of the status recording for each subPartitions.
+    private final Map<String, List<AtomicBoolean>> statusRecordDetailsMap = new VeniceConcurrentHashMap<>();
+    // This data structure indicates whether a specific status for this user partition has been reported.
+    private final Map<String, AtomicBoolean> statusReportIndicatorMap = new VeniceConcurrentHashMap<>();
     private final int userPartition;
 
     public PartitionReportStatus(int userPartition) {
@@ -171,9 +174,9 @@ public class StatusReportAdapter {
       int subPartitionIndex = subPartitionId - userPartition * amplificationFactor;
       // The version aware subPartition status name makes multiple incremental pushes work properly.
       String versionAwareStatus = status.name() + (version.map(s -> "-" + s).orElse(""));
-      statusRecordCounter.putIfAbsent(versionAwareStatus, new AtomicInteger(0));
-      statusReportMap.putIfAbsent(versionAwareStatus, new AtomicBoolean(false));
-      statusRecordMap.computeIfAbsent(versionAwareStatus, v -> {
+      statusRecordCounterMap.putIfAbsent(versionAwareStatus, new AtomicInteger(0));
+      statusReportIndicatorMap.putIfAbsent(versionAwareStatus, new AtomicBoolean(false));
+      statusRecordDetailsMap.computeIfAbsent(versionAwareStatus, v -> {
         List<AtomicBoolean> list = new ArrayList<>();
         for (int i = 0; i < amplificationFactor; i++) {
           list.add(new AtomicBoolean(false));
@@ -181,7 +184,7 @@ public class StatusReportAdapter {
         return list;
       });
 
-      AtomicInteger counter = statusRecordCounter.get(versionAwareStatus);
+      AtomicInteger counter = statusRecordCounterMap.get(versionAwareStatus);
       int updatedCount;
       /*
        * For inc push to RT policy, the control msg is only consumed by leader subPartition. We need to record the
@@ -198,18 +201,20 @@ public class StatusReportAdapter {
          * safeguard to avoid race condition.
          */
         boolean updateResult =
-            statusRecordMap.get(versionAwareStatus).get(subPartitionIndex).compareAndSet(false, true);
+            statusRecordDetailsMap.get(versionAwareStatus).get(subPartitionIndex).compareAndSet(false, true);
         if (updateResult) {
           if (logStatus) {
             LOGGER.info(
                 "{} reported from subPartition: {}, status report details: {}.",
                 versionAwareStatus,
                 subPartitionId,
-                statusRecordMap.get(versionAwareStatus));
+                statusRecordDetailsMap.get(versionAwareStatus));
           }
           partitionConsumptionState.recordSubPartitionStatus(versionAwareStatus);
+          updatedCount = counter.incrementAndGet();
+        } else {
+          updatedCount = counter.get();
         }
-        updatedCount = updateResult ? counter.incrementAndGet() : counter.get();
       }
       if (updatedCount == amplificationFactor) {
         maybeReportStatus(status, versionAwareStatus, report, logStatus);
@@ -222,7 +227,7 @@ public class StatusReportAdapter {
         Runnable report,
         boolean logStatus) {
       // This is a safeguard to make sure we only report exactly once for each status.
-      if (statusReportMap.get(versionAwareStatus).compareAndSet(false, true)) {
+      if (statusReportIndicatorMap.get(versionAwareStatus).compareAndSet(false, true)) {
         if (logStatus) {
           LOGGER.info("Reporting status {} for user partition: {}.", versionAwareStatus, userPartition);
         }
