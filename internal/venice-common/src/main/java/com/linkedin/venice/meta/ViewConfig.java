@@ -7,7 +7,7 @@ import java.util.Map;
 
 @JsonDeserialize(as = ViewConfigImpl.class)
 public interface ViewConfig extends DataModelBackedStructure<StoreViewConfig> {
-  ViewType getViewType();
+  String getClassName();
 
   Map<String, String> getParams();
 }

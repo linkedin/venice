@@ -221,7 +221,7 @@ public enum Arg {
   DISABLE_LOG("disable-log", "dl", false, "Disable logs from internal classes. Only print command output on console"),
   STORE_VIEW_CONFIGS(
       "storage-view-configs", "svc", true,
-      "Config that describes views to be added for a store.  Input is a json map.  Example: {\"ExampleView\": {\"viewType\": \"CHANGE_CAPTURE\",\"params\": {}}}"
+      "Config that describes views to be added for a store.  Input is a json map.  Example: {\"ExampleView\": {\"viewClassName\": \"com.linkedin.venice.views.ChangeCaptureView\",\"params\": {}}}"
   ),
 
   START_DATE("start-date", "sd", true, "Start date in PST. Example: 2020-10-10 10:10:10"),
