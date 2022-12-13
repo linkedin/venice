@@ -1896,7 +1896,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     String storeName = Utils.getUniqueString("test_param_inheritance");
     veniceAdmin.createStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
     Map<String, String> viewConfig = new HashMap<>();
-    viewConfig.put("changeCapture", "\"viewType\" : \"CHANGE_CAPTURE\"");
+    viewConfig.put("changeCapture", "\"viewClassName\" : \"com.linkedin.venice.views.ChangeCaptureView\"");
     veniceAdmin.updateStore(
         clusterName,
         storeName,
