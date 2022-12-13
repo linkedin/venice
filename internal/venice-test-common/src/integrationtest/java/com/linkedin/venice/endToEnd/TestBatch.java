@@ -471,13 +471,6 @@ public abstract class TestBatch {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testIncrementalPushWritesToRealTimeTopicWithPolicy() throws Exception {
-    /**
-     * N.B. This test has some flaky issues where it occasionally times out... It seems to be specific to
-     *      the {@link TestBatchForIngestionIsolation} subclass, and manifests in the form of one of the
-     *      three push jobs below timing out. Adding some logs just to try to weed out the relevant
-     *      start/end boundaries in build logs since the CI seems to jumble them up sometimes, especially
-     *      when flaky retries are involved...
-     */
     double randomNumber = Math.random();
     String classAndFunctionName = getClass().getSimpleName() + ".testIncrementalPushWritesToRealTimeTopicWithPolicy()";
     String uniqueTestId = "attempt [" + randomNumber + "] of " + classAndFunctionName;
