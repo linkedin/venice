@@ -5,14 +5,15 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Collections;
 import java.util.Map;
-import org.apache.avro.Schema;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
+import java.util.Properties;
 
 
 public class ChangeCaptureView extends VeniceView {
   public static String CHANGE_CAPTURE_TOPIC_SUFFIX = "_cc";
+  public static String CHANGE_CAPTURE_VIEW_WRITER_CLASS_NAME =
+      "com.linkedin.davinci.store.view.ChangeCaptureViewWriter";
 
-  public ChangeCaptureView(VeniceProperties props, Store store) {
+  public ChangeCaptureView(Properties props, Store store) {
     super(props, store);
   }
 
@@ -24,8 +25,8 @@ public class ChangeCaptureView extends VeniceView {
   }
 
   @Override
-  public void processRecord(ConsumerRecord record, int version, Schema keySchema, Schema valueSchema) {
-    // query local transientRecord/rockdb for current value.
+  public String getWriterClassName() {
+    return CHANGE_CAPTURE_VIEW_WRITER_CLASS_NAME;
   }
 
 }

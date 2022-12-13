@@ -2950,7 +2950,8 @@ public abstract class StoreIngestionTaskTest {
         mockVeniceStoreVersionConfig,
         0,
         false,
-        Optional.empty());
+        Optional.empty(),
+        Collections.emptyMap());
 
     TopicSwitch topicSwitch = new TopicSwitch();
     topicSwitch.sourceKafkaServers = Collections.singletonList("localhost");
@@ -3021,7 +3022,8 @@ public abstract class StoreIngestionTaskTest {
             storeConfig,
             -1,
             false,
-            Optional.empty()));
+            Optional.empty(),
+            Collections.emptyMap()));
 
     OffsetRecord offsetRecord = mock(OffsetRecord.class);
     doReturn("testStore_v1").when(offsetRecord).getLeaderTopic();

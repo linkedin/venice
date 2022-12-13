@@ -19,6 +19,7 @@ import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.record.ValueRecord;
+import com.linkedin.davinci.store.view.VeniceViewWriter;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -147,6 +148,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   protected final Int2ObjectMap<String> kafkaClusterIdToUrlMap;
   private long dataRecoveryCompletionTimeLagThresholdInMs = 0;
 
+  private final Map<String, VeniceViewWriter> viewWriters;
+
   public LeaderFollowerStoreIngestionTask(
       StoreIngestionTaskFactory.Builder builder,
       Store store,
@@ -168,6 +171,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         isIsolatedIngestion,
         cacheBackend,
         builder.getLeaderFollowerNotifiers());
+    // TODO: Make this a thing
+    this.viewWriters = Collections.emptyMap();
     /**
      * We are going to apply fast leader failover for per user store system store since it is time sensitive, and if the
      * split-brain problem happens in prod, we could design a way to periodically produce snapshot to the meta system
@@ -3021,5 +3026,18 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           lag);
     }
     return lag;
+  }
+
+  @Override
+  protected void processVersionSwapMessage(
+      ControlMessage controlMessage,
+      int partition,
+      PartitionConsumptionState partitionConsumptionState) {
+
+    // Iterate through list of views for the store and process the control message.
+    for (VeniceViewWriter viewWriter: viewWriters.values()) {
+      // TODO: at some point, we should do this on more or all control messages potentially as we add more view types
+      viewWriter.processControlMessage(controlMessage, partition, partitionConsumptionState, this.versionNumber);
+    }
   }
 }
