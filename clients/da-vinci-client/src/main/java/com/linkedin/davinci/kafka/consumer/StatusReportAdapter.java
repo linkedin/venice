@@ -14,14 +14,11 @@ import static com.linkedin.venice.pushmonitor.SubPartitionStatus.TOPIC_SWITCH_RE
 import com.linkedin.venice.exceptions.VeniceIngestionTaskKilledException;
 import com.linkedin.venice.pushmonitor.SubPartitionStatus;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.logging.log4j.LogManager;
@@ -52,14 +49,6 @@ public class StatusReportAdapter {
    */
   public void initializePartitionReportStatus(int userPartition) {
     partitionReportStatus.put(userPartition, new PartitionReportStatus(userPartition));
-  }
-
-  /**
-   * This method retrieves a list of ByteBuffer serialized from OffsetRecord. These OffsetRecords contain the latest
-   * ingestion progress of all subPartitions inside the specified user partition.
-   */
-  public List<ByteBuffer> getOffsetRecordArray(int userPartition) {
-    return partitionReportStatus.get(userPartition).getOffsetRecordArray();
   }
 
   // This method is called when PartitionConsumptionState are not initialized
@@ -157,25 +146,16 @@ public class StatusReportAdapter {
    * status in subPartition level and report once a status is ready to report for this partition.
    */
   class PartitionReportStatus {
-    private final Map<String, AtomicInteger> statusRecordCounter = new VeniceConcurrentHashMap<>();
-    private final Map<String, Set<Integer>> statusRecordMap = new VeniceConcurrentHashMap<>();
-    private final Map<String, AtomicBoolean> statusReportMap = new VeniceConcurrentHashMap<>();
-    private final Map<Integer, ByteBuffer> partitionStateMap = new VeniceConcurrentHashMap<>();
+    // This data structure indicates how many subPartitions have recorded this ingestion status.
+    private final Map<String, AtomicInteger> statusRecordCounterMap = new VeniceConcurrentHashMap<>();
+    // This data structure stores the details of the status recording for each subPartitions.
+    private final Map<String, List<AtomicBoolean>> statusRecordDetailsMap = new VeniceConcurrentHashMap<>();
+    // This data structure indicates whether a specific status for this user partition has been reported.
+    private final Map<String, AtomicBoolean> statusReportIndicatorMap = new VeniceConcurrentHashMap<>();
     private final int userPartition;
 
     public PartitionReportStatus(int userPartition) {
       this.userPartition = userPartition;
-    }
-
-    /**
-     * Return the OffsetRecord array for all subPartitions.
-     */
-    public List<ByteBuffer> getOffsetRecordArray() {
-      List<ByteBuffer> offsetRecordArray = new ArrayList<>();
-      for (int i = 0; i < amplificationFactorAdapter.getAmplificationFactor(); i++) {
-        offsetRecordArray.add(partitionStateMap.get(i));
-      }
-      return offsetRecordArray;
     }
 
     /**
@@ -194,11 +174,17 @@ public class StatusReportAdapter {
       int subPartitionIndex = subPartitionId - userPartition * amplificationFactor;
       // The version aware subPartition status name makes multiple incremental pushes work properly.
       String versionAwareStatus = status.name() + (version.map(s -> "-" + s).orElse(""));
-      statusRecordCounter.putIfAbsent(versionAwareStatus, new AtomicInteger(0));
-      statusReportMap.putIfAbsent(versionAwareStatus, new AtomicBoolean(false));
-      statusRecordMap.putIfAbsent(versionAwareStatus, new HashSet<>());
+      statusRecordCounterMap.putIfAbsent(versionAwareStatus, new AtomicInteger(0));
+      statusReportIndicatorMap.putIfAbsent(versionAwareStatus, new AtomicBoolean(false));
+      statusRecordDetailsMap.computeIfAbsent(versionAwareStatus, v -> {
+        List<AtomicBoolean> list = new ArrayList<>();
+        for (int i = 0; i < amplificationFactor; i++) {
+          list.add(new AtomicBoolean(false));
+        }
+        return list;
+      });
 
-      AtomicInteger counter = statusRecordCounter.get(versionAwareStatus);
+      AtomicInteger counter = statusRecordCounterMap.get(versionAwareStatus);
       int updatedCount;
       /*
        * For inc push to RT policy, the control msg is only consumed by leader subPartition. We need to record the
@@ -211,52 +197,44 @@ public class StatusReportAdapter {
         updatedCount = counter.addAndGet(amplificationFactor);
       } else {
         /**
-         * Once completed is reported, each subPartition should serialize its own {@link com.linkedin.venice.offsets.OffsetRecord}
-         * for main process to catch up the progress. This cannot be done by the thread that is reporting COMPLETED as
-         * other subpartitions might still be consuming records and updating offsets, thus the serialization call might
-         * lead to {@link java.util.ConcurrentModificationException} when ingestion isolation is enabled.
-         * Here it will let each subPartition to perform checkpoint and serialization on its own, so there won't be any
-         * conflict.
+         * Both the drainer thread and SIT thread can hit this path via ready-to-serve check. Adding this additional
+         * safeguard to avoid race condition.
          */
-        if (status.equals(COMPLETED)) {
-          ByteBuffer bb = ByteBuffer.wrap(partitionConsumptionState.getOffsetRecord().toBytes());
-          partitionStateMap.put(subPartitionIndex, bb);
-        }
-        if (!statusRecordMap.get(versionAwareStatus).contains(subPartitionIndex)) {
+        boolean updateResult =
+            statusRecordDetailsMap.get(versionAwareStatus).get(subPartitionIndex).compareAndSet(false, true);
+        if (updateResult) {
           if (logStatus) {
             LOGGER.info(
                 "{} reported from subPartition: {}, status report details: {}.",
                 versionAwareStatus,
                 subPartitionId,
-                statusRecordMap.get(versionAwareStatus));
+                statusRecordDetailsMap.get(versionAwareStatus));
           }
           partitionConsumptionState.recordSubPartitionStatus(versionAwareStatus);
-          statusRecordMap.get(versionAwareStatus).add(subPartitionIndex);
           updatedCount = counter.incrementAndGet();
         } else {
           updatedCount = counter.get();
         }
       }
-      maybeReportStatus(status, versionAwareStatus, updatedCount, report, logStatus);
+      if (updatedCount == amplificationFactor) {
+        maybeReportStatus(status, versionAwareStatus, report, logStatus);
+      }
     }
 
     private void maybeReportStatus(
         SubPartitionStatus status,
         String versionAwareStatus,
-        int updatedCount,
         Runnable report,
         boolean logStatus) {
-      if (updatedCount == amplificationFactorAdapter.getAmplificationFactor()) {
-        // This is a safeguard to make sure we only report exactly once for each status.
-        if (statusReportMap.get(versionAwareStatus).compareAndSet(false, true)) {
-          if (logStatus) {
-            LOGGER.info("Reporting status {} for user partition: {}.", versionAwareStatus, userPartition);
-          }
-          report.run();
-          if (status.equals(COMPLETED)) {
-            amplificationFactorAdapter
-                .executePartitionConsumptionState(userPartition, PartitionConsumptionState::completionReported);
-          }
+      // This is a safeguard to make sure we only report exactly once for each status.
+      if (statusReportIndicatorMap.get(versionAwareStatus).compareAndSet(false, true)) {
+        if (logStatus) {
+          LOGGER.info("Reporting status {} for user partition: {}.", versionAwareStatus, userPartition);
+        }
+        report.run();
+        if (status.equals(COMPLETED)) {
+          amplificationFactorAdapter
+              .executePartitionConsumptionState(userPartition, PartitionConsumptionState::completionReported);
         }
       }
     }
