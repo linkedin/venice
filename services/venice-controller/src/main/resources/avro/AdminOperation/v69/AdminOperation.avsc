@@ -312,11 +312,6 @@
               "default": false
             },
             {
-              "name": "replicationMetadataChunkingEnabled",
-              "type": "boolean",
-              "default": false
-            },
-            {
               "name": "singleGetRouterCacheEnabled",
               "aliases": ["routerCacheEnabled"],
               "type": "boolean",
@@ -590,7 +585,7 @@
                         "default": null
                       }
                     ]
-                  }
+                    }
                 }],
               "default": null
             }
