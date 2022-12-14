@@ -140,6 +140,7 @@ public class KafkaDataIntegrityValidatorTest {
     producerMetadata.segmentNumber = currentSegment.getSegmentNumber();
     producerMetadata.messageSequenceNumber = currentSegment.getSequenceNumber();
     producerMetadata.messageTimestamp = brokerTimestamp;
+    producerMetadata.upstreamOffset = -1; // This field has been deprecated
     messageEnvelope.producerMetadata = producerMetadata;
     messageEnvelope.leaderMetadataFooter = new LeaderMetadata();
     messageEnvelope.leaderMetadataFooter.upstreamOffset = -1;

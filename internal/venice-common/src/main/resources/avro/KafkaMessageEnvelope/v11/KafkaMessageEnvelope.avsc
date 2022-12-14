@@ -34,8 +34,12 @@
             "name": "messageTimestamp",
             "doc": "The time of the producer's local system clock, at the time the message was submitted for production. This is the number of milliseconds from the unix epoch, 1 January 1970 00:00:00.000 UTC.",
             "type": "long"
-          },
-          {
+          }, {
+            "name": "upstreamOffset",
+            "doc": "this field is deprecated and superseded by the field inside the LeaderMetadata. TODO: Remove this field in the future.",
+            "type": "long",
+            "default": -1
+          }, {
             "name": "logicalTimestamp",
             "doc": "This timestamp may be specified by the user. Sentinel value of -1 => apps are not using latest lib, -2 => apps have not specified the time. In case of negative values messageTimestamp field will be used for replication metadata.",
             "type": "long",
@@ -278,6 +282,16 @@
                         }
                       ],
                       "default": null
+                    }, {
+                      "name": "isRepush",
+                      "doc": "Flag to indicate this version swap is triggered by repush or not.",
+                      "type": "boolean",
+                      "default": false
+                    }, {
+                      "name": "isLastVersionSwapMessageFromRealTimeTopic",
+                      "doc": "Flag to indicate this version swap message in version topic is triggered by the last version swap in real time topic the leader server has received. With this flag, new leader will be able to recover the full state during leadership handover, when we rely on real-time topics for all regions to achieve version swap synchronization.",
+                      "type": "boolean",
+                      "default": false
                     }
                   ]
                 }
