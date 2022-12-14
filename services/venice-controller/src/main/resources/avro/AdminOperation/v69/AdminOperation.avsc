@@ -312,6 +312,11 @@
               "default": false
             },
             {
+              "name": "rmdChunkingEnabled",
+              "type": "boolean",
+              "default": false
+            },
+            {
               "name": "singleGetRouterCacheEnabled",
               "aliases": ["routerCacheEnabled"],
               "type": "boolean",

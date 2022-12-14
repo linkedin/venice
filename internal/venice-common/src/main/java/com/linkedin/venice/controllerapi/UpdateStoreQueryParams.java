@@ -43,6 +43,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_FACTOR;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_METADATA_PROTOCOL_VERSION_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TIME_IN_SECONDS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.RMD_CHUNKING_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_QUOTA_IN_BYTE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIEW;
@@ -101,6 +102,7 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setBatchGetLimit(srcStore.getBatchGetLimit())
             .setBootstrapToOnlineTimeoutInHours(srcStore.getBootstrapToOnlineTimeoutInHours())
             .setChunkingEnabled(srcStore.isChunkingEnabled())
+            .setRmdChunkingEnabled(srcStore.isRmdChunkingEnabled())
             .setClientDecompressionEnabled(srcStore.getClientDecompressionEnabled())
             .setCompressionStrategy(srcStore.getCompressionStrategy())
             .setEnableReads(srcStore.isEnableStoreReads())
@@ -372,6 +374,14 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<Boolean> getChunkingEnabled() {
     return getBoolean(CHUNKING_ENABLED);
+  }
+
+  public UpdateStoreQueryParams setRmdChunkingEnabled(boolean rmdChunkingEnabled) {
+    return putBoolean(RMD_CHUNKING_ENABLED, rmdChunkingEnabled);
+  }
+
+  public Optional<Boolean> getRmdChunkingEnabled() {
+    return getBoolean(RMD_CHUNKING_ENABLED);
   }
 
   public UpdateStoreQueryParams setIncrementalPushEnabled(boolean incrementalPushEnabled) {

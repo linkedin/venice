@@ -80,6 +80,10 @@ public enum Arg {
   CHUNKING_ENABLED(
       "chunking-enabled", "ce", true, "Enable/Disable value chunking, mostly for large value store support"
   ),
+  RMD_CHUNKING_ENABLED(
+      "rmd-chunking-enabled", "rce", true,
+      "Enable/Disable replication metadata chunking, mostly for Active/Active replication enabled store with partial update requirement support"
+  ),
   INCREMENTAL_PUSH_ENABLED(
       "incremental-push-enabled", "ipe", true, "a flag to see if the store supports incremental push or not"
   ), BATCH_GET_LIMIT("batch-get-limit", "bgl", true, "Key number limit inside one batch-get request"),

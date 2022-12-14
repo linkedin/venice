@@ -3428,7 +3428,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private void setChunkingEnabled(String clusterName, String storeName, boolean chunkingEnabled) {
     storeMetadataUpdate(clusterName, storeName, store -> {
       store.setChunkingEnabled(chunkingEnabled);
+      return store;
+    });
+  }
 
+  private void setRmdChunkingEnabled(String clusterName, String storeName, boolean rmdChunkingEnabled) {
+    storeMetadataUpdate(clusterName, storeName, store -> {
+      store.setRmdChunkingEnabled(rmdChunkingEnabled);
       return store;
     });
   }
@@ -3736,6 +3742,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<CompressionStrategy> compressionStrategy = params.getCompressionStrategy();
     Optional<Boolean> clientDecompressionEnabled = params.getClientDecompressionEnabled();
     Optional<Boolean> chunkingEnabled = params.getChunkingEnabled();
+    Optional<Boolean> rmdChunkingEnabled = params.getRmdChunkingEnabled();
     Optional<Integer> batchGetLimit = params.getBatchGetLimit();
     Optional<Integer> numVersionsToPreserve = params.getNumVersionsToPreserve();
     Optional<Boolean> incrementalPushEnabled = params.getIncrementalPushEnabled();
@@ -3941,6 +3948,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       if (chunkingEnabled.isPresent()) {
         setChunkingEnabled(clusterName, storeName, chunkingEnabled.get());
+      }
+
+      if (rmdChunkingEnabled.isPresent()) {
+        setRmdChunkingEnabled(clusterName, storeName, rmdChunkingEnabled.get());
       }
 
       if (batchGetLimit.isPresent()) {

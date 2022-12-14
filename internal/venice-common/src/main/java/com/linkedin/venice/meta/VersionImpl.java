@@ -170,6 +170,16 @@ public class VersionImpl implements Version {
   }
 
   @Override
+  public boolean isRmdChunkingEnabled() {
+    return this.storeVersion.rmdChunkingEnabled;
+  }
+
+  @Override
+  public void setRmdChunkingEnabled(boolean rmdChunkingEnabled) {
+    this.storeVersion.rmdChunkingEnabled = rmdChunkingEnabled;
+  }
+
+  @Override
   public String getStoreName() {
     return this.storeVersion.storeName.toString();
   }
@@ -423,6 +433,7 @@ public class VersionImpl implements Version {
     clonedVersion.setCompressionStrategy(getCompressionStrategy());
     clonedVersion.setLeaderFollowerModelEnabled(isLeaderFollowerModelEnabled());
     clonedVersion.setChunkingEnabled(isChunkingEnabled());
+    clonedVersion.setRmdChunkingEnabled(isRmdChunkingEnabled());
     clonedVersion.setPushType(getPushType());
     clonedVersion.setNativeReplicationEnabled(isNativeReplicationEnabled());
     clonedVersion.setPushStreamSourceAddress(getPushStreamSourceAddress());

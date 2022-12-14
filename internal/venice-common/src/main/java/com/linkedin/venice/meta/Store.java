@@ -212,6 +212,10 @@ public interface Store {
 
   void setChunkingEnabled(boolean chunkingEnabled);
 
+  boolean isRmdChunkingEnabled();
+
+  void setRmdChunkingEnabled(boolean rmdChunkingEnabled);
+
   int getBatchGetLimit();
 
   void setBatchGetLimit(int batchGetLimit);
