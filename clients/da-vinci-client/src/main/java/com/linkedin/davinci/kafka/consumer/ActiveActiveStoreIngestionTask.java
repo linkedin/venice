@@ -947,26 +947,13 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   @Override
   protected void updateOffsetMetadataInOffsetRecord(
       PartitionConsumptionState partitionConsumptionState,
-      OffsetRecord offsetRecord,
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-      LeaderProducedRecordContext leaderProducedRecordContext,
-      String kafkaUrl) {
-    updateOffsets(
+      String upstreamKafkaUrl) {
+    updateOffsetsFromPartitionConsumptionState(
         partitionConsumptionState,
-        consumerRecord,
-        leaderProducedRecordContext,
-        offsetRecord::setCheckpointLocalVersionTopicOffset,
-        (sourceKafkaUrl, upstreamTopicName, upstreamTopicOffset) -> {
-          if (Version.isRealTimeTopic(upstreamTopicName)) {
-            offsetRecord.setLeaderUpstreamOffset(sourceKafkaUrl, upstreamTopicOffset);
-          } else {
-            offsetRecord.setCheckpointUpstreamVersionTopicOffset(upstreamTopicOffset);
-          }
-        },
-        (sourceKafkaUrl, upstreamTopicName) -> Version.isRealTimeTopic(upstreamTopicName)
-            ? offsetRecord.getUpstreamOffset(sourceKafkaUrl)
-            : offsetRecord.getCheckpointUpstreamVersionTopicOffset(),
-        () -> getUpstreamKafkaUrl(partitionConsumptionState, consumerRecord, kafkaUrl));
+        consumerRecord != null && upstreamKafkaUrl != null
+            ? getUpstreamKafkaUrl(partitionConsumptionState, consumerRecord, upstreamKafkaUrl)
+            : null);
   }
 
   @Override
@@ -975,7 +962,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
       LeaderProducedRecordContext leaderProducedRecordContext,
       String kafkaUrl) {
-    updateOffsets(
+    updateOffsetsFromConsumerRecord(
         partitionConsumptionState,
         consumerRecord,
         leaderProducedRecordContext,

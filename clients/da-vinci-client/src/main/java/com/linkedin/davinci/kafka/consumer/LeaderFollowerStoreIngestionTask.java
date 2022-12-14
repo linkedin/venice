@@ -1173,12 +1173,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   /**
-   * A helper function to update the checkpoint offsets in {@link OffsetRecord} or the latest in-memory offsets processed
-   * by drainers in {@link PartitionConsumptionState}.
-   *
-   * When using this helper function to update the checkpoint offsets in {@link OffsetRecord}:
-   * "updateVersionTopicOffsetFunction" should try to update the VT offset in {@link OffsetRecord}
-   * "updateRealtimeTopicOffsetFunction" should try to update the upstream offset map in {@link OffsetRecord}
+   * A helper function to the latest in-memory offsets processed by drainers in {@link PartitionConsumptionState},
+   * after processing the given {@link ConsumerRecord}.
    *
    * When using this helper function to update the latest in-memory offsets processed by drainers in {@link PartitionConsumptionState}:
    * "updateVersionTopicOffsetFunction" should try to update the VT offset in {@link PartitionConsumptionState}
@@ -1187,7 +1183,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * In LeaderFollowerStoreIngestionTask, "sourceKafkaUrlSupplier" should always return {@link OffsetRecord#NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY};
    * in ActiveActiveStoreIngestionTask, "sourceKafkaUrlSupplier" should return the actual source Kafka url of the "consumerRecordWrapper"
    */
-  protected void updateOffsets(
+  protected void updateOffsetsFromConsumerRecord(
       PartitionConsumptionState partitionConsumptionState,
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
       LeaderProducedRecordContext leaderProducedRecordContext,
@@ -1234,9 +1230,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           updateUpstreamTopicOffsetFunction.apply(sourceKafkaUrl, upstreamTopicName, newUpstreamOffset);
         }
         // update leader producer GUID
-        offsetRecord.setLeaderGUID(kafkaValue.producerMetadata.producerGUID);
+        partitionConsumptionState.setLeaderGUID(kafkaValue.producerMetadata.producerGUID);
         if (kafkaValue.leaderMetadataFooter != null) {
-          offsetRecord.setLeaderHostId(kafkaValue.leaderMetadataFooter.hostName.toString());
+          partitionConsumptionState.setLeaderHostId(kafkaValue.leaderMetadataFooter.hostName.toString());
         }
       }
     } else {
@@ -1253,26 +1249,42 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   @Override
   protected void updateOffsetMetadataInOffsetRecord(
       PartitionConsumptionState partitionConsumptionState,
-      OffsetRecord offsetRecord,
-      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper,
-      LeaderProducedRecordContext leaderProducedRecordContext,
-      String kafkaUrl) {
-    updateOffsets(
+      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      String upstreamKafkaUrl) {
+    updateOffsetsFromPartitionConsumptionState(
         partitionConsumptionState,
-        consumerRecordWrapper,
-        leaderProducedRecordContext,
-        offsetRecord::setCheckpointLocalVersionTopicOffset,
-        (sourceKafkaUrl, upstreamTopicName, upstreamTopicOffset) -> {
-          if (Version.isRealTimeTopic(upstreamTopicName)) {
-            offsetRecord.setLeaderUpstreamOffset(sourceKafkaUrl, upstreamTopicOffset);
-          } else {
-            offsetRecord.setCheckpointUpstreamVersionTopicOffset(upstreamTopicOffset);
-          }
-        },
-        (sourceKafkaUrl, upstreamTopicName) -> Version.isRealTimeTopic(upstreamTopicName)
-            ? offsetRecord.getUpstreamOffset(sourceKafkaUrl)
-            : offsetRecord.getCheckpointUpstreamVersionTopicOffset(),
-        () -> OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY);
+        OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY);
+  }
+
+  /**
+   * Sync the metadata about offset from {@link PartitionConsumptionState} to {@link OffsetRecord}.
+   * @param partitionConsumptionState
+   * @param sourceKafkaUrl, The computed upstream Kafka URL for the record. Can be null for shutdown events.
+   */
+  protected void updateOffsetsFromPartitionConsumptionState(
+      PartitionConsumptionState partitionConsumptionState,
+      String sourceKafkaUrl) {
+    OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
+    offsetRecord
+        .setCheckpointLocalVersionTopicOffset(partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset());
+    // DaVinci clients don't need to maintain leader production states
+    if (!isDaVinciClient) {
+      final String upstreamTopicName =
+          offsetRecord.getLeaderTopic() != null ? offsetRecord.getLeaderTopic() : kafkaVersionTopic;
+      final long newUpstreamOffset = partitionConsumptionState.getLatestProcessedUpstreamVersionTopicOffset();
+      if (Version.isRealTimeTopic(upstreamTopicName)) {
+        if (sourceKafkaUrl == null) {
+          // kafka url is not provided, meaning it's a graceful shutdown event so copy the upstream offset map from pcs.
+          offsetRecord.resetUpstreamOffsetMap(partitionConsumptionState.getLatestProcessedUpstreamRTOffsetMap());
+        } else {
+          offsetRecord.setLeaderUpstreamOffset(sourceKafkaUrl, newUpstreamOffset);
+        }
+      } else {
+        offsetRecord.setCheckpointUpstreamVersionTopicOffset(newUpstreamOffset);
+      }
+      offsetRecord.setLeaderGUID(partitionConsumptionState.getLeaderGUID());
+      offsetRecord.setLeaderHostId(partitionConsumptionState.getLeaderHostId());
+    }
   }
 
   private void updateOffsetsAsRemoteConsumeLeader(
@@ -1315,7 +1327,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper,
       LeaderProducedRecordContext leaderProducedRecordContext,
       String kafkaUrl) {
-    updateOffsets(
+    updateOffsetsFromConsumerRecord(
         partitionConsumptionState,
         consumerRecordWrapper,
         leaderProducedRecordContext,
