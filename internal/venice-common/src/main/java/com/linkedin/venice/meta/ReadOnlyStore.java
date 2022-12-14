@@ -368,6 +368,16 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public boolean isRmdChunkingEnabled() {
+      return this.delegate.isRmdChunkingEnabled();
+    }
+
+    @Override
+    public void setRmdChunkingEnabled(boolean rmdChunkingEnabled) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
     public String getStoreName() {
       return this.delegate.getStoreName();
     }
@@ -885,6 +895,16 @@ public class ReadOnlyStore implements Store {
 
   @Override
   public void setChunkingEnabled(boolean chunkingEnabled) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public boolean isRmdChunkingEnabled() {
+    return this.delegate.isRmdChunkingEnabled();
+  }
+
+  @Override
+  public void setRmdChunkingEnabled(boolean rmdChunkingEnabled) {
     throw new UnsupportedOperationException();
   }
 

@@ -115,6 +115,10 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   void setChunkingEnabled(boolean chunkingEnabled);
 
+  boolean isRmdChunkingEnabled();
+
+  void setRmdChunkingEnabled(boolean rmdChunkingEnabled);
+
   String getStoreName();
 
   String getPushJobId();

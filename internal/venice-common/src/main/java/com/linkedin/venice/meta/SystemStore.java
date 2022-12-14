@@ -314,6 +314,16 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
+  public boolean isRmdChunkingEnabled() {
+    return zkSharedStore.isRmdChunkingEnabled();
+  }
+
+  @Override
+  public void setRmdChunkingEnabled(boolean rmdChunkingEnabled) {
+    throwUnsupportedOperationException("setRmdChunkingEnabled");
+  }
+
+  @Override
   public int getBatchGetLimit() {
     return zkSharedStore.getBatchGetLimit();
   }
