@@ -95,6 +95,8 @@ public class TestParentControllerWithMultiDataCenter {
           new UpdateStoreQueryParams().setHybridRewindSeconds(expectedHybridRewindSeconds)
               .setHybridOffsetLagThreshold(expectedHybridOffsetLagThreshold)
               .setHybridBufferReplayPolicy(expectedHybridBufferReplayPolicy)
+              .setChunkingEnabled(true)
+              .setRmdChunkingEnabled(true)
               .setLeaderFollowerModel(true) // Enable L/F to update amplification factor.
               .setAmplificationFactor(2);
 
@@ -126,6 +128,8 @@ public class TestParentControllerWithMultiDataCenter {
           Assert.assertTrue(storeInfo.isLeaderFollowerModelEnabled());
           Assert.assertNotNull(storeInfo.getPartitionerConfig());
           Assert.assertEquals(storeInfo.getPartitionerConfig().getAmplificationFactor(), 2);
+          Assert.assertTrue(storeInfo.isChunkingEnabled());
+          Assert.assertTrue(storeInfo.isRmdChunkingEnabled());
         }
       });
 

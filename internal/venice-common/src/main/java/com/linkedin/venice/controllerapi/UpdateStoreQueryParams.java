@@ -102,7 +102,7 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setBatchGetLimit(srcStore.getBatchGetLimit())
             .setBootstrapToOnlineTimeoutInHours(srcStore.getBootstrapToOnlineTimeoutInHours())
             .setChunkingEnabled(srcStore.isChunkingEnabled())
-            .setRmdChunkingEnabled(srcStore.isReplicationMetadataChunkingEnabled())
+            .setRmdChunkingEnabled(srcStore.isRmdChunkingEnabled())
             .setClientDecompressionEnabled(srcStore.getClientDecompressionEnabled())
             .setCompressionStrategy(srcStore.getCompressionStrategy())
             .setEnableReads(srcStore.isEnableStoreReads())

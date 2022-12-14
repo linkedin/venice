@@ -37,7 +37,6 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.DataProviderUtils;
@@ -101,48 +100,6 @@ public class PartialUpdateTest {
       throw new IllegalStateException("Expect only one parent controller. Got: " + parentControllers.size());
     }
     this.parentController = parentControllers.get(0);
-  }
-
-  @Test(timeOut = TEST_TIMEOUT_MS * 2)
-  public void testReplicationMetadataChunkingE2E() throws IOException {
-    final String storeName = Utils.getUniqueString("rmdChunking");
-    String parentControllerUrl = parentController.getControllerUrl();
-    String keySchemaStr = "{\"type\" : \"string\"}";
-    // TODO: Value schema should be replaced by schema with collection for RMD chunking testing purpose.
-    Schema valueSchema = AvroCompatibilityHelper.parse(loadFileAsString("writecompute/test/PersonV1.avsc"));
-    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
-      assertCommand(
-          parentControllerClient.createNewStore(storeName, "test_owner", keySchemaStr, valueSchema.toString()));
-
-      UpdateStoreQueryParams updateStoreParams =
-          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
-              .setCompressionStrategy(CompressionStrategy.NO_OP)
-              .setWriteComputationEnabled(true)
-              .setActiveActiveReplicationEnabled(true)
-              .setChunkingEnabled(true)
-              .setRmdChunkingEnabled(true)
-              .setHybridRewindSeconds(10L)
-              .setHybridOffsetLagThreshold(2L);
-      ControllerResponse updateStoreResponse =
-          parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams));
-      Assert.assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
-
-      VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test_push_id", 1000);
-      assertEquals(response.getVersion(), 1);
-      assertFalse(response.isError(), "Empty push to parent colo should succeed");
-      TestUtils.waitForNonDeterministicPushCompletion(
-          Version.composeKafkaTopic(storeName, 1),
-          parentControllerClient,
-          30,
-          TimeUnit.SECONDS);
-      StoreInfo storeInfo = parentControllerClient.getStore(storeName).getStore();
-      Assert.assertTrue(storeInfo.isReplicationMetadataChunkingEnabled());
-      Assert.assertTrue(storeInfo.isChunkingEnabled());
-      Assert.assertTrue(storeInfo.getVersion(1).isPresent());
-      Assert.assertTrue(storeInfo.getVersion(1).get().isRmdChunkingEnabled());
-      Assert.assertTrue(storeInfo.getVersion(1).get().isChunkingEnabled());
-    }
-    // TODO: Fill in RMD chunking testing logic in the following changes.
   }
 
   /**
