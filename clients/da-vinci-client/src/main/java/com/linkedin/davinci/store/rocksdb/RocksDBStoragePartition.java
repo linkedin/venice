@@ -315,7 +315,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       // https://github.com/facebook/rocksdb/wiki/Block-Cache#lru-cache
 
       tableConfig.setBlockCacheCompressedSize(rocksDBServerConfig.getRocksDBBlockCacheCompressedSizeInBytes());
-      tableConfig.setFormatVersion(2); // Latest version
+      tableConfig.setFormatVersion(rocksDBServerConfig.getBlockBaseFormatVersion());
       options.setTableFormatConfig(tableConfig);
     }
 

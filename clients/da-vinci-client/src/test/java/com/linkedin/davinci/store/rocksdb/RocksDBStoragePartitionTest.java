@@ -17,6 +17,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
@@ -32,6 +33,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.rocksdb.ComparatorOptions;
 import org.rocksdb.Options;
+import org.rocksdb.RocksDBException;
 import org.rocksdb.util.BytewiseComparator;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
@@ -164,6 +166,7 @@ public class RocksDBStoragePartitionTest {
         if (currentRecordNum == interruptedRecord) {
           if (reopenDatabaseDuringInterruption) {
             storagePartition.close();
+            rocksDBServerConfig.setBlockBaseFormatVersion(5);
             storagePartition = new RocksDBStoragePartition(
                 partitionConfig,
                 factory,
@@ -227,6 +230,146 @@ public class RocksDBStoragePartitionTest {
         null,
         ROCKSDB_THROTTLER,
         rocksDBServerConfig);
+
+    // Test deletion
+    String toBeDeletedKey = KEY_PREFIX + 10;
+    Assert.assertNotNull(storagePartition.get(toBeDeletedKey.getBytes(), false));
+    storagePartition.delete(toBeDeletedKey.getBytes());
+    Assert.assertNull(storagePartition.get(toBeDeletedKey.getBytes(), false));
+
+    Options storeOptions = storagePartition.getOptions();
+    Assert.assertEquals(storeOptions.level0FileNumCompactionTrigger(), 40);
+    storagePartition.drop();
+    options.close();
+    removeDir(storeDir);
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testIngestionFormatVersionChange(boolean sorted) throws RocksDBException {
+    Optional<CheckSum> runningChecksum = CheckSum.getInstance(CheckSumType.MD5);
+    String storeName = Utils.getUniqueString("test_store");
+    String storeDir = getTempDatabaseDir(storeName);
+    int partitionId = 0;
+    StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
+    partitionConfig.setDeferredWrite(sorted);
+    Options options = new Options();
+    options.setCreateIfMissing(true);
+    Map<String, String> inputRecords = generateInput(1010, sorted, 0);
+    VeniceProperties veniceServerProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
+    RocksDBServerConfig rocksDBServerConfig = new RocksDBServerConfig(veniceServerProperties);
+
+    VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
+    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+    RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(
+        partitionConfig,
+        factory,
+        DATA_BASE_DIR,
+        null,
+        ROCKSDB_THROTTLER,
+        rocksDBServerConfig);
+    final int syncPerRecords = 100;
+    final int interruptedRecord1 = 345;
+    final int interruptedRecord2 = 645;
+
+    Optional<Supplier<byte[]>> checksumSupplier = Optional.empty();
+    if (sorted) {
+      storagePartition.beginBatchWrite(new HashMap<>(), checksumSupplier);
+    }
+    int currentRecordNum = 0;
+    int currentFileNo = 0;
+    Map<String, String> checkpointingInfo = new HashMap<>();
+
+    for (Map.Entry<String, String> entry: inputRecords.entrySet()) {
+      storagePartition.put(entry.getKey().getBytes(), entry.getValue().getBytes());
+      if (false) {
+        runningChecksum.get().update(entry.getKey().getBytes());
+        runningChecksum.get().update(entry.getValue().getBytes());
+      }
+      if (++currentRecordNum % syncPerRecords == 0) {
+        checkpointingInfo = storagePartition.sync();
+        if (sorted) {
+          Assert.assertEquals(
+              checkpointingInfo.get(RocksDBSstFileWriter.ROCKSDB_LAST_FINISHED_SST_FILE_NO),
+              String.valueOf(currentFileNo++));
+        } else {
+          Assert.assertTrue(
+              checkpointingInfo.isEmpty(),
+              "For non-deferred-write database, sync() should return empty map");
+        }
+      }
+      if (currentRecordNum == interruptedRecord1 || currentRecordNum == interruptedRecord2) {
+        storagePartition.close();
+        // Flip format version from 2 -> 5 -> 2 to simulation rollback of version.
+        rocksDBServerConfig.setBlockBaseFormatVersion(currentRecordNum == interruptedRecord1 ? 5 : 2);
+        storagePartition = new RocksDBStoragePartition(
+            partitionConfig,
+            factory,
+            DATA_BASE_DIR,
+            null,
+            ROCKSDB_THROTTLER,
+            rocksDBServerConfig);
+        Options storeOptions = storagePartition.getOptions();
+        Assert.assertEquals(storeOptions.level0FileNumCompactionTrigger(), 100);
+        if (sorted) {
+          storagePartition.beginBatchWrite(checkpointingInfo, checksumSupplier);
+        }
+
+        // Pass last checkpointed info.
+        // Need to re-consume from the offset when last checkpoint happens
+        // inclusive [replayStart, replayEnd]
+        int interruptedRecord = currentRecordNum == interruptedRecord1 ? interruptedRecord1 : interruptedRecord2;
+        int replayStart = (interruptedRecord / syncPerRecords) * syncPerRecords + 1;
+        int replayEnd = interruptedRecord;
+        int replayCnt = 0;
+        runningChecksum.get().reset();
+        for (Map.Entry<String, String> innerEntry: inputRecords.entrySet()) {
+          ++replayCnt;
+          if (replayCnt >= replayStart && replayCnt <= replayEnd) {
+            storagePartition.put(innerEntry.getKey().getBytes(), innerEntry.getValue().getBytes());
+          }
+          if (replayCnt > replayEnd) {
+            break;
+          }
+        }
+      }
+    }
+
+    if (sorted) {
+      Assert.assertFalse(storagePartition.validateBatchIngestion());
+      storagePartition.endBatchWrite();
+      Assert.assertTrue(storagePartition.validateBatchIngestion());
+    }
+
+    // Verify all the key/value pairs
+    for (Map.Entry<String, String> entry: inputRecords.entrySet()) {
+      Assert.assertEquals(storagePartition.get(entry.getKey().getBytes(), false), entry.getValue().getBytes());
+    }
+
+    // Verify current ingestion mode is in deferred-write mode
+    Assert.assertTrue(storagePartition.verifyConfig(partitionConfig));
+
+    storagePartition.rocksDB.compactRange();
+    // Re-open it in read/write mode
+    storagePartition.close();
+    partitionConfig.setDeferredWrite(false);
+    partitionConfig.setWriteOnlyConfig(false);
+    // Set format version to 5
+    rocksDBServerConfig.setBlockBaseFormatVersion(5);
+    storagePartition = new RocksDBStoragePartition(
+        partitionConfig,
+        factory,
+        DATA_BASE_DIR,
+        null,
+        ROCKSDB_THROTTLER,
+        rocksDBServerConfig);
+
+    storagePartition.rocksDB.compactRange();
+
+    // Verify all the key/value pairs can be read using the new format
+    for (Map.Entry<String, String> entry: inputRecords.entrySet()) {
+      Assert.assertEquals(storagePartition.get(entry.getKey().getBytes(), false), entry.getValue().getBytes());
+    }
+
     // Test deletion
     String toBeDeletedKey = KEY_PREFIX + 10;
     Assert.assertNotNull(storagePartition.get(toBeDeletedKey.getBytes(), false));
