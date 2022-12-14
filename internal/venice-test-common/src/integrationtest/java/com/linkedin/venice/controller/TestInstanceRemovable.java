@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -49,13 +50,14 @@ public class TestInstanceRemovable {
 
   @Test(timeOut = 120 * Time.MS_PER_SECOND)
   public void testIsInstanceRemovableDuringPush() {
-    String storeName = Utils.getUniqueString("testLeaderControllerFailover");
+    String storeName = Utils.getUniqueString("testIsInstanceRemovableDuringPush");
     int partitionCount = 2;
-    int dataSize = partitionCount * partitionSize;
+    long storageQuota = (long) partitionCount * partitionSize;
 
     cluster.getNewStore(storeName);
+    cluster.updateStore(storeName, new UpdateStoreQueryParams().setStorageQuotaInByte(storageQuota));
 
-    VersionCreationResponse response = cluster.getNewVersion(storeName, dataSize);
+    VersionCreationResponse response = cluster.getNewVersion(storeName);
     Assert.assertFalse(response.isError());
     String topicName = response.getKafkaTopic();
 
@@ -138,13 +140,14 @@ public class TestInstanceRemovable {
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testIsInstanceRemovableAfterPush() {
-    String storeName = Utils.getUniqueString("testLeaderControllerFailover");
+    String storeName = Utils.getUniqueString("testIsInstanceRemovableAfterPush");
     int partitionCount = 2;
-    int dataSize = partitionCount * partitionSize;
+    long storageQuota = (long) partitionCount * partitionSize;
 
     cluster.getNewStore(storeName);
+    cluster.updateStore(storeName, new UpdateStoreQueryParams().setStorageQuotaInByte(storageQuota));
 
-    VersionCreationResponse response = cluster.getNewVersion(storeName, dataSize);
+    VersionCreationResponse response = cluster.getNewVersion(storeName);
     Assert.assertFalse(response.isError());
     String topicName = response.getKafkaTopic();
 

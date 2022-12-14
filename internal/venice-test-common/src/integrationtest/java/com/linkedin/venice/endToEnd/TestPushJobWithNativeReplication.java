@@ -63,6 +63,7 @@ import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -902,12 +903,12 @@ public class TestPushJobWithNativeReplication {
                   .useControllerClient(
                       dc1Client -> TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
                         // verify the update store command has taken effect before starting the push job.
-                        Assert.assertEquals(
-                            dc0Client.getStore(storeName).getStore().getStorageQuotaInByte(),
-                            Store.UNLIMITED_STORAGE_QUOTA);
-                        Assert.assertEquals(
-                            dc1Client.getStore(storeName).getStore().getStorageQuotaInByte(),
-                            Store.UNLIMITED_STORAGE_QUOTA);
+                        StoreInfo store = dc0Client.getStore(storeName).getStore();
+                        Assert.assertNotNull(store);
+                        Assert.assertEquals(store.getStorageQuotaInByte(), Store.UNLIMITED_STORAGE_QUOTA);
+                        store = dc1Client.getStore(storeName).getStore();
+                        Assert.assertNotNull(store);
+                        Assert.assertEquals(store.getStorageQuotaInByte(), Store.UNLIMITED_STORAGE_QUOTA);
                       })));
 
       makeSureSystemStoreIsPushed(clusterName, storeName);

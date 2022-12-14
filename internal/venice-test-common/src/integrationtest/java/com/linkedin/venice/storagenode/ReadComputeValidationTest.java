@@ -137,7 +137,7 @@ public class ReadComputeValidationTest {
     params.setChunkingEnabled(valueLargerThan1MB);
     veniceCluster.updateStore(storeName, params);
 
-    VersionCreationResponse newVersion = veniceCluster.getNewVersion(storeName, 1024);
+    VersionCreationResponse newVersion = veniceCluster.getNewVersion(storeName);
     final int pushVersion = newVersion.getVersion();
     String topic = newVersion.getKafkaTopic();
 
@@ -176,7 +176,7 @@ public class ReadComputeValidationTest {
       // Restart the server to get new schemas
       veniceCluster.stopAndRestartVeniceServer(veniceCluster.getVeniceServers().get(0).getPort());
 
-      VersionCreationResponse newVersion2 = veniceCluster.getNewVersion(storeName, 1024);
+      VersionCreationResponse newVersion2 = veniceCluster.getNewVersion(storeName);
       final int pushVersion2 = newVersion2.getVersion();
       String topic2 = newVersion2.getKafkaTopic();
       VeniceWriter<Object, byte[], byte[]> veniceWriter2 = vwFactory.createVeniceWriter(
@@ -221,7 +221,7 @@ public class ReadComputeValidationTest {
     params.setChunkingEnabled(false);
     veniceCluster.updateStore(storeName, params);
 
-    VersionCreationResponse newVersion = veniceCluster.getNewVersion(storeName, 1024);
+    VersionCreationResponse newVersion = veniceCluster.getNewVersion(storeName);
     final int pushVersion = newVersion.getVersion();
     String topic = newVersion.getKafkaTopic();
 
@@ -257,7 +257,7 @@ public class ReadComputeValidationTest {
       // Restart the server to get new schemas
       veniceCluster.stopAndRestartVeniceServer(veniceCluster.getVeniceServers().get(0).getPort());
 
-      VersionCreationResponse newVersion2 = veniceCluster.getNewVersion(storeName, 1024);
+      VersionCreationResponse newVersion2 = veniceCluster.getNewVersion(storeName);
       final int pushVersion2 = newVersion2.getVersion();
       String topic2 = newVersion2.getKafkaTopic();
       VeniceWriter<Object, byte[], byte[]> veniceWriter2 =

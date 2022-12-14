@@ -74,7 +74,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.SOURCE_FA
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STATUS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_NODE_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_QUOTA_IN_BYTE;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_SIZE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC_COMPACTION_POLICY;
@@ -91,15 +90,14 @@ import java.util.List;
 
 
 public enum ControllerRoute {
-  REQUEST_TOPIC(
-      "/request_topic", HttpMethod.POST, Arrays.asList(NAME, STORE_SIZE, PUSH_TYPE, PUSH_JOB_ID), PUSH_IN_SORTED_ORDER
-  ), // topic that writer should produce to
-  EMPTY_PUSH("/empty_push", HttpMethod.POST, Arrays.asList(NAME, STORE_SIZE, PUSH_JOB_ID)), // do an empty push into a
-                                                                                            // new version for this
-                                                                                            // store
-  END_OF_PUSH("/end_of_push", HttpMethod.POST, Arrays.asList(NAME, VERSION)), // write an END OF PUSH message into the
-                                                                              // topic
-  STORE("/store", HttpMethod.GET, Collections.singletonList(NAME)), // get all information about that store
+  // Request a topic that writer should produce to
+  REQUEST_TOPIC("/request_topic", HttpMethod.POST, Arrays.asList(NAME, PUSH_TYPE, PUSH_JOB_ID), PUSH_IN_SORTED_ORDER),
+  // Do an empty push into a new version for this store
+  EMPTY_PUSH("/empty_push", HttpMethod.POST, Arrays.asList(NAME, PUSH_JOB_ID)),
+  // Write an END_OF_PUSH message into the topic
+  END_OF_PUSH("/end_of_push", HttpMethod.POST, Arrays.asList(NAME, VERSION)),
+  // Get all information about that store
+  STORE("/store", HttpMethod.GET, Collections.singletonList(NAME)),
   NEW_STORE(
       "/new_store", HttpMethod.POST, Arrays.asList(NAME, KEY_SCHEMA, VALUE_SCHEMA), OWNER, IS_SYSTEM_STORE,
       ACCESS_PERMISSION
@@ -127,9 +125,8 @@ public enum ControllerRoute {
       PERSONA_NAME
   ), SET_VERSION("/set_version", HttpMethod.POST, Arrays.asList(NAME, VERSION)),
   ROLLBACK_TO_BACKUP_VERSION("/rollback_to_backup_version", HttpMethod.POST, Collections.singletonList(NAME)),
-  ENABLE_STORE("/enable_store", HttpMethod.POST, Arrays.asList(NAME, OPERATION, STATUS)), // status "true" or "false",
-                                                                                          // operation "read" or "write"
-                                                                                          // or "readwrite".
+  // Enable/disable read write for this store. Status is "true" or "false". Operation "read" or "write" or "readwrite".
+  ENABLE_STORE("/enable_store", HttpMethod.POST, Arrays.asList(NAME, OPERATION, STATUS)),
   DELETE_ALL_VERSIONS("/delete_all_versions", HttpMethod.POST, Collections.singletonList(NAME)),
   DELETE_OLD_VERSION("/delete_old_version", HttpMethod.POST, Arrays.asList(NAME, VERSION)),
   UPDATE_CLUSTER_CONFIG(
