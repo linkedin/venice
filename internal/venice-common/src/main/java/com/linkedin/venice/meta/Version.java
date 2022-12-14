@@ -115,9 +115,9 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   void setChunkingEnabled(boolean chunkingEnabled);
 
-  boolean isReplicationMetadataChunkingEnabled();
+  boolean isRmdChunkingEnabled();
 
-  void setReplicationMetadataChunkingEnabled(boolean replicationMetadataChunkingEnabled);
+  void setRmdChunkingEnabled(boolean rmdChunkingEnabled);
 
   String getStoreName();
 

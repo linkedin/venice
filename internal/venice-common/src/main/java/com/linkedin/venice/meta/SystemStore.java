@@ -314,13 +314,13 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
-  public boolean isReplicationMetadataChunkingEnabled() {
-    return zkSharedStore.isReplicationMetadataChunkingEnabled();
+  public boolean isRmdChunkingEnabled() {
+    return zkSharedStore.isRmdChunkingEnabled();
   }
 
   @Override
-  public void setReplicationMetadataChunkingEnabled(boolean replicationMetadataChunkingEnabled) {
-    throwUnsupportedOperationException("setReplicationMetadataChunkingEnabled");
+  public void setRmdChunkingEnabled(boolean rmdChunkingEnabled) {
+    throwUnsupportedOperationException("setRmdChunkingEnabled");
   }
 
   @Override

@@ -312,7 +312,7 @@
               "default": false
             },
             {
-              "name": "replicationMetadataChunkingEnabled",
+              "name": "rmdChunkingEnabled",
               "type": "boolean",
               "default": false
             },

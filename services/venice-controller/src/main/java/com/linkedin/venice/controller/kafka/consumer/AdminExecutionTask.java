@@ -476,7 +476,7 @@ public class AdminExecutionTask implements Callable<Void> {
         .setCompressionStrategy(CompressionStrategy.valueOf(message.compressionStrategy))
         .setClientDecompressionEnabled(message.clientDecompressionEnabled)
         .setChunkingEnabled(message.chunkingEnabled)
-        .setReplicationMetadataChunkingEnabled(message.replicationMetadataChunkingEnabled)
+        .setRmdChunkingEnabled(message.rmdChunkingEnabled)
         .setBatchGetLimit(message.batchGetLimit)
         .setNumVersionsToPreserve(message.numVersionsToPreserve)
         .setIncrementalPushEnabled(message.incrementalPushEnabled)

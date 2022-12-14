@@ -2191,7 +2191,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<CompressionStrategy> compressionStrategy = params.getCompressionStrategy();
       Optional<Boolean> clientDecompressionEnabled = params.getClientDecompressionEnabled();
       Optional<Boolean> chunkingEnabled = params.getChunkingEnabled();
-      Optional<Boolean> replicationMetadataChunkingEnabled = params.getReplicationMetadataChunkingEnabled();
+      Optional<Boolean> rmdChunkingEnabled = params.getRmdChunkingEnabled();
       Optional<Integer> batchGetLimit = params.getBatchGetLimit();
       Optional<Integer> numVersionsToPreserve = params.getNumVersionsToPreserve();
       Optional<Boolean> incrementalPushEnabled = params.getIncrementalPushEnabled();
@@ -2426,9 +2426,9 @@ public class VeniceParentHelixAdmin implements Admin {
               .orElseGet(currStore::getClientDecompressionEnabled);
       setStore.chunkingEnabled = chunkingEnabled.map(addToUpdatedConfigList(updatedConfigsList, CHUNKING_ENABLED))
           .orElseGet(currStore::isChunkingEnabled);
-      setStore.replicationMetadataChunkingEnabled =
-          replicationMetadataChunkingEnabled.map(addToUpdatedConfigList(updatedConfigsList, RMD_CHUNKING_ENABLED))
-              .orElseGet(currStore::isReplicationMetadataChunkingEnabled);
+      setStore.rmdChunkingEnabled =
+          rmdChunkingEnabled.map(addToUpdatedConfigList(updatedConfigsList, RMD_CHUNKING_ENABLED))
+              .orElseGet(currStore::isRmdChunkingEnabled);
       setStore.batchGetLimit = batchGetLimit.map(addToUpdatedConfigList(updatedConfigsList, BATCH_GET_LIMIT))
           .orElseGet(currStore::getBatchGetLimit);
       setStore.numVersionsToPreserve =

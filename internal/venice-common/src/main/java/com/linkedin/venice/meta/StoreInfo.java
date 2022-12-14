@@ -26,7 +26,7 @@ public class StoreInfo {
     storeInfo.setBatchGetLimit(store.getBatchGetLimit());
     storeInfo.setBootstrapToOnlineTimeoutInHours(store.getBootstrapToOnlineTimeoutInHours());
     storeInfo.setChunkingEnabled(store.isChunkingEnabled());
-    storeInfo.setReplicationMetadataChunkingEnabled(store.isReplicationMetadataChunkingEnabled());
+    storeInfo.setReplicationMetadataChunkingEnabled(store.isRmdChunkingEnabled());
     storeInfo.setClientDecompressionEnabled(store.getClientDecompressionEnabled());
     storeInfo.setCompressionStrategy(store.getCompressionStrategy());
     storeInfo.setCurrentVersion(store.getCurrentVersion());

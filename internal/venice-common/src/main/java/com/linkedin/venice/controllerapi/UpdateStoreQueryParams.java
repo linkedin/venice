@@ -102,7 +102,7 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setBatchGetLimit(srcStore.getBatchGetLimit())
             .setBootstrapToOnlineTimeoutInHours(srcStore.getBootstrapToOnlineTimeoutInHours())
             .setChunkingEnabled(srcStore.isChunkingEnabled())
-            .setReplicationMetadataChunkingEnabled(srcStore.isReplicationMetadataChunkingEnabled())
+            .setRmdChunkingEnabled(srcStore.isReplicationMetadataChunkingEnabled())
             .setClientDecompressionEnabled(srcStore.getClientDecompressionEnabled())
             .setCompressionStrategy(srcStore.getCompressionStrategy())
             .setEnableReads(srcStore.isEnableStoreReads())
@@ -376,11 +376,11 @@ public class UpdateStoreQueryParams extends QueryParams {
     return getBoolean(CHUNKING_ENABLED);
   }
 
-  public UpdateStoreQueryParams setReplicationMetadataChunkingEnabled(boolean chunkingEnabled) {
-    return putBoolean(RMD_CHUNKING_ENABLED, chunkingEnabled);
+  public UpdateStoreQueryParams setRmdChunkingEnabled(boolean rmdChunkingEnabled) {
+    return putBoolean(RMD_CHUNKING_ENABLED, rmdChunkingEnabled);
   }
 
-  public Optional<Boolean> getReplicationMetadataChunkingEnabled() {
+  public Optional<Boolean> getRmdChunkingEnabled() {
     return getBoolean(RMD_CHUNKING_ENABLED);
   }
 

@@ -368,12 +368,12 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
-    public boolean isReplicationMetadataChunkingEnabled() {
-      return this.delegate.isReplicationMetadataChunkingEnabled();
+    public boolean isRmdChunkingEnabled() {
+      return this.delegate.isRmdChunkingEnabled();
     }
 
     @Override
-    public void setReplicationMetadataChunkingEnabled(boolean replicationMetadataChunkingEnabled) {
+    public void setRmdChunkingEnabled(boolean rmdChunkingEnabled) {
       throw new UnsupportedOperationException();
     }
 
@@ -899,12 +899,12 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
-  public boolean isReplicationMetadataChunkingEnabled() {
-    return this.delegate.isReplicationMetadataChunkingEnabled();
+  public boolean isRmdChunkingEnabled() {
+    return this.delegate.isRmdChunkingEnabled();
   }
 
   @Override
-  public void setReplicationMetadataChunkingEnabled(boolean chunkingEnabled) {
+  public void setRmdChunkingEnabled(boolean rmdChunkingEnabled) {
     throw new UnsupportedOperationException();
   }
 

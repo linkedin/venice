@@ -120,7 +120,7 @@ public class PartialUpdateTest {
               .setWriteComputationEnabled(true)
               .setActiveActiveReplicationEnabled(true)
               .setChunkingEnabled(true)
-              .setReplicationMetadataChunkingEnabled(true)
+              .setRmdChunkingEnabled(true)
               .setHybridRewindSeconds(10L)
               .setHybridOffsetLagThreshold(2L);
       ControllerResponse updateStoreResponse =
@@ -139,7 +139,7 @@ public class PartialUpdateTest {
       Assert.assertTrue(storeInfo.isReplicationMetadataChunkingEnabled());
       Assert.assertTrue(storeInfo.isChunkingEnabled());
       Assert.assertTrue(storeInfo.getVersion(1).isPresent());
-      Assert.assertTrue(storeInfo.getVersion(1).get().isReplicationMetadataChunkingEnabled());
+      Assert.assertTrue(storeInfo.getVersion(1).get().isRmdChunkingEnabled());
       Assert.assertTrue(storeInfo.getVersion(1).get().isChunkingEnabled());
     }
     // TODO: Fill in RMD chunking testing logic in the following changes.

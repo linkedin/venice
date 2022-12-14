@@ -209,7 +209,7 @@
               "default": false
             },
             {
-              "name": "replicationMetadataChunkingEnabled",
+              "name": "rmdChunkingEnabled",
               "type": "boolean",
               "doc": "Whether current store supports large replication metadata (typically more than 1MB). By default, the chunking feature is disabled.",
               "default": false
@@ -499,7 +499,7 @@
                       "default": false
                     },
                     {
-                      "name": "replicationMetadataChunkingEnabled",
+                      "name": "rmdChunkingEnabled",
                       "type": "boolean",
                       "doc": "Whether or not large values are supported (via chunking).",
                       "default": false

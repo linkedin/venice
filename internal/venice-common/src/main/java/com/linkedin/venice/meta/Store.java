@@ -212,9 +212,9 @@ public interface Store {
 
   void setChunkingEnabled(boolean chunkingEnabled);
 
-  boolean isReplicationMetadataChunkingEnabled();
+  boolean isRmdChunkingEnabled();
 
-  void setReplicationMetadataChunkingEnabled(boolean replicationMetadataChunkingEnabled);
+  void setRmdChunkingEnabled(boolean rmdChunkingEnabled);
 
   int getBatchGetLimit();
 
