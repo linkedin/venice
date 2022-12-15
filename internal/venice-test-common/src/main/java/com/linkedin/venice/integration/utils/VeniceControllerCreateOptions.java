@@ -31,8 +31,6 @@ public class VeniceControllerCreateOptions {
   private final KafkaBrokerWrapper kafkaBroker;
   private final Properties extraProperties;
   private final AuthorizerService authorizerService;
-  private final String primaryControllerD2ZkHosts;
-  private final String primaryControllerD2ServiceName;
 
   private VeniceControllerCreateOptions(Builder builder) {
     sslToKafka = builder.sslToKafka;
@@ -49,8 +47,6 @@ public class VeniceControllerCreateOptions {
     extraProperties = builder.extraProperties;
     authorizerService = builder.authorizerService;
     isParent = builder.childControllers != null && builder.childControllers.length != 0;
-    primaryControllerD2ZkHosts = builder.primaryControllerD2ZkHosts;
-    primaryControllerD2ServiceName = builder.primaryControllerD2ServiceName;
   }
 
   @Override
@@ -87,12 +83,6 @@ public class VeniceControllerCreateOptions {
         .append(", ")
         .append("clusterToD2:")
         .append(clusterToD2)
-        .append(", ")
-        .append("primaryControllerD2ZkHosts:")
-        .append(primaryControllerD2ZkHosts)
-        .append(", ")
-        .append("primaryControllerD2ServiceName:")
-        .append(primaryControllerD2ServiceName)
         .append(", ")
         .append("extraProperties:")
         .append(extraProperties)
@@ -168,14 +158,6 @@ public class VeniceControllerCreateOptions {
     return authorizerService;
   }
 
-  public String getPrimaryControllerD2ZkHosts() {
-    return primaryControllerD2ZkHosts;
-  }
-
-  public String getPrimaryControllerD2ServiceName() {
-    return primaryControllerD2ServiceName;
-  }
-
   public static class Builder {
     private final String[] clusterNames;
     private final KafkaBrokerWrapper kafkaBroker;
@@ -191,8 +173,6 @@ public class VeniceControllerCreateOptions {
     private VeniceControllerWrapper[] childControllers = null;
     private Properties extraProperties = new Properties();
     private AuthorizerService authorizerService;
-    private String primaryControllerD2ZkHosts;
-    private String primaryControllerD2ServiceName;
 
     public Builder(String[] clusterNames, KafkaBrokerWrapper kafkaBroker) {
       this.clusterNames = clusterNames;
@@ -256,16 +236,6 @@ public class VeniceControllerCreateOptions {
 
     public Builder authorizerService(AuthorizerService authorizerService) {
       this.authorizerService = authorizerService;
-      return this;
-    }
-
-    public Builder primaryControllerD2ZkHosts(String d2ZkHosts) {
-      this.primaryControllerD2ZkHosts = d2ZkHosts;
-      return this;
-    }
-
-    public Builder primaryControllerD2ServiceName(String d2Service) {
-      this.primaryControllerD2ServiceName = d2Service;
       return this;
     }
 

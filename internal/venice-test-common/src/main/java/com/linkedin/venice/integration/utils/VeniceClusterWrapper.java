@@ -2,8 +2,6 @@ package com.linkedin.venice.integration.utils;
 
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.PRIMARY_CONTROLLER_D2_SERVICE_NAME;
-import static com.linkedin.venice.ConfigKeys.PRIMARY_CONTROLLER_D2_ZK_HOSTS;
 import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_KAFKA_OPENSSL;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.CLIENT_CONFIG_FOR_CONSUMER;
@@ -76,7 +74,6 @@ import java.util.stream.Stream;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.io.IOUtils;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
@@ -197,11 +194,6 @@ public class VeniceClusterWrapper extends ProcessWrapper {
           VeniceControllerWrapper.D2_CLUSTER_NAME,
           VeniceControllerWrapper.D2_SERVICE_NAME);
 
-      String primaryControllerD2ZkHosts =
-          StringUtils.defaultIfEmpty(options.getPrimaryControllerD2ZkHosts(), zkAddress);
-      String primaryControllerD2ServiceName = StringUtils
-          .defaultIfEmpty(options.getPrimaryControllerD2ServiceName(), VeniceControllerWrapper.D2_SERVICE_NAME);
-
       for (int i = 0; i < options.getNumberOfControllers(); i++) {
         if (options.getNumberOfRouters() > 0) {
           ClientConfig clientConfig = new ClientConfig().setVeniceURL(zkAddress)
@@ -221,8 +213,6 @@ public class VeniceClusterWrapper extends ProcessWrapper {
                 .sslToKafka(options.isSslToKafka())
                 .d2Enabled(true)
                 .extraProperties(options.getExtraProperties())
-                .primaryControllerD2ZkHosts(primaryControllerD2ZkHosts)
-                .primaryControllerD2ServiceName(primaryControllerD2ServiceName)
                 .build());
         LOGGER.info(
             "[{}][{}] Created child controller on port {}",
@@ -261,8 +251,6 @@ public class VeniceClusterWrapper extends ProcessWrapper {
           featureProperties.put(CLIENT_CONFIG_FOR_CONSUMER, clientConfig);
         }
         featureProperties.setProperty(SERVER_ENABLE_KAFKA_OPENSSL, Boolean.toString(options.isKafkaOpenSSLEnabled()));
-        featureProperties.setProperty(PRIMARY_CONTROLLER_D2_ZK_HOSTS, primaryControllerD2ZkHosts);
-        featureProperties.setProperty(PRIMARY_CONTROLLER_D2_SERVICE_NAME, primaryControllerD2ServiceName);
 
         String serverName = "";
         if (!options.getColoName().isEmpty() && !options.getClusterName().isEmpty()) {

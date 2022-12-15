@@ -37,8 +37,6 @@ public class VeniceClusterCreateOptions {
   private final Map<String, Map<String, String>> kafkaClusterMap;
   private final ZkServerWrapper zkServerWrapper;
   private final KafkaBrokerWrapper kafkaBrokerWrapper;
-  private final String primaryControllerD2ZkHosts;
-  private final String primaryControllerD2ServiceName;
 
   private VeniceClusterCreateOptions(Builder builder) {
     this.clusterName = builder.clusterName;
@@ -62,8 +60,6 @@ public class VeniceClusterCreateOptions {
     this.kafkaClusterMap = builder.kafkaClusterMap;
     this.zkServerWrapper = builder.zkServerWrapper;
     this.kafkaBrokerWrapper = builder.kafkaBrokerWrapper;
-    this.primaryControllerD2ZkHosts = builder.primaryControllerD2ZkHosts;
-    this.primaryControllerD2ServiceName = builder.primaryControllerD2ServiceName;
   }
 
   public String getClusterName() {
@@ -150,14 +146,6 @@ public class VeniceClusterCreateOptions {
     return kafkaBrokerWrapper;
   }
 
-  public String getPrimaryControllerD2ZkHosts() {
-    return primaryControllerD2ZkHosts;
-  }
-
-  public String getPrimaryControllerD2ServiceName() {
-    return primaryControllerD2ServiceName;
-  }
-
   @Override
   public String toString() {
     return new StringBuilder().append("VeniceClusterCreateOptions - ")
@@ -223,12 +211,6 @@ public class VeniceClusterCreateOptions {
         .append(", ")
         .append("kafkaClusterMap:")
         .append(kafkaClusterMap)
-        .append(", ")
-        .append("primaryControllerD2ZkHosts:")
-        .append(primaryControllerD2ZkHosts)
-        .append(", ")
-        .append("primaryControllerD2ServiceName:")
-        .append(primaryControllerD2ServiceName)
         .toString();
   }
 
@@ -255,8 +237,6 @@ public class VeniceClusterCreateOptions {
     private Map<String, Map<String, String>> kafkaClusterMap;
     private ZkServerWrapper zkServerWrapper;
     private KafkaBrokerWrapper kafkaBrokerWrapper;
-    private String primaryControllerD2ZkHosts;
-    private String primaryControllerD2ServiceName;
 
     public Builder clusterName(String clusterName) {
       this.clusterName = clusterName;
@@ -361,16 +341,6 @@ public class VeniceClusterCreateOptions {
 
     public Builder kafkaBrokerWrapper(KafkaBrokerWrapper kafkaBrokerWrapper) {
       this.kafkaBrokerWrapper = kafkaBrokerWrapper;
-      return this;
-    }
-
-    public Builder primaryControllerD2ZkHosts(String d2ZkHosts) {
-      this.primaryControllerD2ZkHosts = d2ZkHosts;
-      return this;
-    }
-
-    public Builder primaryControllerD2ServiceName(String d2Service) {
-      this.primaryControllerD2ServiceName = d2Service;
       return this;
     }
 

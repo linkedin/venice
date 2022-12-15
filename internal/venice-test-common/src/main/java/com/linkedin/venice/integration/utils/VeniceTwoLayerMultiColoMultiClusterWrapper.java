@@ -220,9 +220,7 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
               .childControllerProperties(finalChildControllerProperties)
               .veniceProperties(serverProperties.orElse(null))
               .forkServer(forkServer)
-              .kafkaClusterMap(kafkaClusterMap)
-              .primaryControllerD2ZkHosts(zkServer.getAddress())
-              .primaryControllerD2Service(VeniceControllerWrapper.PARENT_D2_SERVICE_NAME);
+              .kafkaClusterMap(kafkaClusterMap);
       // Create multi-clusters
       for (int i = 0; i < numberOfColos; i++) {
         String coloName = childColoNames.get(i);
