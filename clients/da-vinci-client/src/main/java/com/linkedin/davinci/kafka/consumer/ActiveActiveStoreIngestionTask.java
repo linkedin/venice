@@ -401,6 +401,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       // only extension of IngestionTask which does a read from disk before applying the record. This makes the
       // following function
       // call in this context much less obtrusive, however, it implies that all views can only work for AA stores
+      int valueSchemaId =
+          rmdWithValueSchemaID.isPresent() ? rmdWithValueSchemaID.get().getValueSchemaId() : incomingValueSchemaId;
       this.viewWriters.forEach(
           (k, v) -> v.processRecord(
               mergeConflictResult.getNewValue().orElse(ByteBuffer.allocate(1)),
@@ -408,6 +410,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               ByteBuffer.wrap(keyBytes),
               versionNumber,
               incomingValueSchemaId,
+              valueSchemaId,
               mergeConflictResult.getRmdRecord()));
 
       // This function may modify the original record in KME and it is unsafe to use the payload from KME directly after

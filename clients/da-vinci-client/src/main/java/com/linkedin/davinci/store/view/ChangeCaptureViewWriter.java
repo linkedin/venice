@@ -54,17 +54,18 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
       ByteBuffer oldValue,
       ByteBuffer key,
       int version,
-      int valueSchemaId,
+      int newValueSchemaId,
+      int oldValueSchemaId,
       GenericRecord replicationMetadataRecord) {
     // TODO: not sold about having currentValue in the interface but it VASTLY simplifies a lot of things with regards
     // to dealing with compression/chunking/etc. in the storage layer.
 
     RecordChangeEvent recordChangeEvent = new RecordChangeEvent();
-    recordChangeEvent.currentValue = constructValueBytes(newValue, valueSchemaId); // TODO: Verify this is
-                                                                                   // the right schemaID, the
-                                                                                   // record might also
-                                                                                   // contain RMD data
-    recordChangeEvent.previousValue = constructValueBytes(oldValue, valueSchemaId);
+    recordChangeEvent.currentValue = constructValueBytes(newValue, newValueSchemaId); // TODO: Verify this is
+    // the right schemaID, the
+    // record might also
+    // contain RMD data
+    recordChangeEvent.previousValue = constructValueBytes(oldValue, oldValueSchemaId);
     recordChangeEvent.key = key;
     recordChangeEvent.replicationCheckpointVector = RmdUtils.extractOffsetVectorFromRmd(replicationMetadataRecord);
 

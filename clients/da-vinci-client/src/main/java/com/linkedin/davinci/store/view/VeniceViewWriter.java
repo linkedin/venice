@@ -28,7 +28,8 @@ public abstract class VeniceViewWriter extends VeniceView {
       ByteBuffer oldValue,
       ByteBuffer key,
       int version,
-      int valueSchemaId,
+      int newValueSchemaId,
+      int oldValueSchemaId,
       GenericRecord replicationMetadataRecord) {
   }
 
