@@ -24,6 +24,7 @@ import com.linkedin.venice.kafka.protocol.StartOfPush;
 import com.linkedin.venice.kafka.protocol.StartOfSegment;
 import com.linkedin.venice.kafka.protocol.TopicSwitch;
 import com.linkedin.venice.kafka.protocol.Update;
+import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.validation.Segment;
@@ -732,7 +733,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
     return () -> {
       kafkaMessageEnvelope.leaderMetadataFooter = leaderMetadata;
-      kafkaMessageEnvelope.producerMetadata.upstreamOffset = -1; // This field has been deprecated
       return kafkaMessageEnvelope;
     };
   }
@@ -896,6 +896,30 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     topicSwitch.sourceTopicName = sourceTopicName;
     topicSwitch.rewindStartTimestamp = rewindStartTimestamp;
     controlMessage.controlMessageUnion = topicSwitch;
+    broadcastControlMessage(controlMessage, debugInfo);
+    producer.flush();
+  }
+
+  /**
+   * Broadcast control message to real-time topic partition, to be consumed by venice leader. Partition high watermarks
+   * are left to local venice leader to prepare and then been produced to version topic partition.
+   *
+   * @param oldServingVersionTopic the version topic change capture consumer should switch from.
+   * @param newServingVersionTopic the version topic change capture consumer should switch to.
+   * @param debugInfo arbitrary key/value pairs of information that will be propagated alongside the control message.
+   */
+  public void broadcastVersionSwap(
+      @Nonnull String oldServingVersionTopic,
+      @Nonnull String newServingVersionTopic,
+      Map<String, String> debugInfo) {
+    Validate.notEmpty(oldServingVersionTopic);
+    Validate.notEmpty(newServingVersionTopic);
+    ControlMessage controlMessage = getEmptyControlMessage(ControlMessageType.VERSION_SWAP);
+    VersionSwap versionSwap = new VersionSwap();
+    versionSwap.oldServingVersionTopic = oldServingVersionTopic;
+    versionSwap.newServingVersionTopic = newServingVersionTopic;
+
+    controlMessage.controlMessageUnion = versionSwap;
     broadcastControlMessage(controlMessage, debugInfo);
     producer.flush();
   }
@@ -1456,7 +1480,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       producerMetadata.messageSequenceNumber = currentSegment.getSequenceNumber();
     }
     producerMetadata.messageTimestamp = time.getMilliseconds();
-    producerMetadata.upstreamOffset = -1; // This field has been deprecated
     producerMetadata.logicalTimestamp = logicalTs.orElse(VENICE_DEFAULT_LOGICAL_TS);
     kafkaValue.producerMetadata = producerMetadata;
     kafkaValue.leaderMetadataFooter = new LeaderMetadata();
