@@ -2681,8 +2681,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * Nothing to do here as all of the processing is being done in {@link StoreIngestionTask#delegateConsumerRecord(ConsumerRecord, int, String)}.
          */
         break;
-      case START_OF_BUFFER_REPLAY:
-        throw new UnsupportedMessageTypeException(type + " is a legacy mechanism that should never happen anymore.");
       case START_OF_INCREMENTAL_PUSH:
         processStartOfIncrementalPush(controlMessage, partitionConsumptionState);
         break;
