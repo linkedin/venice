@@ -19,11 +19,12 @@ public class GzipCompressor extends VeniceCompressor {
   @Override
   public byte[] compress(byte[] data) throws IOException {
     ByteArrayOutputStream bos = new ByteArrayOutputStream();
-    try (GZIPOutputStream gos = new GZIPOutputStream(bos)) {
-      gos.write(data);
-      gos.finish();
-      return bos.toByteArray();
-    }
+    ReusableGzipOutputStream out = GzipPool.forStream(bos);
+    out.writeHeader();
+    out.write(data);
+    out.finish();
+    out.reset();
+    return bos.toByteArray();
   }
 
   @Override
