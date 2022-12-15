@@ -733,7 +733,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
     return () -> {
       kafkaMessageEnvelope.leaderMetadataFooter = leaderMetadata;
-      kafkaMessageEnvelope.producerMetadata.upstreamOffset = -1; // This field has been deprecated
       return kafkaMessageEnvelope;
     };
   }
@@ -1481,7 +1480,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       producerMetadata.messageSequenceNumber = currentSegment.getSequenceNumber();
     }
     producerMetadata.messageTimestamp = time.getMilliseconds();
-    producerMetadata.upstreamOffset = -1; // This field has been deprecated
     producerMetadata.logicalTimestamp = logicalTs.orElse(VENICE_DEFAULT_LOGICAL_TS);
     kafkaValue.producerMetadata = producerMetadata;
     kafkaValue.leaderMetadataFooter = new LeaderMetadata();

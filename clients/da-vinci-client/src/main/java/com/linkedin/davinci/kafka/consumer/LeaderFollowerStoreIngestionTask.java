@@ -1211,12 +1211,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       // DaVinci clients don't need to maintain leader production states
       if (!isDaVinciClient) {
         // also update the leader topic offset using the upstream offset in ProducerMetadata
-        if (kafkaValue.producerMetadata.upstreamOffset >= 0
-            || (kafkaValue.leaderMetadataFooter != null && kafkaValue.leaderMetadataFooter.upstreamOffset >= 0)) {
+        if (kafkaValue.leaderMetadataFooter != null && kafkaValue.leaderMetadataFooter.upstreamOffset >= 0) {
           final String sourceKafkaUrl = sourceKafkaUrlSupplier.get();
-          final long newUpstreamOffset = kafkaValue.leaderMetadataFooter == null
-              ? kafkaValue.producerMetadata.upstreamOffset
-              : kafkaValue.leaderMetadataFooter.upstreamOffset;
+          final long newUpstreamOffset = kafkaValue.leaderMetadataFooter.upstreamOffset;
           String upstreamTopicName =
               offsetRecord.getLeaderTopic() != null ? offsetRecord.getLeaderTopic() : kafkaVersionTopic;
           final long previousUpstreamOffset =
