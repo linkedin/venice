@@ -122,7 +122,7 @@ public class PartialUpdateTest {
               .setWriteComputationEnabled(true)
               .setActiveActiveReplicationEnabled(true)
               .setChunkingEnabled(true)
-              .setReplicationMetadataChunkingEnabled(true)
+              .setRmdChunkingEnabled(true)
               .setHybridRewindSeconds(10L)
               .setHybridOffsetLagThreshold(2L);
       ControllerResponse updateStoreResponse =
@@ -137,13 +137,9 @@ public class PartialUpdateTest {
           parentControllerClient,
           30,
           TimeUnit.SECONDS);
-      Assert.assertTrue(parentControllerClient.getStore(storeName).getStore().isReplicationMetadataChunkingEnabled());
-      Assert.assertTrue(
-          parentControllerClient.getStore(storeName)
-              .getStore()
-              .getVersion(1)
-              .get()
-              .isReplicationMetadataChunkingEnabled());
+      Assert.assertTrue(parentControllerClient.getStore(storeName).getStore().isRmdChunkingEnabled());
+      Assert
+          .assertTrue(parentControllerClient.getStore(storeName).getStore().getVersion(1).get().isRmdChunkingEnabled());
     }
 
     VeniceClusterWrapper veniceCluster = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);

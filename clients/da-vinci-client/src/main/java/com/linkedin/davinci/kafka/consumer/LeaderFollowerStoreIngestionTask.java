@@ -230,7 +230,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     VeniceWriterOptions writerOptions =
         new VeniceWriterOptions.Builder(getVersionTopic()).setPartitioner(venicePartitioner)
             .setChunkingEnabled(isChunked)
-            .setRmdChunkingEnabled(version.isReplicationMetadataChunkingEnabled())
+            .setRmdChunkingEnabled(version.isRmdChunkingEnabled())
             .setPartitionCount(Optional.of(storeVersionPartitionCount * amplificationFactor))
             .build();
     this.veniceWriter = Lazy.of(() -> veniceWriterFactory.createVeniceWriter(writerOptions));

@@ -101,7 +101,6 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.http.HttpStatus;
-import org.apache.logging.log4j.LogManager;
 import spark.Request;
 import spark.Route;
 
@@ -292,10 +291,6 @@ public class StoresRoutes extends AbstractRoute {
         if (store == null) {
           throw new VeniceNoStoreException(storeName);
         }
-        LogManager.getLogger()
-            .info(
-                "DEBUGGING: GET STORE " + store.isReplicationMetadataChunkingEnabled() + " " + store.isChunkingEnabled()
-                    + " " + store);
         StoreInfo storeInfo = StoreInfo.fromStore(store);
         // Make sure store info will have right default retention time for Nuage UI display.
         if (storeInfo.getBackupVersionRetentionMs() < 0) {
