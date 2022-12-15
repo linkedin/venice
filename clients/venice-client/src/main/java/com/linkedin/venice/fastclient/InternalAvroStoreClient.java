@@ -22,8 +22,20 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericStoreC
 
   protected abstract CompletableFuture<V> get(GetRequestContext requestContext, K key) throws VeniceClientException;
 
+  /**
+   * Use StatsAvroGenericStoreClient to get a client instance.
+   * Once batchGet with streaming has stabilized the function of this class is to kickstart the internal
+   * scaffolding. When ready, uncomment the line indicated and then the new implementation will
+   * get wired in
+   * @param keys
+   * @return
+   * @throws VeniceClientException
+   */
   public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
-    return batchGet(new BatchGetRequestContext<K, V>(), keys);
+
+    // Uncomment below line when batchGet with streaming has stabillized
+    // return batchGet(new BatchGetRequestContext<K,V>(keys), keys);
+    throw new VeniceClientException("'batchGet' is not supported.");
   }
 
   protected abstract CompletableFuture<Map<K, V>> batchGet(BatchGetRequestContext<K, V> requestContext, Set<K> keys)

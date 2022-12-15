@@ -91,7 +91,6 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
   @Override
   protected CompletableFuture<V> get(GetRequestContext requestContext, K key) throws VeniceClientException {
     if (!longTailRetryEnabledForSingleGet) {
-      // TODO QQ: why special case for this?
       return super.get(requestContext, key);
     }
     final CompletableFuture<V> originalRequestFuture = super.get(requestContext, key);

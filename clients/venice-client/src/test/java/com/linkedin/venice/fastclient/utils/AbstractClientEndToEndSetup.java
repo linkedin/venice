@@ -47,8 +47,6 @@ import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
@@ -97,10 +95,18 @@ public abstract class AbstractClientEndToEndSetup {
   protected final String keyPrefix = "key_";
   protected final int recordCnt = 100;
 
-  // two sizes: default 2 (initial FC batch get implementation size) and max of recordCnt
-  // TODO figure out where this count is checked and limited to a global or store based max value
+  /**
+   * two sizes: default 2 (initial FC batch get implementation size) and max of recordCnt
+   *
+   * TODO
+   * 1: figure out where this count is checked and limited to a global or store based max value
+   * 2: Current implementation of batchGet() using single get() in a loop quickly fails due
+   * to routingPendingRequestCounterInstanceBlockThreshold set to 50 by default and the loop
+   * is faster than the counter decrement following a successful get, so some get() calls will
+   * not be sent due to blocked instances. Setting this variable to be 100 from the tests for now.
+   * This needs to be discussed further.
+    */
   public final Object[] BATCH_GET_KEY_SIZE = { 2, recordCnt };
-  private static final Logger LOGGER = LogManager.getLogger(AbstractClientEndToEndSetup.class);
 
   // useDaVinciClientBasedMetadata is true/false. Testing both legacy and the current implementation
   @DataProvider(name = "FastClient-Four-Boolean-And-A-Number")

@@ -273,6 +273,14 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     return valueFuture;
   }
 
+  /**
+   * This implementation is for future use. It will get wired in via
+   * InternalAvroStoreClient.batchGet(Set<K> keys)
+   * @param requestContext
+   * @param keys
+   * @return
+   * @throws VeniceClientException
+   */
   @Override
   protected CompletableFuture<Map<K, V>> batchGet(BatchGetRequestContext<K, V> requestContext, Set<K> keys)
       throws VeniceClientException {

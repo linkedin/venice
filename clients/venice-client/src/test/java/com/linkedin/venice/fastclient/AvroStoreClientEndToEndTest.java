@@ -270,7 +270,9 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
             .setSpeculativeQueryEnabled(speculativeQueryEnabled)
             .setDualReadEnabled(dualRead)
             // default maxAllowedKeyCntInBatchGetReq is 2. configuring it to test different cases.
-            .setMaxAllowedKeyCntInBatchGetReq(recordCnt);
+            .setMaxAllowedKeyCntInBatchGetReq(recordCnt)
+            // TODO: this needs to be revisited to see how much this should be set. Current default is 50.
+            .setRoutingPendingRequestCounterInstanceBlockThreshold(recordCnt);
 
     // dualRead also needs thinClient
     AvroGenericStoreClient<String, GenericRecord> genericThinClient = null;
@@ -299,36 +301,15 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
   public void testFastClientGetWithDifferentHTTPVariants(ClientTestUtils.FastClientHTTPVariant fastClientHTTPVariant)
       throws Exception {
     boolean useDaVinciClientBasedMetadata = true;
-    boolean dualRead = false;
     Client r2Client = ClientTestUtils.getR2Client(fastClientHTTPVariant);
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
-            .setDualReadEnabled(dualRead);
+            .setDualReadEnabled(false);
 
-    // dualRead also needs thinClient
-    AvroGenericStoreClient<String, GenericRecord> genericThinClient = null;
-    AvroSpecificStoreClient<String, TestValueSchema> specificThinClient = null;
-
-    try {
-      if (dualRead) {
-        genericThinClient = getGenericThinClient();
-        clientConfigBuilder.setGenericThinClient(genericThinClient);
-        specificThinClient = getSpecificThinClient();
-        clientConfigBuilder.setSpecificThinClient(specificThinClient);
-      }
-
-      // test both single and multiGet
-      runTest(clientConfigBuilder, useDaVinciClientBasedMetadata, false, 2);
-      runTest(clientConfigBuilder, useDaVinciClientBasedMetadata, true, 2);
-    } finally {
-      if (genericThinClient != null) {
-        genericThinClient.close();
-      }
-      if (specificThinClient != null) {
-        specificThinClient.close();
-      }
-    }
+    // test both single and multiGet
+    runTest(clientConfigBuilder, useDaVinciClientBasedMetadata, false, 2);
+    runTest(clientConfigBuilder, useDaVinciClientBasedMetadata, true, 2);
   }
 
   // TODO This test fails for the first time and then succeeds when the entire fastclient
@@ -353,8 +334,8 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
     });
   }
 
-  // TODO remove this test
-  @Test
+  // TODO remove this test: Redundant
+  @Test(timeOut = TIME_OUT)
   public void testClientRestRequestAPI() throws Exception {
     Client r2Client = null;
     DaVinciClientBasedMetadata metadata = null;

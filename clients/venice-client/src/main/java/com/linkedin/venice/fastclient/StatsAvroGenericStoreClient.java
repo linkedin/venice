@@ -254,17 +254,16 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
   }
 
   /**
-   *  TODO Not used: Will remove in later iterations
    *
    *  Leverage single-get implementation here:
    *  1. Looping through all keys and call get() for each of the keys
    *  2. Collect the reply and send it back
    *  3. This is a naive scatter and gather approach.
    *
-   *  This function was built before streamingBatchGet() was implemented for a customer to support two-key batch-get.
-   *  Will be replaced with streamingBatchGet() once it is validated.
+   *  TODO: This function was built before streamingBatchGet() was implemented for a customer
+   *  to support two-key batch-get. Will need to be replaced with streamingBatchGet() once it is validated.
    */
-  public CompletableFuture<Map<K, V>> batchGetUsingSingleGet(Set<K> keys) throws VeniceClientException {
+  public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
     if (keys.isEmpty()) {
       return CompletableFuture.completedFuture(Collections.emptyMap());
     }
