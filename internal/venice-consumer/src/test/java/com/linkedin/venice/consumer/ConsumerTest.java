@@ -108,7 +108,6 @@ public class ConsumerTest {
     producerMetadata.messageSequenceNumber = 0;
     messageFromNewProtocol.put(PRODUCER_METADATA_FIELD, producerMetadata);
     messageFromNewProtocol.put(MESSAGE_TYPE_FIELD, MessageType.PUT.getValue());
-    messageFromNewProtocol.put(TARGET_VERSION_FIELD, -1);
     Put put = new Put();
     put.schemaId = 1;
     put.putValue = ByteBuffer.allocate(1);
