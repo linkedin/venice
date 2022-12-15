@@ -1,6 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER;
+import static com.linkedin.venice.writer.VeniceWriter.*;
 
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
@@ -29,6 +30,7 @@ class LeaderProducerCallback implements ChunkAwareCallback {
 
   protected static final ChunkedValueManifestSerializer CHUNKED_VALUE_MANIFEST_SERIALIZER =
       new ChunkedValueManifestSerializer(false);
+  private static final ByteBuffer EMPTY_BYTE_BUFFER = ByteBuffer.allocate(0);
 
   private final LeaderFollowerStoreIngestionTask ingestionTask;
   private final ConsumerRecord<KafkaKey, KafkaMessageEnvelope> sourceConsumerRecord;
@@ -175,8 +177,8 @@ class LeaderProducerCallback implements ChunkAwareCallback {
             chunkPut.putValue = chunkValue;
             chunkPut.schemaId = schemaId;
             if (hasReplicationMetadata) {
-              chunkPut.replicationMetadataPayload = ByteBuffer.allocate(0);
-              chunkPut.replicationMetadataVersionId = -1;
+              chunkPut.replicationMetadataPayload = EMPTY_BYTE_BUFFER;
+              chunkPut.replicationMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
             }
 
             LeaderProducedRecordContext producedRecordForChunk =
