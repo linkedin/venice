@@ -77,7 +77,7 @@ public abstract class AbstractClientEndToEndSetup {
   // Client factory
   CachingDaVinciClientFactory daVinciClientFactory = null;
   // daVinciClient for the daVinciClient based metastore
-  DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore = null;
+  protected DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore = null;
 
   /**
    * router based metadata
@@ -115,8 +115,7 @@ public abstract class AbstractClientEndToEndSetup {
 
   @DataProvider(name = "useDaVinciClientBasedMetadata")
   public static Object[][] useDaVinciClientBasedMetadata() {
-    // return new Object[][] { { false }, { true } };
-    return new Object[][] { { false }, { true }, { false }, { true }, { false }, { true }, { false }, { true } };
+    return new Object[][] { { false }, { true } };
   }
 
   @BeforeClass(alwaysRun = true)
@@ -126,7 +125,7 @@ public abstract class AbstractClientEndToEndSetup {
     props.put(SERVER_HTTP2_INBOUND_ENABLED, "true");
     veniceCluster = ServiceFactory.getVeniceCluster(1, 2, 1, 2, 100, true, false, props);
 
-    r2Client = ClientTestUtils.getR2Client(ClientTestUtils.ClientType.HTTP_2_BASED_HTTPCLIENT5);
+    r2Client = ClientTestUtils.getR2Client(ClientTestUtils.FastClientHTTPVariant.HTTP_2_BASED_HTTPCLIENT5);
 
     d2Client = D2TestUtils.getAndStartD2Client(veniceCluster.getZk().getAddress());
 
@@ -217,6 +216,7 @@ public abstract class AbstractClientEndToEndSetup {
       ClientConfig.ClientConfigBuilder clientConfigBuilder,
       MetricsRepository metricsRepository,
       boolean useDaVinciClientBasedMetadata) throws IOException {
+    clientConfigBuilder.setVsonStore(true);
     setupStoreMetadata(clientConfigBuilder, useDaVinciClientBasedMetadata);
 
     // clientConfigBuilder will be used for building multiple clients over this test flow,
@@ -266,7 +266,7 @@ public abstract class AbstractClientEndToEndSetup {
         : ClientFactory.getAndStartSpecificStoreClient(routerBasedStoreMetadata, clientConfig);
   }
 
-  private void setupStoreMetadata(
+  protected void setupStoreMetadata(
       ClientConfig.ClientConfigBuilder clientConfigBuilder,
       boolean useDaVinciClientBasedMetadata) throws IOException {
     if (useDaVinciClientBasedMetadata) {
@@ -278,7 +278,7 @@ public abstract class AbstractClientEndToEndSetup {
   }
 
   // Helper for runTest()
-  void setupDaVinciClientForMetaStore() {
+  private void setupDaVinciClientForMetaStore() {
     cleanupDaVinciClientForMetaStore();
     daVinciClientFactory = new CachingDaVinciClientFactory(
         d2Client,
@@ -292,7 +292,14 @@ public abstract class AbstractClientEndToEndSetup {
   }
 
   // Helper for runTest()
-  void cleanupDaVinciClientForMetaStore() {
+  /**
+   * Note that both daVinciClientBasedStoreMetadata and routerBasedStoreMetaData
+   * will be closed when the respective client closes. The below function
+   * needs to clean up the daVinciClient and its client factory alone.
+   *
+   * TODO: can we reuse these for all the tests rathe than cleaning it up everytime?
+   * */
+  protected void cleanupDaVinciClientForMetaStore() {
     if (daVinciClientForMetaStore != null) {
       daVinciClientForMetaStore.close();
       daVinciClientForMetaStore = null;
@@ -304,7 +311,6 @@ public abstract class AbstractClientEndToEndSetup {
   }
 
   private void setupRouterBasedStoreMetadata(ClientConfig.ClientConfigBuilder clientConfigBuilder) throws IOException {
-    // cleanupRouterBasedStoreMetadata();
     clientConfigBuilder.setMetricsRepository(new MetricsRepository());
     ClientConfig clientConfig = clientConfigBuilder.build();
     VeniceRouterWrapper routerWrapper = veniceCluster.getRandomVeniceRouter();
@@ -314,26 +320,6 @@ public abstract class AbstractClientEndToEndSetup {
         routerWrapper.getRoutingDataRepository(),
         storeName,
         clientConfig);
-  }
-
-  /*
-  // its closed when client is closed. so need to close again if client close happens in finally.
-  private void cleanupRouterBasedStoreMetadata() throws IOException {
-    if (routerBasedStoreMetadata != null) {
-      routerBasedStoreMetadata.close();
-      routerBasedStoreMetadata = null;
-    }
-  }*/
-
-  /**
-   * Note that both daVinciClientBasedStoreMetadata and routerBasedStoreMetaData
-   * will be closed when the respective client closes. The below function
-   * needs to clean up the daVinciClient and its client factory alone.
-   *
-   * TODO: can we reuse these for all the tests rathe than cleaning it up everytime?
-   * */
-  protected void cleanupStoreMetadata() {
-    cleanupDaVinciClientForMetaStore();
   }
 
   protected AvroGenericStoreClient<String, GenericRecord> getGenericThinClient() {
@@ -353,9 +339,7 @@ public abstract class AbstractClientEndToEndSetup {
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    Utils.closeQuietlyWithErrorLogged(daVinciClientForMetaStore);
-    Utils.closeQuietlyWithErrorLogged(daVinciClientFactory);
-    // Utils.closeQuietlyWithErrorLogged(routerBasedStoreMetadata);
+    cleanupDaVinciClientForMetaStore();
 
     if (r2Client != null) {
       r2Client.shutdown(null);
@@ -365,8 +349,5 @@ public abstract class AbstractClientEndToEndSetup {
     }
     Utils.closeQuietlyWithErrorLogged(veniceCluster);
     Utils.closeQuietlyWithErrorLogged(veniceWriter);
-
-    /*cleanupDaVinciClientForMetaStore();
-    cleanupRouterBasedStoreMetadata();*/
   }
 }

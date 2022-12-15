@@ -23,7 +23,6 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericStoreC
   protected abstract CompletableFuture<V> get(GetRequestContext requestContext, K key) throws VeniceClientException;
 
   public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
-
     return batchGet(new BatchGetRequestContext<K, V>(), keys);
   }
 

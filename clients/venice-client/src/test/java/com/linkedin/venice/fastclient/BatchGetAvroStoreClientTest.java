@@ -126,7 +126,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
         getGenericFastClient(clientConfigBuilder, new MetricsRepository(), true);
 
     Set<String> keys = new HashSet<>();
-    for (int i = 0; i < recordCnt; i++) {
+    for (int i = 0; i < recordCnt; ++i) {
       keys.add(keyPrefix + i);
     }
     keys.add("nonExistingKey");
@@ -139,6 +139,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
     }
     ClientStats stats = clientConfig.getStats(RequestType.MULTI_GET);
     LOGGER.info("STATS: {}", stats.buildSensorStatSummary("multiget_healthy_request_latency"));
+    printAllStats();
   }
 
   @Test
@@ -154,7 +155,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
         getSpecificFastClient(clientConfigBuilder, new MetricsRepository(), true, TestValueSchema.class);
 
     Set<String> keys = new HashSet<>();
-    for (int i = 0; i < recordCnt; i++) {
+    for (int i = 0; i < recordCnt; ++i) {
       keys.add(keyPrefix + i);
     }
     Map<String, TestValueSchema> results = specificFastClient.batchGet(keys).get();
@@ -165,12 +166,9 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
       Assert.assertEquals(value.get(VALUE_FIELD_NAME), i);
     }
     specificFastClient.close();
+    printAllStats();
   }
 
-  /**
-   * StreamingBatchGet, but with synchronous wait using streamingBatchGet(keys).get()?!
-   * @throws Exception
-   */
   @Test
   public void testStreamingBatchGetGenericClient() throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
@@ -184,7 +182,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
         getGenericFastClient(clientConfigBuilder, new MetricsRepository(), true);
 
     Set<String> keys = new HashSet<>();
-    for (int i = 0; i < recordCnt; i++) {
+    for (int i = 0; i < recordCnt; ++i) {
       keys.add(keyPrefix + i);
     }
     keys.add("nonExisting");
@@ -230,7 +228,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
         getGenericFastClient(clientConfigBuilder, new MetricsRepository(), true);
     Set<String> keys = new HashSet<>();
-    for (int i = 0; i < recordCnt; i++) {
+    for (int i = 0; i < recordCnt; ++i) {
       keys.add(keyPrefix + i);
     }
     keys.add("nonExisting");

@@ -1,19 +1,38 @@
 package com.linkedin.venice.fastclient;
 
+import static com.linkedin.venice.fastclient.DispatchingAvroGenericStoreClient.*;
 import static org.testng.Assert.*;
 
+import com.linkedin.r2.message.rest.RestRequest;
+import com.linkedin.r2.message.rest.RestRequestBuilder;
+import com.linkedin.r2.message.rest.RestResponse;
+import com.linkedin.r2.transport.common.Client;
+import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.fastclient.meta.DaVinciClientBasedMetadata;
+import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import com.linkedin.venice.fastclient.schema.TestValueSchema;
 import com.linkedin.venice.fastclient.utils.AbstractClientEndToEndSetup;
+import com.linkedin.venice.fastclient.utils.ClientTestUtils;
+import com.linkedin.venice.serializer.AvroSerializer;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
+import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
+import java.net.URI;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.commons.httpclient.HttpStatus;
+import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
@@ -24,7 +43,8 @@ import org.testng.annotations.Test;
  * 2. Batch get
  *
  * TODO
- * 1. add test for get with speculative query but only with 1 replica: should throw an exception? Not really a practical use case unless there are failures?
+ * 1. There might be some duplicate tests in this file and {@link BatchGetAvroStoreClientTest}, need to clean it up.
+ * 2. add test for get with speculative query but only with 1 replica: should throw an exception? Not really a practical use case unless there are failures?
  */
 
 public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
@@ -63,15 +83,12 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
     AvroGenericStoreClient<String, Object> genericFastVsonClient = null;
     if (testVson) {
       // Construct a Vson store client
-      ClientConfig.ClientConfigBuilder clientConfigBuilderForVsonStore = clientConfigBuilder.clone().setVsonStore(true);
-      genericFastVsonClient = getGenericFastVsonClient(
-          clientConfigBuilderForVsonStore,
-          new MetricsRepository(),
-          useDaVinciClientBasedMetadata);
+      genericFastVsonClient =
+          getGenericFastVsonClient(clientConfigBuilder.clone(), new MetricsRepository(), useDaVinciClientBasedMetadata);
     }
     try {
       if (batchGet) {
-        // test batch get of size 2 (default)
+        // test batch get of size 2 (current default max)
         if (batchGetKeySize == 2) {
           for (int i = 0; i < recordCnt - 1; ++i) {
             String key1 = keyPrefix + i;
@@ -176,7 +193,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
       if (genericFastVsonClient != null) {
         genericFastVsonClient.close();
       }
-      cleanupStoreMetadata();
+      cleanupDaVinciClientForMetaStore();
     }
 
     // Test specific store client
@@ -231,10 +248,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
       if (specificFastClient != null) {
         specificFastClient.close();
       }
-      /*if (useDaVinciClientBasedMetadata) {
-        cleanupDaVinciClientForMetaStore();
-      }*/
-      cleanupStoreMetadata();
+      cleanupDaVinciClientForMetaStore();
     }
   }
 
@@ -281,6 +295,42 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
     }
   }
 
+  @Test(dataProvider = "fastClientHTTPVariants", dataProviderClass = ClientTestUtils.class, timeOut = TIME_OUT)
+  public void testFastClientGetWithDifferentHTTPVariants(ClientTestUtils.FastClientHTTPVariant fastClientHTTPVariant)
+      throws Exception {
+    boolean useDaVinciClientBasedMetadata = true;
+    boolean dualRead = false;
+    Client r2Client = ClientTestUtils.getR2Client(fastClientHTTPVariant);
+    ClientConfig.ClientConfigBuilder clientConfigBuilder =
+        new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
+            .setR2Client(r2Client)
+            .setDualReadEnabled(dualRead);
+
+    // dualRead also needs thinClient
+    AvroGenericStoreClient<String, GenericRecord> genericThinClient = null;
+    AvroSpecificStoreClient<String, TestValueSchema> specificThinClient = null;
+
+    try {
+      if (dualRead) {
+        genericThinClient = getGenericThinClient();
+        clientConfigBuilder.setGenericThinClient(genericThinClient);
+        specificThinClient = getSpecificThinClient();
+        clientConfigBuilder.setSpecificThinClient(specificThinClient);
+      }
+
+      // test both single and multiGet
+      runTest(clientConfigBuilder, useDaVinciClientBasedMetadata, false, 2);
+      runTest(clientConfigBuilder, useDaVinciClientBasedMetadata, true, 2);
+    } finally {
+      if (genericThinClient != null) {
+        genericThinClient.close();
+      }
+      if (specificThinClient != null) {
+        specificThinClient.close();
+      }
+    }
+  }
+
   // TODO This test fails for the first time and then succeeds when the entire fastclient
   // testsuite is run, but runs successfully when this test is run alone. Need to debug.
   @Test
@@ -301,5 +351,68 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
         }
       });
     });
+  }
+
+  // TODO remove this test
+  @Test
+  public void testClientRestRequestAPI() throws Exception {
+    Client r2Client = null;
+    DaVinciClientBasedMetadata metadata = null;
+    try {
+      r2Client = ClientTestUtils.getR2Client(ClientTestUtils.FastClientHTTPVariant.HTTP_2_BASED_HTTPCLIENT5);
+      ClientConfig.ClientConfigBuilder clientConfigBuilder =
+          new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName).setR2Client(r2Client);
+
+      setupStoreMetadata(clientConfigBuilder, true);
+      metadata = new DaVinciClientBasedMetadata(clientConfigBuilder.build());
+      metadata.start();
+      GetRequestContext requestContext = new GetRequestContext();
+      String key = keyPrefix + 1;
+      requestContext.requestUri = composeURIForSingleGet(metadata, requestContext, key);
+      List<String> routes = metadata.getReplicas(
+          1,
+          requestContext.currentVersion,
+          requestContext.partitionId,
+          1,
+          new VeniceConcurrentHashMap<String, String>().keySet());
+
+      if (routes.isEmpty()) {
+        throw new VeniceClientException("Routes Empty for partition");
+      }
+
+      URI requestUri = new URI(routes.get(0) + requestContext.requestUri);
+      RestRequest request = new RestRequestBuilder(requestUri).setMethod("get").build();
+      RestResponse response = r2Client.restRequest(request).get();
+      Assert.assertEquals(response.getStatus(), HttpStatus.SC_OK, "Should return 200 OK");
+    } finally {
+      if (r2Client != null) {
+        r2Client.shutdown(null);
+      }
+      if (metadata != null) {
+        metadata.close();
+      }
+      cleanupDaVinciClientForMetaStore();
+    }
+
+  }
+
+  protected String composeURIForSingleGet(StoreMetadata metadata, GetRequestContext requestContext, String key) {
+    int currentVersion = DispatchingAvroGenericStoreClient.getCurrentVersion(metadata);
+    String resourceName = DispatchingAvroGenericStoreClient.getResourceName(metadata, currentVersion);
+    long beforeSerializationTimeStamp = System.nanoTime();
+    RecordSerializer<String> keySerializer =
+        FastSerializerDeserializerFactory.getAvroGenericSerializer(metadata.getKeySchema());
+    byte[] keyBytes = keySerializer.serialize(key, AvroSerializer.REUSE.get());
+    requestContext.requestSerializationTime =
+        DispatchingAvroGenericStoreClient.getLatencyInNS(beforeSerializationTimeStamp);
+    int partitionId = metadata.getPartitionId(currentVersion, keyBytes);
+    String b64EncodedKeyBytes = EncodingUtils.base64EncodeToString(keyBytes);
+
+    requestContext.currentVersion = currentVersion;
+    requestContext.partitionId = partitionId;
+
+    String sb = URI_SEPARATOR + AbstractAvroStoreClient.TYPE_STORAGE + URI_SEPARATOR + resourceName + URI_SEPARATOR
+        + partitionId + URI_SEPARATOR + b64EncodedKeyBytes + AbstractAvroStoreClient.B64_FORMAT;
+    return sb;
   }
 }

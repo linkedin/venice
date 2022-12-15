@@ -55,7 +55,13 @@ import org.testng.internal.collections.Ints;
 
 
 /**
- * This class simulates fastclient
+ * This class simulates fastclient: Idea is to implement some deterministic way to simulate the different concurrency
+ * situations (eg: In case of speculative query, what happens when the primary request succeeds first, what happens when
+ * the secondary request succeeds first, to be able to simulate these 2 scenarios in a deterministic way). This class
+ * uses timeticks to mimic time and order events and simulate different flows that can happen during runtime. Idea is
+ * to have a comprehensive set of such flows/events, but it needs to be evolved over time based any new concerns or
+ * edge cases found in deployment.
+ *
  * Time is expressed as timeticks conventionally between 0 and 99. This is meant to simulate timed ordering of
  * events while allowing control over the ordering itself. Each timetick is executed approx 1 ms apart
  * The simulator guarantees that every event with a lower timetick will be executed BEFORE one with higher timetick.

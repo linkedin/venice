@@ -49,17 +49,6 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
     return recordMetrics(requestContext, 1, innerFuture, startTimeInNS, clientStatsForSingleGet);
   }
 
-  /**
-   * This method is intended to replace the implementation of batchGet once we have some stabilization in the streaming
-   * versions.
-   * Once ready , remove the batchGet(keys) method and then rename this method name to batchGet
-   * @param requestContext
-   * @param keys
-   * @return
-   * @throws VeniceClientException
-   */
-  // protected CompletableFuture<Map<K, V>> batchGetWithStreaming(BatchGetRequestContext<K, V> requestContext, Set<K>
-  // keys)
   protected CompletableFuture<Map<K, V>> batchGet(BatchGetRequestContext<K, V> requestContext, Set<K> keys)
       throws VeniceClientException {
     long startTimeInNS = System.nanoTime();

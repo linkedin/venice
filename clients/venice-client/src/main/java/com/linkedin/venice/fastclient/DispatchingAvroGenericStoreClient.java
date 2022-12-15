@@ -53,7 +53,7 @@ import org.apache.logging.log4j.Logger;
  */
 public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
   private static final Logger LOGGER = LogManager.getLogger(DispatchingAvroGenericStoreClient.class);
-  private static final String URI_SEPARATOR = "/";
+  protected static final String URI_SEPARATOR = "/";
   private static final Executor DESERIALIZATION_EXECUTOR = AbstractAvroStoreClient.getDefaultDeserializationExecutor();
 
   private final StoreMetadata metadata;
@@ -87,8 +87,8 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   }
 
   private String composeURIForSingleGet(GetRequestContext requestContext, K key) {
-    int currentVersion = getCurrentVersion();
-    String resourceName = getResourceName(currentVersion);
+    int currentVersion = getCurrentVersion(this.metadata);
+    String resourceName = getResourceName(this.metadata, currentVersion);
     long beforeSerializationTimeStamp = System.nanoTime();
     byte[] keyBytes = keySerializer.serialize(key, AvroSerializer.REUSE.get());
     requestContext.requestSerializationTime = getLatencyInNS(beforeSerializationTimeStamp);
@@ -104,8 +104,8 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   }
 
   private String composeURIForBatchGetRequest(BatchGetRequestContext<K, V> requestContext) {
-    int currentVersion = getCurrentVersion();
-    String resourceName = getResourceName(currentVersion);
+    int currentVersion = getCurrentVersion(this.metadata);
+    String resourceName = getResourceName(this.metadata, currentVersion);
 
     requestContext.currentVersion = currentVersion;
     StringBuilder sb = new StringBuilder();
@@ -113,11 +113,11 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     return sb.toString();
   }
 
-  private String getResourceName(int currentVersion) {
+  protected static String getResourceName(StoreMetadata metadata, int currentVersion) {
     return metadata.getStoreName() + "_v" + currentVersion;
   }
 
-  private int getCurrentVersion() {
+  protected static int getCurrentVersion(StoreMetadata metadata) {
     int currentVersion = metadata.getCurrentStoreVersion();
     if (currentVersion <= 0) {
       throw new VeniceClientException("No available current version, please do a push first");
@@ -273,14 +273,6 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     return valueFuture;
   }
 
-  /**
-   * This implementation is for future use. It will get wired in via
-   * InternalAvroStoreClient.batchGet(Set<K> keys)
-   * @param requestContext
-   * @param keys
-   * @return
-   * @throws VeniceClientException
-   */
   @Override
   protected CompletableFuture<Map<K, V>> batchGet(BatchGetRequestContext<K, V> requestContext, Set<K> keys)
       throws VeniceClientException {
@@ -588,7 +580,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     return multiGetSerializer.serializeObjects(routerRequestKeys);
   }
 
-  private long getLatencyInNS(long startTimeStamp) {
+  protected static long getLatencyInNS(long startTimeStamp) {
     return System.nanoTime() - startTimeStamp;
   }
 

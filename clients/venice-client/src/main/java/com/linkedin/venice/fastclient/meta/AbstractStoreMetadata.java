@@ -56,10 +56,6 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
     List<String> replicas = getReplicas(version, partitionId);
     List<String> filteredReplicas;
 
-    if (replicas.isEmpty()) {
-      int i = 0;
-    }
-
     if (excludedInstances.isEmpty()) {
       filteredReplicas = replicas;
     } else {
