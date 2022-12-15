@@ -3044,7 +3044,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         getVersionIngestionStats(),
         getHostLevelIngestionStats(),
         System.nanoTime(),
-        beforeProcessingRecordTimestamp);
+        beforeProcessingRecordTimestamp,
+        false);
   }
 
   protected Lazy<VeniceWriter<byte[], byte[], byte[]>> getVeniceWriter() {

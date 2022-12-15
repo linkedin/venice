@@ -46,7 +46,7 @@ class LeaderProducerCallback implements ChunkAwareCallback {
   private final HostLevelIngestionStats hostLevelIngestionStats;
   private final long produceTimeNs;
   private final long beforeProcessingRecordTimestamp;
-  private final boolean hasReplicationMetadata;
+  private final boolean isActiveActiveReplication;
 
   /**
    * The mutable fields below are determined by the {@link com.linkedin.venice.writer.VeniceWriter},
@@ -73,7 +73,8 @@ class LeaderProducerCallback implements ChunkAwareCallback {
       AggVersionedIngestionStats versionedStorageIngestionStats,
       HostLevelIngestionStats hostLevelIngestionStats,
       long produceTimeNs,
-      long beforeProcessingRecordTimestamp) {
+      long beforeProcessingRecordTimestamp,
+      boolean isActiveActiveReplication) {
     this.ingestionTask = ingestionTask;
     this.sourceConsumerRecord = sourceConsumerRecord;
     this.partitionConsumptionState = partitionConsumptionState;
@@ -88,7 +89,7 @@ class LeaderProducerCallback implements ChunkAwareCallback {
     this.versionedStorageIngestionStats = versionedStorageIngestionStats;
     this.hostLevelIngestionStats = hostLevelIngestionStats;
     this.beforeProcessingRecordTimestamp = beforeProcessingRecordTimestamp;
-    this.hasReplicationMetadata = ingestionTask instanceof ActiveActiveStoreIngestionTask;
+    this.isActiveActiveReplication = isActiveActiveReplication;
   }
 
   @Override
@@ -176,7 +177,7 @@ class LeaderProducerCallback implements ChunkAwareCallback {
             Put chunkPut = new Put();
             chunkPut.putValue = chunkValue;
             chunkPut.schemaId = schemaId;
-            if (hasReplicationMetadata) {
+            if (isActiveActiveReplication) {
               chunkPut.replicationMetadataPayload = EMPTY_BYTE_BUFFER;
               chunkPut.replicationMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
             }
@@ -208,7 +209,7 @@ class LeaderProducerCallback implements ChunkAwareCallback {
           Put manifestPut = new Put();
           manifestPut.putValue = manifest;
           manifestPut.schemaId = schemaId;
-          if (hasReplicationMetadata) {
+          if (isActiveActiveReplication) {
             manifestPut.replicationMetadataVersionId =
                 ((Put) leaderProducedRecordContext.getValueUnion()).replicationMetadataVersionId;
             manifestPut.replicationMetadataPayload =

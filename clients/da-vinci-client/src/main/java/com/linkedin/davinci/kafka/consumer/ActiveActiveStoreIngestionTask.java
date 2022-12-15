@@ -1316,4 +1316,31 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               Optional.of(new PutMetadata(getRmdProtocolVersionID(), updatedRmdBytes)));
     };
   }
+
+  protected LeaderProducerCallback createLeaderProducerCallback(
+      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      PartitionConsumptionState partitionConsumptionState,
+      LeaderProducedRecordContext leaderProducedRecordContext,
+      int subPartition,
+      String kafkaUrl,
+      long beforeProcessingRecordTimestamp) {
+    int partition = consumerRecord.partition();
+    String leaderTopic = consumerRecord.topic();
+    return new LeaderProducerCallback(
+        this,
+        consumerRecord,
+        partitionConsumptionState,
+        leaderProducedRecordContext,
+        leaderTopic,
+        getKafkaVersionTopic(),
+        partition,
+        subPartition,
+        kafkaUrl,
+        getVersionedDIVStats(),
+        getVersionIngestionStats(),
+        getHostLevelIngestionStats(),
+        System.nanoTime(),
+        beforeProcessingRecordTimestamp,
+        true);
+  }
 }
