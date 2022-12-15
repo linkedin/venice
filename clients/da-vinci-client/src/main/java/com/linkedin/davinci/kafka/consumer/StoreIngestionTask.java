@@ -3761,7 +3761,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return false;
     }
     KafkaMessageEnvelope kafkaValue = consumerRecord.value();
-    return (kafkaValue.producerMetadata.upstreamOffset >= 0
-        || (kafkaValue.leaderMetadataFooter != null && kafkaValue.leaderMetadataFooter.upstreamOffset >= 0));
+    return kafkaValue.leaderMetadataFooter != null && kafkaValue.leaderMetadataFooter.upstreamOffset >= 0;
   }
 }
