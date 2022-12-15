@@ -40,9 +40,9 @@ public class ServerSystemSchemaInitializationRoutine extends AbstractSystemSchem
       SchemaReader kafkaMessageEnvelopeSchemaReader) {
     primaryControllerClient = Lazy.of(
         () -> new D2ControllerClient(
-            serverConfig.getPrimaryControllerD2ServiceName(),
+            serverConfig.getZookeeperAddress(),
             serverConfig.getSystemSchemaClusterName(),
-            serverConfig.getPrimaryControllerD2ZkHosts(),
+            serverConfig.getLocalControllerD2ServiceName(),
             sslFactory));
     autoRegisterSystemSchemas = serverConfig.shouldAutoRegisterWriteSystemSchemas();
     autoCreateMissingSchemaStores = serverConfig.shouldAutoCreateWriteSystemStores();

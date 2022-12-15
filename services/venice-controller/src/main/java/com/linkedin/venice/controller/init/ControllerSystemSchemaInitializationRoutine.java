@@ -47,9 +47,9 @@ public class ControllerSystemSchemaInitializationRoutine extends AbstractSystemS
     Optional<SSLFactory> sslFactory = admin.getSslFactory();
     primaryControllerClient = Lazy.of(
         () -> new D2ControllerClient(
-            multiClusterConfigs.getCommonConfig().getPrimaryControllerD2ServiceName(),
+            multiClusterConfigs.getCommonConfig().getD2ServiceName(),
             multiClusterConfigs.getSystemSchemaClusterName(),
-            multiClusterConfigs.getCommonConfig().getPrimaryControllerD2ZkHosts(),
+            multiClusterConfigs.getZkAddress(),
             sslFactory));
   }
 

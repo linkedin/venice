@@ -4,6 +4,7 @@ import static com.linkedin.davinci.config.BlockingQueueType.ARRAY_BLOCKING_QUEUE
 import static com.linkedin.venice.ConfigKeys.AUTOCREATE_DATA_PATH;
 import static com.linkedin.venice.ConfigKeys.AUTO_CREATE_WRITE_SYSTEM_STORES;
 import static com.linkedin.venice.ConfigKeys.AUTO_REGISTER_WRITE_SYSTEM_SCHEMAS;
+import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_D2_SERVICE_NAME;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.ENABLE_SERVER_ALLOW_LIST;
 import static com.linkedin.venice.ConfigKeys.FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS;
@@ -21,8 +22,6 @@ import static com.linkedin.venice.ConfigKeys.MAX_FUTURE_VERSION_LEADER_FOLLOWER_
 import static com.linkedin.venice.ConfigKeys.MAX_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER;
 import static com.linkedin.venice.ConfigKeys.OFFSET_LAG_DELTA_RELAX_FACTOR_FOR_FAST_ONLINE_TRANSITION_IN_RESTART;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS;
-import static com.linkedin.venice.ConfigKeys.PRIMARY_CONTROLLER_D2_SERVICE_NAME;
-import static com.linkedin.venice.ConfigKeys.PRIMARY_CONTROLLER_D2_ZK_HOSTS;
 import static com.linkedin.venice.ConfigKeys.SERVER_AUTO_COMPACTION_FOR_SAMZA_REPROCESSING_JOB_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_BLOCKING_QUEUE_TYPE;
 import static com.linkedin.venice.ConfigKeys.SERVER_CACHE_WARMING_BEFORE_READY_TO_SERVE_ENABLED;
@@ -377,8 +376,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean readOnlyForBatchOnlyStoreEnabled; // TODO: remove this config as its never used in prod
   private final boolean autoRegisterWriteSystemSchemas;
   private final boolean autoCreateWriteSystemStores;
-  private final String primaryControllerD2ZkHosts;
-  private final String primaryControllerD2ServiceName;
+  private final String localControllerD2ServiceName;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
@@ -611,11 +609,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     autoRegisterWriteSystemSchemas = serverProperties.getBoolean(AUTO_REGISTER_WRITE_SYSTEM_SCHEMAS, false);
     autoCreateWriteSystemStores = serverProperties.getBoolean(AUTO_CREATE_WRITE_SYSTEM_STORES, false);
     if (autoRegisterWriteSystemSchemas) {
-      primaryControllerD2ZkHosts = serverProperties.getString(PRIMARY_CONTROLLER_D2_ZK_HOSTS);
-      primaryControllerD2ServiceName = serverProperties.getString(PRIMARY_CONTROLLER_D2_SERVICE_NAME);
+      localControllerD2ServiceName = serverProperties.getString(CHILD_CLUSTER_D2_SERVICE_NAME);
     } else {
-      primaryControllerD2ZkHosts = serverProperties.getString(PRIMARY_CONTROLLER_D2_ZK_HOSTS, (String) null);
-      primaryControllerD2ServiceName = serverProperties.getString(PRIMARY_CONTROLLER_D2_SERVICE_NAME, (String) null);
+      localControllerD2ServiceName = serverProperties.getString(CHILD_CLUSTER_D2_SERVICE_NAME, (String) null);
     }
   }
 
@@ -1038,11 +1034,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return autoCreateWriteSystemStores;
   }
 
-  public String getPrimaryControllerD2ZkHosts() {
-    return primaryControllerD2ZkHosts;
-  }
-
-  public String getPrimaryControllerD2ServiceName() {
-    return primaryControllerD2ServiceName;
+  public String getLocalControllerD2ServiceName() {
+    return localControllerD2ServiceName;
   }
 }
