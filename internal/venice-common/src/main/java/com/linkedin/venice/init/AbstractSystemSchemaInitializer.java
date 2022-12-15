@@ -14,6 +14,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -21,7 +22,7 @@ import org.apache.logging.log4j.Logger;
 
 /**
  * This class provides the basic framework necessary to create new schema system stores and register previously unknown
- * schemas for schema system stores.
+ * schemas for schema system stores. The scope of an object of this class is restricted to one schema system store.
  */
 public abstract class AbstractSystemSchemaInitializer {
   private static final Logger LOGGER = LogManager.getLogger(AbstractSystemSchemaInitializer.class);
@@ -31,6 +32,14 @@ public abstract class AbstractSystemSchemaInitializer {
   private final boolean autoRegisterDerivedComputeSchema;
   private final String schemaStoreName;
   private final String schemaSystemStoreClusterName;
+
+  public static final UpdateStoreQueryParams DEFAULT_USER_SYSTEM_STORE_UPDATE_QUERY_PARAMS =
+      new UpdateStoreQueryParams().setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(1)) // 1 day rewind
+          .setHybridOffsetLagThreshold(1)
+          .setHybridTimeLagThreshold(-1) // Explicitly disable hybrid time lag measurement on system store
+          .setLeaderFollowerModel(true)
+          .setWriteComputationEnabled(true)
+          .setPartitionCount(1);
 
   public AbstractSystemSchemaInitializer(
       VeniceSystemStoreType systemStore,
@@ -128,11 +137,9 @@ public abstract class AbstractSystemSchemaInitializer {
   protected abstract void registerDerivedSchema(int valueSchemaVersion, Schema writeComputeSchema);
 
   /**
-   * Run any post registration verification steps if needed
+   * Run any post registration verification steps
    */
-  protected void verify() {
-    // Do nothing
-  }
+  public abstract boolean isSchemaInitialized();
 
   /**
    * The entry point for triggering the Schema initialization routine
@@ -278,8 +285,6 @@ public abstract class AbstractSystemSchemaInitializer {
         }
       }
     }
-
-    verify();
   }
 
   @Override

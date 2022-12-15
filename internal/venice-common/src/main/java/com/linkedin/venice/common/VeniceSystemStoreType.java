@@ -68,9 +68,7 @@ public enum VeniceSystemStoreType {
   private final boolean isStoreZkShared;
   private final boolean isSchemaSystemStore;
   private AvroProtocolDefinition keySchemaProtocol;
-  private final String keySchema;
   private AvroProtocolDefinition valueSchemaProtocol;
-  private final String valueSchema;
   private final String zkSharedStoreName;
   /**
    * Whether this specific type has adopted the new metadata repositories, such as
@@ -105,9 +103,7 @@ public enum VeniceSystemStoreType {
     this.isStoreZkShared = isStoreZkShared;
     this.isSchemaSystemStore = isSchemaSystemStore;
     this.keySchemaProtocol = keySchemaProtocol;
-    this.keySchema = keySchemaProtocol.getCurrentProtocolVersionSchema().toString();
     this.valueSchemaProtocol = valueSchemaProtocol;
-    this.valueSchema = valueSchemaProtocol.getCurrentProtocolVersionSchema().toString();
     if (zkSharedStoreName == null) {
       this.zkSharedStoreName = this.getPrefix();
     } else {
@@ -127,14 +123,6 @@ public enum VeniceSystemStoreType {
 
   public boolean isSchemaSystemStore() {
     return isSchemaSystemStore;
-  }
-
-  public String getKeySchema() {
-    return keySchema;
-  }
-
-  public String getValueSchema() {
-    return valueSchema;
   }
 
   public String getZkSharedStoreName() {

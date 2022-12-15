@@ -37,7 +37,7 @@ import com.linkedin.venice.controller.helix.SharedHelixReadOnlyZKSharedSchemaRep
 import com.linkedin.venice.controller.helix.SharedHelixReadOnlyZKSharedSystemStoreRepository;
 import com.linkedin.venice.controller.init.ClusterInitializationManager;
 import com.linkedin.venice.controller.init.ClusterInitializationRoutine;
-import com.linkedin.venice.controller.init.ControllerSystemSchemaInitializer;
+import com.linkedin.venice.controller.init.ControllerSystemSchemaInitializationRoutine;
 import com.linkedin.venice.controller.init.InternalRTStoreInitializationRoutine;
 import com.linkedin.venice.controller.init.LatestVersionPromoteToCurrentTimestampCorrectionRoutine;
 import com.linkedin.venice.controller.kafka.StoreStatusDecider;
@@ -352,7 +352,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final Map<String, Map<String, ControllerClient>> clusterControllerClientPerColoMap =
       new VeniceConcurrentHashMap<>();
 
-  private final ControllerSystemSchemaInitializer controllerSystemSchemaInitializer;
+  private final ControllerSystemSchemaInitializationRoutine controllerSystemSchemaInitializationRoutine;
 
   private final VeniceDistClusterControllerStateModelFactory controllerStateModelFactory;
 
@@ -519,9 +519,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         new ClusterInitializationManager(initRoutines, commonConfig.isConcurrentInitRoutinesEnabled());
 
     List<ClusterInitializationRoutine> stateTransitionInitRoutines = new ArrayList<>();
-    controllerSystemSchemaInitializer =
-        new ControllerSystemSchemaInitializer(multiClusterConfigs, this, getReadOnlyZKSharedSchemaRepository());
-    stateTransitionInitRoutines.add(controllerSystemSchemaInitializer);
+    controllerSystemSchemaInitializationRoutine = new ControllerSystemSchemaInitializationRoutine(
+        multiClusterConfigs,
+        this,
+        getReadOnlyZKSharedSchemaRepository());
+    stateTransitionInitRoutines.add(controllerSystemSchemaInitializationRoutine);
     ClusterInitializationRoutine controllerStateTransitionInitialization =
         new ClusterInitializationManager(stateTransitionInitRoutines, commonConfig.isConcurrentInitRoutinesEnabled());
 
@@ -4903,7 +4905,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public void stopVeniceController() {
     try {
-      controllerSystemSchemaInitializer.close();
+      controllerSystemSchemaInitializationRoutine.close();
       helixManager.disconnect();
       topicManagerRepository.close();
       zkClient.close();

@@ -6,6 +6,7 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
@@ -19,8 +20,6 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -28,37 +27,37 @@ import org.apache.logging.log4j.Logger;
  * invoking the necessary Controller APIs via the {@link ControllerClient}.
  */
 public class ControllerClientBackedSystemSchemaInitializer extends AbstractSystemSchemaInitializer {
-  private static final Logger LOGGER = LogManager.getLogger(ControllerClientBackedSystemSchemaInitializer.class);
   private final ControllerClient controllerClient;
   private final VeniceSystemStoreType systemStore;
   private final SchemaPresenceChecker schemaPresenceChecker;
-  private final boolean autoCreateWriteSystemStores;
+  private final boolean autoCreateMissingSchemaStores;
 
   public ControllerClientBackedSystemSchemaInitializer(
       ControllerClient controllerClient,
       VeniceSystemStoreType systemStore,
       SchemaPresenceChecker schemaPresenceChecker,
-      boolean autoCreateWriteSystemStores) {
-    this(controllerClient, systemStore, schemaPresenceChecker, autoCreateWriteSystemStores, null, false);
+      boolean autoCreateMissingSchemaStores) {
+    this(controllerClient, systemStore, schemaPresenceChecker, autoCreateMissingSchemaStores, null, false);
   }
 
   public ControllerClientBackedSystemSchemaInitializer(
       ControllerClient controllerClient,
       VeniceSystemStoreType systemStore,
       SchemaPresenceChecker schemaPresenceChecker,
-      boolean autoCreateWriteSystemStores,
+      boolean autoCreateMissingSchemaStores,
       UpdateStoreQueryParams updateStoreQueryParams,
       boolean autoRegisterDerivedComputeSchema) {
     super(systemStore, controllerClient.getClusterName(), updateStoreQueryParams, autoRegisterDerivedComputeSchema);
     this.controllerClient = controllerClient;
     this.systemStore = systemStore;
     this.schemaPresenceChecker = schemaPresenceChecker;
-    this.autoCreateWriteSystemStores = autoCreateWriteSystemStores;
+    this.autoCreateMissingSchemaStores = autoCreateMissingSchemaStores;
   }
 
   @Override
   protected String getActualSystemStoreCluster() {
-    D2ServiceDiscoveryResponse response = controllerClient.discoverCluster(getSchemaStoreName());
+    D2ServiceDiscoveryResponse response =
+        controllerClient.retryableRequest(10, cc -> cc.discoverCluster(getSchemaStoreName()));
     if (response.isError()) {
       if (STORE_NOT_FOUND.equals(response.getErrorType())) {
         return null;
@@ -86,16 +85,18 @@ public class ControllerClientBackedSystemSchemaInitializer extends AbstractSyste
 
   @Override
   protected boolean shouldCreateMissingSchemaStores() {
-    return autoCreateWriteSystemStores;
+    return autoCreateMissingSchemaStores;
   }
 
   @Override
   protected void createSchemaStore(Schema firstKeySchema, Schema firstValueSchema) {
-    NewStoreResponse newStoreResponse = controllerClient.createNewSystemStore(
-        systemStore.getZkSharedStoreName(),
-        VeniceConstants.SYSTEM_STORE_OWNER,
-        firstKeySchema.toString(),
-        firstValueSchema.toString());
+    NewStoreResponse newStoreResponse = controllerClient.retryableRequest(
+        10,
+        cc -> cc.createNewSystemStore(
+            systemStore.getZkSharedStoreName(),
+            VeniceConstants.SYSTEM_STORE_OWNER,
+            firstKeySchema.toString(),
+            firstValueSchema.toString()));
 
     if (newStoreResponse.isError()) {
       throw new VeniceException(newStoreResponse.getError());
@@ -104,18 +105,33 @@ public class ControllerClientBackedSystemSchemaInitializer extends AbstractSyste
 
   @Override
   protected void updateStore(UpdateStoreQueryParams updateStoreQueryParams) {
-    controllerClient.updateStore(getSchemaStoreName(), updateStoreQueryParams);
+    ControllerResponse response =
+        controllerClient.retryableRequest(10, cc -> cc.updateStore(getSchemaStoreName(), updateStoreQueryParams));
+
+    if (response.isError()) {
+      throw new VeniceException(response.getError());
+    }
   }
 
   @Override
   protected SchemaEntry getRegisteredKeySchema() {
-    SchemaResponse response = controllerClient.getKeySchema(getSchemaStoreName());
+    SchemaResponse response = controllerClient.retryableRequest(10, cc -> cc.getKeySchema(getSchemaStoreName()));
+
+    if (response.isError()) {
+      throw new VeniceException(response.getError());
+    }
+
     return new SchemaEntry(response.getId(), AvroCompatibilityHelper.parse(response.getSchemaStr()));
   }
 
   @Override
   protected Collection<SchemaEntry> getAllRegisteredValueSchemas() {
-    MultiSchemaResponse response = controllerClient.getAllValueSchema(getSchemaStoreName());
+    MultiSchemaResponse response =
+        controllerClient.retryableRequest(10, cc -> cc.getAllValueSchema(getSchemaStoreName()));
+
+    if (response.isError()) {
+      throw new VeniceException(response.getError());
+    }
 
     return Arrays.stream(response.getSchemas())
         .map(schema -> new SchemaEntry(schema.getId(), AvroCompatibilityHelper.parse(schema.getSchemaStr())))
@@ -124,24 +140,40 @@ public class ControllerClientBackedSystemSchemaInitializer extends AbstractSyste
 
   @Override
   protected void registerValueSchema(Schema schema, int version) {
-    controllerClient.addValueSchema(getSchemaStoreName(), schema.toString(), version);
+    SchemaResponse response = controllerClient
+        .retryableRequest(10, cc -> cc.addValueSchema(getSchemaStoreName(), schema.toString(), version));
+
+    if (response.isError()) {
+      throw new VeniceException(response.getError());
+    }
   }
 
   @Override
   protected ValueAndDerivedSchemaId getDerivedSchemaInfo(Schema derivedSchema) {
-    SchemaResponse response =
-        controllerClient.getValueOrDerivedSchemaId(getSchemaStoreName(), derivedSchema.toString());
+    SchemaResponse response = controllerClient
+        .retryableRequest(10, cc -> cc.getValueOrDerivedSchemaId(getSchemaStoreName(), derivedSchema.toString()));
+
+    if (response.isError()) {
+      throw new VeniceException(response.getError());
+    }
+
     return new ValueAndDerivedSchemaId(response.getId(), response.getDerivedSchemaId());
   }
 
   @Override
   protected void registerDerivedSchema(int valueSchemaVersion, Schema writeComputeSchema) {
-    controllerClient.addDerivedSchema(getSchemaStoreName(), valueSchemaVersion, writeComputeSchema.toString());
+    SchemaResponse response = controllerClient.retryableRequest(
+        10,
+        cc -> cc.addDerivedSchema(getSchemaStoreName(), valueSchemaVersion, writeComputeSchema.toString()));
+
+    if (response.isError()) {
+      throw new VeniceException(response.getError());
+    }
   }
 
   @Override
-  public void verify() {
-    // Wait for newly registered schema to propagate to local fabric
-    schemaPresenceChecker.verifySchemaVersionPresentOrExit();
+  public boolean isSchemaInitialized() {
+    return schemaPresenceChecker
+        .isSchemaVersionPresent(systemStore.getValueSchemaProtocol().getCurrentProtocolVersion(), false);
   }
 }

@@ -12,8 +12,6 @@ import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.utils.Pair;
 import java.util.Collection;
 import org.apache.avro.Schema;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -21,10 +19,7 @@ import org.apache.logging.log4j.Logger;
  * a Leader controller
  */
 public class LeaderControllerSystemSchemaInitializer extends AbstractSystemSchemaInitializer {
-  private static final Logger LOGGER = LogManager.getLogger(LeaderControllerSystemSchemaInitializer.class);
-
   private final VeniceSystemStoreType systemStore;
-  private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final VeniceHelixAdmin admin;
 
   public LeaderControllerSystemSchemaInitializer(
@@ -46,7 +41,6 @@ public class LeaderControllerSystemSchemaInitializer extends AbstractSystemSchem
         storeMetadataUpdate,
         autoRegisterDerivedComputeSchema);
     this.systemStore = systemStore;
-    this.multiClusterConfigs = multiClusterConfigs;
     this.admin = admin;
   }
 
@@ -121,6 +115,15 @@ public class LeaderControllerSystemSchemaInitializer extends AbstractSystemSchem
         getSchemaStoreName(),
         valueSchemaVersion,
         writeComputeSchema.toString());
+  }
+
+  @Override
+  public boolean isSchemaInitialized() {
+    SchemaEntry entry = admin.getReadOnlyZKSharedSchemaRepository()
+        .getValueSchema(
+            systemStore.getZkSharedStoreName(),
+            systemStore.getValueSchemaProtocol().getCurrentProtocolVersion());
+    return entry != null;
   }
 
   @Override

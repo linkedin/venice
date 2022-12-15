@@ -101,8 +101,8 @@ public enum ControllerRoute {
                                                                               // topic
   STORE("/store", HttpMethod.GET, Collections.singletonList(NAME)), // get all information about that store
   NEW_STORE(
-      "/new_store", HttpMethod.POST, Arrays.asList(NAME, KEY_SCHEMA, VALUE_SCHEMA), OWNER, IS_SYSTEM_STORE,
-      ACCESS_PERMISSION, CLUSTER
+      "/new_store", HttpMethod.POST, Arrays.asList(CLUSTER, NAME, KEY_SCHEMA, VALUE_SCHEMA), OWNER, IS_SYSTEM_STORE,
+      ACCESS_PERMISSION
   ),
   CHECK_RESOURCE_CLEANUP_FOR_STORE_CREATION(
       "/check_resource_cleanup_for_store_creation", HttpMethod.GET, Arrays.asList(CLUSTER, NAME)
