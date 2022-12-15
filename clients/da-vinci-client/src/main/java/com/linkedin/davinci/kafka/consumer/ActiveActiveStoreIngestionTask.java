@@ -394,6 +394,22 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           LatencyUtils.getLatencyInMS(beforeProcessingRecordTimestamp));
     } else {
       validatePostOperationResultsAndRecord(mergeConflictResult, offsetSumPreOperation, recordTimestampsPreOperation);
+
+      // Apply this update to any views for this store
+      // TODO: It'd be good to be able to do this in LeaderFollowerStoreIngestionTask instead, however, AA currently is
+      // the
+      // only extension of IngestionTask which does a read from disk before applying the record. This makes the
+      // following function
+      // call in this context much less obtrusive, however, it implies that all views can only work for AA stores
+      this.viewWriters.forEach(
+          (k, v) -> v.processRecord(
+              mergeConflictResult.getNewValue().orElse(ByteBuffer.allocate(1)),
+              oldValueProvider.get(),
+              ByteBuffer.wrap(keyBytes),
+              versionNumber,
+              incomingValueSchemaId,
+              mergeConflictResult.getRmdRecord()));
+
       // This function may modify the original record in KME and it is unsafe to use the payload from KME directly after
       // this call.
       producePutOrDeleteToKafka(

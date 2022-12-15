@@ -2,12 +2,12 @@ package com.linkedin.davinci.store.view;
 
 import static com.linkedin.venice.writer.VeniceWriter.*;
 
+import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.venice.client.change.capture.protocol.RecordChangeEvent;
 import com.linkedin.venice.client.change.capture.protocol.ValueBytes;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
-import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.meta.PartitionerConfig;
@@ -23,11 +23,12 @@ import com.linkedin.venice.views.ChangeCaptureView;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
+import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 
@@ -35,34 +36,35 @@ import org.apache.avro.generic.GenericRecord;
 public class ChangeCaptureViewWriter extends VeniceViewWriter {
   final private ChangeCaptureView internalView;
   private VeniceWriter veniceWriter;
+  private final Object2IntMap<String> kafkaClusterUrlToIdMap;
 
-  public ChangeCaptureViewWriter(Properties props, Store store, Schema keySchema) {
-    super(props, store, keySchema);
-    internalView = new ChangeCaptureView(props, store);
-    // TODO: assemble this based on the properties passed in. Should be built in the LeaderFollowerIngestionTask
-    // construction/factory
-    // where we'll have access to more configs to pass here.
+  public ChangeCaptureViewWriter(
+      VeniceConfigLoader props,
+      Store store,
+      Schema keySchema,
+      Map<String, String> extraViewParameters) {
+    super(props, store, keySchema, extraViewParameters);
+    internalView = new ChangeCaptureView(props.getCombinedProperties().toProperties(), store, extraViewParameters);
+    kafkaClusterUrlToIdMap = props.getVeniceServerConfig().getKafkaClusterUrlToIdMap();
   }
 
   @Override
   public void processRecord(
-      Put record,
-      ByteBuffer currentValue,
+      ByteBuffer newValue,
+      ByteBuffer oldValue,
       ByteBuffer key,
       int version,
-      Schema valueSchema,
       int valueSchemaId,
       GenericRecord replicationMetadataRecord) {
     // TODO: not sold about having currentValue in the interface but it VASTLY simplifies a lot of things with regards
-    // to dealing
-    // with compression/chunking/etc. in the storage layer.
+    // to dealing with compression/chunking/etc. in the storage layer.
 
     RecordChangeEvent recordChangeEvent = new RecordChangeEvent();
-    recordChangeEvent.currentValue = constructValueBytes(currentValue, record.getSchemaId()); // TODO: Verify this is
-                                                                                              // the right schemaID, the
-                                                                                              // record might also
-                                                                                              // contain RMD data
-    recordChangeEvent.previousValue = constructValueBytes(record.putValue, valueSchemaId);
+    recordChangeEvent.currentValue = constructValueBytes(newValue, valueSchemaId); // TODO: Verify this is
+                                                                                   // the right schemaID, the
+                                                                                   // record might also
+                                                                                   // contain RMD data
+    recordChangeEvent.previousValue = constructValueBytes(oldValue, valueSchemaId);
     recordChangeEvent.key = key;
     recordChangeEvent.replicationCheckpointVector = RmdUtils.extractOffsetVectorFromRmd(replicationMetadataRecord);
 
@@ -79,35 +81,44 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
       int partition,
       PartitionConsumptionState partitionConsumptionState,
       int version) {
+
     // We only care (for now) about version swap control Messages
-    if (controlMessage.getControlMessageUnion() instanceof VersionSwap) {
-      if (partitionConsumptionState.getLeaderFollowerState() != LeaderFollowerStateType.LEADER) {
-        // Only leaders should produce to Change Capture topics
-        return;
-      }
-      VersionSwap versionSwapMessage = (VersionSwap) controlMessage.getControlMessageUnion();
-      if (Version.parseVersionFromVersionTopicName(versionSwapMessage.oldServingVersionTopic.toString()) != version) {
-        // Only the version we're transiting FROM needs to populate the topic switch message into the change capture
-        // topic
-        return;
-      }
-
-      // Fill in the highWaterMarkData TODO: Figure out sorting order, it needs to match up
-      List<Long> highWaterMarkOffsets =
-          (List<Long>) partitionConsumptionState.getLatestProcessedUpstreamRTOffsetMap().values();
-
-      // Write the message on veniceWriter to the change capture topic
-      if (veniceWriter == null) {
-        initializeVeniceWriter(version);
-      }
-      veniceWriter.sendControlMessage(
-          constructVersionSwapControlMessage(versionSwapMessage, highWaterMarkOffsets),
-          partitionConsumptionState.getPartition(),
-          Collections.emptyMap(),
-          null,
-          DEFAULT_LEADER_METADATA_WRAPPER);
+    if (!(controlMessage.getControlMessageUnion() instanceof VersionSwap)) {
+      return;
     }
-    // NoOp
+
+    // Only leaders should produce to Change Capture topics
+    if (partitionConsumptionState.getLeaderFollowerState() != LeaderFollowerStateType.LEADER) {
+      return;
+    }
+
+    // Parse VersionSwap
+    VersionSwap versionSwapMessage = (VersionSwap) controlMessage.getControlMessageUnion();
+
+    // Only the version we're transiting FROM needs to populate the topic switch message into the change capture topic
+    if (Version.parseVersionFromVersionTopicName(versionSwapMessage.oldServingVersionTopic.toString()) != version) {
+      return;
+    }
+
+    Map<String, Long> sortedWaterMarkOffsets = partitionConsumptionState.getLatestProcessedUpstreamRTOffsetMap();
+    List<Long> highWaterMarkOffsets = new ArrayList<>();
+    for (String url: sortedWaterMarkOffsets.keySet()) {
+      highWaterMarkOffsets.add(
+          kafkaClusterUrlToIdMap.getInt(url),
+          partitionConsumptionState.getLatestProcessedUpstreamRTOffsetMap().get(url));
+    }
+
+    // Write the message on veniceWriter to the change capture topic
+    if (veniceWriter == null) {
+      initializeVeniceWriter(version);
+    }
+
+    veniceWriter.sendControlMessage(
+        constructVersionSwapControlMessage(versionSwapMessage, highWaterMarkOffsets),
+        partitionConsumptionState.getPartition(),
+        Collections.emptyMap(),
+        null,
+        DEFAULT_LEADER_METADATA_WRAPPER);
   }
 
   @Override

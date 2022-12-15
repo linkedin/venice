@@ -148,7 +148,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   protected final Int2ObjectMap<String> kafkaClusterIdToUrlMap;
   private long dataRecoveryCompletionTimeLagThresholdInMs = 0;
 
-  private final Map<String, VeniceViewWriter> viewWriters;
+  protected final Map<String, VeniceViewWriter> viewWriters;
 
   public LeaderFollowerStoreIngestionTask(
       StoreIngestionTaskFactory.Builder builder,
@@ -171,8 +171,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         isIsolatedIngestion,
         cacheBackend,
         builder.getLeaderFollowerNotifiers());
-    // TODO: Make this a thing
-    this.viewWriters = Collections.emptyMap();
     /**
      * We are going to apply fast leader failover for per user store system store since it is time sensitive, and if the
      * split-brain problem happens in prod, we could design a way to periodically produce snapshot to the meta system
@@ -241,6 +239,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     this.kafkaClusterIdToUrlMap = serverConfig.getKafkaClusterIdToUrlMap();
 
     this.kafkaDataIntegrityValidatorForLeaders = new KafkaDataIntegrityValidator(kafkaVersionTopic);
+    if (builder.getVeniceViewWriterFactory() != null) {
+      viewWriters = builder.getVeniceViewWriterFactory()
+          .buildStoreViewWriters(
+              store,
+              version.getNumber(),
+              schemaRepository.getKeySchema(store.getName()).getSchema());
+    } else {
+      viewWriters = Collections.emptyMap();
+    }
   }
 
   @Override
@@ -2613,6 +2620,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
         LeaderProducedRecordContext leaderProducedRecordContext =
             LeaderProducedRecordContext.newPutRecord(kafkaClusterId, consumerRecord.offset(), keyBytes, put);
+
+        // write to views
+
         produceToLocalKafka(
             consumerRecord,
             partitionConsumptionState,
@@ -2675,6 +2685,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         }
         leaderProducedRecordContext =
             LeaderProducedRecordContext.newDeleteRecord(kafkaClusterId, consumerRecord.offset(), keyBytes, null);
+
+        // write to view
+
         produceToLocalKafka(
             consumerRecord,
             partitionConsumptionState,

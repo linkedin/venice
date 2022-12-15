@@ -13,8 +13,8 @@ public class ChangeCaptureView extends VeniceView {
   public static String CHANGE_CAPTURE_VIEW_WRITER_CLASS_NAME =
       "com.linkedin.davinci.store.view.ChangeCaptureViewWriter";
 
-  public ChangeCaptureView(Properties props, Store store) {
-    super(props, store);
+  public ChangeCaptureView(Properties props, Store store, Map<String, String> viewParameters) {
+    super(props, store, viewParameters);
   }
 
   @Override

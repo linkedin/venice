@@ -11,10 +11,12 @@ import java.util.Properties;
 public abstract class VeniceView {
   protected final Properties props;
   protected final Store store;
+  protected final Map<String, String> viewParameters;
 
-  public VeniceView(Properties props, Store store) {
+  public VeniceView(Properties props, Store store, Map<String, String> viewParameters) {
     this.props = props;
     this.store = store;
+    this.viewParameters = viewParameters;
   }
 
   /**

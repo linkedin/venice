@@ -27,6 +27,7 @@ import com.linkedin.davinci.stats.StoreBufferServiceStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
+import com.linkedin.davinci.store.view.VeniceViewWriterFactory;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -449,6 +450,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         veniceConfigLoader.getVeniceServerConfig().getDataBasePath(),
         veniceConfigLoader.getVeniceServerConfig().getDiskFullThreshold());
 
+    VeniceViewWriterFactory viewWriterFactory = new VeniceViewWriterFactory(veniceConfigLoader);
+
     ingestionTaskFactory = StoreIngestionTaskFactory.builder()
         .setVeniceWriterFactory(veniceWriterFactory)
         .setKafkaClientFactory(veniceConsumerFactory)
@@ -477,6 +480,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setRemoteIngestionRepairService(remoteIngestionRepairService)
         .setMetaStoreWriter(metaStoreWriter)
         .setCompressorFactory(compressorFactory)
+        .setVeniceViewWriterFactory(viewWriterFactory)
         .build();
   }
 

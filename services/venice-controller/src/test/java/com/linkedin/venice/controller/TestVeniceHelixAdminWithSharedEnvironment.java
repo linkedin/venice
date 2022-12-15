@@ -60,6 +60,7 @@ import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.views.ChangeCaptureView;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -1896,7 +1897,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     String storeName = Utils.getUniqueString("test_param_inheritance");
     veniceAdmin.createStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
     Map<String, String> viewConfig = new HashMap<>();
-    viewConfig.put("changeCapture", "\"viewClassName\" : \"com.linkedin.venice.views.ChangeCaptureView\"");
+    viewConfig.put("changeCapture", "\"viewClassName\" : \"" + ChangeCaptureView.class.getCanonicalName() + "\"");
     veniceAdmin.updateStore(
         clusterName,
         storeName,
