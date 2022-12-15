@@ -32,7 +32,7 @@ import java.util.Optional;
  */
 public class ControllerSystemSchemaInitializationRoutine extends AbstractSystemSchemaInitializationRoutine
     implements ClusterInitializationRoutine, Closeable {
-  private final Lazy<ControllerClient> primaryControllerClient;
+  private final Lazy<ControllerClient> localControllerClient;
   private final VeniceHelixAdmin admin;
   private final ReadOnlySchemaRepository schemaRepo;
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
@@ -45,9 +45,15 @@ public class ControllerSystemSchemaInitializationRoutine extends AbstractSystemS
     this.schemaRepo = schemaRepo;
     this.multiClusterConfigs = multiClusterConfigs;
     Optional<SSLFactory> sslFactory = admin.getSslFactory();
-    primaryControllerClient = Lazy.of(
+    final String controllerD2Service;
+    if (multiClusterConfigs.isParent()) {
+      controllerD2Service = multiClusterConfigs.getCommonConfig().getParentControllerD2ServiceName();
+    } else {
+      controllerD2Service = multiClusterConfigs.getCommonConfig().getChildControllerD2ServiceName();
+    }
+    localControllerClient = Lazy.of(
         () -> new D2ControllerClient(
-            multiClusterConfigs.getCommonConfig().getD2ServiceName(),
+            controllerD2Service,
             multiClusterConfigs.getSystemSchemaClusterName(),
             multiClusterConfigs.getZkAddress(),
             sslFactory));
@@ -94,7 +100,7 @@ public class ControllerSystemSchemaInitializationRoutine extends AbstractSystemS
   private AbstractSystemSchemaInitializer getControllerClientBackedSystemSchemaInitializer(
       VeniceSystemStoreType systemStore) {
     return new ControllerClientBackedSystemSchemaInitializer(
-        primaryControllerClient.get(),
+        localControllerClient.get(),
         systemStore,
         new SchemaPresenceChecker(
             new SchemaRepoBackedSchemaReader(schemaRepo, systemStore.getZkSharedStoreName()),
@@ -106,7 +112,7 @@ public class ControllerSystemSchemaInitializationRoutine extends AbstractSystemS
       VeniceSystemStoreType systemStore,
       UpdateStoreQueryParams updateStoreParams) {
     return new ControllerClientBackedSystemSchemaInitializer(
-        primaryControllerClient.get(),
+        localControllerClient.get(),
         systemStore,
         new SchemaPresenceChecker(
             new SchemaRepoBackedSchemaReader(schemaRepo, systemStore.getZkSharedStoreName()),
@@ -118,7 +124,7 @@ public class ControllerSystemSchemaInitializationRoutine extends AbstractSystemS
 
   @Override
   public void close() {
-    primaryControllerClient.ifPresent(Utils::closeQuietlyWithErrorLogged);
+    localControllerClient.ifPresent(Utils::closeQuietlyWithErrorLogged);
   }
 
   @Override

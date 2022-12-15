@@ -1853,18 +1853,8 @@ public class ConfigKeys {
   public static final String AUTO_CREATE_WRITE_SYSTEM_STORES = "auto.create.write.system.stores";
 
   /**
-   * D2 ZK hosts for the primary controller. Mandatory if {@link AUTO_REGISTER_WRITE_SYSTEM_SCHEMAS} is {@literal true}.
-   * The primary controller should be:
-   * 1. The parent controller when the Venice system is deployed in a multi-colo mode
-   * 2. The child controller when the Venice system is deployed in a single-colo mode
+   * D2 service name for parent controller. Mandatory for parent controllers if
+   * {@link AUTO_REGISTER_WRITE_SYSTEM_SCHEMAS} is {@literal true}.
    */
-  public static final String PRIMARY_CONTROLLER_D2_ZK_HOSTS = "primary.controller.d2.zk.hosts";
-
-  /**
-   * D2 service name for primary controller. Mandatory if {@link AUTO_REGISTER_WRITE_SYSTEM_SCHEMAS} is {@literal true}.
-   * The primary controller should be:
-   * 1. The parent controller when the Venice system is deployed in a multi-colo mode
-   * 2. The child controller when the Venice system is deployed in a single-colo mode
-   */
-  public static final String PRIMARY_CONTROLLER_D2_SERVICE_NAME = "primary.controller.d2.service.name";
+  public static final String PARENT_CONTROLLER_D2_SERVICE_NAME = "parent.controller.d2.service.name";
 }

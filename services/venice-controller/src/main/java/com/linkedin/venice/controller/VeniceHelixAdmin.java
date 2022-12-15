@@ -1335,7 +1335,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               entry -> controllerClients.put(
                   entry.getKey(),
                   new D2ControllerClient(
-                      veniceControllerConfig.getD2ServiceName(),
+                      veniceControllerConfig.getChildControllerD2ServiceName(),
                       clusterName,
                       entry.getValue(),
                       sslFactory)));
@@ -6883,7 +6883,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public String getChildControllerD2ServiceName(String clusterName) {
-    return multiClusterConfigs.getControllerConfig(clusterName).getD2ServiceName();
+    return multiClusterConfigs.getControllerConfig(clusterName).getChildControllerD2ServiceName();
   }
 
   /**

@@ -22,7 +22,7 @@ import java.util.Optional;
 
 public class ServerSystemSchemaInitializationRoutine extends AbstractSystemSchemaInitializationRoutine
     implements AutoCloseable {
-  private final Lazy<ControllerClient> primaryControllerClient;
+  private final Lazy<ControllerClient> localControllerClient;
   private final boolean autoRegisterSystemSchemas;
   private final boolean autoCreateMissingSchemaStores;
 
@@ -38,7 +38,7 @@ public class ServerSystemSchemaInitializationRoutine extends AbstractSystemSchem
       SchemaReader partitionStateSchemaReader,
       SchemaReader storeVersionStateSchemaReader,
       SchemaReader kafkaMessageEnvelopeSchemaReader) {
-    primaryControllerClient = Lazy.of(
+    localControllerClient = Lazy.of(
         () -> new D2ControllerClient(
             serverConfig.getZookeeperAddress(),
             serverConfig.getSystemSchemaClusterName(),
@@ -84,7 +84,7 @@ public class ServerSystemSchemaInitializationRoutine extends AbstractSystemSchem
     if (autoRegisterSystemSchemas) {
       return Optional.of(
           new ControllerClientBackedSystemSchemaInitializer(
-              primaryControllerClient.get(),
+              localControllerClient.get(),
               schemaStore,
               schemaPresenceChecker,
               autoCreateMissingSchemaStores,
@@ -134,6 +134,6 @@ public class ServerSystemSchemaInitializationRoutine extends AbstractSystemSchem
 
   @Override
   public void close() throws Exception {
-    primaryControllerClient.ifPresent(Utils::closeQuietlyWithErrorLogged);
+    localControllerClient.ifPresent(Utils::closeQuietlyWithErrorLogged);
   }
 }

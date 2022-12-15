@@ -4916,7 +4916,7 @@ public class VeniceParentHelixAdmin implements Admin {
             .computeIfAbsent(fabric, f -> {
               VeniceControllerConfig controllerConfig = multiClusterConfigs.getControllerConfig(clusterName);
               String d2ZkHost = controllerConfig.getChildControllerD2ZkHost(fabric);
-              String d2ServiceName = controllerConfig.getD2ServiceName();
+              String d2ServiceName = controllerConfig.getChildControllerD2ServiceName();
               if (StringUtils.isNotBlank(d2ZkHost) && StringUtils.isNotBlank(d2ServiceName)) {
                 return new D2ControllerClient(d2ServiceName, clusterName, d2ZkHost, sslFactory);
               }

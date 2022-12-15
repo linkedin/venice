@@ -59,6 +59,7 @@ import static com.linkedin.venice.ConfigKeys.MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_T
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_FABRIC_ALLOWLIST;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_FABRIC_WHITELIST;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC;
+import static com.linkedin.venice.ConfigKeys.PARENT_CONTROLLER_D2_SERVICE_NAME;
 import static com.linkedin.venice.ConfigKeys.PARENT_CONTROLLER_MAX_ERRORED_TOPIC_NUM_TO_KEEP;
 import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
@@ -120,7 +121,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final String controllerClusterZkAddress;
   private final boolean parent;
   private final Map<String, String> childDataCenterControllerUrlMap;
-  private final String d2ServiceName;
+  private final String parentControllerD2ServiceName;
+  private final String childControllerD2ServiceName;
   private final boolean autoRegisterWriteSystemSchemas;
   private final boolean autoCreateWriteSystemStores;
   private final String clusterDiscoveryD2ServiceName;
@@ -279,9 +281,15 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     autoRegisterWriteSystemSchemas = props.getBoolean(AUTO_REGISTER_WRITE_SYSTEM_SCHEMAS, false);
     autoCreateWriteSystemStores = props.getBoolean(AUTO_CREATE_WRITE_SYSTEM_STORES, false);
     if (autoRegisterWriteSystemSchemas) {
-      this.d2ServiceName = props.getString(CHILD_CLUSTER_D2_SERVICE_NAME);
+      if (this.parent) {
+        this.parentControllerD2ServiceName = props.getString(PARENT_CONTROLLER_D2_SERVICE_NAME);
+      } else {
+        this.parentControllerD2ServiceName = props.getString(PARENT_CONTROLLER_D2_SERVICE_NAME, (String) null);
+      }
+      this.childControllerD2ServiceName = props.getString(CHILD_CLUSTER_D2_SERVICE_NAME);
     } else {
-      this.d2ServiceName = props.getString(CHILD_CLUSTER_D2_SERVICE_NAME, (String) null);
+      this.parentControllerD2ServiceName = props.getString(PARENT_CONTROLLER_D2_SERVICE_NAME, (String) null);
+      this.childControllerD2ServiceName = props.getString(CHILD_CLUSTER_D2_SERVICE_NAME, (String) null);
     }
     if (this.parent) {
       if (childDataCenterControllerUrlMap.isEmpty() && childDataCenterControllerD2Map.isEmpty()) {
@@ -531,8 +539,12 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     return childDataCenterControllerUrlMap;
   }
 
-  public String getD2ServiceName() {
-    return d2ServiceName;
+  public String getChildControllerD2ServiceName() {
+    return childControllerD2ServiceName;
+  }
+
+  public String getParentControllerD2ServiceName() {
+    return parentControllerD2ServiceName;
   }
 
   public String getClusterDiscoveryD2ServiceName() {
