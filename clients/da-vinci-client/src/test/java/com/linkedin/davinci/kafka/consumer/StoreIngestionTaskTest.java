@@ -3158,7 +3158,7 @@ public abstract class StoreIngestionTaskTest {
    * in order to avoid re-ingesting everything, regardless of the sync bytes interval
    * Steps:
    * 1. offsetRecord and pcs has the same state at the beginning
-   * 2. pcs consumes 3 records and offsetRecords doesn't sync up with pcs due to high sync interval.
+   * 2. pcs consumes 2 records and offsetRecords doesn't sync up with pcs due to high sync interval.
    * 3. enforce to gracefully shutdown and validate offsetRecord has been synced up with pcs once.
    * @param isActiveActiveReplicationEnabled
    * @throws Exception

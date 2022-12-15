@@ -2707,9 +2707,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Otherwise, it will clone the {@link PartitionConsumptionState#latestProcessedUpstreamRTOffsetMap}.
    * @param partitionConsumptionState
    * @param consumerRecord, the record for which the upstream Kafka url needs to be computed, used to determine the source kafka url.
-   *                        This is an optional field for non-AA StoreIngestionTask. See {@link ActiveActiveStoreIngestionTask#getUpstreamKafkaUrl}
-   * @param upstreamKafkaUrl, The Kafka URL from where the record was consumed.
-   *                          This is an optional field for non-AA StoreIngestionTask. See {@link ActiveActiveStoreIngestionTask#getUpstreamKafkaUrl}
+   *                        Should not be null unless it's a shutdown event.
+   * @param upstreamKafkaUrl, The Kafka URL from where the record was consumed. Should not be null unless it's a shutdown event
    */
   protected abstract void updateOffsetMetadataInOffsetRecord(
       PartitionConsumptionState partitionConsumptionState,
@@ -3752,5 +3751,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   // Visible for unit test.
   protected void setPartitionConsumptionState(int partition, PartitionConsumptionState pcs) {
     partitionConsumptionStateMap.put(partition, pcs);
+  }
+
+  /**
+   * Validate if the given consumerRecord has a valid upstream offset to update from.
+   * @param consumerRecord
+   * @return true, if the record is not null and contains a valid upstream offset, otherwise false.
+   */
+  protected boolean shouldUpdateUpstreamOffset(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord) {
+    if (consumerRecord == null) {
+      return false;
+    }
+    KafkaMessageEnvelope kafkaValue = consumerRecord.value();
+    return (kafkaValue.producerMetadata.upstreamOffset >= 0
+        || (kafkaValue.leaderMetadataFooter != null && kafkaValue.leaderMetadataFooter.upstreamOffset >= 0));
   }
 }

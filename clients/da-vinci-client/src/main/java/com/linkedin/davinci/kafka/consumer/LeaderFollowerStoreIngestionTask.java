@@ -1207,8 +1207,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       // DaVinci clients don't need to maintain leader production states
       if (!isDaVinciClient) {
         // also update the leader topic offset using the upstream offset in ProducerMetadata
-        if (kafkaValue.producerMetadata.upstreamOffset >= 0
-            || (kafkaValue.leaderMetadataFooter != null && kafkaValue.leaderMetadataFooter.upstreamOffset >= 0)) {
+        if (shouldUpdateUpstreamOffset(consumerRecord)) {
           final String sourceKafkaUrl = sourceKafkaUrlSupplier.get();
           final long newUpstreamOffset = kafkaValue.leaderMetadataFooter == null
               ? kafkaValue.producerMetadata.upstreamOffset
@@ -1253,34 +1252,40 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       String upstreamKafkaUrl) {
     updateOffsetsFromPartitionConsumptionState(
         partitionConsumptionState,
-        OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY);
+        () -> OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY,
+        shouldUpdateUpstreamOffset(consumerRecord));
   }
 
   /**
    * Sync the metadata about offset from {@link PartitionConsumptionState} to {@link OffsetRecord}.
+   * It's agnostic to the record as {@link PartitionConsumptionState} should have handled it already.
    * @param partitionConsumptionState
    * @param sourceKafkaUrl, The computed upstream Kafka URL for the record. Can be null for shutdown events.
+   * @param shouldUpstreamOffset, the flag to update the upstream offset or not. If the record contains invalid upstream
+   *                              offset, then upstream kafka url doesn't need to be computed unless it's a shutdown event
    */
   protected void updateOffsetsFromPartitionConsumptionState(
       PartitionConsumptionState partitionConsumptionState,
-      String sourceKafkaUrl) {
+      Supplier<String> sourceKafkaUrl,
+      boolean shouldUpstreamOffset) {
     OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
     offsetRecord
         .setCheckpointLocalVersionTopicOffset(partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset());
     // DaVinci clients don't need to maintain leader production states
     if (!isDaVinciClient) {
-      final String upstreamTopicName =
-          offsetRecord.getLeaderTopic() != null ? offsetRecord.getLeaderTopic() : kafkaVersionTopic;
-      final long newUpstreamOffset = partitionConsumptionState.getLatestProcessedUpstreamVersionTopicOffset();
-      if (Version.isRealTimeTopic(upstreamTopicName)) {
-        if (sourceKafkaUrl == null) {
-          // kafka url is not provided, meaning it's a graceful shutdown event so copy the upstream offset map from pcs.
-          offsetRecord.resetUpstreamOffsetMap(partitionConsumptionState.getLatestProcessedUpstreamRTOffsetMap());
+      if (sourceKafkaUrl == null) {
+        // kafka url is not provided, meaning it's a graceful shutdown event
+        // so ignore the flag and copy the upstream offset map from pcs.
+        offsetRecord.resetUpstreamOffsetMap(partitionConsumptionState.getLatestProcessedUpstreamRTOffsetMap());
+      } else if (shouldUpstreamOffset) {
+        final String upstreamTopicName =
+            offsetRecord.getLeaderTopic() != null ? offsetRecord.getLeaderTopic() : kafkaVersionTopic;
+        final long newUpstreamOffset = partitionConsumptionState.getLatestProcessedUpstreamVersionTopicOffset();
+        if (Version.isRealTimeTopic(upstreamTopicName)) {
+          offsetRecord.setLeaderUpstreamOffset(sourceKafkaUrl.get(), newUpstreamOffset);
         } else {
-          offsetRecord.setLeaderUpstreamOffset(sourceKafkaUrl, newUpstreamOffset);
+          offsetRecord.setCheckpointUpstreamVersionTopicOffset(newUpstreamOffset);
         }
-      } else {
-        offsetRecord.setCheckpointUpstreamVersionTopicOffset(newUpstreamOffset);
       }
       offsetRecord.setLeaderGUID(partitionConsumptionState.getLeaderGUID());
       offsetRecord.setLeaderHostId(partitionConsumptionState.getLeaderHostId());

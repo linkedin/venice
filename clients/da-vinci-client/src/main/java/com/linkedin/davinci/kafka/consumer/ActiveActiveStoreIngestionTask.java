@@ -951,9 +951,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       String upstreamKafkaUrl) {
     updateOffsetsFromPartitionConsumptionState(
         partitionConsumptionState,
-        consumerRecord != null && upstreamKafkaUrl != null
+        () -> consumerRecord != null && upstreamKafkaUrl != null
             ? getUpstreamKafkaUrl(partitionConsumptionState, consumerRecord, upstreamKafkaUrl)
-            : null);
+            : null,
+        shouldUpdateUpstreamOffset(consumerRecord));
   }
 
   @Override
