@@ -1451,25 +1451,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       String kafkaUrl,
       int kafkaClusterId,
       long beforeProcessingRecordTimestamp) {
-    int partition = consumerRecord.partition();
-    String leaderTopic = consumerRecord.topic();
-    long sourceTopicOffset = consumerRecord.offset();
-    LeaderMetadataWrapper leaderMetadataWrapper = new LeaderMetadataWrapper(sourceTopicOffset, kafkaClusterId);
-    LeaderProducerCallback callback = new LeaderProducerCallback(
-        this,
+    LeaderProducerCallback callback = createLeaderProducerCallback(
         consumerRecord,
         partitionConsumptionState,
-        leaderTopic,
-        kafkaVersionTopic,
-        partition,
+        leaderProducedRecordContext,
         subPartition,
         kafkaUrl,
-        versionedDIVStats,
-        leaderProducedRecordContext,
-        versionedIngestionStats,
-        hostLevelIngestionStats,
-        System.nanoTime(),
         beforeProcessingRecordTimestamp);
+    long sourceTopicOffset = consumerRecord.offset();
+    LeaderMetadataWrapper leaderMetadataWrapper = new LeaderMetadataWrapper(sourceTopicOffset, kafkaClusterId);
     partitionConsumptionState.setLastLeaderPersistFuture(leaderProducedRecordContext.getPersistedToDBFuture());
     produceFunction.apply(callback, leaderMetadataWrapper);
   }
@@ -3021,5 +3011,36 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           lag);
     }
     return lag;
+  }
+
+  protected LeaderProducerCallback createLeaderProducerCallback(
+      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      PartitionConsumptionState partitionConsumptionState,
+      LeaderProducedRecordContext leaderProducedRecordContext,
+      int subPartition,
+      String kafkaUrl,
+      long beforeProcessingRecordTimestamp) {
+    int partition = consumerRecord.partition();
+    String leaderTopic = consumerRecord.topic();
+    return new LeaderProducerCallback(
+        this,
+        consumerRecord,
+        partitionConsumptionState,
+        leaderProducedRecordContext,
+        leaderTopic,
+        getKafkaVersionTopic(),
+        partition,
+        subPartition,
+        kafkaUrl,
+        getVersionedDIVStats(),
+        getVersionIngestionStats(),
+        getHostLevelIngestionStats(),
+        System.nanoTime(),
+        beforeProcessingRecordTimestamp,
+        false);
+  }
+
+  protected Lazy<VeniceWriter<byte[], byte[], byte[]>> getVeniceWriter() {
+    return veniceWriter;
   }
 }
