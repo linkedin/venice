@@ -7,6 +7,14 @@ import java.util.zip.Deflater;
 import java.util.zip.DeflaterOutputStream;
 
 
+/**
+ * This class implements a stream filter for writing compressed data in the GZIP file format. It's an adoption of
+ * {@link java.util.zip.GZIPOutputStream} but with a notable difference regarding re-usability:
+ * <ul>
+ * <li>Expose {@link #reset()} to reset CRC32 and the deflater</li>
+ * <li>Don't write the GZIP header upon construction but expose {@link #writeHeader()}</li>
+ * </ul>
+ */
 public class ReusableGzipOutputStream extends DeflaterOutputStream {
   /**
    * CRC-32 of uncompressed data.
