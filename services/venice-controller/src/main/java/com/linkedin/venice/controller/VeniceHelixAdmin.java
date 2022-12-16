@@ -2388,16 +2388,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 replicationFactor);
           }
         }
-        // We need to release the locks as `waitUntilNodesAreAssignedForResource` can take long time
-        // and race condition can still happen in the following code.
+
         if (startIngestion) {
-          // Store write lock is released before polling status
-          waitUntilNodesAreAssignedForResource(
-              clusterName,
-              version.kafkaTopicName(),
-              strategy,
-              clusterConfig.getOffLineJobWaitTimeInMilliseconds(),
-              replicationFactor);
           // Early delete backup version on start of a push, controlled by store config earlyDeleteBackupEnabled
           if (backupStrategy == BackupStrategy.DELETE_ON_NEW_PUSH_START
               && multiClusterConfigs.getControllerConfig(clusterName).isEarlyDeleteBackUpEnabled()) {
@@ -2413,6 +2405,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
           }
         }
+      }
+
+      if (startIngestion) {
+        // Store write lock is released before polling status
+        waitUntilNodesAreAssignedForResource(
+            clusterName,
+            version.kafkaTopicName(),
+            strategy,
+            clusterConfig.getOffLineJobWaitTimeInMilliseconds(),
+            replicationFactor);
       }
       return new Pair<>(true, version);
 
@@ -4416,30 +4418,39 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     long startTime = System.currentTimeMillis();
     long logTime = 0;
     for (long elapsedTime = 0; elapsedTime <= maxWaitTimeMs; elapsedTime = System.currentTimeMillis() - startTime) {
-      if (pushMonitor.getOfflinePushOrThrow(topic).getCurrentStatus().equals(ExecutionStatus.ERROR)) {
-        throw new VeniceException("Push " + topic + " has already failed.");
-      }
+      try (AutoCloseableLock ignore = clusterResources.getClusterLockManager().createClusterReadLock()) {
+        if (!isLeaderControllerFor(clusterName)) {
+          LOGGER.warn(
+              "No longer leader controller for cluster {}; will stop waiting for the resource assignment for {}",
+              clusterName,
+              topic);
+          return;
+        }
+        if (pushMonitor.getOfflinePushOrThrow(topic).getCurrentStatus().equals(ExecutionStatus.ERROR)) {
+          throw new VeniceException("Push " + topic + " has already failed.");
+        }
 
-      ResourceAssignment resourceAssignment = routingDataRepository.getResourceAssignment();
-      notReadyReason =
-          statusDecider.hasEnoughNodesToStartPush(topic, replicationFactor, resourceAssignment, notReadyReason);
-      if (!notReadyReason.isPresent()) {
-        LOGGER.info("After waiting for {}ms, resource allocation is completed for: {}.", elapsedTime, topic);
-        pushMonitor
-            .refreshAndUpdatePushStatus(topic, ExecutionStatus.STARTED, Optional.of("Helix assignment complete"));
-        pushMonitor.recordPushPreparationDuration(topic, TimeUnit.MILLISECONDS.toSeconds(elapsedTime));
-        return;
-      }
-      if ((elapsedTime - logTime) > HELIX_RESOURCE_ASSIGNMENT_LOG_INTERVAL_MS) {
-        LOGGER.info(
-            "After waiting for {}ms, resource assignment for: {} is still not complete, strategy: {}, "
-                + "replicationFactor: {}, reason: {}",
-            elapsedTime,
-            topic,
-            strategy,
-            replicationFactor,
-            notReadyReason.get());
-        logTime = elapsedTime;
+        ResourceAssignment resourceAssignment = routingDataRepository.getResourceAssignment();
+        notReadyReason =
+            statusDecider.hasEnoughNodesToStartPush(topic, replicationFactor, resourceAssignment, notReadyReason);
+        if (!notReadyReason.isPresent()) {
+          LOGGER.info("After waiting for {}ms, resource allocation is completed for: {}.", elapsedTime, topic);
+          pushMonitor
+              .refreshAndUpdatePushStatus(topic, ExecutionStatus.STARTED, Optional.of("Helix assignment complete"));
+          pushMonitor.recordPushPreparationDuration(topic, TimeUnit.MILLISECONDS.toSeconds(elapsedTime));
+          return;
+        }
+        if ((elapsedTime - logTime) > HELIX_RESOURCE_ASSIGNMENT_LOG_INTERVAL_MS) {
+          LOGGER.info(
+              "After waiting for {}ms, resource assignment for: {} is still not complete, strategy: {}, "
+                  + "replicationFactor: {}, reason: {}",
+              elapsedTime,
+              topic,
+              strategy,
+              replicationFactor,
+              notReadyReason.get());
+          logTime = elapsedTime;
+        }
       }
       Utils.sleep(HELIX_RESOURCE_ASSIGNMENT_RETRY_INTERVAL_MS);
     }
