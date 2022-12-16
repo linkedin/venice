@@ -70,8 +70,7 @@ public class PushTimeoutTest {
         mockVeniceStoreVersionConfig,
         0,
         false,
-        Optional.empty(),
-        Collections.emptyMap());
+        Optional.empty());
 
     leaderFollowerStoreIngestionTask.subscribePartition(versionTopic, 0, Optional.empty());
     leaderFollowerStoreIngestionTask.run();
@@ -142,8 +141,7 @@ public class PushTimeoutTest {
         mockVeniceStoreVersionConfig,
         0,
         false,
-        Optional.empty(),
-        Collections.emptyMap());
+        Optional.empty());
 
     leaderFollowerStoreIngestionTask.subscribePartition(versionTopic, 0, Optional.empty());
     /**
