@@ -91,6 +91,7 @@ import com.linkedin.venice.utils.Timer;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
+import com.linkedin.venice.writer.ChunkAwareCallback;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import it.unimi.dsi.fastutil.ints.IntList;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
@@ -131,7 +132,6 @@ import java.util.function.Supplier;
 import org.apache.avro.Schema;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.logging.log4j.LogManager;
@@ -3615,7 +3615,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   @FunctionalInterface
   interface ProduceToTopic {
-    Future<RecordMetadata> apply(Callback callback, LeaderMetadataWrapper leaderMetadataWrapper);
+    Future<RecordMetadata> apply(ChunkAwareCallback callback, LeaderMetadataWrapper leaderMetadataWrapper);
   }
 
   /**
@@ -3732,5 +3732,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   // Visible for unit test.
   protected void setPartitionConsumptionState(int partition, PartitionConsumptionState pcs) {
     partitionConsumptionStateMap.put(partition, pcs);
+  }
+
+  protected AggVersionedDIVStats getVersionedDIVStats() {
+    return versionedDIVStats;
+  }
+
+  protected AggVersionedIngestionStats getVersionIngestionStats() {
+    return versionedIngestionStats;
+  }
+
+  protected HostLevelIngestionStats getHostLevelIngestionStats() {
+    return hostLevelIngestionStats;
+  }
+
+  protected String getKafkaVersionTopic() {
+    return kafkaVersionTopic;
   }
 }
