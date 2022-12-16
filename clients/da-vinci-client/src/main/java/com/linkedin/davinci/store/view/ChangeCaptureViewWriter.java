@@ -7,6 +7,7 @@ import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.venice.client.change.capture.protocol.RecordChangeEvent;
 import com.linkedin.venice.client.change.capture.protocol.ValueBytes;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
@@ -29,11 +30,15 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class ChangeCaptureViewWriter extends VeniceViewWriter {
+  private static final Logger LOGGER = LogManager.getLogger(ChangeCaptureViewWriter.class);
   final private ChangeCaptureView internalView;
   private VeniceWriter veniceWriter;
   private final Object2IntMap<String> kafkaClusterUrlToIdMap;
@@ -61,10 +66,7 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
     // to dealing with compression/chunking/etc. in the storage layer.
 
     RecordChangeEvent recordChangeEvent = new RecordChangeEvent();
-    recordChangeEvent.currentValue = constructValueBytes(newValue, newValueSchemaId); // TODO: Verify this is
-    // the right schemaID, the
-    // record might also
-    // contain RMD data
+    recordChangeEvent.currentValue = constructValueBytes(newValue, newValueSchemaId);
     recordChangeEvent.previousValue = constructValueBytes(oldValue, oldValueSchemaId);
     recordChangeEvent.key = key;
     recordChangeEvent.replicationCheckpointVector = RmdUtils.extractOffsetVectorFromRmd(replicationMetadataRecord);
@@ -73,7 +75,14 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
       initializeVeniceWriter(version);
     }
     // TODO: RecordChangeEvent isn't versioned today.
-    veniceWriter.put(key, recordChangeEvent, 1);
+    // TODO: Chunking?
+    try {
+      veniceWriter.put(key, recordChangeEvent, 1).get();
+    } catch (InterruptedException | ExecutionException e) {
+      LOGGER
+          .error("Failed to produce to Change Capture view topic for store: {} version: {}", store.getName(), version);
+      throw new VeniceException(e);
+    }
   }
 
   @Override
