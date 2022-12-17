@@ -21,7 +21,6 @@ import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.EncodingUtils;
-import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.net.URI;
@@ -71,21 +70,14 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
       boolean batchGet,
       int batchGetKeySize,
       Consumer<MetricsRepository> statsValidation) throws Exception {
-    boolean testVson = true;
-    // TODO: Hacky fix for the test. Figure out why some lazy loading
-    // happening here after 1st request?
-    boolean vsonHack = true;
-
     MetricsRepository metricsRepositoryForGenericClient = new MetricsRepository();
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
         getGenericFastClient(clientConfigBuilder, metricsRepositoryForGenericClient, useDaVinciClientBasedMetadata);
 
     AvroGenericStoreClient<String, Object> genericFastVsonClient = null;
-    if (testVson) {
-      // Construct a Vson store client
-      genericFastVsonClient =
-          getGenericFastVsonClient(clientConfigBuilder.clone(), new MetricsRepository(), useDaVinciClientBasedMetadata);
-    }
+    // Construct a Vson store client
+    genericFastVsonClient =
+        getGenericFastVsonClient(clientConfigBuilder.clone(), new MetricsRepository(), useDaVinciClientBasedMetadata);
     try {
       if (batchGet) {
         // test batch get of size 2 (current default max)
@@ -101,31 +93,23 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
             assertEquals((int) resultMap.get(key1).get(VALUE_FIELD_NAME), i);
             assertEquals((int) resultMap.get(key2).get(VALUE_FIELD_NAME), i + 1);
 
-            if (testVson) {
-              // Test Vson client
-              Map<String, Object> vsonResultMapofObj = genericFastVsonClient.batchGet(keys).get();
-              if (vsonHack) {
-                if (i == 0) {
-                  Utils.sleep(1000);
-                  vsonResultMapofObj = genericFastVsonClient.batchGet(keys).get();
-                }
-              }
-              assertEquals(vsonResultMapofObj.size(), 2);
+            // Test Vson client
+            Map<String, Object> vsonResultMapofObj = genericFastVsonClient.batchGet(keys).get();
+            assertEquals(vsonResultMapofObj.size(), 2);
 
-              Object vsonResultObj = vsonResultMapofObj.get(key1);
-              assertTrue(
-                  vsonResultObj instanceof Map,
-                  "VsonClient should return Map, but got" + vsonResultObj.getClass());
-              Map vsonResult = (Map) vsonResultObj;
-              assertEquals((int) vsonResult.get(VALUE_FIELD_NAME), i);
+            Object vsonResultObj = vsonResultMapofObj.get(key1);
+            assertTrue(
+                vsonResultObj instanceof Map,
+                "VsonClient should return Map, but got" + vsonResultObj.getClass());
+            Map vsonResult = (Map) vsonResultObj;
+            assertEquals((int) vsonResult.get(VALUE_FIELD_NAME), i);
 
-              vsonResultObj = vsonResultMapofObj.get(key2);
-              assertTrue(
-                  vsonResultObj instanceof Map,
-                  "VsonClient should return Map, but got" + vsonResultObj.getClass());
-              vsonResult = (Map) vsonResultObj;
-              assertEquals((int) vsonResult.get(VALUE_FIELD_NAME), i + 1);
-            }
+            vsonResultObj = vsonResultMapofObj.get(key2);
+            assertTrue(
+                vsonResultObj instanceof Map,
+                "VsonClient should return Map, but got" + vsonResultObj.getClass());
+            vsonResult = (Map) vsonResultObj;
+            assertEquals((int) vsonResult.get(VALUE_FIELD_NAME), i + 1);
           }
         } else if (batchGetKeySize == recordCnt) {
           // test batch get of size recordCnt (configured)
@@ -142,24 +126,18 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
             assertEquals((int) resultMap.get(key).get(VALUE_FIELD_NAME), i);
           }
 
-          if (testVson) {
-            // vson
-            Map<String, Object> vsonResultMapofObj = genericFastVsonClient.batchGet(keys).get();
-            if (vsonHack) {
-              Utils.sleep(1000);
-              vsonResultMapofObj = genericFastVsonClient.batchGet(keys).get();
-            }
-            assertEquals(vsonResultMapofObj.size(), recordCnt);
+          // vson
+          Map<String, Object> vsonResultMapofObj = genericFastVsonClient.batchGet(keys).get();
+          assertEquals(vsonResultMapofObj.size(), recordCnt);
 
-            for (int i = 0; i < recordCnt; ++i) {
-              String key = keyPrefix + i;
-              Object vsonResultObj = vsonResultMapofObj.get(key);
-              assertTrue(
-                  vsonResultObj instanceof Map,
-                  "VsonClient should return Map, but got" + vsonResultObj.getClass());
-              Map vsonResult = (Map) vsonResultObj;
-              assertEquals((int) vsonResult.get(VALUE_FIELD_NAME), i);
-            }
+          for (int i = 0; i < recordCnt; ++i) {
+            String key = keyPrefix + i;
+            Object vsonResultObj = vsonResultMapofObj.get(key);
+            assertTrue(
+                vsonResultObj instanceof Map,
+                "VsonClient should return Map, but got" + vsonResultObj.getClass());
+            Map vsonResult = (Map) vsonResultObj;
+            assertEquals((int) vsonResult.get(VALUE_FIELD_NAME), i);
           }
         } else {
           throw new VeniceException("unsupported batchGetKeySize: " + batchGetKeySize);
@@ -170,19 +148,11 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
           GenericRecord value = genericFastClient.get(key).get();
           assertEquals((int) value.get(VALUE_FIELD_NAME), i);
 
-          if (testVson) {
-            // Test Vson client
-            Object vsonResult = genericFastVsonClient.get(key).get();
-            if (vsonHack) {
-              if (i == 0) {
-                Utils.sleep(1000);
-                vsonResult = genericFastVsonClient.get(key).get();
-              }
-            }
-            assertTrue(vsonResult instanceof Map, "VsonClient should return Map, but got" + vsonResult.getClass());
-            Map vsonValue = (Map) vsonResult;
-            assertEquals((int) vsonValue.get(VALUE_FIELD_NAME), i);
-          }
+          // Test Vson client
+          Object vsonResult = genericFastVsonClient.get(key).get();
+          assertTrue(vsonResult instanceof Map, "VsonClient should return Map, but got" + vsonResult.getClass());
+          Map vsonValue = (Map) vsonResult;
+          assertEquals((int) vsonValue.get(VALUE_FIELD_NAME), i);
         }
       }
       statsValidation.accept(metricsRepositoryForGenericClient);
@@ -270,9 +240,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
             .setSpeculativeQueryEnabled(speculativeQueryEnabled)
             .setDualReadEnabled(dualRead)
             // default maxAllowedKeyCntInBatchGetReq is 2. configuring it to test different cases.
-            .setMaxAllowedKeyCntInBatchGetReq(recordCnt)
-            // TODO: this needs to be revisited to see how much this should be set. Current default is 50.
-            .setRoutingPendingRequestCounterInstanceBlockThreshold(recordCnt);
+            .setMaxAllowedKeyCntInBatchGetReq(recordCnt);
 
     // dualRead also needs thinClient
     AvroGenericStoreClient<String, GenericRecord> genericThinClient = null;

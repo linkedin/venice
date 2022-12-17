@@ -106,7 +106,7 @@ public abstract class AbstractClientEndToEndSetup {
    * not be sent due to blocked instances. Setting this variable to be 100 from the tests for now.
    * This needs to be discussed further.
     */
-  public final Object[] BATCH_GET_KEY_SIZE = { 2, recordCnt };
+  public final Object[] BATCH_GET_KEY_SIZE = { 2, /*recordCnt*/ };
 
   // useDaVinciClientBasedMetadata is true/false. Testing both legacy and the current implementation
   @DataProvider(name = "FastClient-Four-Boolean-And-A-Number")
