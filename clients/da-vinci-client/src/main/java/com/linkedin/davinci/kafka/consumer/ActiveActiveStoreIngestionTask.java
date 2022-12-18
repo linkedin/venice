@@ -949,11 +949,12 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       PartitionConsumptionState partitionConsumptionState,
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
       String upstreamKafkaUrl) {
+    String kafkaUrl = consumerRecord != null && upstreamKafkaUrl != null
+        ? getUpstreamKafkaUrl(partitionConsumptionState, consumerRecord, upstreamKafkaUrl)
+        : null;
     updateOffsetsFromPartitionConsumptionState(
         partitionConsumptionState,
-        () -> consumerRecord != null && upstreamKafkaUrl != null
-            ? getUpstreamKafkaUrl(partitionConsumptionState, consumerRecord, upstreamKafkaUrl)
-            : null,
+        kafkaUrl,
         shouldUpdateUpstreamOffset(consumerRecord));
   }
 

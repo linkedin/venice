@@ -1442,7 +1442,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
 
       // If the ingestion task is stopped gracefully (server stops), persist processed offset to disk
-      for (PartitionConsumptionState partitionConsumptionState: partitionConsumptionStateMap.values()) {
+      for (Map.Entry<Integer, PartitionConsumptionState> entry: partitionConsumptionStateMap.entrySet()) {
         /**
          * Now, there are two threads, which could potentially trigger {@link #syncOffset(String, PartitionConsumptionState)}:
          * 1. {@link #processConsumerRecord} that will sync offset based on the consumed byte size.
@@ -1455,6 +1455,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * offset and checksum, since the checksum could change in another thread, but the corresponding offset change
          * hasn't been applied yet, when checkpointing happens in current thread.
          */
+
+        int partition = entry.getKey();
+        PartitionConsumptionState partitionConsumptionState = entry.getValue();
         consumerUnSubscribeAllTopics(partitionConsumptionState);
 
         if (ingestionCheckpointDuringGracefulShutdownEnabled) {
@@ -1462,6 +1465,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               kafkaVersionTopic,
               partitionConsumptionState.getPartition(),
               partitionConsumptionState);
+
+          this.kafkaDataIntegrityValidator
+              .updateOffsetRecordForPartition(partition, partitionConsumptionState.getOffsetRecord());
           updateOffsetMetadataInOffsetRecord(partitionConsumptionState, null, null);
           syncOffset(kafkaVersionTopic, partitionConsumptionState);
         }
@@ -2307,7 +2313,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        * The reason to transform the internal state only during checkpointing is that
        * the intermediate checksum generation is an expensive operation.
        */
-      this.kafkaDataIntegrityValidator.updateOffsetRecord(subPartition, offsetRecord);
+      this.kafkaDataIntegrityValidator.updateOffsetRecordForPartition(subPartition, offsetRecord);
       // Potentially update the offset metadata in the OffsetRecord
       updateOffsetMetadataInOffsetRecord(partitionConsumptionState, record, kafkaUrl);
       syncOffset(kafkaVersionTopic, partitionConsumptionState);
@@ -2702,7 +2708,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Offset rewind/split brain has been guarded in {@link #updateLatestInMemoryProcessedOffset}.
    *
    * When consumerRecord and upstreamKafkaUrl are provided, the upstream offset will be updated for the computed kafka url.
-   * Otherwise, it will clone the {@link PartitionConsumptionState#latestProcessedUpstreamRTOffsetMap}.
+   * Otherwise, it will clone the {@link PartitionConsumptionState#getLatestProcessedUpstreamRTOffsetMap}.
    * @param partitionConsumptionState
    * @param consumerRecord, the record for which the upstream Kafka url needs to be computed, used to determine the source kafka url.
    *                        Should not be null unless it's a shutdown event.

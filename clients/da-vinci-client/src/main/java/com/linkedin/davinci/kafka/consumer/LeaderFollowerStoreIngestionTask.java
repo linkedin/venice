@@ -1248,9 +1248,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       PartitionConsumptionState partitionConsumptionState,
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
       String upstreamKafkaUrl) {
+    String kafkaUrl = consumerRecord != null && upstreamKafkaUrl != null
+        ? OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY
+        : null;
     updateOffsetsFromPartitionConsumptionState(
         partitionConsumptionState,
-        () -> OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY,
+        kafkaUrl,
         shouldUpdateUpstreamOffset(consumerRecord));
   }
 
@@ -1264,14 +1267,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   protected void updateOffsetsFromPartitionConsumptionState(
       PartitionConsumptionState partitionConsumptionState,
-      Supplier<String> sourceKafkaUrl,
+      String sourceKafkaUrl,
       boolean shouldUpstreamOffset) {
     OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
     offsetRecord
         .setCheckpointLocalVersionTopicOffset(partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset());
     // DaVinci clients don't need to maintain leader production states
     if (!isDaVinciClient) {
-      if (sourceKafkaUrl == null) {
+      if (sourceKafkaUrl == null || sourceKafkaUrl.isEmpty()) {
         // kafka url is not provided, meaning it's a graceful shutdown event
         // so ignore the flag and copy the upstream offset map from pcs.
         offsetRecord.resetUpstreamOffsetMap(partitionConsumptionState.getLatestProcessedUpstreamRTOffsetMap());
@@ -1280,7 +1283,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             offsetRecord.getLeaderTopic() != null ? offsetRecord.getLeaderTopic() : kafkaVersionTopic;
         final long newUpstreamOffset = partitionConsumptionState.getLatestProcessedUpstreamVersionTopicOffset();
         if (Version.isRealTimeTopic(upstreamTopicName)) {
-          offsetRecord.setLeaderUpstreamOffset(sourceKafkaUrl.get(), newUpstreamOffset);
+          offsetRecord.setLeaderUpstreamOffset(sourceKafkaUrl, newUpstreamOffset);
         } else {
           offsetRecord.setCheckpointUpstreamVersionTopicOffset(newUpstreamOffset);
         }

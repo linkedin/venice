@@ -77,7 +77,7 @@ public abstract class TestRestartServerDuringIngestion {
     cluster.close();
   }
 
-  @Test(timeOut = 90 * Time.MS_PER_SECOND)
+  @Test(timeOut = 90 * Time.MS_PER_SECOND, invocationCount = 5)
   public void testIngestionRecovery() throws ExecutionException, InterruptedException {
     // Create a store
     String stringSchemaStr = "\"string\"";
