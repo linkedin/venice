@@ -1468,7 +1468,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
           this.kafkaDataIntegrityValidator
               .updateOffsetRecordForPartition(partition, partitionConsumptionState.getOffsetRecord());
-          updateOffsetMetadataInOffsetRecord(partitionConsumptionState, null, null);
+          updateOffsetMetadataInOffsetRecord(partitionConsumptionState, null, null, true);
           syncOffset(kafkaVersionTopic, partitionConsumptionState);
         }
       }
@@ -2315,7 +2315,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        */
       this.kafkaDataIntegrityValidator.updateOffsetRecordForPartition(subPartition, offsetRecord);
       // Potentially update the offset metadata in the OffsetRecord
-      updateOffsetMetadataInOffsetRecord(partitionConsumptionState, record, kafkaUrl);
+      updateOffsetMetadataInOffsetRecord(partitionConsumptionState, record, kafkaUrl, false);
       syncOffset(kafkaVersionTopic, partitionConsumptionState);
     }
   }
@@ -2711,13 +2711,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Otherwise, it will clone the {@link PartitionConsumptionState#getLatestProcessedUpstreamRTOffsetMap}.
    * @param partitionConsumptionState
    * @param consumerRecord, the record for which the upstream Kafka url needs to be computed, used to determine the source kafka url.
-   *                        Should not be null unless it's a shutdown event.
-   * @param upstreamKafkaUrl, The Kafka URL from where the record was consumed. Should not be null unless it's a shutdown event
+   * @param upstreamKafkaUrl, The Kafka URL from where the record was consumed.
+   * @param isShutdown, indicating if the method is called for shut down event. If so, offsetRecord will reset its upstream
+   *                   offset map.
    */
   protected abstract void updateOffsetMetadataInOffsetRecord(
       PartitionConsumptionState partitionConsumptionState,
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-      String upstreamKafkaUrl);
+      String upstreamKafkaUrl,
+      boolean isShutdown);
 
   /**
    * Maintain the latest processed offsets by drainers in memory; in most of the time, these offsets are ahead of the

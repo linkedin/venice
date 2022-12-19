@@ -1247,43 +1247,44 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   protected void updateOffsetMetadataInOffsetRecord(
       PartitionConsumptionState partitionConsumptionState,
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-      String upstreamKafkaUrl) {
-    String kafkaUrl = consumerRecord != null && upstreamKafkaUrl != null
-        ? OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY
-        : null;
+      String upstreamKafkaUrl,
+      boolean isShutdown) {
     updateOffsetsFromPartitionConsumptionState(
         partitionConsumptionState,
-        kafkaUrl,
-        shouldUpdateUpstreamOffset(consumerRecord));
+        () -> OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY,
+        shouldUpdateUpstreamOffset(consumerRecord),
+        isShutdown);
   }
 
   /**
    * Sync the metadata about offset from {@link PartitionConsumptionState} to {@link OffsetRecord}.
    * It's agnostic to the record as {@link PartitionConsumptionState} should have handled it already.
    * @param partitionConsumptionState
-   * @param sourceKafkaUrl, The computed upstream Kafka URL for the record. Can be null for shutdown events.
+   * @param sourceKafkaUrl, The computed upstream Kafka URL for the record.
    * @param shouldUpstreamOffset, the flag to update the upstream offset or not. If the record contains invalid upstream
-   *                              offset, then upstream kafka url doesn't need to be computed unless it's a shutdown event
+   *                              offset, then upstream kafka url doesn't need to be computed
+   * @param isShutdown, indicating if the method is called for shut down event. If so, offsetRecord will reset its upstream
+   *                   offset map.
    */
   protected void updateOffsetsFromPartitionConsumptionState(
       PartitionConsumptionState partitionConsumptionState,
-      String sourceKafkaUrl,
-      boolean shouldUpstreamOffset) {
+      Supplier<String> sourceKafkaUrl,
+      boolean shouldUpstreamOffset,
+      boolean isShutdown) {
     OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
     offsetRecord
         .setCheckpointLocalVersionTopicOffset(partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset());
     // DaVinci clients don't need to maintain leader production states
     if (!isDaVinciClient) {
-      if (sourceKafkaUrl == null || sourceKafkaUrl.isEmpty()) {
-        // kafka url is not provided, meaning it's a graceful shutdown event
-        // so ignore the flag and copy the upstream offset map from pcs.
+      if (isShutdown) {
+        // it's a graceful shutdown event so copy the upstream offset map from pcs.
         offsetRecord.resetUpstreamOffsetMap(partitionConsumptionState.getLatestProcessedUpstreamRTOffsetMap());
       } else if (shouldUpstreamOffset) {
         final String upstreamTopicName =
             offsetRecord.getLeaderTopic() != null ? offsetRecord.getLeaderTopic() : kafkaVersionTopic;
         final long newUpstreamOffset = partitionConsumptionState.getLatestProcessedUpstreamVersionTopicOffset();
         if (Version.isRealTimeTopic(upstreamTopicName)) {
-          offsetRecord.setLeaderUpstreamOffset(sourceKafkaUrl, newUpstreamOffset);
+          offsetRecord.setLeaderUpstreamOffset(sourceKafkaUrl.get(), newUpstreamOffset);
         } else {
           offsetRecord.setCheckpointUpstreamVersionTopicOffset(newUpstreamOffset);
         }
