@@ -1451,7 +1451,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       String kafkaUrl,
       int kafkaClusterId,
       long beforeProcessingRecordTimestamp) {
-    LeaderProducerCallback callback = createLeaderProducerCallback(
+    LeaderProducerCallback callback = createProducerCallback(
         consumerRecord,
         partitionConsumptionState,
         leaderProducedRecordContext,
@@ -3013,31 +3013,21 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     return lag;
   }
 
-  protected LeaderProducerCallback createLeaderProducerCallback(
+  protected LeaderProducerCallback createProducerCallback(
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
       PartitionConsumptionState partitionConsumptionState,
       LeaderProducedRecordContext leaderProducedRecordContext,
       int subPartition,
       String kafkaUrl,
       long beforeProcessingRecordTimestamp) {
-    int partition = consumerRecord.partition();
-    String leaderTopic = consumerRecord.topic();
     return new LeaderProducerCallback(
         this,
         consumerRecord,
         partitionConsumptionState,
         leaderProducedRecordContext,
-        leaderTopic,
-        getKafkaVersionTopic(),
-        partition,
         subPartition,
         kafkaUrl,
-        getVersionedDIVStats(),
-        getVersionIngestionStats(),
-        getHostLevelIngestionStats(),
-        System.nanoTime(),
-        beforeProcessingRecordTimestamp,
-        false);
+        beforeProcessingRecordTimestamp);
   }
 
   protected Lazy<VeniceWriter<byte[], byte[], byte[]>> getVeniceWriter() {
