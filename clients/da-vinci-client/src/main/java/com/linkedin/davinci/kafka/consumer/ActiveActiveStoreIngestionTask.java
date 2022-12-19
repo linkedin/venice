@@ -1368,9 +1368,21 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       long beforeProcessingRecordTimestamp) {
     int partition = consumerRecord.partition();
     String leaderTopic = consumerRecord.topic();
-    return new LeaderProducerCallback(this, consumerRecord, partitionConsumptionState, leaderProducedRecordContext,
-        leaderTopic, getKafkaVersionTopic(), partition, subPartition, kafkaUrl, getVersionedDIVStats(),
-        getVersionIngestionStats(), getHostLevelIngestionStats(), System.nanoTime(), beforeProcessingRecordTimestamp,
+    return new LeaderProducerCallback(
+        this,
+        consumerRecord,
+        partitionConsumptionState,
+        leaderProducedRecordContext,
+        leaderTopic,
+        getKafkaVersionTopic(),
+        partition,
+        subPartition,
+        kafkaUrl,
+        getVersionedDIVStats(),
+        getVersionIngestionStats(),
+        getHostLevelIngestionStats(),
+        System.nanoTime(),
+        beforeProcessingRecordTimestamp,
         true);
   }
 

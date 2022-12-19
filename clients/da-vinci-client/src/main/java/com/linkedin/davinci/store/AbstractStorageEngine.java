@@ -449,7 +449,6 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
 
   public byte[] getReplicationMetadata(int partitionId, byte[] key) {
     AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
-    LOGGER.info("DEBUGGING: " + key);
     return partition.getReplicationMetadata(key);
   }
 
