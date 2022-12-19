@@ -119,7 +119,7 @@
           "fields": [
             {
               "name": "controlMessageType",
-              "doc": "Using int because Avro Enums are not evolvable. Readers should always handle the 'unknown' value edge case, to account for future evolutions of this protocol. The mapping is the following: 0 => StartOfPush, 1 => EndOfPush, 2 => StartOfSegment, 3 => EndOfSegment, 5 => StartOfIncrementalPush, 6 => EndOfIncrementalPush, 7 => TopicSwitch, 8 => VersionSwap",
+              "doc": "Using int because Avro Enums are not evolvable. Readers should always handle the 'unknown' value edge case, to account for future evolutions of this protocol. The mapping is the following: 0 => StartOfPush, 1 => EndOfPush, 2 => StartOfSegment, 3 => EndOfSegment, 4 => StartOfBufferReplay (Deprecated), 5 => StartOfIncrementalPush, 6 => EndOfIncrementalPush, 7 => TopicSwitch, 8 => VersionSwap",
               "type": "int"
             }, {
               "name": "debugInfo",
@@ -207,6 +207,28 @@
                       "name": "finalSegment",
                       "doc": "This field is set to true when the producer knows that there is no more data coming from its data source after this EndOfSegment. This happens at the time the producer is closed.",
                       "type": "boolean"
+                    }
+                  ]
+                }, {
+                  "name": "StartOfBufferReplay",
+                  "doc": "[Deprecated] This ControlMessage is sent by the Controller, once per partition, after the EndOfPush ControlMessage, in Hybrid Stores that ingest from both offline and nearline sources. It contains information about the the offsets from which the Buffer Replay Service started replaying data from the real-time buffer topic onto the store-version topic. This can be used as a synchronization marker between the real-time buffer topic and the store-version topic, akin to how a clapperboard is used to synchronize sound and image in filmmaking. This synchronization marker can in turn be used by the consumer to compute an offset lag.",
+                  "type": "record",
+                  "fields": [
+                    {
+                      "name": "sourceOffsets",
+                      "doc": "Array of offsets from the real-time buffer topic at which the Buffer Replay Service started replaying data. The index position of the array corresponds to the partition number in the real-time buffer.",
+                      "type": {
+                        "type": "array",
+                        "items": "long"
+                      }
+                    }, {
+                      "name": "sourceKafkaCluster",
+                      "doc": "Kafka bootstrap servers URL of the cluster where the source buffer exists.",
+                      "type": "string"
+                    }, {
+                      "name": "sourceTopicName",
+                      "doc": "Name of the source buffer topic.",
+                      "type": "string"
                     }
                   ]
                 }, {
