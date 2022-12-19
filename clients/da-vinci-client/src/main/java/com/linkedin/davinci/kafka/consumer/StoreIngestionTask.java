@@ -2707,8 +2707,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * {@link PartitionConsumptionState} will pass through some information to {@link OffsetRecord} for persistence and
    * Offset rewind/split brain has been guarded in {@link #updateLatestInMemoryProcessedOffset}.
    *
-   * When consumerRecord and upstreamKafkaUrl are provided, the upstream offset will be updated for the computed kafka url.
-   * Otherwise, it will clone the {@link PartitionConsumptionState#getLatestProcessedUpstreamRTOffsetMap}.
    * @param partitionConsumptionState
    * @param consumerRecord, the record for which the upstream Kafka url needs to be computed, used to determine the source kafka url.
    * @param upstreamKafkaUrl, The Kafka URL from where the record was consumed.
@@ -2845,7 +2843,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        * should come from real-time topics.
        */
       if (partitionConsumptionState.isEndOfPushReceived() && !kafkaKey.isControlMessage()) {
-        // TODO: fix here?
         offsetRecord.setLatestProducerProcessingTimeInMs(kafkaValue.producerMetadata.messageTimestamp);
       }
       // Update latest in-memory processed offset for every processed message
