@@ -5,7 +5,12 @@ import java.io.IOException;
 import java.io.OutputStream;
 
 
-abstract class GzipPool {
+class GzipPool implements AutoCloseable {
+  @Override
+  public void close() throws Exception {
+    reusableObjectsThreadLocal.close();
+  }
+
   private static class ReusableObjects implements AutoCloseable {
     final SettableOutputStream stream = new SettableOutputStream();
     final ReusableGzipOutputStream gzipOutputStream = new ReusableGzipOutputStream(stream);
@@ -13,6 +18,7 @@ abstract class GzipPool {
     @Override
     public void close() throws Exception {
       stream.close();
+      gzipOutputStream.close();
     }
   }
 
@@ -22,12 +28,11 @@ abstract class GzipPool {
   /**
    * Retrieves an {@link ReusableGzipOutputStream} for the given {@link OutputStream}. Instances are pooled per thread.
    *
-   * @param target
-   * @return
    */
-  public static ReusableGzipOutputStream forStream(OutputStream target) {
-    reusableObjectsThreadLocal.get().stream.target = target;
-    return reusableObjectsThreadLocal.get().gzipOutputStream;
+  public ReusableGzipOutputStream forStream(OutputStream target) {
+    ReusableObjects reusableObjects = reusableObjectsThreadLocal.get();
+    reusableObjects.stream.target = target;
+    return reusableObjects.gzipOutputStream;
   }
 
   static class SettableOutputStream extends OutputStream {
