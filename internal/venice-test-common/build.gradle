@@ -88,7 +88,31 @@ task integrationTest(type: Test) {
   forkEvery = Integer.parseInt(project.properties.get('integrationTest.forkEvery', "$forkEvery"))
   maxParallelForks = Integer.parseInt(project.properties.get('integrationTest.maxParallelForks', "$maxParallelForks"))
 }
+
+task integrationTestA(type: Test) {
+  filter {
+    excludeTestsMatching "com.linkedin.venice.endToEnd.*"
+  }
+  mustRunAfter test
+  classpath = sourceSets.integrationTest.runtimeClasspath
+  testClassesDirs = sourceSets.integrationTest.output.classesDirs
+  forkEvery = Integer.parseInt(project.properties.get('integrationTest.forkEvery', "$forkEvery"))
+  maxParallelForks = Integer.parseInt(project.properties.get('integrationTest.maxParallelForks', "$maxParallelForks"))
+}
+
+task integrationTestB(type: Test) {
+  filter {
+    includeTestsMatching "com.linkedin.venice.endToEnd.*"
+  }
+  mustRunAfter test
+  classpath = sourceSets.integrationTest.runtimeClasspath
+  testClassesDirs = sourceSets.integrationTest.output.classesDirs
+  forkEvery = Integer.parseInt(project.properties.get('integrationTest.forkEvery', "$forkEvery"))
+  maxParallelForks = Integer.parseInt(project.properties.get('integrationTest.maxParallelForks', "$maxParallelForks"))
+}
 check.dependsOn(integrationTest)
+check.dependsOn(integrationTestA)
+check.dependsOn(integrationTestB)
 
 flakyTest {
   classpath += sourceSets.integrationTest.runtimeClasspath
