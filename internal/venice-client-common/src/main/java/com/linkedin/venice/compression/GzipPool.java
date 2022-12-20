@@ -1,15 +1,23 @@
 package com.linkedin.venice.compression;
 
+import com.linkedin.venice.utils.concurrent.CloseableThreadLocal;
 import java.io.IOException;
 import java.io.OutputStream;
 
 
 abstract class GzipPool {
-  private static final ThreadLocal<SettableOutputStream> streams =
-      ThreadLocal.withInitial(() -> new SettableOutputStream());
+  private static class ReusableObjects implements AutoCloseable {
+    final SettableOutputStream stream = new SettableOutputStream();
+    final ReusableGzipOutputStream gzipOutputStream = new ReusableGzipOutputStream(stream);
 
-  private static final ThreadLocal<ReusableGzipOutputStream> zipStreams =
-      ThreadLocal.withInitial(() -> new ReusableGzipOutputStream(streams.get()));
+    @Override
+    public void close() throws Exception {
+      stream.close();
+    }
+  }
+
+  private static final CloseableThreadLocal<ReusableObjects> reusableObjectsThreadLocal =
+      new CloseableThreadLocal(ReusableObjects::new);
 
   /**
    * Retrieves an {@link ReusableGzipOutputStream} for the given {@link OutputStream}. Instances are pooled per thread.
@@ -18,8 +26,8 @@ abstract class GzipPool {
    * @return
    */
   public static ReusableGzipOutputStream forStream(OutputStream target) {
-    streams.get().target = target;
-    return zipStreams.get();
+    reusableObjectsThreadLocal.get().stream.target = target;
+    return reusableObjectsThreadLocal.get().gzipOutputStream;
   }
 
   static class SettableOutputStream extends OutputStream {

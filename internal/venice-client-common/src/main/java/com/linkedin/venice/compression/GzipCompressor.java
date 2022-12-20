@@ -20,10 +20,14 @@ public class GzipCompressor extends VeniceCompressor {
   public byte[] compress(byte[] data) throws IOException {
     ByteArrayOutputStream bos = new ByteArrayOutputStream();
     ReusableGzipOutputStream out = GzipPool.forStream(bos);
-    out.writeHeader();
-    out.write(data);
-    out.finish();
-    out.reset();
+    try {
+      out.writeHeader();
+      out.write(data);
+      out.finish();
+    } finally {
+      out.reset();
+    }
+
     return bos.toByteArray();
   }
 
