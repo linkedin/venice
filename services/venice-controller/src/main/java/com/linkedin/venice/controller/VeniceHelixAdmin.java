@@ -57,7 +57,7 @@ import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoragePersonaQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionResponse;
-import com.linkedin.venice.exceptions.ConfigurationException;
+import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
 import com.linkedin.venice.exceptions.ResourceStillExistsException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -3293,19 +3293,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   public void setStorePartitionCount(String clusterName, String storeName, int partitionCount) {
     VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
     storeMetadataUpdate(clusterName, storeName, store -> {
-      if (store.getPartitionCount() != partitionCount && store.isHybrid()) {
-        throw new ConfigurationException("Cannot change partition count for a hybrid store");
-      }
-
-      int maxPartitionNum = clusterConfig.getMaxNumberOfPartition();
-      if (partitionCount > maxPartitionNum) {
-        throw new ConfigurationException(
-            "Partition count: " + partitionCount + " should be less than max: " + maxPartitionNum);
-      }
-      if (partitionCount < 0) {
-        throw new ConfigurationException("Partition count: " + partitionCount + " should NOT be negative");
-      }
-
+      preCheckStorePartitionCountUpdate(clusterName, store, partitionCount);
       // Do not update the partitionCount on the store.version as version config is immutable. The
       // version.getPartitionCount()
       // is read only in getRealTimeTopic and createInternalStore creation, so modifying currentVersion should not have
@@ -3318,6 +3306,49 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       return store;
     });
+  }
+
+  void preCheckStorePartitionCountUpdate(String clusterName, Store store, int newPartitionCount) {
+    String errorMessagePrefix = "Store update error for " + store.getName() + " in cluster: " + clusterName + ": ";
+    VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
+    if (store.isHybrid() && store.getPartitionCount() != newPartitionCount) {
+      // Allow the update if partition count is not configured and the new partition count matches RT partition count
+      if (store.getPartitionCount() == 0) {
+        TopicManager topicManager;
+        if (isParent()) {
+          // RT might not exist in parent colo. Get RT partition count from a child colo.
+          String childDatacenter = clusterConfig.getChildDatacenters().split(",\\s*")[0];
+          topicManager = getTopicManager(
+              Pair.create(
+                  multiClusterConfigs.getChildDataCenterKafkaUrlMap().get(childDatacenter),
+                  multiClusterConfigs.getChildDataCenterKafkaZkMap().get(childDatacenter)));
+        } else {
+          topicManager = getTopicManager();
+        }
+        String realTimeTopic = Version.composeRealTimeTopic(store.getName());
+        if (topicManager.containsTopic(realTimeTopic)
+            && topicManager.partitionsFor(realTimeTopic).size() == newPartitionCount) {
+          LOGGER.info("Allow updating store " + store.getName() + " partition count to " + newPartitionCount);
+          return;
+        }
+      }
+      String errorMessage = errorMessagePrefix + "Cannot change partition count for this hybrid store";
+      LOGGER.error(errorMessage);
+      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.INVALID_CONFIG);
+    }
+
+    int maxPartitionNum = clusterConfig.getMaxNumberOfPartition();
+    if (newPartitionCount > maxPartitionNum) {
+      String errorMessage =
+          errorMessagePrefix + "Partition count: " + newPartitionCount + " should be less than max: " + maxPartitionNum;
+      LOGGER.error(errorMessage);
+      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.INVALID_CONFIG);
+    }
+    if (newPartitionCount < 0) {
+      String errorMessage = errorMessagePrefix + "Partition count: " + newPartitionCount + " should NOT be negative";
+      LOGGER.error(errorMessage);
+      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.INVALID_CONFIG);
+    }
   }
 
   void setStorePartitionerConfig(String clusterName, String storeName, PartitionerConfig partitionerConfig) {

@@ -17,7 +17,6 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.exception.HelixClusterMaintenanceModeException;
 import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
-import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
@@ -449,12 +448,8 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
 
     veniceAdmin.setStorePartitionCount(clusterName, storeName, newPartitionCount);
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getPartitionCount(), newPartitionCount);
-    Assert.assertThrows(
-        ConfigurationException.class,
-        () -> veniceAdmin.setStorePartitionCount(clusterName, storeName, MAX_NUMBER_OF_PARTITION + 1));
-    Assert.assertThrows(
-        ConfigurationException.class,
-        () -> veniceAdmin.setStorePartitionCount(clusterName, storeName, -1));
+    Assert.assertThrows(() -> veniceAdmin.setStorePartitionCount(clusterName, storeName, MAX_NUMBER_OF_PARTITION + 1));
+    Assert.assertThrows(() -> veniceAdmin.setStorePartitionCount(clusterName, storeName, -1));
 
     // test setting amplification factor
     Assert.assertEquals(
