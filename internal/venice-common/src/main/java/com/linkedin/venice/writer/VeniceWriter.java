@@ -235,7 +235,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   private boolean isRmdChunkingEnabled;
 
-  public VeniceWriter(
+  protected VeniceWriter(
       VeniceWriterOptions params,
       VeniceProperties props,
       Supplier<KafkaProducerWrapper> producerWrapperSupplier) {
@@ -683,6 +683,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       putPayload.replicationMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
       putPayload.replicationMetadataPayload = EMPTY_BYTE_BUFFER;
     }
+
     return sendMessage(
         producerMetadata -> kafkaKey,
         MessageType.PUT,

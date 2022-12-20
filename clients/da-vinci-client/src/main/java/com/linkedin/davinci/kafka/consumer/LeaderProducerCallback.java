@@ -1,7 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER;
-import static com.linkedin.venice.writer.VeniceWriter.VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
 
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
@@ -30,7 +29,6 @@ class LeaderProducerCallback implements ChunkAwareCallback {
 
   protected static final ChunkedValueManifestSerializer CHUNKED_VALUE_MANIFEST_SERIALIZER =
       new ChunkedValueManifestSerializer(false);
-  private static final ByteBuffer EMPTY_BYTE_BUFFER = ByteBuffer.allocate(0);
 
   private final LeaderFollowerStoreIngestionTask ingestionTask;
   private final ConsumerRecord<KafkaKey, KafkaMessageEnvelope> sourceConsumerRecord;
@@ -46,7 +44,6 @@ class LeaderProducerCallback implements ChunkAwareCallback {
   private final HostLevelIngestionStats hostLevelIngestionStats;
   private final long produceTimeNs;
   private final long beforeProcessingRecordTimestamp;
-  private final boolean isActiveActiveReplication;
 
   /**
    * The mutable fields below are determined by the {@link com.linkedin.venice.writer.VeniceWriter},
@@ -63,18 +60,17 @@ class LeaderProducerCallback implements ChunkAwareCallback {
       LeaderFollowerStoreIngestionTask ingestionTask,
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> sourceConsumerRecord,
       PartitionConsumptionState partitionConsumptionState,
-      LeaderProducedRecordContext leaderProducedRecordContext,
       String leaderTopic,
       String versionTopic,
       int partition,
       int subPartition,
       String kafkaUrl,
       AggVersionedDIVStats versionedDIVStats,
+      LeaderProducedRecordContext leaderProducedRecordContext,
       AggVersionedIngestionStats versionedStorageIngestionStats,
       HostLevelIngestionStats hostLevelIngestionStats,
       long produceTimeNs,
-      long beforeProcessingRecordTimestamp,
-      boolean isActiveActiveReplication) {
+      long beforeProcessingRecordTimestamp) {
     this.ingestionTask = ingestionTask;
     this.sourceConsumerRecord = sourceConsumerRecord;
     this.partitionConsumptionState = partitionConsumptionState;
@@ -89,7 +85,6 @@ class LeaderProducerCallback implements ChunkAwareCallback {
     this.versionedStorageIngestionStats = versionedStorageIngestionStats;
     this.hostLevelIngestionStats = hostLevelIngestionStats;
     this.beforeProcessingRecordTimestamp = beforeProcessingRecordTimestamp;
-    this.isActiveActiveReplication = isActiveActiveReplication;
   }
 
   @Override
@@ -177,14 +172,11 @@ class LeaderProducerCallback implements ChunkAwareCallback {
             Put chunkPut = new Put();
             chunkPut.putValue = chunkValue;
             chunkPut.schemaId = schemaId;
-            if (isActiveActiveReplication) {
-              chunkPut.replicationMetadataPayload = EMPTY_BYTE_BUFFER;
-              chunkPut.replicationMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
-            }
 
             LeaderProducedRecordContext producedRecordForChunk =
                 LeaderProducedRecordContext.newPutRecord(-1, -1, ByteUtils.extractByteArray(chunkKey), chunkPut);
             producedRecordForChunk.setProducedOffset(-1);
+
             ingestionTask.produceToStoreBufferService(
                 sourceConsumerRecord,
                 producedRecordForChunk,
@@ -209,12 +201,6 @@ class LeaderProducerCallback implements ChunkAwareCallback {
           Put manifestPut = new Put();
           manifestPut.putValue = manifest;
           manifestPut.schemaId = schemaId;
-          if (isActiveActiveReplication) {
-            manifestPut.replicationMetadataVersionId =
-                ((Put) leaderProducedRecordContext.getValueUnion()).replicationMetadataVersionId;
-            manifestPut.replicationMetadataPayload =
-                ((Put) leaderProducedRecordContext.getValueUnion()).replicationMetadataPayload;
-          }
 
           LeaderProducedRecordContext producedRecordForManifest = LeaderProducedRecordContext.newPutRecordWithFuture(
               leaderProducedRecordContext.getConsumedKafkaClusterId(),

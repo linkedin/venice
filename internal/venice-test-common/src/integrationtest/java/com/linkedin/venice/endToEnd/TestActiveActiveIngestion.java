@@ -78,7 +78,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
-import org.apache.avro.util.Utf8;
 import org.apache.samza.config.MapConfig;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -164,7 +163,7 @@ public class TestActiveActiveIngestion {
     TestPushUtils.runPushJob("Run push job", props);
 
     // run samza to stream put and delete
-    runSamzaStreamJob(storeName, null, 10, 10, 0);
+    runSamzaStreamJob(storeName);
 
     // run repush
     props.setProperty(SOURCE_KAFKA, "true");
@@ -179,36 +178,26 @@ public class TestActiveActiveIngestion {
         5,
         TimeUnit.SECONDS,
         () -> Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 2));
-    clusterWrapper.refreshAllRouterMetaData();
 
+    clusterWrapper.refreshAllRouterMetaData();
     // Validate repush from version 2
     MetricsRepository metricsRepository = new MetricsRepository();
-    try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
+    try (AvroGenericStoreClient avroClient = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
             .setVeniceURL(clusterWrapper.getRandomRouterURL())
             .setMetricsRepository(metricsRepository))) {
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-        // test single get
-        for (int i = 0; i < 10; i++) {
-          String key = Integer.toString(i);
-          Utf8 value = client.get(key).get();
-          Assert.assertNotNull(value);
-          Assert.assertEquals(value.toString(), "stream_" + i);
-        }
-        // test deletes
-        for (int i = 10; i < 20; i++) {
-          String key = Integer.toString(i);
-          Utf8 value = client.get(key).get();
-          Assert.assertNull(value);
-        }
-        // test old data
-        for (int i = 20; i < 100; i++) {
-          String key = Integer.toString(i);
-          Utf8 value = client.get(key).get();
-          Assert.assertNotNull(value);
-          Assert.assertEquals(value.toString(), "test_name_" + i);
-        }
-      });
+      // test single get
+      for (int i = 0; i < 10; i++) {
+        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "stream_" + i);
+      }
+      // test deletes
+      for (int i = 10; i < 20; i++) {
+        Assert.assertNull(avroClient.get(Integer.toString(i)).get());
+      }
+      // test old data
+      for (int i = 20; i < 100; i++) {
+        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
+      }
     }
 
     /**
@@ -241,14 +230,14 @@ public class TestActiveActiveIngestion {
 
     // Validate repush from version 4
     clusterWrapper.refreshAllRouterMetaData();
-    try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
+    try (AvroGenericStoreClient avroClient = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
             .setVeniceURL(clusterWrapper.getRandomRouterURL())
             .setMetricsRepository(metricsRepository))) {
       // test single get
       int validGet = 0, filteredGet = 0;
       for (int i = 20; i < 30; i++) {
-        Object result = client.get(Integer.toString(i)).get();
+        Object result = avroClient.get(Integer.toString(i)).get();
         if (result == null) {
           filteredGet++;
         } else {
@@ -261,12 +250,12 @@ public class TestActiveActiveIngestion {
       // test deletes
       for (int i = 30; i < 40; i++) {
         // not matter the DELETE is TTLed or not, the value should always be null
-        Assert.assertNull(client.get(Integer.toString(i)).get());
+        Assert.assertNull(avroClient.get(Integer.toString(i)).get());
       }
 
       // test old data - should be empty due to empty push
       for (int i = 40; i < 100; i++) {
-        Assert.assertNull(client.get(Integer.toString(i)).get());
+        Assert.assertNull(avroClient.get(Integer.toString(i)).get());
       }
     }
   }
@@ -349,6 +338,10 @@ public class TestActiveActiveIngestion {
         return false;
       }
     });
+  }
+
+  private void runSamzaStreamJob(String storeName) {
+    runSamzaStreamJob(storeName, null, 10, 10, 0);
   }
 
   private void runSamzaStreamJob(String storeName, Time mockedTime, int numPuts, int numDels, int startIdx) {
