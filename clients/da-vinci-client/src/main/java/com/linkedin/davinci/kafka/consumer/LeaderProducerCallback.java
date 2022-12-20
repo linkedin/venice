@@ -19,7 +19,6 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.writer.ChunkAwareCallback;
 import java.nio.ByteBuffer;
-import java.util.Arrays;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.logging.log4j.LogManager;
@@ -153,10 +152,6 @@ class LeaderProducerCallback implements ChunkAwareCallback {
          * Otherwise queue the chunks and manifest individually to drainer service.
          */
         if (chunkedValueManifest == null) {
-          LogManager.getLogger()
-              .info(
-                  "DEBUGGING CALLBACK NOT CHUNKED: " + leaderProducedRecordContext.getConsumedOffset() + " "
-                      + leaderProducedRecordContext.getProducedOffset());
           // update the keyBytes for the ProducedRecord in case it was changed due to isChunkingEnabled flag in
           // VeniceWriter.
           if (key != null) {
@@ -186,6 +181,8 @@ class LeaderProducerCallback implements ChunkAwareCallback {
               chunkPut.replicationMetadataPayload = EMPTY_BYTE_BUFFER;
               chunkPut.replicationMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
             }
+            LogManager.getLogger()
+                .info("DEBUGGING: LPC PUTTING VALUE CHUNK: " + i + " " + chunkPut.putValue.remaining());
 
             LeaderProducedRecordContext producedRecordForChunk =
                 LeaderProducedRecordContext.newPutRecord(-1, -1, ByteUtils.extractByteArray(chunkKey), chunkPut);
@@ -198,12 +195,35 @@ class LeaderProducerCallback implements ChunkAwareCallback {
                 beforeProcessingRecordTimestamp);
             producedRecordNum++;
             producedRecordSize += chunkKey.remaining() + chunkValue.remaining();
-            LogManager.getLogger()
-                .info(
-                    "DEBUGGING CALLBACK CHUNKED PUT CHUNK: " + chunkValue.remaining() + " " + i + " "
-                        + chunkPut.replicationMetadataPayload);
           }
+          LogManager.getLogger().info("DEBUGGING CHUNKED RMD MANIFEST: " + chunkedRmdManifest);
+          if (chunkedRmdManifest != null) {
+            for (int i = 0; i < chunkedRmdManifest.keysWithChunkIdSuffix.size(); i++) {
+              ByteBuffer chunkKey = chunkedRmdManifest.keysWithChunkIdSuffix.get(i);
+              ByteBuffer chunkValue = rmdChunks[i];
 
+              Put chunkPut = new Put();
+              chunkPut.putValue = EMPTY_BYTE_BUFFER;
+              chunkPut.schemaId = schemaId;
+              chunkPut.replicationMetadataPayload = chunkValue;
+              chunkPut.replicationMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
+              LogManager.getLogger()
+                  .info(
+                      "DEBUGGING: LPC PUTTING RMD CHUNK: " + i + " " + chunkPut.replicationMetadataPayload.remaining());
+
+              LeaderProducedRecordContext producedRecordForChunk =
+                  LeaderProducedRecordContext.newPutRecord(-1, -1, ByteUtils.extractByteArray(chunkKey), chunkPut);
+              producedRecordForChunk.setProducedOffset(-1);
+              ingestionTask.produceToStoreBufferService(
+                  sourceConsumerRecord,
+                  producedRecordForChunk,
+                  subPartition,
+                  kafkaUrl,
+                  beforeProcessingRecordTimestamp);
+              producedRecordNum++;
+              producedRecordSize += chunkKey.remaining() + chunkValue.remaining();
+            }
+          }
           // produce the manifest inside the top-level key
           schemaId = AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
           ByteBuffer manifest =
@@ -221,10 +241,23 @@ class LeaderProducerCallback implements ChunkAwareCallback {
           if (isActiveActiveReplication) {
             manifestPut.replicationMetadataVersionId =
                 ((Put) leaderProducedRecordContext.getValueUnion()).replicationMetadataVersionId;
-            manifestPut.replicationMetadataPayload =
-                ((Put) leaderProducedRecordContext.getValueUnion()).replicationMetadataPayload;
+            if (chunkedRmdManifest == null) {
+              manifestPut.replicationMetadataPayload =
+                  ((Put) leaderProducedRecordContext.getValueUnion()).replicationMetadataPayload;
+            } else {
+              ByteBuffer rmdManifest =
+                  ByteBuffer.wrap(CHUNKED_VALUE_MANIFEST_SERIALIZER.serialize(versionTopic, chunkedRmdManifest));
+              rmdManifest.position(ValueRecord.SCHEMA_HEADER_LENGTH);
+              manifestPut.replicationMetadataPayload = rmdManifest;
+            }
+          } else {
+            manifestPut.replicationMetadataPayload = EMPTY_BYTE_BUFFER;
+            manifestPut.replicationMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
           }
-
+          LogManager.getLogger()
+              .info(
+                  "DEBUGGING LPC PUTTING MANIFEST WITH RMD: " + manifestPut.putValue.remaining() + " "
+                      + manifestPut.replicationMetadataPayload.remaining() + " " + chunkedRmdManifest);
           LeaderProducedRecordContext producedRecordForManifest = LeaderProducedRecordContext.newPutRecordWithFuture(
               leaderProducedRecordContext.getConsumedKafkaClusterId(),
               leaderProducedRecordContext.getConsumedOffset(),
@@ -240,11 +273,6 @@ class LeaderProducerCallback implements ChunkAwareCallback {
               beforeProcessingRecordTimestamp);
           producedRecordNum++;
           producedRecordSize += key.length + manifest.remaining();
-          LogManager.getLogger()
-              .info(
-                  "DEBUGGING CALLBACK CHUNKED MANIFEST: " + manifest.remaining() + " "
-                      + manifestPut.replicationMetadataPayload);
-
         }
         recordProducerStats(producedRecordSize, producedRecordNum);
 
@@ -283,11 +311,6 @@ class LeaderProducerCallback implements ChunkAwareCallback {
     this.valueChunks = valueChunks;
     this.chunkedRmdManifest = chunkedRmdManifest;
     this.rmdChunks = rmdChunks;
-    LogManager.getLogger()
-        .info(
-            "DEBUGGING SET CHUNKING INFO: " + (valueChunks != null ? valueChunks.length : 0) + " "
-                + chunkedValueManifest + " " + (rmdChunks != null ? rmdChunks.length : 0) + " " + chunkedRmdManifest
-                + " " + Arrays.toString(Thread.currentThread().getStackTrace()));
   }
 
   private void recordProducerStats(int producedRecordSize, int producedRecordNum) {

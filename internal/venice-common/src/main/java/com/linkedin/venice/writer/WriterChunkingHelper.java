@@ -116,11 +116,6 @@ public class WriterChunkingHelper {
         putPayload.putValue = EMPTY_BYTE_BUFFER;
         putPayload.replicationMetadataPayload = chunk;
       }
-      LogManager.getLogger()
-          .info(
-              "SENDING CHUNK: " + putPayload.putValue.remaining() + " "
-                  + putPayload.replicationMetadataPayload.remaining());
-
       chunkedKeySuffix.chunkId.chunkIndex = chunkIndex;
       keyProvider = chunkIndex == 0 ? firstKeyProvider : subsequentKeyProvider;
 
@@ -133,7 +128,8 @@ public class WriterChunkingHelper {
          * 3. Infinite blocking means the following 'sendMessage' call will follow the config of the internal Kafka Producer,
          * such as timeout, retries and so on;
          */
-        sendMessageFunction.apply(keyProvider, putPayload).get();
+        RecordMetadata recordMetadata = sendMessageFunction.apply(keyProvider, putPayload).get();
+        LogManager.getLogger().info("DEBUGGING CHECK METADATA: " + chunkedKeySuffix.chunkId + " " + recordMetadata);
       } catch (Exception e) {
         throw new VeniceException(
             "Caught an exception while attempting to produce a chunk of a large value into Kafka... "

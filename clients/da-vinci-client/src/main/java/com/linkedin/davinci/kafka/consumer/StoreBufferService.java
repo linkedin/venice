@@ -8,6 +8,7 @@ import com.linkedin.venice.common.Measurable;
 import com.linkedin.venice.exceptions.VeniceChecksumException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import java.util.ArrayList;
@@ -157,6 +158,13 @@ public class StoreBufferService extends AbstractStoreBufferService {
         long beforeProcessingRecordTimestamp,
         LeaderProducedRecordContext leaderProducedRecordContext) {
       super(consumerRecord, ingestionTask, kafkaUrl, beforeProcessingRecordTimestamp);
+      Put thePut = ((Put) leaderProducedRecordContext.getValueUnion());
+      LogManager.getLogger()
+          .info(
+              "DEBUGGING PUT NEW LEADER QUEUE NODE: "
+                  + (thePut.replicationMetadataPayload != null ? thePut.replicationMetadataPayload.remaining() : -1));
+      LogManager.getLogger()
+          .info("DEBUGGING PUT LEADER QUEUE NODE PRODUCER METADATA: " + consumerRecord.value().producerMetadata);
       this.leaderProducedRecordContext = leaderProducedRecordContext;
     }
 

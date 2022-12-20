@@ -2753,7 +2753,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        * 3. The DIV info checkpoint on disk must match the actual data persistence which is done inside drainer threads.
        */
       try {
+        LogManager.getLogger().info("DEBUGGING VALIDATE MESSAGE BEGIN");
         validateMessage(this.kafkaDataIntegrityValidator, consumerRecord, endOfPushReceived, subPartition);
+        LogManager.getLogger().info("DEBUGGING VALIDATE MESSAGE END");
         versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
       } catch (FatalDataValidationException fatalException) {
         if (!endOfPushReceived) {
@@ -2934,10 +2936,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   private void prependHeaderAndWriteToStorageEngine(int partition, byte[] keyBytes, Put put) {
     ByteBuffer putValue = put.putValue;
+    /*
     LogManager.getLogger()
         .info(
             "DEBUGGING prependHeaderAndWriteToStorageEngine before: " + putValue.remaining() + " "
                 + put.replicationMetadataPayload.remaining());
+    
+     */
     /*
      * Since {@link com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer} reuses the original byte
      * array, which is big enough to pre-append schema id, so we just reuse it to avoid unnecessary byte array allocation.
@@ -3112,13 +3117,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         } else {
           keyBytes = leaderProducedRecordContext.getKeyBytes();
           put = (Put) leaderProducedRecordContext.getValueUnion();
+          LogManager.getLogger()
+              .info(
+                  "DEBUGGING PROCESSING LPR: " + put.putValue.remaining() + " "
+                      + ((put.replicationMetadataPayload != null) ? put.replicationMetadataPayload.remaining() : -1));
         }
         valueLen = put.putValue.remaining();
         keyLen = keyBytes.length;
-        LogManager.getLogger()
-            .info(
-                "DEBUGGING processKafkaDataMessage " + put.putValue.remaining() + " "
-                    + put.replicationMetadataPayload.remaining());
         // update checksum for this PUT message if needed.
         partitionConsumptionState.maybeUpdateExpectedChecksum(keyBytes, put);
         prependHeaderAndWriteToStorageEngine(

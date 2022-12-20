@@ -644,6 +644,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
     int replicationMetadataPayloadSize = putMetadata.map(PutMetadata::getSerializedSize).orElse(0);
     isChunkingFlagInvoked = true;
+    LogManager.getLogger()
+        .info(
+            "DEBUGGING TO PUT CHUNKED VALUE/RMD FOR SER-KEY: " + serializedKey + " " + key + " "
+                + Arrays.toString(Thread.currentThread().getStackTrace()));
     if (serializedKey.length + serializedValue.length
         + replicationMetadataPayloadSize > maxSizeForUserPayloadPerMessageInBytes) {
       if (isChunkingEnabled) {
@@ -1150,11 +1154,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
             DEFAULT_LEADER_METADATA_WRAPPER,
             Optional.empty()));
     ChunkedPayloadAndManifest rmdChunksAndManifest = null;
-    LogManager.getLogger()
-        .info(
-            "DEBUGGING RMD CHUNKING ENABLED " + isRmdChunkingEnabled + " "
-                + putMetadata.get().getRmdPayload().remaining() + " "
-                + Arrays.toString(Thread.currentThread().getStackTrace()));
     if (isRmdChunkingEnabled) {
       rmdChunksAndManifest = WriterChunkingHelper.chunkPayloadAndSend(
           serializedKey,
@@ -1203,8 +1202,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
               + "Please reconsider your life choices. " + reportSizeGenerator.get());
     }
 
-    LogManager.getLogger()
-        .info("DEBUGGING SUPPOSE TO do call back" + (callback instanceof ChunkAwareCallback) + " " + callback);
     if (callback instanceof ChunkAwareCallback) {
       /** We leave a handle to the key, chunks and manifest so that the {@link ChunkAwareCallback} can act on them */
       ((ChunkAwareCallback) callback).setChunkingInfo(

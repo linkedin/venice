@@ -170,13 +170,16 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   protected void putInStorageEngine(int partition, byte[] keyBytes, Put put) {
     try {
       // TODO: Honor BatchConflictResolutionPolicy and maybe persist RMD for batch push records.
-      switch (getStorageOperationType(partition, put.putValue, put.replicationMetadataPayload)) {
+      StorageOperationType storageOperationType =
+          getStorageOperationType(partition, put.putValue, put.replicationMetadataPayload);
+      LogManager.getLogger().info("DEBUGGING STORAGE OPERATION TYPE: " + storageOperationType);
+      switch (storageOperationType) {
         case VALUE_AND_RMD:
           byte[] metadataBytesWithValueSchemaId =
               prependReplicationMetadataBytesWithValueSchemaId(put.replicationMetadataPayload, put.schemaId);
           LogManager.getLogger()
               .info(
-                  "STORING VALUE AND RMD: " + keyBytes + " " + put.putValue.remaining() + " "
+                  "STORING VALUE AND RMD: " + Arrays.toString(keyBytes) + " " + put.putValue.remaining() + " "
                       + metadataBytesWithValueSchemaId.length);
           storageEngine.putWithReplicationMetadata(partition, keyBytes, put.putValue, metadataBytesWithValueSchemaId);
           break;
@@ -184,11 +187,14 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           metadataBytesWithValueSchemaId =
               prependReplicationMetadataBytesWithValueSchemaId(put.replicationMetadataPayload, put.schemaId);
           LogManager.getLogger()
-              .info("STORING RMD ONLY DATA: " + keyBytes + " " + put.replicationMetadataPayload.array().length);
+              .info(
+                  "STORING RMD ONLY DATA: " + Arrays.toString(keyBytes) + " "
+                      + put.replicationMetadataPayload.array().length);
           storageEngine.putReplicationMetadata(partition, keyBytes, metadataBytesWithValueSchemaId);
           break;
         case VALUE:
-          LogManager.getLogger().info("STORING VALUE ONLY DATA: " + keyBytes + " " + put.putValue.remaining());
+          LogManager.getLogger()
+              .info("STORING VALUE ONLY DATA: " + Arrays.toString(keyBytes) + " " + put.putValue.remaining());
           storageEngine.put(partition, keyBytes, put.putValue);
           break;
       }
@@ -225,15 +231,20 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     }
     LogManager.getLogger()
         .info(
-            "DEBUGGING getStorageOperationType: " + valuePayload.remaining() + " " + rmdPayload.remaining() + " "
-                + Arrays.toString(Thread.currentThread().getStackTrace()));
-    if (valuePayload.remaining() == 0 && rmdPayload.remaining() != 0) {
-      return StorageOperationType.RMD;
+            "DEBUGGING getStorageOperationType: " + pcs.isEndOfPushReceived() + " " + valuePayload.remaining() + " "
+                + rmdPayload.remaining() + " " + Arrays.toString(Thread.currentThread().getStackTrace()));
+
+    if (isDaVinciClient) {
+      return StorageOperationType.VALUE;
     }
-    if ((pcs.isEndOfPushReceived() || rmdPayload.remaining() != 0) && !isDaVinciClient) {
-      return StorageOperationType.VALUE_AND_RMD;
+    if (!pcs.isEndOfPushReceived()) {
+      return StorageOperationType.VALUE;
     }
-    return StorageOperationType.VALUE;
+    if (rmdPayload.remaining() > 0) {
+      return valuePayload.remaining() > 0 ? StorageOperationType.VALUE_AND_RMD : StorageOperationType.RMD;
+    } else {
+      return StorageOperationType.VALUE;
+    }
   }
 
   private enum StorageOperationType {
@@ -266,6 +277,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       PartitionConsumptionState partitionConsumptionState,
       byte[] key,
       int subPartition) {
+    LogManager.getLogger()
+        .info("DEBUGGING GET FROM REPLICATION METADATA: " + Arrays.toString(key) + " " + subPartition);
     PartitionConsumptionState.TransientRecord cachedRecord = partitionConsumptionState.getTransientRecord(key);
     if (cachedRecord != null) {
       getHostLevelIngestionStats().recordIngestionReplicationMetadataCacheHitCount();
@@ -524,8 +537,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           storeName,
           compressor.get(),
           false);
-      LogManager.getLogger()
-          .info("DEBUGGING GET VALUE SIZE FROM STORAGE: " + ((originalValue == null) ? 0 : originalValue.remaining()));
       hostLevelIngestionStats.recordIngestionValueBytesLookUpLatency(LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
     } else {
       hostLevelIngestionStats.recordIngestionValueBytesCacheHitCount();
@@ -534,10 +545,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         originalValue = ByteBuffer
             .wrap(transientRecord.getValue(), transientRecord.getValueOffset(), transientRecord.getValueLen());
       }
-      LogManager.getLogger()
-          .info(
-              "DEBUGGING GET VALUE SIZE IN MEMORY: "
-                  + ((transientRecord.getValue() == null) ? 0 : transientRecord.getValue().length));
     }
     return originalValue;
   }

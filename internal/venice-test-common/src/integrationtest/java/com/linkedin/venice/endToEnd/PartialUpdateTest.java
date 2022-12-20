@@ -47,6 +47,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.update.UpdateBuilder;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
@@ -59,7 +60,10 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.io.BinaryEncoder;
+import org.apache.avro.io.DatumWriter;
 import org.apache.avro.util.Utf8;
 import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
@@ -91,9 +95,9 @@ public class PartialUpdateTest {
         NUMBER_OF_CLUSTERS,
         1,
         1,
-        2,
         1,
-        2,
+        1,
+        1,
         Optional.of(new VeniceProperties(controllerProps)),
         Optional.of(new Properties(controllerProps)),
         Optional.of(new VeniceProperties(serverProperties)),
@@ -120,7 +124,7 @@ public class PartialUpdateTest {
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
               .setCompressionStrategy(CompressionStrategy.NO_OP)
               .setWriteComputationEnabled(true)
-              .setActiveActiveReplicationEnabled(true)
+              // .setActiveActiveReplicationEnabled(true)
               .setChunkingEnabled(true)
               .setRmdChunkingEnabled(true)
               .setHybridRewindSeconds(10L)
@@ -189,6 +193,21 @@ public class PartialUpdateTest {
         veniceProducer.stop();
       }
     }
+    /*
+    ByteBuffer rmdKeyByteBuffer = ByteBuffer.wrap(ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(serializeStringKeyToByteArray(key)));
+    String kafkaTopic = Version.composeKafkaTopic(storeName, 1);
+    LogManager.getLogger().info("DEBUGGING CLUSTERS: " + multiColoMultiClusterWrapper.getClusters().size());
+    LogManager.getLogger().info("DEBUGGING SERVERS: " + multiColoMultiClusterWrapper.getClusters().get(0).getClusters().get("venice-cluster0").getVeniceServers());
+    for (VeniceServerWrapper serverWrapper : multiColoMultiClusterWrapper.getClusters().get(0).getClusters().get("venice-cluster0").getVeniceServers()) {
+      AbstractStorageEngine storageEngine = serverWrapper.getVeniceServer().getStorageService().getStorageEngine(kafkaTopic);
+      LogManager.getLogger().info("DEBUGGING: " + storageEngine);
+      byte[] value = storageEngine.getReplicationMetadata(0, rmdKeyByteBuffer.array());
+      Assert.assertNotNull(value);
+      LogManager.getLogger().info("RMD VALUE SCHEMA ID: " + value.length + " " + ValueRecord.parseSchemaId(value));
+    }
+    
+     */
+
   }
 
   /**
@@ -539,5 +558,19 @@ public class PartialUpdateTest {
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
     Utils.closeQuietlyWithErrorLogged(multiColoMultiClusterWrapper);
+  }
+
+  private byte[] serializeStringKeyToByteArray(String key) {
+    Utf8 utf8Key = new Utf8(key.toString());
+    DatumWriter<Utf8> writer = new GenericDatumWriter<>(Schema.create(Schema.Type.STRING));
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+    BinaryEncoder encoder = AvroCompatibilityHelper.newBinaryEncoder(out);
+    try {
+      writer.write(utf8Key, encoder);
+      encoder.flush();
+    } catch (IOException e) {
+      throw new RuntimeException("Failed to write input: " + utf8Key + " to binary encoder", e);
+    }
+    return out.toByteArray();
   }
 }
