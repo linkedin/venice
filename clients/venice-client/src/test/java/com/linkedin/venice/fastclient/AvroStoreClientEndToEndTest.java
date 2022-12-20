@@ -27,7 +27,7 @@ import org.testng.annotations.Test;
  *
  * TODO
  * 1. There might be some duplicate tests in this file and {@link BatchGetAvroStoreClientTest}, need to clean it up.
- * 2. add test for get with speculative query but only with 1 replica: should throw an exception? Not really a practical use case unless there are failures?
+ * 2. add test for get with speculative query but only with 1 replica
  */
 
 public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {

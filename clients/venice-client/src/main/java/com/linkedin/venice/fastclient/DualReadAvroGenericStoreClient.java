@@ -128,7 +128,9 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
     return valueFuture;
   }
 
-  /* TODO both get(key) and get(ctx,key) fetches non map for vson to start with and needs some type of lazy loading? */
+  /**
+   * TODO both super.get(key) and get(ctx,key) fetches non map for vson for the first request.
+   * Needs to be investigated */
   @Override
   protected CompletableFuture<V> get(GetRequestContext requestContext, K key) throws VeniceClientException {
     return dualExecute(() -> super.get(requestContext, key), () -> thinClient.get(key), clientStatsForSingleGet);

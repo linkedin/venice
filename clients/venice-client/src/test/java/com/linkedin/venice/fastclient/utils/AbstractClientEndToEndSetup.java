@@ -311,7 +311,7 @@ public abstract class AbstractClientEndToEndSetup {
    * will be closed when the respective client closes. The below function
    * needs to clean up the daVinciClient and its client factory alone.
    *
-   * TODO: can we reuse these for all the tests rathe than cleaning it up everytime?
+   * TODO: Explore to see if we can reuse these for all the tests rather than cleaning it up everytime.
    * */
   protected void cleanupDaVinciClientForMetaStore() {
     if (daVinciClientForMetaStore != null) {

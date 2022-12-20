@@ -49,7 +49,16 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
     return recordMetrics(requestContext, 1, innerFuture, startTimeInNS, clientStatsForSingleGet);
   }
 
-  protected CompletableFuture<Map<K, V>> batchGet(BatchGetRequestContext<K, V> requestContext, Set<K> keys)
+  /**
+   * This method is intended to replace the implementation of batchGet once we have some
+   * stabilization in the streaming versions. Once ready , remove the batchGet(keys) method and
+   * then rename this method name to batchGet and remove the existing batchGet method in this Class.
+   * @param requestContext
+   * @param keys
+   * @return
+   * @throws VeniceClientException
+   */
+  protected CompletableFuture<Map<K, V>> batchGetWithStreaming(BatchGetRequestContext<K, V> requestContext, Set<K> keys)
       throws VeniceClientException {
     long startTimeInNS = System.nanoTime();
 
@@ -261,7 +270,8 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
    *  3. This is a naive scatter and gather approach.
    *
    *  TODO: This function was built before streamingBatchGet() was implemented for a customer
-   *  to support two-key batch-get. Will need to be replaced with streamingBatchGet() once it is validated.
+   *   to support two-key batch-get. Will need to be replaced with streamingBatchGet() once it is validated.
+   *   check {@link #batchGetWithStreaming} for more details.
    */
   public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
     if (keys.isEmpty()) {

@@ -474,7 +474,7 @@ public class TestClientSimulator implements Client {
       }
     });
 
-    // TODO: Tests for simulating dual read?
+    // TODO: need to add tests for simulating dual read
     clientConfigBuilder.setDualReadEnabled(false);
     clientConfig = clientConfigBuilder.build();
 

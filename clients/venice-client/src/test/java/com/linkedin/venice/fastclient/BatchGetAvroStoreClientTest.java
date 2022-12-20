@@ -43,8 +43,6 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
   private static final Logger LOGGER = LogManager.getLogger(BatchGetAvroStoreClientTest.class);
   private static final long TIME_OUT_IN_SECONDS = 60;
 
-  // TODO should clientConfig be the same one used to create the client or a newly created one can be passed here like
-  // how its done here?
   private void printAllStats() {
     /* The print_stats flag controls if all stats are printed. Usually it will be too much info but while running
      * locally this can help understand what metrics are used */

@@ -96,7 +96,7 @@ public class InstanceHealthMonitor implements Closeable {
       if (throwable != null) {
         /**
          * In theory, throwable should be null all the time since {@link DispatchingAvroGenericStoreClient}
-         * will always set a http status in every code path, and the below is the defensive code.
+         * will always set a http status in every code path, and this is defensive code.
          */
         LOGGER.error(
             "Received unexpected throwable in replica request future since DispatchingAvroGenericStoreClient"
@@ -105,7 +105,7 @@ public class InstanceHealthMonitor implements Closeable {
       }
 
       if (!timeoutFuture.isDone()) {
-        // can there be a race condition here
+        // TODO check for race conditions
         timeoutFuture.cancel();
       }
 
@@ -116,9 +116,11 @@ public class InstanceHealthMonitor implements Closeable {
         case S_404_NOT_FOUND:
           break;
         case S_429_TOO_MANY_REQUESTS:
-          // Specific to a store
-          // This case will fall under blocked instances as there are too many requests waiting on
-          // them, so will be implicitly marked under blocked instances and so not marked unhealthy.
+          /**
+           * Specific to a store.
+           * This case will fall under blocked instances as there are too many requests waiting on
+           * them, so will be implicitly marked under blocked instances and so not marked unhealthy.
+            */
           counterResetDelayMS = clientConfig.getRoutingQuotaExceededRequestCounterResetDelayMS();
           break;
         case S_410_GONE:
@@ -135,8 +137,8 @@ public class InstanceHealthMonitor implements Closeable {
         counterResetConsumer.accept(instance);
       } else {
         /**
-         * Even when httpStatus is not 200/404, we want to reset the counter after some delay by
-         * rechecking for health once in a while rather than being permanently blocking it
+         * Even when httpStatus is not 200/404, we want to reset the counter after some delay: to
+         * recheck for health once in a while rather than being permanently blocking it
          */
         timeoutProcessor.schedule(
             () -> counterResetConsumer.accept(instance),
@@ -169,7 +171,7 @@ public class InstanceHealthMonitor implements Closeable {
 
   /**
    * If an instance is blocked, it won't be considered for new requests until the requests are closed either
-   * in a proper manner or closed by {@link InstanceHealthMonitor#trackHealthBasedOnRequestToInstance#timeoutFuture}
+   * in a proper manner or closed by {@link #trackHealthBasedOnRequestToInstance#timeoutFuture}
    */
   public boolean isInstanceBlocked(String instance) {
     return getPendingRequestCounter(instance) >= clientConfig.getRoutingPendingRequestCounterInstanceBlockThreshold();

@@ -53,7 +53,7 @@ import org.apache.logging.log4j.Logger;
  */
 public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
   private static final Logger LOGGER = LogManager.getLogger(DispatchingAvroGenericStoreClient.class);
-  protected static final String URI_SEPARATOR = "/";
+  private static final String URI_SEPARATOR = "/";
   private static final Executor DESERIALIZATION_EXECUTOR = AbstractAvroStoreClient.getDefaultDeserializationExecutor();
 
   private final StoreMetadata metadata;
@@ -587,7 +587,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     return multiGetSerializer.serializeObjects(routerRequestKeys);
   }
 
-  protected static long getLatencyInNS(long startTimeStamp) {
+  private long getLatencyInNS(long startTimeStamp) {
     return System.nanoTime() - startTimeStamp;
   }
 

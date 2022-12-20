@@ -163,7 +163,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
              * but we do want to minimize the number as each partition results in files, connections, threads, etc.
              * in the whole system. 3 seems like a reasonable tradeoff between these concerns.
              */
-            .put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 3) // TODO Should add tests controlling this option?
+            .put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 3)
             .put(DEFAULT_PARTITION_SIZE, options.getPartitionSize())
             .put(CONTROLLER_PARENT_MODE, options.isParent())
             .put(DELAY_TO_REBALANCE_MS, options.getRebalanceDelayMs())
