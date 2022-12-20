@@ -9,6 +9,7 @@ import com.linkedin.venice.fastclient.meta.ClientRoutingStrategy;
 import com.linkedin.venice.fastclient.stats.ClientStats;
 import com.linkedin.venice.fastclient.stats.ClusterStats;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -171,7 +172,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       }
     }
 
-    // TODO: QQ what about this case for BatchGet?
+    // TODO: Need to check whether this case applies for BatchGet
     if (this.speculativeQueryEnabled && this.longTailRetryEnabledForSingleGet) {
       throw new VeniceClientException(
           "Speculative query feature can't be enabled together with long-tail retry for single-get");
@@ -295,13 +296,16 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private long routingErrorRequestCounterResetDelayMS = -1;
     private long routingUnavailableRequestCounterResetDelayMS = -1;
     private int routingPendingRequestCounterInstanceBlockThreshold = -1;
-
-    // TODO: 2 was set initially for singleGet based multiGet for a specific use case.
-    // Now as streaming batchGet is validated, this number should be increased further.
-    // Check how thinclient handles this: Global setting or per store setting.
-    // Setting this in fastclient which uses this in the client itself vs thinclient
-    // which uses this in router should be considered before setting this default limit.
-    // TODO: Add testcases once this is finalized.
+    /**
+     * TODO:
+     * maxAllowedKeyCntInBatchGetReq was set to 2 initially for singleGet based multiGet
+     * for a specific customer ask. This needs to be reevaluated for streamingBatchGet().
+     * Today, the batch-get size for thinclient is enforced in Venice Router via
+     * {@link VenicePathParser#getBatchGetLimit} and it is configurable in store-level.
+     * In Fast-Client, it is still an open question about how to setup the batch-get limit
+     * or whether we need any limit at all. To start with, this can be set similar to routers
+     * global config and evaluate from there.
+     */
     private int maxAllowedKeyCntInBatchGetReq = 2;
 
     private DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore;
@@ -312,7 +316,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private int longTailRetryThresholdForSingleGetInMicroSeconds = 1000; // 1ms.
 
     private boolean longTailRetryEnabledForBatchGet = false;
-    private int longTailRetryThresholdForBatchtGetInMicroSeconds = 10000; // 10ms.
+    private int longTailRetryThresholdForBatchGetInMicroSeconds = 10000; // 10ms.
 
     private boolean isVsonStore = false;
 
@@ -435,7 +439,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
     public ClientConfigBuilder<K, V, T> setLongTailRetryThresholdForBatchGetInMicroSeconds(
         int longTailRetryThresholdForBatchGetInMicroSeconds) {
-      this.longTailRetryThresholdForBatchtGetInMicroSeconds = longTailRetryThresholdForBatchGetInMicroSeconds;
+      this.longTailRetryThresholdForBatchGetInMicroSeconds = longTailRetryThresholdForBatchGetInMicroSeconds;
       return this;
     }
 
@@ -468,7 +472,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setLongTailRetryEnabledForSingleGet(longTailRetryEnabledForSingleGet)
           .setLongTailRetryThresholdForSingleGetInMicroSeconds(longTailRetryThresholdForSingleGetInMicroSeconds)
           .setLongTailRetryEnabledForBatchGet(longTailRetryEnabledForBatchGet)
-          .setLongTailRetryThresholdForBatchGetInMicroSeconds(longTailRetryThresholdForBatchtGetInMicroSeconds)
+          .setLongTailRetryThresholdForBatchGetInMicroSeconds(longTailRetryThresholdForBatchGetInMicroSeconds)
           .setVsonStore(isVsonStore);
     }
 
@@ -496,7 +500,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           longTailRetryEnabledForSingleGet,
           longTailRetryThresholdForSingleGetInMicroSeconds,
           longTailRetryEnabledForBatchGet,
-          longTailRetryThresholdForBatchtGetInMicroSeconds,
+          longTailRetryThresholdForBatchGetInMicroSeconds,
           isVsonStore);
     }
   }

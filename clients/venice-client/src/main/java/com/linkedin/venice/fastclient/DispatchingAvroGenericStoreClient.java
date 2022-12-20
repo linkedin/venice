@@ -87,8 +87,8 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   }
 
   private String composeURIForSingleGet(GetRequestContext requestContext, K key) {
-    int currentVersion = getCurrentVersion(this.metadata);
-    String resourceName = getResourceName(this.metadata, currentVersion);
+    int currentVersion = getCurrentVersion();
+    String resourceName = getResourceName(currentVersion);
     long beforeSerializationTimeStamp = System.nanoTime();
     byte[] keyBytes = keySerializer.serialize(key, AvroSerializer.REUSE.get());
     requestContext.requestSerializationTime = getLatencyInNS(beforeSerializationTimeStamp);
@@ -104,8 +104,8 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   }
 
   private String composeURIForBatchGetRequest(BatchGetRequestContext<K, V> requestContext) {
-    int currentVersion = getCurrentVersion(this.metadata);
-    String resourceName = getResourceName(this.metadata, currentVersion);
+    int currentVersion = getCurrentVersion();
+    String resourceName = getResourceName(currentVersion);
 
     requestContext.currentVersion = currentVersion;
     StringBuilder sb = new StringBuilder();
@@ -113,11 +113,11 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     return sb.toString();
   }
 
-  protected static String getResourceName(StoreMetadata metadata, int currentVersion) {
+  private String getResourceName(int currentVersion) {
     return metadata.getStoreName() + "_v" + currentVersion;
   }
 
-  protected static int getCurrentVersion(StoreMetadata metadata) {
+  private int getCurrentVersion() {
     int currentVersion = metadata.getCurrentStoreVersion();
     if (currentVersion <= 0) {
       throw new VeniceClientException("No available current version, please do a push first");
@@ -143,8 +143,8 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     long timestampBeforeSendingRequest = System.nanoTime();
 
     /**
-     * Check {@link StoreMetadata#getReplicas} to understand why it might return more than required number of routes
-     * Also what happens if requiredReplicaCount > number of actual replicas or server nodes?
+     * Check {@link StoreMetadata#getReplicas} to understand why the below method
+     * might return more than required number of routes
      */
     List<String> routes = metadata.getReplicas(
         requestContext.requestId,
@@ -168,27 +168,28 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
 
     /**
      * List of futures used below and their relationships:
-     * 1. valueFuture => this is the completable future that is returned from this function which either throws an exception or returns null or returns value.
-     * 2. routeRequestFuture => an incomplete completable future returned from {@link com.linkedin.venice.fastclient.meta.InstanceHealthMonitor}
-     *                          for {@link com.linkedin.venice.fastclient.meta.AbstractStoreMetadata} by adjusting
-     *                          {@link com.linkedin.venice.fastclient.meta.InstanceHealthMonitor#pendingRequestCounterMap} for each server instances per
-     *                          store before starting a get request and during completing this future.
-     *                          This is also added to requestContext.routeRequestMap to indicate whether a particular server instance is already
-     *                          used for this get request: to not reuse the same instance for both the queries for a key when speculative query
-     *                          is enabled. TODO what if there are only 2 replicas and both the replicas are in the same server?
-     * 3. transportFuture => completable future for the actual get() operation to the server. This future was passed as callback to the async call
-     *                       {@link com.linkedin.r2.transport.common.Client#restRequest} and once get() is done, this will be completed. When this is completed
-     *                       it will also
+     * 1. valueFuture => this is the completable future that is returned from this function which either throws an exception or
+     *                    returns null or returns value.
+     * 2. routeRequestFuture => an incomplete completable future returned from {@link InstanceHealthMonitor} for
+     *                          {@link AbstractStoreMetadata} by adjusting {@link InstanceHealthMonitor#pendingRequestCounterMap}
+     *                          for each server instances per store before starting a get request and during completing this future.
+     *                          This is also added to {@link requestContext.routeRequestMap} to indicate whether a particular server
+     *                          instance is already used for this get request: to not reuse the same instance for both the queries
+     *                          for a key when speculative query is enabled.
+     * 3. transportFuture => completable future for the actual get() operation to the server. This future was passed as callback to
+     *                       the async call {@link Client#restRequest} and once get() is done, this will be completed. When this is
+     *                       completed, it will also
      *                       1. complete routeRequestFuture by passing in the status (200/404/etc) which will handle(decrement)
-     *                          {@link com.linkedin.venice.fastclient.meta.InstanceHealthMonitor#pendingRequestCounterMap}
+     *                          {@link InstanceHealthMonitor#pendingRequestCounterMap}
      *                       2. complete valueFuture by passing in either null/value/exception
-     * 4. transportFutures => List of transportFuture for this request (eg: 2 if speculative query is enabled or even more depends on health of the replicas).
+     * 4. transportFutures => List of transportFuture for this request (eg: 2 if speculative query is enabled or even more depends on
+     *                        health of the replicas).
      */
     List<CompletableFuture<TransportClientResponse>> transportFutures = new LinkedList<>();
     requestContext.requestSentTimestampNS = System.nanoTime();
     for (String route: routes) {
       CompletableFuture<HttpStatus> routeRequestFuture =
-          metadata.sendRequestToInstance(route, currentVersion, partitionId);
+          metadata.trackHealthBasedOnRequestToInstance(route, currentVersion, partitionId);
       requestContext.routeRequestMap.put(route, routeRequestFuture);
       try {
         String url = route + uri;
@@ -200,7 +201,6 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
                 ? HttpStatus.fromCode(((VeniceClientHttpException) throwable).getHttpStatus())
                 : HttpStatus.S_503_SERVICE_UNAVAILABLE;
             routeRequestFuture.complete(statusCode);
-            // TODO QQ: not completing valueFuture here? How this case will be handled?
           } else if (response == null) {
             routeRequestFuture.complete(HttpStatus.S_404_NOT_FOUND);
             if (!receivedSuccessfulResponse.getAndSet(true)) {
@@ -244,8 +244,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       }
     }
     if (transportFutures.isEmpty()) {
-      // No request has been sent out: If the first get() for the first route fails
-      // TODO: change the exception as there was a replica, but it failed to get data from that replica?
+      // No request has been sent out: Routes were found, but get() failed. But setting a generic exception for now.
       valueFuture.completeExceptionally(
           new VeniceClientException(
               "No available replica for store: " + getStoreName() + ", version: " + currentVersion + " and partition: "

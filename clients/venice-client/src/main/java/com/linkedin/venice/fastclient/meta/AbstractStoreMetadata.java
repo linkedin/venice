@@ -36,16 +36,6 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
     return getPartitionId(version, ByteBuffer.wrap(key));
   }
 
-  /**
-   * TODO: A quick question: Will it be a better way to have a list of all replicas in the caller of this function by calling getReplicas()
-   *  and remove the ones that are already used in the caller and this function is used as a wrapper to just call
-   *  routingStrategy.getReplicas() and get requiredReplicaCount number of replicas from that list? or this is intended as we are
-   *  optimizing for the first try and not for retries?
-   *
-   *  If the intention is not to optimize for the first try and not for retries, have a couple of questions on the implementation:
-   *  1. Calling getReplicas() for every retry => Is this necessary to get the updated metadata and not have the old stale metadata?
-   *  2. loop and check whether some replica is already tried => is this okay as the number of replicas is very small?
-   */
   @Override
   public List<String> getReplicas(
       long requestId,
@@ -71,8 +61,11 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
   }
 
   @Override
-  public CompletableFuture<HttpStatus> sendRequestToInstance(String instance, int version, int partitionId) {
-    return instanceHealthMonitor.sendRequestToInstance(instance);
+  public CompletableFuture<HttpStatus> trackHealthBasedOnRequestToInstance(
+      String instance,
+      int version,
+      int partitionId) {
+    return instanceHealthMonitor.trackHealthBasedOnRequestToInstance(instance);
   }
 
   @Override

@@ -22,12 +22,12 @@ public class InstanceHealthMonitorTest {
     ClientConfig clientConfig = mock(ClientConfig.class);
     doReturn(10000l).when(clientConfig).getRoutingLeakedRequestCleanupThresholdMS();
     InstanceHealthMonitor healthMonitor = new InstanceHealthMonitor(clientConfig);
-    CompletableFuture<HttpStatus> future = healthMonitor.sendRequestToInstance(instance);
+    CompletableFuture<HttpStatus> future = healthMonitor.trackHealthBasedOnRequestToInstance(instance);
     assertEquals(healthMonitor.getPendingRequestCounter(instance), 1);
     future.complete(HttpStatus.S_200_OK);
     assertEquals(healthMonitor.getPendingRequestCounter(instance), 0);
 
-    future = healthMonitor.sendRequestToInstance(instance);
+    future = healthMonitor.trackHealthBasedOnRequestToInstance(instance);
     assertEquals(healthMonitor.getPendingRequestCounter(instance), 1);
     future.complete(HttpStatus.S_404_NOT_FOUND);
     assertEquals(healthMonitor.getPendingRequestCounter(instance), 0);
@@ -43,7 +43,7 @@ public class InstanceHealthMonitorTest {
 
     CompletableFuture<HttpStatus> requestFuture = new CompletableFuture<>();
     for (int i = 0; i < 10; ++i) {
-      requestFuture = healthMonitor.sendRequestToInstance(instance);
+      requestFuture = healthMonitor.trackHealthBasedOnRequestToInstance(instance);
     }
     assertTrue(healthMonitor.isInstanceBlocked(instance));
     assertEquals(healthMonitor.getPendingRequestCounter(instance), instanceBlockingThreshold);
@@ -59,7 +59,7 @@ public class InstanceHealthMonitorTest {
     doReturn(10000l).when(clientConfig).getRoutingLeakedRequestCleanupThresholdMS();
     doReturn(50l).when(clientConfig).getRoutingQuotaExceededRequestCounterResetDelayMS();
     InstanceHealthMonitor healthMonitor = new InstanceHealthMonitor(clientConfig);
-    CompletableFuture<HttpStatus> requestFuture = healthMonitor.sendRequestToInstance(instance);
+    CompletableFuture<HttpStatus> requestFuture = healthMonitor.trackHealthBasedOnRequestToInstance(instance);
     requestFuture.complete(HttpStatus.S_429_TOO_MANY_REQUESTS);
     assertEquals(healthMonitor.getPendingRequestCounter(instance), 1);
     TestUtils.waitForNonDeterministicAssertion(
@@ -74,7 +74,7 @@ public class InstanceHealthMonitorTest {
     doReturn(100l).when(clientConfig).getRoutingErrorRequestCounterResetDelayMS();
     doReturn(10000l).when(clientConfig).getRoutingLeakedRequestCleanupThresholdMS();
     InstanceHealthMonitor healthMonitor = new InstanceHealthMonitor(clientConfig);
-    CompletableFuture<HttpStatus> requestFuture = healthMonitor.sendRequestToInstance(instance);
+    CompletableFuture<HttpStatus> requestFuture = healthMonitor.trackHealthBasedOnRequestToInstance(instance);
     // Received an error response
     requestFuture.complete(HttpStatus.S_500_INTERNAL_SERVER_ERROR);
     assertEquals(healthMonitor.getPendingRequestCounter(instance), 1);
@@ -85,7 +85,7 @@ public class InstanceHealthMonitorTest {
         () -> assertEquals(healthMonitor.getPendingRequestCounter(instance), 0));
     assertFalse(healthMonitor.isInstanceHealthy(instance));
 
-    requestFuture = healthMonitor.sendRequestToInstance(instance);
+    requestFuture = healthMonitor.trackHealthBasedOnRequestToInstance(instance);
     assertEquals(healthMonitor.getPendingRequestCounter(instance), 1);
     // Received a good response
     requestFuture.complete(HttpStatus.S_200_OK);

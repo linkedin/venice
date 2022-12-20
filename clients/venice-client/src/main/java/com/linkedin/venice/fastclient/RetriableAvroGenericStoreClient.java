@@ -82,11 +82,11 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
 
   /**
    * TODO:
-   * 1. Limit the retry volume.
-   *
-   * QQ based on above TODO: Looks like the retry is being scheduled once via scheduler (LONG_TAIL_RETRY) and
-   *                    once instant (ERROR_RETRY) if originalRequestFuture fails, so the retry volume is already
-   *                    limited to max of 2 right?
+   * Limit the retry volume: Even though retry for a single request is being scheduled at max twice (once
+   * via scheduler (LONG_TAIL_RETRY) and once instant (ERROR_RETRY) if originalRequestFuture fails), but there
+   * is no way to control the total allowed retry per node. It would be good to design some mechanism to make
+   * it configurable, such as retry at most the slowest 5% of traffic, otherwise, too many retry requests
+   * could cause cascading failure.
    */
   @Override
   protected CompletableFuture<V> get(GetRequestContext requestContext, K key) throws VeniceClientException {

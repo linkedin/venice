@@ -67,8 +67,17 @@ public class InstanceHealthMonitor implements Closeable {
     return this.timeoutProcessor;
   }
 
-  // TODO name looks misleading as we are not really sending any request to instance here?
-  public CompletableFuture<HttpStatus> sendRequestToInstance(String instance) {
+  /**
+   * This function tracks the health of an Instance based on the request sent to that Instance:
+   * by returning an incomplete completable future for {@link AbstractStoreMetadata} which
+   * 1. increments {@link InstanceHealthMonitor#pendingRequestCounterMap} for each server instances
+   *    per store. This is done in this function which is called before starting a get() request.
+   * 2. whenComplete() of this completable future decrements the above counters once the response
+   *    for the get() request is received.
+   *
+   * Using this we can track the number of pending requests for each server instance.
+   */
+  public CompletableFuture<HttpStatus> trackHealthBasedOnRequestToInstance(String instance) {
     CompletableFuture<HttpStatus> requestFuture = new CompletableFuture<>();
     pendingRequestCounterMap.compute(instance, (k, v) -> {
       if (v == null) {
@@ -96,7 +105,7 @@ public class InstanceHealthMonitor implements Closeable {
       }
 
       if (!timeoutFuture.isDone()) {
-        // TODO QQ: can there be a race condition here?
+        // can there be a race condition here
         timeoutFuture.cancel();
       }
 
@@ -108,7 +117,8 @@ public class InstanceHealthMonitor implements Closeable {
           break;
         case S_429_TOO_MANY_REQUESTS:
           // Specific to a store
-          // TODO: QQ: when will this be considered unhealthy? only when it reaches one of the below cases?
+          // This case will fall under blocked instances as there are too many requests waiting on
+          // them, so will be implicitly marked under blocked instances and so not marked unhealthy.
           counterResetDelayMS = clientConfig.getRoutingQuotaExceededRequestCounterResetDelayMS();
           break;
         case S_410_GONE:
@@ -147,10 +157,20 @@ public class InstanceHealthMonitor implements Closeable {
     return requestFuture;
   }
 
+  /**
+   * If an instance is marked unhealthy, this instances will be retried again continuously to know
+   * if that instance comes back up and start serving requests. Note that these instances will
+   * eventually become blocked when it reaches the threshold for pendingRequestCounter. This
+   * provides some break between continuously sending requests to these instances.
+   */
   public boolean isInstanceHealthy(String instance) {
     return !unhealthyInstanceSet.contains(instance);
   }
 
+  /**
+   * If an instance is blocked, it won't be considered for new requests until the requests are closed either
+   * in a proper manner or closed by {@link InstanceHealthMonitor#trackHealthBasedOnRequestToInstance#timeoutFuture}
+   */
   public boolean isInstanceBlocked(String instance) {
     return getPendingRequestCounter(instance) >= clientConfig.getRoutingPendingRequestCounterInstanceBlockThreshold();
   }

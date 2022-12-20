@@ -1,6 +1,6 @@
 package com.linkedin.venice.fastclient.transport;
 
-import static com.linkedin.venice.fastclient.utils.ClientTestUtils.*;
+import static com.linkedin.venice.fastclient.utils.ClientTestUtils.FASTCLIENT_HTTP_VARIANTS;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.r2.RemoteInvocationException;

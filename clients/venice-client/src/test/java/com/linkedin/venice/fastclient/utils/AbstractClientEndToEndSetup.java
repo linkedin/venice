@@ -1,9 +1,17 @@
 package com.linkedin.venice.fastclient.utils;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.meta.PersistenceType.*;
-import static com.linkedin.venice.system.store.MetaStoreWriter.*;
-import static org.testng.Assert.*;
+import static com.linkedin.venice.ConfigKeys.CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY;
+import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
+import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
+import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
+import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED;
+import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
+import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_CLUSTER_NAME;
+import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_PARTITION_ID;
+import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
+import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_VERSION_NUMBER;
+import static org.testng.Assert.assertFalse;
+import static org.testng.AssertJUnit.assertNotNull;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.client.DaVinciClient;
