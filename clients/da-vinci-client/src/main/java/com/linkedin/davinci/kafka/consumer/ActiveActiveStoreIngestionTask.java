@@ -930,19 +930,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   }
 
   @Override
-  protected void updateOffsetMetadataInOffsetRecord(
-      PartitionConsumptionState partitionConsumptionState,
-      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-      String upstreamKafkaUrl,
-      boolean isShutdown) {
-    updateOffsetsFromPartitionConsumptionState(
-        partitionConsumptionState,
-        () -> getUpstreamKafkaUrl(partitionConsumptionState, consumerRecord, upstreamKafkaUrl),
-        shouldUpdateUpstreamOffset(consumerRecord),
-        isShutdown);
-  }
-
-  @Override
   protected void updateLatestInMemoryProcessedOffset(
       PartitionConsumptionState partitionConsumptionState,
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,

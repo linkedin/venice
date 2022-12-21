@@ -1244,50 +1244,19 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
-  protected void updateOffsetMetadataInOffsetRecord(
-      PartitionConsumptionState partitionConsumptionState,
-      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-      String upstreamKafkaUrl,
-      boolean isShutdown) {
-    updateOffsetsFromPartitionConsumptionState(
-        partitionConsumptionState,
-        () -> OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY,
-        shouldUpdateUpstreamOffset(consumerRecord),
-        isShutdown);
-  }
-
-  /**
-   * Sync the metadata about offset from {@link PartitionConsumptionState} to {@link OffsetRecord}.
-   * It's agnostic to the record as {@link PartitionConsumptionState} should have handled it already.
-   * @param partitionConsumptionState
-   * @param sourceKafkaUrl, The computed upstream Kafka URL for the record.
-   * @param shouldUpstreamOffset, the flag to update the upstream offset or not. If the record contains invalid upstream
-   *                              offset, then upstream kafka url doesn't need to be computed
-   * @param isShutdown, indicating if the method is called for shut down event. If so, offsetRecord will reset its upstream
-   *                   offset map.
-   */
-  protected void updateOffsetsFromPartitionConsumptionState(
-      PartitionConsumptionState partitionConsumptionState,
-      Supplier<String> sourceKafkaUrl,
-      boolean shouldUpstreamOffset,
-      boolean isShutdown) {
+  protected void updateOffsetMetadataInOffsetRecord(PartitionConsumptionState partitionConsumptionState) {
     OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
     offsetRecord
         .setCheckpointLocalVersionTopicOffset(partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset());
     // DaVinci clients don't need to maintain leader production states
     if (!isDaVinciClient) {
-      if (isShutdown) {
-        // it's a graceful shutdown event so copy the upstream offset map from pcs.
+      final String upstreamTopicName =
+          offsetRecord.getLeaderTopic() != null ? offsetRecord.getLeaderTopic() : kafkaVersionTopic;
+      if (Version.isRealTimeTopic(upstreamTopicName)) {
         offsetRecord.resetUpstreamOffsetMap(partitionConsumptionState.getLatestProcessedUpstreamRTOffsetMap());
-      } else if (shouldUpstreamOffset) {
-        final String upstreamTopicName =
-            offsetRecord.getLeaderTopic() != null ? offsetRecord.getLeaderTopic() : kafkaVersionTopic;
-        final long newUpstreamOffset = partitionConsumptionState.getLatestProcessedUpstreamVersionTopicOffset();
-        if (Version.isRealTimeTopic(upstreamTopicName)) {
-          offsetRecord.setLeaderUpstreamOffset(sourceKafkaUrl.get(), newUpstreamOffset);
-        } else {
-          offsetRecord.setCheckpointUpstreamVersionTopicOffset(newUpstreamOffset);
-        }
+      } else {
+        offsetRecord.setCheckpointUpstreamVersionTopicOffset(
+            partitionConsumptionState.getLatestProcessedUpstreamVersionTopicOffset());
       }
       offsetRecord.setLeaderGUID(partitionConsumptionState.getLeaderGUID());
       offsetRecord.setLeaderHostId(partitionConsumptionState.getLeaderHostId());
@@ -1371,8 +1340,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      * Instead of comparing GUIDs, we compare leader host names to identify the split-brain issue.
      */
     final KafkaMessageEnvelope kafkaValue = consumerRecord.value();
-    if (kafkaValue.leaderMetadataFooter != null && offsetRecord.getLeaderHostId() != null
-        && !kafkaValue.leaderMetadataFooter.hostName.toString().equals(offsetRecord.getLeaderHostId())) {
+    if (kafkaValue.leaderMetadataFooter != null && partitionConsumptionState.getLeaderHostId() != null
+        && !kafkaValue.leaderMetadataFooter.hostName.toString().equals(partitionConsumptionState.getLeaderHostId())) {
       /**
        * Check whether the data inside rewind message is the same the data inside storage engine; if so,
        * we don't consider it as lossy rewind; otherwise, report potentially lossy upstream rewind.
@@ -1391,9 +1360,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           kafkaValue.producerMetadata.producerGUID == null
               ? "unknown"
               : GuidUtils.getHexFromGuid(kafkaValue.producerMetadata.producerGUID),
-          offsetRecord.getLeaderGUID() == null ? "unknown" : GuidUtils.getHexFromGuid(offsetRecord.getLeaderGUID()),
+          partitionConsumptionState.getLeaderGUID() == null
+              ? "unknown"
+              : GuidUtils.getHexFromGuid(partitionConsumptionState.getLeaderGUID()),
           kafkaValue.leaderMetadataFooter.hostName.toString(),
-          offsetRecord.getLeaderHostId());
+          partitionConsumptionState.getLeaderHostId());
 
       boolean lossy = true;
       try {

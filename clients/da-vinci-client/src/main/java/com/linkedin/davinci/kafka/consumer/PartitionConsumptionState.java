@@ -190,9 +190,11 @@ public class PartitionConsumptionState {
       offsetRecord.cloneUpstreamOffsetMap(consumedUpstreamRTOffsetMap);
       offsetRecord.cloneUpstreamOffsetMap(latestProcessedUpstreamRTOffsetMap);
     }
-    // Restore in-memory latest consumed version topic offset from the checkpoint version topic offset
+    // Restore in-memory latest consumed version topic offset and leader info from the checkpoint version topic offset
     this.latestProcessedLocalVersionTopicOffset = offsetRecord.getLocalVersionTopicOffset();
     this.latestProcessedUpstreamVersionTopicOffset = offsetRecord.getCheckpointUpstreamVersionTopicOffset();
+    this.leaderHostId = offsetRecord.getLeaderHostId();
+    this.leaderGUID = offsetRecord.getLeaderGUID();
   }
 
   public int getPartition() {

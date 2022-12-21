@@ -226,13 +226,14 @@ public class OffsetRecord {
 
   /**
    * Reset the checkpoint upstream offset map to another map provided as the input.
-   * This function should only be called during a graceful shutdown/restart event
-   * to sync offsets from {@link com.linkedin.davinci.kafka.consumer.PartitionConsumptionState}
    * @param checkpointUpstreamOffsetMap
    */
   public void resetUpstreamOffsetMap(@Nonnull Map<String, Long> checkpointUpstreamOffsetMap) {
     Validate.notNull(checkpointUpstreamOffsetMap);
-    this.partitionState.upstreamOffsetMap = checkpointUpstreamOffsetMap;
+    for (Map.Entry<String, Long> offsetEntry: checkpointUpstreamOffsetMap.entrySet()) {
+      // leader offset can be the topic offset from any colo
+      this.setLeaderUpstreamOffset(offsetEntry.getKey(), offsetEntry.getValue());
+    }
   }
 
   public GUID getLeaderGUID() {

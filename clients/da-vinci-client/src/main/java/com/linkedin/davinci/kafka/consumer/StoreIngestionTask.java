@@ -1468,7 +1468,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
           this.kafkaDataIntegrityValidator
               .updateOffsetRecordForPartition(partition, partitionConsumptionState.getOffsetRecord());
-          updateOffsetMetadataInOffsetRecord(partitionConsumptionState, null, null, true);
+          updateOffsetMetadataInOffsetRecord(partitionConsumptionState);
           syncOffset(kafkaVersionTopic, partitionConsumptionState);
         }
       }
@@ -2314,8 +2314,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        * the intermediate checksum generation is an expensive operation.
        */
       this.kafkaDataIntegrityValidator.updateOffsetRecordForPartition(subPartition, offsetRecord);
-      // Potentially update the offset metadata in the OffsetRecord
-      updateOffsetMetadataInOffsetRecord(partitionConsumptionState, record, kafkaUrl, false);
+      // update the offset metadata in the OffsetRecord
+      updateOffsetMetadataInOffsetRecord(partitionConsumptionState);
       syncOffset(kafkaVersionTopic, partitionConsumptionState);
     }
   }
@@ -2708,16 +2708,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Offset rewind/split brain has been guarded in {@link #updateLatestInMemoryProcessedOffset}.
    *
    * @param partitionConsumptionState
-   * @param consumerRecord, the record for which the upstream Kafka url needs to be computed, used to determine the source kafka url.
-   * @param upstreamKafkaUrl, The Kafka URL from where the record was consumed.
-   * @param isShutdown, indicating if the method is called for shut down event. If so, offsetRecord will reset its upstream
-   *                   offset map.
    */
-  protected abstract void updateOffsetMetadataInOffsetRecord(
-      PartitionConsumptionState partitionConsumptionState,
-      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-      String upstreamKafkaUrl,
-      boolean isShutdown);
+  protected abstract void updateOffsetMetadataInOffsetRecord(PartitionConsumptionState partitionConsumptionState);
 
   /**
    * Maintain the latest processed offsets by drainers in memory; in most of the time, these offsets are ahead of the
