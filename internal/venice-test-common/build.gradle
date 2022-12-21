@@ -81,14 +81,6 @@ task jmh(type: JavaExec, dependsOn: jmhClasses) {
   classpath = sourceSets.jmh.runtimeClasspath
 }
 
-task integrationTest(type: Test) {
-  mustRunAfter test
-  classpath = sourceSets.integrationTest.runtimeClasspath
-  testClassesDirs = sourceSets.integrationTest.output.classesDirs
-  forkEvery = Integer.parseInt(project.properties.get('integrationTest.forkEvery', "$forkEvery"))
-  maxParallelForks = Integer.parseInt(project.properties.get('integrationTest.maxParallelForks', "$maxParallelForks"))
-}
-
 task integrationTestA(type: Test) {
   filter {
     excludeTestsMatching "com.linkedin.venice.endToEnd.*"
@@ -110,7 +102,6 @@ task integrationTestB(type: Test) {
   forkEvery = Integer.parseInt(project.properties.get('integrationTest.forkEvery', "$forkEvery"))
   maxParallelForks = Integer.parseInt(project.properties.get('integrationTest.maxParallelForks', "$maxParallelForks"))
 }
-check.dependsOn(integrationTest)
 check.dependsOn(integrationTestA)
 check.dependsOn(integrationTestB)
 
