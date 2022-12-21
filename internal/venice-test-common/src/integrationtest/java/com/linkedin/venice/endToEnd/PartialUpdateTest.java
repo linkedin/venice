@@ -49,7 +49,9 @@ import com.linkedin.venice.writer.update.UpdateBuilderImpl;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
@@ -57,6 +59,7 @@ import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.util.Utf8;
 import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -68,38 +71,110 @@ import org.testng.annotations.Test;
  * This class includes tests on partial update (Write Compute) with a setup that has both the parent and child controllers.
  */
 public class PartialUpdateTest {
-  private static final int NUMBER_OF_CHILD_DATACENTERS = 1;
-  private static final int NUMBER_OF_CLUSTERS = 1;
-  private static final int TEST_TIMEOUT_MS = 120_000;
-  private static final String CLUSTER_NAME = "venice-cluster0";
+  protected static final int NUMBER_OF_CHILD_DATACENTERS = 1;
+  protected static final int NUMBER_OF_CLUSTERS = 1;
+  protected static final int TEST_TIMEOUT_MS = 120_000;
+  protected static final String CLUSTER_NAME = "venice-cluster0";
 
-  private VeniceTwoLayerMultiColoMultiClusterWrapper multiColoMultiClusterWrapper;
-  private VeniceControllerWrapper parentController;
-  private List<VeniceMultiClusterWrapper> childDatacenters;
+  protected VeniceTwoLayerMultiColoMultiClusterWrapper multiColoMultiClusterWrapper;
+  protected VeniceControllerWrapper parentController;
+  protected List<VeniceMultiClusterWrapper> childDatacenters;
 
   @BeforeClass(alwaysRun = true)
   public void setUp() {
     Properties serverProperties = new Properties();
     Properties controllerProps = new Properties();
     controllerProps.put(ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, false);
-    this.multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
-        NUMBER_OF_CHILD_DATACENTERS,
-        NUMBER_OF_CLUSTERS,
-        1,
-        1,
-        2,
-        1,
-        2,
-        Optional.of(new VeniceProperties(controllerProps)),
-        Optional.of(new Properties(controllerProps)),
-        Optional.of(new VeniceProperties(serverProperties)),
-        false);
+    this.multiColoMultiClusterWrapper = getMultiColoMultiClusterWrapper(serverProperties, controllerProps);
     this.childDatacenters = multiColoMultiClusterWrapper.getClusters();
     List<VeniceControllerWrapper> parentControllers = multiColoMultiClusterWrapper.getParentControllers();
     if (parentControllers.size() != 1) {
       throw new IllegalStateException("Expect only one parent controller. Got: " + parentControllers.size());
     }
     this.parentController = parentControllers.get(0);
+  }
+
+  @Test(timeOut = TEST_TIMEOUT_MS * 2)
+  public void testReplicationMetadataChunkingE2E() throws IOException {
+    final String storeName = Utils.getUniqueString("rmdChunking");
+    String parentControllerUrl = parentController.getControllerUrl();
+    String keySchemaStr = "{\"type\" : \"string\"}";
+    Schema valueSchema = AvroCompatibilityHelper.parse(loadFileAsString("CollectionRecordV1.avsc"));
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
+      assertCommand(
+          parentControllerClient.createNewStore(storeName, "test_owner", keySchemaStr, valueSchema.toString()));
+
+      UpdateStoreQueryParams updateStoreParams =
+          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+              .setCompressionStrategy(CompressionStrategy.NO_OP)
+              .setWriteComputationEnabled(true)
+              .setChunkingEnabled(true)
+              .setRmdChunkingEnabled(true)
+              .setHybridRewindSeconds(10L)
+              .setHybridOffsetLagThreshold(2L);
+      ControllerResponse updateStoreResponse =
+          parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams));
+      assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
+
+      VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test_push_id", 1000);
+      assertEquals(response.getVersion(), 1);
+      assertFalse(response.isError(), "Empty push to parent colo should succeed");
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 1),
+          parentControllerClient,
+          30,
+          TimeUnit.SECONDS);
+      Assert.assertTrue(parentControllerClient.getStore(storeName).getStore().isRmdChunkingEnabled());
+      Assert
+          .assertTrue(parentControllerClient.getStore(storeName).getStore().getVersion(1).get().isRmdChunkingEnabled());
+    }
+
+    VeniceClusterWrapper veniceCluster = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
+    SystemProducer veniceProducer = getSamzaProducer(veniceCluster, storeName, Version.PushType.STREAM);
+
+    String key = "key1";
+    String primitiveFieldName = "name";
+    String mapFieldName = "stringMap";
+
+    int updateCount = 30;
+    int singleUpdateEntryCount = 10000;
+    try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
+      Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);
+      Map<String, String> newEntries = new HashMap<>();
+      for (int i = 0; i < updateCount; i++) {
+        UpdateBuilder updateBuilder = new UpdateBuilderImpl(writeComputeSchema);
+        updateBuilder.setNewFieldValue(primitiveFieldName, "Tottenham");
+        newEntries.clear();
+        for (int j = 0; j < singleUpdateEntryCount; j++) {
+          String idx = String.valueOf(i * singleUpdateEntryCount + j);
+          newEntries.put("key_" + idx, "value_" + idx);
+        }
+        updateBuilder.setEntriesToAddToMapField(mapFieldName, newEntries);
+        GenericRecord partialUpdateRecord = updateBuilder.build();
+        sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord);
+      }
+
+      // Verify the value record has been partially updated and it uses V3 superset value schema now.
+      TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, () -> {
+        try {
+          GenericRecord retrievedValue = readValue(storeReader, key);
+          assertNotNull(retrievedValue);
+          assertEquals(retrievedValue.get(primitiveFieldName).toString(), "Tottenham"); // Updated field
+          Map<String, String> mapFieldResult = new HashMap<>();
+          ((Map<Utf8, Utf8>) retrievedValue.get(mapFieldName))
+              .forEach((x, y) -> mapFieldResult.put(x.toString(), y.toString()));
+          assertEquals(mapFieldResult.size(), updateCount * singleUpdateEntryCount);
+        } catch (Exception e) {
+          throw new VeniceException(e);
+        }
+      });
+
+    } finally {
+      if (veniceProducer != null) {
+        veniceProducer.stop();
+      }
+    }
   }
 
   /**
@@ -450,5 +525,22 @@ public class PartialUpdateTest {
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
     Utils.closeQuietlyWithErrorLogged(multiColoMultiClusterWrapper);
+  }
+
+  protected VeniceTwoLayerMultiColoMultiClusterWrapper getMultiColoMultiClusterWrapper(
+      Properties serverProperties,
+      Properties controllerProps) {
+    return ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
+        NUMBER_OF_CHILD_DATACENTERS,
+        NUMBER_OF_CLUSTERS,
+        1,
+        1,
+        2,
+        1,
+        2,
+        Optional.of(new VeniceProperties(controllerProps)),
+        Optional.of(new Properties(controllerProps)),
+        Optional.of(new VeniceProperties(serverProperties)),
+        false);
   }
 }
