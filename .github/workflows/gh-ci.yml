@@ -25,7 +25,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
         with:
-          arguments: "clean check -x spotlessCheck --continue --no-daemon -Pspotallbugs -Pspotbugs.xml -Pspotbugs.ignoreFailures -x integrationTest -x test -x integrationTestA -x integrationTestB"
+          arguments: "clean check -x spotlessCheck --continue --no-daemon -Pspotallbugs -Pspotbugs.xml -Pspotbugs.ignoreFailures -x test -x integrationTestA -x integrationTestB"
 
   UnitTests:
     strategy:
@@ -54,7 +54,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
         with:
-          arguments: "build --continue --no-daemon -DforkEvery=25 -DmaxParallelForks=25 -x shadowDistTar -x shadowDistZip -x shadowJar -x startShadowScripts -x distTar -x distZip -x integrationTestA -x integrationTestB -x integrationTest"
+          arguments: "build --continue --no-daemon -DforkEvery=25 -DmaxParallelForks=25 -x shadowDistTar -x shadowDistZip -x shadowJar -x startShadowScripts -x distTar -x distZip -x integrationTestA -x integrationTestB"
 
   E2ETestsA:
     strategy:
@@ -83,7 +83,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
         with:
-          arguments: "build --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 -x shadowDistTar -x shadowDistZip -x shadowJar -x startShadowScripts -x distTar -x distZip -x test -x integrationTest -x integrationTestB"
+          arguments: "build --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 -x shadowDistTar -x shadowDistZip -x shadowJar -x startShadowScripts -x distTar -x distZip -x test -x integrationTestB"
 
 
   E2ETestsB:
@@ -113,5 +113,5 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
         with:
-          arguments: "build --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 -x shadowDistTar -x shadowDistZip -x shadowJar -x startShadowScripts -x distTar -x distZip -x test -x integrationTest -x integrationTestA"
+          arguments: "build --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 -x shadowDistTar -x shadowDistZip -x shadowJar -x startShadowScripts -x distTar -x distZip -x test -x integrationTestA"
 
