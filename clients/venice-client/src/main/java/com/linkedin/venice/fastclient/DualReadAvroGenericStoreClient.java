@@ -59,7 +59,7 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
 
     CompletableFuture<T> latencyFuture = requestFuture.handle((response, throwable) -> {
       /**
-       * We need to record the latency metric before trying to complete {@link valueFuture} since the the pre-registered
+       * We need to record the latency metric before trying to complete {@link valueFuture} since the pre-registered
        * callbacks to {@link valueFuture} could be executed in the same thread.
        */
       latency.set(LatencyUtils.getLatencyInMS(startTimeNS));
@@ -128,6 +128,9 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
     return valueFuture;
   }
 
+  /**
+   * TODO both super.get(key) and get(ctx,key) fetches non map for vson for the first request.
+   * Needs to be investigated */
   @Override
   protected CompletableFuture<V> get(GetRequestContext requestContext, K key) throws VeniceClientException {
     return dualExecute(() -> super.get(requestContext, key), () -> thinClient.get(key), clientStatsForSingleGet);
