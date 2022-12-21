@@ -2880,7 +2880,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         if (isManifestPayload) {
           hostLevelIngestionStats.recordLeaderLargeValueWrites();
         } else if (isChunkedDataPayload) {
-          hostLevelIngestionStats.recordLeaderSmallValueWrites();
+          hostLevelIngestionStats.recordLeaderChunkDataWrites();
         } else {
           hostLevelIngestionStats.recordLeaderSmallValueWrites();
         }
