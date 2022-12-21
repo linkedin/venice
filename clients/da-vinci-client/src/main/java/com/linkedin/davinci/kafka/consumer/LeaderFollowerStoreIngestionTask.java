@@ -1281,15 +1281,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       UpdateUpstreamTopicOffset updateUpstreamTopicOffsetFunction) {
     // Leader will only update the offset from leaderProducedRecordContext in VT.
     if (leaderProducedRecordContext != null) {
-      /**
-       * producedOffset and consumedOffset both are set to -1 when producing individual chunks
-       * see {@link LeaderProducerCallback#onCompletion(RecordMetadata, Exception)}
-       */
-      if (leaderProducedRecordContext.getProducedOffset() >= 0) {
+      if (leaderProducedRecordContext.hasCorrespondingUpstreamMessage()) {
         updateVersionTopicOffsetFunction.apply(leaderProducedRecordContext.getProducedOffset());
-      }
-
-      if (leaderProducedRecordContext.getConsumedOffset() >= 0) {
         OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
         String upstreamTopicName =
             offsetRecord.getLeaderTopic() != null ? offsetRecord.getLeaderTopic() : kafkaVersionTopic;
@@ -2036,7 +2029,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           case TOPIC_SWITCH:
             /**
              * For TOPIC_SWITCH message we should use -1 as consumedOffset. This will ensure that it does not update the
-             * setLeaderUpstreamOffset in {@link updateOffset()}.
+             * setLeaderUpstreamOffset in:
+             * {@link #updateOffsetsAsRemoteConsumeLeader(PartitionConsumptionState, LeaderProducedRecordContext, String, ConsumerRecord, UpdateVersionTopicOffset, UpdateUpstreamTopicOffset)}
              * The leaderUpstreamOffset is set from the TS message config itself. We should not override it.
              */
             if (isDataRecovery && !partitionConsumptionState.isBatchOnly()) {
@@ -2045,7 +2039,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               return DelegateConsumerRecordResult.SKIPPED_MESSAGE;
             }
             leaderProducedRecordContext =
-                LeaderProducedRecordContext.newControlMessageRecord(-1, -1, kafkaKey.getKey(), controlMessage);
+                LeaderProducedRecordContext.newControlMessageRecord(kafkaKey.getKey(), controlMessage);
             produceToLocalKafka(
                 consumerRecord,
                 partitionConsumptionState,
