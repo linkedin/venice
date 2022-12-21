@@ -2703,7 +2703,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        * 3. The DIV info checkpoint on disk must match the actual data persistence which is done inside drainer threads.
        */
       try {
-        validateMessage(this.kafkaDataIntegrityValidator, consumerRecord, endOfPushReceived, subPartition);
+        if ((leaderProducedRecordContext == null) || (leaderProducedRecordContext.getConsumedOffset() > -1)) {
+          /**
+           * N.B.: If the consumed offset is -1, it means we are processing a chunk, in which case the
+           * {@link consumerRecord} is going to be the same for every chunk, and we don't want to treat them as dupes.
+           */
+          validateMessage(this.kafkaDataIntegrityValidator, consumerRecord, endOfPushReceived, subPartition);
+        }
         versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
       } catch (FatalDataValidationException fatalException) {
         if (!endOfPushReceived) {
