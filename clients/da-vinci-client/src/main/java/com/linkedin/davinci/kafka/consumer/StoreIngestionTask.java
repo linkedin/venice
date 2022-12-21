@@ -534,6 +534,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PubSubTopicPartition topicPartition,
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker);
 
+  protected abstract boolean isLeader(PartitionConsumptionState partitionConsumptionState);
+
   public void kill() {
     synchronized (this) {
       throwIfNotRunning();
@@ -2875,7 +2877,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        */
       hostLevelIngestionStats.recordKeySize(keyLen);
       hostLevelIngestionStats.recordValueSize(valueLen);
-      if (leaderProducedRecordContext != null) {
+      if (isLeader(partitionConsumptionState)) {
         // metrics that are only emitted in leader replica
         if (isManifestPayload) {
           hostLevelIngestionStats.recordLeaderLargeValueWrites();

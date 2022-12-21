@@ -1046,6 +1046,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     return (!versionTopic.equals(leaderTopic) || partitionConsumptionState.consumeRemotely());
   }
 
+  @Override
   protected boolean isLeader(PartitionConsumptionState partitionConsumptionState) {
     return Objects.equals(partitionConsumptionState.getLeaderFollowerState(), LEADER);
   }
