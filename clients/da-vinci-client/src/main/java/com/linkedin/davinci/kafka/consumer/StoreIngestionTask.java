@@ -2771,6 +2771,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         ? MessageType.valueOf(kafkaValue)
         : leaderProducedRecordContext.getMessageType());
 
+    boolean isManifestPayload = false;
+    boolean isChunkedDataPayload = false;
     switch (messageType) {
       case PUT:
         // If single-threaded, we can re-use (and clobber) the same Put instance. // TODO: explore GC tuning later.
@@ -2797,6 +2799,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // for hybrid use case in read compute store in future we need revisit this as we can have multiple schemas.
         if (put.schemaId > 0) {
           valueSchemaId = put.schemaId;
+        } else if (put.schemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
+          isManifestPayload = true;
+        } else if (put.schemaId == AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()) {
+          isChunkedDataPayload = true;
         }
         break;
 
@@ -2864,8 +2870,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     if (emitMetrics.get()) {
+      /**
+       * Metrics that are only emitted for the largest active version of the store.
+       */
       hostLevelIngestionStats.recordKeySize(keyLen);
       hostLevelIngestionStats.recordValueSize(valueLen);
+      if (leaderProducedRecordContext != null) {
+        // metrics that are only emitted in leader replica
+        if (isManifestPayload) {
+          hostLevelIngestionStats.recordLeaderLargeValueWrites();
+        } else if (isChunkedDataPayload) {
+          hostLevelIngestionStats.recordLeaderSmallValueWrites();
+        } else {
+          hostLevelIngestionStats.recordLeaderSmallValueWrites();
+        }
+      }
     }
 
     return keyLen + valueLen;

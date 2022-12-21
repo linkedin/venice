@@ -14,6 +14,7 @@ import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Min;
+import io.tehuti.metrics.stats.OccurrenceRate;
 import io.tehuti.metrics.stats.Rate;
 import io.tehuti.metrics.stats.Total;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
@@ -155,6 +156,10 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
   private final Sensor totalTombstoneCreationDCRSensor;
 
   private final Sensor totalLeaderDelegateRealTimeRecordLatencySensor;
+
+  private final Sensor leaderLargeValueWritesSensor;
+  private final Sensor leaderSmallValueWritesSensor;
+  private final Sensor leaderChunkDataWritesSensor;
 
   private Sensor registerPerStoreAndTotal(
       String sensorName,
@@ -477,6 +482,27 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         totalStats,
         () -> totalStats.leaderIngestionReplicationMetadataLookUpLatencySensor,
         avgAndMax());
+
+    this.leaderLargeValueWritesSensor = registerPerStoreAndTotal(
+        "leader_large_value_writes",
+        totalStats,
+        () -> totalStats.leaderLargeValueWritesSensor,
+        new Count(),
+        new OccurrenceRate());
+
+    this.leaderSmallValueWritesSensor = registerPerStoreAndTotal(
+        "leader_small_value_writes",
+        totalStats,
+        () -> totalStats.leaderSmallValueWritesSensor,
+        new Count(),
+        new OccurrenceRate());
+
+    this.leaderChunkDataWritesSensor = registerPerStoreAndTotal(
+        "leader_chunk_data_writes",
+        totalStats,
+        () -> totalStats.leaderChunkDataWritesSensor,
+        new Count(),
+        new OccurrenceRate());
   }
 
   /** Record a host-level byte consumption rate across all store versions */
@@ -659,5 +685,17 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
   public void recordLeaderDelegateRealTimeRecordLatency(double latency) {
     totalLeaderDelegateRealTimeRecordLatencySensor.record(latency);
+  }
+
+  public void recordLeaderLargeValueWrites() {
+    leaderLargeValueWritesSensor.record();
+  }
+
+  public void recordLeaderSmallValueWrites() {
+    leaderSmallValueWritesSensor.record();
+  }
+
+  public void recordLeaderChunkDataWrites() {
+    leaderChunkDataWritesSensor.record();
   }
 }
