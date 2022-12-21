@@ -3317,7 +3317,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         TopicManager topicManager;
         if (isParent()) {
           // RT might not exist in parent colo. Get RT partition count from a child colo.
-          String childDatacenter = clusterConfig.getChildDatacenters().split(",\\s*")[0];
+          String childDatacenter = Utils.parseCommaSeparatedStringToList(clusterConfig.getChildDatacenters()).get(0);
           topicManager = getTopicManager(
               Pair.create(
                   multiClusterConfigs.getChildDataCenterKafkaUrlMap().get(childDatacenter),

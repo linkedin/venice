@@ -460,7 +460,7 @@ public class Utils {
   }
 
   public static List<String> parseCommaSeparatedStringToList(String rawString) {
-    String[] strArray = rawString.split(",");
+    String[] strArray = rawString.split(",\\s*");
     if (strArray.length < 1) {
       throw new VeniceException("Invalid input: " + rawString);
     }
