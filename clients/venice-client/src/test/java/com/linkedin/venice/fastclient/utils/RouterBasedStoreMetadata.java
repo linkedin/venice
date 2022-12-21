@@ -14,6 +14,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Optional;
@@ -104,7 +105,7 @@ public class RouterBasedStoreMetadata extends AbstractStoreMetadata {
   }
 
   @Override
-  public void close() {
-    // Do nothing
+  public void close() throws IOException {
+    super.close();
   }
 }

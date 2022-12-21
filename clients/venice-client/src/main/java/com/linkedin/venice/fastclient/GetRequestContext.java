@@ -1,15 +1,23 @@
 package com.linkedin.venice.fastclient;
 
 public class GetRequestContext extends RequestContext {
-  int partitionId = -1;
+  int partitionId;
   /**
    * This field is used to store the request uri to the backend.
    */
-  String requestUri = null;
+  String requestUri;
 
-  boolean longTailRetryRequestTriggered = false;
+  boolean longTailRetryRequestTriggered;
 
-  boolean errorRetryRequestTriggered = false;
+  boolean errorRetryRequestTriggered;
 
-  boolean retryWin = false;
+  boolean retryWin;
+
+  GetRequestContext() {
+    partitionId = -1;
+    requestUri = null;
+    longTailRetryRequestTriggered = false;
+    errorRetryRequestTriggered = false;
+    retryWin = false;
+  }
 }

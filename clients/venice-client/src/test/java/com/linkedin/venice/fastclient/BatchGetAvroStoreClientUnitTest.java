@@ -21,7 +21,6 @@ import org.testng.annotations.Test;
 
 /**
  * TODO:
- * Test non streaming batch get use cases
  * Verify stats?
  * Success scenarios , original complete , second complete scenarios and combinations
  * We need to make sure all responses are received and processed before claiming test is done

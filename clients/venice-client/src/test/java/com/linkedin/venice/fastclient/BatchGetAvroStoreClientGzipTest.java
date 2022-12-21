@@ -12,6 +12,7 @@ import org.apache.avro.generic.GenericRecord;
 
 
 public class BatchGetAvroStoreClientGzipTest extends BatchGetAvroStoreClientTest {
+  @Override
   protected void prepareData() throws Exception {
     keySerializer = new VeniceAvroKafkaSerializer(KEY_SCHEMA_STR);
     valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_STR);

@@ -44,12 +44,4 @@ public abstract class TransportClient implements Closeable {
   public TransportClient getCopyIfNotUsableInCallback() {
     return this;
   }
-
-  public static String ensureTrailingSlash(String input) {
-    if (input.endsWith("/")) {
-      return input;
-    } else {
-      return input + "/";
-    }
-  }
 }

@@ -1,11 +1,9 @@
 package com.linkedin.venice.fastclient;
 
-import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.venice.fastclient.transport.HttpClient5BasedR2Client;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
-import com.linkedin.venice.utils.SslUtils;
+import com.linkedin.venice.utils.DataProviderUtils;
 import java.util.AbstractMap;
 import java.util.Map;
 import java.util.stream.IntStream;
@@ -16,23 +14,24 @@ import org.testng.annotations.DataProvider;
 
 
 public class AvroStoreClientGzipEndToEndTest extends AvroStoreClientEndToEndTest {
-  @DataProvider(name = "useDaVinciClientBasedMetadata")
-  public static Object[][] useDaVinciClientBasedMetadata() {
-    return new Object[][] { { true } };
+
+  // useDaVinciClientBasedMetadata is always true as router based metadata store is considered legacy
+  @Override
+  @DataProvider(name = "FastClient-Four-Boolean-And-A-Number")
+  public Object[][] fourBooleanAndANumber() {
+    return DataProviderUtils.allPermutationGenerator(
+        DataProviderUtils.BOOLEAN_TRUE,
+        DataProviderUtils.BOOLEAN,
+        DataProviderUtils.BOOLEAN,
+        DataProviderUtils.BOOLEAN,
+        BATCH_GET_KEY_SIZE);
   }
 
-  protected Client constructR2Client() throws Exception {
-    return HttpClient5BasedR2Client.getR2Client(SslUtils.getVeniceLocalSslFactory().getSSLContext(), 8);
-  }
-
+  @Override
   protected void prepareData() throws Exception {
     keySerializer = new VeniceAvroKafkaSerializer(KEY_SCHEMA_STR);
     valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_STR);
 
-    for (int i = 0; i < recordCnt; ++i) {
-      GenericRecord record = new GenericData.Record(VALUE_SCHEMA);
-      record.put(VALUE_FIELD_NAME, i);
-    }
     Stream<Map.Entry> genericRecordStream = IntStream.range(0, recordCnt).mapToObj(i -> {
       GenericRecord record = new GenericData.Record(VALUE_SCHEMA);
       record.put(VALUE_FIELD_NAME, i);

@@ -1,12 +1,5 @@
 package com.linkedin.venice.fastclient.transport;
 
-import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
-import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_LOCATION;
-import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_PASSWORD;
-import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_TYPE;
-import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_LOCATION;
-import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_PASSWORD;
-
 import com.linkedin.common.callback.Callback;
 import com.linkedin.common.util.None;
 import com.linkedin.r2.message.RequestContext;
@@ -14,11 +7,10 @@ import com.linkedin.r2.message.rest.RestRequest;
 import com.linkedin.r2.message.rest.RestResponse;
 import com.linkedin.r2.message.rest.RestResponseBuilder;
 import com.linkedin.r2.transport.common.Client;
+import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.httpclient5.HttpClient5Utils;
-import com.linkedin.venice.security.DefaultSSLFactory;
 import java.util.Arrays;
-import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import javax.net.ssl.SSLContext;
@@ -37,15 +29,6 @@ import org.apache.hc.core5.io.CloseMode;
  * TODO: get rid of R2 Client inferface completely from venice-client.
  */
 public class HttpClient5BasedR2Client {
-  public static class SSLConfig {
-    // SSL related config
-    private String sslKeyStoreType;
-    private String sslKeyStoreLocation;
-    private String sslKeyStorePassword;
-    private String sslTrustStoreLocation;
-    private String sslTrustStorePassword;
-  }
-
   public static final String HTTP_METHOD_GET_LOWER_CASE = "get";
   public static final String HTTP_METHOD_POST_LOWER_CASE = "post";
 
@@ -56,25 +39,15 @@ public class HttpClient5BasedR2Client {
 
   private static final byte[] EMPTY_RESPONSE = new byte[0];
 
-  public static Client getR2Client(SSLConfig sslConfig) throws Exception {
-    return getR2Client(sslConfig, DEFAULT_IO_THREAD_COUNT);
-  }
-
-  public static Client getR2Client(SSLConfig sslConfig, int ioThreadCount) throws Exception {
-    // Build ssl properties to generate SSLContext
-    Properties sslProp = new Properties();
-    sslProp.put(SSL_ENABLED, "true");
-    sslProp.put(SSL_KEYSTORE_TYPE, sslConfig.sslKeyStoreType);
-    sslProp.put(SSL_KEYSTORE_LOCATION, sslConfig.sslKeyStoreLocation);
-    sslProp.put(SSL_KEYSTORE_PASSWORD, sslConfig.sslKeyStorePassword);
-    sslProp.put(SSL_TRUSTSTORE_LOCATION, sslConfig.sslTrustStoreLocation);
-    sslProp.put(SSL_TRUSTSTORE_PASSWORD, sslConfig.sslTrustStorePassword);
-    SSLContext sslContext = new DefaultSSLFactory(sslProp).getSSLContext();
-
-    return getR2Client(sslContext, ioThreadCount);
+  public static Client getR2Client(SSLContext sslContext) throws Exception {
+    return getR2Client(sslContext, DEFAULT_IO_THREAD_COUNT);
   }
 
   public static Client getR2Client(SSLContext sslContext, int ioThreadCount) throws Exception {
+    if (ioThreadCount <= 0) {
+      throw new VeniceClientException("ioThreadCount should be greater than 0");
+    }
+
     final CloseableHttpAsyncClient client = new HttpClient5Utils.HttpClient5Builder().setIoThreadCount(ioThreadCount)
         .setSslContext(sslContext)
         // Disable cipher check for now.

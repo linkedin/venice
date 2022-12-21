@@ -36,6 +36,7 @@ public class LeastLoadedClientRoutingStrategy implements ClientRoutingStrategy {
         availReplicas.add(replica);
       }
     }
+
     availReplicas.sort(Comparator.comparingInt(instanceHealthMonitor::getPendingRequestCounter));
 
     if (requiredReplicaCount < availReplicas.size()) {

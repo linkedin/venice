@@ -34,6 +34,7 @@ public class InstanceHealthMonitor implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(InstanceHealthMonitor.class);
   private final ClientConfig clientConfig;
 
+  // Map/set of per store replica instances
   private final Map<String, Integer> pendingRequestCounterMap = new VeniceConcurrentHashMap<>();
   private final Set<String> unhealthyInstanceSet = new ConcurrentSkipListSet<>();
 
@@ -66,7 +67,17 @@ public class InstanceHealthMonitor implements Closeable {
     return this.timeoutProcessor;
   }
 
-  public CompletableFuture<HttpStatus> sendRequestToInstance(String instance) {
+  /**
+   * This function tracks the health of an Instance based on the request sent to that Instance:
+   * by returning an incomplete completable future for {@link AbstractStoreMetadata} which
+   * 1. increments {@link InstanceHealthMonitor#pendingRequestCounterMap} for each server instances
+   *    per store. This is done in this function which is called before starting a get() request.
+   * 2. whenComplete() of this completable future decrements the above counters once the response
+   *    for the get() request is received.
+   *
+   * Using this we can track the number of pending requests for each server instance.
+   */
+  public CompletableFuture<HttpStatus> trackHealthBasedOnRequestToInstance(String instance) {
     CompletableFuture<HttpStatus> requestFuture = new CompletableFuture<>();
     pendingRequestCounterMap.compute(instance, (k, v) -> {
       if (v == null) {
@@ -82,19 +93,22 @@ public class InstanceHealthMonitor implements Closeable {
         TimeUnit.MILLISECONDS);
 
     requestFuture.whenComplete((httpStatus, throwable) -> {
-      /**
-       * In theory, throwable should be null all the time since {@link DispatchingAvroGenericStoreClient}
-       * will always set a http status in every code path, and the below is the defensive code.
-       */
       if (throwable != null) {
+        /**
+         * In theory, throwable should be null all the time since {@link DispatchingAvroGenericStoreClient}
+         * will always set a http status in every code path, and this is defensive code.
+         */
         LOGGER.error(
             "Received unexpected throwable in replica request future since DispatchingAvroGenericStoreClient"
                 + " should always setup a http status");
         return;
       }
+
       if (!timeoutFuture.isDone()) {
+        // TODO check for race conditions
         timeoutFuture.cancel();
       }
+
       long counterResetDelayMS = 0;
       boolean unhealthyInstance = false;
       switch (httpStatus) {
@@ -102,7 +116,11 @@ public class InstanceHealthMonitor implements Closeable {
         case S_404_NOT_FOUND:
           break;
         case S_429_TOO_MANY_REQUESTS:
-          // Specific to a store
+          /**
+           * Specific to a store.
+           * This case will fall under blocked instances as there are too many requests waiting on
+           * them, so will be implicitly marked under blocked instances and so not marked unhealthy.
+            */
           counterResetDelayMS = clientConfig.getRoutingQuotaExceededRequestCounterResetDelayMS();
           break;
         case S_410_GONE:
@@ -118,6 +136,10 @@ public class InstanceHealthMonitor implements Closeable {
       if (counterResetDelayMS == 0) {
         counterResetConsumer.accept(instance);
       } else {
+        /**
+         * Even when httpStatus is not 200/404, we want to reset the counter after some delay: to
+         * recheck for health once in a while rather than being permanently blocking it
+         */
         timeoutProcessor.schedule(
             () -> counterResetConsumer.accept(instance),
             counterResetDelayMS,
@@ -137,10 +159,20 @@ public class InstanceHealthMonitor implements Closeable {
     return requestFuture;
   }
 
+  /**
+   * If an instance is marked unhealthy, this instances will be retried again continuously to know
+   * if that instance comes back up and start serving requests. Note that these instances will
+   * eventually become blocked when it reaches the threshold for pendingRequestCounter. This
+   * provides some break between continuously sending requests to these instances.
+   */
   public boolean isInstanceHealthy(String instance) {
     return !unhealthyInstanceSet.contains(instance);
   }
 
+  /**
+   * If an instance is blocked, it won't be considered for new requests until the requests are closed either
+   * in a proper manner or closed by {@link #trackHealthBasedOnRequestToInstance#timeoutFuture}
+   */
   public boolean isInstanceBlocked(String instance) {
     return getPendingRequestCounter(instance) >= clientConfig.getRoutingPendingRequestCounterInstanceBlockThreshold();
   }
