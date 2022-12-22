@@ -3,6 +3,7 @@ package com.linkedin.davinci.ingestion.isolated;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_DISCOVERY_D2_SERVICE;
 import static com.linkedin.venice.ConfigKeys.D2_ZK_HOSTS_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_REQUEST_TIMEOUT_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_STATS_CLASS_LIST;
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_WAIT_RETRIES_NUM;
@@ -103,7 +104,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   private final ServerBootstrap bootstrap;
   private final EventLoopGroup bossGroup;
   private final EventLoopGroup workerGroup;
-  private final ExecutorService ingestionExecutor = Executors.newFixedThreadPool(50);
+  private final ExecutorService ingestionExecutor = Executors.newFixedThreadPool(10);
   private final ScheduledExecutorService heartbeatCheckScheduler = Executors.newScheduledThreadPool(1);
   private final AtomicBoolean isShuttingDown = new AtomicBoolean(false);
   private final int servicePort;
@@ -668,7 +669,8 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     // Create Netty client to report status back to application.
     reportClient = new IsolatedIngestionRequestClient(
         IsolatedIngestionUtils.getSSLFactory(configLoader),
-        configLoader.getVeniceServerConfig().getIngestionApplicationPort());
+        configLoader.getVeniceServerConfig().getIngestionApplicationPort(),
+        configLoader.getCombinedProperties().getInt(SERVER_INGESTION_ISOLATION_REQUEST_TIMEOUT_SECONDS, 60));
 
     // Mark the IsolatedIngestionServer as initiated.
     isInitiated = true;
