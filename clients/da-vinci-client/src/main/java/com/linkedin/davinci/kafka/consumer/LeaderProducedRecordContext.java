@@ -1,5 +1,9 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.venice.kafka.protocol.enums.MessageType.CONTROL_MESSAGE;
+import static com.linkedin.venice.kafka.protocol.enums.MessageType.DELETE;
+import static com.linkedin.venice.kafka.protocol.enums.MessageType.PUT;
+
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.Put;
@@ -22,6 +26,7 @@ import java.util.concurrent.CompletableFuture;
  */
 
 public class LeaderProducedRecordContext {
+  private static final int NO_UPSTREAM = -1;
   /**
    * Kafka cluster ID where the source kafka consumer record was consumed from.
    */
@@ -59,20 +64,24 @@ public class LeaderProducedRecordContext {
    * initial ProducedRecord should be passed on to create the last ProducedRecord carrying the chunk value manifest. This helps in caller wating
    * for the same future to be awakened correctly.
    */
-  private CompletableFuture<Void> persistedToDBFuture = null;
+  private final CompletableFuture<Void> persistedToDBFuture;
 
   public static LeaderProducedRecordContext newControlMessageRecord(
       int consumedKafkaClusterId,
       long consumedOffset,
       byte[] keyBytes,
       ControlMessage valueUnion) {
+    checkConsumedOffsetParam(consumedOffset);
     return new LeaderProducedRecordContext(
         consumedKafkaClusterId,
         consumedOffset,
-        MessageType.CONTROL_MESSAGE,
+        CONTROL_MESSAGE,
         keyBytes,
-        valueUnion,
-        true);
+        valueUnion);
+  }
+
+  public static LeaderProducedRecordContext newControlMessageRecord(byte[] keyBytes, ControlMessage valueUnion) {
+    return new LeaderProducedRecordContext(NO_UPSTREAM, NO_UPSTREAM, CONTROL_MESSAGE, keyBytes, valueUnion);
   }
 
   public static LeaderProducedRecordContext newPutRecord(
@@ -80,13 +89,12 @@ public class LeaderProducedRecordContext {
       long consumedOffset,
       byte[] keyBytes,
       Put valueUnion) {
-    return new LeaderProducedRecordContext(
-        consumedKafkaClusterId,
-        consumedOffset,
-        MessageType.PUT,
-        keyBytes,
-        valueUnion,
-        true);
+    checkConsumedOffsetParam(consumedOffset);
+    return new LeaderProducedRecordContext(consumedKafkaClusterId, consumedOffset, PUT, keyBytes, valueUnion);
+  }
+
+  public static LeaderProducedRecordContext newChunkPutRecord(byte[] keyBytes, Put valueUnion) {
+    return new LeaderProducedRecordContext(NO_UPSTREAM, NO_UPSTREAM, PUT, keyBytes, valueUnion);
   }
 
   public static LeaderProducedRecordContext newPutRecordWithFuture(
@@ -95,15 +103,14 @@ public class LeaderProducedRecordContext {
       byte[] keyBytes,
       Put valueUnion,
       CompletableFuture<Void> persistedToDBFuture) {
-    LeaderProducedRecordContext leaderProducedRecordContext = new LeaderProducedRecordContext(
+    checkConsumedOffsetParam(consumedOffset);
+    return new LeaderProducedRecordContext(
         consumedKafkaClusterId,
         consumedOffset,
-        MessageType.PUT,
+        PUT,
         keyBytes,
         valueUnion,
-        false);
-    leaderProducedRecordContext.persistedToDBFuture = persistedToDBFuture;
-    return leaderProducedRecordContext;
+        persistedToDBFuture);
   }
 
   public static LeaderProducedRecordContext newDeleteRecord(
@@ -111,13 +118,17 @@ public class LeaderProducedRecordContext {
       long consumedOffset,
       byte[] keyBytes,
       Delete valueUnion) {
-    return new LeaderProducedRecordContext(
-        consumedKafkaClusterId,
-        consumedOffset,
-        MessageType.DELETE,
-        keyBytes,
-        valueUnion,
-        true);
+    checkConsumedOffsetParam(consumedOffset);
+    return new LeaderProducedRecordContext(consumedKafkaClusterId, consumedOffset, DELETE, keyBytes, valueUnion);
+  }
+
+  private LeaderProducedRecordContext(
+      int consumedKafkaClusterId,
+      long consumedOffset,
+      MessageType messageType,
+      byte[] keyBytes,
+      Object valueUnion) {
+    this(consumedKafkaClusterId, consumedOffset, messageType, keyBytes, valueUnion, new CompletableFuture());
   }
 
   private LeaderProducedRecordContext(
@@ -126,15 +137,13 @@ public class LeaderProducedRecordContext {
       MessageType messageType,
       byte[] keyBytes,
       Object valueUnion,
-      boolean createFuture) {
+      CompletableFuture persistedToDBFuture) {
     this.consumedKafkaClusterId = consumedKafkaClusterId;
     this.consumedOffset = consumedOffset;
     this.messageType = messageType;
     this.keyBytes = keyBytes;
     this.valueUnion = valueUnion;
-    if (createFuture) {
-      this.persistedToDBFuture = new CompletableFuture<>();
-    }
+    this.persistedToDBFuture = persistedToDBFuture;
   }
 
   public void setKeyBytes(byte[] keyBytes) {
@@ -189,5 +198,23 @@ public class LeaderProducedRecordContext {
   public String toString() {
     return "{ consumedOffset: " + consumedOffset + ", messageType: " + messageType + ", producedOffset: "
         + producedOffset + " }";
+  }
+
+  /**
+   * Some bookkeeping operations are intended to be performed only on messages produced by the leader which have a
+   * directly corresponding upstream message, and should be skipped for messages that are generated by the leader in the
+   * absence of a directly corresponding upstream. This function helps disambiguate these cases.
+   *
+   * @return true if the message produced by the leader has a directly corresponding upstream message
+   *         false if the message does not (e.g. happens in cases of leader-generated chunks or TopicSwitch)
+   */
+  public boolean hasCorrespondingUpstreamMessage() {
+    return consumedOffset != NO_UPSTREAM;
+  }
+
+  private static void checkConsumedOffsetParam(long consumedOffset) {
+    if (consumedOffset < 0) {
+      throw new IllegalArgumentException("consumedOffset cannot be negative");
+    }
   }
 }

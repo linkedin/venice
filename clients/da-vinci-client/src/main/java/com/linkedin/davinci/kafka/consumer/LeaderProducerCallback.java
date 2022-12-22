@@ -1,17 +1,12 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER;
-import static com.linkedin.venice.writer.VeniceWriter.VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
 
-import com.linkedin.davinci.stats.AggVersionedDIVStats;
-import com.linkedin.davinci.stats.AggVersionedIngestionStats;
-import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
@@ -30,28 +25,21 @@ class LeaderProducerCallback implements ChunkAwareCallback {
 
   protected static final ChunkedValueManifestSerializer CHUNKED_VALUE_MANIFEST_SERIALIZER =
       new ChunkedValueManifestSerializer(false);
-  private static final ByteBuffer EMPTY_BYTE_BUFFER = ByteBuffer.allocate(0);
+  protected static final ByteBuffer EMPTY_BYTE_BUFFER = ByteBuffer.allocate(0);
 
   private final LeaderFollowerStoreIngestionTask ingestionTask;
   private final ConsumerRecord<KafkaKey, KafkaMessageEnvelope> sourceConsumerRecord;
   private final PartitionConsumptionState partitionConsumptionState;
-  private final String leaderTopic;
-  private final String versionTopic;
-  private final int partition;
   private final int subPartition;
   private final String kafkaUrl;
-  private final AggVersionedDIVStats versionedDIVStats;
-  private final LeaderProducedRecordContext leaderProducedRecordContext;
-  private final AggVersionedIngestionStats versionedStorageIngestionStats;
-  private final HostLevelIngestionStats hostLevelIngestionStats;
+  protected final LeaderProducedRecordContext leaderProducedRecordContext;
   private final long produceTimeNs;
   private final long beforeProcessingRecordTimestamp;
-  private final boolean isActiveActiveReplication;
 
   /**
    * The mutable fields below are determined by the {@link com.linkedin.venice.writer.VeniceWriter},
-   * which populates them via {@link ChunkAwareCallback#setChunkingInfo(byte[], ByteBuffer[],
-   * ChunkedValueManifest, ByteBuffer[], ChunkedValueManifest)}.
+   * which populates them via:
+   * {@link ChunkAwareCallback#setChunkingInfo(byte[], ByteBuffer[], ChunkedValueManifest, ByteBuffer[], ChunkedValueManifest)}
    */
   private byte[] key = null;
   private ChunkedValueManifest chunkedValueManifest = null;
@@ -64,43 +52,29 @@ class LeaderProducerCallback implements ChunkAwareCallback {
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> sourceConsumerRecord,
       PartitionConsumptionState partitionConsumptionState,
       LeaderProducedRecordContext leaderProducedRecordContext,
-      String leaderTopic,
-      String versionTopic,
-      int partition,
       int subPartition,
       String kafkaUrl,
-      AggVersionedDIVStats versionedDIVStats,
-      AggVersionedIngestionStats versionedStorageIngestionStats,
-      HostLevelIngestionStats hostLevelIngestionStats,
-      long produceTimeNs,
-      long beforeProcessingRecordTimestamp,
-      boolean isActiveActiveReplication) {
+      long beforeProcessingRecordTimestamp) {
     this.ingestionTask = ingestionTask;
     this.sourceConsumerRecord = sourceConsumerRecord;
     this.partitionConsumptionState = partitionConsumptionState;
-    this.leaderTopic = leaderTopic;
-    this.versionTopic = versionTopic;
-    this.partition = partition;
     this.subPartition = subPartition;
     this.kafkaUrl = kafkaUrl;
-    this.versionedDIVStats = versionedDIVStats;
     this.leaderProducedRecordContext = leaderProducedRecordContext;
-    this.produceTimeNs = produceTimeNs;
-    this.versionedStorageIngestionStats = versionedStorageIngestionStats;
-    this.hostLevelIngestionStats = hostLevelIngestionStats;
+    this.produceTimeNs = System.nanoTime();
     this.beforeProcessingRecordTimestamp = beforeProcessingRecordTimestamp;
-    this.isActiveActiveReplication = isActiveActiveReplication;
   }
 
   @Override
   public void onCompletion(RecordMetadata recordMetadata, Exception e) {
     if (e != null) {
       LOGGER.error(
-          "Leader failed to send out message to version topic when consuming " + leaderTopic + " partition "
-              + partition,
+          "Leader failed to send out message to version topic when consuming {} partition {}",
+          sourceConsumerRecord.topic(),
+          sourceConsumerRecord.partition(),
           e);
-      int version = Version.parseVersionFromKafkaTopicName(versionTopic);
-      versionedDIVStats.recordLeaderProducerFailure(ingestionTask.getStoreName(), version);
+      ingestionTask.getVersionedDIVStats()
+          .recordLeaderProducerFailure(ingestionTask.getStoreName(), ingestionTask.versionNumber);
     } else {
       // recordMetadata.partition() represents the partition being written by VeniceWriter
       // partitionConsumptionState.getPartition() is leaderSubPartition
@@ -137,10 +111,11 @@ class LeaderProducerCallback implements ChunkAwareCallback {
       // queuing to drainer.
       // this indicates how much time kafka took to deliver the message to broker.
       if (!ingestionTask.isUserSystemStore()) {
-        versionedDIVStats.recordLeaderProducerCompletionTime(
-            ingestionTask.getStoreName(),
-            ingestionTask.versionNumber,
-            LatencyUtils.getLatencyInMS(produceTimeNs));
+        ingestionTask.getVersionedDIVStats()
+            .recordLeaderProducerCompletionTime(
+                ingestionTask.getStoreName(),
+                ingestionTask.versionNumber,
+                LatencyUtils.getLatencyInMS(produceTimeNs));
       }
 
       int producedRecordNum = 0;
@@ -174,16 +149,12 @@ class LeaderProducerCallback implements ChunkAwareCallback {
             ByteBuffer chunkKey = chunkedValueManifest.keysWithChunkIdSuffix.get(i);
             ByteBuffer chunkValue = valueChunks[i];
 
-            Put chunkPut = new Put();
+            Put chunkPut = instantiateChunkPut();
             chunkPut.putValue = chunkValue;
             chunkPut.schemaId = schemaId;
-            if (isActiveActiveReplication) {
-              chunkPut.replicationMetadataPayload = EMPTY_BYTE_BUFFER;
-              chunkPut.replicationMetadataVersionId = VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
-            }
 
             LeaderProducedRecordContext producedRecordForChunk =
-                LeaderProducedRecordContext.newPutRecord(-1, -1, ByteUtils.extractByteArray(chunkKey), chunkPut);
+                LeaderProducedRecordContext.newChunkPutRecord(ByteUtils.extractByteArray(chunkKey), chunkPut);
             producedRecordForChunk.setProducedOffset(-1);
             ingestionTask.produceToStoreBufferService(
                 sourceConsumerRecord,
@@ -197,8 +168,7 @@ class LeaderProducerCallback implements ChunkAwareCallback {
 
           // produce the manifest inside the top-level key
           schemaId = AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
-          ByteBuffer manifest =
-              ByteBuffer.wrap(CHUNKED_VALUE_MANIFEST_SERIALIZER.serialize(versionTopic, chunkedValueManifest));
+          ByteBuffer manifest = CHUNKED_VALUE_MANIFEST_SERIALIZER.serialize(chunkedValueManifest);
           /**
            * The byte[] coming out of the {@link CHUNKED_VALUE_MANIFEST_SERIALIZER} is padded in front, so
            * that the put to the storage engine can avoid a copy, but we need to set the position to skip
@@ -206,15 +176,9 @@ class LeaderProducerCallback implements ChunkAwareCallback {
            */
           manifest.position(ValueRecord.SCHEMA_HEADER_LENGTH);
 
-          Put manifestPut = new Put();
+          Put manifestPut = instantiateManifestPut();
           manifestPut.putValue = manifest;
           manifestPut.schemaId = schemaId;
-          if (isActiveActiveReplication) {
-            manifestPut.replicationMetadataVersionId =
-                ((Put) leaderProducedRecordContext.getValueUnion()).replicationMetadataVersionId;
-            manifestPut.replicationMetadataPayload =
-                ((Put) leaderProducedRecordContext.getValueUnion()).replicationMetadataPayload;
-          }
 
           LeaderProducedRecordContext producedRecordForManifest = LeaderProducedRecordContext.newPutRecordWithFuture(
               leaderProducedRecordContext.getConsumedKafkaClusterId(),
@@ -244,7 +208,7 @@ class LeaderProducerCallback implements ChunkAwareCallback {
         // If EOP is not received yet, set the ingestion task exception so that ingestion will fail eventually.
         if (!endOfPushReceived) {
           try {
-            ingestionTask.offerProducerException(oe, partition);
+            ingestionTask.offerProducerException(oe, sourceConsumerRecord.partition());
           } catch (VeniceException offerToQueueException) {
             ingestionTask.setLastStoreIngestionException(offerToQueueException);
           }
@@ -272,12 +236,21 @@ class LeaderProducerCallback implements ChunkAwareCallback {
   }
 
   private void recordProducerStats(int producedRecordSize, int producedRecordNum) {
-    versionedStorageIngestionStats.recordLeaderProduced(
-        ingestionTask.getStoreName(),
-        ingestionTask.versionNumber,
-        producedRecordSize,
-        producedRecordNum);
-    hostLevelIngestionStats.recordTotalLeaderBytesProduced(producedRecordSize);
-    hostLevelIngestionStats.recordTotalLeaderRecordsProduced(producedRecordNum);
+    ingestionTask.getVersionIngestionStats()
+        .recordLeaderProduced(
+            ingestionTask.getStoreName(),
+            ingestionTask.versionNumber,
+            producedRecordSize,
+            producedRecordNum);
+    ingestionTask.getHostLevelIngestionStats().recordTotalLeaderBytesProduced(producedRecordSize);
+    ingestionTask.getHostLevelIngestionStats().recordTotalLeaderRecordsProduced(producedRecordNum);
+  }
+
+  protected Put instantiateChunkPut() {
+    return new Put();
+  }
+
+  protected Put instantiateManifestPut() {
+    return new Put();
   }
 }

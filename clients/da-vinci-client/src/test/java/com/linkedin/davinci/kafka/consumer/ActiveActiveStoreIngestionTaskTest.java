@@ -62,7 +62,7 @@ public class ActiveActiveStoreIngestionTaskTest {
     when(ingestionTask.getVersionIngestionStats()).thenReturn(mock(AggVersionedIngestionStats.class));
     when(ingestionTask.getVersionedDIVStats()).thenReturn(mock(AggVersionedDIVStats.class));
     when(ingestionTask.getKafkaVersionTopic()).thenReturn(testTopic);
-    when(ingestionTask.createLeaderProducerCallback(any(), any(), any(), anyInt(), anyString(), anyLong()))
+    when(ingestionTask.createProducerCallback(any(), any(), any(), anyInt(), anyString(), anyLong()))
         .thenCallRealMethod();
     when(ingestionTask.getProduceToTopicFunction(any(), any(), any(), anyInt(), anyBoolean())).thenCallRealMethod();
     when(ingestionTask.getRmdProtocolVersionID()).thenReturn(rmdProtocolVersionID);

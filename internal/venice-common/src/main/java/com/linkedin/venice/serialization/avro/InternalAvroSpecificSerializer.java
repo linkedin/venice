@@ -9,6 +9,7 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
@@ -182,7 +183,7 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
   /**
    * Construct an array of bytes from the given object
    *
-   * @param topic  Topic to which the object belongs.
+   * @param topic  Topic to which the object belongs (for API compatibility reason only, but unused)
    * @param object A {@link SPECIFIC_RECORD} instance to be serialized.
    * @return The Avro binary format bytes which represent the {@param object}
    */
@@ -221,6 +222,10 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
           this.getClass().getSimpleName() + " failed to encode message: " + object.toString(),
           e);
     }
+  }
+
+  public ByteBuffer serialize(SPECIFIC_RECORD object) {
+    return ByteBuffer.wrap(serialize(null, object));
   }
 
   /**
