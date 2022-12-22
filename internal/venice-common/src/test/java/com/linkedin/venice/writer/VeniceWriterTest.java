@@ -36,7 +36,6 @@ import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
@@ -213,7 +212,7 @@ public class VeniceWriterTest {
         null,
         VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER,
         ctime,
-        Optional.empty());
+        null);
     writer.put(
         Integer.toString(2),
         Integer.toString(2),
@@ -221,7 +220,7 @@ public class VeniceWriterTest {
         null,
         VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER,
         VeniceWriter.APP_DEFAULT_LOGICAL_TS,
-        Optional.ofNullable(putMetadata));
+        putMetadata);
     writer.update(Integer.toString(3), Integer.toString(2), 1, 1, null, ctime);
     writer.delete(Integer.toString(4), null, VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER, ctime);
     writer.delete(Integer.toString(5), null, VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER, deleteMetadata);

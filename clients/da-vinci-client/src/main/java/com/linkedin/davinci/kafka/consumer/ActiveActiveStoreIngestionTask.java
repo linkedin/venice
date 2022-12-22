@@ -33,12 +33,10 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.schema.rmd.RmdUtils;
-import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.lazy.Lazy;
-import com.linkedin.venice.writer.ChunkAwareCallback;
 import com.linkedin.venice.writer.DeleteMetadata;
 import com.linkedin.venice.writer.PutMetadata;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -57,7 +55,6 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BooleanSupplier;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -1254,68 +1251,42 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       ByteBuffer updatedRmdBytes,
       int valueSchemaId,
       boolean resultReuseInput) {
-    return (callback, sourceTopicOffset) -> {
-      final ChunkAwareCallback newCallback = new ChunkAwareCallback() {
-        @Override
-        public void setChunkingInfo(
-            byte[] key,
-            ByteBuffer[] valueChunks,
-            ChunkedValueManifest chunkedValueManifest,
-            ByteBuffer[] rmdChunks,
-            ChunkedValueManifest chunkedRmdManifest) {
-          ((ChunkAwareCallback) callback)
-              .setChunkingInfo(key, valueChunks, chunkedValueManifest, rmdChunks, chunkedRmdManifest);
-        }
-
-        @Override
-        public void onCompletion(RecordMetadata recordMetadata, Exception exception) {
-          if (resultReuseInput) {
-            // Restore the original header so this function is eventually idempotent as the original KME ByteBuffer
-            // will be recovered after producing the message to Kafka or if the production failing.
-            ByteUtils.prependIntHeaderToByteBuffer(
+    return (callback, leaderMetadataWrapper) -> {
+      if (resultReuseInput) {
+        // Restore the original header so this function is eventually idempotent as the original KME ByteBuffer
+        // will be recovered after producing the message to Kafka or if the production failing.
+        ((ActiveActiveProducerCallback) callback).setOnCompletionFunction(
+            () -> ByteUtils.prependIntHeaderToByteBuffer(
                 updatedValueBytes,
                 ByteUtils.getIntHeaderFromByteBuffer(updatedValueBytes),
-                true);
-          }
-          callback.onCompletion(recordMetadata, exception);
-        }
-      };
+                true));
+      }
       return getVeniceWriter().get()
           .put(
               key,
               ByteUtils.extractByteArray(updatedValueBytes),
               valueSchemaId,
-              newCallback,
-              sourceTopicOffset,
+              callback,
+              leaderMetadataWrapper,
               VeniceWriter.APP_DEFAULT_LOGICAL_TS,
-              Optional.of(new PutMetadata(getRmdProtocolVersionID(), updatedRmdBytes)));
+              new PutMetadata(getRmdProtocolVersionID(), updatedRmdBytes));
     };
   }
 
-  protected LeaderProducerCallback createLeaderProducerCallback(
+  protected LeaderProducerCallback createProducerCallback(
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
       PartitionConsumptionState partitionConsumptionState,
       LeaderProducedRecordContext leaderProducedRecordContext,
       int subPartition,
       String kafkaUrl,
       long beforeProcessingRecordTimestamp) {
-    int partition = consumerRecord.partition();
-    String leaderTopic = consumerRecord.topic();
-    return new LeaderProducerCallback(
+    return new ActiveActiveProducerCallback(
         this,
         consumerRecord,
         partitionConsumptionState,
         leaderProducedRecordContext,
-        leaderTopic,
-        getKafkaVersionTopic(),
-        partition,
         subPartition,
         kafkaUrl,
-        getVersionedDIVStats(),
-        getVersionIngestionStats(),
-        getHostLevelIngestionStats(),
-        System.nanoTime(),
-        beforeProcessingRecordTimestamp,
-        true);
+        beforeProcessingRecordTimestamp);
   }
 }

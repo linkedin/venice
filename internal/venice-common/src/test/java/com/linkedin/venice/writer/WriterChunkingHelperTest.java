@@ -1,7 +1,6 @@
 package com.linkedin.venice.writer;
 
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
-import java.util.concurrent.CompletableFuture;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -21,7 +20,7 @@ public class WriterChunkingHelperTest {
         () -> "",
         maxSizeForUserPayloadPerMessageInBytes,
         new KeyWithChunkingSuffixSerializer(),
-        (x, y) -> CompletableFuture.completedFuture(null));
+        (x, y) -> {});
     Assert.assertEquals(result.getPayloadChunks().length, 5);
   }
 }
