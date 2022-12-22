@@ -140,6 +140,12 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
 
     IngestionTaskReport report = createIngestionTaskReport(topicName, partitionId);
     IngestionCommandType ingestionCommandType = IngestionCommandType.valueOf(ingestionTaskCommand.commandType);
+    LOGGER.info(
+        "Received ingestion command {} for topic: {}, partition: {} in timestamp: {}",
+        ingestionCommandType,
+        topicName,
+        partitionId,
+        startTimeInMs);
     try {
       if (!isolatedIngestionServer.isInitiated()) {
         throw new VeniceException("IsolatedIngestionServer has not been initiated.");
@@ -245,7 +251,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
     }
     long executionTimeInMs = System.currentTimeMillis() - startTimeInMs;
     LOGGER.info(
-        "Completed ingestion command {} for topic: {}, partition: {} in ms: {}",
+        "Completed ingestion command {} for topic: {}, partition: {} in {} ms.",
         ingestionCommandType,
         topicName,
         partitionId,

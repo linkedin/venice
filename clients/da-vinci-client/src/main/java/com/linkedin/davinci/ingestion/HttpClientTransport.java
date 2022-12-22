@@ -29,7 +29,6 @@ public class HttpClientTransport implements AutoCloseable {
   private static final Logger LOGGER = LogManager.getLogger(HttpClientTransport.class);
   private static final int DEFAULT_CONNECTION_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
   private static final int DEFAULT_SOCKET_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
-  private static final int DEFAULT_REQUEST_TIMEOUT_MS = 60 * Time.MS_PER_SECOND;
   private static final int DEFAULT_REQUEST_RETRY_WAIT_TIME_MS = 1 * Time.MS_PER_SECOND;
 
   private static final int DEFAULT_REQUEST_RETRY_COUNT = 10;
@@ -42,10 +41,12 @@ public class HttpClientTransport implements AutoCloseable {
 
   private final CloseableHttpAsyncClient httpClient;
   private final String forkedProcessRequestUrl;
+  private final int requestTimeoutInSeconds;
 
-  public HttpClientTransport(Optional<SSLFactory> sslFactory, int port) {
-    forkedProcessRequestUrl = (sslFactory.isPresent() ? HTTPS : HTTP) + "://" + Utils.getHostName() + ":" + port;
-    httpClient =
+  public HttpClientTransport(Optional<SSLFactory> sslFactory, int port, int requestTimeoutInSeconds) {
+    this.forkedProcessRequestUrl = (sslFactory.isPresent() ? HTTPS : HTTP) + "://" + Utils.getHostName() + ":" + port;
+    this.requestTimeoutInSeconds = requestTimeoutInSeconds;
+    this.httpClient =
         HttpClientUtils
             .getMinimalHttpClientWithConnManager(
                 DEFAULT_IO_THREAD_COUNT,
@@ -74,7 +75,7 @@ public class HttpClientTransport implements AutoCloseable {
   public <T extends SpecificRecordBase, S extends SpecificRecordBase> T sendRequest(
       IngestionAction action,
       S param,
-      int timeoutMs) {
+      int requestTimeoutInSeconds) {
     HttpPost request = new HttpPost(forkedProcessRequestUrl + "/" + action.toString());
     try {
       byte[] requestPayload = serializeIngestionActionRequest(action, param);
@@ -85,9 +86,11 @@ public class HttpClientTransport implements AutoCloseable {
 
     HttpResponse response;
     try {
-      response = this.httpClient.execute(request, null).get(timeoutMs, TimeUnit.MILLISECONDS);
+      response = this.httpClient.execute(request, null).get(requestTimeoutInSeconds, TimeUnit.SECONDS);
     } catch (TimeoutException e) {
-      throw new VeniceTimeoutException("Unable to finish isolated ingestion request in given " + timeoutMs + " ms.", e);
+      throw new VeniceTimeoutException(
+          "Unable to finish isolated ingestion request in given " + requestTimeoutInSeconds + " s.",
+          e);
     } catch (InterruptedException e) {
       // Keep the interruption flag.
       Thread.currentThread().interrupt();
@@ -113,13 +116,12 @@ public class HttpClientTransport implements AutoCloseable {
   }
 
   public <T extends SpecificRecordBase, S extends SpecificRecordBase> T sendRequest(IngestionAction action, S param) {
-    return sendRequestWithRetry(action, param, DEFAULT_REQUEST_TIMEOUT_MS, DEFAULT_REQUEST_RETRY_COUNT);
+    return sendRequestWithRetry(action, param, DEFAULT_REQUEST_RETRY_COUNT);
   }
 
   public <T extends SpecificRecordBase, S extends SpecificRecordBase> T sendRequestWithRetry(
       IngestionAction action,
       S param,
-      int timeoutMs,
       int maxAttempt) {
     // Sanity check for maxAttempt argument.
     if (maxAttempt <= 0) {
@@ -130,7 +132,7 @@ public class HttpClientTransport implements AutoCloseable {
     final long startTimeIsMs = System.currentTimeMillis();
     while (true) {
       try {
-        result = sendRequest(action, param, timeoutMs);
+        result = sendRequest(action, param, requestTimeoutInSeconds);
         break;
       } catch (VeniceException e) {
         retryCount++;
@@ -151,12 +153,5 @@ public class HttpClientTransport implements AutoCloseable {
       }
     }
     return result;
-  }
-
-  public <T extends SpecificRecordBase, S extends SpecificRecordBase> T sendRequestWithRetry(
-      IngestionAction action,
-      S param,
-      int maxAttempt) {
-    return sendRequestWithRetry(action, param, DEFAULT_REQUEST_TIMEOUT_MS, maxAttempt);
   }
 }
