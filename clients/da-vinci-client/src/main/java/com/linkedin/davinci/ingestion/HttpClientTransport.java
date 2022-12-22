@@ -29,7 +29,7 @@ public class HttpClientTransport implements AutoCloseable {
   private static final Logger LOGGER = LogManager.getLogger(HttpClientTransport.class);
   private static final int DEFAULT_CONNECTION_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
   private static final int DEFAULT_SOCKET_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
-  private static final int DEFAULT_REQUEST_TIMEOUT_MS = 60 * Time.MS_PER_SECOND;
+  private static final int DEFAULT_REQUEST_TIMEOUT_MS = 180 * Time.MS_PER_SECOND;
   private static final int DEFAULT_REQUEST_RETRY_WAIT_TIME_MS = 1 * Time.MS_PER_SECOND;
 
   private static final int DEFAULT_REQUEST_RETRY_COUNT = 10;

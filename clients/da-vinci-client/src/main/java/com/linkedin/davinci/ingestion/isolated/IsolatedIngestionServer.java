@@ -103,7 +103,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   private final ServerBootstrap bootstrap;
   private final EventLoopGroup bossGroup;
   private final EventLoopGroup workerGroup;
-  private final ExecutorService ingestionExecutor = Executors.newFixedThreadPool(10);
+  private final ExecutorService ingestionExecutor = Executors.newFixedThreadPool(50);
   private final ScheduledExecutorService heartbeatCheckScheduler = Executors.newScheduledThreadPool(1);
   private final AtomicBoolean isShuttingDown = new AtomicBoolean(false);
   private final int servicePort;
