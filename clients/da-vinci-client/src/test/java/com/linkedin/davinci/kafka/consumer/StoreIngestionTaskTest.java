@@ -3182,13 +3182,23 @@ public abstract class StoreIngestionTaskTest {
       // Verify it retrieves the offset from the OffSet Manager
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS)).getLastOffset(topic, PARTITION_FOO);
 
+      // Verify offsetRecord hasn't been synced yet
+      PartitionConsumptionState pcs = storeIngestionTaskUnderTest.getPartitionConsumptionState(PARTITION_FOO);
+      OffsetRecord offsetRecord = pcs.getOffsetRecord();
+      Assert.assertEquals(pcs.getLatestProcessedLocalVersionTopicOffset(), 0L);
+      Assert.assertEquals(offsetRecord.getLocalVersionTopicOffset(), 0L);
+
       // verify 2 messages were processed
       verify(mockStoreIngestionStats, timeout(TEST_TIMEOUT_MS).times(2)).recordTotalRecordsConsumed();
+      Assert.assertEquals(pcs.getLatestProcessedLocalVersionTopicOffset(), 2L); // PCS updated
+      Assert.assertEquals(offsetRecord.getLocalVersionTopicOffset(), 0L); // offsetRecord hasn't been updated yet
 
       storeIngestionTaskUnderTest.close();
 
       // Verify the OffsetRecord is synced up with pcs and get persisted only once during shutdown
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS).times(1)).put(eq(topic), eq(PARTITION_FOO), any());
+      Assert.assertEquals(offsetRecord.getLocalVersionTopicOffset(), 2L);
+
     }, isActiveActiveReplicationEnabled, configOverride -> {
       // set very high threshold so offsetRecord isn't be synced during regular consumption
       doReturn(100_000L).when(configOverride).getDatabaseSyncBytesIntervalForTransactionalMode();
