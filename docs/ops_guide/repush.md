@@ -59,7 +59,7 @@ data in other DCs.
 It's usually required to evict stale entries from the store in order to achieve GDPR compliance or other business requirements.
 The repush with TTL functionality will replay and scan through the entries in the current version, 
 and use store-level rewind time as TTL time to evict stale records based on the write timestamp. See [TTL](../user_guide/ttl)
-for the comparison among different TTL options.
+for the comparison among various TTL options.
 
 ## Usage
 The following Venice Push Job config is used to enable Repush functionality:
@@ -101,7 +101,7 @@ it defaults to false.
 kafka.input.combiner.enabled = true
 ```
 
-To specify whether to enable TTL for the repush job. This is an experimental functionality that was newly developed. 
+To specify whether to enable TTL for the repush job. This is an experimental functionality.
 If unspecified, it defaults to false.
 ```
 repush.ttl.enable = true

@@ -18,7 +18,7 @@ in case of infra delays or failures.
 
 ## Usage
 
-There are two ways to do TTL, via [empty push](#empty-push) or via [Repush with TTL](#experimental-repush-with-ttl).
+There are two ways to achieve TTL compliance, via [empty push](#empty-push) or via [Repush with TTL](#experimental-repush-with-ttl).
 
 ## Empty push
 
@@ -35,8 +35,7 @@ TTL parameters. The time to live is defined by N, which acts as a "minimum TTL",
 between each empty push. For example, if you schedule a daily empty push, and N = 6 days, then the oldest data in your
 store will be at least 6 days old, and at most 7 days old.
 
-The N is the `hybrid-rewind-seconds`, that's a part of hybrid store configuration.
-
+N can be set up by configuring the `hybrid-rewind-seconds` using venice-admin-tool.
 ### How to enable
 
 At the moment, there are two ways to perform empty pushes:
