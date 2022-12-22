@@ -185,6 +185,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
@@ -525,7 +526,28 @@ public abstract class StoreIngestionTaskTest {
         Optional.empty(),
         isActiveActiveReplicationEnabled,
         1,
-        Collections.emptyMap());
+        Collections.emptyMap(),
+        storeVersionConfigOverride -> {});
+  }
+
+  private void runTest(
+      Set<Integer> partitions,
+      Runnable beforeStartingConsumption,
+      Runnable assertions,
+      boolean isActiveActiveReplicationEnabled,
+      Consumer<VeniceStoreVersionConfig> storeVersionConfigOverride) throws Exception {
+    runTest(
+        new RandomPollStrategy(),
+        partitions,
+        beforeStartingConsumption,
+        assertions,
+        this.hybridStoreConfig,
+        false,
+        Optional.empty(),
+        isActiveActiveReplicationEnabled,
+        1,
+        Collections.emptyMap(),
+        storeVersionConfigOverride);
   }
 
   private void runTest(
@@ -544,7 +566,8 @@ public abstract class StoreIngestionTaskTest {
         Optional.empty(),
         isActiveActiveReplicationEnabled,
         1,
-        Collections.emptyMap());
+        Collections.emptyMap(),
+        storeVersionConfigOverride -> {});
   }
 
   private void runTest(
@@ -558,6 +581,50 @@ public abstract class StoreIngestionTaskTest {
       boolean isActiveActiveReplicationEnabled,
       int amplificationFactor,
       Map<String, Object> extraServerProperties) throws Exception {
+    runTest(
+        pollStrategy,
+        partitions,
+        beforeStartingConsumption,
+        assertions,
+        hybridStoreConfig,
+        incrementalPushEnabled,
+        diskUsageForTest,
+        isActiveActiveReplicationEnabled,
+        amplificationFactor,
+        extraServerProperties,
+        storeVersionConfigOverride -> {});
+  }
+
+  /**
+   * A simple framework to specify how to run the task and how to assert the results
+   * @param pollStrategy, the polling strategy for Kakfa consumer to poll messages written by local venice writer
+   * @param partitions, the number of partitions
+   * @param beforeStartingConsumption, the pre-test logic to set up test-related logic before starting the SIT
+   * @param assertions, the assertion logic to verify the code path is running as expected
+   *                    Note that due to concurrency nature of codes, it's often needed to run {@link Mockito#verify} with
+   *                    {@link org.mockito.verification.VerificationWithTimeout} to wait for certain code path to be executed.
+   *                    Otherwise, the main thread, i.e. the unit test thread, can terminate the task early.
+   * @param hybridStoreConfig, the config for hybrid store
+   * @param incrementalPushEnabled, the flag to turn on incremental push for SIT
+   * @param diskUsageForTest, optionally field to mock the disk usage for the test
+   * @param isActiveActiveReplicationEnabled, the flag to turn on ActiveActiveReplication for SIT
+   * @param amplificationFactor, the amplificationFactor
+   * @param extraServerProperties, the extra config for server
+   * @param storeVersionConfigOverride, the override for store version config
+   * @throws Exception
+   */
+  private void runTest(
+      PollStrategy pollStrategy,
+      Set<Integer> partitions,
+      Runnable beforeStartingConsumption,
+      Runnable assertions,
+      Optional<HybridStoreConfig> hybridStoreConfig,
+      boolean incrementalPushEnabled,
+      Optional<DiskUsage> diskUsageForTest,
+      boolean isActiveActiveReplicationEnabled,
+      int amplificationFactor,
+      Map<String, Object> extraServerProperties,
+      Consumer<VeniceStoreVersionConfig> storeVersionConfigOverride) throws Exception {
 
     int partitionCount = PARTITION_COUNT / amplificationFactor;
     VenicePartitioner partitioner = getVenicePartitioner(1); // Only get base venice partitioner
@@ -571,7 +638,8 @@ public abstract class StoreIngestionTaskTest {
         hybridStoreConfig,
         incrementalPushEnabled,
         false,
-        isActiveActiveReplicationEnabled);
+        isActiveActiveReplicationEnabled,
+        storeVersionConfigOverride);
     Store mockStore = storeAndVersionConfigs.store;
     Version version = storeAndVersionConfigs.version;
     VeniceStoreVersionConfig storeConfig = storeAndVersionConfigs.storeVersionConfig;
@@ -625,22 +693,32 @@ public abstract class StoreIngestionTaskTest {
       boolean incrementalPushEnabled,
       boolean isNativeReplicationEnabled,
       boolean isActiveActiveReplicationEnabled) {
+    return setupStoreAndVersionMocks(
+        partitionCount,
+        partitionerConfig,
+        hybridStoreConfig,
+        incrementalPushEnabled,
+        isNativeReplicationEnabled,
+        isActiveActiveReplicationEnabled,
+        storeVersionConfigOverride -> {});
+  }
+
+  private MockStoreVersionConfigs setupStoreAndVersionMocks(
+      int partitionCount,
+      PartitionerConfig partitionerConfig,
+      Optional<HybridStoreConfig> hybridStoreConfig,
+      boolean incrementalPushEnabled,
+      boolean isNativeReplicationEnabled,
+      boolean isActiveActiveReplicationEnabled,
+      Consumer<VeniceStoreVersionConfig> storeVersionConfigOverride) {
     boolean isHybrid = hybridStoreConfig.isPresent();
     HybridStoreConfig hybridSoreConfigValue = null;
     if (isHybrid) {
       hybridSoreConfigValue = hybridStoreConfig.get();
     }
 
-    VeniceStoreVersionConfig storeConfig = mock(VeniceStoreVersionConfig.class);
-    doReturn(topic).when(storeConfig).getStoreVersionName();
-    doReturn(0).when(storeConfig).getTopicOffsetCheckIntervalMs();
-    doReturn(READ_CYCLE_DELAY_MS).when(storeConfig).getKafkaReadCycleDelayMs();
-    doReturn(EMPTY_POLL_SLEEP_MS).when(storeConfig).getKafkaEmptyPollSleepMs();
-    doReturn(databaseSyncBytesIntervalForTransactionalMode).when(storeConfig)
-        .getDatabaseSyncBytesIntervalForTransactionalMode();
-    doReturn(databaseSyncBytesIntervalForDeferredWriteMode).when(storeConfig)
-        .getDatabaseSyncBytesIntervalForDeferredWriteMode();
-    doReturn(false).when(storeConfig).isReadOnlyForBatchOnlyStoreEnabled();
+    // mock the store config
+    VeniceStoreVersionConfig storeConfig = getDefaultMockVeniceStoreVersionConfig(storeVersionConfigOverride);
 
     Store mockStore = mock(Store.class);
     Version version = new VersionImpl(storeNameWithoutVersionInfo, 1, "1", partitionCount);
@@ -3073,6 +3151,76 @@ public abstract class StoreIngestionTaskTest {
           .unsubscribeConsumerFor(eq(topic), anyString(), anyInt());
     }, isActiveActiveReplicationEnabled);
     Assert.assertEquals(mockNotifierError.size(), 0);
+  }
+
+  /**
+   * Verifies that during a graceful shutdown event, the metadata of OffsetRecord will be synced up with partitionConsumptionState
+   * in order to avoid re-ingesting everything, regardless of the sync bytes interval
+   * Steps:
+   * 1. offsetRecord and pcs has the same state at the beginning
+   * 2. pcs consumes 2 records and offsetRecords doesn't sync up with pcs due to high sync interval.
+   * 3. enforce to gracefully shutdown and validate offsetRecord has been synced up with pcs once.
+   * @param isActiveActiveReplicationEnabled
+   * @throws Exception
+   */
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testOffsetSyncBeforeGracefulShutDown(boolean isActiveActiveReplicationEnabled) throws Exception {
+    // prepare to send 2 messages
+    localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID);
+    localVeniceWriter.put(putKeyFoo2, putValue, SCHEMA_ID);
+
+    hybridStoreConfig = Optional.of(
+        new HybridStoreConfigImpl(
+            10,
+            20,
+            HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
+            DataReplicationPolicy.NON_AGGREGATE,
+            BufferReplayPolicy.REWIND_FROM_EOP));
+    runTest(Utils.setOf(PARTITION_FOO), () -> {
+      doReturn(getOffsetRecord(0, true)).when(mockStorageMetadataService).getLastOffset(topic, PARTITION_FOO);
+    }, () -> {
+      // Verify it retrieves the offset from the OffSet Manager
+      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS)).getLastOffset(topic, PARTITION_FOO);
+
+      // Verify offsetRecord hasn't been synced yet
+      PartitionConsumptionState pcs = storeIngestionTaskUnderTest.getPartitionConsumptionState(PARTITION_FOO);
+      OffsetRecord offsetRecord = pcs.getOffsetRecord();
+      Assert.assertEquals(pcs.getLatestProcessedLocalVersionTopicOffset(), 0L);
+      Assert.assertEquals(offsetRecord.getLocalVersionTopicOffset(), 0L);
+
+      // verify 2 messages were processed
+      verify(mockStoreIngestionStats, timeout(TEST_TIMEOUT_MS).times(2)).recordTotalRecordsConsumed();
+      Assert.assertEquals(pcs.getLatestProcessedLocalVersionTopicOffset(), 2L); // PCS updated
+      Assert.assertEquals(offsetRecord.getLocalVersionTopicOffset(), 0L); // offsetRecord hasn't been updated yet
+
+      storeIngestionTaskUnderTest.close();
+
+      // Verify the OffsetRecord is synced up with pcs and get persisted only once during shutdown
+      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS).times(1)).put(eq(topic), eq(PARTITION_FOO), any());
+      Assert.assertEquals(offsetRecord.getLocalVersionTopicOffset(), 2L);
+
+    }, isActiveActiveReplicationEnabled, configOverride -> {
+      // set very high threshold so offsetRecord isn't be synced during regular consumption
+      doReturn(100_000L).when(configOverride).getDatabaseSyncBytesIntervalForTransactionalMode();
+    });
+    Assert.assertEquals(mockNotifierError.size(), 0);
+  }
+
+  private VeniceStoreVersionConfig getDefaultMockVeniceStoreVersionConfig(
+      Consumer<VeniceStoreVersionConfig> storeVersionConfigOverride) {
+    // mock the store config
+    VeniceStoreVersionConfig storeConfig = mock(VeniceStoreVersionConfig.class);
+    doReturn(topic).when(storeConfig).getStoreVersionName();
+    doReturn(0).when(storeConfig).getTopicOffsetCheckIntervalMs();
+    doReturn(READ_CYCLE_DELAY_MS).when(storeConfig).getKafkaReadCycleDelayMs();
+    doReturn(EMPTY_POLL_SLEEP_MS).when(storeConfig).getKafkaEmptyPollSleepMs();
+    doReturn(databaseSyncBytesIntervalForTransactionalMode).when(storeConfig)
+        .getDatabaseSyncBytesIntervalForTransactionalMode();
+    doReturn(databaseSyncBytesIntervalForDeferredWriteMode).when(storeConfig)
+        .getDatabaseSyncBytesIntervalForDeferredWriteMode();
+    doReturn(false).when(storeConfig).isReadOnlyForBatchOnlyStoreEnabled();
+    storeVersionConfigOverride.accept(storeConfig);
+    return storeConfig;
   }
 
   private static class MockStoreVersionConfigs {
