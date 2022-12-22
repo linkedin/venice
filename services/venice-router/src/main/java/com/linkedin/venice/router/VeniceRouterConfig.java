@@ -277,7 +277,7 @@ public class VeniceRouterConfig {
     perNodeClientAllocationEnabled = props.getBoolean(ROUTER_PER_NODE_CLIENT_ENABLED, false);
     perNodeClientThreadCount = props.getInt(ROUTER_PER_NODE_CLIENT_THREAD_COUNT, 2);
 
-    keyValueProfilingEnabled = props.getBoolean(KEY_VALUE_PROFILING_ENABLED, false);
+    keyValueProfilingEnabled = props.getBoolean(KEY_VALUE_PROFILING_ENABLED, true);
 
     leakedFutureCleanupPollIntervalMs =
         props.getLong(ROUTER_LEAKED_FUTURE_CLEANUP_POLL_INTERVAL_MS, TimeUnit.MINUTES.toMillis(1));

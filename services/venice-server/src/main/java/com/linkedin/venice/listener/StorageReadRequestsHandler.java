@@ -68,7 +68,7 @@ import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -397,8 +397,8 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     response.setValueRecord(valueRecord);
 
     if (keyValueProfilingEnabled) {
-      response.setOptionalKeySizeList(Optional.of(Arrays.asList(key.length)));
-      response.setOptionalValueSizeList(Optional.of(Arrays.asList(response.isFound() ? valueRecord.getDataSize() : 0)));
+      response.setKeyListSize(Collections.singletonList(key.length));
+      response.setValueListSize(Collections.singletonList(response.isFound() ? valueRecord.getDataSize() : 0));
     }
 
     return response;
@@ -428,10 +428,8 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     CompletableFuture[] chunkFutures = new CompletableFuture[splitSize];
     PartitionerConfig partitionerConfig = getPartitionerConfig(request.getResourceName());
 
-    Optional<List<Integer>> optionalKeyList =
-        keyValueProfilingEnabled ? Optional.of(new ArrayList<>(totalKeyNum)) : Optional.empty();
-    Optional<List<Integer>> optionalValueList =
-        keyValueProfilingEnabled ? Optional.of(new ArrayList<>(totalKeyNum)) : Optional.empty();
+    List<Integer> responseKeyList = keyValueProfilingEnabled ? new ArrayList<>(totalKeyNum) : null;
+    List<Integer> responseValueList = keyValueProfilingEnabled ? new ArrayList<>(totalKeyNum) : null;
 
     for (int cur = 0; cur < splitSize; ++cur) {
       final int finalCur = cur;
@@ -443,7 +441,9 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
         int endPos = Math.min((finalCur + 1) * parallelChunkSize, totalKeyNum);
         for (int subChunkCur = startPos; subChunkCur < endPos; ++subChunkCur) {
           final MultiGetRouterRequestKeyV1 key = keyList.get(subChunkCur);
-          optionalKeyList.ifPresent(list -> list.add(key.keyBytes.remaining()));
+          if (responseKeyList != null) {
+            responseKeyList.add(key.keyBytes.remaining());
+          }
           int subPartitionId = getSubPartitionId(key.partitionId, topic, partitionerConfig, key.keyBytes.array());
           MultiGetResponseRecordV1 record =
               BatchGetChunkingAdapter.get(storageEngine, subPartitionId, key.keyBytes, isChunked, responseWrapper);
@@ -467,8 +467,8 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
             try {
               responseWrapper.addRecord(record);
 
-              if (optionalValueList.isPresent()) {
-                optionalValueList.get().add(record.value.remaining());
+              if (responseValueList != null) {
+                responseValueList.add(record.value.remaining());
               }
 
             } finally {
@@ -483,8 +483,8 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
       if (e != null) {
         throw new VeniceException(e);
       }
-      responseWrapper.setOptionalKeySizeList(optionalKeyList);
-      responseWrapper.setOptionalValueSizeList(optionalValueList);
+      responseWrapper.setKeyListSize(responseKeyList);
+      responseWrapper.setValueListSize(responseValueList);
       return responseWrapper;
     });
   }

@@ -16,7 +16,6 @@ import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpServerCodec;
 import java.util.List;
-import java.util.Optional;
 
 
 public class StatsHandler extends ChannelDuplexHandler {
@@ -38,8 +37,8 @@ public class StatsHandler extends ChannelDuplexHandler {
   private int countOperatorCount = 0;
   private boolean isRequestTerminatedEarly = false;
 
-  private Optional<List<Integer>> optionalKeySizeList = Optional.empty();
-  private Optional<List<Integer>> optionalValueSizeList = Optional.empty();
+  private List<Integer> keySizeList;
+  private List<Integer> valueSizeList;
 
   private final AggServerHttpRequestStats singleGetStats;
   private final AggServerHttpRequestStats multiGetStats;
@@ -179,12 +178,12 @@ public class StatsHandler extends ChannelDuplexHandler {
     this.multiChunkLargeValueCount = multiChunkLargeValueCount;
   }
 
-  public void setOptionalKeySizeList(Optional<List<Integer>> optionalKeySizeList) {
-    this.optionalKeySizeList = optionalKeySizeList;
+  public void setKeySizeList(List<Integer> keySizeList) {
+    this.keySizeList = keySizeList;
   }
 
-  public void setOptionalValueSizeList(Optional<List<Integer>> optionalValueSizeList) {
-    this.optionalValueSizeList = optionalValueSizeList;
+  public void setValueSizeList(List<Integer> valueSizeList) {
+    this.valueSizeList = valueSizeList;
   }
 
   public StatsHandler(
@@ -224,9 +223,6 @@ public class StatsHandler extends ChannelDuplexHandler {
       cosineSimilarityCount = 0;
       hadamardProductCount = 0;
       isRequestTerminatedEarly = false;
-
-      optionalKeySizeList = Optional.empty();
-      optionalValueSizeList = Optional.empty();
 
       /**
        * For a single 'channelRead' invocation, Netty will guarantee all the following 'channelRead' functions
@@ -273,12 +269,12 @@ public class StatsHandler extends ChannelDuplexHandler {
       if (!statCallbackExecuted) {
         recordBasicMetrics();
 
-        optionalKeySizeList.ifPresent(
-            keySizeList -> keySizeList.forEach(keySize -> currentStats.recordKeySizeInByte(storeName, keySize)));
-        optionalValueSizeList.ifPresent(
-            valueSizeList -> valueSizeList
-                .forEach(valueSize -> currentStats.recordValueSizeInByte(storeName, valueSize)));
-
+        if (keySizeList != null) {
+          keySizeList.forEach(keySize -> currentStats.recordKeySizeInByte(storeName, keySize));
+        }
+        if (valueSizeList != null) {
+          valueSizeList.forEach(valueSize -> currentStats.recordValueSizeInByte(storeName, valueSize));
+        }
         double elapsedTime = LatencyUtils.getLatencyInMS(startTimeInNS);
         // if ResponseStatus is either OK or NOT_FOUND and the channel write is succeed,
         // records a successRequest in stats. Otherwise, records a errorRequest in stats;
