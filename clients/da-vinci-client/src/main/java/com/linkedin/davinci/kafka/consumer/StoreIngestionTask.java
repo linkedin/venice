@@ -1442,11 +1442,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
 
       // If the ingestion task is stopped gracefully (server stops), persist processed offset to disk
-      for (PartitionConsumptionState partitionConsumptionState: partitionConsumptionStateMap.values()) {
+      for (Map.Entry<Integer, PartitionConsumptionState> entry: partitionConsumptionStateMap.entrySet()) {
         /**
          * Now, there are two threads, which could potentially trigger {@link #syncOffset(String, PartitionConsumptionState)}:
-         * 1. {@link StoreBufferService.StoreBufferDrainer}, which will checkpoint
-         *    periodically;
+         * 1. {@link #processConsumerRecord} that will sync offset based on the consumed byte size.
          * 2. The main thread of ingestion task here, which will checkpoint when gracefully shutting down;
          *
          * We would like to make sure the syncOffset invocation is sequential with the message processing, so here
@@ -1456,6 +1455,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * offset and checksum, since the checksum could change in another thread, but the corresponding offset change
          * hasn't been applied yet, when checkpointing happens in current thread.
          */
+
+        int partition = entry.getKey();
+        PartitionConsumptionState partitionConsumptionState = entry.getValue();
         consumerUnSubscribeAllTopics(partitionConsumptionState);
 
         if (ingestionCheckpointDuringGracefulShutdownEnabled) {
@@ -1463,6 +1465,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               kafkaVersionTopic,
               partitionConsumptionState.getPartition(),
               partitionConsumptionState);
+
+          this.kafkaDataIntegrityValidator
+              .updateOffsetRecordForPartition(partition, partitionConsumptionState.getOffsetRecord());
+          updateOffsetMetadataInOffsetRecord(partitionConsumptionState);
           syncOffset(kafkaVersionTopic, partitionConsumptionState);
         }
       }
@@ -2307,14 +2313,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        * The reason to transform the internal state only during checkpointing is that
        * the intermediate checksum generation is an expensive operation.
        */
-      this.kafkaDataIntegrityValidator.updateOffsetRecord(subPartition, offsetRecord);
-      // Potentially update the offset metadata in the OffsetRecord
-      updateOffsetMetadataInOffsetRecord(
-          partitionConsumptionState,
-          offsetRecord,
-          record,
-          leaderProducedRecordContext,
-          kafkaUrl);
+      this.kafkaDataIntegrityValidator.updateOffsetRecordForPartition(subPartition, offsetRecord);
+      // update the offset metadata in the OffsetRecord
+      updateOffsetMetadataInOffsetRecord(partitionConsumptionState);
       syncOffset(kafkaVersionTopic, partitionConsumptionState);
     }
   }
@@ -2328,8 +2329,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * Refer to the JavaDoc of {@link #updateOffsetMetadataInOffsetRecord(PartitionConsumptionState, OffsetRecord, ConsumerRecord, LeaderProducedRecordContext, String)}
-   * for the criteria of when to sync offset.
+   * Update the offset metadata in OffsetRecord in the following cases:
+   * 1. A ControlMessage other than Start_of_Segment and End_of_Segment is processed
+   * 2. The size of total processed message has exceeded a threshold: {@link #databaseSyncBytesIntervalForDeferredWriteMode}
+   *    for batch data and {@link #databaseSyncBytesIntervalForTransactionalMode} for real-time updates.
+   * For RocksDB, too frequent sync will produce lots of small level-0 SST files, which makes the compaction very inefficient.
+   * Hence, we want to avoid the database sync for the following cases:
+   * 1. Every ControlMessage
+   * 2. Record count based strategy, which doesn't work well for stores with very small key/value pairs.
    */
   private boolean shouldSyncOffset(
       PartitionConsumptionState pcs,
@@ -2365,6 +2372,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return syncOffset;
   }
 
+  /**
+   * This method flushes data partition on disk and syncs the underlying database with {@link OffsetRecord}.
+   * Note that the updates for {@link OffsetRecord} is happened in {@link #updateOffsetMetadataInOffsetRecord}
+   * @param topic, the given version topic(VT) for the store.
+   * @param pcs, the corresponding {@link PartitionConsumptionState} to sync with.
+   */
   private void syncOffset(String topic, PartitionConsumptionState pcs) {
     int partition = pcs.getPartition();
     AbstractStorageEngine storageEngineReloadedFromRepo = storageEngineRepository.getLocalStorageEngine(topic);
@@ -2690,21 +2703,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * Update the offset metadata in OffsetRecord in two cases:
-   * 1. A ControlMessage other than Start_of_Segment and End_of_Segment is processed
-   * 2. The size of total processed message has exceeded a threshold: {@link #databaseSyncBytesIntervalForDeferredWriteMode}
-   *    for batch data and {@link #databaseSyncBytesIntervalForTransactionalMode} for real-time updates
+   * Sync the metadata about offset in {@link OffsetRecord}.
+   * {@link PartitionConsumptionState} will pass through some information to {@link OffsetRecord} for persistence and
+   * Offset rewind/split brain has been guarded in {@link #updateLatestInMemoryProcessedOffset}.
+   *
+   * @param partitionConsumptionState
    */
-  protected abstract void updateOffsetMetadataInOffsetRecord(
-      PartitionConsumptionState partitionConsumptionState,
-      OffsetRecord offsetRecord,
-      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecordWrapper,
-      LeaderProducedRecordContext leaderProducedRecordContext,
-      String kafkaUrl);
+  protected abstract void updateOffsetMetadataInOffsetRecord(PartitionConsumptionState partitionConsumptionState);
 
   /**
    * Maintain the latest processed offsets by drainers in memory; in most of the time, these offsets are ahead of the
-   * checkpoint offsets inside {@link OffsetRecord}
+   * checkpoint offsets inside {@link OffsetRecord}. Prior to update the offset in memory, the underlying storage engine
+   * should have persisted the given record.
    */
   protected abstract void updateLatestInMemoryProcessedOffset(
       PartitionConsumptionState partitionConsumptionState,
@@ -3070,6 +3080,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
+   * Write the kafka message to the underlying storage engine.
+   * @param consumerRecord
+   * @param partitionConsumptionState
+   * @param leaderProducedRecordContext
    * @return the size of the data which was written to persistent storage.
    */
   private int processKafkaDataMessage(
@@ -3748,5 +3762,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected String getKafkaVersionTopic() {
     return kafkaVersionTopic;
+  }
+
+  /**
+   * Validate if the given consumerRecord has a valid upstream offset to update from.
+   * @param consumerRecord
+   * @return true, if the record is not null and contains a valid upstream offset, otherwise false.
+   */
+  protected boolean shouldUpdateUpstreamOffset(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord) {
+    if (consumerRecord == null) {
+      return false;
+    }
+    KafkaMessageEnvelope kafkaValue = consumerRecord.value();
+    return kafkaValue.leaderMetadataFooter != null && kafkaValue.leaderMetadataFooter.upstreamOffset >= 0;
   }
 }

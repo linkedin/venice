@@ -58,7 +58,13 @@ public class KafkaDataIntegrityValidator {
     producerTracker.validateMessage(consumerRecord, endOfPushReceived, tolerateMissingMsgs);
   }
 
-  public void updateOffsetRecord(int partition, OffsetRecord offsetRecord) {
+  /**
+   * For a given partition, find all the producers that has written to this partition and update the offsetRecord using
+   * segment information.
+   * @param partition
+   * @param offsetRecord
+   */
+  public void updateOffsetRecordForPartition(int partition, OffsetRecord offsetRecord) {
     producerTrackerMap.values().forEach(producerTracker -> producerTracker.updateOffsetRecord(partition, offsetRecord));
   }
 

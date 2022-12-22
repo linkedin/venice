@@ -224,6 +224,18 @@ public class OffsetRecord {
     }
   }
 
+  /**
+   * Reset the checkpoint upstream offset map to another map provided as the input.
+   * @param checkpointUpstreamOffsetMap
+   */
+  public void resetUpstreamOffsetMap(@Nonnull Map<String, Long> checkpointUpstreamOffsetMap) {
+    Validate.notNull(checkpointUpstreamOffsetMap);
+    for (Map.Entry<String, Long> offsetEntry: checkpointUpstreamOffsetMap.entrySet()) {
+      // leader offset can be the topic offset from any colo
+      this.setLeaderUpstreamOffset(offsetEntry.getKey(), offsetEntry.getValue());
+    }
+  }
+
   public GUID getLeaderGUID() {
     return this.partitionState.leaderGUID;
   }

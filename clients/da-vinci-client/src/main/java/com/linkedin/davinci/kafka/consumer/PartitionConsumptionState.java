@@ -2,6 +2,7 @@ package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.utils.ByteArrayKey;
+import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.TopicSwitch;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
@@ -29,6 +30,11 @@ public class PartitionConsumptionState {
   private final int userPartition;
   private final boolean hybrid;
   private final OffsetRecord offsetRecord;
+
+  private GUID leaderGUID;
+
+  private String leaderHostId;
+
   /** whether the ingestion of current partition is deferred-write. */
   private boolean deferredWrite;
   private boolean errorReported;
@@ -184,9 +190,11 @@ public class PartitionConsumptionState {
       offsetRecord.cloneUpstreamOffsetMap(consumedUpstreamRTOffsetMap);
       offsetRecord.cloneUpstreamOffsetMap(latestProcessedUpstreamRTOffsetMap);
     }
-    // Restore in-memory latest consumed version topic offset from the checkpoint version topic offset
+    // Restore in-memory latest consumed version topic offset and leader info from the checkpoint version topic offset
     this.latestProcessedLocalVersionTopicOffset = offsetRecord.getLocalVersionTopicOffset();
     this.latestProcessedUpstreamVersionTopicOffset = offsetRecord.getCheckpointUpstreamVersionTopicOffset();
+    this.leaderHostId = offsetRecord.getLeaderHostId();
+    this.leaderGUID = offsetRecord.getLeaderGUID();
   }
 
   public int getPartition() {
@@ -499,7 +507,7 @@ public class PartitionConsumptionState {
   }
 
   /**
-   * This immutable class holds a association between a key and  value and the source offset of the consumed message.
+   * This immutable class holds a association between a key and value and the source offset of the consumed message.
    * The value could be either as received in kafka ConsumerRecord or it could be a write computed value.
    */
   public static class TransientRecord {
@@ -645,8 +653,23 @@ public class PartitionConsumptionState {
     return isDataRecoveryCompleted;
   }
 
-  // For testing only
   public Map<String, Long> getLatestProcessedUpstreamRTOffsetMap() {
     return this.latestProcessedUpstreamRTOffsetMap;
+  }
+
+  public GUID getLeaderGUID() {
+    return this.leaderGUID;
+  }
+
+  public void setLeaderGUID(GUID leaderGUID) {
+    this.leaderGUID = leaderGUID;
+  }
+
+  public String getLeaderHostId() {
+    return this.leaderHostId;
+  }
+
+  public void setLeaderHostId(String hostId) {
+    this.leaderHostId = hostId;
   }
 }
