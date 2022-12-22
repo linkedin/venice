@@ -1,0 +1,24 @@
+{
+  "type" : "record",
+  "name" : "TestRecord",
+  "namespace" : "com.linkedin.avro",
+  "fields" : [ {
+    "name" : "RegularField",
+    "type" : "string",
+    "default" : "default_venice"
+  }, {
+    "name" : "IntArrayField",
+    "type" : {
+      "type" : "array",
+      "items" : "int"
+    },
+    "default" : [ ]
+  }, {
+    "name" : "MapField",
+    "type" : {
+      "type" : "map",
+      "values" : "int"
+    },
+    "default": {}
+  } ]
+}

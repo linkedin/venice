@@ -41,6 +41,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.REGULAR_V
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_FACTOR;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_METADATA_PROTOCOL_VERSION_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TIME_IN_SECONDS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.RMD_CHUNKING_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_QUOTA_IN_BYTE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_MIGRATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_TO_GO_ONLINE;
@@ -99,6 +100,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreCurrentVersio
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreOwner;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStorePartitionCount;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
+import com.linkedin.venice.controller.kafka.protocol.admin.StoreViewConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.SupersetSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStoragePersona;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
@@ -2189,6 +2191,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<CompressionStrategy> compressionStrategy = params.getCompressionStrategy();
       Optional<Boolean> clientDecompressionEnabled = params.getClientDecompressionEnabled();
       Optional<Boolean> chunkingEnabled = params.getChunkingEnabled();
+      Optional<Boolean> rmdChunkingEnabled = params.getRmdChunkingEnabled();
       Optional<Integer> batchGetLimit = params.getBatchGetLimit();
       Optional<Integer> numVersionsToPreserve = params.getNumVersionsToPreserve();
       Optional<Boolean> incrementalPushEnabled = params.getIncrementalPushEnabled();
@@ -2213,6 +2216,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Boolean> activeActiveReplicationEnabled = params.getActiveActiveReplicationEnabled();
       Optional<String> regionsFilter = params.getRegionsFilter();
       Optional<String> personaName = params.getStoragePersona();
+      Optional<Map<String, String>> storeViewConfig = params.getStoreViews();
 
       /**
        * Check whether parent controllers will only propagate the update configs to child controller, or all unchanged
@@ -2295,6 +2299,12 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.activeActiveReplicationEnabled = activeActiveReplicationEnabled
           .map(addToUpdatedConfigList(updatedConfigsList, ACTIVE_ACTIVE_REPLICATION_ENABLED))
           .orElseGet(currStore::isActiveActiveReplicationEnabled);
+
+      if (storeViewConfig.isPresent()) {
+        Map<String, StoreViewConfigRecord> mergedViewSettings =
+            VeniceHelixAdmin.mergeNewViewConfigsIntoOldConfigs(currStore, storeViewConfig.get());
+        setStore.views = mergedViewSettings;
+      }
 
       // Only update fields that are set, other fields will be read from the original store's partitioner config.
       PartitionerConfig updatedPartitionerConfig = VeniceHelixAdmin.mergeNewSettingsIntoOldPartitionerConfig(
@@ -2416,6 +2426,9 @@ public class VeniceParentHelixAdmin implements Admin {
               .orElseGet(currStore::getClientDecompressionEnabled);
       setStore.chunkingEnabled = chunkingEnabled.map(addToUpdatedConfigList(updatedConfigsList, CHUNKING_ENABLED))
           .orElseGet(currStore::isChunkingEnabled);
+      setStore.rmdChunkingEnabled =
+          rmdChunkingEnabled.map(addToUpdatedConfigList(updatedConfigsList, RMD_CHUNKING_ENABLED))
+              .orElseGet(currStore::isRmdChunkingEnabled);
       setStore.batchGetLimit = batchGetLimit.map(addToUpdatedConfigList(updatedConfigsList, BATCH_GET_LIMIT))
           .orElseGet(currStore::getBatchGetLimit);
       setStore.numVersionsToPreserve =
@@ -4433,18 +4446,13 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * @return the largest used version number by the given store.
+   * @return the largest used version number for the given store from the store graveyard.
    */
   @Override
-  public int getStoreLargestUsedVersion(String clusterName, String storeName) {
+  public int getLargestUsedVersionFromStoreGraveyard(String clusterName, String storeName) {
     Map<String, ControllerClient> childControllers = getVeniceHelixAdmin().getControllerClientMap(clusterName);
-    int aggregatedLargestUsedVersionNumber;
-    if (hasStore(clusterName, storeName)) {
-      aggregatedLargestUsedVersionNumber = getStore(clusterName, storeName).getLargestUsedVersionNumber();
-    } else {
-      aggregatedLargestUsedVersionNumber =
-          getVeniceHelixAdmin().getStoreGraveyard().getLargestUsedVersionNumber(storeName);
-    }
+    int aggregatedLargestUsedVersionNumber =
+        getVeniceHelixAdmin().getStoreGraveyard().getLargestUsedVersionNumber(storeName);
     for (Map.Entry<String, ControllerClient> controller: childControllers.entrySet()) {
       VersionResponse response = controller.getValue().getStoreLargestUsedVersion(clusterName, storeName);
       if (response.getVersion() > aggregatedLargestUsedVersionNumber) {

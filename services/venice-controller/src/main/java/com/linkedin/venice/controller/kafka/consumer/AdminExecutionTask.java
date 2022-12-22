@@ -52,6 +52,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.CollectionUtils;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
@@ -475,6 +476,7 @@ public class AdminExecutionTask implements Callable<Void> {
         .setCompressionStrategy(CompressionStrategy.valueOf(message.compressionStrategy))
         .setClientDecompressionEnabled(message.clientDecompressionEnabled)
         .setChunkingEnabled(message.chunkingEnabled)
+        .setRmdChunkingEnabled(message.rmdChunkingEnabled)
         .setBatchGetLimit(message.batchGetLimit)
         .setNumVersionsToPreserve(message.numVersionsToPreserve)
         .setIncrementalPushEnabled(message.incrementalPushEnabled)
@@ -493,6 +495,12 @@ public class AdminExecutionTask implements Callable<Void> {
       params.setRegularVersionETLEnabled(message.ETLStoreConfig.regularVersionETLEnabled)
           .setFutureVersionETLEnabled(message.ETLStoreConfig.futureVersionETLEnabled)
           .setEtledProxyUserAccount(message.ETLStoreConfig.etledUserProxyAccount.toString());
+    }
+
+    if (message.views != null) {
+      // TODO: This probably needs to be a bit more robust, for now this is fine.
+      params.setStoreViews(
+          message.views.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().toString())));
     }
 
     if (message.largestUsedVersionNumber != null) {

@@ -13,7 +13,7 @@ import java.util.concurrent.CompletableFuture;
 
 /**
  * This interface defines the APIs to retrieve store metadata and routing data,
- * and it also includes the feedback APIs: {@link #sendRequestToInstance}
+ * and it also includes the feedback APIs: {@link #trackHealthBasedOnRequestToInstance}
  * to decide the healthiness of each replica.
  */
 public interface StoreMetadata extends SchemaReader {
@@ -45,7 +45,7 @@ public interface StoreMetadata extends SchemaReader {
       int requiredReplicaCount,
       Set<String> excludedInstances);
 
-  CompletableFuture<HttpStatus> sendRequestToInstance(String instance, int version, int partitionId);
+  CompletableFuture<HttpStatus> trackHealthBasedOnRequestToInstance(String instance, int version, int partitionId);
 
   InstanceHealthMonitor getInstanceHealthMonitor();
 

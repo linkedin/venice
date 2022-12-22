@@ -7,6 +7,7 @@ import static com.linkedin.venice.integration.utils.ServiceFactory.getVeniceClus
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.davinci.client.StorageClass;
+import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.client.store.predicate.Predicate;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -150,18 +151,20 @@ public class DaVinciPartialKeyLookupBenchmark {
       keys.add(key);
     }
 
-    client.compute().project("value").streamingExecute(keys, new StreamingCallback<GenericRecord, GenericRecord>() {
-      @Override
-      public void onRecordReceived(GenericRecord key, GenericRecord value) {
-        blackhole.consume(key);
-        blackhole.consume(value);
-      }
+    client.compute()
+        .project("value")
+        .streamingExecute(keys, new StreamingCallback<GenericRecord, ComputeGenericRecord>() {
+          @Override
+          public void onRecordReceived(GenericRecord key, ComputeGenericRecord value) {
+            blackhole.consume(key);
+            blackhole.consume(value);
+          }
 
-      @Override
-      public void onCompletion(Optional<Exception> exception) {
-        exception.ifPresent(Throwable::printStackTrace);
-      }
-    });
+          @Override
+          public void onCompletion(Optional<Exception> exception) {
+            exception.ifPresent(Throwable::printStackTrace);
+          }
+        });
   }
 
   protected String buildVectorStore(VeniceClusterWrapper cluster) throws Exception {

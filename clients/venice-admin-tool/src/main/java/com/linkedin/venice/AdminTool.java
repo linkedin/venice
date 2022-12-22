@@ -84,6 +84,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.text.SimpleDateFormat;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -98,6 +99,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.StringJoiner;
+import java.util.TimeZone;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
@@ -356,6 +358,9 @@ public class AdminTool {
           break;
         case DUMP_KAFKA_TOPIC:
           dumpKafkaTopic(cmd);
+          break;
+        case QUERY_KAFKA_TOPIC:
+          queryKafkaTopic(cmd);
           break;
         case MIGRATE_STORE:
           migrateStore(cmd);
@@ -886,6 +891,7 @@ public class AdminTool {
     genericParam(cmd, Arg.ETLED_PROXY_USER_ACCOUNT, s -> s, p -> params.setEtledProxyUserAccount(p), argSet);
     booleanParam(cmd, Arg.NATIVE_REPLICATION_ENABLED, p -> params.setNativeReplicationEnabled(p), argSet);
     genericParam(cmd, Arg.PUSH_STREAM_SOURCE_ADDRESS, s -> s, p -> params.setPushStreamSourceAddress(p), argSet);
+    stringMapParam(cmd, Arg.STORE_VIEW_CONFIGS, p -> params.setStoreViews(p), argSet);
     longParam(
         cmd,
         Arg.BACKUP_VERSION_RETENTION_DAY,
@@ -1184,6 +1190,29 @@ public class AdminTool {
 
     new ControlMessageDumper(consumerProps, kafkaTopic, partitionNumber, startingOffset, messageCount).fetch()
         .display();
+  }
+
+  private static void queryKafkaTopic(CommandLine cmd) throws java.text.ParseException {
+    Properties consumerProps = loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
+    String kafkaUrl = getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS);
+    consumerProps.setProperty(BOOTSTRAP_SERVERS_CONFIG, kafkaUrl);
+
+    String kafkaTopic = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
+    String startDateInPST = getRequiredArgument(cmd, Arg.START_DATE);
+    String endDateInPST = getRequiredArgument(cmd, Arg.END_DATE);
+    String progressInterval = getRequiredArgument(cmd, Arg.PROGRESS_INTERVAL);
+    String keyString = getRequiredArgument(cmd, Arg.KEY);
+
+    SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss");
+    dateFormat.setTimeZone(TimeZone.getTimeZone("America/Los_Angeles"));
+    TopicMessageFinder.find(
+        controllerClient,
+        consumerProps,
+        kafkaTopic,
+        keyString,
+        dateFormat.parse(startDateInPST).getTime(),
+        dateFormat.parse(endDateInPST).getTime(),
+        Long.parseLong(progressInterval));
   }
 
   private static void dumpKafkaTopic(CommandLine cmd) {

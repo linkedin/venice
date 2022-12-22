@@ -18,27 +18,22 @@ public class MainIngestionRequestClientTest {
 
   @Test(timeOut = TIMEOUT_IN_MILLIS)
   public void testIngestionCommand() {
-    MainIngestionRequestClient client = new MainIngestionRequestClient(Optional.empty(), 12345);
-    HttpClientTransport mockedClientTransport = Mockito.mock(HttpClientTransport.class);
-    IngestionTaskReport taskReport = new IngestionTaskReport();
-    taskReport.setMessage("TEST MSG");
-    when(mockedClientTransport.sendRequestWithRetry(any(), any(), anyInt())).thenReturn(taskReport);
-    client.setHttpClientTransport(mockedClientTransport);
-    // start consumption should throw exception on execution failure on forked process.
-    Assert.assertThrows(VeniceException.class, () -> {
-      client.startConsumption("dummyTopic", 1);
-    });
-    // leader promotion should return false on execution failure on forked process.
-    Assert.assertFalse(client.promoteToLeader("dummyTopic", 1));
+    try (MainIngestionRequestClient client = new MainIngestionRequestClient(Optional.empty(), 12345)) {
+      HttpClientTransport mockedClientTransport = Mockito.mock(HttpClientTransport.class);
+      IngestionTaskReport taskReport = new IngestionTaskReport();
+      taskReport.setMessage("TEST MSG");
+      when(mockedClientTransport.sendRequestWithRetry(any(), any(), anyInt())).thenReturn(taskReport);
+      client.setHttpClientTransport(mockedClientTransport);
+      // leader promotion should return false on execution failure on forked process.
+      Assert.assertFalse(client.promoteToLeader("dummyTopic", 1));
+      Assert.assertFalse(client.startConsumption("dummyTopic", 1));
 
-    HttpClientTransport mockedBadClientTransport = Mockito.mock(HttpClientTransport.class);
-    client.setHttpClientTransport(mockedBadClientTransport);
-    // command should throw exception when failing to send command to forked process.
-    when(mockedBadClientTransport.sendRequestWithRetry(any(), any(), anyInt()))
-        .thenThrow(new VeniceException("TEST EXCEPTION"));
-    Assert.assertThrows(VeniceException.class, () -> {
-      client.startConsumption("dummyTopic", 1);
-    });
+      HttpClientTransport mockedBadClientTransport = Mockito.mock(HttpClientTransport.class);
+      client.setHttpClientTransport(mockedBadClientTransport);
 
+      // Ingestion request command should throw exception when failing to send command to forked process.
+      when(mockedBadClientTransport.sendRequestWithRetry(any(), any(), anyInt()))
+          .thenThrow(new VeniceException("TEST EXCEPTION"));
+    }
   }
 }

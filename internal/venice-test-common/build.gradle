@@ -74,6 +74,10 @@ dependencies {
 
 task jmh(type: JavaExec, dependsOn: jmhClasses) {
   main = 'org.openjdk.jmh.Main'
+
+  // In order to run just one test from the command line, specify it here, and run ./gradlew internal:venice-test-common:jmh
+  // main = 'com.linkedin.venice.benchmark.ZstdDecompressionBenchmark'
+
   classpath = sourceSets.jmh.runtimeClasspath
 }
 

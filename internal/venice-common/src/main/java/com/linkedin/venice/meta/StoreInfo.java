@@ -5,6 +5,7 @@ import static com.linkedin.venice.meta.Store.NUM_VERSION_PRESERVE_NOT_SET;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.linkedin.venice.compression.CompressionStrategy;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -25,6 +26,7 @@ public class StoreInfo {
     storeInfo.setBatchGetLimit(store.getBatchGetLimit());
     storeInfo.setBootstrapToOnlineTimeoutInHours(store.getBootstrapToOnlineTimeoutInHours());
     storeInfo.setChunkingEnabled(store.isChunkingEnabled());
+    storeInfo.setRmdChunkingEnabled(store.isRmdChunkingEnabled());
     storeInfo.setClientDecompressionEnabled(store.getClientDecompressionEnabled());
     storeInfo.setCompressionStrategy(store.getCompressionStrategy());
     storeInfo.setCurrentVersion(store.getCurrentVersion());
@@ -61,6 +63,7 @@ public class StoreInfo {
     storeInfo.setVersions(store.getVersions());
     storeInfo.setWriteComputationEnabled(store.isWriteComputationEnabled());
     storeInfo.setReplicationMetadataVersionId(store.getRmdVersionID().orElse(-1));
+    storeInfo.setViewConfigs(store.getViewConfigs());
     return storeInfo;
   }
 
@@ -140,6 +143,11 @@ public class StoreInfo {
    * Whether the chunking is enabled, and this is for large value store.
    */
   private boolean chunkingEnabled = false;
+
+  /**
+   * Whether the replication metadata chunking is enabled for Active/Active replication enabled store.
+   */
+  private boolean rmdChunkingEnabled = false;
 
   /**
    * Whether cache is enabled in Router.
@@ -290,6 +298,8 @@ public class StoreInfo {
   private boolean activeActiveReplicationEnabled;
 
   private String kafkaBrokerUrl;
+
+  private Map<String, ViewConfig> viewConfigs = new HashMap<>();
 
   public StoreInfo() {
   }
@@ -468,6 +478,14 @@ public class StoreInfo {
     this.chunkingEnabled = chunkingEnabled;
   }
 
+  public boolean isRmdChunkingEnabled() {
+    return rmdChunkingEnabled;
+  }
+
+  public void setRmdChunkingEnabled(boolean rmdChunkingEnabled) {
+    this.rmdChunkingEnabled = rmdChunkingEnabled;
+  }
+
   public boolean isSingleGetRouterCacheEnabled() {
     return singleGetRouterCacheEnabled;
   }
@@ -546,6 +564,14 @@ public class StoreInfo {
 
   public void setWriteComputationEnabled(boolean writeComputationEnabled) {
     this.writeComputationEnabled = writeComputationEnabled;
+  }
+
+  public Map<String, ViewConfig> getViewConfigs() {
+    return viewConfigs;
+  }
+
+  public void setViewConfigs(Map<String, ViewConfig> viewConfigs) {
+    this.viewConfigs = viewConfigs;
   }
 
   public int getReplicationMetadataVersionId() {

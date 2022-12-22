@@ -73,6 +73,7 @@ import com.linkedin.venice.writer.SharedKafkaProducerService;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -112,7 +113,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private final VeniceConfigLoader veniceConfigLoader;
 
-  private final Queue<VeniceNotifier> onlineOfflineNotifiers = new ConcurrentLinkedQueue<>();
   private final Queue<VeniceNotifier> leaderFollowerNotifiers = new ConcurrentLinkedQueue<>();
 
   private final StorageMetadataService storageMetadataService;
@@ -331,7 +331,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         metricsRepository);
 
     VeniceNotifier notifier = new LogNotifier();
-    this.onlineOfflineNotifiers.add(notifier);
     this.leaderFollowerNotifiers.add(notifier);
 
     /**
@@ -492,7 +491,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     if (this.metaSystemStoreReplicaStatusNotifier == null) {
       throw new VeniceException("MetaSystemStoreReplicaStatusNotifier wasn't initialized properly");
     }
-    addCommonNotifier(this.metaSystemStoreReplicaStatusNotifier);
+    addIngestionNotifier(this.metaSystemStoreReplicaStatusNotifier);
     metaSystemStoreReplicaStatusNotifierQueued = true;
   }
 
@@ -605,7 +604,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     Utils.closeQuietlyWithErrorLogged(aggKafkaConsumerService);
 
-    onlineOfflineNotifiers.forEach(VeniceNotifier::close);
     leaderFollowerNotifiers.forEach(VeniceNotifier::close);
     Utils.closeQuietlyWithErrorLogged(metaStoreWriter);
 
@@ -924,13 +922,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   @Override
-  public void addCommonNotifier(VeniceNotifier notifier) {
-    onlineOfflineNotifiers.add(notifier);
-    leaderFollowerNotifiers.add(notifier);
-  }
-
-  @Override
-  public void addLeaderFollowerModelNotifier(VeniceNotifier notifier) {
+  public void addIngestionNotifier(VeniceNotifier notifier) {
     leaderFollowerNotifiers.add(notifier);
   }
 
@@ -1114,12 +1106,20 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   /**
    * This method should only be called when the forked ingestion process is handing over ingestion task to main process.
-   * It will collect the user partition's latest offsetRecords from partition consumption states.
+   * It collects the user partition's latest OffsetRecords from partition consumption states (PCS).
    * In theory, PCS should be available in this situation as we haven't unsubscribed from topic. If it is not available,
    * we will throw exception as this is not as expected.
    */
   public List<ByteBuffer> getPartitionOffsetRecords(String topicName, int partition) {
-    return getStoreIngestionTask(topicName).getStatusReportAdapter().getOffsetRecordArray(partition);
+    List<ByteBuffer> offsetRecordArray = new ArrayList<>();
+    StoreIngestionTask storeIngestionTask = getStoreIngestionTask(topicName);
+    int amplificationFactor = storeIngestionTask.getAmplificationFactor();
+    for (int i = 0; i < amplificationFactor; i++) {
+      int subPartitionId = amplificationFactor * partition + i;
+      PartitionConsumptionState pcs = storeIngestionTask.getPartitionConsumptionState(subPartitionId);
+      offsetRecordArray.add(ByteBuffer.wrap(pcs.getOffsetRecord().toBytes()));
+    }
+    return offsetRecordArray;
   }
 
   public ReadOnlyStoreRepository getMetadataRepo() {

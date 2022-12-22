@@ -194,6 +194,10 @@ public interface Store {
 
   void setHybridStoreConfig(HybridStoreConfig hybridStoreConfig);
 
+  Map<String, ViewConfig> getViewConfigs();
+
+  void setViewConfigs(Map<String, ViewConfig> viewConfigMap);
+
   boolean isHybrid();
 
   CompressionStrategy getCompressionStrategy();
@@ -207,6 +211,10 @@ public interface Store {
   boolean isChunkingEnabled();
 
   void setChunkingEnabled(boolean chunkingEnabled);
+
+  boolean isRmdChunkingEnabled();
+
+  void setRmdChunkingEnabled(boolean rmdChunkingEnabled);
 
   int getBatchGetLimit();
 

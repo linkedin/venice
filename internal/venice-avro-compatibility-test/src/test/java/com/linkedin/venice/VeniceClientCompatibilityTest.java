@@ -10,6 +10,7 @@ import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.utils.ClassPathSupplierForVeniceCluster;
@@ -174,7 +175,7 @@ public class VeniceClientCompatibilityTest {
     List<Float> p = Arrays.asList(100.0f, 0.1f);
     List<Float> cosP = Arrays.asList(123.4f, 5.6f);
     List<Float> hadamardP = Arrays.asList(135.7f, 246.8f);
-    Map<String, GenericRecord> computeResult = client.compute()
+    Map<String, ComputeGenericRecord> computeResult = client.compute()
         .project("id", "boolean_field", "int_field", "float_field", "member_feature")
         .dotProduct("member_feature", p, "member_score")
         .cosineSimilarity("member_feature", cosP, "cosine_similarity_result")
@@ -188,7 +189,7 @@ public class VeniceClientCompatibilityTest {
         .get(2, TimeUnit.SECONDS);
     Assert.assertEquals(computeResult.size(), keyCount);
 
-    for (Map.Entry<String, GenericRecord> entry: computeResult.entrySet()) {
+    for (Map.Entry<String, ComputeGenericRecord> entry: computeResult.entrySet()) {
       int keyIdx = getKeyIndex(entry.getKey(), KEY_PREFIX);
       // check projection result
       Assert.assertEquals(entry.getValue().get("id"), new Utf8(ID_FIELD_PREFIX + keyIdx));

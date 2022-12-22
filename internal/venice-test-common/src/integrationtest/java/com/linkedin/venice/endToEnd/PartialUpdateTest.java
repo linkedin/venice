@@ -311,7 +311,7 @@ public class PartialUpdateTest {
         sendStreamingRecord(veniceProducer, storeName, key, value);
 
         // Verify the streaming record
-        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
           try {
             GenericRecord retrievedValue = readValue(storeReader, key);
             assertNotNull(retrievedValue, "Key " + key + " should not be missing!");
@@ -333,7 +333,7 @@ public class PartialUpdateTest {
 
         sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord);
         // Verify the update
-        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
           try {
             GenericRecord retrievedValue = readValue(storeReader, key);
             assertNotNull(retrievedValue, "Key " + key + " should not be missing!");
@@ -368,7 +368,7 @@ public class PartialUpdateTest {
         // Delete the record
         sendStreamingRecord(veniceProducer, storeName, key, null);
         // Verify the delete
-        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
           try {
             GenericRecord retrievedValue = readValue(storeReader, key);
             assertNull(retrievedValue, "Key " + key + " should be missing!");
@@ -391,7 +391,7 @@ public class PartialUpdateTest {
 
         sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord2);
         // Verify the update
-        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
           try {
             GenericRecord retrievedValue = readValue(storeReader, key);
             assertNotNull(retrievedValue, "Key " + key + " should not be missing!");
@@ -412,7 +412,7 @@ public class PartialUpdateTest {
         GenericRecord partialUpdateRecord3 = updateBuilder.build();
         sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord3);
         // Verify the update
-        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
           try {
             GenericRecord retrievedValue = readValue(storeReader, key);
             assertNotNull(retrievedValue, "Key " + key + " should not be missing!");

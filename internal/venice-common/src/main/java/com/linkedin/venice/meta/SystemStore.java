@@ -269,6 +269,16 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
+  public Map<String, ViewConfig> getViewConfigs() {
+    return zkSharedStore.getViewConfigs();
+  }
+
+  @Override
+  public void setViewConfigs(Map<String, ViewConfig> viewConfigList) {
+    throwUnsupportedOperationException("setViewConfig");
+  }
+
+  @Override
   public boolean isHybrid() {
     return zkSharedStore.isHybrid();
   }
@@ -301,6 +311,16 @@ public class SystemStore extends AbstractStore {
   @Override
   public void setChunkingEnabled(boolean chunkingEnabled) {
     throwUnsupportedOperationException("setChunkingEnabled");
+  }
+
+  @Override
+  public boolean isRmdChunkingEnabled() {
+    return zkSharedStore.isRmdChunkingEnabled();
+  }
+
+  @Override
+  public void setRmdChunkingEnabled(boolean rmdChunkingEnabled) {
+    throwUnsupportedOperationException("setRmdChunkingEnabled");
   }
 
   @Override

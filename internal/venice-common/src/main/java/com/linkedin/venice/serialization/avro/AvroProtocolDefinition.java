@@ -40,7 +40,7 @@ public enum AvroProtocolDefinition {
   /**
    * Used for the Kafka topics, including the main data topics as well as the admin topic.
    */
-  KAFKA_MESSAGE_ENVELOPE(23, 10, KafkaMessageEnvelope.class),
+  KAFKA_MESSAGE_ENVELOPE(23, 11, KafkaMessageEnvelope.class),
 
   /**
    * Used to persist the state of a partition in Storage Nodes, including offset,
@@ -67,7 +67,7 @@ public enum AvroProtocolDefinition {
    *
    * TODO: Move AdminOperation to venice-common module so that we can properly reference it here.
    */
-  ADMIN_OPERATION(67, SpecificData.get().getSchema(ByteBuffer.class), "AdminOperation"),
+  ADMIN_OPERATION(69, SpecificData.get().getSchema(ByteBuffer.class), "AdminOperation"),
 
   /**
    * Single chunk of a large multi-chunk value. Just a bunch of bytes.
@@ -127,7 +127,7 @@ public enum AvroProtocolDefinition {
   /**
    * Value schema for metadata system store.
    */
-  METADATA_SYSTEM_SCHEMA_STORE(11, StoreMetaValue.class),
+  METADATA_SYSTEM_SCHEMA_STORE(13, StoreMetaValue.class),
 
   /**
    * Key schema for push status system store.

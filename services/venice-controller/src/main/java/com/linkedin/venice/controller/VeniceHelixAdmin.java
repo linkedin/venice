@@ -43,6 +43,7 @@ import com.linkedin.venice.controller.init.SystemSchemaInitializationRoutine;
 import com.linkedin.venice.controller.kafka.StoreStatusDecider;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.ControllerKafkaClientFactory;
+import com.linkedin.venice.controller.kafka.protocol.admin.StoreViewConfigRecord;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.ControllerRoute;
@@ -2177,6 +2178,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
           version.setVersionSwapDeferred(versionSwapDeferred);
 
+          version.setViewConfig(store.getViewConfigs());
+
           repository.updateStore(store);
           LOGGER.info("Add version: {} for store: {}", version.getNumber(), storeName);
 
@@ -3425,7 +3428,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private void setChunkingEnabled(String clusterName, String storeName, boolean chunkingEnabled) {
     storeMetadataUpdate(clusterName, storeName, store -> {
       store.setChunkingEnabled(chunkingEnabled);
+      return store;
+    });
+  }
 
+  private void setRmdChunkingEnabled(String clusterName, String storeName, boolean rmdChunkingEnabled) {
+    storeMetadataUpdate(clusterName, storeName, store -> {
+      store.setRmdChunkingEnabled(rmdChunkingEnabled);
       return store;
     });
   }
@@ -3555,6 +3564,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private void setPushStreamSourceAddress(String clusterName, String storeName, String pushStreamSourceAddress) {
     storeMetadataUpdate(clusterName, storeName, store -> {
       store.setPushStreamSourceAddress(pushStreamSourceAddress);
+      return store;
+    });
+  }
+
+  private void addStoreViews(String clusterName, String storeName, Map<String, String> viewConfigMap) {
+    storeMetadataUpdate(clusterName, storeName, store -> {
+      store.setViewConfigs(StoreViewUtils.convertStringMapViewToViewConfig(viewConfigMap));
       return store;
     });
   }
@@ -3726,6 +3742,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<CompressionStrategy> compressionStrategy = params.getCompressionStrategy();
     Optional<Boolean> clientDecompressionEnabled = params.getClientDecompressionEnabled();
     Optional<Boolean> chunkingEnabled = params.getChunkingEnabled();
+    Optional<Boolean> rmdChunkingEnabled = params.getRmdChunkingEnabled();
     Optional<Integer> batchGetLimit = params.getBatchGetLimit();
     Optional<Integer> numVersionsToPreserve = params.getNumVersionsToPreserve();
     Optional<Boolean> incrementalPushEnabled = params.getIncrementalPushEnabled();
@@ -3749,6 +3766,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<String> nativeReplicationSourceFabric = params.getNativeReplicationSourceFabric();
     Optional<Boolean> activeActiveReplicationEnabled = params.getActiveActiveReplicationEnabled();
     Optional<String> personaName = params.getStoragePersona();
+    Optional<Map<String, String>> storeViews = params.getStoreViews();
 
     final Optional<HybridStoreConfig> newHybridStoreConfig;
     if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent() || hybridTimeLagThreshold.isPresent()
@@ -3932,6 +3950,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         setChunkingEnabled(clusterName, storeName, chunkingEnabled.get());
       }
 
+      if (rmdChunkingEnabled.isPresent()) {
+        setRmdChunkingEnabled(clusterName, storeName, rmdChunkingEnabled.get());
+      }
+
       if (batchGetLimit.isPresent()) {
         setBatchGetLimit(clusterName, storeName, batchGetLimit.get());
       }
@@ -4053,6 +4075,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       if (personaName.isPresent()) {
         StoragePersonaRepository repository = getHelixVeniceClusterResources(clusterName).getStoragePersonaRepository();
         repository.addStoresToPersona(personaName.get(), Arrays.asList(storeName));
+      }
+
+      if (storeViews.isPresent()) {
+        addStoreViews(clusterName, storeName, storeViews.get());
       }
 
       LOGGER.info("Finished updating store: {} in cluster: {}", storeName, clusterName);
@@ -4223,6 +4249,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         partitionerClass.orElse(originalPartitionerConfig.getPartitionerClass()),
         partitionerParams.orElse(originalPartitionerConfig.getPartitionerParams()),
         amplificationFactor.orElse(originalPartitionerConfig.getAmplificationFactor()));
+  }
+
+  static Map<String, StoreViewConfigRecord> mergeNewViewConfigsIntoOldConfigs(
+      Store oldStore,
+      Map<String, String> viewParameters) {
+    // TODO: This should do some kind of merge logic based on what kind of views are being set up.
+    // since we only support one kind of view, we just overwrite the entire map. Merging logic should
+    // be some heuristic based on the type of view. For example, we may want multiple different kinds
+    // of projecting views, but only 1 change capture view potentially.
+    return StoreViewUtils.convertStringMapViewToStoreViewConfigRecord(viewParameters);
   }
 
   /**
@@ -7269,15 +7305,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * @return the largest used version number by the given store.
+   * @return the largest used version number for the given store from store graveyard.
    */
   @Override
-  public int getStoreLargestUsedVersion(String clusterName, String storeName) {
-    if (hasStore(clusterName, storeName)) {
-      return getStore(clusterName, storeName).getLargestUsedVersionNumber();
-    } else {
-      return getStoreGraveyard().getLargestUsedVersionNumber(storeName);
-    }
+  public int getLargestUsedVersionFromStoreGraveyard(String clusterName, String storeName) {
+    return getStoreGraveyard().getLargestUsedVersionNumber(storeName);
   }
 
   /**

@@ -368,6 +368,16 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public boolean isRmdChunkingEnabled() {
+      return this.delegate.isRmdChunkingEnabled();
+    }
+
+    @Override
+    public void setRmdChunkingEnabled(boolean rmdChunkingEnabled) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
     public String getStoreName() {
       return this.delegate.getStoreName();
     }
@@ -487,6 +497,24 @@ public class ReadOnlyStore implements Store {
 
     @Override
     public void setHybridStoreConfig(HybridStoreConfig hybridConfig) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public Map<String, ViewConfig> getViewConfigs() {
+      if (this.delegate.getViewConfigs() == null) {
+        return new HashMap<>();
+      } else {
+        return Collections.unmodifiableMap(
+            this.delegate.getViewConfigs()
+                .entrySet()
+                .stream()
+                .collect(Collectors.toMap(Map.Entry::getKey, e -> new ReadOnlyViewConfig(e.getValue()))));
+      }
+    }
+
+    @Override
+    public void setViewConfig(Map<String, ViewConfig> viewConfigList) {
       throw new UnsupportedOperationException();
     }
 
@@ -821,6 +849,21 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
+  public Map<String, ViewConfig> getViewConfigs() {
+
+    return Collections.unmodifiableMap(
+        this.delegate.getViewConfigs()
+            .entrySet()
+            .stream()
+            .collect(Collectors.toMap(Map.Entry::getKey, e -> new ReadOnlyViewConfig(e.getValue()))));
+  }
+
+  @Override
+  public void setViewConfigs(Map<String, ViewConfig> viewConfigList) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
   public boolean isHybrid() {
     return this.delegate.isHybrid();
   }
@@ -852,6 +895,16 @@ public class ReadOnlyStore implements Store {
 
   @Override
   public void setChunkingEnabled(boolean chunkingEnabled) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public boolean isRmdChunkingEnabled() {
+    return this.delegate.isRmdChunkingEnabled();
+  }
+
+  @Override
+  public void setRmdChunkingEnabled(boolean rmdChunkingEnabled) {
     throw new UnsupportedOperationException();
   }
 

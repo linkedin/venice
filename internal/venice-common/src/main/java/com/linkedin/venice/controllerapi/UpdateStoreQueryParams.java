@@ -43,8 +43,10 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_FACTOR;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_METADATA_PROTOCOL_VERSION_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TIME_IN_SECONDS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.RMD_CHUNKING_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_QUOTA_IN_BYTE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_MIGRATION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIEW;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_TO_GO_ONLINE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.UPDATED_CONFIGS_LIST;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
@@ -67,6 +69,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 
 public class UpdateStoreQueryParams extends QueryParams {
@@ -99,6 +102,7 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setBatchGetLimit(srcStore.getBatchGetLimit())
             .setBootstrapToOnlineTimeoutInHours(srcStore.getBootstrapToOnlineTimeoutInHours())
             .setChunkingEnabled(srcStore.isChunkingEnabled())
+            .setRmdChunkingEnabled(srcStore.isRmdChunkingEnabled())
             .setClientDecompressionEnabled(srcStore.getClientDecompressionEnabled())
             .setCompressionStrategy(srcStore.getCompressionStrategy())
             .setEnableReads(srcStore.isEnableStoreReads())
@@ -118,7 +122,14 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setReplicationFactor(srcStore.getReplicationFactor())
             .setAutoSchemaPushJobEnabled(srcStore.isSchemaAutoRegisterFromPushJobEnabled())
             .setStorageQuotaInByte(srcStore.getStorageQuotaInByte())
-            .setWriteComputationEnabled(srcStore.isWriteComputationEnabled());
+            .setWriteComputationEnabled(srcStore.isWriteComputationEnabled())
+            // TODO: This needs probably some refinement, but since we only support one kind of view type today, this is
+            // still easy to parse
+            .setStoreViews(
+                srcStore.getViewConfigs()
+                    .entrySet()
+                    .stream()
+                    .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().toString())));
 
     if (srcStore.getReplicationMetadataVersionId() != -1) {
       updateStoreQueryParams.setReplicationMetadataVersionID(srcStore.getReplicationMetadataVersionId());
@@ -365,6 +376,14 @@ public class UpdateStoreQueryParams extends QueryParams {
     return getBoolean(CHUNKING_ENABLED);
   }
 
+  public UpdateStoreQueryParams setRmdChunkingEnabled(boolean rmdChunkingEnabled) {
+    return putBoolean(RMD_CHUNKING_ENABLED, rmdChunkingEnabled);
+  }
+
+  public Optional<Boolean> getRmdChunkingEnabled() {
+    return getBoolean(RMD_CHUNKING_ENABLED);
+  }
+
   public UpdateStoreQueryParams setIncrementalPushEnabled(boolean incrementalPushEnabled) {
     return putBoolean(INCREMENTAL_PUSH_ENABLED, incrementalPushEnabled);
   }
@@ -435,6 +454,14 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public UpdateStoreQueryParams setNativeReplicationEnabled(boolean nativeReplicationEnabled) {
     return putBoolean(NATIVE_REPLICATION_ENABLED, nativeReplicationEnabled);
+  }
+
+  public UpdateStoreQueryParams setStoreViews(Map<String, String> viewMap) {
+    return (UpdateStoreQueryParams) putStringMap(STORE_VIEW, viewMap);
+  }
+
+  public Optional<Map<String, String>> getStoreViews() {
+    return getStringMap(STORE_VIEW);
   }
 
   public UpdateStoreQueryParams setPushStreamSourceAddress(String pushStreamSourceAddress) {

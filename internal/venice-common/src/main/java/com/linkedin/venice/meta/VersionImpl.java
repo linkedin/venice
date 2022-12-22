@@ -5,9 +5,12 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.systemstore.schemas.StoreVersion;
+import com.linkedin.venice.systemstore.schemas.StoreViewConfig;
 import com.linkedin.venice.utils.AvroCompatibilityUtils;
 import java.time.Duration;
+import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 
 /**
@@ -167,6 +170,16 @@ public class VersionImpl implements Version {
   }
 
   @Override
+  public boolean isRmdChunkingEnabled() {
+    return this.storeVersion.rmdChunkingEnabled;
+  }
+
+  @Override
+  public void setRmdChunkingEnabled(boolean rmdChunkingEnabled) {
+    this.storeVersion.rmdChunkingEnabled = rmdChunkingEnabled;
+  }
+
+  @Override
   public String getStoreName() {
     return this.storeVersion.storeName.toString();
   }
@@ -291,6 +304,26 @@ public class VersionImpl implements Version {
     }
   }
 
+  @JsonProperty("views")
+  @Override
+  public Map<String, ViewConfig> getViewConfigs() {
+
+    return this.storeVersion.views.entrySet()
+        .stream()
+        .collect(Collectors.toMap(Map.Entry::getKey, e -> new ViewConfigImpl(e.getValue())));
+  }
+
+  @JsonProperty("views")
+  @Override
+  public void setViewConfig(Map<String, ViewConfig> viewConfigList) {
+    this.storeVersion.views = viewConfigList.entrySet()
+        .stream()
+        .collect(
+            Collectors.toMap(
+                Map.Entry::getKey,
+                e -> new StoreViewConfig(e.getValue().getClassName(), e.getValue().dataModel().getViewParameters())));
+  }
+
   @Override
   public boolean isUseVersionLevelHybridConfig() {
     return this.storeVersion.useVersionLevelHybridConfig;
@@ -400,6 +433,7 @@ public class VersionImpl implements Version {
     clonedVersion.setCompressionStrategy(getCompressionStrategy());
     clonedVersion.setLeaderFollowerModelEnabled(isLeaderFollowerModelEnabled());
     clonedVersion.setChunkingEnabled(isChunkingEnabled());
+    clonedVersion.setRmdChunkingEnabled(isRmdChunkingEnabled());
     clonedVersion.setPushType(getPushType());
     clonedVersion.setNativeReplicationEnabled(isNativeReplicationEnabled());
     clonedVersion.setPushStreamSourceAddress(getPushStreamSourceAddress());
@@ -413,6 +447,7 @@ public class VersionImpl implements Version {
     clonedVersion.setActiveActiveReplicationEnabled(isActiveActiveReplicationEnabled());
     clonedVersion.setRmdVersionId(getRmdVersionId());
     clonedVersion.setVersionSwapDeferred(isVersionSwapDeferred());
+    clonedVersion.setViewConfig(getViewConfigs());
     return clonedVersion;
   }
 

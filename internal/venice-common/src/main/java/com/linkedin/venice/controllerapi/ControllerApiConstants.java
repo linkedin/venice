@@ -51,6 +51,7 @@ public class ControllerApiConstants {
   public static final String COMPRESSION_STRATEGY = "compression_strategy";
   public static final String CLIENT_DECOMPRESSION_ENABLED = "client_decompression_enabled";
   public static final String CHUNKING_ENABLED = "chunking_enabled";
+  public static final String RMD_CHUNKING_ENABLED = "rmd_chunking_enabled";
   public static final String INCREMENTAL_PUSH_ENABLED = "incremental_push_enabled";
   public static final String SINGLE_GET_ROUTER_CACHE_ENABLED = "single_get_router_cache_enabled";
   public static final String BATCH_GET_ROUTER_CACHE_ENABLED = "batch_get_router_cache_enabled";
@@ -86,6 +87,8 @@ public class ControllerApiConstants {
 
   public static final String LEADER_FOLLOWER_MODEL_ENABLED = "leader_follower_model_enabled";
   public static final String INCLUDE_SYSTEM_STORES = "include_system_stores";
+
+  public static final String STORE_VIEW = "store_view";
 
   public static final String NATIVE_REPLICATION_ENABLED = "native_replication_enabled";
   public static final String PUSH_STREAM_SOURCE_ADDRESS = "push_stream_source_address";
@@ -198,5 +201,4 @@ public class ControllerApiConstants {
   public static final String PERSONA_OWNERS = "persona_owners";
   public static final String PERSONA_STORES = "persona_stores";
   public static final String PERSONA_QUOTA = "persona_quota";
-
 }

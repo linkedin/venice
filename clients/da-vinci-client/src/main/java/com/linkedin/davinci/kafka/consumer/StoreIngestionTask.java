@@ -76,6 +76,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
+import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ByteUtils;
@@ -90,6 +91,7 @@ import com.linkedin.venice.utils.Timer;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
+import com.linkedin.venice.writer.ChunkAwareCallback;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import it.unimi.dsi.fastutil.ints.IntList;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
@@ -130,7 +132,6 @@ import java.util.function.Supplier;
 import org.apache.avro.Schema;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.logging.log4j.LogManager;
@@ -1881,6 +1882,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           startConsumingAsLeader(newPartitionConsumptionState);
         } else {
           updateLeaderTopicOnFollower(newPartitionConsumptionState);
+          reportStoreVersionTopicOffsetRewindMetrics(newPartitionConsumptionState);
+
           // Subscribe to local version topic.
           consumerSubscribe(
               topic,
@@ -1998,6 +2001,55 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       default:
         throw new UnsupportedOperationException(operation.name() + " is not supported in " + getClass().getName());
     }
+  }
+
+  /**
+   * This function checks, for a store, if its persisted offset is greater than the end offset of its
+   * corresponding Kafka topic (indicating an offset rewind event, thus a potential data loss in Kafka) and increases
+   * related sensor counter values.
+   */
+  private void reportStoreVersionTopicOffsetRewindMetrics(PartitionConsumptionState pcs) {
+    long offset = pcs.getLatestProcessedLocalVersionTopicOffset();
+    if (offset == OffsetRecord.LOWEST_OFFSET) {
+      return;
+    }
+    // Proceed if persisted OffsetRecord exists and has meaningful content.
+    long endOffset = getKafkaTopicPartitionEndOffSet(localKafkaServer, kafkaVersionTopic, pcs.getPartition());
+    if (endOffset != StatsErrorCode.LAG_MEASUREMENT_FAILURE.code && offset > endOffset) {
+      // report offset rewind.
+      LOGGER.warn(
+          "Offset rewind for version topic: {}, partition: {}, persisted record offset: {}, Kafka topic partition end-offset: {}",
+          kafkaVersionTopic,
+          pcs.getPartition(),
+          offset,
+          endOffset);
+      versionedIngestionStats.recordVersionTopicEndOffsetRewind(storeName, versionNumber);
+    }
+  }
+
+  /**
+   * @return the end offset in kafka for the topic partition in SIT.
+   */
+  protected long getKafkaTopicPartitionEndOffSet(String kafkaUrl, String kafkaVersionTopic, int partition) {
+    long offsetFromConsumer = getPartitionLatestOffset(kafkaUrl, kafkaVersionTopic, partition);
+    if (offsetFromConsumer >= 0) {
+      return offsetFromConsumer;
+    }
+
+    /**
+     * The returned end offset is the last successfully replicated message plus one. If the partition has never been
+     * written to, the end offset is 0.
+     * @see CachedKafkaMetadataGetter#getOffset(TopicManager, String, int)
+     */
+    return cachedKafkaMetadataGetter.getOffset(getTopicManager(kafkaUrl), kafkaVersionTopic, partition);
+  }
+
+  protected long getPartitionOffsetLag(String kafkaSourceAddress, String topic, int partition) {
+    return aggKafkaConsumerService.getOffsetLagFor(kafkaSourceAddress, kafkaVersionTopic, topic, partition);
+  }
+
+  protected long getPartitionLatestOffset(String kafkaSourceAddress, String topic, int partition) {
+    return aggKafkaConsumerService.getLatestOffsetFor(kafkaSourceAddress, kafkaVersionTopic, topic, partition);
   }
 
   protected abstract void checkLongRunningTaskState() throws InterruptedException;
@@ -2622,8 +2674,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * Nothing to do here as all of the processing is being done in {@link StoreIngestionTask#delegateConsumerRecord(ConsumerRecord, int, String)}.
          */
         break;
-      case START_OF_BUFFER_REPLAY:
-        throw new UnsupportedMessageTypeException(type + " is a legacy mechanism that should never happen anymore.");
       case START_OF_INCREMENTAL_PUSH:
         processStartOfIncrementalPush(controlMessage, partitionConsumptionState);
         break;
@@ -3164,9 +3214,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         try {
           deserializeValue(put.schemaId, put.putValue, record);
         } catch (Exception e) {
+          PartitionConsumptionState pcs = partitionConsumptionStateMap.get(record.partition());
+          LeaderFollowerStateType state = pcs == null ? null : pcs.getLeaderFollowerState();
           throw new VeniceException(
               "Failed to deserialize PUT for topic: " + record.topic() + ", partition: " + record.partition()
-                  + ", offset: " + record.offset() + ", schema id: " + put.schemaId,
+                  + ", offset: " + record.offset() + ", schema id: " + put.schemaId + ", LF state: " + state,
               e);
         }
         break;
@@ -3563,7 +3615,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   @FunctionalInterface
   interface ProduceToTopic {
-    Future<RecordMetadata> apply(Callback callback, LeaderMetadataWrapper leaderMetadataWrapper);
+    Future<RecordMetadata> apply(ChunkAwareCallback callback, LeaderMetadataWrapper leaderMetadataWrapper);
   }
 
   /**
@@ -3680,5 +3732,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   // Visible for unit test.
   protected void setPartitionConsumptionState(int partition, PartitionConsumptionState pcs) {
     partitionConsumptionStateMap.put(partition, pcs);
+  }
+
+  protected AggVersionedDIVStats getVersionedDIVStats() {
+    return versionedDIVStats;
+  }
+
+  protected AggVersionedIngestionStats getVersionIngestionStats() {
+    return versionedIngestionStats;
+  }
+
+  protected HostLevelIngestionStats getHostLevelIngestionStats() {
+    return hostLevelIngestionStats;
+  }
+
+  protected String getKafkaVersionTopic() {
+    return kafkaVersionTopic;
   }
 }

@@ -63,8 +63,8 @@ import org.apache.logging.log4j.Logger;
 /**
  * A wrapper with a DaVinci client subscribed to the corresponding Meta store to serve data required by {@link StoreMetadata}.
  * TODO All data are cached locally and refreshed periodically for performance reasons before either object cache becomes
- * available for meta system store or a decorator class of the underlying rocksDB classes is made available for consuming
- * deserialized meta system store data directly.
+ *  available for meta system store or a decorator class of the underlying rocksDB classes is made available for consuming
+ *  deserialized meta system store data directly.
  */
 public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
   private static final Logger LOGGER = LogManager.getLogger(DaVinciClientBasedMetadata.class);
@@ -105,8 +105,8 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
           "'DaVinciClientForMetaStore' should not be null in 'ClientConfig' when DaVinciClientBasedMetadata is being used.");
     }
     this.daVinciClient = clientConfig.getDaVinciClientForMetaStore();
-    this.refreshIntervalInSeconds = clientConfig.getMetadataRefreshInvervalInSeconds() > 0
-        ? clientConfig.getMetadataRefreshInvervalInSeconds()
+    this.refreshIntervalInSeconds = clientConfig.getMetadataRefreshIntervalInSeconds() > 0
+        ? clientConfig.getMetadataRefreshIntervalInSeconds()
         : DEFAULT_REFRESH_INTERVAL_IN_SECONDS;
     this.storeMetaKeyMap
         .put(STORE_KEY_SCHEMAS_KEY, MetaStoreDataType.STORE_KEY_SCHEMAS.getStoreMetaKey(new HashMap<String, String>() {

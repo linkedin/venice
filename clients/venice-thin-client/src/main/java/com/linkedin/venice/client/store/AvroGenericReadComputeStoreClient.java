@@ -27,14 +27,14 @@ public interface AvroGenericReadComputeStoreClient<K, V> extends AvroGenericStor
       ComputeRequestWrapper computeRequestWrapper,
       Set<K> keys,
       Schema resultSchema,
-      StreamingCallback<K, GenericRecord> callback,
+      StreamingCallback<K, ComputeGenericRecord> callback,
       final long preRequestTimeInNS) throws VeniceClientException;
 
   void compute(
       ComputeRequestWrapper computeRequestWrapper,
       Set<K> keys,
       Schema resultSchema,
-      StreamingCallback<K, GenericRecord> callback,
+      StreamingCallback<K, ComputeGenericRecord> callback,
       final long preRequestTimeInNS,
       BinaryEncoder reusedEncoder,
       ByteArrayOutputStream reusedOutputStream) throws VeniceClientException;

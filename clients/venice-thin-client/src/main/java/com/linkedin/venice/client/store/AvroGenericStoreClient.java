@@ -53,6 +53,8 @@ public interface AvroGenericStoreClient<K, V> extends Closeable {
             + "or VeniceGenericStoreClientFactory#createInstance() to generate a Venice avro generic client");
   }
 
+  // TODO: Once batchGet() defaults to start using streamingBatchGet(), need to rethink whether
+  // streamingBatchGet() should be exposed
   /**
    * Get the values associated with the given keys and return them in a map of keys to values.
    *

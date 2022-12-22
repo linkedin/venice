@@ -194,6 +194,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setCompressionStrategy(store.getCompressionStrategy());
     setClientDecompressionEnabled(store.getClientDecompressionEnabled());
     setChunkingEnabled(store.isChunkingEnabled());
+    setRmdChunkingEnabled(store.isRmdChunkingEnabled());
     setBatchGetLimit(store.getBatchGetLimit());
     setNumVersionsToPreserve(store.getNumVersionsToPreserve());
     setIncrementalPushEnabled(store.isIncrementalPushEnabled());
@@ -220,6 +221,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setStoreMetaSystemStoreEnabled(store.isStoreMetaSystemStoreEnabled());
     setActiveActiveReplicationEnabled(store.isActiveActiveReplicationEnabled());
     setRmdVersionID(store.getRmdVersionID());
+    setViewConfigs(store.getViewConfigs());
 
     for (Version storeVersion: store.getVersions()) {
       forceAddVersion(storeVersion.cloneVersion(), true);
@@ -449,6 +451,30 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     }
   }
 
+  @JsonProperty("views")
+  @Override
+  public Map<String, ViewConfig> getViewConfigs() {
+    if (this.storeProperties.views == null) {
+      return null;
+    }
+
+    return this.storeProperties.views.entrySet()
+        .stream()
+        .collect(Collectors.toMap(e -> e.getKey().toString(), e -> new ViewConfigImpl(e.getValue())));
+  }
+
+  @JsonProperty("views")
+  @Override
+  public void setViewConfigs(Map<String, ViewConfig> viewConfigList) {
+    if (viewConfigList == null) {
+      this.storeProperties.views = new HashMap<>();
+    } else {
+      this.storeProperties.views = viewConfigList.entrySet()
+          .stream()
+          .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().dataModel()));
+    }
+  }
+
   @Override
   public boolean isHybrid() {
     return this.storeProperties.hybridConfig != null;
@@ -481,6 +507,16 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @Override
   public void setChunkingEnabled(boolean chunkingEnabled) {
     this.storeProperties.chunkingEnabled = chunkingEnabled;
+  }
+
+  @Override
+  public boolean isRmdChunkingEnabled() {
+    return this.storeProperties.rmdChunkingEnabled;
+  }
+
+  @Override
+  public void setRmdChunkingEnabled(boolean rmdChunkingEnabled) {
+    this.storeProperties.rmdChunkingEnabled = rmdChunkingEnabled;
   }
 
   @Override
