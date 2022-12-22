@@ -56,6 +56,7 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
 
   private Sensor requestKeySizeSensor;
   private Sensor requestValueSizeSensor;
+  private String storeName;
 
   // Ratio sensors are not directly written to, but they still get their state updated indirectly
   @SuppressWarnings("unused")
@@ -78,6 +79,7 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
      */
     Rate successRequest = new OccurrenceRate();
     Rate errorRequest = new OccurrenceRate();
+    this.storeName = storeName;
     successRequestSensor = registerSensor("success_request", successRequest);
     errorRequestSensor = registerSensor("error_request", errorRequest);
     successRequestLatencySensor = getPercentileStatSensor("success_request_latency");
@@ -193,6 +195,10 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
           new Max(),
           TehutiUtils.getFineGrainedPercentileStat(getName(), getFullMetricName(requestKeySizeSensorName)));
     }
+  }
+
+  public String getStoreName() {
+    return storeName;
   }
 
   public void recordSuccessRequest() {

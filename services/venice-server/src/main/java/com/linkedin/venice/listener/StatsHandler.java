@@ -15,7 +15,7 @@ import io.netty.channel.ChannelPromise;
 import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpServerCodec;
-import java.util.List;
+import it.unimi.dsi.fastutil.ints.IntList;
 
 
 public class StatsHandler extends ChannelDuplexHandler {
@@ -37,8 +37,8 @@ public class StatsHandler extends ChannelDuplexHandler {
   private int countOperatorCount = 0;
   private boolean isRequestTerminatedEarly = false;
 
-  private List<Integer> keySizeList;
-  private List<Integer> valueSizeList;
+  private IntList keySizeList;
+  private IntList valueSizeList;
 
   private final AggServerHttpRequestStats singleGetStats;
   private final AggServerHttpRequestStats multiGetStats;
@@ -110,6 +110,7 @@ public class StatsHandler extends ChannelDuplexHandler {
       default:
         currentStats = singleGetStats;
     }
+    currentStats.setStoreStat(storeName);
   }
 
   public void setRequestKeyCount(int keyCount) {
@@ -178,11 +179,11 @@ public class StatsHandler extends ChannelDuplexHandler {
     this.multiChunkLargeValueCount = multiChunkLargeValueCount;
   }
 
-  public void setKeySizeList(List<Integer> keySizeList) {
+  public void setKeySizeList(IntList keySizeList) {
     this.keySizeList = keySizeList;
   }
 
-  public void setValueSizeList(List<Integer> valueSizeList) {
+  public void setValueSizeList(IntList valueSizeList) {
     this.valueSizeList = valueSizeList;
   }
 
@@ -270,10 +271,14 @@ public class StatsHandler extends ChannelDuplexHandler {
         recordBasicMetrics();
 
         if (keySizeList != null) {
-          keySizeList.forEach(keySize -> currentStats.recordKeySizeInByte(storeName, keySize));
+          for (int i = 0; i < keySizeList.size(); i++) {
+            currentStats.recordKeySizeInByte(storeName, keySizeList.getInt(i));
+          }
         }
         if (valueSizeList != null) {
-          valueSizeList.forEach(valueSize -> currentStats.recordValueSizeInByte(storeName, valueSize));
+          for (int i = 0; i < valueSizeList.size(); i++) {
+            currentStats.recordValueSizeInByte(storeName, valueSizeList.getInt(i));
+          }
         }
         double elapsedTime = LatencyUtils.getLatencyInMS(startTimeInNS);
         // if ResponseStatus is either OK or NOT_FOUND and the channel write is succeed,

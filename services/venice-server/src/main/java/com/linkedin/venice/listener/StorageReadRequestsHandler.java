@@ -66,9 +66,10 @@ import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.ints.IntList;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -397,8 +398,12 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     response.setValueRecord(valueRecord);
 
     if (keyValueProfilingEnabled) {
-      response.setKeyListSize(Collections.singletonList(key.length));
-      response.setValueListSize(Collections.singletonList(response.isFound() ? valueRecord.getDataSize() : 0));
+      IntList keyList = new IntArrayList(1);
+      keyList.set(0, key.length);
+      response.setKeyListSize(keyList);
+      IntList valueList = new IntArrayList(1);
+      valueList.set(0, response.isFound() ? valueRecord.getDataSize() : 0);
+      response.setValueListSize(valueList);
     }
 
     return response;
@@ -428,8 +433,8 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     CompletableFuture[] chunkFutures = new CompletableFuture[splitSize];
     PartitionerConfig partitionerConfig = getPartitionerConfig(request.getResourceName());
 
-    List<Integer> responseKeyList = keyValueProfilingEnabled ? new ArrayList<>(totalKeyNum) : null;
-    List<Integer> responseValueList = keyValueProfilingEnabled ? new ArrayList<>(totalKeyNum) : null;
+    IntList responseKeyList = keyValueProfilingEnabled ? new IntArrayList() : null;
+    IntList responseValueList = keyValueProfilingEnabled ? new IntArrayList() : null;
 
     for (int cur = 0; cur < splitSize; ++cur) {
       final int finalCur = cur;
@@ -442,7 +447,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
         for (int subChunkCur = startPos; subChunkCur < endPos; ++subChunkCur) {
           final MultiGetRouterRequestKeyV1 key = keyList.get(subChunkCur);
           if (responseKeyList != null) {
-            responseKeyList.add(key.keyBytes.remaining());
+            responseKeyList.set(subChunkCur, key.keyBytes.remaining());
           }
           int subPartitionId = getSubPartitionId(key.partitionId, topic, partitionerConfig, key.keyBytes.array());
           MultiGetResponseRecordV1 record =
@@ -468,7 +473,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
               responseWrapper.addRecord(record);
 
               if (responseValueList != null) {
-                responseValueList.add(record.value.remaining());
+                responseValueList.add(subChunkCur, record.value.remaining());
               }
 
             } finally {

@@ -2,7 +2,7 @@ package com.linkedin.davinci.listener.response;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import io.netty.buffer.ByteBuf;
-import java.util.List;
+import it.unimi.dsi.fastutil.ints.IntList;
 
 
 /**
@@ -18,8 +18,8 @@ public abstract class ReadResponse {
   private int multiChunkLargeValueCount = 0;
   private CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
   private boolean isStreamingResponse = false;
-  private List<Integer> keyListSize;
-  private List<Integer> valueListSize;
+  private IntList keyListSize;
+  private IntList valueListSize;
   private int dotProductCount = 0;
   private int cosineSimilarityCount = 0;
   private int hadamardProductCount = 0;
@@ -74,11 +74,11 @@ public abstract class ReadResponse {
     this.readComputeDeserializationLatency += latency;
   }
 
-  public void setKeyListSize(List<Integer> keyListSize) {
+  public void setKeyListSize(IntList keyListSize) {
     this.keyListSize = keyListSize;
   }
 
-  public void setValueListSize(List<Integer> valueListSize) {
+  public void setValueListSize(IntList valueListSize) {
     this.valueListSize = valueListSize;
   }
 
@@ -158,11 +158,11 @@ public abstract class ReadResponse {
     return true;
   }
 
-  public List<Integer> getKeySizeList() {
+  public IntList getKeySizeList() {
     return keyListSize;
   }
 
-  public List<Integer> getValueSizeList() {
+  public IntList getValueSizeList() {
     return valueListSize;
   }
 
