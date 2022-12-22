@@ -1,5 +1,7 @@
 package com.linkedin.davinci.ingestion.main;
 
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_REQUEST_TIMEOUT_SECONDS;
+
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.IsolatedIngestionBackend;
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
@@ -55,7 +57,12 @@ public class MainIngestionStorageMetadataService extends AbstractVeniceService i
       MetadataUpdateStats metadataUpdateStats,
       VeniceConfigLoader configLoader,
       BiConsumer<String, StoreVersionState> storeVersionStateSyncer) {
-    this.client = new MainIngestionRequestClient(IsolatedIngestionUtils.getSSLFactory(configLoader), targetPort);
+    int requestTimeoutInSeconds =
+        configLoader.getCombinedProperties().getInt(SERVER_INGESTION_ISOLATION_REQUEST_TIMEOUT_SECONDS, 60);
+    this.client = new MainIngestionRequestClient(
+        IsolatedIngestionUtils.getSSLFactory(configLoader),
+        targetPort,
+        requestTimeoutInSeconds);
     this.partitionStateSerializer = partitionStateSerializer;
     this.metadataUpdateStats = metadataUpdateStats;
     this.metadataUpdateWorker = new MetadataUpdateWorker();

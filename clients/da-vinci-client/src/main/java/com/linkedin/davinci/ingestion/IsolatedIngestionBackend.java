@@ -1,5 +1,6 @@
 package com.linkedin.davinci.ingestion;
 
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_REQUEST_TIMEOUT_SECONDS;
 import static com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType.DEMOTE_TO_STANDBY;
 import static com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType.PROMOTE_TO_LEADER;
 import static com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType.REMOVE_PARTITION;
@@ -68,8 +69,10 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
     int listenerPort = configLoader.getVeniceServerConfig().getIngestionApplicationPort();
     this.configLoader = configLoader;
     Optional<SSLFactory> sslFactory = IsolatedIngestionUtils.getSSLFactory(configLoader);
+    int requestTimeoutInSeconds =
+        configLoader.getCombinedProperties().getInt(SERVER_INGESTION_ISOLATION_REQUEST_TIMEOUT_SECONDS, 60);
     // Create the ingestion request client.
-    mainIngestionRequestClient = new MainIngestionRequestClient(sslFactory, servicePort);
+    mainIngestionRequestClient = new MainIngestionRequestClient(sslFactory, servicePort, requestTimeoutInSeconds);
     // Create the forked isolated ingestion process.
     isolatedIngestionServiceProcess = mainIngestionRequestClient.startForkedIngestionProcess(configLoader);
     // Create and start the ingestion report listener.
@@ -148,6 +151,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       int timeoutInSeconds,
       boolean removeEmptyStorageEngine) {
     String topicName = storeConfig.getStoreVersionName();
+    mainIngestionMonitorService.cleanupTopicPartitionState(topicName, partition);
     executeCommandWithRetry(
         topicName,
         partition,
@@ -158,7 +162,6 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
           // Clean up the topic partition ingestion status.
           mainIngestionRequestClient.resetTopicPartition(topicName, partition);
         });
-    mainIngestionMonitorService.cleanupTopicPartitionState(topicName, partition);
     if (mainIngestionMonitorService.getTopicPartitionCount(topicName) == 0) {
       LOGGER.info("No serving partitions exist for topic: {}, dropping the topic storage.", topicName);
       mainIngestionRequestClient.removeStorageEngine(topicName);

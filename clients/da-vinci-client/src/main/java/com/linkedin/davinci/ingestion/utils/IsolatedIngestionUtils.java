@@ -537,27 +537,6 @@ public class IsolatedIngestionUtils {
   }
 
   /**
-   * Create SSLFactory for inter-process communication encryption purpose.
-   */
-  public static Optional<SSLFactory> getSSLFactoryForInterProcessCommunication(VeniceConfigLoader configLoader) {
-    if (isolatedIngestionServerSslEnabled(configLoader)) {
-      try {
-        // If SSL communication is enabled but SSL configs are missing, we should fail fast here.
-        if (!sslEnabled(configLoader)) {
-          throw new VeniceException(
-              "Ingestion isolation SSL is enabled for communication, but SSL configs are missing.");
-        }
-        LOGGER.info("SSL is enabled, will create SSLFactory");
-        return Optional.of(new DefaultSSLFactory(configLoader.getCombinedProperties().toProperties()));
-      } catch (Exception e) {
-        throw new VeniceException("Caught exception during SSLFactory creation", e);
-      }
-    } else {
-      return Optional.empty();
-    }
-  }
-
-  /**
    * Create SSLFactory for D2Client in ClientConfig, which will be used by different ingestion components.
    */
   public static Optional<SSLFactory> getSSLFactoryForIngestion(VeniceConfigLoader configLoader) {
@@ -591,7 +570,7 @@ public class IsolatedIngestionUtils {
       }
       LOGGER.info(
           "Isolated ingestion server request ACL validation is enabled. Creating ACL handler with allowed principal name: {}",
-              allowedPrincipalName);
+          allowedPrincipalName);
       return Optional.of(new IsolatedIngestionServerAclHandler(identityParser, allowedPrincipalName));
     } else {
       return Optional.empty();

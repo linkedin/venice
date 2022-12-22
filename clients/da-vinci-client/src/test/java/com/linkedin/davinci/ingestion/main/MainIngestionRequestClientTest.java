@@ -18,7 +18,7 @@ public class MainIngestionRequestClientTest {
 
   @Test(timeOut = TIMEOUT_IN_MILLIS)
   public void testIngestionCommand() {
-    try (MainIngestionRequestClient client = new MainIngestionRequestClient(Optional.empty(), 12345)) {
+    try (MainIngestionRequestClient client = new MainIngestionRequestClient(Optional.empty(), 12345, 120)) {
       HttpClientTransport mockedClientTransport = Mockito.mock(HttpClientTransport.class);
       IngestionTaskReport taskReport = new IngestionTaskReport();
       taskReport.setMessage("TEST MSG");

@@ -43,8 +43,8 @@ public class MainIngestionRequestClient implements Closeable {
   private static final int HEARTBEAT_REQUEST_TIMEOUT_MS = 10 * Time.MS_PER_SECOND;
   private HttpClientTransport httpClientTransport;
 
-  public MainIngestionRequestClient(Optional<SSLFactory> sslFactory, int port) {
-    httpClientTransport = new HttpClientTransport(sslFactory, port);
+  public MainIngestionRequestClient(Optional<SSLFactory> sslFactory, int port, int requestTimeoutInSeconds) {
+    httpClientTransport = new HttpClientTransport(sslFactory, port, requestTimeoutInSeconds);
   }
 
   public synchronized Process startForkedIngestionProcess(VeniceConfigLoader configLoader) {

@@ -660,6 +660,9 @@ public class ConfigKeys {
    */
   public static final String SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST = "server.forked.process.jvm.arg.list";
 
+  public static final String SERVER_INGESTION_ISOLATION_REQUEST_TIMEOUT_SECONDS =
+      "server.ingestion.isolation.request.timout.seconds";
+
   /**
    * whether to enable checksum verification in the ingestion path from kafka to database persistency. If enabled it will
    * keep a running checksum for all and only PUT kafka data message received in the ingestion task and periodically
