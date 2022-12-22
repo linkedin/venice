@@ -2241,39 +2241,15 @@ public class VeniceParentHelixAdmin implements Admin {
 
       // Invalid config update on hybrid will not be populated to admin channel so subsequent updates on the store won't
       // be blocked by retry mechanism.
-      if (currStore.isHybrid()) {
-        // Update-store message copied to the other cluster during store migration also has partitionCount.
-        // Allow updating store if the partitionCount is equal to the existing value.
-        if (partitionCount.isPresent() && partitionCount.get() != currStore.getPartitionCount()) {
-          String errorMessage = errorMessagePrefix + "Cannot change partition count for hybrid stores";
-          LOGGER.error(errorMessage);
-          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.BAD_REQUEST);
-        }
-        if (partitionerClass.isPresent() || partitionerParams.isPresent()) {
-          String errorMessage = errorMessagePrefix + "Cannot change partitioner class and parameters for hybrid stores";
-          LOGGER.error(errorMessage);
-          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.BAD_REQUEST);
-        }
+      if (currStore.isHybrid() && (partitionerClass.isPresent() || partitionerParams.isPresent())) {
+        String errorMessage = errorMessagePrefix + "Cannot change partitioner class and parameters for hybrid stores";
+        LOGGER.error(errorMessage);
+        throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.BAD_REQUEST);
       }
 
       if (partitionCount.isPresent()) {
+        getVeniceHelixAdmin().preCheckStorePartitionCountUpdate(clusterName, currStore, partitionCount.get());
         setStore.partitionNum = partitionCount.get();
-        int maxPartitionNum =
-            getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getConfig().getMaxNumberOfPartition();
-        if (setStore.partitionNum > maxPartitionNum) {
-          String errorMessage = errorMessagePrefix + "Partition count: " + partitionCount + " should be less than max: "
-              + maxPartitionNum;
-          LOGGER.error(errorMessage);
-          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.INVALID_CONFIG);
-        }
-        if (setStore.partitionNum < 0) {
-          String errorMessage = errorMessagePrefix + "Partition count: " + partitionCount + " should NOT be negative";
-          LOGGER.error(errorMessage);
-          throw new VeniceHttpException(
-              HttpStatus.SC_BAD_REQUEST,
-              "Partition count: " + partitionCount + " should NOT be negative",
-              ErrorType.INVALID_CONFIG);
-        }
         updatedConfigsList.add(PARTITION_COUNT);
       } else {
         setStore.partitionNum = currStore.getPartitionCount();
@@ -2395,6 +2371,13 @@ public class VeniceParentHelixAdmin implements Admin {
         hybridStoreConfigRecord.dataReplicationPolicy = hybridStoreConfig.getDataReplicationPolicy().getValue();
         hybridStoreConfigRecord.bufferReplayPolicy = hybridStoreConfig.getBufferReplayPolicy().getValue();
         setStore.hybridStoreConfig = hybridStoreConfigRecord;
+        if (!currStore.isHybrid() && setStore.partitionNum == 0) {
+          // This is a new hybrid store. Update store partition count from 0 to default value.
+          setStore.partitionNum = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName)
+              .getConfig()
+              .getNumberOfPartitionForHybrid();
+          updatedConfigsList.add(PARTITION_COUNT);
+        }
       }
 
       if (incrementalPushEnabled.orElse(currStore.isIncrementalPushEnabled())

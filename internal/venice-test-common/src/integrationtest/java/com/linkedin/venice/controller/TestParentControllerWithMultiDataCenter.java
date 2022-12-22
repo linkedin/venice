@@ -130,6 +130,7 @@ public class TestParentControllerWithMultiDataCenter {
           Assert.assertEquals(storeInfo.getPartitionerConfig().getAmplificationFactor(), 2);
           Assert.assertTrue(storeInfo.isChunkingEnabled());
           Assert.assertTrue(storeInfo.isRmdChunkingEnabled());
+          Assert.assertEquals(storeInfo.getPartitionCount(), 1);
         }
       });
 
