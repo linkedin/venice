@@ -116,13 +116,12 @@ public class HttpClientTransport implements AutoCloseable {
   }
 
   public <T extends SpecificRecordBase, S extends SpecificRecordBase> T sendRequest(IngestionAction action, S param) {
-    return sendRequestWithRetry(action, param, requestTimeoutInSeconds, DEFAULT_REQUEST_RETRY_COUNT);
+    return sendRequestWithRetry(action, param, DEFAULT_REQUEST_RETRY_COUNT);
   }
 
   public <T extends SpecificRecordBase, S extends SpecificRecordBase> T sendRequestWithRetry(
       IngestionAction action,
       S param,
-      int requestTimeoutInSeconds,
       int maxAttempt) {
     // Sanity check for maxAttempt argument.
     if (maxAttempt <= 0) {
@@ -154,12 +153,5 @@ public class HttpClientTransport implements AutoCloseable {
       }
     }
     return result;
-  }
-
-  public <T extends SpecificRecordBase, S extends SpecificRecordBase> T sendRequestWithRetry(
-      IngestionAction action,
-      S param,
-      int maxAttempt) {
-    return sendRequestWithRetry(action, param, requestTimeoutInSeconds, maxAttempt);
   }
 }

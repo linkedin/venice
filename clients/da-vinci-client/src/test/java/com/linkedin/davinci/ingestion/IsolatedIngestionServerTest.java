@@ -52,7 +52,7 @@ public class IsolatedIngestionServerTest {
     int servicePort = Utils.getFreePort();
     VeniceConfigLoader configLoader = getConfigLoader(servicePort);
     try (MainIngestionRequestClient client =
-        new MainIngestionRequestClient(IsolatedIngestionUtils.getSSLFactory(configLoader), servicePort, 60)) {
+        new MainIngestionRequestClient(IsolatedIngestionUtils.getSSLFactory(configLoader), servicePort, 120)) {
       Process isolatedIngestionService = client.startForkedIngestionProcess(configLoader);
       TestUtils.waitForNonDeterministicAssertion(
           10,
@@ -72,7 +72,7 @@ public class IsolatedIngestionServerTest {
     int servicePort = Utils.getFreePort();
     VeniceConfigLoader configLoader = getConfigLoader(servicePort);
     try (MainIngestionRequestClient client =
-        new MainIngestionRequestClient(IsolatedIngestionUtils.getSSLFactory(configLoader), servicePort, 60)) {
+        new MainIngestionRequestClient(IsolatedIngestionUtils.getSSLFactory(configLoader), servicePort, 120)) {
       // Make sure the process is forked successfully.
       ForkedJavaProcess isolatedIngestionService = (ForkedJavaProcess) client.startForkedIngestionProcess(configLoader);
       Assert.assertTrue(isolatedIngestionService.isAlive());

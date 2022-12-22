@@ -670,7 +670,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     reportClient = new IsolatedIngestionRequestClient(
         IsolatedIngestionUtils.getSSLFactory(configLoader),
         configLoader.getVeniceServerConfig().getIngestionApplicationPort(),
-        configLoader.getCombinedProperties().getInt(SERVER_INGESTION_ISOLATION_REQUEST_TIMEOUT_SECONDS, 60));
+        configLoader.getCombinedProperties().getInt(SERVER_INGESTION_ISOLATION_REQUEST_TIMEOUT_SECONDS, 120));
 
     // Mark the IsolatedIngestionServer as initiated.
     isInitiated = true;

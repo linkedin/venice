@@ -102,7 +102,7 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
         .childOption(ChannelOption.TCP_NODELAY, true);
 
     this.requestTimeoutInSeconds =
-        configLoader.getCombinedProperties().getInt(SERVER_INGESTION_ISOLATION_REQUEST_TIMEOUT_SECONDS, 60);
+        configLoader.getCombinedProperties().getInt(SERVER_INGESTION_ISOLATION_REQUEST_TIMEOUT_SECONDS, 120);
     heartbeatClient = new MainIngestionRequestClient(this.sslFactory, this.servicePort, requestTimeoutInSeconds);
     metricsClient = new MainIngestionRequestClient(this.sslFactory, this.servicePort, requestTimeoutInSeconds);
 

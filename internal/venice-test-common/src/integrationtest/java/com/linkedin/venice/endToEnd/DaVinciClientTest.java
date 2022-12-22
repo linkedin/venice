@@ -406,7 +406,7 @@ public class DaVinciClientTest {
       dummyOffsetMetadata.payload =
           ByteBuffer.wrap(new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer()).toBytes());
       MainIngestionRequestClient requestClient =
-          new MainIngestionRequestClient(Optional.empty(), isolatedIngestionServicePort, 60);
+          new MainIngestionRequestClient(Optional.empty(), isolatedIngestionServicePort, 120);
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
         assertTrue(requestClient.updateMetadata(dummyOffsetMetadata));
       });
