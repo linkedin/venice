@@ -12,17 +12,31 @@ import org.apache.commons.io.IOUtils;
 
 
 public class GzipCompressor extends VeniceCompressor {
+  private final GzipPool gzipPool;
+
   public GzipCompressor() {
     super(CompressionStrategy.GZIP);
+    this.gzipPool = new GzipPool();
   }
 
   @Override
   public byte[] compress(byte[] data) throws IOException {
-    ByteArrayOutputStream bos = new ByteArrayOutputStream();
-    try (GZIPOutputStream gos = new GZIPOutputStream(bos)) {
-      gos.write(data);
-      gos.finish();
-      return bos.toByteArray();
+    ReusableGzipOutputStream out = gzipPool.getReusableGzipOutputStream();
+    try {
+      out.writeHeader();
+      out.write(data);
+      out.finish();
+      return out.toByteArray();
+    } finally {
+      out.reset();
+    }
+  }
+
+  @Override
+  public void close() throws IOException {
+    try {
+      gzipPool.close();
+    } catch (Exception e) {
     }
   }
 
