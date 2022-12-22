@@ -1,7 +1,7 @@
 package com.linkedin.venice.compression;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.OutputStream;
 import java.util.zip.CRC32;
 import java.util.zip.Deflater;
 import java.util.zip.DeflaterOutputStream;
@@ -40,9 +40,17 @@ public class ReusableGzipOutputStream extends DeflaterOutputStream {
    *
    * @since 1.7
    */
-  public ReusableGzipOutputStream(OutputStream out) {
+  private final ByteArrayOutputStream bos;
+
+  public ReusableGzipOutputStream(ByteArrayOutputStream out) {
     super(out, new Deflater(Deflater.DEFAULT_COMPRESSION, true));
     crc.reset();
+    out.reset();
+    this.bos = out;
+  }
+
+  public byte[] toByteArray() {
+    return bos.toByteArray();
   }
 
   /**
@@ -132,5 +140,6 @@ public class ReusableGzipOutputStream extends DeflaterOutputStream {
   public void reset() {
     crc.reset();
     def.reset();
+    bos.reset();
   }
 }
