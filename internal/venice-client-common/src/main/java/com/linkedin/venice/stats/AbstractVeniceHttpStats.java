@@ -30,7 +30,11 @@ public abstract class AbstractVeniceHttpStats extends AbstractVeniceStats {
    */
   @Override
   protected Sensor registerSensor(String sensorName, MeasurableStat... stats) {
-    return registerSensor(getFullMetricName(sensorName), null, stats);
+    return super.registerSensor(getFullMetricName(sensorName), null, stats);
+  }
+
+  protected Sensor registerSensor(String sensorName, Sensor[] parents, MeasurableStat... stats) {
+    return super.registerSensor(getFullMetricName(sensorName), parents, stats);
   }
 
   /**

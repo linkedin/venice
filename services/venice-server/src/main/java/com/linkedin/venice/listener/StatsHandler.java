@@ -286,9 +286,7 @@ public class StatsHandler extends ChannelDuplexHandler {
   private void recordBasicMetrics() {
     if (storeName != null) {
       ServerHttpRequestStats serverHttpRequestStats = currentStats.getStoreStats(storeName);
-      ServerHttpRequestStats totalStats = currentStats.getTotalStats();
       if (databaseLookupLatency >= 0) {
-        totalStats.recordDatabaseLookupLatency(databaseLookupLatency, isAssembledMultiChunkLargeValue());
         serverHttpRequestStats.recordDatabaseLookupLatency(databaseLookupLatency, isAssembledMultiChunkLargeValue());
       }
       if (storageExecutionSubmissionWaitTime >= 0) {
@@ -299,84 +297,63 @@ public class StatsHandler extends ChannelDuplexHandler {
       }
       if (multiChunkLargeValueCount > 0) {
         // We only record this metric for requests where large values occurred
-        totalStats.recordMultiChunkLargeValueCount(multiChunkLargeValueCount);
         serverHttpRequestStats.recordMultiChunkLargeValueCount(multiChunkLargeValueCount);
       }
       if (requestKeyCount > 0) {
-        totalStats.recordRequestKeyCount(requestKeyCount);
         serverHttpRequestStats.recordRequestKeyCount(requestKeyCount);
       }
       if (successRequestKeyCount > 0) {
-        totalStats.recordSuccessRequestKeyCount(successRequestKeyCount);
         serverHttpRequestStats.recordSuccessRequestKeyCount(successRequestKeyCount);
       }
       if (requestSizeInBytes > 0) {
-        totalStats.recordRequestSizeInBytes(requestSizeInBytes);
         serverHttpRequestStats.recordRequestSizeInBytes(requestSizeInBytes);
       }
       if (firstPartLatency > 0) {
-        totalStats.recordRequestFirstPartLatency(firstPartLatency);
         serverHttpRequestStats.recordRequestFirstPartLatency(firstPartLatency);
       }
       if (partsInvokeDelayLatency > 0) {
-        totalStats.recordRequestPartsInvokeDelayLatency(partsInvokeDelayLatency);
         serverHttpRequestStats.recordRequestPartsInvokeDelayLatency(partsInvokeDelayLatency);
       }
       if (secondPartLatency > 0) {
-        totalStats.recordRequestSecondPartLatency(secondPartLatency);
         serverHttpRequestStats.recordRequestSecondPartLatency(secondPartLatency);
       }
       if (requestPartCount > 0) {
-        totalStats.recordRequestPartCount(requestPartCount);
         serverHttpRequestStats.recordRequestPartCount(requestPartCount);
       }
       if (readComputeLatency >= 0) {
-        totalStats.recordReadComputeLatency(readComputeLatency, isAssembledMultiChunkLargeValue());
         serverHttpRequestStats.recordReadComputeLatency(readComputeLatency, isAssembledMultiChunkLargeValue());
       }
       if (readComputeDeserializationLatency >= 0) {
-        totalStats.recordReadComputeDeserializationLatency(
-            readComputeDeserializationLatency,
-            isAssembledMultiChunkLargeValue());
         serverHttpRequestStats.recordReadComputeDeserializationLatency(
             readComputeDeserializationLatency,
             isAssembledMultiChunkLargeValue());
       }
       if (readComputeSerializationLatency >= 0) {
-        totalStats
-            .recordReadComputeSerializationLatency(readComputeSerializationLatency, isAssembledMultiChunkLargeValue());
         serverHttpRequestStats
             .recordReadComputeSerializationLatency(readComputeSerializationLatency, isAssembledMultiChunkLargeValue());
       }
       if (dotProductCount > 0) {
-        totalStats.recordDotProductCount(dotProductCount);
         serverHttpRequestStats.recordDotProductCount(dotProductCount);
       }
       if (cosineSimilarityCount > 0) {
-        totalStats.recordCosineSimilarityCount(cosineSimilarityCount);
         serverHttpRequestStats.recordCosineSimilarityCount(cosineSimilarityCount);
       }
       if (hadamardProductCount > 0) {
-        totalStats.recordHadamardProduct(hadamardProductCount);
         serverHttpRequestStats.recordHadamardProduct(hadamardProductCount);
       }
       if (countOperatorCount > 0) {
-        totalStats.recordCountOperator(countOperatorCount);
         serverHttpRequestStats.recordCountOperator(countOperatorCount);
       }
       if (isRequestTerminatedEarly) {
-        totalStats.recordEarlyTerminatedEarlyRequest();
         serverHttpRequestStats.recordEarlyTerminatedEarlyRequest();
       }
       if (keySizeList != null) {
         for (int i = 0; i < keySizeList.size(); i++) {
-          totalStats.recordKeySizeInByte(keySizeList.getInt(i));
           serverHttpRequestStats.recordKeySizeInByte(keySizeList.getInt(i));
         }
       }
       if (valueSizeList != null) {
         for (int i = 0; i < valueSizeList.size(); i++) {
-          totalStats.recordValueSizeInByte(valueSizeList.getInt(i));
           serverHttpRequestStats.recordValueSizeInByte(valueSizeList.getInt(i));
         }
       }

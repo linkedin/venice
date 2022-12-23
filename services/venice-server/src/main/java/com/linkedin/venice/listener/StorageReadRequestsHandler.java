@@ -400,10 +400,10 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     if (keyValueProfilingEnabled) {
       IntList keyList = new IntArrayList(1);
       keyList.set(0, key.length);
-      response.setKeyListSize(keyList);
+      response.setKeySizeList(keyList);
       IntList valueList = new IntArrayList(1);
       valueList.set(0, response.isFound() ? valueRecord.getDataSize() : 0);
-      response.setValueListSize(valueList);
+      response.setValueSizeList(valueList);
     }
 
     return response;
@@ -488,8 +488,8 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
       if (e != null) {
         throw new VeniceException(e);
       }
-      responseWrapper.setKeyListSize(responseKeyList);
-      responseWrapper.setValueListSize(responseValueList);
+      responseWrapper.setKeySizeList(responseKeyList);
+      responseWrapper.setValueSizeList(responseValueList);
       return responseWrapper;
     });
   }

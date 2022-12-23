@@ -18,8 +18,8 @@ public abstract class ReadResponse {
   private int multiChunkLargeValueCount = 0;
   private CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
   private boolean isStreamingResponse = false;
-  private IntList keyListSize;
-  private IntList valueListSize;
+  private IntList keySizeList;
+  private IntList valueSizeList;
   private int dotProductCount = 0;
   private int cosineSimilarityCount = 0;
   private int hadamardProductCount = 0;
@@ -74,12 +74,12 @@ public abstract class ReadResponse {
     this.readComputeDeserializationLatency += latency;
   }
 
-  public void setKeyListSize(IntList keyListSize) {
-    this.keyListSize = keyListSize;
+  public void setKeySizeList(IntList keySizeList) {
+    this.keySizeList = keySizeList;
   }
 
-  public void setValueListSize(IntList valueListSize) {
-    this.valueListSize = valueListSize;
+  public void setValueSizeList(IntList valueSizeList) {
+    this.valueSizeList = valueSizeList;
   }
 
   public double getReadComputeDeserializationLatency() {
@@ -159,11 +159,11 @@ public abstract class ReadResponse {
   }
 
   public IntList getKeySizeList() {
-    return keyListSize;
+    return keySizeList;
   }
 
   public IntList getValueSizeList() {
-    return valueListSize;
+    return valueSizeList;
   }
 
   public int getDotProductCount() {

@@ -32,11 +32,13 @@ public class AggServerHttpRequestStatsTest {
     this.singleGetStats = new AggServerHttpRequestStats(
         metricsRepository,
         RequestType.SINGLE_GET,
+        false,
         Mockito.mock(ReadOnlyStoreRepository.class),
         true);
     this.batchGetStats = new AggServerHttpRequestStats(
         metricsRepository,
         RequestType.MULTI_GET,
+        false,
         Mockito.mock(ReadOnlyStoreRepository.class),
         true);
   }
