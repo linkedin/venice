@@ -12,6 +12,13 @@ import org.testng.annotations.Test;
 
 
 public class KMEProtocolCompatibilityTest extends ProtocolCompatibilityTest {
+  @Test
+  public void testKMEProtocolCompatibility() throws InterruptedException {
+    Map<Integer, Schema> schemaMap = initKMEProtocolMap();
+    int latestSchemaId = schemaMap.size();
+    testProtocolCompatibility(schemaMap, latestSchemaId);
+  }
+
   private Map<Integer, Schema> initKMEProtocolMap() {
     try {
       Map<Integer, Schema> protocolSchemaMap = new HashMap<>();
@@ -24,12 +31,5 @@ public class KMEProtocolCompatibilityTest extends ProtocolCompatibilityTest {
     } catch (IOException e) {
       throw new VeniceMessageException("Could not initialize " + KafkaValueSerializer.class.getSimpleName(), e);
     }
-  }
-
-  @Test
-  public void testKMEProtocolCompatibility() throws InterruptedException {
-    Map<Integer, Schema> schemaMap = initKMEProtocolMap();
-    int latestSchemaId = schemaMap.size();
-    testProtocolCompatibility(schemaMap, latestSchemaId);
   }
 }
