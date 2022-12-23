@@ -28,9 +28,9 @@ some threshold.
 The way this works is by leveraging the real-time buffer replay mechanism of hybrid stores. As part of pushing a new
 store-version, after the push finishes, but before swapping the read traffic over to the new version, there is a buffer
 replay phase where the last N seconds of buffered real-time data is replayed. The replayed data gets overlaid on top of
-the data from the Full Push.
+the data from the full Push.
 
-This can be leveraged in order to achieve a TTL behavior. By scheduling periodic empty pushes and configuring how far back to replay the real-time data (N), one can control the
+This can be leveraged in order to enforce TTL on the dataset. By scheduling periodic empty pushes and configuring how far back to replay the real-time data (N), one can control the
 TTL parameters. The time to live is defined by N, which acts as a "minimum TTL", while the "maximum TTL" is N + delay
 between each empty push. For example, if you schedule a daily empty push, and N = 6 days, then the oldest data in your
 store will be at least 6 days old, and at most 7 days old.
@@ -44,7 +44,7 @@ At the moment, there are two ways to perform empty pushes:
    records in it.
 
 ## [Experimental] Repush with TTL
-Similarly to empty push, the repush with TTL can also be configured and scheduled periodically to achieve the TTL behavior.
+Similarly to empty push, the repush with TTL can also be configured and scheduled periodically to enforce TTL.
 The major differences between this and empty push are original data source and how real-time buffer is replayed.
 
 |                 | Data origin            | Real-time buffer replay                                               |
