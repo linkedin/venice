@@ -28,7 +28,7 @@ some threshold.
 The way this works is by leveraging the real-time buffer replay mechanism of hybrid stores. As part of pushing a new
 store-version, after the push finishes, but before swapping the read traffic over to the new version, there is a buffer
 replay phase where the last N seconds of buffered real-time data is replayed. The replayed data gets overlaid on top of
-the data from the full Push.
+the data from the Full Push.
 
 This can be leveraged in order to enforce TTL on the dataset. By scheduling periodic empty pushes and configuring how far back to replay the real-time data (N), one can control the
 TTL parameters. The time to live is defined by N, which acts as a "minimum TTL", while the "maximum TTL" is N + delay
@@ -57,9 +57,6 @@ The `rewind.time.in.seconds.override` is a configurable value in push job, defau
 This brings two major benefits:
 1. The repush job de-dupes writes to the same key, so that the servers need to ingest fewer events.
 2. The repush job sorts the data, thus allowing servers to ingest in a more optimized way.
-
-Please note that this feature only supports Venice stores that enable active-active replication and doesn't enable
-write compute yet, empty push doesn't have this requirement.
 
 ### How to enable
 
