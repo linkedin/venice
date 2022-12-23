@@ -308,7 +308,11 @@ public class IsolatedIngestionUtils {
    */
   public static Optional<Integer> getLingeringIngestionProcessId(int port) {
     Optional<Integer> isolatedIngestionProcessPid = Optional.empty();
-    String processIds = executeShellCommand("/usr/sbin/lsof -t -i :" + port);
+    String cmd = "lsof -t -i :" + port;
+    String processIds = executeShellCommand("/usr/sbin/" + cmd);
+    if (processIds.isEmpty()) {
+      processIds = executeShellCommand(cmd);
+    }
     if (processIds.length() != 0) {
       LOGGER.info("Target port is associated to process IDs:\n {}", processIds);
       for (String processId: processIds.split("\n")) {
