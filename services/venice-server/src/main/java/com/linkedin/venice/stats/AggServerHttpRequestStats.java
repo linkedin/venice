@@ -10,8 +10,6 @@ import io.tehuti.metrics.MetricsRepository;
  * the type of requests defined in {@link RequestType}.
  */
 public class AggServerHttpRequestStats extends AbstractVeniceAggStoreStats<ServerHttpRequestStats> {
-  private ServerHttpRequestStats serverHttpRequestStats;
-
   public AggServerHttpRequestStats(
       MetricsRepository metricsRepository,
       RequestType requestType,
@@ -39,20 +37,9 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStoreStats<Serve
         unregisterMetricForDeletedStoreEnabled);
   }
 
-  public void setStoreStat(String storeName) {
-    this.serverHttpRequestStats = super.getStoreStats(storeName);
-  }
-
-  ServerHttpRequestStats getStoreStat(String storeName) {
-    if (serverHttpRequestStats == null || !storeName.equals(serverHttpRequestStats.getStoreName())) {
-      this.serverHttpRequestStats = super.getStoreStats(storeName);
-    }
-    return serverHttpRequestStats;
-  }
-
   public void recordSuccessRequest(String storeName) {
     totalStats.recordSuccessRequest();
-    getStoreStat(storeName).recordSuccessRequest();
+    getStoreStats(storeName).recordSuccessRequest();
   }
 
   public void recordErrorRequest() {
@@ -61,12 +48,12 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStoreStats<Serve
 
   public void recordErrorRequest(String storeName) {
     totalStats.recordErrorRequest();
-    getStoreStat(storeName).recordErrorRequest();
+    getStoreStats(storeName).recordErrorRequest();
   }
 
   public void recordSuccessRequestLatency(String storeName, double latency) {
     totalStats.recordSuccessRequestLatency(latency);
-    getStoreStat(storeName).recordSuccessRequestLatency(latency);
+    getStoreStats(storeName).recordSuccessRequestLatency(latency);
   }
 
   public void recordErrorRequestLatency(double latency) {
@@ -75,32 +62,32 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStoreStats<Serve
 
   public void recordErrorRequestLatency(String storeName, double latency) {
     totalStats.recordErrorRequestLatency(latency);
-    getStoreStat(storeName).recordErrorRequestLatency(latency);
+    getStoreStats(storeName).recordErrorRequestLatency(latency);
   }
 
   public void recordDatabaseLookupLatency(String storeName, double latency, boolean assembledMultiChunkLargeValue) {
     totalStats.recordDatabaseLookupLatency(latency, assembledMultiChunkLargeValue);
-    getStoreStat(storeName).recordDatabaseLookupLatency(latency, assembledMultiChunkLargeValue);
+    getStoreStats(storeName).recordDatabaseLookupLatency(latency, assembledMultiChunkLargeValue);
   }
 
   public void recordRequestKeyCount(String storeName, int keyNum) {
     totalStats.recordRequestKeyCount(keyNum);
-    getStoreStat(storeName).recordRequestKeyCount(keyNum);
+    getStoreStats(storeName).recordRequestKeyCount(keyNum);
   }
 
   public void recordSuccessRequestKeyCount(String storeName, int keyNum) {
     totalStats.recordSuccessRequestKeyCount(keyNum);
-    getStoreStat(storeName).recordSuccessRequestKeyCount(keyNum);
+    getStoreStats(storeName).recordSuccessRequestKeyCount(keyNum);
   }
 
   public void recordRequestSizeInBytes(String storeName, int requestSizeInBytes) {
     totalStats.recordRequestSizeInBytes(requestSizeInBytes);
-    getStoreStat(storeName).recordRequestSizeInBytes(requestSizeInBytes);
+    getStoreStats(storeName).recordRequestSizeInBytes(requestSizeInBytes);
   }
 
   public void recordMultiChunkLargeValueCount(String storeName, int multiChunkLargeValueCount) {
     totalStats.recordMultiChunkLargeValueCount(multiChunkLargeValueCount);
-    getStoreStat(storeName).recordMultiChunkLargeValueCount(multiChunkLargeValueCount);
+    getStoreStats(storeName).recordMultiChunkLargeValueCount(multiChunkLargeValueCount);
   }
 
   public void recordStorageExecutionHandlerSubmissionWaitTime(double submissionWaitTime) {
@@ -113,27 +100,27 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStoreStats<Serve
 
   public void recordRequestFirstPartLatency(String storeName, double latency) {
     totalStats.recordRequestFirstPartLatency(latency);
-    getStoreStat(storeName).recordRequestFirstPartLatency(latency);
+    getStoreStats(storeName).recordRequestFirstPartLatency(latency);
   }
 
   public void recordRequestSecondPartLatency(String storeName, double latency) {
     totalStats.recordRequestSecondPartLatency(latency);
-    getStoreStat(storeName).recordRequestSecondPartLatency(latency);
+    getStoreStats(storeName).recordRequestSecondPartLatency(latency);
   }
 
   public void recordRequestPartsInvokeDelayLatency(String storeName, double latency) {
     totalStats.recordRequestPartsInvokeDelayLatency(latency);
-    getStoreStat(storeName).recordRequestPartsInvokeDelayLatency(latency);
+    getStoreStats(storeName).recordRequestPartsInvokeDelayLatency(latency);
   }
 
   public void recordRequestPartCount(String storeName, int partCount) {
     totalStats.recordRequestPartCount(partCount);
-    getStoreStat(storeName).recordRequestPartCount(partCount);
+    getStoreStats(storeName).recordRequestPartCount(partCount);
   }
 
   public void recordReadComputeLatency(String storeName, double latency, boolean assembledMultiChunkLargeValue) {
     totalStats.recordReadComputeLatency(latency, assembledMultiChunkLargeValue);
-    getStoreStat(storeName).recordReadComputeLatency(latency, assembledMultiChunkLargeValue);
+    getStoreStats(storeName).recordReadComputeLatency(latency, assembledMultiChunkLargeValue);
   }
 
   public void recordReadComputeDeserializationLatency(
@@ -141,7 +128,7 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStoreStats<Serve
       double latency,
       boolean assembledMultiChunkLargeValue) {
     totalStats.recordReadComputeDeserializationLatency(latency, assembledMultiChunkLargeValue);
-    getStoreStat(storeName).recordReadComputeDeserializationLatency(latency, assembledMultiChunkLargeValue);
+    getStoreStats(storeName).recordReadComputeDeserializationLatency(latency, assembledMultiChunkLargeValue);
   }
 
   public void recordReadComputeSerializationLatency(
@@ -149,41 +136,41 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStoreStats<Serve
       double latency,
       boolean assembledMultiChunkLargeValue) {
     totalStats.recordReadComputeSerializationLatency(latency, assembledMultiChunkLargeValue);
-    getStoreStat(storeName).recordReadComputeSerializationLatency(latency, assembledMultiChunkLargeValue);
+    getStoreStats(storeName).recordReadComputeSerializationLatency(latency, assembledMultiChunkLargeValue);
   }
 
   public void recordDotProductCount(String storeName, int count) {
     totalStats.recordDotProductCount(count);
-    getStoreStat(storeName).recordDotProductCount(count);
+    getStoreStats(storeName).recordDotProductCount(count);
   }
 
   public void recordCosineSimilarityCount(String storeName, int count) {
     totalStats.recordCosineSimilarityCount(count);
-    getStoreStat(storeName).recordCosineSimilarityCount(count);
+    getStoreStats(storeName).recordCosineSimilarityCount(count);
   }
 
   public void recordHadamardProductCount(String storeName, int count) {
     totalStats.recordHadamardProduct(count);
-    getStoreStat(storeName).recordHadamardProduct(count);
+    getStoreStats(storeName).recordHadamardProduct(count);
   }
 
   public void recordCountOperatorCount(String storeName, int count) {
     totalStats.recordCountOperator(count);
-    getStoreStat(storeName).recordCountOperator(count);
+    getStoreStats(storeName).recordCountOperator(count);
   }
 
   public void recordEarlyTerminatedEarlyRequest(String storeName) {
     totalStats.recordEarlyTerminatedEarlyRequest();
-    getStoreStat(storeName).recordEarlyTerminatedEarlyRequest();
+    getStoreStats(storeName).recordEarlyTerminatedEarlyRequest();
   }
 
   public void recordKeySizeInByte(String storeName, long keySize) {
     totalStats.recordKeySizeInByte(keySize);
-    getStoreStat(storeName).recordKeySizeInByte(keySize);
+    getStoreStats(storeName).recordKeySizeInByte(keySize);
   }
 
   public void recordValueSizeInByte(String storeName, long valueSize) {
     totalStats.recordValueSizeInByte(valueSize);
-    getStoreStat(storeName).recordValueSizeInByte(valueSize);
+    getStoreStats(storeName).recordValueSizeInByte(valueSize);
   }
 }

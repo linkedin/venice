@@ -473,7 +473,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
               responseWrapper.addRecord(record);
 
               if (responseValueList != null) {
-                responseValueList.add(subChunkCur, record.value.remaining());
+                responseValueList.set(subChunkCur, record.value.remaining());
               }
 
             } finally {

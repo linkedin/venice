@@ -7,6 +7,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AggServerHttpRequestStats;
+import com.linkedin.venice.stats.ServerHttpRequestStats;
 import com.linkedin.venice.utils.LatencyUtils;
 import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelFuture;
@@ -110,7 +111,6 @@ public class StatsHandler extends ChannelDuplexHandler {
       default:
         currentStats = singleGetStats;
     }
-    currentStats.setStoreStat(storeName);
   }
 
   public void setRequestKeyCount(int keyCount) {
@@ -270,16 +270,6 @@ public class StatsHandler extends ChannelDuplexHandler {
       if (!statCallbackExecuted) {
         recordBasicMetrics();
 
-        if (keySizeList != null) {
-          for (int i = 0; i < keySizeList.size(); i++) {
-            currentStats.recordKeySizeInByte(storeName, keySizeList.getInt(i));
-          }
-        }
-        if (valueSizeList != null) {
-          for (int i = 0; i < valueSizeList.size(); i++) {
-            currentStats.recordValueSizeInByte(storeName, valueSizeList.getInt(i));
-          }
-        }
         double elapsedTime = LatencyUtils.getLatencyInMS(startTimeInNS);
         // if ResponseStatus is either OK or NOT_FOUND and the channel write is succeed,
         // records a successRequest in stats. Otherwise, records a errorRequest in stats;
@@ -295,8 +285,11 @@ public class StatsHandler extends ChannelDuplexHandler {
 
   private void recordBasicMetrics() {
     if (storeName != null) {
+      ServerHttpRequestStats serverHttpRequestStats = currentStats.getStoreStats(storeName);
+      ServerHttpRequestStats totalStats = currentStats.getTotalStats();
       if (databaseLookupLatency >= 0) {
-        currentStats.recordDatabaseLookupLatency(storeName, databaseLookupLatency, isAssembledMultiChunkLargeValue());
+        totalStats.recordDatabaseLookupLatency(databaseLookupLatency, isAssembledMultiChunkLargeValue());
+        serverHttpRequestStats.recordDatabaseLookupLatency(databaseLookupLatency, isAssembledMultiChunkLargeValue());
       }
       if (storageExecutionSubmissionWaitTime >= 0) {
         currentStats.recordStorageExecutionHandlerSubmissionWaitTime(storageExecutionSubmissionWaitTime);
@@ -306,58 +299,86 @@ public class StatsHandler extends ChannelDuplexHandler {
       }
       if (multiChunkLargeValueCount > 0) {
         // We only record this metric for requests where large values occurred
-        currentStats.recordMultiChunkLargeValueCount(storeName, multiChunkLargeValueCount);
+        totalStats.recordMultiChunkLargeValueCount(multiChunkLargeValueCount);
+        serverHttpRequestStats.recordMultiChunkLargeValueCount(multiChunkLargeValueCount);
       }
       if (requestKeyCount > 0) {
-        currentStats.recordRequestKeyCount(storeName, requestKeyCount);
+        totalStats.recordRequestKeyCount(requestKeyCount);
+        serverHttpRequestStats.recordRequestKeyCount(requestKeyCount);
       }
       if (successRequestKeyCount > 0) {
-        currentStats.recordSuccessRequestKeyCount(storeName, successRequestKeyCount);
+        totalStats.recordSuccessRequestKeyCount(successRequestKeyCount);
+        serverHttpRequestStats.recordSuccessRequestKeyCount(successRequestKeyCount);
       }
       if (requestSizeInBytes > 0) {
-        currentStats.recordRequestSizeInBytes(storeName, requestSizeInBytes);
+        totalStats.recordRequestSizeInBytes(requestSizeInBytes);
+        serverHttpRequestStats.recordRequestSizeInBytes(requestSizeInBytes);
       }
       if (firstPartLatency > 0) {
-        currentStats.recordRequestFirstPartLatency(storeName, firstPartLatency);
+        totalStats.recordRequestFirstPartLatency(firstPartLatency);
+        serverHttpRequestStats.recordRequestFirstPartLatency(firstPartLatency);
       }
       if (partsInvokeDelayLatency > 0) {
-        currentStats.recordRequestPartsInvokeDelayLatency(storeName, partsInvokeDelayLatency);
+        totalStats.recordRequestPartsInvokeDelayLatency(partsInvokeDelayLatency);
+        serverHttpRequestStats.recordRequestPartsInvokeDelayLatency(partsInvokeDelayLatency);
       }
       if (secondPartLatency > 0) {
-        currentStats.recordRequestSecondPartLatency(storeName, secondPartLatency);
+        totalStats.recordRequestSecondPartLatency(secondPartLatency);
+        serverHttpRequestStats.recordRequestSecondPartLatency(secondPartLatency);
       }
       if (requestPartCount > 0) {
-        currentStats.recordRequestPartCount(storeName, requestPartCount);
+        totalStats.recordRequestPartCount(requestPartCount);
+        serverHttpRequestStats.recordRequestPartCount(requestPartCount);
       }
       if (readComputeLatency >= 0) {
-        currentStats.recordReadComputeLatency(storeName, readComputeLatency, isAssembledMultiChunkLargeValue());
+        totalStats.recordReadComputeLatency(readComputeLatency, isAssembledMultiChunkLargeValue());
+        serverHttpRequestStats.recordReadComputeLatency(readComputeLatency, isAssembledMultiChunkLargeValue());
       }
       if (readComputeDeserializationLatency >= 0) {
-        currentStats.recordReadComputeDeserializationLatency(
-            storeName,
+        totalStats.recordReadComputeDeserializationLatency(
+            readComputeDeserializationLatency,
+            isAssembledMultiChunkLargeValue());
+        serverHttpRequestStats.recordReadComputeDeserializationLatency(
             readComputeDeserializationLatency,
             isAssembledMultiChunkLargeValue());
       }
       if (readComputeSerializationLatency >= 0) {
-        currentStats.recordReadComputeSerializationLatency(
-            storeName,
-            readComputeSerializationLatency,
-            isAssembledMultiChunkLargeValue());
+        totalStats
+            .recordReadComputeSerializationLatency(readComputeSerializationLatency, isAssembledMultiChunkLargeValue());
+        serverHttpRequestStats
+            .recordReadComputeSerializationLatency(readComputeSerializationLatency, isAssembledMultiChunkLargeValue());
       }
       if (dotProductCount > 0) {
-        currentStats.recordDotProductCount(storeName, dotProductCount);
+        totalStats.recordDotProductCount(dotProductCount);
+        serverHttpRequestStats.recordDotProductCount(dotProductCount);
       }
       if (cosineSimilarityCount > 0) {
-        currentStats.recordCosineSimilarityCount(storeName, cosineSimilarityCount);
+        totalStats.recordCosineSimilarityCount(cosineSimilarityCount);
+        serverHttpRequestStats.recordCosineSimilarityCount(cosineSimilarityCount);
       }
       if (hadamardProductCount > 0) {
-        currentStats.recordHadamardProductCount(storeName, hadamardProductCount);
+        totalStats.recordHadamardProduct(hadamardProductCount);
+        serverHttpRequestStats.recordHadamardProduct(hadamardProductCount);
       }
       if (countOperatorCount > 0) {
-        currentStats.recordCountOperatorCount(storeName, countOperatorCount);
+        totalStats.recordCountOperator(countOperatorCount);
+        serverHttpRequestStats.recordCountOperator(countOperatorCount);
       }
       if (isRequestTerminatedEarly) {
-        currentStats.recordEarlyTerminatedEarlyRequest(storeName);
+        totalStats.recordEarlyTerminatedEarlyRequest();
+        serverHttpRequestStats.recordEarlyTerminatedEarlyRequest();
+      }
+      if (keySizeList != null) {
+        for (int i = 0; i < keySizeList.size(); i++) {
+          totalStats.recordKeySizeInByte(keySizeList.getInt(i));
+          serverHttpRequestStats.recordKeySizeInByte(keySizeList.getInt(i));
+        }
+      }
+      if (valueSizeList != null) {
+        for (int i = 0; i < valueSizeList.size(); i++) {
+          totalStats.recordValueSizeInByte(valueSizeList.getInt(i));
+          serverHttpRequestStats.recordValueSizeInByte(valueSizeList.getInt(i));
+        }
       }
     }
   }
