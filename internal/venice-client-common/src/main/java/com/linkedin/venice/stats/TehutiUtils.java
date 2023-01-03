@@ -3,6 +3,8 @@ package com.linkedin.venice.stats;
 import io.tehuti.metrics.JmxReporter;
 import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.stats.Avg;
+import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Percentile;
 import io.tehuti.metrics.stats.Percentiles;
 import io.tehuti.metrics.stats.Rate;
@@ -30,6 +32,19 @@ public class TehutiUtils {
   public static Percentiles getPercentileStat(String sensorName, String storeName) {
     String name = sensorName + AbstractVeniceStats.DELIMITER + storeName;
     return getPercentileStat(name, DEFAULT_HISTOGRAM_SIZE_IN_BYTES, DEFAULT_HISTOGRAM_MAX_VALUE);
+  }
+
+  public static MeasurableStat[] getPercentileStatWithAvgAndMax(String sensorName, String storeName) {
+    String name = sensorName + AbstractVeniceStats.DELIMITER + storeName;
+    return new MeasurableStat[] { getPercentileStat(name, DEFAULT_HISTOGRAM_SIZE_IN_BYTES, DEFAULT_HISTOGRAM_MAX_VALUE),
+        new Avg(), new Max() };
+  }
+
+  public static MeasurableStat[] getFineGrainedPercentileStatWithAvgAndMax(String sensorName, String storeName) {
+    String name = sensorName + AbstractVeniceStats.DELIMITER + storeName;
+    return new MeasurableStat[] {
+        getFineGrainedPercentileStat(name, DEFAULT_HISTOGRAM_SIZE_IN_BYTES, DEFAULT_HISTOGRAM_MAX_VALUE), new Avg(),
+        new Max() };
   }
 
   public static Percentiles getFineGrainedPercentileStat(String sensorName, String storeName) {

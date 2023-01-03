@@ -70,6 +70,7 @@ import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -398,11 +399,10 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     response.setValueRecord(valueRecord);
 
     if (keyValueProfilingEnabled) {
-      IntList keyList = new IntArrayList(1);
-      keyList.set(0, key.length);
+      IntList keyList = new IntArrayList(Collections.singletonList(key.length));
       response.setKeySizeList(keyList);
-      IntList valueList = new IntArrayList(1);
-      valueList.set(0, response.isFound() ? valueRecord.getDataSize() : 0);
+      IntList valueList =
+          new IntArrayList(Collections.singletonList(response.isFound() ? valueRecord.getDataSize() : -1));
       response.setValueSizeList(valueList);
     }
 
@@ -433,8 +433,8 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     CompletableFuture[] chunkFutures = new CompletableFuture[splitSize];
     PartitionerConfig partitionerConfig = getPartitionerConfig(request.getResourceName());
 
-    IntList responseKeyList = keyValueProfilingEnabled ? new IntArrayList() : null;
-    IntList responseValueList = keyValueProfilingEnabled ? new IntArrayList() : null;
+    IntList responseKeySizeList = keyValueProfilingEnabled ? new IntArrayList() : null;
+    IntList responseValueSizeList = keyValueProfilingEnabled ? new IntArrayList() : null;
 
     for (int cur = 0; cur < splitSize; ++cur) {
       final int finalCur = cur;
@@ -446,8 +446,8 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
         int endPos = Math.min((finalCur + 1) * parallelChunkSize, totalKeyNum);
         for (int subChunkCur = startPos; subChunkCur < endPos; ++subChunkCur) {
           final MultiGetRouterRequestKeyV1 key = keyList.get(subChunkCur);
-          if (responseKeyList != null) {
-            responseKeyList.set(subChunkCur, key.keyBytes.remaining());
+          if (responseKeySizeList != null) {
+            responseKeySizeList.set(subChunkCur, key.keyBytes.remaining());
           }
           int subPartitionId = getSubPartitionId(key.partitionId, topic, partitionerConfig, key.keyBytes.array());
           MultiGetResponseRecordV1 record =
@@ -472,12 +472,16 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
             try {
               responseWrapper.addRecord(record);
 
-              if (responseValueList != null) {
-                responseValueList.set(subChunkCur, record.value.remaining());
+              if (responseValueSizeList != null) {
+                responseValueSizeList.set(subChunkCur, record.value.remaining());
               }
 
             } finally {
               requestLock.unlock();
+            }
+          } else {
+            if (responseValueSizeList != null) {
+              responseValueSizeList.set(subChunkCur, -1);
             }
           }
         }
@@ -488,8 +492,8 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
       if (e != null) {
         throw new VeniceException(e);
       }
-      responseWrapper.setKeySizeList(responseKeyList);
-      responseWrapper.setValueSizeList(responseValueList);
+      responseWrapper.setKeySizeList(responseKeySizeList);
+      responseWrapper.setValueSizeList(responseValueSizeList);
       return responseWrapper;
     });
   }

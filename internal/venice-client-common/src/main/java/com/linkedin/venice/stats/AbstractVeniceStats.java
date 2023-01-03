@@ -7,6 +7,8 @@ import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.Avg;
+import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Percentiles;
 import java.util.Map;
 import java.util.Optional;
@@ -157,5 +159,9 @@ public class AbstractVeniceStats {
       resourceName = "." + resourceName;
     }
     return resourceName + AbstractVeniceStats.DELIMITER + sensorName;
+  }
+
+  protected MeasurableStat[] avgAndMax() {
+    return new MeasurableStat[] { new Avg(), new Max() };
   }
 }

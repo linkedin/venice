@@ -9,7 +9,6 @@ import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Min;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import io.tehuti.metrics.stats.Rate;
-import io.tehuti.metrics.stats.Total;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
@@ -43,11 +42,7 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor readComputeLatencyForSmallValueSensor;
   private final Sensor readComputeLatencyForLargeValueSensor;
   private final Sensor readComputeDeserializationLatencySensor;
-  private final Sensor readComputeDeserializationLatencyForSmallValueSensor;
-  private final Sensor readComputeDeserializationLatencyForLargeValueSensor;
   private final Sensor readComputeSerializationLatencySensor;
-  private final Sensor readComputeSerializationLatencyForSmallValueSensor;
-  private final Sensor readComputeSerializationLatencyForLargeValueSensor;
   private final Sensor dotProductCountSensor;
   private final Sensor cosineSimilaritySensor;
   private final Sensor hadamardProductSensor;
@@ -61,10 +56,6 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
   // Ratio sensors are not directly written to, but they still get their state updated indirectly
   @SuppressWarnings("unused")
   private final Sensor successRequestKeyRatioSensor, successRequestRatioSensor;
-
-  public ServerHttpRequestStats(MetricsRepository metricsRepository, String storeName, RequestType requestType) {
-    this(metricsRepository, storeName, requestType, false, null);
-  }
 
   public ServerHttpRequestStats(
       MetricsRepository metricsRepository,
@@ -98,22 +89,22 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
         "storage_engine_query_latency_for_small_value",
         totalStats,
         () -> totalStats.databaseLookupLatencyForSmallValueSensor,
-        TehutiUtils.getPercentileStat(getName(), getFullMetricName("storage_engine_query_latency_for_small_value")),
-        new Avg(),
-        new Max());
+        TehutiUtils.getPercentileStatWithAvgAndMax(
+            getName(),
+            getFullMetricName("storage_engine_query_latency_for_small_value")));
     databaseLookupLatencyForLargeValueSensor = registerPerStoreAndTotal(
         "storage_engine_query_latency_for_large_value",
         totalStats,
         () -> totalStats.databaseLookupLatencyForLargeValueSensor,
-        TehutiUtils.getPercentileStat(getName(), getFullMetricName("storage_engine_query_latency_for_large_value")),
-        new Avg(),
-        new Max());
+        TehutiUtils.getPercentileStatWithAvgAndMax(
+            getName(),
+            getFullMetricName("storage_engine_query_latency_for_large_value")));
 
     storageExecutionHandlerSubmissionWaitTime = registerSensor(
         "storage_execution_handler_submission_wait_time",
-        TehutiUtils.getPercentileStat(getName(), getFullMetricName("storage_execution_handler_submission_wait_time")),
-        new Max(),
-        new Avg());
+        TehutiUtils.getPercentileStatWithAvgAndMax(
+            getName(),
+            getFullMetricName("storage_execution_handler_submission_wait_time")));
 
     storageExecutionQueueLenSensor = registerSensor("storage_execution_queue_len", new Max(), new Avg());
 
@@ -151,14 +142,11 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
        */
       largeValueLookupStats.add(new Rate());
     }
-    // multiChunkLargeValueCountSensor = registerSensor(
-    // "storage_engine_large_value_lookup",
-    // largeValueLookupStats.toArray(new MeasurableStat[largeValueLookupStats.size()]));
     multiChunkLargeValueCountSensor = registerPerStoreAndTotal(
         "storage_engine_large_value_lookup",
         totalStats,
         () -> totalStats.multiChunkLargeValueCountSensor,
-        largeValueLookupStats.toArray(new MeasurableStat[largeValueLookupStats.size()]));
+        largeValueLookupStats.toArray(new MeasurableStat[0]));
 
     Rate requestKeyCount = new OccurrenceRate();
     Rate successRequestKeyCount = new OccurrenceRate();
@@ -193,24 +181,18 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
         "request_first_part_latency",
         totalStats,
         () -> totalStats.requestFirstPartLatencySensor,
-        TehutiUtils.getPercentileStat(getName(), getFullMetricName("request_first_part_latency")),
-        new Avg(),
-        new Max());
+        TehutiUtils.getPercentileStatWithAvgAndMax(getName(), getFullMetricName("request_first_part_latency")));
     requestSecondPartLatencySensor = registerPerStoreAndTotal(
         "request_second_part_latency",
         totalStats,
         () -> totalStats.requestSecondPartLatencySensor,
-        TehutiUtils.getPercentileStat(getName(), getFullMetricName("request_second_part_latency")),
-        new Avg(),
-        new Max());
+        TehutiUtils.getPercentileStatWithAvgAndMax(getName(), getFullMetricName("request_second_part_latency")));
 
     requestPartsInvokeDelayLatencySensor = registerPerStoreAndTotal(
         "request_parts_invoke_delay_latency",
         totalStats,
         () -> totalStats.requestPartsInvokeDelayLatencySensor,
-        TehutiUtils.getPercentileStat(getName(), getFullMetricName("request_parts_invoke_delay_latency")),
-        new Avg(),
-        new Max());
+        TehutiUtils.getPercentileStatWithAvgAndMax(getName(), getFullMetricName("request_parts_invoke_delay_latency")));
 
     requestPartCountSensor = registerPerStoreAndTotal(
         "request_part_count",
@@ -224,109 +206,56 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
         "storage_engine_read_compute_latency",
         totalStats,
         () -> totalStats.readComputeLatencySensor,
-        TehutiUtils.getPercentileStat(getName(), getFullMetricName("storage_engine_read_compute_latency")),
-        new Avg(),
-        new Max());
+        TehutiUtils
+            .getPercentileStatWithAvgAndMax(getName(), getFullMetricName("storage_engine_read_compute_latency")));
     readComputeLatencyForSmallValueSensor = registerPerStoreAndTotal(
         "storage_engine_read_compute_latency_for_small_value",
         totalStats,
         () -> totalStats.readComputeLatencyForSmallValueSensor,
-        TehutiUtils
-            .getPercentileStat(getName(), getFullMetricName("storage_engine_read_compute_latency_for_small_value")),
-        new Avg(),
-        new Max());
+        TehutiUtils.getPercentileStatWithAvgAndMax(
+            getName(),
+            getFullMetricName("storage_engine_read_compute_latency_for_small_value")));
     readComputeLatencyForLargeValueSensor = registerPerStoreAndTotal(
         "storage_engine_read_compute_latency_for_large_value",
         totalStats,
         () -> totalStats.readComputeLatencyForLargeValueSensor,
-        TehutiUtils
-            .getPercentileStat(getName(), getFullMetricName("storage_engine_read_compute_latency_for_large_value")),
-        new Avg(),
-        new Max());
+        TehutiUtils.getPercentileStatWithAvgAndMax(
+            getName(),
+            getFullMetricName("storage_engine_read_compute_latency_for_large_value")));
 
     readComputeDeserializationLatencySensor = registerPerStoreAndTotal(
         "storage_engine_read_compute_deserialization_latency",
         totalStats,
         () -> totalStats.readComputeDeserializationLatencySensor,
-        TehutiUtils
-            .getPercentileStat(getName(), getFullMetricName("storage_engine_read_compute_latency_for_large_value")),
-        new Avg(),
-        new Max());
-    readComputeDeserializationLatencyForSmallValueSensor = registerPerStoreAndTotal(
-        "storage_engine_read_compute_deserialization_latency_for_small_value",
-        totalStats,
-        () -> totalStats.readComputeDeserializationLatencyForSmallValueSensor,
-        TehutiUtils.getPercentileStat(
+        TehutiUtils.getPercentileStatWithAvgAndMax(
             getName(),
-            getFullMetricName("storage_engine_read_compute_deserialization_latency_for_small_value")),
-        new Avg(),
-        new Max());
-    readComputeDeserializationLatencyForLargeValueSensor = registerPerStoreAndTotal(
-        "storage_engine_read_compute_deserialization_latency_for_large_value",
-        totalStats,
-        () -> totalStats.readComputeDeserializationLatencyForLargeValueSensor,
-        TehutiUtils.getPercentileStat(
-            getName(),
-            getFullMetricName("storage_engine_read_compute_deserialization_latency_for_large_value")),
-        new Avg(),
-        new Max());
+            getFullMetricName("storage_engine_read_compute_latency_for_large_value")));
 
     readComputeSerializationLatencySensor = registerPerStoreAndTotal(
         "storage_engine_read_compute_serialization_latency",
         totalStats,
         () -> totalStats.readComputeSerializationLatencySensor,
-        TehutiUtils
-            .getPercentileStat(getName(), getFullMetricName("storage_engine_read_compute_serialization_latency")),
-        new Avg(),
-        new Max());
-
-    readComputeSerializationLatencyForSmallValueSensor = registerPerStoreAndTotal(
-        "storage_engine_read_compute_serialization_latency_for_small_value",
-        totalStats,
-        () -> totalStats.readComputeSerializationLatencyForSmallValueSensor,
-        TehutiUtils.getPercentileStat(
+        TehutiUtils.getPercentileStatWithAvgAndMax(
             getName(),
-            getFullMetricName("storage_engine_read_compute_serialization_latency_for_small_value")),
-        new Avg(),
-        new Max());
-
-    readComputeSerializationLatencyForLargeValueSensor = registerPerStoreAndTotal(
-        "storage_engine_read_compute_serialization_latency_for_large_value",
-        totalStats,
-        () -> totalStats.readComputeSerializationLatencyForLargeValueSensor,
-        TehutiUtils.getPercentileStat(
-            getName(),
-            getFullMetricName("storage_engine_read_compute_serialization_latency_for_large_value")),
-        new Avg(),
-        new Max());
+            getFullMetricName("storage_engine_read_compute_serialization_latency")));
 
     /**
      * Total will reflect counts for the entire server host, while Avg will reflect the counts for each request.
      */
-    dotProductCountSensor = registerPerStoreAndTotal(
-        "dot_product_count",
-        totalStats,
-        () -> totalStats.dotProductCountSensor,
-        new Total(),
-        new Avg());
+    dotProductCountSensor =
+        registerPerStoreAndTotal("dot_product_count", totalStats, () -> totalStats.dotProductCountSensor, avgAndMax());
     cosineSimilaritySensor = registerPerStoreAndTotal(
         "cosine_similarity_count",
         totalStats,
         () -> totalStats.cosineSimilaritySensor,
-        new Total(),
-        new Avg());
+        avgAndMax());
     hadamardProductSensor = registerPerStoreAndTotal(
         "hadamard_product_count",
         totalStats,
         () -> totalStats.hadamardProductSensor,
-        new Total(),
-        new Avg());
-    countOperatorSensor = registerPerStoreAndTotal(
-        "count_operator_count",
-        totalStats,
-        () -> totalStats.countOperatorSensor,
-        new Total(),
-        new Avg());
+        avgAndMax());
+    countOperatorSensor =
+        registerPerStoreAndTotal("count_operator_count", totalStats, () -> totalStats.countOperatorSensor, avgAndMax());
     earlyTerminatedEarlyRequestCountSensor = registerPerStoreAndTotal(
         "early_terminated_request_count",
         totalStats,
@@ -339,17 +268,15 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
           requestValueSizeSensorName,
           totalStats,
           () -> totalStats.requestValueSizeSensor,
-          new Avg(),
-          new Max(),
-          TehutiUtils.getFineGrainedPercentileStat(getName(), getFullMetricName(requestValueSizeSensorName)));
+          TehutiUtils
+              .getFineGrainedPercentileStatWithAvgAndMax(getName(), getFullMetricName(requestValueSizeSensorName)));
       String requestKeySizeSensorName = "request_key_size";
       requestKeySizeSensor = registerPerStoreAndTotal(
           requestKeySizeSensorName,
           totalStats,
           () -> totalStats.requestKeySizeSensor,
-          new Avg(),
-          new Max(),
-          TehutiUtils.getFineGrainedPercentileStat(getName(), getFullMetricName(requestKeySizeSensorName)));
+          TehutiUtils
+              .getFineGrainedPercentileStatWithAvgAndMax(getName(), getFullMetricName(requestKeySizeSensorName)));
     }
   }
 
@@ -438,20 +365,10 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
 
   public void recordReadComputeDeserializationLatency(double latency, boolean assembledMultiChunkLargeValue) {
     readComputeDeserializationLatencySensor.record(latency);
-    if (assembledMultiChunkLargeValue) {
-      readComputeDeserializationLatencyForLargeValueSensor.record(latency);
-    } else {
-      readComputeDeserializationLatencyForSmallValueSensor.record(latency);
-    }
   }
 
   public void recordReadComputeSerializationLatency(double latency, boolean assembledMultiChunkLargeValue) {
     readComputeSerializationLatencySensor.record(latency);
-    if (assembledMultiChunkLargeValue) {
-      readComputeSerializationLatencyForLargeValueSensor.record(latency);
-    } else {
-      readComputeSerializationLatencyForSmallValueSensor.record(latency);
-    }
   }
 
   public void recordDotProductCount(int count) {

@@ -354,7 +354,8 @@ public class StatsHandler extends ChannelDuplexHandler {
       }
       if (valueSizeList != null) {
         for (int i = 0; i < valueSizeList.size(); i++) {
-          serverHttpRequestStats.recordValueSizeInByte(valueSizeList.getInt(i));
+          if (valueSizeList.getInt(i) != -1)
+            serverHttpRequestStats.recordValueSizeInByte(valueSizeList.getInt(i));
         }
       }
     }

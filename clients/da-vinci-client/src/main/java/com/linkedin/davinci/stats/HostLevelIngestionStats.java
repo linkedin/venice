@@ -259,7 +259,7 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         "leader_delegate_real_time_record_latency",
         totalStats,
         () -> totalStats.totalLeaderDelegateRealTimeRecordLatencySensor,
-        newAvgAndMax());
+        avgAndMax());
 
     Int2ObjectMap<String> kafkaClusterIdToAliasMap = serverConfig.getKafkaClusterIdToAliasMap();
     int listSize = kafkaClusterIdToAliasMap.isEmpty() ? 0 : Collections.max(kafkaClusterIdToAliasMap.keySet()) + 1;
@@ -337,7 +337,7 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         "kafka_poll_request_latency",
         totalStats,
         () -> totalStats.pollRequestLatencySensor,
-        newAvgAndMax());
+        avgAndMax());
 
     this.pollResultNumSensor = registerPerStoreAndTotal(
         "kafka_poll_result_num",
@@ -350,7 +350,7 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         "consumer_records_queue_put_latency",
         totalStats,
         () -> totalStats.consumerRecordsQueuePutLatencySensor,
-        newAvgAndMax());
+        avgAndMax());
 
     this.unexpectedMessageSensor = registerPerStoreAndTotal(
         "unexpected_message",
@@ -371,43 +371,43 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         "leader_producer_synchronize_latency",
         totalStats,
         () -> totalStats.leaderProducerSynchronizeLatencySensor,
-        newAvgAndMax());
+        avgAndMax());
 
     this.leaderWriteComputeLookUpLatencySensor = registerPerStoreAndTotal(
         "leader_write_compute_lookup_latency",
         totalStats,
         () -> totalStats.leaderWriteComputeLookUpLatencySensor,
-        newAvgAndMax());
+        avgAndMax());
 
     this.leaderWriteComputeUpdateLatencySensor = registerPerStoreAndTotal(
         "leader_write_compute_update_latency",
         totalStats,
         () -> totalStats.leaderWriteComputeUpdateLatencySensor,
-        newAvgAndMax());
+        avgAndMax());
 
     this.processConsumerActionLatencySensor = registerPerStoreAndTotal(
         "process_consumer_actions_latency",
         totalStats,
         () -> totalStats.processConsumerActionLatencySensor,
-        newAvgAndMax());
+        avgAndMax());
 
     this.checkLongRunningTasksLatencySensor = registerPerStoreAndTotal(
         "check_long_running_task_latency",
         totalStats,
         () -> totalStats.checkLongRunningTasksLatencySensor,
-        newAvgAndMax());
+        avgAndMax());
 
     this.quotaEnforcementLatencySensor = registerPerStoreAndTotal(
         "hybrid_quota_enforcement_latency",
         totalStats,
         () -> totalStats.quotaEnforcementLatencySensor,
-        newAvgAndMax());
+        avgAndMax());
 
     this.consumerToQueueLatencySensor = registerPerStoreAndTotal(
         "consumer_to_queue_latency",
         totalStats,
         () -> totalStats.quotaEnforcementLatencySensor,
-        newAvgAndMax());
+        avgAndMax());
 
     String storageEnginePutLatencySensorName = "storage_engine_put_latency";
     this.storageEnginePutLatencySensor = registerPerStoreAndTotal(
@@ -428,25 +428,25 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         "produce_to_drainer_queue_record_num",
         totalStats,
         () -> totalStats.produceToDrainerQueueCallCountSensor,
-        newAvgAndMax());
+        avgAndMax());
 
     this.produceToKafkaRecordNumSensor = registerPerStoreAndTotal(
         "produce_to_kafka_record_num",
         totalStats,
         () -> totalStats.produceToKafkaRecordNumSensor,
-        newAvgAndMax());
+        avgAndMax());
 
     this.produceToKafkaLatencySensor = registerPerStoreAndTotal(
         "produce_to_kafka_latency",
         totalStats,
         () -> totalStats.produceToKafkaLatencySensor,
-        newAvgAndMax());
+        avgAndMax());
 
     this.writeComputeCacheHitCount = registerPerStoreAndTotal(
         "write_compute_cache_hit_count",
         totalStats,
         () -> totalStats.writeComputeCacheHitCount,
-        newAvgAndMax());
+        avgAndMax());
 
     this.checksumVerificationFailureSensor = registerPerStoreAndTotal(
         "checksum_verification_failure",
@@ -458,7 +458,7 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         "leader_ingestion_value_bytes_lookup_latency",
         totalStats,
         () -> totalStats.leaderIngestionValueBytesLookUpLatencySensor,
-        newAvgAndMax());
+        avgAndMax());
 
     this.leaderIngestionValueBytesCacheHitCount = registerPerStoreAndTotal(
         "leader_ingestion_value_bytes_cache_hit_count",
@@ -476,7 +476,7 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         "leader_ingestion_replication_metadata_lookup_latency",
         totalStats,
         () -> totalStats.leaderIngestionReplicationMetadataLookUpLatencySensor,
-        newAvgAndMax());
+        avgAndMax());
   }
 
   /** Record a host-level byte consumption rate across all store versions */
@@ -659,9 +659,5 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
   public void recordLeaderDelegateRealTimeRecordLatency(double latency) {
     totalLeaderDelegateRealTimeRecordLatencySensor.record(latency);
-  }
-
-  private MeasurableStat[] newAvgAndMax() {
-    return new MeasurableStat[] { new Avg(), new Max() };
   }
 }
