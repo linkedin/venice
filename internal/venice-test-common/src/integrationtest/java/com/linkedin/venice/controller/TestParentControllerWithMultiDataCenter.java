@@ -439,6 +439,7 @@ public class TestParentControllerWithMultiDataCenter {
       String storeName,
       int expectedVersion) {
     VersionCreationResponse vcr = parentControllerClient.emptyPush(storeName, Utils.getUniqueString("empty-push"), 1L);
+    Assert.assertFalse(vcr.isError());
     assertEquals(
         vcr.getVersion(),
         expectedVersion,
