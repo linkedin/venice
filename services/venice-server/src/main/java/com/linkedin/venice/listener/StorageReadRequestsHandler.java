@@ -68,9 +68,9 @@ import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
+import it.unimi.dsi.fastutil.ints.IntLists;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -399,11 +399,8 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     response.setValueRecord(valueRecord);
 
     if (keyValueProfilingEnabled) {
-      IntList keyList = new IntArrayList(Collections.singletonList(key.length));
-      response.setKeySizeList(keyList);
-      IntList valueList =
-          new IntArrayList(Collections.singletonList(response.isFound() ? valueRecord.getDataSize() : -1));
-      response.setValueSizeList(valueList);
+      response.setKeySizeList(IntLists.singleton(key.length));
+      response.setValueSizeList(IntLists.singleton(response.isFound() ? valueRecord.getDataSize() : -1));
     }
 
     return response;
@@ -433,8 +430,8 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     CompletableFuture[] chunkFutures = new CompletableFuture[splitSize];
     PartitionerConfig partitionerConfig = getPartitionerConfig(request.getResourceName());
 
-    IntList responseKeySizeList = keyValueProfilingEnabled ? new IntArrayList() : null;
-    IntList responseValueSizeList = keyValueProfilingEnabled ? new IntArrayList() : null;
+    IntList responseKeySizeList = keyValueProfilingEnabled ? new IntArrayList(totalKeyNum) : null;
+    IntList responseValueSizeList = keyValueProfilingEnabled ? new IntArrayList(totalKeyNum) : null;
 
     for (int cur = 0; cur < splitSize; ++cur) {
       final int finalCur = cur;
@@ -467,15 +464,13 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
           }
 
           if (record != null) {
+            if (responseValueSizeList != null) {
+              responseValueSizeList.set(subChunkCur, record.value.remaining());
+            }
             // TODO: streaming support in storage node
             requestLock.lock();
             try {
               responseWrapper.addRecord(record);
-
-              if (responseValueSizeList != null) {
-                responseValueSizeList.set(subChunkCur, record.value.remaining());
-              }
-
             } finally {
               requestLock.unlock();
             }
