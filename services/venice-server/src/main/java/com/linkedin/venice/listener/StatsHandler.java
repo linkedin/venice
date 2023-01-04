@@ -268,24 +268,24 @@ public class StatsHandler extends ChannelDuplexHandler {
        * multiple times for a single request
        */
       if (!statCallbackExecuted) {
-        recordBasicMetrics();
+        ServerHttpRequestStats serverHttpRequestStats = currentStats.getStoreStats(storeName);
+        recordBasicMetrics(serverHttpRequestStats);
 
         double elapsedTime = LatencyUtils.getLatencyInMS(startTimeInNS);
         // if ResponseStatus is either OK or NOT_FOUND and the channel write is succeed,
         // records a successRequest in stats. Otherwise, records a errorRequest in stats;
         if (result.isSuccess() && (responseStatus.equals(OK) || responseStatus.equals(NOT_FOUND))) {
-          successRequest(elapsedTime);
+          successRequest(serverHttpRequestStats, elapsedTime);
         } else {
-          errorRequest(elapsedTime);
+          errorRequest(serverHttpRequestStats, elapsedTime);
         }
         statCallbackExecuted = true;
       }
     });
   }
 
-  private void recordBasicMetrics() {
+  private void recordBasicMetrics(ServerHttpRequestStats serverHttpRequestStats) {
     if (storeName != null) {
-      ServerHttpRequestStats serverHttpRequestStats = currentStats.getStoreStats(storeName);
       if (databaseLookupLatency >= 0) {
         serverHttpRequestStats.recordDatabaseLookupLatency(databaseLookupLatency, isAssembledMultiChunkLargeValue());
       }
@@ -363,22 +363,22 @@ public class StatsHandler extends ChannelDuplexHandler {
 
   // This method does not have to be synchronised since operations in Tehuti are already synchronised.
   // Please re-consider the race condition if new logic is added.
-  private void successRequest(double elapsedTime) {
+  private void successRequest(ServerHttpRequestStats stats, double elapsedTime) {
     if (storeName != null) {
-      currentStats.recordSuccessRequest(storeName);
-      currentStats.recordSuccessRequestLatency(storeName, elapsedTime);
+      stats.recordSuccessRequest();
+      stats.recordSuccessRequestLatency(elapsedTime);
     } else {
       throw new VeniceException("store name could not be null if request succeeded");
     }
   }
 
-  private void errorRequest(double elapsedTime) {
+  private void errorRequest(ServerHttpRequestStats stats, double elapsedTime) {
     if (storeName == null) {
       currentStats.recordErrorRequest();
       currentStats.recordErrorRequestLatency(elapsedTime);
     } else {
-      currentStats.recordErrorRequest(storeName);
-      currentStats.recordErrorRequestLatency(storeName, elapsedTime);
+      stats.recordErrorRequest();
+      stats.recordErrorRequestLatency(elapsedTime);
     }
   }
 }

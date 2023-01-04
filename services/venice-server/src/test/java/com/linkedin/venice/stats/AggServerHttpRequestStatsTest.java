@@ -51,10 +51,15 @@ public class AggServerHttpRequestStatsTest {
 
   @Test
   public void testMetrics() {
-    singleGetStats.recordSuccessRequest(STORE_FOO);
-    singleGetStats.recordSuccessRequest(STORE_BAR);
-    singleGetStats.recordErrorRequest(STORE_FOO);
-    singleGetStats.recordErrorRequest();
+    ServerHttpRequestStats singleGetServerStatsFoo = singleGetStats.getStoreStats(STORE_FOO);
+    ServerHttpRequestStats singleGetServerStatsBar = singleGetStats.getStoreStats(STORE_BAR);
+    ServerHttpRequestStats batchGetServerStatsFoo = batchGetStats.getStoreStats(STORE_FOO);
+    ServerHttpRequestStats batchGetServerStatsBar = batchGetStats.getStoreStats(STORE_BAR);
+
+    singleGetServerStatsFoo.recordSuccessRequest();
+    singleGetServerStatsFoo.recordSuccessRequest();
+    singleGetServerStatsFoo.recordErrorRequest();
+    singleGetServerStatsBar.recordErrorRequest();
 
     Assert.assertTrue(
         reporter.query("." + STORE_FOO + "--success_request.OccurrenceRate").value() > 0,
@@ -94,8 +99,13 @@ public class AggServerHttpRequestStatsTest {
    */
   @Test
   public void testLargeValueMetrics() {
-    singleGetStats.recordSuccessRequest(STORE_WITH_SMALL_VALUES);
-    singleGetStats.recordSuccessRequest(STORE_WITH_LARGE_VALUES);
+    ServerHttpRequestStats smallValueStats = singleGetStats.getStoreStats(STORE_WITH_SMALL_VALUES);
+    ServerHttpRequestStats largeValueStats = singleGetStats.getStoreStats(STORE_WITH_LARGE_VALUES);
+    ServerHttpRequestStats batchGetSmallStats = batchGetStats.getStoreStats(STORE_WITH_SMALL_VALUES);
+    ServerHttpRequestStats batchGetLargeStats = batchGetStats.getStoreStats(STORE_WITH_LARGE_VALUES);
+
+    smallValueStats.recordSuccessRequest();
+    largeValueStats.recordSuccessRequest();
 
     // Sanity check
     Assert.assertTrue(
@@ -116,9 +126,9 @@ public class AggServerHttpRequestStatsTest {
         0,
         "storage_engine_large_value_lookup rate should be zero");
 
-    batchGetStats.recordSuccessRequest(STORE_WITH_SMALL_VALUES);
-    batchGetStats.recordSuccessRequest(STORE_WITH_LARGE_VALUES);
-    batchGetStats.recordSuccessRequest(STORE_WITH_LARGE_VALUES);
+    batchGetSmallStats.recordSuccessRequest();
+    batchGetLargeStats.recordSuccessRequest();
+    batchGetLargeStats.recordSuccessRequest();
 
     // Sanity check
     Assert.assertTrue(

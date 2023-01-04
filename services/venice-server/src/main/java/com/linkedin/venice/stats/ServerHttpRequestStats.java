@@ -71,13 +71,24 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
      */
     Rate successRequest = new OccurrenceRate();
     Rate errorRequest = new OccurrenceRate();
-    successRequestSensor = registerSensor("success_request", successRequest);
-    errorRequestSensor = registerSensor("error_request", errorRequest);
-    successRequestLatencySensor = getPercentileStatSensor("success_request_latency");
-    errorRequestLatencySensor = getPercentileStatSensor("error_request_latency");
+    successRequestSensor =
+        registerPerStoreAndTotal("success_request", totalStats, () -> totalStats.successRequestSensor, successRequest);
+    errorRequestSensor =
+        registerPerStoreAndTotal("error_request", totalStats, () -> totalStats.errorRequestSensor, errorRequest);
     successRequestRatioSensor =
         registerSensor("success_request_ratio", new TehutiUtils.RatioStat(successRequest, errorRequest));
 
+    errorRequestLatencySensor = registerPerStoreAndTotal(
+        "error_request_latency",
+        totalStats,
+        () -> totalStats.errorRequestLatencySensor,
+        TehutiUtils.getPercentileStatWithAvgAndMax(getName(), getFullMetricName("error_request_latency")));
+
+    successRequestLatencySensor = registerPerStoreAndTotal(
+        "success_request_latency",
+        totalStats,
+        () -> totalStats.successRequestLatencySensor,
+        TehutiUtils.getPercentileStatWithAvgAndMax(getName(), getFullMetricName("success_request_latency")));
     databaseLookupLatencySensor = registerPerStoreAndTotal(
         "storage_engine_query_latency",
         totalStats,
@@ -397,13 +408,5 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
 
   public void recordValueSizeInByte(long valueSize) {
     requestValueSizeSensor.record(valueSize);
-  }
-
-  private Sensor getPercentileStatSensor(String name) {
-    return registerSensor(
-        name,
-        TehutiUtils.getPercentileStat(getName(), getFullMetricName(name)),
-        new Avg(),
-        new Max());
   }
 }

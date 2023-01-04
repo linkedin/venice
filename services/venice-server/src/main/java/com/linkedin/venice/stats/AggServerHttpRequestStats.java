@@ -52,32 +52,12 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStoreStats<Serve
     }
   }
 
-  public void recordSuccessRequest(String storeName) {
-    totalStats.recordSuccessRequest();
-    getStoreStats(storeName).recordSuccessRequest();
-  }
-
   public void recordErrorRequest() {
     totalStats.recordErrorRequest();
   }
 
-  public void recordErrorRequest(String storeName) {
-    totalStats.recordErrorRequest();
-    getStoreStats(storeName).recordErrorRequest();
-  }
-
-  public void recordSuccessRequestLatency(String storeName, double latency) {
-    totalStats.recordSuccessRequestLatency(latency);
-    getStoreStats(storeName).recordSuccessRequestLatency(latency);
-  }
-
   public void recordErrorRequestLatency(double latency) {
     totalStats.recordErrorRequestLatency(latency);
-  }
-
-  public void recordErrorRequestLatency(String storeName, double latency) {
-    totalStats.recordErrorRequestLatency(latency);
-    getStoreStats(storeName).recordErrorRequestLatency(latency);
   }
 
   public void recordStorageExecutionHandlerSubmissionWaitTime(double submissionWaitTime) {
