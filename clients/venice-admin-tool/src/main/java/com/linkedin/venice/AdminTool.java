@@ -57,6 +57,9 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixAdapterSerializer;
+import com.linkedin.venice.helix.HelixSchemaAccessor;
+import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
@@ -68,6 +71,8 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.avro.SchemaCompatibility;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
@@ -271,6 +276,9 @@ public class AdminTool {
           break;
         case ADD_SCHEMA:
           applyValueSchemaToStore(cmd);
+          break;
+        case ADD_SCHEMA_INTO_ZK:
+          applyValueSchemaToZK(cmd);
           break;
         case ADD_DERIVED_SCHEMA:
           applyDerivedSchemaToStore(cmd);
@@ -965,6 +973,43 @@ public class AdminTool {
       throw new VeniceException("Error updating store with schema: " + valueResponse.getError());
     }
     printObject(valueResponse);
+  }
+
+  private static void applyValueSchemaToZK(CommandLine cmd) throws Exception {
+    String store = getRequiredArgument(cmd, Arg.STORE, Command.ADD_SCHEMA_INTO_ZK);
+    String cluster = getRequiredArgument(cmd, Arg.CLUSTER, Command.ADD_SCHEMA_INTO_ZK);
+    String veniceZookeeperUrl = getRequiredArgument(cmd, Arg.VENICE_ZOOKEEPER_URL, Command.ADD_SCHEMA_INTO_ZK);
+    String valueSchemaFile = getRequiredArgument(cmd, Arg.VALUE_SCHEMA, Command.ADD_SCHEMA_INTO_ZK);
+    int valueSchemaId = Utils.parseIntFromString(
+        getRequiredArgument(cmd, Arg.VALUE_SCHEMA_ID, Command.ADD_SCHEMA_INTO_ZK),
+        Arg.VALUE_SCHEMA_ID.toString());
+    String valueSchemaStr = readFile(valueSchemaFile);
+    verifyValidSchema(valueSchemaStr);
+    Schema newValueSchema = Schema.parse(valueSchemaStr);
+
+    HelixSchemaAccessor schemaAccessor =
+        new HelixSchemaAccessor(ZkClientFactory.newZkClient(veniceZookeeperUrl), new HelixAdapterSerializer(), cluster);
+    if (schemaAccessor.getValueSchema(store, String.valueOf(valueSchemaId)) != null) {
+      System.err.println(
+          "Schema version " + valueSchemaId + " is already registered in ZK for store " + store + ", do nothing!");
+      return;
+    }
+
+    // Check backward compatibility?
+    List<SchemaEntry> allValueSchemas = schemaAccessor.getAllValueSchemas(store);
+    for (SchemaEntry schemaEntry: allValueSchemas) {
+      SchemaCompatibility.SchemaPairCompatibility backwardCompatibility =
+          SchemaCompatibility.checkReaderWriterCompatibility(newValueSchema, schemaEntry.getSchema());
+      if (!backwardCompatibility.getType().equals(SchemaCompatibility.SchemaCompatibilityType.COMPATIBLE)) {
+        System.err.println(
+            "New value schema for store " + store + " is not backward compatible with a previous schema version "
+                + schemaEntry.getId() + ". Abort.");
+        return;
+      }
+    }
+
+    // Register it
+    schemaAccessor.addValueSchema(store, new SchemaEntry(valueSchemaId, newValueSchema));
   }
 
   private static void applyDerivedSchemaToStore(CommandLine cmd) throws Exception {
