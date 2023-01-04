@@ -12,7 +12,6 @@ import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_KAFKA_PRODUCER_ENABLE
 import static com.linkedin.venice.hadoop.VenicePushJob.INCREMENTAL_PUSH;
 import static com.linkedin.venice.hadoop.VenicePushJob.SEND_CONTROL_MESSAGES_DIRECTLY;
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_GRID_FABRIC;
-import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -129,11 +128,11 @@ public class TestActiveActiveReplicationForIncPush {
         ControllerClient dc1ControllerClient = new ControllerClient(clusterName, connectionString.apply(1));
         ControllerClient dc2ControllerClient = new ControllerClient(clusterName, connectionString.apply(2))) {
       String storeName = Utils.getUniqueString("store");
-      Properties propsBatch = defaultVPJProps(parentControllerUrls, inputDirPathBatch, storeName);
+      Properties propsBatch = TestPushUtils.defaultVPJProps(parentControllerUrls, inputDirPathBatch, storeName);
       propsBatch.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
-      Properties propsInc1 = defaultVPJProps(parentControllerUrls, inputDirPathInc1, storeName);
+      Properties propsInc1 = TestPushUtils.defaultVPJProps(parentControllerUrls, inputDirPathInc1, storeName);
       propsInc1.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
-      Properties propsInc2 = defaultVPJProps(parentControllerUrls, inputDirPathInc2, storeName);
+      Properties propsInc2 = TestPushUtils.defaultVPJProps(parentControllerUrls, inputDirPathInc2, storeName);
       propsInc2.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
 
       Schema recordSchema = TestPushUtils.writeSimpleAvroFileWithUserSchema(inputDirBatch, true, 100);

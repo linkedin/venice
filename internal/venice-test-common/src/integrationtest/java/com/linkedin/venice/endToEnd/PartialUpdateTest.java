@@ -2,13 +2,12 @@ package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_VALUE_FIELD_PROP;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestPushUtils.NESTED_SCHEMA_STRING;
 import static com.linkedin.venice.utils.TestPushUtils.NESTED_SCHEMA_STRING_V2;
-import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
-import static com.linkedin.venice.utils.TestPushUtils.getSamzaProducer;
 import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestPushUtils.loadFileAsString;
-import static com.linkedin.venice.utils.TestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithStringToRecordSchema;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static org.testng.Assert.assertEquals;
@@ -40,6 +39,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -228,7 +228,7 @@ public class PartialUpdateTest {
       // Records 1-100, id string to name record
       Schema recordSchema = writeSimpleAvroFileWithStringToRecordSchema(inputDir, true);
       VeniceClusterWrapper veniceClusterWrapper = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
-      Properties vpjProperties = defaultVPJProps(parentControllerURL, inputDirPath, storeName);
+      Properties vpjProperties = TestPushUtils.defaultVPJProps(parentControllerURL, inputDirPath, storeName);
       try (ControllerClient controllerClient = new ControllerClient(CLUSTER_NAME, parentControllerURL);
           AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
               ClientConfig.defaultGenericClientConfig(storeName)

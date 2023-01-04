@@ -4,9 +4,9 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLA
 import static com.linkedin.venice.ConfigKeys.SERVER_OPTIMIZE_DATABASE_FOR_BACKUP_VERSION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_OPTIMIZE_DATABASE_FOR_BACKUP_VERSION_NO_READ_THRESHOLD_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_OPTIMIZE_DATABASE_SERVICE_SCHEDULE_INTERNAL_SECONDS;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestPushUtils.DEFAULT_USER_DATA_RECORD_COUNT;
-import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
-import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithUserSchema;
 import static org.testng.Assert.assertEquals;

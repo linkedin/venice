@@ -7,12 +7,12 @@ import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_PER_KAFKA
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA;
 import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
-import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
-import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
-import static com.linkedin.venice.utils.TestPushUtils.getSamzaProducer;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendCustomSizeStreamingRecord;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
-import static com.linkedin.venice.utils.TestPushUtils.sendCustomSizeStreamingRecord;
-import static com.linkedin.venice.utils.TestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithUserSchema;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
@@ -30,7 +30,7 @@ import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
-import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
@@ -126,7 +126,7 @@ public class TestHybridQuota {
             DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
             100,
             0L,
-            TestUtils.getVeniceConsumerFactory(sharedVenice.getKafka()))) {
+            IntegrationTestPushUtils.getVeniceConsumerFactory(sharedVenice.getKafka()))) {
 
       // Setting the hybrid store quota here will cause the VPJ push failed.
       ControllerResponse response = controllerClient.updateStore(

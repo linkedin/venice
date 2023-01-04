@@ -1,8 +1,8 @@
 package com.linkedin.venice.kafka.ssl;
 
-import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.sslVPJProps;
 import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
-import static com.linkedin.venice.utils.TestPushUtils.sslVPJProps;
 import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithUserSchema;
 
 import com.linkedin.venice.client.store.AvroGenericStoreClient;

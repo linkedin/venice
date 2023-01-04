@@ -13,8 +13,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_KAFKA_PRODUCER_ENABLE
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.SEND_CONTROL_MESSAGES_DIRECTLY;
-import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
-import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
 
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -129,7 +128,7 @@ public class TestPushJobWithEmergencySourceRegionSelection {
     String storeName = Utils.getUniqueString("store");
     String parentControllerUrls =
         parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
-    Properties props = defaultVPJProps(parentControllerUrls, inputDirPath, storeName);
+    Properties props = TestPushUtils.defaultVPJProps(parentControllerUrls, inputDirPath, storeName);
     props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();

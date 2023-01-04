@@ -8,8 +8,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_PRODUCER_POOL_SIZE_PER
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_KAFKA_PRODUCER_ENABLED;
 import static com.linkedin.venice.hadoop.VenicePushJob.SEND_CONTROL_MESSAGES_DIRECTLY;
-import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
-import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
 import static com.linkedin.venice.writer.SharedKafkaProducerService.SHARED_KAFKA_PRODUCER_CONFIG_PREFIX;
 
@@ -134,7 +133,7 @@ public class TestPushJobWithNativeReplicationSharedProducer {
       for (int i = 0; i < storeCount; i++) {
         String storeName = Utils.getUniqueString("store");
         storeNames[i] = storeName;
-        Properties props = defaultVPJProps(parentControllerUrls, inputDirPath, storeName);
+        Properties props = TestPushUtils.defaultVPJProps(parentControllerUrls, inputDirPath, storeName);
         storeProps[i] = props;
         props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
 

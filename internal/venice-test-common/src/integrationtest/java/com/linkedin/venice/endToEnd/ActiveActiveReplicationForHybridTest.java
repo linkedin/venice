@@ -27,9 +27,9 @@ import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_CONTRO
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_D2_ZK_HOSTS;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PUSH_TYPE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_STORE;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingDeleteRecord;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecordWithKeyPrefix;
 import static com.linkedin.venice.utils.TestPushUtils.STRING_SCHEMA;
-import static com.linkedin.venice.utils.TestPushUtils.sendStreamingDeleteRecord;
-import static com.linkedin.venice.utils.TestPushUtils.sendStreamingRecordWithKeyPrefix;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestUtils.createAndVerifyStoreInAllRegions;
 import static com.linkedin.venice.utils.TestUtils.updateStoreToHybrid;

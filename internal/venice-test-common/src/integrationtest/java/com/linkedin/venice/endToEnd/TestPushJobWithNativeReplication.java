@@ -30,11 +30,10 @@ import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_CONTRO
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_D2_ZK_HOSTS;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PUSH_TYPE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_STORE;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestPushUtils.STRING_SCHEMA;
-import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
-import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
-import static com.linkedin.venice.utils.TestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithUserSchema;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static org.testng.Assert.assertFalse;
@@ -813,7 +812,7 @@ public class TestPushJobWithNativeReplication {
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
     String childControllerUrl = childDatacenters.get(0).getControllerConnectString();
-    Properties props = defaultVPJProps(childControllerUrl, inputDirPath, storeName);
+    Properties props = TestPushUtils.defaultVPJProps(childControllerUrl, inputDirPath, storeName);
     createStoreForJob(clusterName, recordSchema, props).close();
 
     TestPushUtils.runPushJob("Test push job", props);
@@ -884,7 +883,7 @@ public class TestPushJobWithNativeReplication {
         parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
-    Properties props = defaultVPJProps(parentControllerUrls, inputDirPath, storeName);
+    Properties props = TestPushUtils.defaultVPJProps(parentControllerUrls, inputDirPath, storeName);
     props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
 
     UpdateStoreQueryParams updateStoreParams = updateStoreParamsTransformer

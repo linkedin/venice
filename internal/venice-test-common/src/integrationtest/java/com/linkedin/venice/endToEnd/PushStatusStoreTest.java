@@ -8,7 +8,7 @@ import static com.linkedin.venice.ConfigKeys.USE_PUSH_STATUS_STORE_FOR_INCREMENT
 import static com.linkedin.venice.common.PushStatusStoreUtils.SERVER_INCREMENTAL_PUSH_PREFIX;
 import static com.linkedin.venice.hadoop.VenicePushJob.INCREMENTAL_PUSH;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
-import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithIntToStringSchema;
 import static org.testng.Assert.assertEquals;

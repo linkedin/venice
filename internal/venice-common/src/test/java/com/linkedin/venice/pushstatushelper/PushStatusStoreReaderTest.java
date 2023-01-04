@@ -18,9 +18,9 @@ import static org.testng.Assert.assertNotEquals;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
+import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.common.PushStatusStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.pushstatus.PushStatusKey;
 import com.linkedin.venice.pushstatus.PushStatusValue;
 import java.util.ArrayList;
@@ -36,6 +36,9 @@ import org.testng.annotations.Test;
 
 
 public class PushStatusStoreReaderTest {
+  private static final String CLUSTER_DISCOVERY_D2_SERVICE_NAME =
+      ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME + "_test";
+
   private D2Client d2ClientMock;
   private AvroSpecificStoreClient<PushStatusKey, PushStatusValue> storeClientMock;
   private final int storeVersion = 42;
@@ -77,7 +80,7 @@ public class PushStatusStoreReaderTest {
         getPushStatusInstanceData(storeVersion, incPushVersion, partitionCount, replicationFactor);
 
     PushStatusStoreReader storeReaderSpy =
-        spy(new PushStatusStoreReader(d2ClientMock, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME, 10));
+        spy(new PushStatusStoreReader(d2ClientMock, CLUSTER_DISCOVERY_D2_SERVICE_NAME, 10));
     CompletableFuture<Map<PushStatusKey, PushStatusValue>> completableFutureMock = mock(CompletableFuture.class);
 
     doReturn(storeClientMock).when(storeReaderSpy).getVeniceClient(any());
@@ -100,7 +103,7 @@ public class PushStatusStoreReaderTest {
         getPushStatusInstanceData(storeVersion, incPushVersion, partitionCount, replicationFactor);
 
     PushStatusStoreReader storeReaderSpy =
-        spy(new PushStatusStoreReader(d2ClientMock, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME, 10));
+        spy(new PushStatusStoreReader(d2ClientMock, CLUSTER_DISCOVERY_D2_SERVICE_NAME, 10));
     CompletableFuture<Map<PushStatusKey, PushStatusValue>> completableFutureMock = mock(CompletableFuture.class);
 
     doReturn(storeClientMock).when(storeReaderSpy).getVeniceClient(any());
@@ -119,7 +122,7 @@ public class PushStatusStoreReaderTest {
         getPushStatusInstanceData(storeVersion, incPushVersion, partitionCount, replicationFactor);
 
     PushStatusStoreReader storeReaderSpy =
-        spy(new PushStatusStoreReader(d2ClientMock, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME, 10));
+        spy(new PushStatusStoreReader(d2ClientMock, CLUSTER_DISCOVERY_D2_SERVICE_NAME, 10));
     CompletableFuture<Map<PushStatusKey, PushStatusValue>> completableFutureMock = mock(CompletableFuture.class);
 
     doReturn(storeClientMock).when(storeReaderSpy).getVeniceClient(any());
@@ -137,7 +140,7 @@ public class PushStatusStoreReaderTest {
         getPushStatusInstanceData(storeVersion, incPushVersion, partitionCount, replicationFactor);
 
     PushStatusStoreReader storeReaderSpy =
-        spy(new PushStatusStoreReader(d2ClientMock, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME, 10));
+        spy(new PushStatusStoreReader(d2ClientMock, CLUSTER_DISCOVERY_D2_SERVICE_NAME, 10));
     CompletableFuture<Map<PushStatusKey, PushStatusValue>> completableFutureMock = mock(CompletableFuture.class);
 
     doReturn(storeClientMock).when(storeReaderSpy).getVeniceClient(any());
@@ -165,7 +168,7 @@ public class PushStatusStoreReaderTest {
         null);
 
     PushStatusStoreReader storeReaderSpy =
-        spy(new PushStatusStoreReader(d2ClientMock, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME, 10));
+        spy(new PushStatusStoreReader(d2ClientMock, CLUSTER_DISCOVERY_D2_SERVICE_NAME, 10));
     CompletableFuture<Map<PushStatusKey, PushStatusValue>> completableFutureMock = mock(CompletableFuture.class);
 
     doReturn(storeClientMock).when(storeReaderSpy).getVeniceClient(any());
@@ -196,7 +199,7 @@ public class PushStatusStoreReaderTest {
         new PushStatusValue());
 
     PushStatusStoreReader storeReaderSpy =
-        spy(new PushStatusStoreReader(d2ClientMock, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME, 10));
+        spy(new PushStatusStoreReader(d2ClientMock, CLUSTER_DISCOVERY_D2_SERVICE_NAME, 10));
     CompletableFuture<Map<PushStatusKey, PushStatusValue>> completableFutureMock = mock(CompletableFuture.class);
 
     doReturn(storeClientMock).when(storeReaderSpy).getVeniceClient(any());
@@ -225,7 +228,7 @@ public class PushStatusStoreReaderTest {
     Map<PushStatusKey, PushStatusValue> pushStatusMap =
         getPushStatusInstanceData(storeVersion, incPushVersion, partitionCount, 1);
     PushStatusStoreReader storeReaderSpy =
-        spy(new PushStatusStoreReader(d2ClientMock, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME, 10));
+        spy(new PushStatusStoreReader(d2ClientMock, CLUSTER_DISCOVERY_D2_SERVICE_NAME, 10));
     doReturn(storeClientMock).when(storeReaderSpy).getVeniceClient(any());
 
     List<Set<PushStatusKey>> keySets = new ArrayList<>();
@@ -265,7 +268,7 @@ public class PushStatusStoreReaderTest {
   public void testGetSupposedlyOngoingIncrementalPushVersionsWithClientException() {
     PushStatusKey pushStatusKey = PushStatusStoreUtils.getOngoingIncrementalPushStatusesKey(storeVersion);
     PushStatusStoreReader storeReaderSpy =
-        spy(new PushStatusStoreReader(d2ClientMock, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME, 10));
+        spy(new PushStatusStoreReader(d2ClientMock, CLUSTER_DISCOVERY_D2_SERVICE_NAME, 10));
 
     doReturn(storeClientMock).when(storeReaderSpy).getVeniceClient(any());
     when(storeClientMock.get(pushStatusKey)).thenThrow(VeniceClientException.class);
@@ -280,7 +283,7 @@ public class PushStatusStoreReaderTest {
       throws ExecutionException, InterruptedException {
     PushStatusKey pushStatusKey = PushStatusStoreUtils.getOngoingIncrementalPushStatusesKey(storeVersion);
     PushStatusStoreReader storeReaderSpy =
-        spy(new PushStatusStoreReader(d2ClientMock, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME, 10));
+        spy(new PushStatusStoreReader(d2ClientMock, CLUSTER_DISCOVERY_D2_SERVICE_NAME, 10));
     CompletableFuture<PushStatusValue> completableFutureMock = mock(CompletableFuture.class);
 
     doReturn(storeClientMock).when(storeReaderSpy).getVeniceClient(any());
@@ -301,7 +304,7 @@ public class PushStatusStoreReaderTest {
     PushStatusValue pushStatusValue = new PushStatusValue();
     pushStatusValue.instances = null; // to make intentions clear explicitly setting it to null
     PushStatusStoreReader storeReaderSpy =
-        spy(new PushStatusStoreReader(d2ClientMock, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME, 10));
+        spy(new PushStatusStoreReader(d2ClientMock, CLUSTER_DISCOVERY_D2_SERVICE_NAME, 10));
     CompletableFuture<PushStatusValue> completableFutureMock = mock(CompletableFuture.class);
 
     doReturn(storeClientMock).when(storeReaderSpy).getVeniceClient(any());
@@ -325,7 +328,7 @@ public class PushStatusStoreReaderTest {
     pushStatusValue.instances.put("inc_push_v2", 7);
     pushStatusValue.instances.put("inc_push_v3", 7);
     PushStatusStoreReader storeReaderSpy =
-        spy(new PushStatusStoreReader(d2ClientMock, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME, 10));
+        spy(new PushStatusStoreReader(d2ClientMock, CLUSTER_DISCOVERY_D2_SERVICE_NAME, 10));
     CompletableFuture<PushStatusValue> completableFutureMock = mock(CompletableFuture.class);
 
     doReturn(storeClientMock).when(storeReaderSpy).getVeniceClient(any());

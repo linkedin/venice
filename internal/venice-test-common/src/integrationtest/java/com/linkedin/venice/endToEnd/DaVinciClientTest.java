@@ -13,8 +13,8 @@ import static com.linkedin.venice.ConfigKeys.VENICE_PARTITIONERS;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_VALUE_SCHEMA;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
-import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
-import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithIntToStringSchema;
 import static org.testng.Assert.assertEquals;
@@ -63,6 +63,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.ForkedJavaProcess;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestPushUtils;
@@ -938,14 +939,14 @@ public class DaVinciClientTest {
       TestUtils.createMetaSystemStore(client, storeName, Optional.of(LOGGER));
       client.updateStore(storeName, params);
       cluster.createVersion(storeName, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA, Stream.of());
-      SystemProducer producer = TestPushUtils.getSamzaProducer(
+      SystemProducer producer = IntegrationTestPushUtils.getSamzaProducer(
           cluster,
           storeName,
           Version.PushType.STREAM,
           Pair.create(VENICE_PARTITIONERS, ConstantVenicePartitioner.class.getName()));
       try {
         for (int i = 0; i < keyCount; i++) {
-          TestPushUtils.sendStreamingRecord(producer, storeName, i, i);
+          IntegrationTestPushUtils.sendStreamingRecord(producer, storeName, i, i);
         }
       } finally {
         producer.stop();
@@ -954,14 +955,14 @@ public class DaVinciClientTest {
   }
 
   private void generateHybridData(String storeName, List<Pair<Object, Object>> dataToWrite) {
-    SystemProducer producer = TestPushUtils.getSamzaProducer(
+    SystemProducer producer = IntegrationTestPushUtils.getSamzaProducer(
         cluster,
         storeName,
         Version.PushType.STREAM,
         Pair.create(VENICE_PARTITIONERS, ConstantVenicePartitioner.class.getName()));
     try {
       for (Pair<Object, Object> record: dataToWrite) {
-        TestPushUtils.sendStreamingRecord(producer, storeName, record.getFirst(), record.getSecond());
+        IntegrationTestPushUtils.sendStreamingRecord(producer, storeName, record.getFirst(), record.getSecond());
       }
     } finally {
       producer.stop();

@@ -18,8 +18,8 @@ import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_CONTRO
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_D2_ZK_HOSTS;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PUSH_TYPE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_STORE;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestPushUtils.loadFileAsString;
-import static com.linkedin.venice.utils.TestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
 import static org.testng.Assert.assertEquals;

@@ -24,11 +24,10 @@ import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_CONTRO
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_D2_ZK_HOSTS;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PUSH_TYPE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_STORE;
-import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
-import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingDeleteRecord;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
-import static com.linkedin.venice.utils.TestPushUtils.sendStreamingDeleteRecord;
-import static com.linkedin.venice.utils.TestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithUserSchema;
 import static com.linkedin.venice.utils.TestUtils.generateInput;
 
@@ -150,7 +149,8 @@ public class TestActiveActiveIngestion {
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
-    Properties props = defaultVPJProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
+    Properties props =
+        TestPushUtils.defaultVPJProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setLeaderFollowerModel(true)
@@ -286,7 +286,8 @@ public class TestActiveActiveIngestion {
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
-    Properties props = defaultVPJProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
+    Properties props =
+        TestPushUtils.defaultVPJProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)

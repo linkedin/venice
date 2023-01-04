@@ -15,7 +15,6 @@ import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_SCHEMA_ID_PROP;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
-import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.Arrays;
@@ -27,6 +26,8 @@ import org.testng.annotations.DataProvider;
 
 
 public class AbstractTestVeniceMR {
+  private static final double DEFAULT_STORAGE_ENGINE_OVERHEAD_RATIO = 0.85d;
+
   protected static final String SCHEMA_STR = "{\n" + "\t\"type\": \"record\",\n" + "\t\"name\": \"TestRecord\",\n"
       + "\t\"fields\": [\n" + "\t\t{\"name\": \"key\", \"type\": \"string\"},\n"
       + "\t\t{\"name\": \"value\", \"type\": \"string\"}\n" + "\t]\n" + "}";
@@ -65,7 +66,7 @@ public class AbstractTestVeniceMR {
     config.set(SCHEMA_STRING_PROP, SCHEMA_STR);
     config.setInt(VALUE_SCHEMA_ID_PROP, VALUE_SCHEMA_ID);
     config.setLong(STORAGE_QUOTA_PROP, Store.UNLIMITED_STORAGE_QUOTA);
-    config.setDouble(STORAGE_ENGINE_OVERHEAD_RATIO, VeniceControllerWrapper.DEFAULT_STORAGE_ENGINE_OVERHEAD_RATIO);
+    config.setDouble(STORAGE_ENGINE_OVERHEAD_RATIO, DEFAULT_STORAGE_ENGINE_OVERHEAD_RATIO);
     config.setBoolean(ALLOW_DUPLICATE_KEY, false);
     config.set(COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.toString());
     config.set(SSL_CONFIGURATOR_CLASS_CONFIG, TempFileSSLConfigurator.class.getName());

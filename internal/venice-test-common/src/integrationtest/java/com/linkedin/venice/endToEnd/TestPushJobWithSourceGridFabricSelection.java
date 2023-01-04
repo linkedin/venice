@@ -12,8 +12,7 @@ import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.SEND_CONTROL_MESSAGES_DIRECTLY;
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_GRID_FABRIC;
-import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
-import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
 
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -135,7 +134,7 @@ public class TestPushJobWithSourceGridFabricSelection {
               .isError());
     }
 
-    Properties props = defaultVPJProps(parentControllerUrls, inputDirPath, storeName);
+    Properties props = TestPushUtils.defaultVPJProps(parentControllerUrls, inputDirPath, storeName);
     props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
     props.put(SOURCE_GRID_FABRIC, "dc-1");
 
