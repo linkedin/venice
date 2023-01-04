@@ -105,7 +105,9 @@ public class AggServerHttpRequestStatsTest {
     ServerHttpRequestStats batchGetLargeStats = batchGetStats.getStoreStats(STORE_WITH_LARGE_VALUES);
 
     smallValueStats.recordSuccessRequest();
+    smallValueStats.recordMultiChunkLargeValueCount(0);
     largeValueStats.recordSuccessRequest();
+    largeValueStats.recordMultiChunkLargeValueCount(1);
 
     // Sanity check
     Assert.assertTrue(
@@ -125,10 +127,21 @@ public class AggServerHttpRequestStatsTest {
         (int) reporter.query("." + STORE_WITH_SMALL_VALUES + "--storage_engine_large_value_lookup.Max").value(),
         0,
         "storage_engine_large_value_lookup rate should be zero");
+    Assert.assertTrue(
+        reporter.query("." + STORE_WITH_LARGE_VALUES + "--storage_engine_large_value_lookup.OccurrenceRate")
+            .value() > 0,
+        "storage_engine_large_value_lookup rate should be positive");
+    Assert.assertEquals(
+        (int) reporter.query("." + STORE_WITH_LARGE_VALUES + "--storage_engine_large_value_lookup.Max").value(),
+        1,
+        "storage_engine_large_value_lookup rate should be positive");
 
     batchGetSmallStats.recordSuccessRequest();
+    batchGetSmallStats.recordMultiChunkLargeValueCount(0);
     batchGetLargeStats.recordSuccessRequest();
+    batchGetLargeStats.recordMultiChunkLargeValueCount(5);
     batchGetLargeStats.recordSuccessRequest();
+    batchGetLargeStats.recordMultiChunkLargeValueCount(15);
 
     // Sanity check
     Assert.assertTrue(
@@ -137,7 +150,6 @@ public class AggServerHttpRequestStatsTest {
     Assert.assertTrue(
         reporter.query("." + STORE_WITH_LARGE_VALUES + "--multiget_success_request.OccurrenceRate").value() > 0,
         "success_request rate should be positive");
-
     // Main test
     Assert.assertTrue(
         (int) reporter
@@ -149,10 +161,22 @@ public class AggServerHttpRequestStatsTest {
             .value(),
         0,
         "storage_engine_large_value_lookup rate should be zero");
+    Assert.assertTrue(
+        reporter.query("." + STORE_WITH_LARGE_VALUES + "--multiget_storage_engine_large_value_lookup.OccurrenceRate")
+            .value() > 0,
+        "storage_engine_large_value_lookup rate should be positive");
+    Assert.assertTrue(
+        reporter.query("." + STORE_WITH_LARGE_VALUES + "--multiget_storage_engine_large_value_lookup.Rate").value() > 0,
+        "storage_engine_large_value_lookup rate should be positive");
+    Assert.assertEquals(
+        (int) reporter.query("." + STORE_WITH_LARGE_VALUES + "--multiget_storage_engine_large_value_lookup.Max")
+            .value(),
+        15,
+        "storage_engine_large_value_lookup rate should be positive");
     Assert.assertEquals(
         (int) reporter.query("." + STORE_WITH_LARGE_VALUES + "--multiget_storage_engine_large_value_lookup.Avg")
             .value(),
-        0,
+        10,
         "storage_engine_large_value_lookup rate should be positive");
   }
 }
