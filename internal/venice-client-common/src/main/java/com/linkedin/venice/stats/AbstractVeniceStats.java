@@ -10,6 +10,7 @@ import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Percentiles;
+import io.tehuti.metrics.stats.Total;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Supplier;
@@ -163,5 +164,9 @@ public class AbstractVeniceStats {
 
   protected MeasurableStat[] avgAndMax() {
     return new MeasurableStat[] { new Avg(), new Max() };
+  }
+
+  protected MeasurableStat[] avgAndTotal() {
+    return new MeasurableStat[] { new Avg(), new Total() };
   }
 }

@@ -253,20 +253,27 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
     /**
      * Total will reflect counts for the entire server host, while Avg will reflect the counts for each request.
      */
-    dotProductCountSensor =
-        registerPerStoreAndTotal("dot_product_count", totalStats, () -> totalStats.dotProductCountSensor, avgAndMax());
+    dotProductCountSensor = registerPerStoreAndTotal(
+        "dot_product_count",
+        totalStats,
+        () -> totalStats.dotProductCountSensor,
+        avgAndTotal());
     cosineSimilaritySensor = registerPerStoreAndTotal(
         "cosine_similarity_count",
         totalStats,
         () -> totalStats.cosineSimilaritySensor,
-        avgAndMax());
+        avgAndTotal());
     hadamardProductSensor = registerPerStoreAndTotal(
         "hadamard_product_count",
         totalStats,
         () -> totalStats.hadamardProductSensor,
-        avgAndMax());
-    countOperatorSensor =
-        registerPerStoreAndTotal("count_operator_count", totalStats, () -> totalStats.countOperatorSensor, avgAndMax());
+        avgAndTotal());
+    countOperatorSensor = registerPerStoreAndTotal(
+        "count_operator_count",
+        totalStats,
+        () -> totalStats.countOperatorSensor,
+        avgAndTotal());
+
     earlyTerminatedEarlyRequestCountSensor = registerPerStoreAndTotal(
         "early_terminated_request_count",
         totalStats,
