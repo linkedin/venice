@@ -2,8 +2,7 @@ package com.linkedin.davinci.listener.response;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import io.netty.buffer.ByteBuf;
-import java.util.List;
-import java.util.Optional;
+import it.unimi.dsi.fastutil.ints.IntList;
 
 
 /**
@@ -19,8 +18,8 @@ public abstract class ReadResponse {
   private int multiChunkLargeValueCount = 0;
   private CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
   private boolean isStreamingResponse = false;
-  private Optional<List<Integer>> optionalKeySizeList = Optional.empty();
-  private Optional<List<Integer>> optionalValueSizeList = Optional.empty();
+  private IntList keySizeList;
+  private IntList valueSizeList;
   private int dotProductCount = 0;
   private int cosineSimilarityCount = 0;
   private int hadamardProductCount = 0;
@@ -75,12 +74,12 @@ public abstract class ReadResponse {
     this.readComputeDeserializationLatency += latency;
   }
 
-  public void setOptionalKeySizeList(Optional<List<Integer>> optionalKeySizeList) {
-    this.optionalKeySizeList = optionalKeySizeList;
+  public void setKeySizeList(IntList keySizeList) {
+    this.keySizeList = keySizeList;
   }
 
-  public void setOptionalValueSizeList(Optional<List<Integer>> optionalValueSizeList) {
-    this.optionalValueSizeList = optionalValueSizeList;
+  public void setValueSizeList(IntList valueSizeList) {
+    this.valueSizeList = valueSizeList;
   }
 
   public double getReadComputeDeserializationLatency() {
@@ -159,12 +158,12 @@ public abstract class ReadResponse {
     return true;
   }
 
-  public Optional<List<Integer>> getOptionalKeySizeList() {
-    return optionalKeySizeList;
+  public IntList getKeySizeList() {
+    return keySizeList;
   }
 
-  public Optional<List<Integer>> getOptionalValueSizeList() {
-    return optionalValueSizeList;
+  public IntList getValueSizeList() {
+    return valueSizeList;
   }
 
   public int getDotProductCount() {
