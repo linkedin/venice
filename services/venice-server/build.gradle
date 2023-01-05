@@ -60,3 +60,7 @@ jar {
     ]
   }
 }
+
+ext {
+  jacocoCoverageThreshold = 0.4
+}

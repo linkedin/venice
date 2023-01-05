@@ -42,3 +42,7 @@ dependencies {
   testImplementation project(':internal:venice-test-common')
   testImplementation project(':clients:venice-thin-client')
 }
+
+ext {
+  jacocoCoverageThreshold = 0.3
+}

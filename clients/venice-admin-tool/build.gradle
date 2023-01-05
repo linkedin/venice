@@ -27,3 +27,7 @@ jar {
                   'Main-Class'            : 'com.linkedin.venice.AdminTool']
   }
 }
+
+ext {
+  jacocoCoverageThreshold = 0.1
+}

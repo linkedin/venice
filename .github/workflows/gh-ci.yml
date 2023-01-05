@@ -55,7 +55,10 @@ jobs:
         uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
         with:
           arguments: "build --continue --no-daemon -DforkEvery=25 -DmaxParallelForks=25 -x shadowDistTar -x shadowDistZip -x shadowJar -x startShadowScripts -x distTar -x distZip -x integrationTestA -x integrationTestB"
-
+      - name: Verify the code coverage
+        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        with:
+          arguments: "jacocoTestCoverageVerification"
   E2ETestsA:
     strategy:
       fail-fast: false

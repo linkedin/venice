@@ -117,3 +117,7 @@ idea {
     // testSourceDirs += project.sourceSets.jmh.java.srcDirs // broken, somehow, gotta debug...
   }
 }
+
+ext {
+  jacocoCoverageThreshold = 0.0 // doesn't require unit tests for a testing package
+}

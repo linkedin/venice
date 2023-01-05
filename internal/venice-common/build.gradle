@@ -61,3 +61,7 @@ task generateSslCertificate(type: Exec) {
   commandLine = [source, outputDir]
 }
 sourceSets.main.resources.srcDir(generateSslCertificate)
+
+ext {
+  jacocoCoverageThreshold = 0.4
+}
