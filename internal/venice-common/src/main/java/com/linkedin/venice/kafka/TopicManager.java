@@ -441,8 +441,19 @@ public class TopicManager implements Closeable {
     return UNKNOWN_TOPIC_RETENTION;
   }
 
+  /**
+   * Check whether topic is absent or truncated
+   * @param topicName
+   * @param truncatedTopicMaxRetentionMs
+   * @return true if the topic does not exist or if it exists but its retention time is below truncated threshold
+   *         false if the topic exists and its retention time is above truncated threshold
+   */
   public boolean isTopicTruncated(String topicName, long truncatedTopicMaxRetentionMs) {
-    return isRetentionBelowTruncatedThreshold(getTopicRetention(topicName), truncatedTopicMaxRetentionMs);
+    try {
+      return isRetentionBelowTruncatedThreshold(getTopicRetention(topicName), truncatedTopicMaxRetentionMs);
+    } catch (TopicDoesNotExistException e) {
+      return true;
+    }
   }
 
   public boolean isRetentionBelowTruncatedThreshold(long retention, long truncatedTopicMaxRetentionMs) {
