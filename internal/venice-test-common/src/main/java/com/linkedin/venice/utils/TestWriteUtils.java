@@ -50,7 +50,7 @@ import org.apache.hadoop.io.Text;
 import org.testng.Assert;
 
 
-public class TestPushUtils {
+public class TestWriteUtils {
   public static final String USER_SCHEMA_STRING =
       "{" + "  \"namespace\" : \"example.avro\",  " + "  \"type\": \"record\",   " + "  \"name\": \"User\",     "
           + "  \"fields\": [           " + "       { \"name\": \"" + DEFAULT_KEY_FIELD_PROP

@@ -20,8 +20,8 @@ import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
 import com.linkedin.venice.meta.StoreInfo;
-import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.List;
@@ -98,14 +98,14 @@ public class TestFabricBuildout {
       // Create a test store only in dc0 colo
       NewStoreResponse newStoreResponse = dc0Client.retryableRequest(
           3,
-          c -> c.createNewStore(storeName, "", "\"string\"", TestPushUtils.USER_SCHEMA_STRING_SIMPLE_WITH_DEFAULT));
+          c -> c.createNewStore(storeName, "", "\"string\"", TestWriteUtils.USER_SCHEMA_STRING_SIMPLE_WITH_DEFAULT));
       Assert.assertFalse(
           newStoreResponse.isError(),
           "The NewStoreResponse returned an error: " + newStoreResponse.getError());
       // Enable read compute to test superset schema registration.
       Assert.assertFalse(
           dc0Client.updateStore(storeName, new UpdateStoreQueryParams().setReadComputationEnabled(true)).isError());
-      Assert.assertFalse(dc0Client.addValueSchema(storeName, TestPushUtils.USER_SCHEMA_STRING_WITH_DEFAULT).isError());
+      Assert.assertFalse(dc0Client.addValueSchema(storeName, TestWriteUtils.USER_SCHEMA_STRING_WITH_DEFAULT).isError());
       checkStoreConfig(dc0Client, storeName);
       // Mimic source fabric store-level execution id
       Assert.assertFalse(
@@ -174,11 +174,11 @@ public class TestFabricBuildout {
             new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString())) {
       String testStoreName = Utils.getUniqueString("test-store");
       NewStoreResponse newStoreResponse = childControllerClient0
-          .createNewStore(testStoreName, "test", "\"string\"", TestPushUtils.NESTED_SCHEMA_STRING);
+          .createNewStore(testStoreName, "test", "\"string\"", TestWriteUtils.NESTED_SCHEMA_STRING);
       Assert.assertFalse(newStoreResponse.isError());
       checkStoreConfig(childControllerClient0, testStoreName);
       newStoreResponse = childControllerClient1
-          .createNewStore(testStoreName, "test", "\"string\"", TestPushUtils.NESTED_SCHEMA_STRING);
+          .createNewStore(testStoreName, "test", "\"string\"", TestWriteUtils.NESTED_SCHEMA_STRING);
       Assert.assertFalse(newStoreResponse.isError());
       checkStoreConfig(childControllerClient1, testStoreName);
 
@@ -187,7 +187,7 @@ public class TestFabricBuildout {
           childControllerClient0.emptyPush(testStoreName, Utils.getUniqueString("empty-push-1"), 1L);
       Assert.assertFalse(versionCreationResponse.isError());
       SchemaResponse schemaResponse =
-          childControllerClient0.addValueSchema(testStoreName, TestPushUtils.NESTED_SCHEMA_STRING_V2);
+          childControllerClient0.addValueSchema(testStoreName, TestWriteUtils.NESTED_SCHEMA_STRING_V2);
       Assert.assertFalse(schemaResponse.isError());
 
       StoreComparisonResponse response = parentControllerClient.compareStore(testStoreName, "dc-0", "dc-1");

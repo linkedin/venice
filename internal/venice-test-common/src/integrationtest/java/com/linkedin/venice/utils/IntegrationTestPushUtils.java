@@ -36,7 +36,7 @@ import org.testng.Assert;
 
 public class IntegrationTestPushUtils {
   public static Properties defaultVPJProps(VeniceClusterWrapper veniceCluster, String inputDirPath, String storeName) {
-    return TestPushUtils
+    return TestWriteUtils
         .defaultVPJProps(veniceCluster.getRandomVeniceController().getControllerUrl(), inputDirPath, storeName);
   }
 

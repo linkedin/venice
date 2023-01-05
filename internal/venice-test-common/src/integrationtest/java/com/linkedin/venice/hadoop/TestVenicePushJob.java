@@ -19,11 +19,11 @@ import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.getLatestPathOfInputDirectory;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
-import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
-import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithStringToStringSchema;
-import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithUserSchema;
-import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithUserSchema2;
-import static com.linkedin.venice.utils.TestPushUtils.writeSimpleVsonFileWithUserSchema;
+import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToStringSchema;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUserSchema;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUserSchema2;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleVsonFileWithUserSchema;
 
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -43,8 +43,8 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.DataProviderUtils;
-import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
@@ -172,7 +172,7 @@ public class TestVenicePushJob {
     veniceCluster.getNewStore(storeName);
     Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
 
-    TestPushUtils.runPushJob("Test push job", props);
+    TestWriteUtils.runPushJob("Test push job", props);
     // No need for asserts, because we are expecting an exception to be thrown!
   }
 
@@ -192,7 +192,7 @@ public class TestVenicePushJob {
     // Override with not-existing key field
     props.put(KEY_FIELD_PROP, "id1");
 
-    TestPushUtils.runPushJob("Test push job", props);
+    TestWriteUtils.runPushJob("Test push job", props);
 
     // No need for asserts, because we are expecting an exception to be thrown!
   }
@@ -214,7 +214,7 @@ public class TestVenicePushJob {
     // Override with not-existing value field
     props.put(VALUE_FIELD_PROP, "name1");
 
-    TestPushUtils.runPushJob("Test push job", props);
+    TestWriteUtils.runPushJob("Test push job", props);
     // No need for asserts, because we are expecting an exception to be thrown!
   }
 
@@ -236,7 +236,7 @@ public class TestVenicePushJob {
     props.put(KEY_FIELD_PROP, "");
     props.put(VALUE_FIELD_PROP, "name1");
 
-    TestPushUtils.runPushJob("Test push job", props);
+    TestWriteUtils.runPushJob("Test push job", props);
     // No need for asserts, because we are expecting an exception to be thrown!
   }
 
@@ -258,7 +258,7 @@ public class TestVenicePushJob {
     veniceCluster.getNewStore(storeName);
     Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
 
-    TestPushUtils.runPushJob("Test push job", props);
+    TestWriteUtils.runPushJob("Test push job", props);
 
     // No need for asserts, because we are expecting an exception to be thrown!
   }
@@ -324,7 +324,7 @@ public class TestVenicePushJob {
 
     // Run job with different key schema (from 'string' to 'int')
     props.setProperty(KEY_FIELD_PROP, "age");
-    TestPushUtils.runPushJob("Test push job", props);
+    TestWriteUtils.runPushJob("Test push job", props);
 
   }
 
@@ -344,7 +344,7 @@ public class TestVenicePushJob {
     // Run job with different value schema (from 'string' to 'int')
     props.setProperty(VALUE_FIELD_PROP, "age");
     props.setProperty(CONTROLLER_REQUEST_RETRY_ATTEMPTS, "2");
-    TestPushUtils.runPushJob("Test push job", props);
+    TestWriteUtils.runPushJob("Test push job", props);
 
   }
 
@@ -359,7 +359,7 @@ public class TestVenicePushJob {
     Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
     props.setProperty(SUPPRESS_END_OF_PUSH_MESSAGE, "true");
     createStoreForJob(veniceCluster.getClusterName(), recordSchema, props);
-    TestPushUtils.runPushJob("Test push job", props);
+    TestWriteUtils.runPushJob("Test push job", props);
 
     TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, () -> {
       MultiStoreStatusResponse response = controllerClient.getFutureVersions(veniceCluster.getClusterName(), storeName);
@@ -387,7 +387,7 @@ public class TestVenicePushJob {
     createStoreForJob(veniceCluster.getClusterName(), recordSchema, props);
 
     // Create Version 1
-    TestPushUtils.runPushJob("Test push job", props);
+    TestWriteUtils.runPushJob("Test push job", props);
 
     TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, () -> {
       MultiStoreStatusResponse response = controllerClient.getFutureVersions(veniceCluster.getClusterName(), storeName);
@@ -453,7 +453,7 @@ public class TestVenicePushJob {
     props.put(ENABLE_WRITE_COMPUTE, true);
     props.put(INCREMENTAL_PUSH, true);
 
-    TestPushUtils.runPushJob("Test push job", props);
+    TestWriteUtils.runPushJob("Test push job", props);
   }
 
   /**
@@ -481,7 +481,7 @@ public class TestVenicePushJob {
     props.put(ENABLE_WRITE_COMPUTE, true);
     props.put(INCREMENTAL_PUSH, false);
 
-    TestPushUtils.runPushJob("Test push job", props);
+    TestWriteUtils.runPushJob("Test push job", props);
   }
 
   @Test(timeOut = TEST_TIMEOUT, expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Exception or error caught during VenicePushJob.*")
@@ -499,7 +499,7 @@ public class TestVenicePushJob {
             new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA).setPartitionCount(3)));
     Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
 
-    TestPushUtils.runPushJob(
+    TestWriteUtils.runPushJob(
         "Test push job",
         props,
         job -> job.setMapRedPartitionerClass(BuggySprayingMapReduceShufflePartitioner.class));
@@ -521,7 +521,7 @@ public class TestVenicePushJob {
             new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA).setPartitionCount(3)));
     Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
 
-    TestPushUtils.runPushJob(
+    TestWriteUtils.runPushJob(
         "Test push job",
         props,
         job -> job.setMapRedPartitionerClass(BuggyOffsettingMapReduceShufflePartitioner.class));
@@ -547,7 +547,7 @@ public class TestVenicePushJob {
     Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
     props.setProperty(VENICE_PARTITIONERS, nonDeterministicPartitionerClassName);
 
-    TestPushUtils.runPushJob("Test push job", props);
+    TestWriteUtils.runPushJob("Test push job", props);
     // No need for asserts, because we are expecting an exception to be thrown!
   }
 
@@ -569,7 +569,7 @@ public class TestVenicePushJob {
     Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
 
     // create a batch version.
-    TestPushUtils.runPushJob("Test push job", props);
+    TestWriteUtils.runPushJob("Test push job", props);
     TestUtils.waitForNonDeterministicAssertion(
         30,
         TimeUnit.SECONDS,
@@ -577,7 +577,7 @@ public class TestVenicePushJob {
 
     writeSimpleAvroFileWithUserSchema2(inputDir);
     props.setProperty(INCREMENTAL_PUSH, "true");
-    TestPushUtils.runPushJob("Test push job", props);
+    TestWriteUtils.runPushJob("Test push job", props);
     TestUtils.waitForNonDeterministicAssertion(
         30,
         TimeUnit.SECONDS,
@@ -602,7 +602,7 @@ public class TestVenicePushJob {
     props.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getKafka().getAddress());
     props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
     // This repush should succeed
-    TestPushUtils.runPushJob("Test push job", props);
+    TestWriteUtils.runPushJob("Test push job", props);
     TestUtils.waitForNonDeterministicAssertion(
         30,
         TimeUnit.SECONDS,
@@ -640,7 +640,7 @@ public class TestVenicePushJob {
     Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
     props.setProperty(SEND_CONTROL_MESSAGES_DIRECTLY, "true");
     // create a batch version.
-    TestPushUtils.runPushJob("Test push job", props);
+    TestWriteUtils.runPushJob("Test push job", props);
     try (AvroGenericStoreClient avroClient = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
       for (int i = 1; i <= 100; i++) {
@@ -660,7 +660,7 @@ public class TestVenicePushJob {
                 .setHybridRewindSeconds(0)
                 .setChunkingEnabled(chunkingEnabled)));
     // Run the repush job, it should still pass
-    TestPushUtils.runPushJob("Test push job", props);
+    TestWriteUtils.runPushJob("Test push job", props);
 
     try (AvroGenericStoreClient avroClient = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {

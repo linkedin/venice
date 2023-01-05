@@ -21,25 +21,25 @@ import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_VERSIO
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.updateStore;
-import static com.linkedin.venice.utils.TestPushUtils.ETL_KEY_SCHEMA_STRING;
-import static com.linkedin.venice.utils.TestPushUtils.ETL_UNION_VALUE_SCHEMA_STRING_WITHOUT_NULL;
-import static com.linkedin.venice.utils.TestPushUtils.ETL_UNION_VALUE_SCHEMA_STRING_WITH_NULL;
-import static com.linkedin.venice.utils.TestPushUtils.ETL_VALUE_SCHEMA_STRING;
-import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
-import static com.linkedin.venice.utils.TestPushUtils.loadFileAsString;
-import static com.linkedin.venice.utils.TestPushUtils.testRecordType;
-import static com.linkedin.venice.utils.TestPushUtils.writeAlternateSimpleAvroFileWithUserSchema;
-import static com.linkedin.venice.utils.TestPushUtils.writeAvroFileWithManyFloatsAndCustomTotalSize;
-import static com.linkedin.venice.utils.TestPushUtils.writeETLFileWithUnionWithNullSchema;
-import static com.linkedin.venice.utils.TestPushUtils.writeETLFileWithUnionWithoutNullSchema;
-import static com.linkedin.venice.utils.TestPushUtils.writeETLFileWithUserSchema;
-import static com.linkedin.venice.utils.TestPushUtils.writeEmptyAvroFileWithUserSchema;
-import static com.linkedin.venice.utils.TestPushUtils.writeSchemaWithUnknownFieldIntoAvroFile;
-import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithASchemaWithAWrongDefaultValue;
-import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithCustomSize;
-import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithDuplicateKey;
-import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithUserSchema;
-import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithUserSchema2;
+import static com.linkedin.venice.utils.TestWriteUtils.ETL_KEY_SCHEMA_STRING;
+import static com.linkedin.venice.utils.TestWriteUtils.ETL_UNION_VALUE_SCHEMA_STRING_WITHOUT_NULL;
+import static com.linkedin.venice.utils.TestWriteUtils.ETL_UNION_VALUE_SCHEMA_STRING_WITH_NULL;
+import static com.linkedin.venice.utils.TestWriteUtils.ETL_VALUE_SCHEMA_STRING;
+import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static com.linkedin.venice.utils.TestWriteUtils.loadFileAsString;
+import static com.linkedin.venice.utils.TestWriteUtils.testRecordType;
+import static com.linkedin.venice.utils.TestWriteUtils.writeAlternateSimpleAvroFileWithUserSchema;
+import static com.linkedin.venice.utils.TestWriteUtils.writeAvroFileWithManyFloatsAndCustomTotalSize;
+import static com.linkedin.venice.utils.TestWriteUtils.writeETLFileWithUnionWithNullSchema;
+import static com.linkedin.venice.utils.TestWriteUtils.writeETLFileWithUnionWithoutNullSchema;
+import static com.linkedin.venice.utils.TestWriteUtils.writeETLFileWithUserSchema;
+import static com.linkedin.venice.utils.TestWriteUtils.writeEmptyAvroFileWithUserSchema;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSchemaWithUnknownFieldIntoAvroFile;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithASchemaWithAWrongDefaultValue;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithCustomSize;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithDuplicateKey;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUserSchema;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUserSchema2;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
@@ -64,8 +64,8 @@ import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.KeyAndValueSchemas;
-import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.Metric;
@@ -838,11 +838,11 @@ public abstract class TestBatch {
       }
     }
 
-    TestPushUtils.runPushJob("Test Batch push job", props);
+    TestWriteUtils.runPushJob("Test Batch push job", props);
 
     if (multiPushJobs) {
-      TestPushUtils.runPushJob("Test Batch push job 2", props);
-      TestPushUtils.runPushJob("Test Batch push job 3", props);
+      TestWriteUtils.runPushJob("Test Batch push job 2", props);
+      TestWriteUtils.runPushJob("Test Batch push job 3", props);
     }
 
     veniceCluster.refreshAllRouterMetaData();

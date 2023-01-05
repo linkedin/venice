@@ -12,7 +12,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_KAFKA_PRODUCER_ENABLE
 import static com.linkedin.venice.hadoop.VenicePushJob.INCREMENTAL_PUSH;
 import static com.linkedin.venice.hadoop.VenicePushJob.SEND_CONTROL_MESSAGES_DIRECTLY;
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_GRID_FABRIC;
-import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
+import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -24,8 +24,8 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -128,24 +128,24 @@ public class TestActiveActiveReplicationForIncPush {
         ControllerClient dc1ControllerClient = new ControllerClient(clusterName, connectionString.apply(1));
         ControllerClient dc2ControllerClient = new ControllerClient(clusterName, connectionString.apply(2))) {
       String storeName = Utils.getUniqueString("store");
-      Properties propsBatch = TestPushUtils.defaultVPJProps(parentControllerUrls, inputDirPathBatch, storeName);
+      Properties propsBatch = TestWriteUtils.defaultVPJProps(parentControllerUrls, inputDirPathBatch, storeName);
       propsBatch.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
-      Properties propsInc1 = TestPushUtils.defaultVPJProps(parentControllerUrls, inputDirPathInc1, storeName);
+      Properties propsInc1 = TestWriteUtils.defaultVPJProps(parentControllerUrls, inputDirPathInc1, storeName);
       propsInc1.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
-      Properties propsInc2 = TestPushUtils.defaultVPJProps(parentControllerUrls, inputDirPathInc2, storeName);
+      Properties propsInc2 = TestWriteUtils.defaultVPJProps(parentControllerUrls, inputDirPathInc2, storeName);
       propsInc2.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
 
-      Schema recordSchema = TestPushUtils.writeSimpleAvroFileWithUserSchema(inputDirBatch, true, 100);
+      Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithUserSchema(inputDirBatch, true, 100);
       String keySchemaStr = recordSchema.getField(VenicePushJob.DEFAULT_KEY_FIELD_PROP).schema().toString();
       String valueSchemaStr = recordSchema.getField(VenicePushJob.DEFAULT_VALUE_FIELD_PROP).schema().toString();
 
       propsInc1.setProperty(INCREMENTAL_PUSH, "true");
       propsInc1.put(SOURCE_GRID_FABRIC, "dc-2");
-      TestPushUtils.writeSimpleAvroFileWithUserSchema2(inputDirInc1);
+      TestWriteUtils.writeSimpleAvroFileWithUserSchema2(inputDirInc1);
 
       propsInc2.setProperty(INCREMENTAL_PUSH, "true");
       propsInc2.put(SOURCE_GRID_FABRIC, "dc-1");
-      TestPushUtils.writeSimpleAvroFileWithUserSchema3(inputDirInc2);
+      TestWriteUtils.writeSimpleAvroFileWithUserSchema3(inputDirInc2);
 
       TestUtils.assertCommand(parentControllerClient.createNewStore(storeName, "owner", keySchemaStr, valueSchemaStr));
       // Store Setup
@@ -169,7 +169,7 @@ public class TestActiveActiveReplicationForIncPush {
       LOGGER.info("KafkaURL dc-parent-0:{}", veniceParentDefaultKafka.getAddress());
 
       // Turn on A/A in parent to trigger auto replication metadata schema registration
-      TestPushUtils.updateStore(storeName, parentControllerClient, enableAARepl);
+      TestWriteUtils.updateStore(storeName, parentControllerClient, enableAARepl);
 
       // verify store configs
       TestUtils.verifyDCConfigNativeAndActiveRepl(parentControllerClient, storeName, true, true);

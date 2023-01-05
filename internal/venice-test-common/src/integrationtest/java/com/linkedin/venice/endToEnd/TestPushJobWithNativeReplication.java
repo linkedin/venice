@@ -32,10 +32,10 @@ import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PUSH_TYPE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_STORE;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
-import static com.linkedin.venice.utils.TestPushUtils.STRING_SCHEMA;
-import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
-import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithUserSchema;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
+import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUserSchema;
 import static org.testng.Assert.assertFalse;
 
 import com.linkedin.davinci.client.DaVinciClient;
@@ -75,8 +75,8 @@ import com.linkedin.venice.status.BatchJobHeartbeatConfigs;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatKey;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
 import com.linkedin.venice.utils.DataProviderUtils;
-import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -244,7 +244,7 @@ public class TestPushJobWithNativeReplication {
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1).setAmplificationFactor(2),
         recordCount,
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
-          Thread pushJobThread = new Thread(() -> TestPushUtils.runPushJob("Test push job", props));
+          Thread pushJobThread = new Thread(() -> TestWriteUtils.runPushJob("Test push job", props));
           pushJobThread.start();
           try {
             /**
@@ -342,7 +342,7 @@ public class TestPushJobWithNativeReplication {
         50,
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
           // Write batch data
-          TestPushUtils.runPushJob("Test push job", props);
+          TestWriteUtils.runPushJob("Test push job", props);
 
           // Verify version level hybrid config is set correctly. The current version should be 1.
           VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(NUMBER_OF_CHILD_DATACENTERS - 1);
@@ -429,7 +429,7 @@ public class TestPushJobWithNativeReplication {
           props.put(INPUT_PATH_PROP, inputDirInc);
           props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
 
-          TestPushUtils.writeSimpleAvroFileWithUserSchema2(inputDirInc);
+          TestWriteUtils.writeSimpleAvroFileWithUserSchema2(inputDirInc);
           try (VenicePushJob job = new VenicePushJob("Incremental Push", props)) {
             job.run();
           }
@@ -450,7 +450,7 @@ public class TestPushJobWithNativeReplication {
           // Prevent heartbeat from being deleted when the VPJ run finishes.
           props.put(BatchJobHeartbeatConfigs.HEARTBEAT_LAST_HEARTBEAT_IS_DELETE_CONFIG.getConfigName(), false);
 
-          TestPushUtils.updateStore(
+          TestWriteUtils.updateStore(
               VPJ_HEARTBEAT_STORE_NAME,
               parentControllerClient,
               new UpdateStoreQueryParams().setLeaderFollowerModel(true).setNativeReplicationEnabled(true));
@@ -519,7 +519,7 @@ public class TestPushJobWithNativeReplication {
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
           UpdateStoreQueryParams updateStoreParams =
               new UpdateStoreQueryParams().setNativeReplicationSourceFabric("dc-1");
-          TestPushUtils.updateStore(storeName, parentControllerClient, updateStoreParams);
+          TestWriteUtils.updateStore(storeName, parentControllerClient, updateStoreParams);
 
           try (VenicePushJob job = new VenicePushJob("Test push job", props)) {
             job.run();
@@ -812,10 +812,10 @@ public class TestPushJobWithNativeReplication {
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
     String childControllerUrl = childDatacenters.get(0).getControllerConnectString();
-    Properties props = TestPushUtils.defaultVPJProps(childControllerUrl, inputDirPath, storeName);
+    Properties props = TestWriteUtils.defaultVPJProps(childControllerUrl, inputDirPath, storeName);
     createStoreForJob(clusterName, recordSchema, props).close();
 
-    TestPushUtils.runPushJob("Test push job", props);
+    TestWriteUtils.runPushJob("Test push job", props);
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -883,13 +883,13 @@ public class TestPushJobWithNativeReplication {
         parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
-    Properties props = TestPushUtils.defaultVPJProps(parentControllerUrls, inputDirPath, storeName);
+    Properties props = TestWriteUtils.defaultVPJProps(parentControllerUrls, inputDirPath, storeName);
     props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
 
     UpdateStoreQueryParams updateStoreParams = updateStoreParamsTransformer
         .apply(new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA));
 
-    Schema recordSchema = TestPushUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, recordCount);
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, recordCount);
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
 

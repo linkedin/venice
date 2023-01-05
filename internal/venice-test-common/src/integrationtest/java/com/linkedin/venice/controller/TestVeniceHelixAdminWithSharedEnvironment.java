@@ -55,8 +55,8 @@ import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.MockTestStateModelFactory;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PropertyBuilder;
-import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
@@ -1506,7 +1506,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   @Test
   public void testAddAndRemoveDerivedSchema() {
     String storeName = Utils.getUniqueString("write_compute_store");
-    String recordSchemaStr = TestPushUtils.USER_SCHEMA_STRING_WITH_DEFAULT;
+    String recordSchemaStr = TestWriteUtils.USER_SCHEMA_STRING_WITH_DEFAULT;
     Schema derivedSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchemaStr(recordSchemaStr);
 
     veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, recordSchemaStr);
@@ -1791,7 +1791,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   @Test
   public void testAddMetadataSchema() {
     String storeName = Utils.getUniqueString("aa_store");
-    String recordSchemaStr = TestPushUtils.USER_SCHEMA_STRING_WITH_DEFAULT;
+    String recordSchemaStr = TestWriteUtils.USER_SCHEMA_STRING_WITH_DEFAULT;
     int replicationMetadataVersionId = multiClusterConfig.getCommonConfig().getReplicationMetadataVersionId();
     Schema metadataSchema = RmdSchemaGenerator.generateMetadataSchema(recordSchemaStr, replicationMetadataVersionId);
 

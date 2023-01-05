@@ -11,9 +11,9 @@ import static com.linkedin.venice.integration.utils.VeniceServerWrapper.SERVER_I
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.SERVER_SSL_TO_KAFKA;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_KB;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
-import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestUtils.writeBatchData;
+import static com.linkedin.venice.utils.TestWriteUtils.defaultVPJProps;
 
 import com.github.luben.zstd.ZstdDictTrainer;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -42,8 +42,8 @@ import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
-import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.lazy.LazyResettable;
@@ -998,9 +998,9 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       String controllerUrl = veniceClusterWrapper.getRandomVeniceController().getControllerUrl();
       String KEY_SCHEMA = Schema.create(Schema.Type.STRING).toString();
       String VALUE_SCHEMA = Schema.create(Schema.Type.STRING).toString();
-      File inputDir = TestPushUtils.getTempDataDirectory();
+      File inputDir = TestWriteUtils.getTempDataDirectory();
 
-      TestPushUtils.writeSimpleAvroFileWithCustomSize(inputDir, NUM_RECORDS, 10, 20);
+      TestWriteUtils.writeSimpleAvroFileWithCustomSize(inputDir, NUM_RECORDS, 10, 20);
 
       try (ControllerClient client = new ControllerClient(veniceClusterWrapper.clusterName, controllerUrl)) {
         TestUtils.assertCommand(client.createNewStore(storeName, "ownerOf" + storeName, KEY_SCHEMA, VALUE_SCHEMA));
@@ -1015,7 +1015,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
       String inputDirPath = "file://" + inputDir.getAbsolutePath();
       Properties props = defaultVPJProps(controllerUrl, inputDirPath, storeName);
-      TestPushUtils.runPushJob("Test Batch push job", props);
+      TestWriteUtils.runPushJob("Test Batch push job", props);
 
       propertyBuilder.put(FORKED_PROCESS_STORE_NAME, storeName);
       propertyBuilder.put(FORKED_PROCESS_ZK_ADDRESS, veniceClusterWrapper.getZk().getAddress());

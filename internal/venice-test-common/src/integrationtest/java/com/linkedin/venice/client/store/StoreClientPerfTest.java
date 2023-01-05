@@ -14,7 +14,7 @@ import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.utils.Pair;
-import com.linkedin.venice.utils.TestPushUtils;
+import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.tehuti.Metric;
@@ -219,7 +219,7 @@ public class StoreClientPerfTest {
 
       int valueSchemaId = 1;
       int valueSizeInBytes = 800;
-      String valueSchemaStr = TestPushUtils.USER_SCHEMA_WITH_A_FLOAT_ARRAY_STRING;
+      String valueSchemaStr = TestWriteUtils.USER_SCHEMA_WITH_A_FLOAT_ARRAY_STRING;
       Schema valueSchema = new Schema.Parser().parse(valueSchemaStr);
       Set<String> keys = new HashSet<>();
       setupSchemaAndRequest(valueSchemaId, valueSchemaStr);
@@ -248,13 +248,13 @@ public class StoreClientPerfTest {
         dataRecord.keyIndex = k;
         dataRecord.schemaId = valueSchemaId;
         dataRecord.value = ByteBuffer
-            .wrap(valueSerializer.serialize(TestPushUtils.getRecordWithFloatArray(valueSchema, k, valueSizeInBytes)));
+            .wrap(valueSerializer.serialize(TestWriteUtils.getRecordWithFloatArray(valueSchema, k, valueSizeInBytes)));
         records.add(dataRecord);
 
         ComputeResponseRecordV1 computeRecord = new ComputeResponseRecordV1();
         computeRecord.keyIndex = k;
         GenericRecord computeResultRecord =
-            TestPushUtils.getRecordWithFloatArray(computeResultSchema, k, valueSizeInBytes);
+            TestWriteUtils.getRecordWithFloatArray(computeResultSchema, k, valueSizeInBytes);
         computeResultRecord.put(VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME, new HashMap<String, String>());
         if (k == 0) {
           LOGGER.debug("computeResultRecord: {}", computeResultRecord.toString());

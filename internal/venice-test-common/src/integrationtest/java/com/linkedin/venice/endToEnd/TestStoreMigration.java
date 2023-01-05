@@ -11,7 +11,7 @@ import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_CLUSTE
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
-import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
+import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotNull;
@@ -52,8 +52,8 @@ import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
-import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -208,7 +208,7 @@ public class TestStoreMigration {
       });
 
       // Push v2
-      TestPushUtils.runPushJob("Test push job 2", props);
+      TestWriteUtils.runPushJob("Test push job 2", props);
       // Update store
       srcParentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setOwner(NEW_OWNER));
 
@@ -398,8 +398,8 @@ public class TestStoreMigration {
   private Properties createAndPushStore(String controllerUrl, String clusterName, String storeName) throws Exception {
     File inputDir = getTempDataDirectory();
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
-    Schema recordSchema = TestPushUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, RECORD_COUNT);
-    Properties props = TestPushUtils.defaultVPJProps(controllerUrl, inputDirPath, storeName);
+    Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, RECORD_COUNT);
+    Properties props = TestWriteUtils.defaultVPJProps(controllerUrl, inputDirPath, storeName);
     String keySchemaStr = recordSchema.getField(props.getProperty(VenicePushJob.KEY_FIELD_PROP)).schema().toString();
     String valueSchemaStr =
         recordSchema.getField(props.getProperty(VenicePushJob.VALUE_FIELD_PROP)).schema().toString();
