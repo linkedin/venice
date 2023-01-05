@@ -269,40 +269,6 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
         compressor);
   }
 
-  public T getReplicationMetadata(
-      AbstractStorageEngine storageEngine,
-      String storeName,
-      int subPartition,
-      byte[] key,
-      boolean isChunked,
-      boolean fastAvroEnabled,
-      CompressionStrategy compressionStrategy,
-      VeniceCompressor compressor,
-      ReadOnlySchemaRepository schemaRepo) {
-    ByteBuffer keyBuffer;
-    if (isChunked) {
-      keyBuffer = ByteBuffer.wrap(ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(key));
-    } else {
-      keyBuffer = ByteBuffer.wrap(key);
-    }
-    return ChunkingUtils.getFromStorage(
-        this,
-        storageEngine,
-        -1,
-        subPartition,
-        keyBuffer,
-        null,
-        null,
-        null,
-        compressionStrategy,
-        fastAvroEnabled,
-        schemaRepo,
-        storeName,
-        compressor,
-        false,
-        true);
-  }
-
   public void getByPartialKey(
       String storeName,
       AbstractStorageEngine store,

@@ -2,7 +2,7 @@ package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.STANDBY;
-import static com.linkedin.davinci.store.record.ValueRecord.*;
+import static com.linkedin.davinci.store.record.ValueRecord.SCHEMA_HEADER_LENGTH;
 import static com.linkedin.venice.VeniceConstants.REWIND_TIME_DECIDED_BY_SERVER;
 
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -170,14 +170,17 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           getStorageOperationType(partition, put.putValue, put.replicationMetadataPayload);
       switch (storageOperationType) {
         case VALUE_AND_RMD:
-          byte[] metadataBytesWithValueSchemaId =
-              prependReplicationMetadataBytesWithValueSchemaId(put.replicationMetadataPayload, put.schemaId);
-          storageEngine.putWithReplicationMetadata(partition, keyBytes, put.putValue, metadataBytesWithValueSchemaId);
+          storageEngine.putWithReplicationMetadata(
+              partition,
+              keyBytes,
+              put.putValue,
+              prependReplicationMetadataBytesWithValueSchemaId(put.replicationMetadataPayload, put.schemaId));
           break;
         case RMD_CHUNK:
-          metadataBytesWithValueSchemaId =
-              prependReplicationMetadataBytesWithValueSchemaId(put.replicationMetadataPayload, put.schemaId);
-          storageEngine.putReplicationMetadata(partition, keyBytes, metadataBytesWithValueSchemaId);
+          storageEngine.putReplicationMetadata(
+              partition,
+              keyBytes,
+              prependReplicationMetadataBytesWithValueSchemaId(put.replicationMetadataPayload, put.schemaId));
           break;
         case VALUE:
           storageEngine.put(partition, keyBytes, put.putValue);
@@ -217,6 +220,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     if (isDaVinciClient) {
       return StorageOperationType.VALUE;
     }
+    if (rmdPayload == null) {
+      throw new IllegalArgumentException("Replication metadata payload not found.");
+    }
+
     if (pcs.isEndOfPushReceived() || rmdPayload.remaining() > 0) {
       if (valuePayload == null || valuePayload.remaining() > 0) {
         return StorageOperationType.VALUE_AND_RMD;
@@ -266,25 +273,22 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               getRmdProtocolVersionID(),
               cachedRecord.getReplicationMetadataRecord()));
     }
-
-    final long lookupStartTimeInNS = System.nanoTime();
-
     ByteBuffer rmdWithValueSchemaByteBuffer = getRmdWithValueSchemaByteBufferFromStorage(subPartition, key);
     byte[] replicationMetadataWithValueSchemaBytes =
         rmdWithValueSchemaByteBuffer == null ? null : rmdWithValueSchemaByteBuffer.array();
 
-    getHostLevelIngestionStats()
-        .recordIngestionReplicationMetadataLookUpLatency(LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
     if (rmdWithValueSchemaByteBuffer == null) {
       return Optional.empty(); // No RMD for this key
     }
-    return Optional
-        .of(getRmdSerDe().deserializeValueSchemaIdPrependedRmdBytes(replicationMetadataWithValueSchemaBytes));
+    return Optional.of(rmdSerDe.deserializeValueSchemaIdPrependedRmdBytes(replicationMetadataWithValueSchemaBytes));
   }
 
   ByteBuffer getRmdWithValueSchemaByteBufferFromStorage(int subPartition, byte[] key) {
+    final long lookupStartTimeInNS = System.nanoTime();
     ValueRecord result =
         SingleGetChunkingAdapter.getReplicationMetadata(getStorageEngine(), subPartition, key, isChunked(), null);
+    getHostLevelIngestionStats()
+        .recordIngestionReplicationMetadataLookUpLatency(LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
     if (result == null) {
       return null;
     }
@@ -1313,9 +1317,5 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         subPartition,
         kafkaUrl,
         beforeProcessingRecordTimestamp);
-  }
-
-  protected RmdSerDe getRmdSerDe() {
-    return rmdSerDe;
   }
 }

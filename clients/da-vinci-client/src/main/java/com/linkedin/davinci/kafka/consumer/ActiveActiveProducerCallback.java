@@ -62,8 +62,7 @@ public class ActiveActiveProducerCallback extends LeaderProducerCallback {
     if (chunkedRmdManifest == null) {
       manifestPut.replicationMetadataPayload = leaderProducedRecordContextPut.replicationMetadataPayload;
     } else {
-      ByteBuffer rmdManifest = ByteBuffer
-          .wrap(CHUNKED_VALUE_MANIFEST_SERIALIZER.serialize(ingestionTask.getVersionTopic(), chunkedRmdManifest));
+      ByteBuffer rmdManifest = CHUNKED_VALUE_MANIFEST_SERIALIZER.serialize(chunkedRmdManifest);
       rmdManifest.position(ValueRecord.SCHEMA_HEADER_LENGTH);
       manifestPut.replicationMetadataPayload = rmdManifest;
     }

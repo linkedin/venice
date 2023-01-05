@@ -144,49 +144,13 @@ class LeaderProducerCallback implements ChunkAwareCallback {
           producedRecordSize =
               Math.max(0, recordMetadata.serializedKeySize()) + Math.max(0, recordMetadata.serializedValueSize());
         } else {
-          int schemaId = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
-          for (int i = 0; i < chunkedValueManifest.keysWithChunkIdSuffix.size(); i++) {
-            ByteBuffer chunkKey = chunkedValueManifest.keysWithChunkIdSuffix.get(i);
-            ByteBuffer chunkValue = valueChunks[i];
-
-            Put chunkPut = instantiateValueChunkPut();
-            chunkPut.putValue = chunkValue;
-            chunkPut.schemaId = schemaId;
-
-            LeaderProducedRecordContext producedRecordForChunk =
-                LeaderProducedRecordContext.newChunkPutRecord(ByteUtils.extractByteArray(chunkKey), chunkPut);
-            producedRecordForChunk.setProducedOffset(-1);
-            ingestionTask.produceToStoreBufferService(
-                sourceConsumerRecord,
-                producedRecordForChunk,
-                subPartition,
-                kafkaUrl,
-                beforeProcessingRecordTimestamp);
-            producedRecordNum++;
-            producedRecordSize += chunkKey.remaining() + chunkValue.remaining();
-          }
+          producedRecordSize += produceChunksToStoreBufferService(chunkedValueManifest, valueChunks, false);
+          producedRecordNum += chunkedValueManifest.keysWithChunkIdSuffix.size();
           if (chunkedRmdManifest != null) {
-            for (int i = 0; i < chunkedRmdManifest.keysWithChunkIdSuffix.size(); i++) {
-              ByteBuffer chunkKey = chunkedRmdManifest.keysWithChunkIdSuffix.get(i);
-              ByteBuffer chunkValue = rmdChunks[i];
-              Put chunkPut = instantiateRmdChunkPut();
-              chunkPut.schemaId = schemaId;
-              chunkPut.replicationMetadataPayload = chunkValue;
-              LeaderProducedRecordContext producedRecordForChunk =
-                  LeaderProducedRecordContext.newChunkPutRecord(ByteUtils.extractByteArray(chunkKey), chunkPut);
-              producedRecordForChunk.setProducedOffset(-1);
-              ingestionTask.produceToStoreBufferService(
-                  sourceConsumerRecord,
-                  producedRecordForChunk,
-                  subPartition,
-                  kafkaUrl,
-                  beforeProcessingRecordTimestamp);
-              producedRecordNum++;
-              producedRecordSize += chunkKey.remaining() + chunkValue.remaining();
-            }
+            producedRecordSize += produceChunksToStoreBufferService(chunkedRmdManifest, rmdChunks, true);
+            producedRecordNum += chunkedRmdManifest.keysWithChunkIdSuffix.size();
           }
           // produce the manifest inside the top-level key
-          schemaId = AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
           ByteBuffer manifest = CHUNKED_VALUE_MANIFEST_SERIALIZER.serialize(chunkedValueManifest);
           /**
            * The byte[] coming out of the {@link CHUNKED_VALUE_MANIFEST_SERIALIZER} is padded in front, so
@@ -197,7 +161,7 @@ class LeaderProducerCallback implements ChunkAwareCallback {
 
           Put manifestPut = instantiateManifestPut();
           manifestPut.putValue = manifest;
-          manifestPut.schemaId = schemaId;
+          manifestPut.schemaId = AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
           LeaderProducedRecordContext producedRecordForManifest = LeaderProducedRecordContext.newPutRecordWithFuture(
               leaderProducedRecordContext.getConsumedKafkaClusterId(),
               leaderProducedRecordContext.getConsumedOffset(),
@@ -274,5 +238,37 @@ class LeaderProducerCallback implements ChunkAwareCallback {
 
   protected Put instantiateManifestPut() {
     return new Put();
+  }
+
+  private long produceChunksToStoreBufferService(
+      ChunkedValueManifest manifest,
+      ByteBuffer[] chunks,
+      boolean isRmdChunks) throws InterruptedException {
+    long totalChunkSize = 0;
+    for (int i = 0; i < manifest.keysWithChunkIdSuffix.size(); i++) {
+      ByteBuffer chunkKey = manifest.keysWithChunkIdSuffix.get(i);
+      ByteBuffer chunkValue = chunks[i];
+      Put chunkPut;
+      if (isRmdChunks) {
+        chunkPut = instantiateRmdChunkPut();
+        chunkPut.schemaId = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
+        chunkPut.replicationMetadataPayload = chunkValue;
+      } else {
+        chunkPut = instantiateValueChunkPut();
+        chunkPut.putValue = chunkValue;
+        chunkPut.schemaId = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
+      }
+      LeaderProducedRecordContext producedRecordForChunk =
+          LeaderProducedRecordContext.newChunkPutRecord(ByteUtils.extractByteArray(chunkKey), chunkPut);
+      producedRecordForChunk.setProducedOffset(-1);
+      ingestionTask.produceToStoreBufferService(
+          sourceConsumerRecord,
+          producedRecordForChunk,
+          subPartition,
+          kafkaUrl,
+          beforeProcessingRecordTimestamp);
+      totalChunkSize += chunkKey.remaining() + chunkValue.remaining();
+    }
+    return totalChunkSize;
   }
 }

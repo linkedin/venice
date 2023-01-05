@@ -259,6 +259,7 @@ public class ActiveActiveStoreIngestionTaskTest {
     when(ingestionTask.getServerConfig()).thenReturn(serverConfig);
     when(ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(anyInt(), any())).thenCallRealMethod();
     when(ingestionTask.isChunked()).thenReturn(true);
+    when(ingestionTask.getHostLevelIngestionStats()).thenReturn(mock(HostLevelIngestionStats.class));
 
     when(storageEngine.getReplicationMetadata(subPartition, topLevelKey1)).thenReturn(expectedNonChunkedValue);
     ByteBuffer result = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(subPartition, key1);

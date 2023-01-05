@@ -116,40 +116,6 @@ public class ChunkingUtils {
         true);
   }
 
-  /**
-   * TODO: ADD API DOC + CHECK EACH ARG
-   * @param adapter
-   * @param store
-   * @param partition
-   * @param keyBuffer
-   * @param response
-   * @return
-   * @param <VALUE>
-   * @param <ASSEMBLED_VALUE_CONTAINER>
-   */
-  static <VALUE, ASSEMBLED_VALUE_CONTAINER> VALUE getReplicationMetadataFromStorage(
-      ChunkingAdapter<ASSEMBLED_VALUE_CONTAINER, VALUE> adapter,
-      AbstractStorageEngine store,
-      int partition,
-      ByteBuffer keyBuffer) {
-    return getFromStorage(
-        adapter,
-        store,
-        -1,
-        partition,
-        keyBuffer,
-        null,
-        null,
-        null,
-        CompressionStrategy.NO_OP,
-        false,
-        null,
-        null,
-        null,
-        false,
-        true);
-  }
-
   static <VALUE, CHUNKS_CONTAINER> VALUE getFromStorage(
       ChunkingAdapter<CHUNKS_CONTAINER, VALUE> adapter,
       AbstractStorageEngine store,
