@@ -288,13 +288,6 @@ public class ChunkingUtils {
       boolean skipCache,
       boolean isRmdValue) {
     long databaseLookupStartTimeInNS = (response != null) ? System.nanoTime() : 0;
-    /*
-    LogManager.getLogger().info("DEBUGGING is RMD? " + isRmdValue);
-    if (isRmdValue) {
-      LogManager.getLogger().info("DEBUGGING RMD STACK: " + Arrays.toString(Thread.currentThread().getStackTrace()));
-    }
-    
-     */
     byte[] value = isRmdValue
         ? store.getReplicationMetadata(partition, keyBuffer.array())
         : store.get(partition, keyBuffer, skipCache);
@@ -362,11 +355,6 @@ public class ChunkingUtils {
       if (response != null) {
         response.addDatabaseLookupLatency(LatencyUtils.getLatencyInMS(databaseLookupStartTimeInNS));
       }
-      /*
-      LogManager.getLogger()
-          .info("DEBUGGING: NOT CHUNKED BYTES isRmdValue: " + isRmdValue + " " + value.length + " " + writerSchemaId);
-      
-       */
       return adapter.constructValue(
           writerSchemaId,
           readerSchemaId,
@@ -387,12 +375,6 @@ public class ChunkingUtils {
     // End of initial sanity checks. We have a chunked value, so we need to fetch all chunks
 
     ChunkedValueManifest chunkedValueManifest = CHUNKED_VALUE_MANIFEST_SERIALIZER.deserialize(value, writerSchemaId);
-    /*
-    LogManager.getLogger()
-        .info(
-            "DEBUGGING: CHUNK MANIFEST RMD CHUNK? " + isRmdValue + " " + chunkedValueManifest.size + " "
-                + writerSchemaId + " " + chunkedValueManifest.keysWithChunkIdSuffix.size());
-    */
     CHUNKS_CONTAINER assembledValueContainer = adapter.constructChunksContainer(chunkedValueManifest);
     int actualSize = 0;
 
@@ -416,12 +398,6 @@ public class ChunkingUtils {
       }
 
       actualSize += valueChunk.length - ValueRecord.SCHEMA_HEADER_LENGTH;
-      /*
-      LogManager.getLogger()
-          .info(
-              "DEBUGGING GETTING CHUNK: " + chunkIndex + " " + actualSize + " " + chunkKey.length + " "
-                  + valueChunk.length);
-       */
       adapter.addChunkIntoContainer(assembledValueContainer, chunkIndex, valueChunk);
     }
 

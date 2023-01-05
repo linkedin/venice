@@ -263,6 +263,7 @@ public class TestActiveActiveIngestion {
         // not matter the DELETE is TTLed or not, the value should always be null
         Assert.assertNull(client.get(Integer.toString(i)).get());
       }
+
       // test old data - should be empty due to empty push
       for (int i = 40; i < 100; i++) {
         Assert.assertNull(client.get(Integer.toString(i)).get());
