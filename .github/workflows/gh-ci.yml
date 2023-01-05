@@ -27,7 +27,7 @@ jobs:
         with:
           arguments: "clean check -x spotlessCheck --continue --no-daemon -Pspotallbugs -Pspotbugs.xml -Pspotbugs.ignoreFailures -x test -x integrationTestA -x integrationTestB"
 
-  UnitTests:
+  unit-tests-and-code-coverage-check:
     strategy:
       fail-fast: false
       matrix:
