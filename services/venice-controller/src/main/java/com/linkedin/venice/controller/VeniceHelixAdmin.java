@@ -2932,7 +2932,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * Test if a kafka topic is truncated.
+   * Check if a kafka topic is absent or truncated.
    * @see ConfigKeys#DEPRECATED_TOPIC_MAX_RETENTION_MS
    */
   @Override
