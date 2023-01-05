@@ -77,7 +77,7 @@ public class DaVinciClusterAgnosticTest {
         2,
         1,
         1,
-        3,
+        4,
         1,
         3,
         Optional.of(new VeniceProperties(Collections.singletonMap(OFFLINE_JOB_START_TIMEOUT_MS, "180000"))),
