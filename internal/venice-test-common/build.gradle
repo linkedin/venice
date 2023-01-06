@@ -131,6 +131,3 @@ task integrationTestJar(type: Jar, dependsOn: integrationTestClasses) {
 artifacts {
   integrationTestConf integrationTestJar
 }
-ext {
-  jacocoCoverageThreshold = 0.0 // doesn't require unit tests for a testing package
-}

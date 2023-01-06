@@ -18,7 +18,3 @@ dependencies {
   implementation libraries.log4j2api
   implementation libraries.samzaApi
 }
-
-ext {
-  jacocoCoverageThreshold = 0.5
-}

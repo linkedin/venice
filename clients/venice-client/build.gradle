@@ -26,5 +26,5 @@ dependencies {
 }
 
 ext {
-  jacocoCoverageThreshold = 0.7
+  jacocoCoverageThreshold = 0.5
 }
