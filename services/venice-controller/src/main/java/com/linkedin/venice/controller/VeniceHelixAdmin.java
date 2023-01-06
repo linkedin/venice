@@ -43,6 +43,7 @@ import com.linkedin.venice.controller.init.SystemSchemaInitializationRoutine;
 import com.linkedin.venice.controller.kafka.StoreStatusDecider;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.ControllerKafkaClientFactory;
+import com.linkedin.venice.controller.kafka.protocol.admin.HybridStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreViewConfigRecord;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -2499,11 +2500,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // during transition to version based partition count, some old stores may have partition count on the store
         // config only.
         if (partitionCount == 0) {
+          // Now store-level partition count is set when a store is converted to hybrid
           partitionCount = store.getPartitionCount();
           if (partitionCount == 0) {
-            // TODO: partitioning is currently decided on first version push, and we need to match that versioning
-            // we should evaluate alternatives such as allowing the RT topic request to initialize the number of
-            // partitions, or setting the number of partitions at store creation time instead of at first version
             if (!version.isPresent()) {
               throw new VeniceException("Store: " + storeName + " is not initialized with a version yet");
             } else {
@@ -3814,13 +3813,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       newHybridStoreConfig = Optional.empty();
     }
 
-    if (incrementalPushEnabled.orElse(originalStore.isIncrementalPushEnabled())
-        && !isHybrid(newHybridStoreConfig.orElse(originalStore.getHybridStoreConfig()))) {
-      LOGGER.info(
-          "Enabling incremental push for a batch store: {} will convert it to a hybrid store with default configs.",
-          storeName);
-    }
-
     try {
       if (owner.isPresent()) {
         setStoreOwner(clusterName, storeName, owner.get());
@@ -4137,6 +4129,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
+  /**
+   * Enabling hybrid mode for incremental push store is moved into
+   * {@link VeniceParentHelixAdmin#updateStore(String, String, UpdateStoreQueryParams)}
+   * TODO: Remove the method and its usage after the deployment of parent controller updateStore change.
+   */
   private void enableHybridModeOrUpdateSettings(String clusterName, String storeName) {
     storeMetadataUpdate(clusterName, storeName, store -> {
       HybridStoreConfig hybridStoreConfig = store.getHybridStoreConfig();
@@ -6902,14 +6899,31 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return store;
   }
 
+  /**
+   * A store is not hybrid in the following two scenarios:
+   * If hybridStoreConfig is null, it means store is not hybrid.
+   * If all the hybrid config values are negative, it indicates that the store is being set back to batch-only store.
+   */
   boolean isHybrid(HybridStoreConfig hybridStoreConfig) {
-    /** A store is not hybrid in the following two scenarios:
-     * If hybridStoreConfig is null, it means store is not hybrid.
-     * If all of the hybrid config values are negative, it indicates that the store is being set back to batch-only store.
-     */
     return hybridStoreConfig != null
         && (hybridStoreConfig.getRewindTimeInSeconds() >= 0 || hybridStoreConfig.getOffsetLagThresholdToGoOnline() >= 0
             || hybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds() >= 0);
+  }
+
+  /**
+   * @see VeniceHelixAdmin#isHybrid(HybridStoreConfig)
+   */
+  boolean isHybrid(HybridStoreConfigRecord hybridStoreConfigRecord) {
+    HybridStoreConfig hybridStoreConfig = null;
+    if (hybridStoreConfigRecord != null) {
+      hybridStoreConfig = new HybridStoreConfigImpl(
+          hybridStoreConfigRecord.rewindTimeInSeconds,
+          hybridStoreConfigRecord.offsetLagThresholdToGoOnline,
+          hybridStoreConfigRecord.producerTimestampLagThresholdToGoOnlineInSeconds,
+          DataReplicationPolicy.valueOf(hybridStoreConfigRecord.dataReplicationPolicy),
+          BufferReplayPolicy.valueOf(hybridStoreConfigRecord.bufferReplayPolicy));
+    }
+    return isHybrid(hybridStoreConfig);
   }
 
   /**
