@@ -1,8 +1,8 @@
 package com.linkedin.venice.etl;
 
-import static com.linkedin.venice.utils.TestPushUtils.ETL_UNION_VALUE_SCHEMA_STRING_WITHOUT_NULL;
-import static com.linkedin.venice.utils.TestPushUtils.ETL_UNION_VALUE_SCHEMA_STRING_WITH_NULL;
-import static com.linkedin.venice.utils.TestPushUtils.ETL_VALUE_SCHEMA_STRING;
+import static com.linkedin.venice.utils.TestWriteUtils.ETL_UNION_VALUE_SCHEMA_STRING_WITHOUT_NULL;
+import static com.linkedin.venice.utils.TestWriteUtils.ETL_UNION_VALUE_SCHEMA_STRING_WITH_NULL;
+import static com.linkedin.venice.utils.TestWriteUtils.ETL_VALUE_SCHEMA_STRING;
 
 import org.apache.avro.Schema;
 import org.testng.Assert;

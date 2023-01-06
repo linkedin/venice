@@ -1,11 +1,11 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.venice.utils.TestPushUtils.STRING_SCHEMA;
 import static com.linkedin.venice.utils.TestStoragePersonaUtils.OWNERS_DOES_NOT_EXIST_REGEX;
 import static com.linkedin.venice.utils.TestStoragePersonaUtils.PERSONA_DOES_NOT_EXIST_REGEX;
 import static com.linkedin.venice.utils.TestStoragePersonaUtils.QUOTA_FAILED_REGEX;
 import static com.linkedin.venice.utils.TestStoragePersonaUtils.STORES_FAILED_REGEX;
 import static com.linkedin.venice.utils.TestStoragePersonaUtils.createDefaultPersona;
+import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;

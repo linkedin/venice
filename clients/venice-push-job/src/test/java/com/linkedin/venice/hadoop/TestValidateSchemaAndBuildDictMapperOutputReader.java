@@ -2,7 +2,7 @@ package com.linkedin.venice.hadoop;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.output.avro.ValidateSchemaAndBuildDictMapperOutput;
-import com.linkedin.venice.utils.TestPushUtils;
+import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
@@ -61,7 +61,7 @@ public class TestValidateSchemaAndBuildDictMapperOutputReader {
   public void testGetWithEmptyFile() throws Exception {
     File inputDir = Utils.getTempDataDirectory();
     String avroOutputFile = "empty_file.avro";
-    TestPushUtils.writeEmptyAvroFileWithUserSchema(inputDir, avroOutputFile, fileSchema.toString());
+    TestWriteUtils.writeEmptyAvroFileWithUserSchema(inputDir, avroOutputFile, fileSchema.toString());
     ValidateSchemaAndBuildDictMapperOutputReader reader =
         new ValidateSchemaAndBuildDictMapperOutputReader(inputDir.getAbsolutePath(), avroOutputFile);
     reader.close();
@@ -75,7 +75,7 @@ public class TestValidateSchemaAndBuildDictMapperOutputReader {
   public void testGetWithInvalidAvroFile() throws Exception {
     File inputDir = Utils.getTempDataDirectory();
     String avroOutputFile = "invalid_file.avro";
-    TestPushUtils.writeInvalidAvroFile(inputDir, avroOutputFile);
+    TestWriteUtils.writeInvalidAvroFile(inputDir, avroOutputFile);
     ValidateSchemaAndBuildDictMapperOutputReader reader =
         new ValidateSchemaAndBuildDictMapperOutputReader(inputDir.getAbsolutePath(), avroOutputFile);
     reader.close();
@@ -89,7 +89,7 @@ public class TestValidateSchemaAndBuildDictMapperOutputReader {
   public void testGetWithInvalidInputFileDataSize() throws Exception {
     File inputDir = Utils.getTempDataDirectory();
     String avroOutputFile = "valid_file.avro";
-    TestPushUtils.writeSimpleAvroFileForValidateSchemaAndBuildDictMapperOutput(
+    TestWriteUtils.writeSimpleAvroFileForValidateSchemaAndBuildDictMapperOutput(
         inputDir,
         avroOutputFile,
         0,
@@ -104,7 +104,7 @@ public class TestValidateSchemaAndBuildDictMapperOutputReader {
   public void testGetWithValidInputFileDataSize() throws Exception {
     File inputDir = Utils.getTempDataDirectory();
     String avroOutputFile = "valid_file.avro";
-    TestPushUtils.writeSimpleAvroFileForValidateSchemaAndBuildDictMapperOutput(
+    TestWriteUtils.writeSimpleAvroFileForValidateSchemaAndBuildDictMapperOutput(
         inputDir,
         avroOutputFile,
         1,
@@ -128,7 +128,7 @@ public class TestValidateSchemaAndBuildDictMapperOutputReader {
   public void testGetWithNoZstdDictionary() throws Exception {
     File inputDir = Utils.getTempDataDirectory();
     String avroOutputFile = "valid_file.avro";
-    TestPushUtils.writeSimpleAvroFileForValidateSchemaAndBuildDictMapperOutput(
+    TestWriteUtils.writeSimpleAvroFileForValidateSchemaAndBuildDictMapperOutput(
         inputDir,
         avroOutputFile,
         1,

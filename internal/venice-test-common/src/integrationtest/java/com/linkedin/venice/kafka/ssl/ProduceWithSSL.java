@@ -1,9 +1,9 @@
 package com.linkedin.venice.kafka.ssl;
 
-import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
-import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
-import static com.linkedin.venice.utils.TestPushUtils.sslVPJProps;
-import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithUserSchema;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.sslVPJProps;
+import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUserSchema;
 
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -22,8 +22,8 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.SslUtils;
-import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -164,7 +164,7 @@ public class ProduceWithSSL {
           "Push has not been start, current should be 0");
 
       // First push to verify regular push job works fine
-      TestPushUtils.runPushJob("Test push job", props);
+      TestWriteUtils.runPushJob("Test push job", props);
       TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
         int currentVersion = controllerClient.getStore(storeName).getStore().getCurrentVersion();
         return currentVersion == 1;
@@ -173,7 +173,7 @@ public class ProduceWithSSL {
       // Re-push with Kafka Input Format
       props.setProperty(VenicePushJob.SOURCE_KAFKA, "true");
       props.setProperty(VenicePushJob.KAFKA_INPUT_BROKER_URL, cluster.getKafka().getSSLAddress());
-      TestPushUtils.runPushJob("Test Kafka re-push job", props);
+      TestWriteUtils.runPushJob("Test Kafka re-push job", props);
       TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
         int currentVersion = controllerClient.getStore(storeName).getStore().getCurrentVersion();
         return currentVersion == 2;
@@ -187,7 +187,7 @@ public class ProduceWithSSL {
         throw new VeniceException(response.getError());
       }
       props.setProperty(VenicePushJob.SOURCE_KAFKA, "false");
-      TestPushUtils.runPushJob("Test push job with dictionary compression", props);
+      TestWriteUtils.runPushJob("Test push job with dictionary compression", props);
       TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
         int currentVersion = controllerClient.getStore(storeName).getStore().getCurrentVersion();
         return currentVersion == 3;
@@ -195,7 +195,7 @@ public class ProduceWithSSL {
 
       // Re-push with Kafka Input Format and dictionary compression enabled
       props.setProperty(VenicePushJob.SOURCE_KAFKA, "true");
-      TestPushUtils.runPushJob("Test Kafka re-push job with dictionary compression", props);
+      TestWriteUtils.runPushJob("Test Kafka re-push job with dictionary compression", props);
       TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
         int currentVersion = controllerClient.getStore(storeName).getStore().getCurrentVersion();
         return currentVersion == 4;
