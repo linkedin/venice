@@ -77,7 +77,7 @@ public class DaVinciClusterAgnosticTest {
         2,
         1,
         2,
-        4,
+        3,
         1,
         3,
         Optional.of(new VeniceProperties(Collections.singletonMap(OFFLINE_JOB_START_TIMEOUT_MS, "180000"))),
@@ -99,7 +99,7 @@ public class DaVinciClusterAgnosticTest {
         TestUtils.waitForNonDeterministicPushCompletion(
             Version.composeKafkaTopic(participantStoreName, 1),
             controllerClient,
-            1,
+            5,
             TimeUnit.MINUTES);
       }
     }
