@@ -30,6 +30,7 @@ public class ClassPathSupplierForVeniceCluster implements Supplier<String> {
     try (ScanResult scanResult = new ClassGraph().scan()) {
       Set<File> classpathDirs = new LinkedHashSet<>();
       for (File file: scanResult.getClasspathFiles()) {
+        LOGGER.info(file);
         if (file.isDirectory() || file.getName().equals("*") || file.getAbsolutePath().contains(".gradle")) {
           classpathDirs.add(file);
         } else {

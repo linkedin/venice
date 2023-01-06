@@ -42,7 +42,7 @@ import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.SslUtils;
-import com.linkedin.venice.utils.TestPushUtils;
+import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -539,15 +539,15 @@ public class VeniceParentHelixAdminTest {
     String owner = "test_owner";
     String keySchemaStr = "\"long\"";
     Schema valueSchemaV1 =
-        AvroCompatibilityHelper.parse(TestPushUtils.loadFileAsString("supersetschemas/ValueV1.avsc"));
+        AvroCompatibilityHelper.parse(TestWriteUtils.loadFileAsString("supersetschemas/ValueV1.avsc"));
     Schema valueSchemaV2 =
-        AvroCompatibilityHelper.parse(TestPushUtils.loadFileAsString("supersetschemas/ValueV2.avsc"));
+        AvroCompatibilityHelper.parse(TestWriteUtils.loadFileAsString("supersetschemas/ValueV2.avsc"));
     Schema valueSchemaV3 =
-        AvroCompatibilityHelper.parse(TestPushUtils.loadFileAsString("supersetschemas/ValueV3.avsc"));
+        AvroCompatibilityHelper.parse(TestWriteUtils.loadFileAsString("supersetschemas/ValueV3.avsc"));
     Schema valueSchemaV4 =
-        AvroCompatibilityHelper.parse(TestPushUtils.loadFileAsString("supersetschemas/ValueV4.avsc"));
+        AvroCompatibilityHelper.parse(TestWriteUtils.loadFileAsString("supersetschemas/ValueV4.avsc"));
     Schema valueSchemaV5 =
-        AvroCompatibilityHelper.parse(TestPushUtils.loadFileAsString("supersetschemas/ValueV5.avsc"));
+        AvroCompatibilityHelper.parse(TestWriteUtils.loadFileAsString("supersetschemas/ValueV5.avsc"));
 
     NewStoreResponse newStoreResponse =
         parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchemaV1.toString());

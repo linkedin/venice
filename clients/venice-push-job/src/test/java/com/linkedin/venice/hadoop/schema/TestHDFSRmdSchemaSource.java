@@ -1,6 +1,6 @@
 package com.linkedin.venice.hadoop.schema;
 
-import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
+import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 

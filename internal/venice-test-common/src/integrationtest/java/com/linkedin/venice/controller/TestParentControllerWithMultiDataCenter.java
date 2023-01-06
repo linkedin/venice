@@ -18,8 +18,8 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
-import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -100,7 +100,7 @@ public class TestParentControllerWithMultiDataCenter {
               .setLeaderFollowerModel(true) // Enable L/F to update amplification factor.
               .setAmplificationFactor(2);
 
-      TestPushUtils.updateStore(storeName, parentControllerClient, updateStoreParams);
+      TestWriteUtils.updateStore(storeName, parentControllerClient, updateStoreParams);
 
       ControllerClient[] controllerClients = new ControllerClient[childDatacenters.size() + 1];
       controllerClients[0] = parentControllerClient;
@@ -137,7 +137,7 @@ public class TestParentControllerWithMultiDataCenter {
       // Turn off hybrid config so we can update the partitioner config.
       final UpdateStoreQueryParams updateStoreParams2 =
           new UpdateStoreQueryParams().setHybridRewindSeconds(-1).setHybridOffsetLagThreshold(-1);
-      TestPushUtils.updateStore(storeName, parentControllerClient, updateStoreParams2);
+      TestWriteUtils.updateStore(storeName, parentControllerClient, updateStoreParams2);
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
         for (ControllerClient controllerClient: controllerClients) {
           StoreResponse storeResponse = controllerClient.getStore(storeName);
@@ -150,7 +150,7 @@ public class TestParentControllerWithMultiDataCenter {
       // Update partitioner parameters make sure new update is in and other fields of partitioner config is not reset.
       final UpdateStoreQueryParams updateStoreParams3 =
           new UpdateStoreQueryParams().setPartitionerParams(Collections.singletonMap("key", "val"));
-      TestPushUtils.updateStore(storeName, parentControllerClient, updateStoreParams3);
+      TestWriteUtils.updateStore(storeName, parentControllerClient, updateStoreParams3);
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
         for (ControllerClient controllerClient: controllerClients) {
           StoreResponse storeResponse = controllerClient.getStore(storeName);
@@ -199,7 +199,7 @@ public class TestParentControllerWithMultiDataCenter {
           new UpdateStoreQueryParams().setStorageQuotaInByte(expectedStorageQuotaInDC0)
               .setLeaderFollowerModel(expectedLeaderFollowerConfigInDC0)
               .setNativeReplicationEnabled(expectedNativeReplicationConfigInDC0);
-      TestPushUtils.updateStore(storeName, dc0Client, updateStoreParams);
+      TestWriteUtils.updateStore(storeName, dc0Client, updateStoreParams);
 
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, true, () -> {
         StoreResponse storeResponse = dc0Client.getStore(storeName);
@@ -216,7 +216,7 @@ public class TestParentControllerWithMultiDataCenter {
       long expectedReadQuota = 2021;
       UpdateStoreQueryParams updateStoreParamsOnParent =
           new UpdateStoreQueryParams().setReadQuotaInCU(expectedReadQuota);
-      TestPushUtils.updateStore(storeName, parentControllerClient, updateStoreParamsOnParent);
+      TestWriteUtils.updateStore(storeName, parentControllerClient, updateStoreParamsOnParent);
 
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
         StoreResponse storeResponse = dc0Client.getStore(storeName);
@@ -257,7 +257,7 @@ public class TestParentControllerWithMultiDataCenter {
       long newReadQuotaInParent = 116;
       UpdateStoreQueryParams forceUpdateStoreParamsOnParent =
           new UpdateStoreQueryParams().setReadQuotaInCU(newReadQuotaInParent).setReplicateAllConfigs(true);
-      TestPushUtils.updateStore(storeName, parentControllerClient, forceUpdateStoreParamsOnParent);
+      TestWriteUtils.updateStore(storeName, parentControllerClient, forceUpdateStoreParamsOnParent);
 
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
         StoreResponse storeResponse = dc0Client.getStore(storeName);
@@ -292,8 +292,8 @@ public class TestParentControllerWithMultiDataCenter {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = Utils.getUniqueString("store");
     String valueRecordSchemaStr1 = BASIC_USER_SCHEMA_STRING_WITH_DEFAULT;
-    String valueRecordSchemaStr2 = TestPushUtils.USER_SCHEMA_STRING_SIMPLE_WITH_DEFAULT;
-    String valueRecordSchemaStr3 = TestPushUtils.USER_SCHEMA_STRING_WITH_DEFAULT;
+    String valueRecordSchemaStr2 = TestWriteUtils.USER_SCHEMA_STRING_SIMPLE_WITH_DEFAULT;
+    String valueRecordSchemaStr3 = TestWriteUtils.USER_SCHEMA_STRING_WITH_DEFAULT;
 
     Schema rmdSchema1 = RmdSchemaGenerator.generateMetadataSchema(valueRecordSchemaStr1, 1);
     Schema rmdSchema2 = RmdSchemaGenerator.generateMetadataSchema(valueRecordSchemaStr2, 1);
@@ -319,7 +319,7 @@ public class TestParentControllerWithMultiDataCenter {
       UpdateStoreQueryParams updateStoreToEnableAARepl = new UpdateStoreQueryParams().setLeaderFollowerModel(true)
           .setNativeReplicationEnabled(true)
           .setActiveActiveReplicationEnabled(true);
-      TestPushUtils.updateStore(storeName, parentControllerClient, updateStoreToEnableAARepl);
+      TestWriteUtils.updateStore(storeName, parentControllerClient, updateStoreToEnableAARepl);
       /**
        * Test Active/Active replication config enablement generates the active active metadata schema.
        */
@@ -439,6 +439,7 @@ public class TestParentControllerWithMultiDataCenter {
       String storeName,
       int expectedVersion) {
     VersionCreationResponse vcr = parentControllerClient.emptyPush(storeName, Utils.getUniqueString("empty-push"), 1L);
+    Assert.assertFalse(vcr.isError());
     assertEquals(
         vcr.getVersion(),
         expectedVersion,

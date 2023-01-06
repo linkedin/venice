@@ -1,9 +1,9 @@
 package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
-import static com.linkedin.venice.utils.TestPushUtils.getSamzaProducer;
-import static com.linkedin.venice.utils.TestPushUtils.makeStoreHybrid;
-import static com.linkedin.venice.utils.TestPushUtils.sendStreamingRecord;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.makeStoreHybrid;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -18,6 +18,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -50,7 +51,7 @@ public class TestDeleteStoreDeletesRealtimeTopic {
         DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
         100,
         0l,
-        TestUtils.getVeniceConsumerFactory(venice.getKafka()));
+        IntegrationTestPushUtils.getVeniceConsumerFactory(venice.getKafka()));
     storeName = Utils.getUniqueString("hybrid-store");
     venice.getNewStore(storeName);
     makeStoreHybrid(venice, storeName, 100L, 5L);
