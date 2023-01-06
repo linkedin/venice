@@ -249,7 +249,13 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     }
 
     final long lookupStartTimeInNS = System.nanoTime();
-    byte[] replicationMetadataWithValueSchemaBytes = storageEngine.getReplicationMetadata(subPartition, key);
+    byte[] updatedKey;
+    if (isChunked) {
+      updatedKey = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(key);
+    } else {
+      updatedKey = key;
+    }
+    byte[] replicationMetadataWithValueSchemaBytes = storageEngine.getReplicationMetadata(subPartition, updatedKey);
     hostLevelIngestionStats
         .recordIngestionReplicationMetadataLookUpLatency(LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
     if (replicationMetadataWithValueSchemaBytes == null) {
