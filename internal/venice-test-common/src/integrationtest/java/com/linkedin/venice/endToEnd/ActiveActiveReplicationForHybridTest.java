@@ -572,13 +572,18 @@ public class ActiveActiveReplicationForHybridTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testAAReplicationCanResolveConflicts(boolean useLogicalTimestamp) {
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testAAReplicationCanResolveConflicts(boolean useLogicalTimestamp, boolean chunkingEnabled) {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = Utils.getUniqueString("test-store");
     try {
       assertCommand(parentControllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA));
-      updateStoreToHybrid(storeName, parentControllerClient, Optional.of(true), Optional.of(true), Optional.of(false));
+      updateStoreToHybrid(
+          storeName,
+          parentControllerClient,
+          Optional.of(true),
+          Optional.of(true),
+          Optional.of(chunkingEnabled));
 
       // Empty push to create a version
       assertCommand(
