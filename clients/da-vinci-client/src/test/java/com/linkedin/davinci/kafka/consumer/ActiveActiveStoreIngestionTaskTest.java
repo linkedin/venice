@@ -262,9 +262,9 @@ public class ActiveActiveStoreIngestionTaskTest {
     when(ingestionTask.getHostLevelIngestionStats()).thenReturn(mock(HostLevelIngestionStats.class));
 
     when(storageEngine.getReplicationMetadata(subPartition, topLevelKey1)).thenReturn(expectedNonChunkedValue);
-    ByteBuffer result = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(subPartition, key1);
+    byte[] result = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(subPartition, key1);
     Assert.assertNotNull(result);
-    Assert.assertEquals(result.array(), expectedNonChunkedValue);
+    Assert.assertEquals(result, expectedNonChunkedValue);
 
     /**
      * The 2nd key contains 1 chunks with 8 bytes.
@@ -296,9 +296,9 @@ public class ActiveActiveStoreIngestionTaskTest {
 
     when(storageEngine.getReplicationMetadata(subPartition, topLevelKey2)).thenReturn(chunkedManifestWithSchemaBytes);
     when(storageEngine.getReplicationMetadata(subPartition, chunkedKey1InKey2)).thenReturn(chunkedValue1);
-    ByteBuffer result2 = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(subPartition, key2);
+    byte[] result2 = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(subPartition, key2);
     Assert.assertNotNull(result2);
-    Assert.assertEquals(result2.array(), expectedChunkedValue1);
+    Assert.assertEquals(result2, expectedChunkedValue1);
 
     /**
      * The 3rd key contains 2 chunks, each contains 8 bytes and 12 bytes respectively.
@@ -337,8 +337,8 @@ public class ActiveActiveStoreIngestionTaskTest {
     when(storageEngine.getReplicationMetadata(subPartition, topLevelKey3)).thenReturn(chunkedManifestWithSchemaBytes);
     when(storageEngine.getReplicationMetadata(subPartition, chunkedKey1InKey3)).thenReturn(chunkedValue1);
     when(storageEngine.getReplicationMetadata(subPartition, chunkedKey2InKey3)).thenReturn(chunkedValue2);
-    ByteBuffer result3 = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(subPartition, key3);
+    byte[] result3 = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(subPartition, key3);
     Assert.assertNotNull(result3);
-    Assert.assertEquals(result3.array(), expectedChunkedValue2);
+    Assert.assertEquals(result3, expectedChunkedValue2);
   }
 }

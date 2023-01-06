@@ -2951,18 +2951,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   private void prependHeaderAndWriteToStorageEngine(int partition, byte[] keyBytes, Put put) {
     ByteBuffer putValue = put.putValue;
-    /*
-     * Since {@link com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer} reuses the original byte
-     * array, which is big enough to pre-append schema id, so we just reuse it to avoid unnecessary byte array allocation.
-     * This value encoding scheme is used in {@link PartitionConsumptionState#maybeUpdateExpectedChecksum(byte[], Put)} to
-     * calculate checksum for all the kafka PUT messages seen so far. Any change here needs to be reflected in that function.
-     */
+
     if ((put.putValue.remaining() == 0) && (put.replicationMetadataPayload.remaining() > 0)) {
+      // For RMD chunk, it is already prepended with the schema ID, so we will just put to storage engine.
       writeToStorageEngine(partition, keyBytes, put);
     } else if (putValue.position() < ValueRecord.SCHEMA_HEADER_LENGTH) {
       throw new VeniceException(
           "Start position of 'putValue' ByteBuffer shouldn't be less than " + ValueRecord.SCHEMA_HEADER_LENGTH);
     } else {
+      /*
+       * Since {@link com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer} reuses the original byte
+       * array, which is big enough to pre-append schema id, so we just reuse it to avoid unnecessary byte array allocation.
+       * This value encoding scheme is used in {@link PartitionConsumptionState#maybeUpdateExpectedChecksum(byte[], Put)} to
+       * calculate checksum for all the kafka PUT messages seen so far. Any change here needs to be reflected in that function.
+       */
       // Back up the original 4 bytes
       putValue.position(putValue.position() - ValueRecord.SCHEMA_HEADER_LENGTH);
       int backupBytes = putValue.getInt();

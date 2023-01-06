@@ -50,6 +50,7 @@ public class ActiveActiveProducerCallback extends LeaderProducerCallback {
   protected Put instantiateRmdChunkPut() {
     Put chunkPut = new Put();
     chunkPut.putValue = EMPTY_BYTE_BUFFER;
+    // This field is not used in the RMD chunk. The correct RMD version id will be stored in the RMD manifest.
     chunkPut.replicationMetadataVersionId = VeniceWriter.VENICE_DEFAULT_TIMESTAMP_METADATA_VERSION_ID;
     return chunkPut;
   }

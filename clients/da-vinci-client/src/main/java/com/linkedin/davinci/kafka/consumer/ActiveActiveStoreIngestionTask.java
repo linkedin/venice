@@ -2,7 +2,6 @@ package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER;
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.STANDBY;
-import static com.linkedin.davinci.store.record.ValueRecord.SCHEMA_HEADER_LENGTH;
 import static com.linkedin.venice.VeniceConstants.REWIND_TIME_DECIDED_BY_SERVER;
 
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
@@ -273,17 +272,14 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               getRmdProtocolVersionID(),
               cachedRecord.getReplicationMetadataRecord()));
     }
-    ByteBuffer rmdWithValueSchemaByteBuffer = getRmdWithValueSchemaByteBufferFromStorage(subPartition, key);
-    byte[] replicationMetadataWithValueSchemaBytes =
-        rmdWithValueSchemaByteBuffer == null ? null : rmdWithValueSchemaByteBuffer.array();
-
-    if (rmdWithValueSchemaByteBuffer == null) {
+    byte[] replicationMetadataWithValueSchemaBytes = getRmdWithValueSchemaByteBufferFromStorage(subPartition, key);
+    if (replicationMetadataWithValueSchemaBytes == null) {
       return Optional.empty(); // No RMD for this key
     }
     return Optional.of(rmdSerDe.deserializeValueSchemaIdPrependedRmdBytes(replicationMetadataWithValueSchemaBytes));
   }
 
-  ByteBuffer getRmdWithValueSchemaByteBufferFromStorage(int subPartition, byte[] key) {
+  byte[] getRmdWithValueSchemaByteBufferFromStorage(int subPartition, byte[] key) {
     final long lookupStartTimeInNS = System.nanoTime();
     ValueRecord result =
         SingleGetChunkingAdapter.getReplicationMetadata(getStorageEngine(), subPartition, key, isChunked(), null);
@@ -292,8 +288,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     if (result == null) {
       return null;
     }
-    return ByteBuffer
-        .wrap(result.getDataBytesPrependedWithWriterSchemaId(), SCHEMA_HEADER_LENGTH, result.getDataSize());
+    return result.serialize();
   }
 
   // This function may modify the original record in KME and it is unsafe to use the payload from KME directly after
