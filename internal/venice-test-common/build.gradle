@@ -11,6 +11,7 @@ configurations {
   }
   jmhImplementation.extendsFrom testImplementation
   integrationTestImplementation.extendsFrom testImplementation
+  integrationTestConf
 }
 
 sourceSets {
@@ -32,6 +33,7 @@ dependencies {
   }
 
   implementation project(':clients:da-vinci-client')
+  implementation project(':clients:venice-client')
   implementation project(':clients:venice-push-job')
   implementation project(':internal:venice-common')
   implementation project(':services:venice-controller')
@@ -48,6 +50,7 @@ dependencies {
   implementation libraries.avroUtilFastserde
   implementation libraries.commonsCli
   implementation libraries.conscrypt
+  implementation libraries.fastUtil
   implementation libraries.hadoopCommon
   implementation libraries.helix
   implementation libraries.httpAsyncClient
@@ -70,6 +73,8 @@ dependencies {
 
   jmhAnnotationProcessor libraries.jmhGenerator
   jmhImplementation libraries.jmhCore
+
+  jmhImplementation project(path: ':internal:venice-test-common', configuration: 'integrationTestConf')
 }
 
 task jmh(type: JavaExec, dependsOn: jmhClasses) {
@@ -116,4 +121,13 @@ idea {
     testResourceDirs += project.sourceSets.integrationTest.resources.srcDirs
     // testSourceDirs += project.sourceSets.jmh.java.srcDirs // broken, somehow, gotta debug...
   }
+}
+
+task integrationTestJar(type: Jar, dependsOn: integrationTestClasses) {
+  classifier = 'integrationTest'
+  from sourceSets.integrationTest.output
+}
+
+artifacts {
+  integrationTestConf integrationTestJar
 }

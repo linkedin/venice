@@ -17,7 +17,7 @@ import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
-import com.linkedin.venice.utils.TestPushUtils;
+import com.linkedin.venice.utils.TestWriteUtils;
 import java.util.Collections;
 import java.util.Optional;
 import java.util.Properties;
@@ -83,7 +83,7 @@ public class TestVenicePushJobConfig {
   }
 
   private VenicePushJob getSpyVenicePushJob(Optional<Properties> props, Optional<ControllerClient> client) {
-    Properties baseProps = TestPushUtils.defaultVPJProps(TEST_URL, TEST_PATH, TEST_STORE);
+    Properties baseProps = TestWriteUtils.defaultVPJProps(TEST_URL, TEST_PATH, TEST_STORE);
     // for mocked tests, only attempt once.
     baseProps.put(VenicePushJob.CONTROLLER_REQUEST_RETRY_ATTEMPTS, 1);
     props.ifPresent(baseProps::putAll);

@@ -4,7 +4,7 @@ import static com.linkedin.venice.hadoop.VenicePushJob.RMD_SCHEMA_DIR;
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
 import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
-import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
+import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 

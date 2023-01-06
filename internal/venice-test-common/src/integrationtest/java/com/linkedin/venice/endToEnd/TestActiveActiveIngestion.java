@@ -24,13 +24,12 @@ import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_CONTRO
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_D2_ZK_HOSTS;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PUSH_TYPE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_STORE;
-import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
-import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
-import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
-import static com.linkedin.venice.utils.TestPushUtils.sendStreamingDeleteRecord;
-import static com.linkedin.venice.utils.TestPushUtils.sendStreamingRecord;
-import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithUserSchema;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingDeleteRecord;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestUtils.generateInput;
+import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUserSchema;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.ConfigKeys;
@@ -54,8 +53,8 @@ import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.MockCircularTime;
-import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -150,7 +149,8 @@ public class TestActiveActiveIngestion {
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
-    Properties props = defaultVPJProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
+    Properties props =
+        TestWriteUtils.defaultVPJProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setLeaderFollowerModel(true)
@@ -161,7 +161,7 @@ public class TestActiveActiveIngestion {
         .setNativeReplicationEnabled(true);
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
 
-    TestPushUtils.runPushJob("Run push job", props);
+    TestWriteUtils.runPushJob("Run push job", props);
 
     // run samza to stream put and delete
     runSamzaStreamJob(storeName, null, 10, 10, 0);
@@ -172,7 +172,7 @@ public class TestActiveActiveIngestion {
     props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
     // intentionally stop re-consuming from RT so stale records don't affect the testing results
     props.put(REWIND_TIME_IN_SECONDS_OVERRIDE, 0);
-    TestPushUtils.runPushJob("Run repush job", props);
+    TestWriteUtils.runPushJob("Run repush job", props);
     ControllerClient controllerClient =
         new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
     TestUtils.waitForNonDeterministicAssertion(
@@ -233,7 +233,7 @@ public class TestActiveActiveIngestion {
     // run samza to stream put and delete
     runSamzaStreamJob(storeName, mockTime, 10, 10, 20);
 
-    TestPushUtils.runPushJob("Run repush job with TTL", props);
+    TestWriteUtils.runPushJob("Run repush job with TTL", props);
     TestUtils.waitForNonDeterministicAssertion(
         5,
         TimeUnit.SECONDS,
@@ -286,7 +286,8 @@ public class TestActiveActiveIngestion {
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
-    Properties props = defaultVPJProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
+    Properties props =
+        TestWriteUtils.defaultVPJProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)

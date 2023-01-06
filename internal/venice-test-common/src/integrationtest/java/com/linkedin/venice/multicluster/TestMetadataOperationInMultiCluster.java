@@ -1,9 +1,8 @@
 package com.linkedin.venice.multicluster;
 
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
-import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
-import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
-import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithUserSchema;
+import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUserSchema;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -18,6 +17,7 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
@@ -146,8 +146,8 @@ public class TestMetadataOperationInMultiCluster {
       for (String clusterName: clusterNames) {
         String storeName = clusterName + storeNameSuffix;
         // Use th first cluster in config, and test could vpj find the correct cluster.
-        Properties vpjProperties =
-            defaultVPJProps(multiClusterWrapper.getRandomController().getControllerUrl(), inputDirPath, storeName);
+        Properties vpjProperties = TestWriteUtils
+            .defaultVPJProps(multiClusterWrapper.getRandomController().getControllerUrl(), inputDirPath, storeName);
         propertiesMap.put(clusterName, vpjProperties);
         Schema keySchema = recordSchema.getField(VenicePushJob.DEFAULT_KEY_FIELD_PROP).schema();
         Schema valueSchema = recordSchema.getField(VenicePushJob.DEFAULT_VALUE_FIELD_PROP).schema();
