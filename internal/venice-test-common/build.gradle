@@ -1,3 +1,10 @@
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.Paths
+import java.nio.file.StandardCopyOption
+import java.nio.file.StandardOpenOption
+
+
 configurations {
   all {
     resolutionStrategy {
@@ -86,10 +93,7 @@ task jmh(type: JavaExec, dependsOn: jmhClasses) {
   classpath = sourceSets.jmh.runtimeClasspath
 }
 
-task integrationTestA(type: Test) {
-  filter {
-    excludeTestsMatching "com.linkedin.venice.endToEnd.*"
-  }
+def integrationTestConfigs = {
   mustRunAfter test
   classpath = sourceSets.integrationTest.runtimeClasspath
   testClassesDirs = sourceSets.integrationTest.output.classesDirs
@@ -97,18 +101,135 @@ task integrationTestA(type: Test) {
   maxParallelForks = Integer.parseInt(project.properties.get('integrationTest.maxParallelForks', "$maxParallelForks"))
 }
 
-task integrationTestB(type: Test) {
-  filter {
-    includeTestsMatching "com.linkedin.venice.endToEnd.*"
+def integrationTestBuckets = [
+  "A": [
+      "com.linkedin.davinci.*",
+      "com.linkedin.venice.endToEnd.DaVinciClient*"],
+  "B": [
+      "com.linkedin.venice.endToEnd.DaVinciCluster*",
+      "com.linkedin.venice.endToEnd.DaVinciCompute*",
+      "com.linkedin.venice.endToEnd.DaVinciLive*"],
+  "C": [
+      "com.linkedin.venice.endToEnd.ActiveActive*"],
+  "D": [
+      "com.linkedin.venice.endToEnd.TestActiveActive*"],
+  "E": [
+      "com.linkedin.venice.helix.*",
+      "com.linkedin.venice.helixrebalance.*"],
+  "F": [
+      "com.linkedin.venice.server.*",
+      "com.linkedin.venice.storagenode.*",
+      "com.linkedin.venice.restart.*"],
+  "G": [
+      "com.linkedin.venice.router.*"],
+  "H": [
+      "com.linkedin.venice.fastclient.BatchGet*",
+      "com.linkedin.venice.fastclient.schema.*",
+      "com.linkedin.venice.fastclient.meta.*"],
+  "I": [
+      "com.linkedin.venice.fastclient.AvroStore*"],
+  "J": [
+      "com.linkedin.venice.hadoop.*",
+      "com.linkedin.venice.endToEnd.TestVson*",
+      "com.linkedin.venice.endToEnd.Push*"],
+  "K": [
+      "com.linkedin.venice.endToEnd.TestPushJob*"],
+  "L": [
+      "com.linkedin.venice.endToEnd.TestBatch*"],
+  "M": [
+      "com.linkedin.venice.kafka.*",
+      "com.linkedin.venice.samza.*",
+      "com.linkedin.venice.writer.*",
+      "com.linkedin.venice.endToEnd.PartialUpdateTest",
+      "com.linkedin.venice.endToEnd.TestWritePathComputation",
+      "com.linkedin.venice.endToEnd.WriteComputeWithActiveActiveReplicationTest"],
+  "N": [
+      "com.linkedin.venice.endToEnd.StoragePersona*",
+      "com.linkedin.venice.endToEnd.TestStoreUpdateStoragePersona",
+      "com.linkedin.venice.persona.*"],
+  "O": [
+      "com.linkedin.venice.endToEnd.TestHybrid*"],
+  "P": [
+      "com.linkedin.venice.controller.server.*",
+      "com.linkedin.venice.controller.kafka.consumer.*",
+      "com.linkedin.venice.controller.migration.*",
+      "com.linkedin.venice.controller.AdminTool*",
+      "com.linkedin.venice.controller.VeniceParentHelixAdminTest"],
+  "Q": [
+      "com.linkedin.venice.controller.Test*"]
+]
+
+integrationTestBuckets.each { name, patterns ->
+  task "integrationTest${name}" (type: Test) {
+    filter {
+      patterns.each { pattern ->
+        includeTestsMatching pattern
+      }
+    }
+    configure integrationTestConfigs
   }
-  mustRunAfter test
-  classpath = sourceSets.integrationTest.runtimeClasspath
-  testClassesDirs = sourceSets.integrationTest.output.classesDirs
-  forkEvery = Integer.parseInt(project.properties.get('integrationTest.forkEvery', "$forkEvery"))
-  maxParallelForks = Integer.parseInt(project.properties.get('integrationTest.maxParallelForks', "$maxParallelForks"))
 }
-check.dependsOn(integrationTestA)
-check.dependsOn(integrationTestB)
+
+task integrationTestZ(type: Test) {
+  filter {
+    integrationTestBuckets.each { name, patterns ->
+      patterns.each { pattern ->
+        excludeTestsMatching pattern
+      }
+    }
+  }
+  configure integrationTestConfigs
+}
+
+task generateGHCI() {
+  def targetDir = rootDir.getPath() + "/.github/rawWorkflows/"
+  def targetFile = new File(targetDir, "gh-ci.yml")
+  def targetFilePath = Paths.get(targetFile.getPath())
+
+  def paramFile = new File(targetDir, "gh-ci-parameterized-flow.txt")
+  def paramFilePath = Paths.get(paramFile.getPath())
+  def paramFileContent = new String(Files.readAllBytes(paramFilePath));
+
+  targetFile.delete()
+  targetFile.createNewFile()
+
+  Files.writeString(targetFilePath, "# Auto-generated file. Do not edit manually!\n#\n", StandardOpenOption.APPEND)
+  Files.writeString(targetFilePath, "# To alter these flows, edit:\n#\n#     internal/venice-test-common/build.gradle\n#\n", StandardOpenOption.APPEND)
+  Files.writeString(targetFilePath, "# To regenerate, run:\n#\n#     ./gradlew generateGHCI\n\n", StandardOpenOption.APPEND)
+
+  Files.writeString(targetFilePath, "name: VeniceCI\n\n", StandardOpenOption.APPEND)
+  Files.writeString(targetFilePath, "on: [push, pull_request]\n\n", StandardOpenOption.APPEND)
+  Files.writeString(targetFilePath, "jobs:\n", StandardOpenOption.APPEND)
+
+  def common = "--continue --no-daemon "
+  def staticAnalysisFlowGradleArgs = common + "-Pspotallbugs -Pspotbugs.xml -Pspotbugs.ignoreFailures clean check -x spotlessCheck -x test -x integrationTest"
+  appendToGHCI(paramFileContent, targetFilePath, "StaticAnalysis", 20, staticAnalysisFlowGradleArgs)
+  appendToGHCI(paramFileContent, targetFilePath, "UnitTestsAndCodeCoverage", 60, "jacocoTestCoverageVerification")
+  def integTestGradleArgs = common + "-DforkEvery=1 -DmaxParallelForks=1 integrationTest"
+  integrationTestBuckets.each { name, patterns ->
+    def flowName = "IntegrationTests" + name
+    appendToGHCI(paramFileContent, targetFilePath, flowName, 120, integTestGradleArgs + name)
+  }
+  appendToGHCI(paramFileContent, targetFilePath, "IntegrationTestsZ", 120, integTestGradleArgs + "Z")
+
+  def finalDestinationPath = Paths.get(rootDir.getPath() + "/.github/workflows/gh-ci.yml")
+  Files.move(targetFilePath, finalDestinationPath, StandardCopyOption.REPLACE_EXISTING)
+}
+
+def appendToGHCI(String paramFileContent, Path targetFilePath, String flowName, int timeOut, String gradleArguments) {
+  String postProcessing = paramFileContent
+      .replace("\$FlowName", flowName)
+      .replace("\$TimeOut", Integer.toString(timeOut))
+      .replace("\$GradleArguments", gradleArguments)
+
+  Files.writeString(targetFilePath, postProcessing, StandardOpenOption.APPEND)
+  Files.writeString(targetFilePath, "\n", StandardOpenOption.APPEND)
+}
+
+task integrationTest(type: Test) {
+  configure integrationTestConfigs
+}
+check.dependsOn(integrationTest)
 
 flakyTest {
   classpath += sourceSets.integrationTest.runtimeClasspath

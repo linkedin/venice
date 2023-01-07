@@ -1,10 +1,25 @@
+# Auto-generated file. Do not edit manually!
+#
+# To alter these flows, edit:
+#
+#     internal/venice-test-common/build.gradle
+#
+# To regenerate, run:
+#
+#     ./gradlew generateGHCI
+
 name: VeniceCI
 
 on: [push, pull_request]
 
 jobs:
-  Check:
-    runs-on: ubuntu-latest
+  StaticAnalysis:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        jdk: [11]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v3
@@ -13,28 +28,28 @@ jobs:
       - name: Set up JDK
         uses: actions/setup-java@v3
         with:
-          java-version: '11'
+          java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
       - shell: bash
         run: |
-            git remote set-head origin --auto
-            git remote add upstream https://github.com/linkedin/venice
-            git fetch upstream
+          git remote set-head origin --auto
+          git remote add upstream https://github.com/linkedin/venice
+          git fetch upstream
       - name: Validate Gradle wrapper
         uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
       - name: Build with Gradle
         uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
         with:
-          arguments: "clean check -x spotlessCheck --continue --no-daemon -Pspotallbugs -Pspotbugs.xml -Pspotbugs.ignoreFailures -x test -x integrationTestA -x integrationTestB"
+          arguments: "--continue --no-daemon -Pspotallbugs -Pspotbugs.xml -Pspotbugs.ignoreFailures clean check -x spotlessCheck -x test -x integrationTest"
 
-  unit-tests-and-code-coverage-check:
+  UnitTestsAndCodeCoverage:
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 90
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v3
         with:
@@ -51,18 +66,19 @@ jobs:
           git fetch upstream
       - name: Validate Gradle wrapper
         uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
-      - name: Run unit tests and verify the code coverage
+      - name: Build with Gradle
         uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
         with:
           arguments: "jacocoTestCoverageVerification"
-  E2ETestsA:
+
+  IntegrationTestsA:
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 240
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
         with:
@@ -82,17 +98,16 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
         with:
-          arguments: "build --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 -x shadowDistTar -x shadowDistZip -x shadowJar -x startShadowScripts -x distTar -x distZip -x test -x integrationTestB"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestA"
 
-
-  E2ETestsB:
+  IntegrationTestsB:
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 240
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
         with:
@@ -112,5 +127,469 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
         with:
-          arguments: "build --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 -x shadowDistTar -x shadowDistZip -x shadowJar -x startShadowScripts -x distTar -x distZip -x test -x integrationTestA"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestB"
+
+  IntegrationTestsC:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        jdk: [11]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          java-version: ${{ matrix.jdk }}
+          distribution: 'microsoft'
+      - shell: bash
+        run: |
+          git remote set-head origin --auto
+          git remote add upstream https://github.com/linkedin/venice
+          git fetch upstream
+      - name: Validate Gradle wrapper
+        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+      - name: Build with Gradle
+        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        with:
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestC"
+
+  IntegrationTestsD:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        jdk: [11]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          java-version: ${{ matrix.jdk }}
+          distribution: 'microsoft'
+      - shell: bash
+        run: |
+          git remote set-head origin --auto
+          git remote add upstream https://github.com/linkedin/venice
+          git fetch upstream
+      - name: Validate Gradle wrapper
+        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+      - name: Build with Gradle
+        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        with:
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestD"
+
+  IntegrationTestsE:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        jdk: [11]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          java-version: ${{ matrix.jdk }}
+          distribution: 'microsoft'
+      - shell: bash
+        run: |
+          git remote set-head origin --auto
+          git remote add upstream https://github.com/linkedin/venice
+          git fetch upstream
+      - name: Validate Gradle wrapper
+        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+      - name: Build with Gradle
+        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        with:
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestE"
+
+  IntegrationTestsF:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        jdk: [11]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          java-version: ${{ matrix.jdk }}
+          distribution: 'microsoft'
+      - shell: bash
+        run: |
+          git remote set-head origin --auto
+          git remote add upstream https://github.com/linkedin/venice
+          git fetch upstream
+      - name: Validate Gradle wrapper
+        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+      - name: Build with Gradle
+        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        with:
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestF"
+
+  IntegrationTestsG:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        jdk: [11]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          java-version: ${{ matrix.jdk }}
+          distribution: 'microsoft'
+      - shell: bash
+        run: |
+          git remote set-head origin --auto
+          git remote add upstream https://github.com/linkedin/venice
+          git fetch upstream
+      - name: Validate Gradle wrapper
+        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+      - name: Build with Gradle
+        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        with:
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestG"
+
+  IntegrationTestsH:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        jdk: [11]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          java-version: ${{ matrix.jdk }}
+          distribution: 'microsoft'
+      - shell: bash
+        run: |
+          git remote set-head origin --auto
+          git remote add upstream https://github.com/linkedin/venice
+          git fetch upstream
+      - name: Validate Gradle wrapper
+        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+      - name: Build with Gradle
+        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        with:
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestH"
+
+  IntegrationTestsI:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        jdk: [11]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          java-version: ${{ matrix.jdk }}
+          distribution: 'microsoft'
+      - shell: bash
+        run: |
+          git remote set-head origin --auto
+          git remote add upstream https://github.com/linkedin/venice
+          git fetch upstream
+      - name: Validate Gradle wrapper
+        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+      - name: Build with Gradle
+        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        with:
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestI"
+
+  IntegrationTestsJ:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        jdk: [11]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          java-version: ${{ matrix.jdk }}
+          distribution: 'microsoft'
+      - shell: bash
+        run: |
+          git remote set-head origin --auto
+          git remote add upstream https://github.com/linkedin/venice
+          git fetch upstream
+      - name: Validate Gradle wrapper
+        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+      - name: Build with Gradle
+        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        with:
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestJ"
+
+  IntegrationTestsK:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        jdk: [11]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          java-version: ${{ matrix.jdk }}
+          distribution: 'microsoft'
+      - shell: bash
+        run: |
+          git remote set-head origin --auto
+          git remote add upstream https://github.com/linkedin/venice
+          git fetch upstream
+      - name: Validate Gradle wrapper
+        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+      - name: Build with Gradle
+        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        with:
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestK"
+
+  IntegrationTestsL:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        jdk: [11]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          java-version: ${{ matrix.jdk }}
+          distribution: 'microsoft'
+      - shell: bash
+        run: |
+          git remote set-head origin --auto
+          git remote add upstream https://github.com/linkedin/venice
+          git fetch upstream
+      - name: Validate Gradle wrapper
+        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+      - name: Build with Gradle
+        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        with:
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestL"
+
+  IntegrationTestsM:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        jdk: [11]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          java-version: ${{ matrix.jdk }}
+          distribution: 'microsoft'
+      - shell: bash
+        run: |
+          git remote set-head origin --auto
+          git remote add upstream https://github.com/linkedin/venice
+          git fetch upstream
+      - name: Validate Gradle wrapper
+        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+      - name: Build with Gradle
+        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        with:
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestM"
+
+  IntegrationTestsN:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        jdk: [11]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          java-version: ${{ matrix.jdk }}
+          distribution: 'microsoft'
+      - shell: bash
+        run: |
+          git remote set-head origin --auto
+          git remote add upstream https://github.com/linkedin/venice
+          git fetch upstream
+      - name: Validate Gradle wrapper
+        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+      - name: Build with Gradle
+        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        with:
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestN"
+
+  IntegrationTestsO:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        jdk: [11]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          java-version: ${{ matrix.jdk }}
+          distribution: 'microsoft'
+      - shell: bash
+        run: |
+          git remote set-head origin --auto
+          git remote add upstream https://github.com/linkedin/venice
+          git fetch upstream
+      - name: Validate Gradle wrapper
+        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+      - name: Build with Gradle
+        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        with:
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestO"
+
+  IntegrationTestsP:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        jdk: [11]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          java-version: ${{ matrix.jdk }}
+          distribution: 'microsoft'
+      - shell: bash
+        run: |
+          git remote set-head origin --auto
+          git remote add upstream https://github.com/linkedin/venice
+          git fetch upstream
+      - name: Validate Gradle wrapper
+        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+      - name: Build with Gradle
+        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        with:
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestP"
+
+  IntegrationTestsQ:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        jdk: [11]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          java-version: ${{ matrix.jdk }}
+          distribution: 'microsoft'
+      - shell: bash
+        run: |
+          git remote set-head origin --auto
+          git remote add upstream https://github.com/linkedin/venice
+          git fetch upstream
+      - name: Validate Gradle wrapper
+        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+      - name: Build with Gradle
+        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        with:
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestQ"
+
+  IntegrationTestsZ:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        jdk: [11]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          java-version: ${{ matrix.jdk }}
+          distribution: 'microsoft'
+      - shell: bash
+        run: |
+          git remote set-head origin --auto
+          git remote add upstream https://github.com/linkedin/venice
+          git fetch upstream
+      - name: Validate Gradle wrapper
+        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+      - name: Build with Gradle
+        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        with:
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestZ"
 
