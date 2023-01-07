@@ -1,6 +1,10 @@
 package com.linkedin.venice.writer;
 
-import static com.linkedin.venice.writer.VeniceWriter.*;
+import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
+import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES;
+import static com.linkedin.venice.writer.VeniceWriter.ENABLE_CHUNKING;
+import static com.linkedin.venice.writer.VeniceWriter.ENABLE_RMD_CHUNKING;
+import static com.linkedin.venice.writer.VeniceWriter.VENICE_DEFAULT_LOGICAL_TS;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.anyString;
@@ -30,10 +34,10 @@ import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
-import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.storage.protocol.ChunkId;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -228,7 +232,7 @@ public class VeniceWriterTest {
         1,
         null,
         VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER,
-        VeniceWriter.APP_DEFAULT_LOGICAL_TS,
+        APP_DEFAULT_LOGICAL_TS,
         putMetadata);
     writer.update(Integer.toString(3), Integer.toString(2), 1, 1, null, ctime);
     writer.delete(Integer.toString(4), null, VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER, ctime);
@@ -242,7 +246,7 @@ public class VeniceWriterTest {
 
     // first one will be control message SOS, there should not be any aa metadata.
     KafkaMessageEnvelope value0 = kafkaMessageEnvelopeArgumentCaptor.getAllValues().get(0);
-    Assert.assertEquals(value0.producerMetadata.logicalTimestamp, VeniceWriter.VENICE_DEFAULT_LOGICAL_TS);
+    Assert.assertEquals(value0.producerMetadata.logicalTimestamp, VENICE_DEFAULT_LOGICAL_TS);
 
     // verify timestamp is encoded correctly.
     KafkaMessageEnvelope value1 = kafkaMessageEnvelopeArgumentCaptor.getAllValues().get(1);
@@ -270,7 +274,7 @@ public class VeniceWriterTest {
     Assert.assertEquals(put.schemaId, 1);
     Assert.assertEquals(put.replicationMetadataVersionId, 1);
     Assert.assertEquals(put.replicationMetadataPayload, ByteBuffer.wrap(new byte[] { 0xa, 0xb }));
-    Assert.assertEquals(value2.producerMetadata.logicalTimestamp, VeniceWriter.APP_DEFAULT_LOGICAL_TS);
+    Assert.assertEquals(value2.producerMetadata.logicalTimestamp, APP_DEFAULT_LOGICAL_TS);
 
     // verify replicationMetadata is encoded correctly for Delete.
     KafkaMessageEnvelope value5 = kafkaMessageEnvelopeArgumentCaptor.getAllValues().get(5);
@@ -279,12 +283,12 @@ public class VeniceWriterTest {
     Assert.assertEquals(delete.schemaId, 1);
     Assert.assertEquals(delete.replicationMetadataVersionId, 1);
     Assert.assertEquals(delete.replicationMetadataPayload, ByteBuffer.wrap(new byte[] { 0xa, 0xb }));
-    Assert.assertEquals(value5.producerMetadata.logicalTimestamp, VeniceWriter.APP_DEFAULT_LOGICAL_TS);
+    Assert.assertEquals(value5.producerMetadata.logicalTimestamp, APP_DEFAULT_LOGICAL_TS);
 
     // verify default logical_ts is encoded correctly
     KafkaMessageEnvelope value6 = kafkaMessageEnvelopeArgumentCaptor.getAllValues().get(6);
     Assert.assertEquals(value6.messageType, MessageType.PUT.getValue());
-    Assert.assertEquals(value6.producerMetadata.logicalTimestamp, VeniceWriter.APP_DEFAULT_LOGICAL_TS);
+    Assert.assertEquals(value6.producerMetadata.logicalTimestamp, APP_DEFAULT_LOGICAL_TS);
   }
 
   @Test(timeOut = 10000)
@@ -325,7 +329,7 @@ public class VeniceWriterTest {
         1,
         null,
         VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER,
-        VeniceWriter.APP_DEFAULT_LOGICAL_TS,
+        APP_DEFAULT_LOGICAL_TS,
         putMetadata);
     ArgumentCaptor<KafkaKey> kafkaKeyArgumentCaptor = ArgumentCaptor.forClass(KafkaKey.class);
     ArgumentCaptor<KafkaMessageEnvelope> kafkaMessageEnvelopeArgumentCaptor =
