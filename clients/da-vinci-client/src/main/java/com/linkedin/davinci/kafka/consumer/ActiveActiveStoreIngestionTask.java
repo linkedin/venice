@@ -13,7 +13,9 @@ import com.linkedin.davinci.replication.merge.RmdSerDe;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.storage.chunking.ChunkingUtils;
 import com.linkedin.davinci.storage.chunking.RawBytesChunkingAdapter;
+import com.linkedin.davinci.storage.chunking.SingleGetChunkingAdapter;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
+import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.utils.ByteArrayKey;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -163,14 +165,21 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   protected void putInStorageEngine(int partition, byte[] keyBytes, Put put) {
     try {
       // TODO: Honor BatchConflictResolutionPolicy and maybe persist RMD for batch push records.
-      switch (getStorageOperationType(partition, put.putValue, put.replicationMetadataPayload)) {
+      StorageOperationType storageOperationType =
+          getStorageOperationType(partition, put.putValue, put.replicationMetadataPayload);
+      switch (storageOperationType) {
         case VALUE_AND_RMD:
-          byte[] metadataBytesWithValueSchemaId =
-              prependReplicationMetadataBytesWithValueSchemaId(put.replicationMetadataPayload, put.schemaId);
-          storageEngine.putWithReplicationMetadata(partition, keyBytes, put.putValue, metadataBytesWithValueSchemaId);
+          storageEngine.putWithReplicationMetadata(
+              partition,
+              keyBytes,
+              put.putValue,
+              prependReplicationMetadataBytesWithValueSchemaId(put.replicationMetadataPayload, put.schemaId));
           break;
-        case RMD:
-          storageEngine.putReplicationMetadata(partition, keyBytes, put.replicationMetadataPayload.array());
+        case RMD_CHUNK:
+          storageEngine.putReplicationMetadata(
+              partition,
+              keyBytes,
+              prependReplicationMetadataBytesWithValueSchemaId(put.replicationMetadataPayload, put.schemaId));
           break;
         case VALUE:
           storageEngine.put(partition, keyBytes, put.putValue);
@@ -207,19 +216,27 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       logStorageOperationWhileUnsubscribed(partition);
       return StorageOperationType.NONE;
     }
-    if (valuePayload != null && valuePayload.remaining() == 0 && rmdPayload.remaining() != 0) {
-      return StorageOperationType.RMD;
+    if (isDaVinciClient) {
+      return StorageOperationType.VALUE;
     }
-    if ((pcs.isEndOfPushReceived() || rmdPayload.remaining() != 0) && !isDaVinciClient) {
-      return StorageOperationType.VALUE_AND_RMD;
+    if (rmdPayload == null) {
+      throw new IllegalArgumentException("Replication metadata payload not found.");
     }
-    return StorageOperationType.VALUE;
+    if (pcs.isEndOfPushReceived() || rmdPayload.remaining() > 0) {
+      // value payload == null means it is a DELETE request, while value payload size > 0 means it is a PUT request.
+      if (valuePayload == null || valuePayload.remaining() > 0) {
+        return StorageOperationType.VALUE_AND_RMD;
+      }
+      return StorageOperationType.RMD_CHUNK;
+    } else {
+      return StorageOperationType.VALUE;
+    }
   }
 
   private enum StorageOperationType {
     VALUE_AND_RMD, // Operate on value associated with RMD
     VALUE, // Operate on full or chunked value
-    RMD, // Operate on chunked RMD
+    RMD_CHUNK, // Operate on chunked RMD
     NONE
   }
 
@@ -242,34 +259,36 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    * @param subPartition The partition to fetch the replication metadata from storage engine
    * @return The object containing RMD and value schema id. If nothing is found, return {@code Optional.empty()}
    */
-  private Optional<RmdWithValueSchemaId> getReplicationMetadataAndSchemaId(
+  Optional<RmdWithValueSchemaId> getReplicationMetadataAndSchemaId(
       PartitionConsumptionState partitionConsumptionState,
       byte[] key,
       int subPartition) {
     PartitionConsumptionState.TransientRecord cachedRecord = partitionConsumptionState.getTransientRecord(key);
     if (cachedRecord != null) {
-      hostLevelIngestionStats.recordIngestionReplicationMetadataCacheHitCount();
+      getHostLevelIngestionStats().recordIngestionReplicationMetadataCacheHitCount();
       return Optional.of(
           new RmdWithValueSchemaId(
               cachedRecord.getValueSchemaId(),
-              rmdProtocolVersionID,
+              getRmdProtocolVersionID(),
               cachedRecord.getReplicationMetadataRecord()));
     }
-
-    final long lookupStartTimeInNS = System.nanoTime();
-    byte[] updatedKey;
-    if (isChunked) {
-      updatedKey = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(key);
-    } else {
-      updatedKey = key;
-    }
-    byte[] replicationMetadataWithValueSchemaBytes = storageEngine.getReplicationMetadata(subPartition, updatedKey);
-    hostLevelIngestionStats
-        .recordIngestionReplicationMetadataLookUpLatency(LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
+    byte[] replicationMetadataWithValueSchemaBytes = getRmdWithValueSchemaByteBufferFromStorage(subPartition, key);
     if (replicationMetadataWithValueSchemaBytes == null) {
       return Optional.empty(); // No RMD for this key
     }
     return Optional.of(rmdSerDe.deserializeValueSchemaIdPrependedRmdBytes(replicationMetadataWithValueSchemaBytes));
+  }
+
+  byte[] getRmdWithValueSchemaByteBufferFromStorage(int subPartition, byte[] key) {
+    final long lookupStartTimeInNS = System.nanoTime();
+    ValueRecord result =
+        SingleGetChunkingAdapter.getReplicationMetadata(getStorageEngine(), subPartition, key, isChunked(), null);
+    getHostLevelIngestionStats()
+        .recordIngestionReplicationMetadataLookUpLatency(LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
+    if (result == null) {
+      return null;
+    }
+    return result.serialize();
   }
 
   // This function may modify the original record in KME and it is unsafe to use the payload from KME directly after
@@ -461,8 +480,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    * is that the {@link PartitionConsumptionState.TransientRecord} only contains the full value.
    * @param partitionConsumptionState The {@link PartitionConsumptionState} of the current partition
    * @param key The key bytes of the incoming record.
-   * @param topic The topic from which the incomign record was consumed
-   * @param partition The Kafka partition from which the incomign record was consumed
+   * @param topic The topic from which the incoming record was consumed
+   * @param partition The Kafka partition from which the incoming record was consumed
    * @return
    */
   private ByteBuffer getValueBytesForKey(
@@ -488,8 +507,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           serverConfig.isComputeFastAvroEnabled(),
           schemaRepository,
           storeName,
-          compressor.get(),
-          false);
+          compressor.get());
       hostLevelIngestionStats.recordIngestionValueBytesLookUpLatency(LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
     } else {
       hostLevelIngestionStats.recordIngestionValueBytesCacheHitCount();
@@ -545,7 +563,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       deletePayload.schemaId = valueSchemaId;
       deletePayload.replicationMetadataVersionId = rmdProtocolVersionID;
       deletePayload.replicationMetadataPayload = updatedRmdBytes;
-
       ProduceToTopic produceToTopicFunction = (callback, sourceTopicOffset) -> veniceWriter.get()
           .delete(
               key,
