@@ -166,9 +166,8 @@ public class ReplicationConsumptionBenchmark {
         rocksDBServerConfig);
     // Test deletion
     String toBeDeletedKey = KEY_PREFIX + 10;
-    // Assert.assertNotNull(storagePartition.get(toBeDeletedKey.getBytes(), false));
     storagePartition.delete(toBeDeletedKey.getBytes());
-    Assert.assertNull(storagePartition.get(toBeDeletedKey.getBytes(), false));
+    Assert.assertNull(storagePartition.get(toBeDeletedKey.getBytes()));
   }
 
   private Map<String, Pair<String, String>> generateInputWithMetadata(int startIndex, int endIndex) {

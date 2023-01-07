@@ -143,8 +143,7 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
       boolean fastAvroEnabled,
       ReadOnlySchemaRepository schemaRepo,
       String storeName,
-      VeniceCompressor compressor,
-      boolean skipCache) {
+      VeniceCompressor compressor) {
     return get(
         store,
         schemaRepo.getSupersetOrLatestValueSchema(storeName).getId(),
@@ -158,8 +157,7 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
         fastAvroEnabled,
         schemaRepo,
         storeName,
-        compressor,
-        skipCache);
+        compressor);
   }
 
   public T get(
@@ -175,8 +173,7 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
       boolean fastAvroEnabled,
       ReadOnlySchemaRepository schemaRepo,
       String storeName,
-      VeniceCompressor compressor,
-      boolean skipCache) {
+      VeniceCompressor compressor) {
     if (isChunked) {
       key = ByteBuffer.wrap(ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(key));
     }
@@ -194,7 +191,6 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
         schemaRepo,
         storeName,
         compressor,
-        skipCache,
         false);
   }
 

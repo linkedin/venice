@@ -73,7 +73,7 @@ public class StorageReadRequestsHandlerTest {
     GetRouterRequest testRequest = GetRouterRequest.parseGetHttpRequest(httpRequest);
 
     AbstractStorageEngine testStore = mock(AbstractStorageEngine.class);
-    doReturn(valueBytes).when(testStore).get(partition, ByteBuffer.wrap(keyString.getBytes()), false);
+    doReturn(valueBytes).when(testStore).get(partition, ByteBuffer.wrap(keyString.getBytes()));
 
     StorageEngineRepository testRepository = mock(StorageEngineRepository.class);
     doReturn(testStore).when(testRepository).getLocalStorageEngine(topic);
@@ -211,7 +211,7 @@ public class StorageReadRequestsHandlerTest {
     GetRouterRequest testRequest = GetRouterRequest.parseGetHttpRequest(httpRequest);
 
     AbstractStorageEngine testStore = mock(AbstractStorageEngine.class);
-    doReturn(valueBytes).when(testStore).get(partition, ByteBuffer.wrap(keyString.getBytes()), false);
+    doReturn(valueBytes).when(testStore).get(partition, ByteBuffer.wrap(keyString.getBytes()));
 
     StorageEngineRepository testRepository = mock(StorageEngineRepository.class);
 

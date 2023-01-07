@@ -88,7 +88,6 @@ public class ChunkingUtils {
         null,
         null,
         null,
-        false,
         false);
   }
 
@@ -112,7 +111,6 @@ public class ChunkingUtils {
         null,
         null,
         null,
-        false,
         true);
   }
 
@@ -131,7 +129,7 @@ public class ChunkingUtils {
       String storeName,
       VeniceCompressor compressor) {
     long databaseLookupStartTimeInNS = (response != null) ? System.nanoTime() : 0;
-    reusedRawValue = store.get(partition, keyBuffer, reusedRawValue, false);
+    reusedRawValue = store.get(partition, keyBuffer, reusedRawValue);
     if (reusedRawValue == null) {
       return null;
     }
@@ -151,7 +149,6 @@ public class ChunkingUtils {
         schemaRepo,
         storeName,
         compressor,
-        false,
         false);
   }
 
@@ -251,12 +248,10 @@ public class ChunkingUtils {
       ReadOnlySchemaRepository schemaRepo,
       String storeName,
       VeniceCompressor compressor,
-      boolean skipCache,
       boolean isRmdValue) {
     long databaseLookupStartTimeInNS = (response != null) ? System.nanoTime() : 0;
-    byte[] value = isRmdValue
-        ? store.getReplicationMetadata(partition, keyBuffer.array())
-        : store.get(partition, keyBuffer, skipCache);
+    byte[] value =
+        isRmdValue ? store.getReplicationMetadata(partition, keyBuffer.array()) : store.get(partition, keyBuffer);
 
     return getFromStorage(
         value,
@@ -274,7 +269,6 @@ public class ChunkingUtils {
         schemaRepo,
         storeName,
         compressor,
-        skipCache,
         isRmdValue);
   }
 
@@ -307,7 +301,6 @@ public class ChunkingUtils {
       ReadOnlySchemaRepository schemaRepo,
       String storeName,
       VeniceCompressor compressor,
-      boolean skipCache,
       boolean isRmdValue) {
 
     if (value == null) {
@@ -352,7 +345,7 @@ public class ChunkingUtils {
       // premature optimization, we are not addressing it right now.
       byte[] chunkKey = chunkedValueManifest.keysWithChunkIdSuffix.get(chunkIndex).array();
       byte[] valueChunk =
-          isRmdValue ? store.getReplicationMetadata(partition, chunkKey) : store.get(partition, chunkKey, skipCache);
+          isRmdValue ? store.getReplicationMetadata(partition, chunkKey) : store.get(partition, chunkKey);
 
       if (valueChunk == null) {
         throw new VeniceException("Chunk not found in " + getExceptionMessageDetails(store, partition, chunkIndex));
