@@ -53,6 +53,7 @@ import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.IntList;
 import java.io.IOException;
@@ -217,24 +218,23 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         getVersionTopic());
 
     this.veniceWriterFactory = builder.getVeniceWriterFactory();
-    this.veniceWriter = Lazy.of(
-        () -> veniceWriterFactory.createBasicVeniceWriter(
-            kafkaVersionTopic,
-            /**
-             * In general, a partition in version topic follows this pattern:
-             * {Start_of_Segment, Start_of_Push, End_of_Segment, Start_of_Segment, data..., End_of_Segment, Start_of_Segment, End_of_Push, End_of_Segment}
-             * Therefore, in native replication where leader needs to producer all messages it consumes from remote, the first
-             * message that leader consumes is not SOP, in this case, leader doesn't know whether chunking is enabled.
-             *
-             * Notice that the pattern is different in stream reprocessing which contains a lot more segments and is also
-             * different in some test cases which reuse the same VeniceWriter.
-             */
-            isChunked,
-            venicePartitioner,
-            storeVersionPartitionCount * amplificationFactor));
-
+    /**
+     * In general, a partition in version topic follows this pattern:
+     * {Start_of_Segment, Start_of_Push, End_of_Segment, Start_of_Segment, data..., End_of_Segment, Start_of_Segment, End_of_Push, End_of_Segment}
+     * Therefore, in native replication where leader needs to producer all messages it consumes from remote, the first
+     * message that leader consumes is not SOP, in this case, leader doesn't know whether chunking is enabled.
+     *
+     * Notice that the pattern is different in stream reprocessing which contains a lot more segments and is also
+     * different in some test cases which reuse the same VeniceWriter.
+     */
+    VeniceWriterOptions writerOptions =
+        new VeniceWriterOptions.Builder(getVersionTopic()).setPartitioner(venicePartitioner)
+            .setChunkingEnabled(isChunked)
+            .setRmdChunkingEnabled(version.isRmdChunkingEnabled())
+            .setPartitionCount(Optional.of(storeVersionPartitionCount * amplificationFactor))
+            .build();
+    this.veniceWriter = Lazy.of(() -> veniceWriterFactory.createVeniceWriter(writerOptions));
     this.kafkaClusterIdToUrlMap = serverConfig.getKafkaClusterIdToUrlMap();
-
     this.kafkaDataIntegrityValidatorForLeaders = new KafkaDataIntegrityValidator(kafkaVersionTopic);
   }
 
@@ -1367,7 +1367,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         switch (MessageType.valueOf(envelope)) {
           case PUT:
             // Issue an read to get the current value of the key
-            byte[] actualValue = storageEngine.get(consumerRecord.partition(), key.getKey(), false);
+            byte[] actualValue = storageEngine.get(consumerRecord.partition(), key.getKey());
             if (actualValue != null) {
               int actualSchemaId = ByteUtils.readInt(actualValue, 0);
               Put put = (Put) envelope.payloadUnion;
@@ -1390,7 +1390,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             /**
              * Lossy if the key/value pair is added back to the storage engine after the first DELETE message.
              */
-            actualValue = storageEngine.get(consumerRecord.partition(), key.getKey(), false);
+            actualValue = storageEngine.get(consumerRecord.partition(), key.getKey());
             if (actualValue == null) {
               lossy = false;
               logMsg += Utils.NEW_LINE_CHAR;
@@ -2824,8 +2824,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             serverConfig.isComputeFastAvroEnabled(),
             schemaRepository,
             storeName,
-            compressor.get(),
-            false);
+            compressor.get());
         hostLevelIngestionStats.recordWriteComputeLookUpLatency(LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
       } catch (Exception e) {
         writeComputeFailureCode = StatsErrorCode.WRITE_COMPUTE_DESERIALIZATION_FAILURE.code;

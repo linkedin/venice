@@ -44,14 +44,13 @@ public abstract class AbstractStoragePartition {
   /**
    * Get a value from the partition database
    * @param key key to be retrieved
-   * @param skipCache
    * @return null if the key does not exist, byte[] value if it exists.
    */
-  public abstract byte[] get(byte[] key, boolean skipCache);
+  public abstract byte[] get(byte[] key);
 
-  public ByteBuffer get(byte[] key, ByteBuffer valueToBePopulated, boolean skipCache) {
+  public ByteBuffer get(byte[] key, ByteBuffer valueToBePopulated) {
     // Naive default impl is not optimized... only storage engines that support the optimization implement it.
-    return ByteBuffer.wrap(get(key, skipCache));
+    return ByteBuffer.wrap(get(key));
   }
 
   /**
@@ -59,12 +58,11 @@ public abstract class AbstractStoragePartition {
    * @param <K> the type for Key
    * @param <V> the type for the return value
    * @param key key to be retrieved
-   * @param skipCache
    * @return null if the key does not exist, V value if it exists
    */
-  public abstract <K, V> V get(K key, boolean skipCache);
+  public abstract <K, V> V get(K key);
 
-  public abstract byte[] get(ByteBuffer key, boolean skipCache);
+  public abstract byte[] get(ByteBuffer key);
 
   /**
    * Populate provided callback with key-value pairs from the partition database where the keys have provided prefix.

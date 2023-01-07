@@ -23,8 +23,9 @@ public class VeniceWriterOptions {
   private final VenicePartitioner partitioner;
   private final Time time;
   private final Optional<Integer> partitionCount;
-  private boolean chunkingEnabled;
-  private String kafkaBootstrapServers;
+  private final boolean chunkingEnabled;
+  private final boolean rmdChunkingEnabled;
+  private final String kafkaBootstrapServers;
 
   public String getKafkaBootstrapServers() {
     return kafkaBootstrapServers;
@@ -62,6 +63,10 @@ public class VeniceWriterOptions {
     return chunkingEnabled;
   }
 
+  public boolean isRmdChunkingEnabled() {
+    return rmdChunkingEnabled;
+  }
+
   private VeniceWriterOptions(Builder builder) {
     topicName = builder.topicName;
     keySerializer = builder.keySerializer;
@@ -71,6 +76,7 @@ public class VeniceWriterOptions {
     time = builder.time;
     partitionCount = builder.partitionCount;
     chunkingEnabled = builder.chunkingEnabled;
+    rmdChunkingEnabled = builder.rmdChunkingEnabled;
     kafkaBootstrapServers = builder.kafkaBootstrapServers;
   }
 
@@ -100,6 +106,7 @@ public class VeniceWriterOptions {
     private Time time = null;
     private Optional<Integer> partitionCount = Optional.empty();
     private boolean chunkingEnabled;
+    private boolean rmdChunkingEnabled;
     private boolean useKafkaKeySerializer = false;
     private String kafkaBootstrapServers = null;
 
@@ -153,6 +160,15 @@ public class VeniceWriterOptions {
 
     public Builder setChunkingEnabled(boolean chunkingEnabled) {
       this.chunkingEnabled = chunkingEnabled;
+      return this;
+    }
+
+    public boolean isRmdChunkingEnabled() {
+      return rmdChunkingEnabled;
+    }
+
+    public Builder setRmdChunkingEnabled(boolean rmdChunkingEnabled) {
+      this.rmdChunkingEnabled = rmdChunkingEnabled;
       return this;
     }
 

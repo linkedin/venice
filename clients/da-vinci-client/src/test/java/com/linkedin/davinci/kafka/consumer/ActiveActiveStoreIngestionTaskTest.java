@@ -1,5 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.venice.utils.ByteUtils.SIZE_OF_INT;
 import static com.linkedin.venice.writer.VeniceWriter.ENABLE_CHUNKING;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -13,15 +14,30 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.stats.AggVersionedDIVStats;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.davinci.storage.chunking.ChunkingUtils;
+import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.NoopCompressor;
+import com.linkedin.venice.compression.VeniceCompressor;
+import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
+import com.linkedin.venice.storage.protocol.ChunkId;
+import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
+import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -30,6 +46,7 @@ import com.linkedin.venice.writer.KafkaProducerWrapper;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
@@ -179,5 +196,149 @@ public class ActiveActiveStoreIngestionTaskTest {
     Assert.assertEquals(
         leaderProducedRecordContextArgumentCaptor.getAllValues().get(2).getKeyBytes(),
         kafkaKeyArgumentCaptor.getAllValues().get(3).getKey());
+  }
+
+  @Test
+  public void testReadingChunkedRmdFromStorage() {
+    String storeName = "testStore";
+    String topicName = "testStore_v1";
+    int subPartition = 1;
+    int valueSchema = 2;
+    KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer = new KeyWithChunkingSuffixSerializer();
+    ChunkedValueManifestSerializer chunkedValueManifestSerializer = new ChunkedValueManifestSerializer(true);
+
+    byte[] key1 = "foo".getBytes();
+    byte[] key2 = "bar".getBytes();
+    byte[] key3 = "ljl".getBytes();
+
+    byte[] topLevelKey1 = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(key1);
+    byte[] expectedNonChunkedValue = new byte[8];
+    ByteUtils.writeInt(expectedNonChunkedValue, valueSchema, 0);
+    ByteUtils.writeInt(expectedNonChunkedValue, 666, 4);
+
+    byte[] expectedChunkedValue1 = new byte[12];
+    ByteUtils.writeInt(expectedChunkedValue1, valueSchema, 0);
+    ByteUtils.writeInt(expectedChunkedValue1, 666, 4);
+    ByteUtils.writeInt(expectedChunkedValue1, 777, 8);
+    byte[] expectedChunkedValue2 = new byte[24];
+    ByteUtils.writeInt(expectedChunkedValue2, valueSchema, 0);
+    ByteUtils.writeInt(expectedChunkedValue2, 666, 4);
+    ByteUtils.writeInt(expectedChunkedValue2, 777, 8);
+    ByteUtils.writeInt(expectedChunkedValue2, 111, 12);
+    ByteUtils.writeInt(expectedChunkedValue2, 222, 16);
+    ByteUtils.writeInt(expectedChunkedValue2, 333, 20);
+    byte[] chunkedValue1 = new byte[12];
+    ByteUtils.writeInt(chunkedValue1, AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion(), 0);
+    ByteUtils.writeInt(chunkedValue1, 666, 4);
+    ByteUtils.writeInt(chunkedValue1, 777, 8);
+
+    byte[] chunkedValue2 = new byte[16];
+    ByteUtils.writeInt(chunkedValue2, AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion(), 0);
+    ByteUtils.writeInt(chunkedValue2, 111, 4);
+    ByteUtils.writeInt(chunkedValue2, 222, 8);
+    ByteUtils.writeInt(chunkedValue2, 333, 12);
+
+    /**
+     * The 1st key does not have any chunk but only has a top level key.
+     */
+    AbstractStorageEngine storageEngine = mock(AbstractStorageEngine.class);
+    ReadOnlySchemaRepository schemaRepository = mock(ReadOnlySchemaRepository.class);
+    String stringSchema = "\"string\"";
+    when(schemaRepository.getSupersetOrLatestValueSchema(storeName))
+        .thenReturn(new SchemaEntry(valueSchema, stringSchema));
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(serverConfig.isComputeFastAvroEnabled()).thenReturn(false);
+    ActiveActiveStoreIngestionTask ingestionTask = mock(ActiveActiveStoreIngestionTask.class);
+    when(ingestionTask.getRmdProtocolVersionID()).thenReturn(1);
+    Lazy<VeniceCompressor> compressor = Lazy.of(NoopCompressor::new);
+    when(ingestionTask.getCompressor()).thenReturn(compressor);
+    when(ingestionTask.getCompressionStrategy()).thenReturn(CompressionStrategy.NO_OP);
+    when(ingestionTask.getStoreName()).thenReturn(storeName);
+    when(ingestionTask.getStorageEngine()).thenReturn(storageEngine);
+    when(ingestionTask.getSchemaRepo()).thenReturn(schemaRepository);
+    when(ingestionTask.getServerConfig()).thenReturn(serverConfig);
+    when(ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(anyInt(), any())).thenCallRealMethod();
+    when(ingestionTask.isChunked()).thenReturn(true);
+    when(ingestionTask.getHostLevelIngestionStats()).thenReturn(mock(HostLevelIngestionStats.class));
+
+    when(storageEngine.getReplicationMetadata(subPartition, topLevelKey1)).thenReturn(expectedNonChunkedValue);
+    byte[] result = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(subPartition, key1);
+    Assert.assertNotNull(result);
+    Assert.assertEquals(result, expectedNonChunkedValue);
+
+    /**
+     * The 2nd key contains 1 chunks with 8 bytes.
+     */
+    ChunkedKeySuffix chunkedKeySuffix = new ChunkedKeySuffix();
+    chunkedKeySuffix.isChunk = true;
+    chunkedKeySuffix.chunkId = new ChunkId();
+    ProducerMetadata metadata = new ProducerMetadata(new GUID(), 1, 2, 100L, 200L);
+    chunkedKeySuffix.chunkId.producerGUID = metadata.producerGUID;
+    chunkedKeySuffix.chunkId.segmentNumber = metadata.segmentNumber;
+    chunkedKeySuffix.chunkId.messageSequenceNumber = metadata.messageSequenceNumber;
+    chunkedKeySuffix.chunkId.chunkIndex = 0;
+    ByteBuffer chunkedKeyWithSuffix1 =
+        ByteBuffer.wrap(keyWithChunkingSuffixSerializer.serializeChunkedKey(key2, chunkedKeySuffix));
+    ChunkedValueManifest chunkedValueManifest = new ChunkedValueManifest();
+    chunkedValueManifest.schemaId = valueSchema;
+    chunkedValueManifest.keysWithChunkIdSuffix = new ArrayList<>(1);
+    chunkedValueManifest.size = 8;
+    chunkedValueManifest.keysWithChunkIdSuffix.add(chunkedKeyWithSuffix1);
+    byte[] chunkedManifestBytes = chunkedValueManifestSerializer.serialize(topicName, chunkedValueManifest);
+    byte[] chunkedManifestWithSchemaBytes = new byte[SIZE_OF_INT + chunkedManifestBytes.length];
+    System.arraycopy(chunkedManifestBytes, 0, chunkedManifestWithSchemaBytes, 4, chunkedManifestBytes.length);
+    ByteUtils.writeInt(
+        chunkedManifestWithSchemaBytes,
+        AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion(),
+        0);
+    byte[] topLevelKey2 = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(key2);
+    byte[] chunkedKey1InKey2 = chunkedKeyWithSuffix1.array();
+
+    when(storageEngine.getReplicationMetadata(subPartition, topLevelKey2)).thenReturn(chunkedManifestWithSchemaBytes);
+    when(storageEngine.getReplicationMetadata(subPartition, chunkedKey1InKey2)).thenReturn(chunkedValue1);
+    byte[] result2 = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(subPartition, key2);
+    Assert.assertNotNull(result2);
+    Assert.assertEquals(result2, expectedChunkedValue1);
+
+    /**
+     * The 3rd key contains 2 chunks, each contains 8 bytes and 12 bytes respectively.
+     */
+    chunkedKeySuffix = new ChunkedKeySuffix();
+    chunkedKeySuffix.isChunk = true;
+    chunkedKeySuffix.chunkId = new ChunkId();
+    chunkedKeySuffix.chunkId.producerGUID = metadata.producerGUID;
+    chunkedKeySuffix.chunkId.segmentNumber = metadata.segmentNumber;
+    chunkedKeySuffix.chunkId.messageSequenceNumber = metadata.messageSequenceNumber;
+    chunkedKeySuffix.chunkId.chunkIndex = 0;
+    chunkedKeyWithSuffix1 =
+        ByteBuffer.wrap(keyWithChunkingSuffixSerializer.serializeChunkedKey(key3, chunkedKeySuffix));
+
+    chunkedKeySuffix.chunkId.chunkIndex = 1;
+    ByteBuffer chunkedKeyWithSuffix2 =
+        ByteBuffer.wrap(keyWithChunkingSuffixSerializer.serializeChunkedKey(key3, chunkedKeySuffix));
+
+    chunkedValueManifest = new ChunkedValueManifest();
+    chunkedValueManifest.schemaId = valueSchema;
+    chunkedValueManifest.keysWithChunkIdSuffix = new ArrayList<>(2);
+    chunkedValueManifest.size = 8 + 12;
+    chunkedValueManifest.keysWithChunkIdSuffix.add(chunkedKeyWithSuffix1);
+    chunkedValueManifest.keysWithChunkIdSuffix.add(chunkedKeyWithSuffix2);
+    chunkedManifestBytes = chunkedValueManifestSerializer.serialize(topicName, chunkedValueManifest);
+    chunkedManifestWithSchemaBytes = new byte[SIZE_OF_INT + chunkedManifestBytes.length];
+    System.arraycopy(chunkedManifestBytes, 0, chunkedManifestWithSchemaBytes, SIZE_OF_INT, chunkedManifestBytes.length);
+    ByteUtils.writeInt(
+        chunkedManifestWithSchemaBytes,
+        AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion(),
+        0);
+    byte[] topLevelKey3 = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(key3);
+    byte[] chunkedKey1InKey3 = chunkedKeyWithSuffix1.array();
+    byte[] chunkedKey2InKey3 = chunkedKeyWithSuffix2.array();
+
+    when(storageEngine.getReplicationMetadata(subPartition, topLevelKey3)).thenReturn(chunkedManifestWithSchemaBytes);
+    when(storageEngine.getReplicationMetadata(subPartition, chunkedKey1InKey3)).thenReturn(chunkedValue1);
+    when(storageEngine.getReplicationMetadata(subPartition, chunkedKey2InKey3)).thenReturn(chunkedValue2);
+    byte[] result3 = ingestionTask.getRmdWithValueSchemaByteBufferFromStorage(subPartition, key3);
+    Assert.assertNotNull(result3);
+    Assert.assertEquals(result3, expectedChunkedValue2);
   }
 }

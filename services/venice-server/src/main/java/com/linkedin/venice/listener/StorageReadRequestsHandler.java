@@ -674,8 +674,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
             fastAvroEnabled,
             this.schemaRepo,
             storeName,
-            compressor,
-            false);
+            compressor);
         break;
       case SINGLE_GET_WITH_REUSE:
         reuseValueRecord = GenericRecordChunkingAdapter.INSTANCE.get(

@@ -415,20 +415,19 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     partition.put(key, value);
   }
 
-  public byte[] get(int partitionId, byte[] key, boolean skipCache) throws VeniceException {
+  public byte[] get(int partitionId, byte[] key) throws VeniceException {
     AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
-    return partition.get(key, skipCache);
+    return partition.get(key);
   }
 
-  public ByteBuffer get(int partitionId, byte[] key, ByteBuffer valueToBePopulated, boolean skipCache)
-      throws VeniceException {
+  public ByteBuffer get(int partitionId, byte[] key, ByteBuffer valueToBePopulated) throws VeniceException {
     AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
-    return partition.get(key, valueToBePopulated, skipCache);
+    return partition.get(key, valueToBePopulated);
   }
 
-  public byte[] get(int partitionId, ByteBuffer keyBuffer, boolean skipCache) throws VeniceException {
+  public byte[] get(int partitionId, ByteBuffer keyBuffer) throws VeniceException {
     AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
-    return partition.get(keyBuffer, skipCache);
+    return partition.get(keyBuffer);
   }
 
   public void getByKeyPrefix(int partitionId, byte[] partialKey, BytesStreamingCallback bytesStreamingCallback) {
@@ -481,7 +480,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     if (partitionId < 0) {
       throw new IllegalArgumentException("Invalid partition id argument in getPartitionOffset");
     }
-    byte[] value = metadataPartition.get(getPartitionMetadataKey(partitionId), false);
+    byte[] value = metadataPartition.get(getPartitionMetadataKey(partitionId));
     if (value == null) {
       return Optional.empty();
     }
@@ -536,7 +535,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
       if (metadataPartition == null) {
         return null;
       }
-      byte[] value = metadataPartition.get(VERSION_METADATA_KEY, false);
+      byte[] value = metadataPartition.get(VERSION_METADATA_KEY);
       if (value == null) {
         return null;
       }
