@@ -1037,8 +1037,7 @@ public abstract class StoreIngestionTaskTest {
     AbstractStoragePartition metadataPartition = mock(AbstractStoragePartition.class);
     InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer =
         AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
-    doReturn(storeVersionStateSerializer.serialize(null, svs)).when(metadataPartition)
-        .get(any(byte[].class), anyBoolean());
+    doReturn(storeVersionStateSerializer.serialize(null, svs)).when(metadataPartition).get(any(byte[].class));
     mockAbstractStorageEngine = mock(AbstractStorageEngine.class);
     doReturn(metadataPartition).when(mockAbstractStorageEngine).createStoragePartition(any());
     doReturn(svs).when(mockAbstractStorageEngine).getStoreVersionState();
