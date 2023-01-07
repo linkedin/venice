@@ -251,13 +251,12 @@ class LeaderProducerCallback implements ChunkAwareCallback {
       Put chunkPut;
       if (isRmdChunks) {
         chunkPut = instantiateRmdChunkPut();
-        chunkPut.schemaId = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
         chunkPut.replicationMetadataPayload = chunkValue;
       } else {
         chunkPut = instantiateValueChunkPut();
         chunkPut.putValue = chunkValue;
-        chunkPut.schemaId = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
       }
+      chunkPut.schemaId = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
       LeaderProducedRecordContext producedRecordForChunk =
           LeaderProducedRecordContext.newChunkPutRecord(ByteUtils.extractByteArray(chunkKey), chunkPut);
       producedRecordForChunk.setProducedOffset(-1);

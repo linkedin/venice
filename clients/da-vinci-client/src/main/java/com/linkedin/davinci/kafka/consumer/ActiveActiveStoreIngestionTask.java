@@ -222,8 +222,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     if (rmdPayload == null) {
       throw new IllegalArgumentException("Replication metadata payload not found.");
     }
-
     if (pcs.isEndOfPushReceived() || rmdPayload.remaining() > 0) {
+      // value payload == null means it is a DELETE request, while value payload size > 0 means it is a PUT request.
       if (valuePayload == null || valuePayload.remaining() > 0) {
         return StorageOperationType.VALUE_AND_RMD;
       }
