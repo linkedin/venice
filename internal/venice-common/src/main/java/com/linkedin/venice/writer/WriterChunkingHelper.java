@@ -111,7 +111,6 @@ public class WriterChunkingHelper {
         putPayload.putValue = EMPTY_BYTE_BUFFER;
         putPayload.replicationMetadataPayload = chunk;
       }
-
       chunkedKeySuffix.chunkId.chunkIndex = chunkIndex;
       keyProvider = chunkIndex == 0 ? firstKeyProvider : subsequentKeyProvider;
 

@@ -2951,22 +2951,25 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   private void prependHeaderAndWriteToStorageEngine(int partition, byte[] keyBytes, Put put) {
     ByteBuffer putValue = put.putValue;
-    /*
-     * Since {@link com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer} reuses the original byte
-     * array, which is big enough to pre-append schema id, so we just reuse it to avoid unnecessary byte array allocation.
-     * This value encoding scheme is used in {@link PartitionConsumptionState#maybeUpdateExpectedChecksum(byte[], Put)} to
-     * calculate checksum for all the kafka PUT messages seen so far. Any change here needs to be reflected in that function.
-     */
-    if (putValue.position() < ValueRecord.SCHEMA_HEADER_LENGTH) {
+
+    if ((putValue.remaining() == 0) && (put.replicationMetadataPayload.remaining() > 0)) {
+      // For RMD chunk, it is already prepended with the schema ID, so we will just put to storage engine.
+      writeToStorageEngine(partition, keyBytes, put);
+    } else if (putValue.position() < ValueRecord.SCHEMA_HEADER_LENGTH) {
       throw new VeniceException(
           "Start position of 'putValue' ByteBuffer shouldn't be less than " + ValueRecord.SCHEMA_HEADER_LENGTH);
     } else {
+      /*
+       * Since {@link com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer} reuses the original byte
+       * array, which is big enough to pre-append schema id, so we just reuse it to avoid unnecessary byte array allocation.
+       * This value encoding scheme is used in {@link PartitionConsumptionState#maybeUpdateExpectedChecksum(byte[], Put)} to
+       * calculate checksum for all the kafka PUT messages seen so far. Any change here needs to be reflected in that function.
+       */
       // Back up the original 4 bytes
       putValue.position(putValue.position() - ValueRecord.SCHEMA_HEADER_LENGTH);
       int backupBytes = putValue.getInt();
       putValue.position(putValue.position() - ValueRecord.SCHEMA_HEADER_LENGTH);
       ByteUtils.writeInt(putValue.array(), put.schemaId, putValue.position());
-
       writeToStorageEngine(partition, keyBytes, put);
 
       /* We still want to recover the original position to make this function idempotent. */
@@ -3127,7 +3130,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
         valueLen = put.putValue.remaining();
         keyLen = keyBytes.length;
-
         // update checksum for this PUT message if needed.
         partitionConsumptionState.maybeUpdateExpectedChecksum(keyBytes, put);
         prependHeaderAndWriteToStorageEngine(
@@ -3154,7 +3156,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           delete = ((Delete) leaderProducedRecordContext.getValueUnion());
         }
         keyLen = keyBytes.length;
-
         long deleteStartTimeNs = System.nanoTime();
 
         removeFromStorageEngine(producedPartition, keyBytes, delete);
@@ -3761,6 +3762,22 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected AggVersionedIngestionStats getVersionIngestionStats() {
     return versionedIngestionStats;
+  }
+
+  protected CompressionStrategy getCompressionStrategy() {
+    return compressionStrategy;
+  }
+
+  protected Lazy<VeniceCompressor> getCompressor() {
+    return compressor;
+  }
+
+  protected boolean isChunked() {
+    return isChunked;
+  }
+
+  protected ReadOnlySchemaRepository getSchemaRepo() {
+    return schemaRepository;
   }
 
   protected HostLevelIngestionStats getHostLevelIngestionStats() {

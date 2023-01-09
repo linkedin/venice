@@ -791,6 +791,7 @@ public abstract class StoreIngestionTaskTest {
 
     mockWriterFactory = mock(VeniceWriterFactory.class);
     doReturn(null).when(mockWriterFactory).createBasicVeniceWriter(any());
+    doReturn(null).when(mockWriterFactory).createVeniceWriter(any());
     StorageMetadataService offsetManager;
     LOGGER.info("mockStorageMetadataService: {}", mockStorageMetadataService.getClass().getName());
     final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
@@ -1036,8 +1037,7 @@ public abstract class StoreIngestionTaskTest {
     AbstractStoragePartition metadataPartition = mock(AbstractStoragePartition.class);
     InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer =
         AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
-    doReturn(storeVersionStateSerializer.serialize(null, svs)).when(metadataPartition)
-        .get(any(byte[].class), anyBoolean());
+    doReturn(storeVersionStateSerializer.serialize(null, svs)).when(metadataPartition).get(any(byte[].class));
     mockAbstractStorageEngine = mock(AbstractStorageEngine.class);
     doReturn(metadataPartition).when(mockAbstractStorageEngine).createStoragePartition(any());
     doReturn(svs).when(mockAbstractStorageEngine).getStoreVersionState();
@@ -1136,6 +1136,7 @@ public abstract class StoreIngestionTaskTest {
       vtWriter.broadcastEndOfPush(new HashMap<>());
       doReturn(vtWriter).when(mockWriterFactory)
           .createBasicVeniceWriter(anyString(), anyBoolean(), any(VenicePartitioner.class), anyInt());
+      doReturn(vtWriter).when(mockWriterFactory).createVeniceWriter(any());
       verify(mockLogNotifier, never()).completed(anyString(), anyInt(), anyLong());
       vtWriter.broadcastTopicSwitch(
           Collections.singletonList(inMemoryLocalKafkaBroker.getKafkaBootstrapServer()),

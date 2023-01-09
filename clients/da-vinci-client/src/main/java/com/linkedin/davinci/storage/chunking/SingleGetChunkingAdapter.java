@@ -53,4 +53,20 @@ public class SingleGetChunkingAdapter implements ChunkingAdapter<CompositeByteBu
     }
     return ChunkingUtils.getFromStorage(SINGLE_GET_CHUNKING_ADAPTER, store, partition, keyBuffer, response);
   }
+
+  public static ValueRecord getReplicationMetadata(
+      AbstractStorageEngine store,
+      int partition,
+      byte[] key,
+      boolean isChunked,
+      ReadResponse response) {
+    ByteBuffer keyBuffer = null;
+    if (isChunked) {
+      keyBuffer = ByteBuffer.wrap(ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(key));
+    } else {
+      keyBuffer = ByteBuffer.wrap(key);
+    }
+    return ChunkingUtils
+        .getReplicationMetadataFromStorage(SINGLE_GET_CHUNKING_ADAPTER, store, partition, keyBuffer, response);
+  }
 }

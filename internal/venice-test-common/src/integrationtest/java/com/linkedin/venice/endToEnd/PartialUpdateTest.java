@@ -17,6 +17,8 @@ import static org.testng.Assert.assertNull;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTaskBackdoor;
+import com.linkedin.davinci.storage.chunking.ChunkingUtils;
+import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -46,17 +48,25 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.update.UpdateBuilder;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.io.BinaryEncoder;
+import org.apache.avro.io.DatumWriter;
+import org.apache.avro.util.Utf8;
 import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -87,9 +97,9 @@ public class PartialUpdateTest {
         NUMBER_OF_CLUSTERS,
         1,
         1,
-        2,
         1,
-        2,
+        1,
+        1,
         Optional.of(new VeniceProperties(controllerProps)),
         Optional.of(new Properties(controllerProps)),
         Optional.of(new VeniceProperties(serverProperties)),
@@ -100,6 +110,106 @@ public class PartialUpdateTest {
       throw new IllegalStateException("Expect only one parent controller. Got: " + parentControllers.size());
     }
     this.parentController = parentControllers.get(0);
+  }
+
+  @Test(timeOut = TEST_TIMEOUT_MS * 2)
+  public void testReplicationMetadataChunkingE2E() throws IOException {
+    final String storeName = Utils.getUniqueString("rmdChunking");
+    String parentControllerUrl = parentController.getControllerUrl();
+    String keySchemaStr = "{\"type\" : \"string\"}";
+    Schema valueSchema = AvroCompatibilityHelper.parse(loadFileAsString("CollectionRecordV1.avsc"));
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
+      assertCommand(
+          parentControllerClient.createNewStore(storeName, "test_owner", keySchemaStr, valueSchema.toString()));
+
+      UpdateStoreQueryParams updateStoreParams =
+          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+              .setCompressionStrategy(CompressionStrategy.NO_OP)
+              .setWriteComputationEnabled(true)
+              .setActiveActiveReplicationEnabled(true)
+              .setChunkingEnabled(true)
+              .setRmdChunkingEnabled(true)
+              .setHybridRewindSeconds(10L)
+              .setHybridOffsetLagThreshold(2L);
+      ControllerResponse updateStoreResponse =
+          parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams));
+      Assert.assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
+
+      VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test_push_id", 1000);
+      assertEquals(response.getVersion(), 1);
+      assertFalse(response.isError(), "Empty push to parent colo should succeed");
+      TestUtils.waitForNonDeterministicPushCompletion(
+          Version.composeKafkaTopic(storeName, 1),
+          parentControllerClient,
+          30,
+          TimeUnit.SECONDS);
+      Assert.assertTrue(parentControllerClient.getStore(storeName).getStore().isRmdChunkingEnabled());
+      Assert
+          .assertTrue(parentControllerClient.getStore(storeName).getStore().getVersion(1).get().isRmdChunkingEnabled());
+    }
+
+    VeniceClusterWrapper veniceCluster = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
+    SystemProducer veniceProducer = getSamzaProducer(veniceCluster, storeName, Version.PushType.STREAM);
+
+    String key = "key1";
+    String primitiveFieldName = "name";
+    String listFieldName = "intArray";
+    String mapFieldName = "stringMap";
+
+    int updateCount = 30;
+    int singleUpdateEntryCount = 10000;
+    try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
+      Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);
+      Map<String, String> newEntries = new HashMap<>();
+      for (int i = 0; i < updateCount; i++) {
+        UpdateBuilder updateBuilder = new UpdateBuilderImpl(writeComputeSchema);
+        updateBuilder.setNewFieldValue(primitiveFieldName, "Tottenham");
+        newEntries.clear();
+        for (int j = 0; j < singleUpdateEntryCount; j++) {
+          String idx = String.valueOf(i * singleUpdateEntryCount + j);
+          newEntries.put("key_" + idx, "value_" + idx);
+        }
+        updateBuilder.setEntriesToAddToMapField(mapFieldName, newEntries);
+        GenericRecord partialUpdateRecord = updateBuilder.build();
+        sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord);
+      }
+
+      // Verify the value record has been partially updated and it uses V3 superset value schema now.
+      TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, () -> {
+        try {
+          GenericRecord retrievedValue = readValue(storeReader, key);
+          assertNotNull(retrievedValue);
+          assertEquals(retrievedValue.get(primitiveFieldName).toString(), "Tottenham"); // Updated field
+          Map<String, String> mapFieldResult = new HashMap<>();
+          ((Map<Utf8, Utf8>) retrievedValue.get(mapFieldName))
+              .forEach((x, y) -> mapFieldResult.put(x.toString(), y.toString()));
+          assertEquals(mapFieldResult.size(), updateCount * singleUpdateEntryCount);
+        } catch (Exception e) {
+          throw new VeniceException(e);
+        }
+      });
+
+    } finally {
+      if (veniceProducer != null) {
+        veniceProducer.stop();
+      }
+    }
+
+    ByteBuffer rmdKeyByteBuffer = ByteBuffer.wrap(
+        ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(serializeStringKeyToByteArray(key)));
+    String kafkaTopic = Version.composeKafkaTopic(storeName, 1);
+    for (VeniceServerWrapper serverWrapper: multiColoMultiClusterWrapper.getClusters()
+        .get(0)
+        .getClusters()
+        .get("venice-cluster0")
+        .getVeniceServers()) {
+      AbstractStorageEngine storageEngine =
+          serverWrapper.getVeniceServer().getStorageService().getStorageEngine(kafkaTopic);
+      byte[] value = storageEngine.getReplicationMetadata(0, rmdKeyByteBuffer.array());
+      Assert.assertNotNull(value);
+    }
+
   }
 
   /**
@@ -450,5 +560,19 @@ public class PartialUpdateTest {
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
     Utils.closeQuietlyWithErrorLogged(multiColoMultiClusterWrapper);
+  }
+
+  private byte[] serializeStringKeyToByteArray(String key) {
+    Utf8 utf8Key = new Utf8(key);
+    DatumWriter<Utf8> writer = new GenericDatumWriter<>(Schema.create(Schema.Type.STRING));
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+    BinaryEncoder encoder = AvroCompatibilityHelper.newBinaryEncoder(out);
+    try {
+      writer.write(utf8Key, encoder);
+      encoder.flush();
+    } catch (IOException e) {
+      throw new RuntimeException("Failed to write input: " + utf8Key + " to binary encoder", e);
+    }
+    return out.toByteArray();
   }
 }

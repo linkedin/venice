@@ -1359,7 +1359,6 @@ public class VeniceParentHelixAdmin implements Admin {
    * Test if the given certificate has the write-access permission for the given batch-job heartbeat store.
    * @param requesterCert X.509 certificate object.
    * @param batchJobHeartbeatStoreName name of the batch-job heartbeat store.
-   * @param identityParser a parser object to retrieve identity information from a certificate.
    * @return <code>true</code> if input certificate has write-access permission for the given store;
    *         <code>false</code> otherwise.
    * @throws AclException
