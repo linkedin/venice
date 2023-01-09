@@ -83,9 +83,11 @@ import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.io.BufferedReader;
 import java.io.Console;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -133,6 +135,16 @@ public class AdminTool {
   private static ControllerClient controllerClient;
   private static Optional<SSLFactory> sslFactory = Optional.empty();
   private static final Map<String, Map<String, ControllerClient>> clusterControllerClientPerColoMap = new HashMap<>();
+
+  private static final List<String> REQUIRED_ZK_SSL_SYSTEM_PROPERTIES = Arrays.asList(
+      "zookeeper.client.secure",
+      "zookeeper.clientCnxnSocket",
+      "zookeeper.ssl.keyStore.location",
+      "zookeeper.ssl.keyStore.password",
+      "zookeeper.ssl.keyStore.type",
+      "zookeeper.ssl.trustStore.location",
+      "zookeeper.ssl.trustStore.password",
+      "zookeeper.ssl.trustStore.type");
 
   public static void main(String args[]) throws Exception {
     CommandLine cmd = getCommandLine(args);
@@ -277,7 +289,7 @@ public class AdminTool {
         case ADD_SCHEMA:
           applyValueSchemaToStore(cmd);
           break;
-        case ADD_SCHEMA_INTO_ZK:
+        case ADD_SCHEMA_TO_ZK:
           applyValueSchemaToZK(cmd);
           break;
         case ADD_DERIVED_SCHEMA:
@@ -976,13 +988,39 @@ public class AdminTool {
   }
 
   private static void applyValueSchemaToZK(CommandLine cmd) throws Exception {
-    String store = getRequiredArgument(cmd, Arg.STORE, Command.ADD_SCHEMA_INTO_ZK);
-    String cluster = getRequiredArgument(cmd, Arg.CLUSTER, Command.ADD_SCHEMA_INTO_ZK);
-    String veniceZookeeperUrl = getRequiredArgument(cmd, Arg.VENICE_ZOOKEEPER_URL, Command.ADD_SCHEMA_INTO_ZK);
-    String valueSchemaFile = getRequiredArgument(cmd, Arg.VALUE_SCHEMA, Command.ADD_SCHEMA_INTO_ZK);
+    String store = getRequiredArgument(cmd, Arg.STORE, Command.ADD_SCHEMA_TO_ZK);
+    String cluster = getRequiredArgument(cmd, Arg.CLUSTER, Command.ADD_SCHEMA_TO_ZK);
+    String veniceZookeeperUrl = getRequiredArgument(cmd, Arg.VENICE_ZOOKEEPER_URL, Command.ADD_SCHEMA_TO_ZK);
+    String valueSchemaFile = getRequiredArgument(cmd, Arg.VALUE_SCHEMA, Command.ADD_SCHEMA_TO_ZK);
     int valueSchemaId = Utils.parseIntFromString(
-        getRequiredArgument(cmd, Arg.VALUE_SCHEMA_ID, Command.ADD_SCHEMA_INTO_ZK),
+        getRequiredArgument(cmd, Arg.VALUE_SCHEMA_ID, Command.ADD_SCHEMA_TO_ZK),
         Arg.VALUE_SCHEMA_ID.toString());
+    // Check SSL configs in JVM system arguments for ZK
+    String zkSSLFile = getRequiredArgument(cmd, Arg.ZK_SSL_CONFIG_FILE, Command.ADD_SCHEMA_TO_ZK);
+    Properties systemProperties = System.getProperties();
+    try (BufferedReader br =
+        new BufferedReader(new InputStreamReader(new FileInputStream(zkSSLFile), StandardCharsets.UTF_8))) {
+      String newLine = br.readLine();
+      while (newLine != null) {
+        String[] tokens = newLine.split("=");
+        if (tokens.length != 2) {
+          System.err.println("ZK SSL config file format is incorrect: " + newLine);
+          System.err.println("ZK SSL config file content example: zookeeper.client.secure=true");
+          return;
+        }
+        systemProperties.put(tokens[0], tokens[1]);
+        newLine = br.readLine();
+      }
+    }
+    // Verified all required ZK SSL configs are present
+    for (String requiredZKSSLProperty: REQUIRED_ZK_SSL_SYSTEM_PROPERTIES) {
+      if (!systemProperties.containsKey(requiredZKSSLProperty)) {
+        System.err.println("Missing required ZK SSL property: " + requiredZKSSLProperty);
+        return;
+      }
+    }
+    System.setProperties(systemProperties);
+
     String valueSchemaStr = readFile(valueSchemaFile);
     verifyValidSchema(valueSchemaStr);
     Schema newValueSchema = Schema.parse(valueSchemaStr);

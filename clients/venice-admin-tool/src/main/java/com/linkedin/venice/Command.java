@@ -53,8 +53,9 @@ public enum Command {
       new Arg[] { URL, CLUSTER, SYSTEM_STORE_TYPE }
   ), SET_VERSION("set-version", "Set the version that will be served", new Arg[] { URL, CLUSTER, STORE, VERSION }),
   ADD_SCHEMA("add-schema", "", new Arg[] { URL, CLUSTER, STORE, VALUE_SCHEMA }),
-  ADD_SCHEMA_INTO_ZK(
-      "add-schema-into-zk", "", new Arg[] { VENICE_ZOOKEEPER_URL, CLUSTER, STORE, VALUE_SCHEMA, VALUE_SCHEMA_ID }
+  ADD_SCHEMA_TO_ZK(
+      "add-schema-to-zk", "",
+      new Arg[] { VENICE_ZOOKEEPER_URL, CLUSTER, STORE, VALUE_SCHEMA, VALUE_SCHEMA_ID, ZK_SSL_CONFIG_FILE }
   ), ADD_DERIVED_SCHEMA("add-derived-schema", "", new Arg[] { URL, CLUSTER, STORE, VALUE_SCHEMA_ID, DERIVED_SCHEMA }),
   REMOVE_DERIVED_SCHEMA(
       "remove-derived-schema", "remove derived schema for a given store by the value and derived schema Ids",
