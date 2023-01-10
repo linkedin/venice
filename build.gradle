@@ -1,5 +1,7 @@
 import com.github.spotbugs.snom.SpotBugsTask
 import org.apache.tools.ant.taskdefs.condition.Os
+import org.gradle.internal.logging.text.StyledTextOutputFactory
+import org.gradle.internal.logging.text.StyledTextOutput.Style
 import java.nio.file.Files
 
 plugins {
@@ -349,9 +351,21 @@ subprojects {
     }
 
     testLogging {
-      events 'started', 'passed', 'failed', 'skipped'
+      events 'started', 'failed', 'skipped' // N.B. we override how 'passed' tests are formatted in afterTest
       showStandardStreams = false // to mute the DDS Router's noisy behavior...
       exceptionFormat = 'full'
+    }
+
+    afterTest { descriptor, result ->
+      if (result.resultType == TestResult.ResultType.SUCCESS) {
+        def totalTime = result.endTime - result.startTime
+        def prettyTime = totalTime < 1000 ? "$totalTime ms" : "${totalTime / 1000} s"
+
+        def out = services.get(StyledTextOutputFactory).create("an-ouput")
+        out.style(Style.Normal).text("Gradle suite > Gradle test > $descriptor.className > $descriptor.displayName ")
+            .style(Style.Identifier).text("PASSED ")
+            .style(Style.Normal).println("($prettyTime)")
+      }
     }
   }
 
@@ -475,6 +489,10 @@ check.dependsOn(spotbugs)
 test {
   mustRunAfter spotbugs
   dependsOn subprojects.test
+  afterTest { descriptor, result ->
+    def totalTime = result.endTime - result.startTime
+    println "Total time of $descriptor.name was $totalTime"
+  }
 }
 
 assemble {
