@@ -193,13 +193,13 @@ task generateGHCI() {
   targetFile.delete()
   targetFile.createNewFile()
 
-  Files.writeString(targetFilePath, "# Auto-generated file. Do not edit manually!\n#\n", StandardOpenOption.APPEND)
-  Files.writeString(targetFilePath, "# To alter these flows, edit:\n#\n#     internal/venice-test-common/build.gradle\n#\n", StandardOpenOption.APPEND)
-  Files.writeString(targetFilePath, "# To regenerate, run:\n#\n#     ./gradlew generateGHCI\n\n", StandardOpenOption.APPEND)
+  append(targetFilePath, "# Auto-generated file. Do not edit manually!\n#\n")
+  append(targetFilePath, "# To alter these flows, edit:\n#\n#     internal/venice-test-common/build.gradle\n#\n")
+  append(targetFilePath, "# To regenerate, run:\n#\n#     ./gradlew generateGHCI\n\n")
 
-  Files.writeString(targetFilePath, "name: VeniceCI\n\n", StandardOpenOption.APPEND)
-  Files.writeString(targetFilePath, "on: [push, pull_request]\n\n", StandardOpenOption.APPEND)
-  Files.writeString(targetFilePath, "jobs:\n", StandardOpenOption.APPEND)
+  append(targetFilePath, "name: VeniceCI\n\n")
+  append(targetFilePath, "on: [push, pull_request]\n\n")
+  append(targetFilePath, "jobs:\n")
 
   def common = "--continue --no-daemon "
   def staticAnalysisFlowGradleArgs = common + "-Pspotallbugs -Pspotbugs.xml -Pspotbugs.ignoreFailures clean check -x spotlessCheck -x test -x integrationTest"
@@ -222,8 +222,12 @@ def appendToGHCI(String paramFileContent, Path targetFilePath, String flowName, 
       .replace("\$TimeOut", Integer.toString(timeOut))
       .replace("\$GradleArguments", gradleArguments)
 
-  Files.writeString(targetFilePath, postProcessing, StandardOpenOption.APPEND)
-  Files.writeString(targetFilePath, "\n", StandardOpenOption.APPEND)
+  append(targetFilePath, postProcessing)
+  append(targetFilePath, "\n")
+}
+
+def append(Path targetFilePath, String content) {
+  Files.write(targetFilePath, content.getBytes(), StandardOpenOption.APPEND)
 }
 
 task integrationTest(type: Test) {
