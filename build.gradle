@@ -352,6 +352,32 @@ subprojects {
     }
   }
 
+  jacocoTestReport {
+    dependsOn test // tests are required to run before generating the report
+  }
+
+  afterEvaluate {
+    jacocoTestCoverageVerification {
+      dependsOn jacocoTestReport
+
+      violationRules {
+        rule {
+          def threshold = project.ext.has('jacocoCoverageThreshold') ?
+              project.ext.jacocoCoverageThreshold : 0.8
+
+          limit {
+            counter = 'BRANCH'
+            value = 'COVEREDRATIO'
+            minimum = threshold
+          }
+        }
+      }
+    }
+  }
+
+
+  check.dependsOn(jacocoTestCoverageVerification)
+
   task flakyTest(type: Test) {
     useTestNG {
       includeGroups 'flaky'
