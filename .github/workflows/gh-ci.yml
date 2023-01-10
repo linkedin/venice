@@ -27,7 +27,7 @@ jobs:
         with:
           arguments: "clean check -x spotlessCheck --continue --no-daemon -Pspotallbugs -Pspotbugs.xml -Pspotbugs.ignoreFailures -x test -x integrationTestA -x integrationTestB"
 
-  UnitTests:
+  unit-tests-and-code-coverage-check:
     strategy:
       fail-fast: false
       matrix:
@@ -51,11 +51,10 @@ jobs:
           git fetch upstream
       - name: Validate Gradle wrapper
         uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
-      - name: Build with Gradle
+      - name: Run unit tests and verify the code coverage
         uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
         with:
-          arguments: "build --continue --no-daemon -DforkEvery=25 -DmaxParallelForks=25 -x shadowDistTar -x shadowDistZip -x shadowJar -x startShadowScripts -x distTar -x distZip -x integrationTestA -x integrationTestB"
-
+          arguments: "jacocoTestCoverageVerification"
   E2ETestsA:
     strategy:
       fail-fast: false

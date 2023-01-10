@@ -54,3 +54,7 @@ jar {
     attributes 'Main-Class': 'com.linkedin.venice.hadoop.VenicePushJob'
   }
 }
+
+ext {
+  jacocoCoverageThreshold = 0.39
+}
