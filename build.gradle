@@ -1,5 +1,6 @@
 import com.github.spotbugs.snom.SpotBugsTask
 import org.apache.tools.ant.taskdefs.condition.Os
+import java.nio.file.Files
 
 plugins {
   id 'idea'
@@ -10,6 +11,7 @@ plugins {
   id 'com.github.johnrengelman.shadow' version '6.1.0' apply false
   id 'com.github.spotbugs' version '4.8.0' apply false
   id 'org.gradle.test-retry' version '1.5.0' apply false
+  id 'com.form.diff-coverage' version '0.9.5' apply false
 }
 
 apply from: "$rootDir/gradle/helper/git.gradle"
@@ -131,6 +133,7 @@ subprojects {
   apply {
     plugin 'idea'
     plugin 'jacoco'
+    plugin 'com.form.diff-coverage'
     plugin 'java-library'
     plugin 'com.github.spotbugs'
     plugin 'org.gradle.test-retry'
@@ -372,11 +375,31 @@ subprojects {
           }
         }
       }
+
+      finalizedBy diffCoverage
     }
   }
 
 
   check.dependsOn(jacocoTestCoverageVerification)
+
+  diffCoverageReport {
+    afterEvaluate {
+      diffSource.file = createDiffFile()
+    }
+
+    // Report is at /build/reports/jacoco/diffCoverage/html/index.html
+    reports {
+      html = true
+    }
+
+    violationRules {
+      minBranches = 0.8
+      failOnViolation = true
+    }
+  }
+
+  // check.dependsOn(diffCoverage)
 
   task flakyTest(type: Test) {
     useTestNG {
@@ -536,4 +559,22 @@ idea.project.ipr {
       }
     }
   }
+}
+
+// See https://github.com/form-com/diff-coverage-gradle/issues/73
+ext.createDiffFile = { ->
+  def file = Files.createTempFile(URLEncoder.encode(project.name, 'UTF-8'), '.diff').toFile()
+  def diffBase = 'refs/remotes/origin/main'
+  if (System.getenv('CI')) {
+    diffBase = 'origin/' + System.getenv('GITHUB_BASE_REF')
+  }
+  file.withOutputStream { out ->
+    exec {
+      commandLine 'git', 'diff', '--no-color', '--minimal', diffBase
+      standardOutput = out
+    }
+  }
+  println file.getPath()
+
+  return file
 }

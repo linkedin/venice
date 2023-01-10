@@ -50,6 +50,19 @@ public class HDFSRmdSchemaSource implements RmdSchemaSource, AutoCloseable {
     this.storeName = storeName;
   }
 
+  public HDFSRmdSchemaSource(final String schemaDir, boolean flag) throws IOException {
+    this(schemaDir);
+    int i = 0;
+    String s = "hah";
+    if (flag) {
+      LOGGER.info("i: {} was printed out {}", i, s);
+    } else {
+      i = 1;
+      s = "hahhahahahah";
+      LOGGER.info("i: {} was printed out {}", i, s);
+    }
+  }
+
   public HDFSRmdSchemaSource(final String schemaDirSuffix) throws IOException {
     this(schemaDirSuffix, null);
   }
