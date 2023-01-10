@@ -394,7 +394,7 @@ subprojects {
     }
   }
 
-  // check.dependsOn(jacocoTestCoverageVerification)
+  check.dependsOn(jacocoTestCoverageVerification)
 
   diffCoverageReport {
     afterEvaluate {
@@ -412,7 +412,7 @@ subprojects {
     }
   }
 
-  // check.dependsOn(diffCoverage)
+  check.dependsOn(diffCoverage)
 
   task flakyTest(type: Test) {
     useTestNG {
