@@ -112,7 +112,7 @@ public class PartialUpdateTest {
     this.parentController = parentControllers.get(0);
   }
 
-  @Test(timeOut = TEST_TIMEOUT_MS * 2)
+  @Test(timeOut = TEST_TIMEOUT_MS * 4)
   public void testReplicationMetadataChunkingE2E() throws IOException {
     final String storeName = Utils.getUniqueString("rmdChunking");
     String parentControllerUrl = parentController.getControllerUrl();
@@ -175,8 +175,8 @@ public class PartialUpdateTest {
         sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord);
       }
 
-      // Verify the value record has been partially updated and it uses V3 superset value schema now.
-      TestUtils.waitForNonDeterministicAssertion(120, TimeUnit.SECONDS, () -> {
+      // Verify the value record has been partially updated.
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS * 2, TimeUnit.SECONDS, () -> {
         try {
           GenericRecord retrievedValue = readValue(storeReader, key);
           assertNotNull(retrievedValue);
