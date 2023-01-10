@@ -21,8 +21,8 @@ public class VeniceViewWriterFactory {
     // Should only be invoked at time of ingestion task creation, so shouldn't be necessary to check for existence.
     Version storeVersion = store.getVersion(version).get();
     for (Map.Entry<String, ViewConfig> viewConfig: storeVersion.getViewConfigs().entrySet()) {
-      String className = viewConfig.getValue().getClassName();
-      Map<String, String> extraParams = viewConfig.getValue().getParams();
+      String className = viewConfig.getValue().getViewClassName();
+      Map<String, String> extraParams = viewConfig.getValue().getViewParameters();
       VeniceViewWriter viewWriter =
           ViewWriterUtils.getVeniceViewWriter(className, properties, store, keySchema, extraParams);
       storeViewWriters.put(viewConfig.getKey(), viewWriter);

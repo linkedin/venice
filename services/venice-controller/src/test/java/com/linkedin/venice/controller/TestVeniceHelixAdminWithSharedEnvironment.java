@@ -1920,5 +1920,11 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertTrue(store.getVersion(1).get().getViewConfigs().containsKey("changeCapture"));
     // Verify that version 2 does NOT have the config
     Assert.assertFalse(store.getVersion(2).get().getViewConfigs().containsKey("changeCapture"));
+
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setStoreViews(viewConfig));
+    veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
+    store = veniceAdmin.getStore(clusterName, storeName);
+    Assert.assertTrue(store.getVersion(3).get().getViewConfigs().containsKey("changeCapture"));
+
   }
 }

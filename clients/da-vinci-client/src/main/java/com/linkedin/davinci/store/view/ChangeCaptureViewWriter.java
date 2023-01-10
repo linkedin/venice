@@ -57,7 +57,7 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
   public void processRecord(
       ByteBuffer newValue,
       ByteBuffer oldValue,
-      ByteBuffer key,
+      byte[] key,
       int version,
       int newValueSchemaId,
       int oldValueSchemaId,
@@ -68,7 +68,7 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
     RecordChangeEvent recordChangeEvent = new RecordChangeEvent();
     recordChangeEvent.currentValue = constructValueBytes(newValue, newValueSchemaId);
     recordChangeEvent.previousValue = constructValueBytes(oldValue, oldValueSchemaId);
-    recordChangeEvent.key = key;
+    recordChangeEvent.key = ByteBuffer.wrap(key);
     recordChangeEvent.replicationCheckpointVector = RmdUtils.extractOffsetVectorFromRmd(replicationMetadataRecord);
 
     if (veniceWriter == null) {
@@ -76,6 +76,8 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
     }
     // TODO: RecordChangeEvent isn't versioned today.
     // TODO: Chunking?
+    // updatedKeyBytes = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(key); (line 604
+    // A/AIngestionTask?)
     try {
       veniceWriter.put(key, recordChangeEvent, 1).get();
     } catch (InterruptedException | ExecutionException e) {
@@ -157,7 +159,7 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
     VeniceWriterOptions.Builder configBuilder = new VeniceWriterOptions.Builder(changeCaptureTopicName);
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(keySchema);
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(RecordChangeEvent.getClassSchema());
-    configBuilder.setKeySerializer(keySerializer);
+    // configBuilder.setKeySerializer(keySerializer);
     configBuilder.setValueSerializer(valueSerializer);
 
     // Set writer properties based on the store version config
@@ -174,6 +176,9 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
   }
 
   private ValueBytes constructValueBytes(ByteBuffer value, int schemaId) {
+    if (value == null) {
+      return null;
+    }
     ValueBytes valueBytes = new ValueBytes();
     valueBytes.schemaId = schemaId;
     valueBytes.value = value;

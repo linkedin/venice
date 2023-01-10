@@ -19,9 +19,10 @@ public class ChangeCaptureView extends VeniceView {
 
   @Override
   public Map<String, VeniceProperties> getTopicNamesAndConfigsForVersion(int version) {
-    return Collections.singletonMap(
-        Version.composeKafkaTopic(store.getName(), version) + CHANGE_CAPTURE_TOPIC_SUFFIX,
-        new VeniceProperties());
+    // No special properties for this view, so just wrap the passed in properties and pass it back.
+    VeniceProperties properties = new VeniceProperties(props);
+    return Collections
+        .singletonMap(Version.composeKafkaTopic(store.getName(), version) + CHANGE_CAPTURE_TOPIC_SUFFIX, properties);
   }
 
   @Override

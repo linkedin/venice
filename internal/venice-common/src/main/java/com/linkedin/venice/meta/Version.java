@@ -168,7 +168,7 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   Map<String, ViewConfig> getViewConfigs();
 
-  void setViewConfig(Map<String, ViewConfig> viewConfigMap);
+  void setViewConfigs(Map<String, ViewConfig> viewConfigMap);
 
   boolean isUseVersionLevelHybridConfig();
 

@@ -407,7 +407,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           (k, v) -> v.processRecord(
               mergeConflictResult.getNewValue().orElse(ByteBuffer.allocate(1)),
               oldValueProvider.get(),
-              ByteBuffer.wrap(keyBytes),
+              keyBytes,
               versionNumber,
               incomingValueSchemaId,
               valueSchemaId,

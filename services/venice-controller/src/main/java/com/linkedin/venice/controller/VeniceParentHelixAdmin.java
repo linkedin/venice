@@ -44,6 +44,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TI
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.RMD_CHUNKING_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_QUOTA_IN_BYTE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_MIGRATION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIEW;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_TO_GO_ONLINE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COMPUTATION_ENABLED;
@@ -2304,6 +2305,7 @@ public class VeniceParentHelixAdmin implements Admin {
         Map<String, StoreViewConfigRecord> mergedViewSettings =
             VeniceHelixAdmin.mergeNewViewConfigsIntoOldConfigs(currStore, storeViewConfig.get());
         setStore.views = mergedViewSettings;
+        updatedConfigsList.add(STORE_VIEW);
       }
 
       // Only update fields that are set, other fields will be read from the original store's partitioner config.
