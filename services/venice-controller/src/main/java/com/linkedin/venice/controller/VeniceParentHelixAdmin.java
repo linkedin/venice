@@ -2606,11 +2606,23 @@ public class VeniceParentHelixAdmin implements Admin {
 
   private void addWriteComputeSchemaForStore(String clusterName, String storeName, boolean dryRun) {
     Collection<SchemaEntry> valueSchemaEntries = getValueSchemas(clusterName, storeName);
+
     List<SchemaEntry> writeComputeSchemaEntries = new ArrayList<>(valueSchemaEntries.size());
+    int maxId = valueSchemaEntries.stream().map(SchemaEntry::getId).max(Comparator.naturalOrder()).get();
+
     for (SchemaEntry valueSchemaEntry: valueSchemaEntries) {
-      Schema writeComputeSchema =
-          writeComputeSchemaConverter.convertFromValueRecordSchema(valueSchemaEntry.getSchema());
-      writeComputeSchemaEntries.add(new SchemaEntry(valueSchemaEntry.getId(), writeComputeSchema));
+      Schema writeComputeSchema = null;
+      try {
+        writeComputeSchema = writeComputeSchemaConverter.convertFromValueRecordSchema(valueSchemaEntry.getSchema());
+      } catch (VeniceException e) {
+        // Allow write compute schema error in all schema except the latest value schema
+        if (valueSchemaEntry.getId() == maxId) {
+          throw new VeniceException("Cannot generate update schema for value schema" + valueSchemaEntry);
+        }
+      }
+      if (writeComputeSchema != null) {
+        writeComputeSchemaEntries.add(new SchemaEntry(valueSchemaEntry.getId(), writeComputeSchema));
+      }
     }
     // Start adding write compute schemas only after all write compute schema generation is successful.
     if (dryRun) {
