@@ -366,7 +366,7 @@ subprojects {
               project.ext.jacocoCoverageThreshold : 0.8
 
           limit {
-            counter = 'LINE'
+            counter = 'BRANCH'
             value = 'COVEREDRATIO'
             minimum = threshold
           }

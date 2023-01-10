@@ -63,5 +63,5 @@ task generateSslCertificate(type: Exec) {
 sourceSets.main.resources.srcDir(generateSslCertificate)
 
 ext {
-  jacocoCoverageThreshold = 0.2
+  jacocoCoverageThreshold = 0.26
 }
