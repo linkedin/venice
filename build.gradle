@@ -583,9 +583,6 @@ idea.project.ipr {
 ext.createDiffFile = { ->
   def file = Files.createTempFile(URLEncoder.encode(project.name, 'UTF-8'), '.diff').toFile()
   def diffBase = 'refs/remotes/origin/main'
-  if (System.getenv('CI')) {
-    diffBase = 'origin/' + System.getenv('GITHUB_BASE_REF')
-  }
   file.withOutputStream { out ->
     exec {
       commandLine 'git', 'diff', '--no-color', '--minimal', diffBase
