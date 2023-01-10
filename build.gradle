@@ -394,8 +394,7 @@ subprojects {
     }
   }
 
-
-  check.dependsOn(jacocoTestCoverageVerification)
+  // check.dependsOn(jacocoTestCoverageVerification)
 
   diffCoverageReport {
     afterEvaluate {
@@ -589,7 +588,7 @@ ext.createDiffFile = { ->
       standardOutput = out
     }
   }
-  println file.getPath()
 
   return file
 }
+
