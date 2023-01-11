@@ -204,7 +204,7 @@ task generateGHCI() {
   def common = "--continue --no-daemon "
   def staticAnalysisFlowGradleArgs = common + "-Pspotallbugs -Pspotbugs.xml -Pspotbugs.ignoreFailures clean check -x spotlessCheck -x test -x integrationTest"
   appendToGHCI(paramFileContent, targetFilePath, "StaticAnalysis", 20, staticAnalysisFlowGradleArgs)
-  appendToGHCI(paramFileContent, targetFilePath, "UnitTestsAndCodeCoverage", 60, "jacocoTestCoverageVerification")
+  appendToGHCI(paramFileContent, targetFilePath, "UnitTestsAndCodeCoverage", 60, "jacocoTestCoverageVerification diffCoverage")
   def integTestGradleArgs = common + "-DforkEvery=1 -DmaxParallelForks=1 integrationTest"
   integrationTestBuckets.each { name, patterns ->
     def flowName = "IntegrationTests" + name
