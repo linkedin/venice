@@ -4490,10 +4490,10 @@ public class VeniceParentHelixAdmin implements Admin {
     try {
       Map<String, ControllerClient> controllerClientMap = getVeniceHelixAdmin().getControllerClientMap(clusterName);
       for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
-        RegionPushDetailsResponse details = entry.getValue().getRegionPushDetails(storeName, clusterName);
-        if (details != null && details.getRegionPushDetails() != null) {
-          retMap.put(entry.getKey(), details.getRegionPushDetails());
-          retMap.get(entry.getKey()).setRegionName(entry.getKey());
+        RegionPushDetailsResponse detailsResp = entry.getValue().getRegionPushDetails(storeName, clusterName);
+        if (detailsResp != null && detailsResp.getRegionPushDetails() != null) {
+          detailsResp.getRegionPushDetails().setRegionName(entry.getKey());
+          retMap.put(entry.getKey(), detailsResp.getRegionPushDetails());
         }
       }
     } catch (Exception e) {

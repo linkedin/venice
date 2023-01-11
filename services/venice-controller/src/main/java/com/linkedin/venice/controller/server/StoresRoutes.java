@@ -1000,8 +1000,8 @@ public class StoresRoutes extends AbstractRoute {
         String store = request.queryParams(NAME);
         Map<String, RegionPushDetails> details = admin.listStorePushInfo(cluster, store);
 
-        veniceResponse.setStoreName(store);
-        veniceResponse.setClusterName(cluster);
+        veniceResponse.setName(store);
+        veniceResponse.setCluster(cluster);
         veniceResponse.setRegionPushDetails(details);
       }
     };
