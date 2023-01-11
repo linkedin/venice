@@ -39,13 +39,6 @@ public class TestHDFSRmdSchemaSource {
   }
 
   @Test
-  public void testConstructClass() throws IOException {
-    File inputDir = getTempDataDirectory();
-    HDFSRmdSchemaSource fake = new HDFSRmdSchemaSource(inputDir.getAbsolutePath(), true);
-    HDFSRmdSchemaSource fake2 = new HDFSRmdSchemaSource(inputDir.getAbsolutePath(), false);
-  }
-
-  @Test
   public void testLoadRmdSchemaThenFetch() throws IOException {
     source.loadRmdSchemasOnDisk(client);
     Map<RmdVersionId, Schema> schemaMap = source.fetchSchemas();

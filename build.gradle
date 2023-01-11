@@ -397,7 +397,7 @@ subprojects {
       diffSource.file = createDiffFile()
     }
 
-    // Report is at /build/reports/jacoco/diffCoverage/html/index.html
+    // Report locates at <module_name>/build/reports/jacoco/diffCoverage/html/index.html
     reports {
       html = true
     }
