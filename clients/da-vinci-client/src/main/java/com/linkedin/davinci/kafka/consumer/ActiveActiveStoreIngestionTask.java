@@ -1220,7 +1220,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         for (String sourceRealTimeTopicKafkaURL: sourceRealTimeTopicKafkaURLs) {
           try {
             // Return true if offset lag in any reachable region is larger than the threshold
-            if (measureRTOffsetLagForSingleRegion(sourceRealTimeTopicKafkaURL, pcs, false) > offsetLagThreshold) {
+            if (pcs.getRegionRTOffsetLagFromCache(sourceRealTimeTopicKafkaURL) > offsetLagThreshold) {
               return true;
             }
           } catch (Exception e) {

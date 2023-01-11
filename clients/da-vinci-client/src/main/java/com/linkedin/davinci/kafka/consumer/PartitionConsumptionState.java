@@ -157,6 +157,10 @@ public class PartitionConsumptionState {
    */
   private Map<String, Long> latestProcessedUpstreamRTOffsetMap;
 
+  private Map<String, Long> rtRegionOffsetLagCacheMap;
+
+  private long latestRTOffsetLagCacheUpdateTimestamp = -1;
+
   public PartitionConsumptionState(int partition, int amplificationFactor, OffsetRecord offsetRecord, boolean hybrid) {
     this.partition = partition;
     this.amplificationFactor = amplificationFactor;
@@ -186,6 +190,7 @@ public class PartitionConsumptionState {
     // checkpoint upstream offset map
     consumedUpstreamRTOffsetMap = new VeniceConcurrentHashMap<>();
     latestProcessedUpstreamRTOffsetMap = new VeniceConcurrentHashMap<>();
+    rtRegionOffsetLagCacheMap = new VeniceConcurrentHashMap<>();
     if (offsetRecord.getLeaderTopic() != null && Version.isRealTimeTopic(offsetRecord.getLeaderTopic())) {
       offsetRecord.cloneUpstreamOffsetMap(consumedUpstreamRTOffsetMap);
       offsetRecord.cloneUpstreamOffsetMap(latestProcessedUpstreamRTOffsetMap);
@@ -557,6 +562,22 @@ public class PartitionConsumptionState {
     public int getValueSchemaId() {
       return valueSchemaId;
     }
+  }
+
+  public void setLatestRTOffsetLagCacheUpdateTimestamp(long updateTimestamp) {
+    latestRTOffsetLagCacheUpdateTimestamp = updateTimestamp;
+  }
+
+  public long getLatestRTOffsetLagCacheUpdateTimestamp() {
+    return latestRTOffsetLagCacheUpdateTimestamp;
+  }
+
+  public void updateRegionRTOffsetLagCache(String kafkaUrl, long lag) {
+    rtRegionOffsetLagCacheMap.put(kafkaUrl, lag);
+  }
+
+  public long getRegionRTOffsetLagFromCache(String kafkaUrl) {
+    return rtRegionOffsetLagCacheMap.getOrDefault(kafkaUrl, Long.MAX_VALUE);
   }
 
   public void updateLeaderConsumedUpstreamRTOffset(String kafkaUrl, long offset) {

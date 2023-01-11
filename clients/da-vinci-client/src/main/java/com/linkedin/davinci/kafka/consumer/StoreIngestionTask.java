@@ -3569,6 +3569,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         } else {
           statusReportAdapter.reportProgress(partitionConsumptionState);
         }
+      } else if (partitionConsumptionState.isComplete() && partitionConsumptionState.isHybrid()) {
+        // Periodically update RT offset lag cache so RT offset metrics can be kept updated after ready-to-serve state.
+        maybeUpdateRegionRTOffsetLagCacheAfterReadyToServe(partitionConsumptionState);
       }
     };
   }
@@ -3800,4 +3803,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     KafkaMessageEnvelope kafkaValue = consumerRecord.value();
     return kafkaValue.leaderMetadataFooter != null && kafkaValue.leaderMetadataFooter.upstreamOffset >= 0;
   }
+
+  protected abstract void maybeUpdateRegionRTOffsetLagCacheAfterReadyToServe(
+      PartitionConsumptionState partitionConsumptionState);
 }

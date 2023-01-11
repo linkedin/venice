@@ -1519,11 +1519,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       String sourceRealTimeTopicKafkaURL,
       PartitionConsumptionState partitionConsumptionState,
       boolean shouldLogLag) {
-    return getLatestLeaderPersistedOffsetAndHybridTopicOffset(
+    long regionRtOffsetLag = getLatestLeaderPersistedOffsetAndHybridTopicOffset(
         sourceRealTimeTopicKafkaURL,
         partitionConsumptionState.getOffsetRecord().getLeaderTopic(),
         partitionConsumptionState,
         shouldLogLag);
+    partitionConsumptionState.updateRegionRTOffsetLagCache(sourceRealTimeTopicKafkaURL, regionRtOffsetLag);
+    return regionRtOffsetLag;
   }
 
   protected long measureRTOffsetLagForMultiRegions(
@@ -1550,7 +1552,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         }
         String sourceRealTimeTopicKafkaURL = sourceRealTimeTopicKafkaURLs.iterator().next();
         try {
-          if (measureRTOffsetLagForSingleRegion(sourceRealTimeTopicKafkaURL, pcs, false) > offsetLagThreshold) {
+          if (pcs.getRegionRTOffsetLagFromCache(sourceRealTimeTopicKafkaURL) > offsetLagThreshold) {
             return true;
           }
         } catch (Exception e) {
@@ -3018,5 +3020,19 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   protected Lazy<VeniceWriter<byte[], byte[], byte[]>> getVeniceWriter() {
     return veniceWriter;
+  }
+
+  @Override
+  protected void maybeUpdateRegionRTOffsetLagCacheAfterReadyToServe(
+      PartitionConsumptionState partitionConsumptionState) {
+    long currTimestamp = System.currentTimeMillis();
+    if ((currTimestamp - partitionConsumptionState.getLatestRTOffsetLagCacheUpdateTimestamp()) > MINUTES.toMillis(1)) {
+      for (String sourceRealTimeTopicKafkaURL: getRealTimeDataSourceKafkaAddress(partitionConsumptionState)) {
+        partitionConsumptionState.updateRegionRTOffsetLagCache(
+            sourceRealTimeTopicKafkaURL,
+            measureRTOffsetLagForSingleRegion(sourceRealTimeTopicKafkaURL, partitionConsumptionState, false));
+      }
+      partitionConsumptionState.setLatestRTOffsetLagCacheUpdateTimestamp(currTimestamp);
+    }
   }
 }
