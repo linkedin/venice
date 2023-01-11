@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.ConfigKeys.DEFAULT_NUMBER_OF_PARTITION_FOR_HYBRID;
 import static org.testng.Assert.assertEquals;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -21,11 +22,14 @@ import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Optional;
+import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -55,8 +59,19 @@ public class TestParentControllerWithMultiDataCenter {
 
   @BeforeClass
   public void setUp() {
-    multiColoMultiClusterWrapper = ServiceFactory
-        .getVeniceTwoLayerMultiColoMultiClusterWrapper(NUMBER_OF_CHILD_DATACENTERS, NUMBER_OF_CLUSTERS, 1, 1, 1, 1);
+    Properties controllerProps = new Properties();
+    controllerProps.put(DEFAULT_NUMBER_OF_PARTITION_FOR_HYBRID, 2);
+    multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
+        NUMBER_OF_CHILD_DATACENTERS,
+        NUMBER_OF_CLUSTERS,
+        1,
+        1,
+        1,
+        1,
+        1,
+        Optional.of(new VeniceProperties(controllerProps)),
+        Optional.of(controllerProps),
+        Optional.empty());
 
     childDatacenters = multiColoMultiClusterWrapper.getClusters();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
@@ -130,7 +145,7 @@ public class TestParentControllerWithMultiDataCenter {
           Assert.assertEquals(storeInfo.getPartitionerConfig().getAmplificationFactor(), 2);
           Assert.assertTrue(storeInfo.isChunkingEnabled());
           Assert.assertTrue(storeInfo.isRmdChunkingEnabled());
-          Assert.assertEquals(storeInfo.getPartitionCount(), 1);
+          Assert.assertEquals(storeInfo.getPartitionCount(), 2);
         }
       });
 
@@ -161,6 +176,27 @@ public class TestParentControllerWithMultiDataCenter {
           Assert.assertEquals(
               storeInfo.getPartitionerConfig().getPartitionerParams(),
               Collections.singletonMap("key", "val"));
+        }
+      });
+
+      // New incremental push store. Verify that store is converted to hybrid and partition count is enforced.
+      String incPushStoreName = Utils.getUniqueString("incPushStore");
+      newStoreResponse = parentControllerClient
+          .retryableRequest(5, c -> c.createNewStore(incPushStoreName, "", "\"string\"", "\"string\""));
+      Assert.assertFalse(
+          newStoreResponse.isError(),
+          "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+      TestWriteUtils.updateStore(
+          incPushStoreName,
+          parentControllerClient,
+          new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
+        for (ControllerClient controllerClient: controllerClients) {
+          StoreResponse storeResponse = controllerClient.getStore(incPushStoreName);
+          Assert.assertFalse(storeResponse.isError());
+          StoreInfo storeInfo = storeResponse.getStore();
+          Assert.assertNotNull(storeInfo.getHybridStoreConfig());
+          Assert.assertEquals(storeInfo.getPartitionCount(), 2);
         }
       });
     }
