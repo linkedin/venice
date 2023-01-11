@@ -57,6 +57,9 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixAdapterSerializer;
+import com.linkedin.venice.helix.HelixSchemaAccessor;
+import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
@@ -68,6 +71,8 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.avro.SchemaCompatibility;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
@@ -78,9 +83,11 @@ import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.io.BufferedReader;
 import java.io.Console;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -128,6 +135,16 @@ public class AdminTool {
   private static ControllerClient controllerClient;
   private static Optional<SSLFactory> sslFactory = Optional.empty();
   private static final Map<String, Map<String, ControllerClient>> clusterControllerClientPerColoMap = new HashMap<>();
+
+  private static final List<String> REQUIRED_ZK_SSL_SYSTEM_PROPERTIES = Arrays.asList(
+      "zookeeper.client.secure",
+      "zookeeper.clientCnxnSocket",
+      "zookeeper.ssl.keyStore.location",
+      "zookeeper.ssl.keyStore.password",
+      "zookeeper.ssl.keyStore.type",
+      "zookeeper.ssl.trustStore.location",
+      "zookeeper.ssl.trustStore.password",
+      "zookeeper.ssl.trustStore.type");
 
   public static void main(String args[]) throws Exception {
     CommandLine cmd = getCommandLine(args);
@@ -271,6 +288,9 @@ public class AdminTool {
           break;
         case ADD_SCHEMA:
           applyValueSchemaToStore(cmd);
+          break;
+        case ADD_SCHEMA_TO_ZK:
+          applyValueSchemaToZK(cmd);
           break;
         case ADD_DERIVED_SCHEMA:
           applyDerivedSchemaToStore(cmd);
@@ -965,6 +985,69 @@ public class AdminTool {
       throw new VeniceException("Error updating store with schema: " + valueResponse.getError());
     }
     printObject(valueResponse);
+  }
+
+  private static void applyValueSchemaToZK(CommandLine cmd) throws Exception {
+    String store = getRequiredArgument(cmd, Arg.STORE, Command.ADD_SCHEMA_TO_ZK);
+    String cluster = getRequiredArgument(cmd, Arg.CLUSTER, Command.ADD_SCHEMA_TO_ZK);
+    String veniceZookeeperUrl = getRequiredArgument(cmd, Arg.VENICE_ZOOKEEPER_URL, Command.ADD_SCHEMA_TO_ZK);
+    String valueSchemaFile = getRequiredArgument(cmd, Arg.VALUE_SCHEMA, Command.ADD_SCHEMA_TO_ZK);
+    int valueSchemaId = Utils.parseIntFromString(
+        getRequiredArgument(cmd, Arg.VALUE_SCHEMA_ID, Command.ADD_SCHEMA_TO_ZK),
+        Arg.VALUE_SCHEMA_ID.toString());
+    // Check SSL configs in JVM system arguments for ZK
+    String zkSSLFile = getRequiredArgument(cmd, Arg.ZK_SSL_CONFIG_FILE, Command.ADD_SCHEMA_TO_ZK);
+    Properties systemProperties = System.getProperties();
+    try (BufferedReader br =
+        new BufferedReader(new InputStreamReader(new FileInputStream(zkSSLFile), StandardCharsets.UTF_8))) {
+      String newLine = br.readLine();
+      while (newLine != null) {
+        String[] tokens = newLine.split("=");
+        if (tokens.length != 2) {
+          System.err.println("ZK SSL config file format is incorrect: " + newLine);
+          System.err.println("ZK SSL config file content example: zookeeper.client.secure=true");
+          return;
+        }
+        systemProperties.put(tokens[0], tokens[1]);
+        newLine = br.readLine();
+      }
+    }
+    // Verified all required ZK SSL configs are present
+    for (String requiredZKSSLProperty: REQUIRED_ZK_SSL_SYSTEM_PROPERTIES) {
+      if (!systemProperties.containsKey(requiredZKSSLProperty)) {
+        System.err.println("Missing required ZK SSL property: " + requiredZKSSLProperty);
+        return;
+      }
+    }
+    System.setProperties(systemProperties);
+
+    String valueSchemaStr = readFile(valueSchemaFile);
+    verifyValidSchema(valueSchemaStr);
+    Schema newValueSchema = Schema.parse(valueSchemaStr);
+
+    HelixSchemaAccessor schemaAccessor =
+        new HelixSchemaAccessor(ZkClientFactory.newZkClient(veniceZookeeperUrl), new HelixAdapterSerializer(), cluster);
+    if (schemaAccessor.getValueSchema(store, String.valueOf(valueSchemaId)) != null) {
+      System.err.println(
+          "Schema version " + valueSchemaId + " is already registered in ZK for store " + store + ", do nothing!");
+      return;
+    }
+
+    // Check backward compatibility?
+    List<SchemaEntry> allValueSchemas = schemaAccessor.getAllValueSchemas(store);
+    for (SchemaEntry schemaEntry: allValueSchemas) {
+      SchemaCompatibility.SchemaPairCompatibility backwardCompatibility =
+          SchemaCompatibility.checkReaderWriterCompatibility(newValueSchema, schemaEntry.getSchema());
+      if (!backwardCompatibility.getType().equals(SchemaCompatibility.SchemaCompatibilityType.COMPATIBLE)) {
+        System.err.println(
+            "New value schema for store " + store + " is not backward compatible with a previous schema version "
+                + schemaEntry.getId() + ". Abort.");
+        return;
+      }
+    }
+
+    // Register it
+    schemaAccessor.addValueSchema(store, new SchemaEntry(valueSchemaId, newValueSchema));
   }
 
   private static void applyDerivedSchemaToStore(CommandLine cmd) throws Exception {
