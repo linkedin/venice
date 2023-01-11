@@ -92,11 +92,13 @@ import static com.linkedin.venice.Arg.URL;
 import static com.linkedin.venice.Arg.VALUE_SCHEMA;
 import static com.linkedin.venice.Arg.VALUE_SCHEMA_ID;
 import static com.linkedin.venice.Arg.VENICE_CLIENT_SSL_CONFIG_FILE;
+import static com.linkedin.venice.Arg.VENICE_ZOOKEEPER_URL;
 import static com.linkedin.venice.Arg.VERSION;
 import static com.linkedin.venice.Arg.VOLDEMORT_STORE;
 import static com.linkedin.venice.Arg.VSON_STORE;
 import static com.linkedin.venice.Arg.WRITEABILITY;
 import static com.linkedin.venice.Arg.WRITE_COMPUTATION_ENABLED;
+import static com.linkedin.venice.Arg.ZK_SSL_CONFIG_FILE;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.Arrays;
@@ -149,7 +151,10 @@ public enum Command {
       new Arg[] { URL, CLUSTER, SYSTEM_STORE_TYPE }
   ), SET_VERSION("set-version", "Set the version that will be served", new Arg[] { URL, CLUSTER, STORE, VERSION }),
   ADD_SCHEMA("add-schema", "", new Arg[] { URL, CLUSTER, STORE, VALUE_SCHEMA }),
-  ADD_DERIVED_SCHEMA("add-derived-schema", "", new Arg[] { URL, CLUSTER, STORE, VALUE_SCHEMA_ID, DERIVED_SCHEMA }),
+  ADD_SCHEMA_TO_ZK(
+      "add-schema-to-zk", "",
+      new Arg[] { VENICE_ZOOKEEPER_URL, CLUSTER, STORE, VALUE_SCHEMA, VALUE_SCHEMA_ID, ZK_SSL_CONFIG_FILE }
+  ), ADD_DERIVED_SCHEMA("add-derived-schema", "", new Arg[] { URL, CLUSTER, STORE, VALUE_SCHEMA_ID, DERIVED_SCHEMA }),
   REMOVE_DERIVED_SCHEMA(
       "remove-derived-schema", "remove derived schema for a given store by the value and derived schema Ids",
       new Arg[] { URL, CLUSTER, STORE, VALUE_SCHEMA_ID, DERIVED_SCHEMA_ID }
