@@ -1405,9 +1405,8 @@ public class VenicePushJob implements AutoCloseable {
     }
 
     LOGGER.info(
-        "No Compression dictionary will be generated with the strategy {} and compressionMetricCollectionEnabled is {}",
-        storeSetting.compressionStrategy,
-        (pushJobSetting.compressionMetricCollectionEnabled ? "Enabled" : "Disabled"));
+        "No Compression dictionary will be generated with the strategy {} and compressionMetricCollectionEnabled is disabled",
+        storeSetting.compressionStrategy);
     return false;
   }
 

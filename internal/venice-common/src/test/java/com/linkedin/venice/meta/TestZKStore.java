@@ -347,7 +347,7 @@ public class TestZKStore {
 
   @Test(expectedExceptions = VeniceException.class)
   public void invalidStoreNameThrows() {
-    Store store = new ZKStore(
+    new ZKStore(
         "My Store Name",
         "owner",
         System.currentTimeMillis(),

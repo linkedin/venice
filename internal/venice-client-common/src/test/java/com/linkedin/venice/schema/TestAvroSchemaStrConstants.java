@@ -31,7 +31,7 @@ public class TestAvroSchemaStrConstants {
       + "      \"type\": {\n" + "        \"type\": \"array\",\n" + "        \"items\": \"float\"\n" + "      },\n"
       + "      \"default\": [\n" + "        \n" + "      ]\n" + "    }\n" + "  ]\n" + "}";
 
-  public static String recordOfNullableArrayStr = "{\n" + "  \"type\" : \"record\",\n"
+  public final static String recordOfNullableArrayStr = "{\n" + "  \"type\" : \"record\",\n"
       + "  \"name\" : \"testRecord\",\n" + "  \"fields\" : [ {\n" + "    \"name\" : \"nullableArrayField\",\n"
       + "    \"type\" : [ \"null\", {\n" + "      \"type\" : \"array\",\n" + "      \"items\" : {\n"
       + "        \"type\" : \"record\",\n" + "        \"name\" : \"simpleRecord\",\n" + "        \"fields\" : [ {\n"

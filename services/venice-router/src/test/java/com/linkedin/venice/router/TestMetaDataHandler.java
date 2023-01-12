@@ -403,7 +403,6 @@ public class TestMetaDataHandler {
     String storeName = "test-store";
     HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
     Mockito.doReturn(Optional.empty()).when(storeConfigRepository).getStoreConfig(storeName);
-    Map<String, String> clusterToD2Map = new HashMap<>();
     FullHttpResponse response = passRequestToMetadataHandler(
         "http://myRouterHost:4567/discover_cluster/" + storeName,
         null,

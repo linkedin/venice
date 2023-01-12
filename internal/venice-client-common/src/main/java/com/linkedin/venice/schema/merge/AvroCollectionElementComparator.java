@@ -16,7 +16,7 @@ import org.apache.commons.lang.Validate;
  */
 @ThreadSafe
 public class AvroCollectionElementComparator {
-  public static AvroCollectionElementComparator INSTANCE = new AvroCollectionElementComparator();
+  public final static AvroCollectionElementComparator INSTANCE = new AvroCollectionElementComparator();
 
   private AvroCollectionElementComparator() {
     // Singleton class.

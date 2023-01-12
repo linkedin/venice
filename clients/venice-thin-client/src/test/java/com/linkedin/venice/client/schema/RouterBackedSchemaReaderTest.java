@@ -330,7 +330,7 @@ public class RouterBackedSchemaReaderTest {
     Mockito.doReturn(mapper.writeValueAsBytes(schemaResponse)).when(mockFuture).get();
     Mockito.doReturn(mockFuture).when(mockClient).getRaw(Mockito.anyString());
     try {
-      SchemaReader schemaReader = new RouterBackedSchemaReader(() -> mockClient);
+      new RouterBackedSchemaReader(() -> mockClient);
     } catch (VeniceClientException e) {
       Assert.fail("The unrecognized field should be ignored.");
     }

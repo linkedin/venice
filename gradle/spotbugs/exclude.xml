@@ -28,9 +28,39 @@
       <Bug pattern="INSTANCEOF_GENERICRECORD"/>
       <Bug pattern="RCN_REDUNDANT_NULLCHECK_OF_NONNULL_VALUE"/>
       <Bug pattern="RCN_REDUNDANT_NULLCHECK_WOULD_HAVE_BEEN_A_NPE"/>
+      <Bug pattern="CN_IMPLEMENTS_CLONE_BUT_NOT_CLONEABLE"/>
     </Or>
   </Match>
   <Match>
     <Source name="~.*internal/alpini/.*" />
+  </Match>
+  <Match>
+    <Bug pattern="NM_SAME_SIMPLE_NAME_AS_SUPERCLASS"/>
+    <Or>
+      <Class name="com.linkedin.venice.utils.MockTime"/>
+      <Class name="com.linkedin.venice.fastclient.stats.ClientStats"/>
+    </Or>
+  </Match>
+  <Match>
+    <Bug pattern="NP_NONNULL_PARAM_VIOLATION"/>
+    <Class name="com.linkedin.venice.router.api.TestHostFinder"/>
+  </Match>
+  <Match>
+    <Bug pattern="MS_MUTABLE_COLLECTION"/>
+    <Class name="com.linkedin.venice.router.api.VeniceResponseAggregator"/>
+  </Match>
+  <Match>
+    <Bug pattern="HE_EQUALS_USE_HASHCODE"/>
+    <Class name="com.linkedin.venice.utils.HashCodeComparator"/>
+  </Match>
+  <Match>
+    <Bug pattern="MS_SHOULD_BE_FINAL"/>
+    <Class name="com.linkedin.davinci.kafka.consumer.StoreIngestionTask"/>
+    <Field name="SCHEMA_POLLING_DELAY_MS"/>
+  </Match>
+  <Match>
+    <Bug pattern="VO_VOLATILE_INCREMENT"/>
+    <Class name="com.linkedin.davinci.kafka.consumer.SharedKafkaConsumer"/>
+    <Field name="pollTimes"/>
   </Match>
 </FindBugsFilter>

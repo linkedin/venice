@@ -35,6 +35,11 @@ public class SystemStoreAttributesImpl implements SystemStoreAttributes {
   }
 
   @Override
+  public int hashCode() {
+    return this.dataModel.hashCode();
+  }
+
+  @Override
   public int getLargestUsedVersionNumber() {
     return this.dataModel.largestUsedVersionNumber;
   }

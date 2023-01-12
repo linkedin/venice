@@ -351,7 +351,7 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
         if (sorted) {
           Assert.assertEquals(
               checkpointingInfo.get(RocksDBSstFileWriter.ROCKSDB_LAST_FINISHED_SST_FILE_NO),
-              Integer.valueOf(currentFileNo++).toString());
+              Integer.toString(currentFileNo++));
         } else {
           Assert.assertTrue(
               checkpointingInfo.isEmpty(),

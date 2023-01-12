@@ -202,7 +202,7 @@ task generateGHCI() {
   append(targetFilePath, "jobs:\n")
 
   def common = "--continue --no-daemon "
-  def staticAnalysisFlowGradleArgs = common + "-Pspotallbugs -Pspotbugs.xml -Pspotbugs.ignoreFailures clean check -x spotlessCheck -x test -x integrationTest"
+  def staticAnalysisFlowGradleArgs = common + "-Pspotallbugs clean check -x spotlessCheck -x test -x integrationTest -x jacocoTestCoverageVerification"
   appendToGHCI(paramFileContent, targetFilePath, "StaticAnalysis", 20, staticAnalysisFlowGradleArgs)
   appendToGHCI(paramFileContent, targetFilePath, "UnitTestsAndCodeCoverage", 60, "jacocoTestCoverageVerification")
   def integTestGradleArgs = common + "-DforkEvery=1 -DmaxParallelForks=1 integrationTest"

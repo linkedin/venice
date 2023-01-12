@@ -1393,7 +1393,7 @@ public abstract class StoreIngestionTaskTest {
     AbstractStoragePartition mockPartition = mock(AbstractStoragePartition.class);
     doReturn(mockPartition).when(mockAbstractStorageEngine).getPartitionOrThrow(PARTITION_FOO);
     doReturn(true).when(mockPartition).validateBatchIngestion();
-    StoragePartitionConfig storagePartitionConfigFoo = new StoragePartitionConfig(topic, PARTITION_FOO);
+    new StoragePartitionConfig(topic, PARTITION_FOO);
 
     runTest(Utils.setOf(PARTITION_FOO), () -> {
       verify(mockAbstractStorageEngine, never()).preparePartitionForReading(PARTITION_FOO);
@@ -1413,7 +1413,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(storeNameWithoutVersionInfo).when(mockStore).getName();
     StoragePartitionConfig storagePartitionConfigFoo = new StoragePartitionConfig(topic, PARTITION_FOO);
     storagePartitionConfigFoo.setWriteOnlyConfig(true);
-    StoragePartitionConfig storagePartitionConfigBar = new StoragePartitionConfig(topic, PARTITION_BAR);
+    new StoragePartitionConfig(topic, PARTITION_BAR);
 
     runTest(Utils.setOf(PARTITION_FOO), () -> {
       verify(mockAbstractStorageEngine, never()).preparePartitionForReading(PARTITION_FOO);

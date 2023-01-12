@@ -46,6 +46,14 @@
       <Bug pattern="UWF_NULL_FIELD"/>
       <Bug pattern="UWF_UNWRITTEN_FIELD"/>
       <Bug pattern="WMI_WRONG_MAP_ITERATOR"/>
+      <Bug pattern="MS_SHOULD_BE_FINAL"/>
+      <Bug pattern="UR_UNINIT_READ_CALLED_FROM_SUPER_CONSTRUCTOR"/>
+      <Bug pattern="DLS_DEAD_LOCAL_STORE"/>
+      <Bug pattern="UC_USELESS_CONDITION"/>
+      <Bug pattern="DM_BOXED_PRIMITIVE_TOSTRING"/>
+      <Bug pattern="HE_EQUALS_USE_HASHCODE"/>
+      <Bug pattern="NP_EQUALS_SHOULD_HANDLE_NULL_ARGUMENT"/>
+      <Bug pattern="NP_NONNULL_PARAM_VIOLATION"/>
     </Or>
   </Match>
 </FindBugsFilter>

@@ -868,7 +868,6 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         Version.guidBasedDummyPushId(),
         partitionCount,
         replicaFactor);
-    Map<String, Integer> nodesToPartitionMap = new HashMap<>();
     TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> {
       try {
         PartitionAssignment partitionAssignment = veniceAdmin.getHelixVeniceClusterResources(clusterName)
