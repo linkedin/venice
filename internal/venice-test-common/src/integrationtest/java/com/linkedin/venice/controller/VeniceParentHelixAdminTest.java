@@ -671,6 +671,36 @@ public class VeniceParentHelixAdminTest {
     Assert.assertTrue(schemaResponse.isError());
   }
 
+  @Test
+  public void testUpdateValueSchema() {
+    // Adding store
+    String storeName = Utils.getUniqueString("test_store");
+    String owner = "test_owner";
+    String keySchemaStr = "\"long\"";
+    String schemaStr =
+        "{\"type\":\"record\",\"name\":\"User\",\"namespace\":\"example.avro\",\"fields\":[{\"name\":\"name\",\"type\":\"string\"},{\"name\":\"kind\",\"type\":{\"type\":\"enum\",\"name\":\"Kind\",\"symbols\":[\"ONE\",\"TWO\"]}}]}";
+    String schemaStr1 =
+        "{\"type\":\"record\",\"name\":\"User\",\"namespace\":\"example.avro\",\"fields\":[{\"name\":\"name\",\"type\":\"string\"},{\"name\":\"kind\",\"type\":{\"type\":\"enum\",\"name\":\"Kind\",\"symbols\":[\"ONE\",\"FOUR\",\"THREE\"]}}]}";
+    Schema valueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schemaStr);
+    Properties properties = new Properties();
+    try (
+        VeniceControllerWrapper parentController = ServiceFactory.getVeniceController(
+            new VeniceControllerCreateOptions.Builder(venice.getClusterName(), venice.getKafka())
+                .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
+                .zkAddress(zkServerWrapper.getAddress())
+                .extraProperties(properties)
+                .build());
+        ControllerClient parentControllerClient =
+            new ControllerClient(venice.getClusterName(), parentController.getControllerUrl())) {
+      parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString());
+      int id = parentControllerClient.getValueSchemaID(storeName, valueSchema.toString()).getId();
+      SchemaResponse resp = parentControllerClient.updateValueSchema(storeName, schemaStr1, id);
+      Assert.assertFalse(resp.isError());
+      Assert.assertEquals(resp.getId(), id);
+      Assert.assertEquals(resp.getSchemaStr(), schemaStr1);
+    }
+  }
+
   private void testWriteComputeSchemaAutoGenerationFailure(ControllerClient parentControllerClient) {
     String storeName = Utils.getUniqueString("test_store");
     String owner = "test_owner";

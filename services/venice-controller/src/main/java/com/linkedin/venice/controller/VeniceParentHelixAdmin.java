@@ -2836,6 +2836,19 @@ public class VeniceParentHelixAdmin implements Admin {
     }
   }
 
+  @Override
+  public SchemaEntry updateValueSchema(String clusterName, String storeName, int id, String valueSchemaStr) {
+    acquireAdminMessageLock(clusterName, storeName);
+    SchemaEntry ret = null;
+    try {
+      LOGGER.info("Updating value schema: {} in store: {}, cluster: {}", id, storeName, clusterName);
+      ret = getVeniceHelixAdmin().updateValueSchema(clusterName, storeName, id, valueSchemaStr);
+    } finally {
+      releaseAdminMessageLock(clusterName, storeName);
+    }
+    return ret;
+  }
+
   private SchemaEntry addValueAndSupersetSchemaEntries(
       String clusterName,
       String storeName,

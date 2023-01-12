@@ -346,6 +346,21 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
     return newValueSchemaEntry;
   }
 
+  @Override
+  public synchronized SchemaEntry updateValueSchema(String storeName, String schemaStr, int schemaId) {
+    SchemaEntry ret = null;
+    if (accessor.existsValueSchema(storeName, Integer.toString(schemaId))) {
+      SchemaEntry newSchemaEntry = new SchemaEntry(schemaId, schemaStr);
+      ret = accessor.updateValueSchema(storeName, newSchemaEntry, Integer.toString(schemaId));
+    } else {
+      throw new VeniceException("Rejecting attempt to update non-existing schema.");
+    }
+    if (ret == null) {
+      throw new VeniceException("Returned NULL rip");
+    }
+    return ret;
+  }
+
   /**
    * Check if the incoming schema is a valid schema and return the next available schema ID.
    *

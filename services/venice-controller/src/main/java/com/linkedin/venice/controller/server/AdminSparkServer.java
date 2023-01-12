@@ -97,6 +97,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOP
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOPIC_RETENTION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_STORAGE_PERSONA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_STORE;
+import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_VALUE_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPLOAD_PUSH_JOB_STATUS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.WIPE_CLUSTER;
 
@@ -351,6 +352,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.post(ADD_VALUE_SCHEMA.getPath(), schemaRoutes.addValueSchema(admin));
     httpService.post(ADD_DERIVED_SCHEMA.getPath(), schemaRoutes.addDerivedSchema(admin));
     httpService.get(GET_VALUE_SCHEMA.getPath(), schemaRoutes.getValueSchema(admin));
+    httpService.post(UPDATE_VALUE_SCHEMA.getPath(), schemaRoutes.updateValueSchema(admin));
     httpService.post(GET_VALUE_SCHEMA_ID.getPath(), schemaRoutes.getValueSchemaID(admin));
     httpService.post(GET_VALUE_OR_DERIVED_SCHEMA_ID.getPath(), schemaRoutes.getDerivedSchemaID(admin));
     httpService.get(GET_ALL_VALUE_SCHEMA.getPath(), schemaRoutes.getAllValueSchema(admin));

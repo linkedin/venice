@@ -286,6 +286,8 @@ public interface Admin extends AutoCloseable, Closeable {
 
   SchemaEntry getValueSchema(String clusterName, String storeName, int id);
 
+  SchemaEntry updateValueSchema(String clusterName, String storeName, int schemaId, String newSchemaString);
+
   SchemaEntry addValueSchema(
       String clusterName,
       String storeName,

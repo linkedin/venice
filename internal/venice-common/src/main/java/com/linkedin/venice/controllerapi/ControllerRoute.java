@@ -158,6 +158,7 @@ public enum ControllerRoute {
 
   GET_KEY_SCHEMA("/get_key_schema", HttpMethod.GET, Collections.singletonList(NAME)),
   ADD_VALUE_SCHEMA("/add_value_schema", HttpMethod.POST, Arrays.asList(NAME, VALUE_SCHEMA), SCHEMA_ID),
+  UPDATE_VALUE_SCHEMA("/update_value_schema", HttpMethod.POST, Arrays.asList(NAME, VALUE_SCHEMA)),
   ADD_DERIVED_SCHEMA(
       "/add_derived_schema", HttpMethod.POST, Arrays.asList(NAME, SCHEMA_ID, DERIVED_SCHEMA), DERIVED_SCHEMA_ID
   ), SET_OWNER("/set_owner", HttpMethod.POST, Arrays.asList(NAME, OWNER)),

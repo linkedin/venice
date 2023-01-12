@@ -88,6 +88,15 @@ public class HelixReadWriteSchemaRepositoryAdapter implements ReadWriteSchemaRep
         errorMsgForUnsupportedOperationsAgainstSystemStore(storeName, systemStoreType, "addDerivedSchema"));
   }
 
+  public SchemaEntry updateValueSchema(String storeName, String schemaStr, int id) {
+    VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
+    if (HelixReadOnlyStoreRepositoryAdapter.forwardToRegularRepository(systemStoreType)) {
+      return readWriteRegularStoreSchemaRepository.updateValueSchema(storeName, schemaStr, id);
+    }
+    throw new VeniceException(
+        errorMsgForUnsupportedOperationsAgainstSystemStore(storeName, systemStoreType, "updateValueSchema"));
+  }
+
   @Override
   public DerivedSchemaEntry addDerivedSchema(
       String storeName,

@@ -28,6 +28,12 @@ public interface ReadWriteSchemaRepository extends ReadOnlySchemaRepository {
       DirectionalSchemaCompatibilityType expectedCompatibilityType);
 
   /**
+   * Update the given store's value schema, specifying schema id to update.
+   */
+
+  SchemaEntry updateValueSchema(String storeName, String schemaStr, int id);
+
+  /**
    * Add a new value schema for the given store by specifying schema id.
    * This API is mostly intended to be used in cross-colo mode. When there
    * are multiple colos, we'd like to have consistent value id across colos,

@@ -95,6 +95,19 @@ public class HelixSchemaAccessor {
     return schemaAccessor.get(getValueSchemaPath(storeName, id), null, AccessOption.PERSISTENT);
   }
 
+  public SchemaEntry updateValueSchema(String storeName, SchemaEntry newEntry, String id) {
+    SchemaEntry ret = null;
+    if (existsValueSchema(storeName, id)) {
+      schemaAccessor.set(getValueSchemaPath(storeName, id), newEntry, AccessOption.PERSISTENT);
+      ret = getValueSchema(storeName, id);
+    }
+    return ret;
+  }
+
+  public boolean existsValueSchema(String storeName, String id) {
+    return schemaAccessor.exists(getValueSchemaPath(storeName, id), AccessOption.PERSISTENT);
+  }
+
   public List<SchemaEntry> getAllValueSchemas(String storeName) {
     return HelixUtils.getChildren(
         schemaAccessor,

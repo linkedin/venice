@@ -77,6 +77,7 @@ import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSystemStoreRepository;
 import com.linkedin.venice.helix.HelixReadWriteLiveClusterConfigRepository;
+import com.linkedin.venice.helix.HelixReadWriteSchemaRepositoryAdapter;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.HelixStoreGraveyard;
 import com.linkedin.venice.helix.Replica;
@@ -4551,6 +4552,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     ReadWriteSchemaRepository schemaRepository = getHelixVeniceClusterResources(clusterName).getSchemaRepository();
     schemaRepository.addValueSchema(storeName, valueSchemaStr, expectedCompatibilityType);
     return new SchemaEntry(schemaRepository.getValueSchemaId(storeName, valueSchemaStr), valueSchemaStr);
+  }
+
+  @Override
+  public SchemaEntry updateValueSchema(String clusterName, String storeName, int schemaId, String newSchemaString) {
+    checkControllerLeadershipFor(clusterName);
+    HelixReadWriteSchemaRepositoryAdapter schemaRepository =
+        (HelixReadWriteSchemaRepositoryAdapter) getHelixVeniceClusterResources(clusterName).getSchemaRepository();
+    schemaRepository.updateValueSchema(storeName, newSchemaString, schemaId);
+    SchemaEntry ret = schemaRepository.getValueSchema(storeName, schemaId);
+    return ret;
   }
 
   /**

@@ -436,6 +436,11 @@ public enum Command {
   CLEANUP_INSTANCE_CUSTOMIZED_STATES(
       "cleanup-instance-customized-states", "Cleanup any lingering instance level customized states",
       new Arg[] { URL, CLUSTER }
+  ),
+  UPDATE_VALUE_SCHEMA(
+      "update-value-schema",
+      "Updates the schema associated with the given schema id and store to the passed schema string.",
+      new Arg[] { STORE, VALUE_SCHEMA_ID, VALUE_SCHEMA }
   );
 
   private final String commandName;

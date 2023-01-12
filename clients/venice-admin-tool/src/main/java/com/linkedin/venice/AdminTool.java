@@ -496,6 +496,8 @@ public class AdminTool {
         case CLEANUP_INSTANCE_CUSTOMIZED_STATES:
           cleanupInstanceCustomizedStates(cmd);
           break;
+        case UPDATE_VALUE_SCHEMA:
+          updateValueSchema(cmd);
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
           for (Command c: Command.values()) {
@@ -2607,6 +2609,14 @@ public class AdminTool {
   private static void cleanupInstanceCustomizedStates(CommandLine cmd) {
     MultiStoreTopicsResponse multiStoreTopicsResponse = controllerClient.cleanupInstanceCustomizedStates();
     printObject(multiStoreTopicsResponse);
+  }
+
+  private static void updateValueSchema(CommandLine cmd) {
+    String store = getRequiredArgument(cmd, Arg.STORE);
+    String valueStr = getRequiredArgument(cmd, Arg.VALUE_SCHEMA);
+    int id = Integer.parseInt(getRequiredArgument(cmd, Arg.VALUE_SCHEMA_ID));
+
+    SchemaResponse schemaResponse = controllerClient.updateValueSchema(store, valueStr, id);
   }
 
   private static Map<String, ControllerClient> getAndCheckChildControllerClientMap(

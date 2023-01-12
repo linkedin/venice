@@ -6,15 +6,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.DERIVED_S
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SCHEMA_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VALUE_SCHEMA;
-import static com.linkedin.venice.controllerapi.ControllerRoute.ADD_DERIVED_SCHEMA;
-import static com.linkedin.venice.controllerapi.ControllerRoute.ADD_VALUE_SCHEMA;
-import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ALL_REPLICATION_METADATA_SCHEMAS;
-import static com.linkedin.venice.controllerapi.ControllerRoute.GET_ALL_VALUE_SCHEMA;
-import static com.linkedin.venice.controllerapi.ControllerRoute.GET_KEY_SCHEMA;
-import static com.linkedin.venice.controllerapi.ControllerRoute.GET_VALUE_OR_DERIVED_SCHEMA_ID;
-import static com.linkedin.venice.controllerapi.ControllerRoute.GET_VALUE_SCHEMA;
-import static com.linkedin.venice.controllerapi.ControllerRoute.GET_VALUE_SCHEMA_ID;
-import static com.linkedin.venice.controllerapi.ControllerRoute.REMOVE_DERIVED_SCHEMA;
+import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
@@ -169,6 +161,34 @@ public class SchemaRoutes extends AbstractRoute {
         responseObject.setId(derivedSchemaEntry.getValueSchemaID());
         responseObject.setDerivedSchemaId(derivedSchemaEntry.getId());
         responseObject.setSchemaStr(derivedSchemaEntry.getSchema().toString());
+      } catch (Throwable e) {
+        responseObject.setError(e);
+        AdminSparkServer.handleError(new VeniceException(e), request, response);
+      }
+      return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
+    };
+  }
+
+  public Route updateValueSchema(Admin admin) {
+    return (request, response) -> {
+      SchemaResponse responseObject = new SchemaResponse();
+      response.type(HttpConstants.JSON);
+      try {
+        AdminSparkServer.validateParams(request, UPDATE_VALUE_SCHEMA.getParams(), admin);
+        responseObject.setCluster(request.queryParams(CLUSTER));
+        responseObject.setName(request.queryParams(NAME));
+        String schemaId = request.queryParams(SCHEMA_ID);
+        SchemaEntry valueSchemaEntry = admin.updateValueSchema(
+            request.queryParams(CLUSTER),
+            request.queryParams(NAME),
+            Utils.parseIntFromString(schemaId, "schema id"),
+            request.queryParams(VALUE_SCHEMA));
+        if (valueSchemaEntry == null) {
+          throw new VeniceException(
+              "Failure updating value schema " + schemaId + " of store " + request.queryParams(NAME));
+        }
+        responseObject.setId(valueSchemaEntry.getId());
+        responseObject.setSchemaStr(valueSchemaEntry.getSchemaStr());
       } catch (Throwable e) {
         responseObject.setError(e);
         AdminSparkServer.handleError(new VeniceException(e), request, response);
