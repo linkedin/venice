@@ -3571,7 +3571,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
       } else if (partitionConsumptionState.isComplete() && partitionConsumptionState.isHybrid()) {
         // Periodically update RT offset lag cache so RT offset metrics can be kept updated after ready-to-serve state.
-        maybeUpdateRegionRTOffsetLagCacheAfterReadyToServe(partitionConsumptionState);
+        partitionConsumptionState.maybeUpdateRegionRTOffsetLagCacheAfterReadyToServe(
+            getRealTimeDataSourceKafkaAddress(partitionConsumptionState),
+            kafkaUrl -> measureRTOffsetLagForSingleRegion(kafkaUrl, partitionConsumptionState, false));
       }
     };
   }
@@ -3804,6 +3806,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return kafkaValue.leaderMetadataFooter != null && kafkaValue.leaderMetadataFooter.upstreamOffset >= 0;
   }
 
-  protected abstract void maybeUpdateRegionRTOffsetLagCacheAfterReadyToServe(
-      PartitionConsumptionState partitionConsumptionState);
+  protected abstract long measureRTOffsetLagForSingleRegion(
+      String sourceRealTimeTopicKafkaURL,
+      PartitionConsumptionState partitionConsumptionState,
+      boolean shouldLogLag);
 }

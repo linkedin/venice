@@ -3021,18 +3021,4 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   protected Lazy<VeniceWriter<byte[], byte[], byte[]>> getVeniceWriter() {
     return veniceWriter;
   }
-
-  @Override
-  protected void maybeUpdateRegionRTOffsetLagCacheAfterReadyToServe(
-      PartitionConsumptionState partitionConsumptionState) {
-    long currTimestamp = System.currentTimeMillis();
-    if ((currTimestamp - partitionConsumptionState.getLatestRTOffsetLagCacheUpdateTimestamp()) > MINUTES.toMillis(1)) {
-      for (String sourceRealTimeTopicKafkaURL: getRealTimeDataSourceKafkaAddress(partitionConsumptionState)) {
-        partitionConsumptionState.updateRegionRTOffsetLagCache(
-            sourceRealTimeTopicKafkaURL,
-            measureRTOffsetLagForSingleRegion(sourceRealTimeTopicKafkaURL, partitionConsumptionState, false));
-      }
-      partitionConsumptionState.setLatestRTOffsetLagCacheUpdateTimestamp(currTimestamp);
-    }
-  }
 }

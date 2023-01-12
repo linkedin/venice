@@ -1,5 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static java.util.concurrent.TimeUnit.*;
+
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.utils.ByteArrayKey;
 import com.linkedin.venice.kafka.protocol.GUID;
@@ -18,6 +20,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Future;
+import java.util.function.Function;
 import org.apache.avro.generic.GenericRecord;
 
 
@@ -155,9 +158,9 @@ public class PartitionConsumptionState {
    * Key: source Kafka url
    * Value: Latest upstream RT offsets of a specific source processed by drainer
    */
-  private Map<String, Long> latestProcessedUpstreamRTOffsetMap;
+  private final Map<String, Long> latestProcessedUpstreamRTOffsetMap;
 
-  private Map<String, Long> rtRegionOffsetLagCacheMap;
+  private final Map<String, Long> rtRegionOffsetLagCacheMap;
 
   private long latestRTOffsetLagCacheUpdateTimestamp = -1;
 
@@ -564,14 +567,6 @@ public class PartitionConsumptionState {
     }
   }
 
-  public void setLatestRTOffsetLagCacheUpdateTimestamp(long updateTimestamp) {
-    latestRTOffsetLagCacheUpdateTimestamp = updateTimestamp;
-  }
-
-  public long getLatestRTOffsetLagCacheUpdateTimestamp() {
-    return latestRTOffsetLagCacheUpdateTimestamp;
-  }
-
   public void updateRegionRTOffsetLagCache(String kafkaUrl, long lag) {
     rtRegionOffsetLagCacheMap.put(kafkaUrl, lag);
   }
@@ -692,5 +687,22 @@ public class PartitionConsumptionState {
 
   public void setLeaderHostId(String hostId) {
     this.leaderHostId = hostId;
+  }
+
+  /**
+   * This method will try to recalculate the offset lag for each RT topic if the cached lag value for this PCS is stale.
+   * @param sourceRealTimeTopicKafkaURLSet Kafka URL set of region realtime topic.
+   * @param lagMeasurer Lag measurement function for single region.
+   */
+  public void maybeUpdateRegionRTOffsetLagCacheAfterReadyToServe(
+      Set<String> sourceRealTimeTopicKafkaURLSet,
+      Function<String, Long> lagMeasurer) {
+    long currTimestamp = System.currentTimeMillis();
+    if ((currTimestamp - latestRTOffsetLagCacheUpdateTimestamp) > MINUTES.toMillis(1)) {
+      for (String sourceRealTimeTopicKafkaURL: sourceRealTimeTopicKafkaURLSet) {
+        updateRegionRTOffsetLagCache(sourceRealTimeTopicKafkaURL, lagMeasurer.apply(sourceRealTimeTopicKafkaURL));
+      }
+      latestRTOffsetLagCacheUpdateTimestamp = currTimestamp;
+    }
   }
 }
