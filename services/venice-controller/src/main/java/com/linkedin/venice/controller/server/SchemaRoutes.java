@@ -174,6 +174,13 @@ public class SchemaRoutes extends AbstractRoute {
       SchemaResponse responseObject = new SchemaResponse();
       response.type(HttpConstants.JSON);
       try {
+        // Only allow allowlist users to run this command
+        if (!isAllowListUser(request)) {
+          response.status(HttpStatus.SC_FORBIDDEN);
+          responseObject.setError("Only admin users are allowed to run " + request.url());
+          responseObject.setErrorType(ErrorType.BAD_REQUEST);
+          return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
+        }
         AdminSparkServer.validateParams(request, UPDATE_VALUE_SCHEMA.getParams(), admin);
         responseObject.setCluster(request.queryParams(CLUSTER));
         responseObject.setName(request.queryParams(NAME));

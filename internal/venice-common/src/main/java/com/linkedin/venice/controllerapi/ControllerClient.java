@@ -838,10 +838,7 @@ public class ControllerClient implements Closeable {
   }
 
   public SchemaResponse updateValueSchema(String storeName, String valueSchema, int schemaId) {
-    QueryParams params = newParams().add(NAME, storeName)
-        .add(CLUSTER, clusterName)
-        .add(SCHEMA_ID, schemaId)
-        .add(VALUE_SCHEMA, valueSchema);
+    QueryParams params = newParams().add(NAME, storeName).add(SCHEMA_ID, schemaId).add(VALUE_SCHEMA, valueSchema);
     return request(ControllerRoute.UPDATE_VALUE_SCHEMA, params, SchemaResponse.class);
   }
 
