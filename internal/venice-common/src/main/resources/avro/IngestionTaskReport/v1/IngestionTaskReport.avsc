@@ -22,6 +22,11 @@
       "default": true
     },
     {
+      "name": "exceptionThrown",
+      "type": "boolean",
+      "default": false
+    },
+    {
       "name": "reportType",
       "doc": "0 => Completed, 1=> Errored, 2 => Started, 3 => Restarted, 4 => Progress, 5 => EndOfPushReceived, 6 => StartOfBufferReplayReceived, 7 => StartOfIncrementalPushReceived, 8 => EndOfIncrementalPushReceived, 9 => TopicSwitchReceived",
       "type": "int"
