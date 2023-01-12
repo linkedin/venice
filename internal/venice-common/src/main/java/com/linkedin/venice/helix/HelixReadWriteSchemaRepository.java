@@ -356,7 +356,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
       throw new VeniceException("Rejecting attempt to update non-existing schema.");
     }
     if (ret == null) {
-      throw new VeniceException("Returned NULL rip");
+      throw new VeniceException("Error obtaining value schema.");
     }
     return ret;
   }
