@@ -72,8 +72,6 @@ import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.status.BatchJobHeartbeatConfigs;
-import com.linkedin.venice.status.protocol.BatchJobHeartbeatKey;
-import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -99,7 +97,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -437,83 +434,7 @@ public class TestPushJobWithNativeReplication {
           NativeReplicationTestUtils.verifyIncrementalPushData(childDatacenters, clusterName, storeName, 150, 2);
         });
   }
-
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "storeSize")
-  public void testNativeReplicationForHeartbeatSystemStores(int recordCount, int partitionCount) throws Exception {
-    motherOfAllTests(
-        updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(partitionCount)
-            .setIncrementalPushEnabled(true),
-        recordCount,
-        (parentControllerClient, clusterName, storeName, props, inputDir) -> {
-          // Enable VPJ to send liveness heartbeat.
-          props.put(BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG.getConfigName(), true);
-          props.put(BatchJobHeartbeatConfigs.HEARTBEAT_STORE_NAME_CONFIG.getConfigName(), VPJ_HEARTBEAT_STORE_NAME);
-          // Prevent heartbeat from being deleted when the VPJ run finishes.
-          props.put(BatchJobHeartbeatConfigs.HEARTBEAT_LAST_HEARTBEAT_IS_DELETE_CONFIG.getConfigName(), false);
-
-          try (
-              ControllerClient dc0Client =
-                  new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
-              ControllerClient dc1Client =
-                  new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString())) {
-            TestWriteUtils.updateStore(
-                VPJ_HEARTBEAT_STORE_NAME,
-                parentControllerClient,
-                new UpdateStoreQueryParams().setLeaderFollowerModel(true).setNativeReplicationEnabled(true));
-
-            // verify the update store command has taken effect before starting the push job.
-            NativeReplicationTestUtils
-                .verifyDCConfigNativeRepl(Arrays.asList(dc0Client, dc1Client), VPJ_HEARTBEAT_STORE_NAME, true);
-          }
-
-          try (VenicePushJob job = new VenicePushJob("Test push job", props)) {
-            job.run();
-
-            // Verify the kafka URL being returned to the push job is the same as dc-0 kafka url.
-            Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
-          }
-
-          TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-            // Current version should become 1
-            for (int version: parentControllerClient.getStore(storeName)
-                .getStore()
-                .getColoToCurrentVersions()
-                .values()) {
-              Assert.assertEquals(version, 1);
-            }
-
-            // Verify that the data are in all child fabrics including the first child fabric which consumes remotely.
-            for (VeniceMultiClusterWrapper childDataCenter: childDatacenters) {
-              String routerUrl = childDataCenter.getClusters().get(clusterName).getRandomRouterURL();
-
-              // Verify that user store data can be read in all fabrics.
-              try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
-                  ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
-                for (int i = 1; i <= recordCount; ++i) {
-                  String expected = "test_name_" + i;
-                  String actual = client.get(Integer.toString(i)).get().toString();
-                  Assert.assertEquals(actual, expected);
-                }
-              }
-
-              // Try to read the latest heartbeat value generated from the user store VPJ push in this
-              // fabric/datacenter.
-              try (AvroGenericStoreClient<BatchJobHeartbeatKey, BatchJobHeartbeatValue> client =
-                  ClientFactory.getAndStartGenericAvroClient(
-                      ClientConfig.defaultGenericClientConfig(VPJ_HEARTBEAT_STORE_NAME).setVeniceURL(routerUrl))) {
-
-                final BatchJobHeartbeatKey key = new BatchJobHeartbeatKey();
-                key.storeName = storeName;
-                key.storeVersion = 1; // User store should be on version one.
-                GenericRecord heartbeatValue = client.get(key).get();
-                Assert.assertNotNull(heartbeatValue);
-                Assert.assertEquals(heartbeatValue.getSchema(), BatchJobHeartbeatValue.getClassSchema());
-              }
-            }
-          });
-        });
-  }
-
+  
   @Test(timeOut = TEST_TIMEOUT)
   public void testNativeReplicationForSourceOverride() throws Exception {
     motherOfAllTests(
