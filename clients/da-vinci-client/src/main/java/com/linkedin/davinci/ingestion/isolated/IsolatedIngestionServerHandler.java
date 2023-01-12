@@ -246,6 +246,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
     } catch (Exception e) {
       LOGGER.error("Encounter exception while handling ingestion command", e);
       report.isPositive = false;
+      report.exceptionThrown = true;
       report.message = e.getClass().getSimpleName() + "_"
           + ExceptionUtils.compactExceptionDescription(e, "handleIngestionTaskCommand");
     }
