@@ -76,7 +76,8 @@ public class VeniceControllerService extends AbstractVeniceService {
           ? Optional.of(
               getSchemaReader(
                   ClientConfig.cloneConfig(routerClientConfig.get())
-                      .setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName())))
+                      .setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName()),
+                  null))
           : Optional.empty();
     } catch (Exception e) {
       LOGGER.error("Exception in initializing KME schema reader", e);

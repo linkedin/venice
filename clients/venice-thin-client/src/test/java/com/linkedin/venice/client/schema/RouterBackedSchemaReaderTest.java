@@ -247,7 +247,8 @@ public class RouterBackedSchemaReaderTest {
     try (SchemaReader schemaReader = new RouterBackedSchemaReader(
         () -> clientMock,
         Optional.empty(),
-        Optional.of(schema -> schema.toString().equals(valueSchemaStr1)))) {
+        Optional.of(schema -> schema.toString().equals(valueSchemaStr1)),
+        null)) {
       Assert.assertEquals(schemaReader.getValueSchema(valueSchemaId1).toString(), valueSchemaStr1);
       Assert.assertEquals(schemaReader.getValueSchema(valueSchemaId2).toString(), valueSchemaStr2);
       Assert.assertEquals(schemaReader.getLatestValueSchema().toString(), valueSchemaStr1);
@@ -256,7 +257,7 @@ public class RouterBackedSchemaReaderTest {
     }
 
     try (SchemaReader schemaReader =
-        new RouterBackedSchemaReader(() -> clientMock, Optional.empty(), Optional.empty())) {
+        new RouterBackedSchemaReader(() -> clientMock, Optional.empty(), Optional.empty(), null)) {
       Assert.assertEquals(schemaReader.getValueSchema(valueSchemaId1).toString(), valueSchemaStr1);
       Assert.assertEquals(schemaReader.getValueSchema(valueSchemaId2).toString(), valueSchemaStr2);
       Assert.assertEquals(schemaReader.getLatestValueSchema().toString(), valueSchemaStr2);
