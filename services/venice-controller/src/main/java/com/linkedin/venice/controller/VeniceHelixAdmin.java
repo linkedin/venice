@@ -1564,6 +1564,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if (store == null) {
       throwStoreDoesNotExist(clusterName, storeName);
     }
+    if (VeniceSystemStoreUtils.isUserSystemStore(storeName)) {
+      /**
+       * For system stores, such as meta system store/DaVinci push status system store, they
+       * can be managed separately from the corresponding user stores.
+       */
+      return;
+    }
     if (store.isEnableReads() || store.isEnableWrites()) {
       String errorMsg = "Unable to delete the entire store or versions for store: " + storeName
           + ". Store has not been disabled. Both read and write need to be disabled before deleting.";
