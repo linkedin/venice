@@ -50,12 +50,14 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COM
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REWIND_TIME_IN_SECONDS;
+import static org.apache.avro.Schema.Type.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.acl.DynamicAccessController;
@@ -2617,7 +2619,9 @@ public class VeniceParentHelixAdmin implements Admin {
       } catch (VeniceException e) {
         // Allow write compute schema error in all schema except the latest value schema
         if (valueSchemaEntry.getId() == maxId) {
-          throw new VeniceException("Cannot generate update schema for value schema" + valueSchemaEntry);
+          throw new VeniceException(
+              "Cannot generate update schema for value schema, schema missing defaults." + valueSchemaEntry,
+              e);
         }
       }
       if (writeComputeSchema != null) {
@@ -2743,6 +2747,20 @@ public class VeniceParentHelixAdmin implements Admin {
     return getVeniceHelixAdmin().getValueSchema(clusterName, storeName, id);
   }
 
+  private void validateValueRecordSchema(Schema valueRecordSchema) {
+    Validate.notNull(valueRecordSchema);
+    if (valueRecordSchema.getType() != RECORD) {
+      return;
+    }
+    for (Schema.Field field: valueRecordSchema.getFields()) {
+      if (!AvroCompatibilityHelper.fieldHasDefault(field)) {
+        throw new IllegalArgumentException(
+            "Schema must have default in each top-level field. schema: " + valueRecordSchema + " field: "
+                + field.name());
+      }
+    }
+  }
+
   /**
    * Add a new value schema for the given store with all specified properties by sending a
    * {@link AdminMessageType#VALUE_SCHEMA_CREATION VALUE_SCHEMA_CREATION} admin message.
@@ -2756,6 +2774,8 @@ public class VeniceParentHelixAdmin implements Admin {
       DirectionalSchemaCompatibilityType expectedCompatibilityType) {
     acquireAdminMessageLock(clusterName, storeName);
     try {
+      Schema newValueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(newValueSchemaStr);
+      validateValueRecordSchema(newValueSchema);
       final int newValueSchemaId = getVeniceHelixAdmin().checkPreConditionForAddValueSchemaAndGetNewSchemaId(
           clusterName,
           storeName,
@@ -2777,7 +2797,6 @@ public class VeniceParentHelixAdmin implements Admin {
 
       final boolean doUpdateSupersetSchemaID;
       if (existingValueSchema != null && (store.isReadComputationEnabled() || store.isWriteComputationEnabled())) {
-        Schema newValueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(newValueSchemaStr);
         Schema newSuperSetSchema = AvroSupersetSchemaUtils.generateSuperSetSchema(existingValueSchema, newValueSchema);
         String newSuperSetSchemaStr = newSuperSetSchema.toString();
 
