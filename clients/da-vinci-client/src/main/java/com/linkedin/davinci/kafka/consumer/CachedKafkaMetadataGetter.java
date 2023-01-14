@@ -83,13 +83,13 @@ class CachedKafkaMetadataGetter {
    * @param <T> type of the metadata
    * @return the cache value or the fresh metadata from Kafka
    */
-  private <T> T fetchMetadata(
+  <T> T fetchMetadata(
       KafkaMetadataCacheKey key,
       Map<KafkaMetadataCacheKey, ValueAndExpiryTime<T>> metadataCache,
       Supplier<T> valueSupplier) {
     final long now = System.nanoTime();
 
-    ValueAndExpiryTime<T> cachedValue = metadataCache.get(key);
+    final ValueAndExpiryTime<T> cachedValue = metadataCache.get(key);
     /**
      * The first entry of the pair is the expired time of this metadata; if the expired time is bigger than the current time,
      * reuse the cached value.
@@ -100,28 +100,44 @@ class CachedKafkaMetadataGetter {
 
     if (cachedValue == null) {
       T newValue = valueSupplier.get();
-      cachedValue = new ValueAndExpiryTime<>(newValue, now + ttlNs);
-      metadataCache.put(key, cachedValue);
+      metadataCache.put(key, new ValueAndExpiryTime<>(newValue, now + ttlNs));
       return newValue;
+    }
+
+    // TopicNotExistException is caught and thrown to upstream caller.
+    if (cachedValue.exception != null) {
+      TopicDoesNotExistException ex = cachedValue.exception;
+      cachedValue.exception = null;
+      throw ex;
     }
 
     // Update the value in the async fashion, for a given key and cache, we will only issue one async request at the
     // same time.
     if (cachedValue.valueUpdateInProgress.compareAndSet(false, true)) {
       CompletableFuture.runAsync(() -> {
-        T newValue = valueSupplier.get();
-        metadataCache.put(key, new ValueAndExpiryTime<>(newValue, System.nanoTime() + ttlNs));
+        try {
+          T newValue = valueSupplier.get();
+          metadataCache.put(key, new ValueAndExpiryTime<>(newValue, System.nanoTime() + ttlNs));
+        } catch (TopicDoesNotExistException ex) {
+          cachedValue.exception = ex;
+          cachedValue.expiryTimeNs = System.nanoTime() + ttlNs;
+          // In case of exception, reset the status and future call to fetch the metric will retry the async update of
+          // value.
+          cachedValue.valueUpdateInProgress.set(false);
+        } catch (Exception e) {
+          cachedValue.valueUpdateInProgress.set(false);
+        }
       });
     }
     return cachedValue.getValue();
   }
 
-  private static class KafkaMetadataCacheKey {
+  static class KafkaMetadataCacheKey {
     private final String kafkaServer;
     private final String topicName;
     private final int partitionId;
 
-    private KafkaMetadataCacheKey(String kafkaServer, String topicName, int partitionId) {
+    KafkaMetadataCacheKey(String kafkaServer, String topicName, int partitionId) {
       this.kafkaServer = kafkaServer;
       this.topicName = topicName;
       this.partitionId = partitionId;
@@ -156,13 +172,14 @@ class CachedKafkaMetadataGetter {
    *
    * @param <T> Type of the value.
    */
-  private static class ValueAndExpiryTime<T> {
+  static class ValueAndExpiryTime<T> {
     private final T value;
-    private final long expiryTimeNs;
+    private long expiryTimeNs;
 
     private final AtomicBoolean valueUpdateInProgress = new AtomicBoolean(false);
+    private TopicDoesNotExistException exception = null;
 
-    private ValueAndExpiryTime(T value, long expiryTimeNs) {
+    ValueAndExpiryTime(T value, long expiryTimeNs) {
       this.value = value;
       this.expiryTimeNs = expiryTimeNs;
     }
