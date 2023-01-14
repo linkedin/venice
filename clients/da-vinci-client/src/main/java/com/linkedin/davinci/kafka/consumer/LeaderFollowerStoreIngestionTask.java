@@ -2621,8 +2621,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         LeaderProducedRecordContext leaderProducedRecordContext =
             LeaderProducedRecordContext.newPutRecord(kafkaClusterId, consumerRecord.offset(), keyBytes, put);
 
-        // write to views
-
         produceToLocalKafka(
             consumerRecord,
             partitionConsumptionState,
@@ -2685,8 +2683,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         }
         leaderProducedRecordContext =
             LeaderProducedRecordContext.newDeleteRecord(kafkaClusterId, consumerRecord.offset(), keyBytes, null);
-
-        // write to view
 
         produceToLocalKafka(
             consumerRecord,
