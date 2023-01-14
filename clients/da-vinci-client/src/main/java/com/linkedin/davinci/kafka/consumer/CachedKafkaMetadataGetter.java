@@ -88,27 +88,21 @@ class CachedKafkaMetadataGetter {
       Map<KafkaMetadataCacheKey, ValueAndExpiryTime<T>> metadataCache,
       Supplier<T> valueSupplier) {
     final long now = System.nanoTime();
-
     final ValueAndExpiryTime<T> cachedValue = metadataCache.get(key);
-    /**
-     * The first entry of the pair is the expired time of this metadata; if the expired time is bigger than the current time,
-     * reuse the cached value.
-     */
-    if (cachedValue != null && cachedValue.getExpiryTimeNs() > now) {
-      return cachedValue.getValue();
-    }
 
+    // If there is no value cached before, trigger refresh to fill the cache and return.
     if (cachedValue == null) {
       T newValue = valueSupplier.get();
       metadataCache.put(key, new ValueAndExpiryTime<>(newValue, now + ttlNs));
       return newValue;
     }
 
-    // TopicNotExistException is caught and thrown to upstream caller.
-    if (cachedValue.exception != null) {
-      TopicDoesNotExistException ex = cachedValue.exception;
-      cachedValue.exception = null;
-      throw ex;
+    /**
+     * The first entry of the pair is the expired time of this metadata; if the expired time is bigger than the current time,
+     * reuse the cached value.
+     */
+    if (cachedValue.getExpiryTimeNs() > now) {
+      return cachedValue.getValue();
     }
 
     // Update the value in the async fashion, for a given key and cache, we will only issue one async request at the
@@ -119,15 +113,20 @@ class CachedKafkaMetadataGetter {
           T newValue = valueSupplier.get();
           metadataCache.put(key, new ValueAndExpiryTime<>(newValue, System.nanoTime() + ttlNs));
         } catch (TopicDoesNotExistException ex) {
+          // Record TopicDoesNotExistException here, and it will be thrown and handled by upstream caller.
           cachedValue.exception = ex;
           cachedValue.expiryTimeNs = System.nanoTime() + ttlNs;
-          // In case of exception, reset the status and future call to fetch the metric will retry the async update of
-          // value.
           cachedValue.valueUpdateInProgress.set(false);
         } catch (Exception e) {
+          cachedValue.exception = null;
+          cachedValue.expiryTimeNs = System.nanoTime() + ttlNs;
           cachedValue.valueUpdateInProgress.set(false);
         }
       });
+    }
+    // TopicNotExistException is caught and thrown to upstream caller.
+    if (cachedValue.exception != null) {
+      throw cachedValue.exception;
     }
     return cachedValue.getValue();
   }
@@ -190,6 +189,10 @@ class CachedKafkaMetadataGetter {
 
     long getExpiryTimeNs() {
       return expiryTimeNs;
+    }
+
+    TopicDoesNotExistException getException() {
+      return exception;
     }
   }
 }

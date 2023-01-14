@@ -39,15 +39,16 @@ public class CachedKafkaMetadataGetterTest {
 
     // TopicDoesNotExistException flag is cleaned up and other types of exception won't be thrown.
     long initialExpiredTime = offsetCache.get(key).getExpiryTimeNs();
-    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, false, true, () -> {
       Long actualResult = cachedKafkaMetadataGetter.fetchMetadata(key, offsetCache, () -> {
         throw new VeniceException("do not throw this exception!");
       });
       Long expectedResult = 2L;
-      Assert.assertEquals(expectedResult, actualResult);
+      Assert.assertEquals(actualResult, expectedResult);
+      Assert.assertNull(offsetCache.get(key).getException());
     });
-    // Value is not updated at all.
-    Assert.assertEquals(offsetCache.get(key).getExpiryTimeNs(), initialExpiredTime);
+    // Value is not updated at all, but tts is refreshed.
+    Assert.assertNotEquals(offsetCache.get(key).getExpiryTimeNs(), initialExpiredTime);
 
     // Successful call will update the value from 2 to 3.
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
