@@ -91,6 +91,29 @@ public class ChunkingUtils {
         false);
   }
 
+  static <VALUE, ASSEMBLED_VALUE_CONTAINER> VALUE getReplicationMetadataFromStorage(
+      ChunkingAdapter<ASSEMBLED_VALUE_CONTAINER, VALUE> adapter,
+      AbstractStorageEngine store,
+      int partition,
+      ByteBuffer keyBuffer,
+      ReadResponse response) {
+    return getFromStorage(
+        adapter,
+        store,
+        -1,
+        partition,
+        keyBuffer,
+        response,
+        null,
+        null,
+        null,
+        false,
+        null,
+        null,
+        null,
+        true);
+  }
+
   static <VALUE, CHUNKS_CONTAINER> VALUE getFromStorage(
       ChunkingAdapter<CHUNKS_CONTAINER, VALUE> adapter,
       AbstractStorageEngine store,
@@ -106,7 +129,7 @@ public class ChunkingUtils {
       String storeName,
       VeniceCompressor compressor) {
     long databaseLookupStartTimeInNS = (response != null) ? System.nanoTime() : 0;
-    reusedRawValue = store.get(partition, keyBuffer, reusedRawValue, false);
+    reusedRawValue = store.get(partition, keyBuffer, reusedRawValue);
     if (reusedRawValue == null) {
       return null;
     }
@@ -225,9 +248,10 @@ public class ChunkingUtils {
       ReadOnlySchemaRepository schemaRepo,
       String storeName,
       VeniceCompressor compressor,
-      boolean skipCache) {
+      boolean isRmdValue) {
     long databaseLookupStartTimeInNS = (response != null) ? System.nanoTime() : 0;
-    byte[] value = store.get(partition, keyBuffer, skipCache);
+    byte[] value =
+        isRmdValue ? store.getReplicationMetadata(partition, keyBuffer.array()) : store.get(partition, keyBuffer);
 
     return getFromStorage(
         value,
@@ -245,7 +269,7 @@ public class ChunkingUtils {
         schemaRepo,
         storeName,
         compressor,
-        skipCache);
+        isRmdValue);
   }
 
   /**
@@ -277,7 +301,7 @@ public class ChunkingUtils {
       ReadOnlySchemaRepository schemaRepo,
       String storeName,
       VeniceCompressor compressor,
-      boolean skipCache) {
+      boolean isRmdValue) {
 
     if (value == null) {
       return null;
@@ -290,7 +314,6 @@ public class ChunkingUtils {
       if (response != null) {
         response.addDatabaseLookupLatency(LatencyUtils.getLatencyInMS(databaseLookupStartTimeInNS));
       }
-
       return adapter.constructValue(
           writerSchemaId,
           readerSchemaId,
@@ -320,8 +343,9 @@ public class ChunkingUtils {
       // optimize large value retrieval in the future, it's unclear whether the concurrent retrieval approach
       // is optimal (as opposed to streaming the response out incrementally, for example). Since this is a
       // premature optimization, we are not addressing it right now.
+      byte[] chunkKey = chunkedValueManifest.keysWithChunkIdSuffix.get(chunkIndex).array();
       byte[] valueChunk =
-          store.get(partition, chunkedValueManifest.keysWithChunkIdSuffix.get(chunkIndex).array(), skipCache);
+          isRmdValue ? store.getReplicationMetadata(partition, chunkKey) : store.get(partition, chunkKey);
 
       if (valueChunk == null) {
         throw new VeniceException("Chunk not found in " + getExceptionMessageDetails(store, partition, chunkIndex));

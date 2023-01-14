@@ -1,9 +1,8 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
-import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
-import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
-import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithUserSchema;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
+import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUserSchema;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.common.VeniceSystemStoreType;
@@ -18,6 +17,7 @@ import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiCluster
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -111,7 +111,7 @@ public class TestStaleDataVisibility {
         parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
 
     // create a store via parent controller url
-    Properties props = defaultVPJProps(parentControllerUrls, inputDirPath, storeName);
+    Properties props = TestWriteUtils.defaultVPJProps(parentControllerUrls, inputDirPath, storeName);
     createStoreForJob(clusterName, recordSchema, props).close();
     try (ControllerClient controllerClient = new ControllerClient(clusterName, parentControllerUrls)) {
       String pushStatusStoreVersionName =
@@ -137,7 +137,7 @@ public class TestStaleDataVisibility {
 
       // get single child controller, empty push to it
       VeniceControllerWrapper childController = childControllers.get(0).get(0);
-      Properties props2 = defaultVPJProps(childController.getControllerUrl(), inputDirPath, storeName);
+      Properties props2 = TestWriteUtils.defaultVPJProps(childController.getControllerUrl(), inputDirPath, storeName);
       try (VenicePushJob job = new VenicePushJob("Test push job", props2)) {
         job.run();
       }

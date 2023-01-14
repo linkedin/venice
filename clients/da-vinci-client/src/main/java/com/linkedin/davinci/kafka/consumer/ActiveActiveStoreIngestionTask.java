@@ -13,7 +13,9 @@ import com.linkedin.davinci.replication.merge.RmdSerDe;
 import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.storage.chunking.ChunkingUtils;
 import com.linkedin.davinci.storage.chunking.RawBytesChunkingAdapter;
+import com.linkedin.davinci.storage.chunking.SingleGetChunkingAdapter;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
+import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.davinci.utils.ByteArrayKey;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -55,7 +57,6 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BooleanSupplier;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.producer.Callback;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -164,14 +165,21 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   protected void putInStorageEngine(int partition, byte[] keyBytes, Put put) {
     try {
       // TODO: Honor BatchConflictResolutionPolicy and maybe persist RMD for batch push records.
-      switch (getStorageOperationType(partition, put.putValue, put.replicationMetadataPayload)) {
+      StorageOperationType storageOperationType =
+          getStorageOperationType(partition, put.putValue, put.replicationMetadataPayload);
+      switch (storageOperationType) {
         case VALUE_AND_RMD:
-          byte[] metadataBytesWithValueSchemaId =
-              prependReplicationMetadataBytesWithValueSchemaId(put.replicationMetadataPayload, put.schemaId);
-          storageEngine.putWithReplicationMetadata(partition, keyBytes, put.putValue, metadataBytesWithValueSchemaId);
+          storageEngine.putWithReplicationMetadata(
+              partition,
+              keyBytes,
+              put.putValue,
+              prependReplicationMetadataBytesWithValueSchemaId(put.replicationMetadataPayload, put.schemaId));
           break;
-        case RMD:
-          storageEngine.putReplicationMetadata(partition, keyBytes, put.replicationMetadataPayload.array());
+        case RMD_CHUNK:
+          storageEngine.putReplicationMetadata(
+              partition,
+              keyBytes,
+              prependReplicationMetadataBytesWithValueSchemaId(put.replicationMetadataPayload, put.schemaId));
           break;
         case VALUE:
           storageEngine.put(partition, keyBytes, put.putValue);
@@ -208,19 +216,27 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       logStorageOperationWhileUnsubscribed(partition);
       return StorageOperationType.NONE;
     }
-    if (valuePayload != null && valuePayload.remaining() == 0 && rmdPayload.remaining() != 0) {
-      return StorageOperationType.RMD;
+    if (isDaVinciClient) {
+      return StorageOperationType.VALUE;
     }
-    if ((pcs.isEndOfPushReceived() || rmdPayload.remaining() != 0) && !isDaVinciClient) {
-      return StorageOperationType.VALUE_AND_RMD;
+    if (rmdPayload == null) {
+      throw new IllegalArgumentException("Replication metadata payload not found.");
     }
-    return StorageOperationType.VALUE;
+    if (pcs.isEndOfPushReceived() || rmdPayload.remaining() > 0) {
+      // value payload == null means it is a DELETE request, while value payload size > 0 means it is a PUT request.
+      if (valuePayload == null || valuePayload.remaining() > 0) {
+        return StorageOperationType.VALUE_AND_RMD;
+      }
+      return StorageOperationType.RMD_CHUNK;
+    } else {
+      return StorageOperationType.VALUE;
+    }
   }
 
   private enum StorageOperationType {
     VALUE_AND_RMD, // Operate on value associated with RMD
     VALUE, // Operate on full or chunked value
-    RMD, // Operate on chunked RMD
+    RMD_CHUNK, // Operate on chunked RMD
     NONE
   }
 
@@ -243,28 +259,36 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    * @param subPartition The partition to fetch the replication metadata from storage engine
    * @return The object containing RMD and value schema id. If nothing is found, return {@code Optional.empty()}
    */
-  private Optional<RmdWithValueSchemaId> getReplicationMetadataAndSchemaId(
+  Optional<RmdWithValueSchemaId> getReplicationMetadataAndSchemaId(
       PartitionConsumptionState partitionConsumptionState,
       byte[] key,
       int subPartition) {
     PartitionConsumptionState.TransientRecord cachedRecord = partitionConsumptionState.getTransientRecord(key);
     if (cachedRecord != null) {
-      hostLevelIngestionStats.recordIngestionReplicationMetadataCacheHitCount();
+      getHostLevelIngestionStats().recordIngestionReplicationMetadataCacheHitCount();
       return Optional.of(
           new RmdWithValueSchemaId(
               cachedRecord.getValueSchemaId(),
-              rmdProtocolVersionID,
+              getRmdProtocolVersionID(),
               cachedRecord.getReplicationMetadataRecord()));
     }
-
-    final long lookupStartTimeInNS = System.nanoTime();
-    byte[] replicationMetadataWithValueSchemaBytes = storageEngine.getReplicationMetadata(subPartition, key);
-    hostLevelIngestionStats
-        .recordIngestionReplicationMetadataLookUpLatency(LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
+    byte[] replicationMetadataWithValueSchemaBytes = getRmdWithValueSchemaByteBufferFromStorage(subPartition, key);
     if (replicationMetadataWithValueSchemaBytes == null) {
       return Optional.empty(); // No RMD for this key
     }
     return Optional.of(rmdSerDe.deserializeValueSchemaIdPrependedRmdBytes(replicationMetadataWithValueSchemaBytes));
+  }
+
+  byte[] getRmdWithValueSchemaByteBufferFromStorage(int subPartition, byte[] key) {
+    final long lookupStartTimeInNS = System.nanoTime();
+    ValueRecord result =
+        SingleGetChunkingAdapter.getReplicationMetadata(getStorageEngine(), subPartition, key, isChunked(), null);
+    getHostLevelIngestionStats()
+        .recordIngestionReplicationMetadataLookUpLatency(LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
+    if (result == null) {
+      return null;
+    }
+    return result.serialize();
   }
 
   // This function may modify the original record in KME and it is unsafe to use the payload from KME directly after
@@ -475,8 +499,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
    * is that the {@link PartitionConsumptionState.TransientRecord} only contains the full value.
    * @param partitionConsumptionState The {@link PartitionConsumptionState} of the current partition
    * @param key The key bytes of the incoming record.
-   * @param topic The topic from which the incomign record was consumed
-   * @param partition The Kafka partition from which the incomign record was consumed
+   * @param topic The topic from which the incoming record was consumed
+   * @param partition The Kafka partition from which the incoming record was consumed
    * @return
    */
   private ByteBuffer getValueBytesForKey(
@@ -502,8 +526,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           serverConfig.isComputeFastAvroEnabled(),
           schemaRepository,
           storeName,
-          compressor.get(),
-          false);
+          compressor.get());
       hostLevelIngestionStats.recordIngestionValueBytesLookUpLatency(LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
     } else {
       hostLevelIngestionStats.recordIngestionValueBytesCacheHitCount();
@@ -559,7 +582,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       deletePayload.schemaId = valueSchemaId;
       deletePayload.replicationMetadataVersionId = rmdProtocolVersionID;
       deletePayload.replicationMetadataPayload = updatedRmdBytes;
-
       ProduceToTopic produceToTopicFunction = (callback, sourceTopicOffset) -> veniceWriter.get()
           .delete(
               key,
@@ -602,29 +624,12 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         // used to persist on disk after producing to Kafka.
         updatedKeyBytes = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(key);
       }
-      ProduceToTopic produceToTopicFunction = (callback, sourceTopicOffset) -> {
-        final Callback newCallback = (recordMetadata, exception) -> {
-          if (mergeConflictResult.doesResultReuseInput()) {
-            // Restore the original header so this function is eventually idempotent as the original KME ByteBuffer
-            // will be recovered after producing the message to Kafka or if the production failing.
-            ByteUtils.prependIntHeaderToByteBuffer(
-                updatedValueBytes,
-                ByteUtils.getIntHeaderFromByteBuffer(updatedValueBytes),
-                true);
-          }
-          callback.onCompletion(recordMetadata, exception);
-        };
-        return veniceWriter.get()
-            .put(
-                key,
-                ByteUtils.extractByteArray(updatedValueBytes),
-                valueSchemaId,
-                newCallback,
-                sourceTopicOffset,
-                VeniceWriter.APP_DEFAULT_LOGICAL_TS,
-                Optional.ofNullable(new PutMetadata(rmdProtocolVersionID, updatedRmdBytes)));
-      };
-
+      ProduceToTopic produceToTopicFunction = getProduceToTopicFunction(
+          key,
+          updatedValueBytes,
+          updatedRmdBytes,
+          valueSchemaId,
+          mergeConflictResult.doesResultReuseInput());
       produceToLocalKafka(
           consumerRecord,
           partitionConsumptionState,
@@ -964,37 +969,12 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   }
 
   @Override
-  protected void updateOffsetMetadataInOffsetRecord(
-      PartitionConsumptionState partitionConsumptionState,
-      OffsetRecord offsetRecord,
-      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-      LeaderProducedRecordContext leaderProducedRecordContext,
-      String kafkaUrl) {
-    updateOffsets(
-        partitionConsumptionState,
-        consumerRecord,
-        leaderProducedRecordContext,
-        offsetRecord::setCheckpointLocalVersionTopicOffset,
-        (sourceKafkaUrl, upstreamTopicName, upstreamTopicOffset) -> {
-          if (Version.isRealTimeTopic(upstreamTopicName)) {
-            offsetRecord.setLeaderUpstreamOffset(sourceKafkaUrl, upstreamTopicOffset);
-          } else {
-            offsetRecord.setCheckpointUpstreamVersionTopicOffset(upstreamTopicOffset);
-          }
-        },
-        (sourceKafkaUrl, upstreamTopicName) -> Version.isRealTimeTopic(upstreamTopicName)
-            ? offsetRecord.getUpstreamOffset(sourceKafkaUrl)
-            : offsetRecord.getCheckpointUpstreamVersionTopicOffset(),
-        () -> getUpstreamKafkaUrl(partitionConsumptionState, consumerRecord, kafkaUrl));
-  }
-
-  @Override
   protected void updateLatestInMemoryProcessedOffset(
       PartitionConsumptionState partitionConsumptionState,
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
       LeaderProducedRecordContext leaderProducedRecordContext,
       String kafkaUrl) {
-    updateOffsets(
+    updateOffsetsFromConsumerRecord(
         partitionConsumptionState,
         consumerRecord,
         leaderProducedRecordContext,
@@ -1301,5 +1281,54 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           sourceTopicPartition,
           upstreamOffset);
     };
+  }
+
+  int getRmdProtocolVersionID() {
+    return rmdProtocolVersionID;
+  }
+
+  protected ProduceToTopic getProduceToTopicFunction(
+      byte[] key,
+      ByteBuffer updatedValueBytes,
+      ByteBuffer updatedRmdBytes,
+      int valueSchemaId,
+      boolean resultReuseInput) {
+    return (callback, leaderMetadataWrapper) -> {
+      if (resultReuseInput) {
+        // Restore the original header so this function is eventually idempotent as the original KME ByteBuffer
+        // will be recovered after producing the message to Kafka or if the production failing.
+        ((ActiveActiveProducerCallback) callback).setOnCompletionFunction(
+            () -> ByteUtils.prependIntHeaderToByteBuffer(
+                updatedValueBytes,
+                ByteUtils.getIntHeaderFromByteBuffer(updatedValueBytes),
+                true));
+      }
+      return getVeniceWriter().get()
+          .put(
+              key,
+              ByteUtils.extractByteArray(updatedValueBytes),
+              valueSchemaId,
+              callback,
+              leaderMetadataWrapper,
+              VeniceWriter.APP_DEFAULT_LOGICAL_TS,
+              new PutMetadata(getRmdProtocolVersionID(), updatedRmdBytes));
+    };
+  }
+
+  protected LeaderProducerCallback createProducerCallback(
+      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      PartitionConsumptionState partitionConsumptionState,
+      LeaderProducedRecordContext leaderProducedRecordContext,
+      int subPartition,
+      String kafkaUrl,
+      long beforeProcessingRecordTimestamp) {
+    return new ActiveActiveProducerCallback(
+        this,
+        consumerRecord,
+        partitionConsumptionState,
+        leaderProducedRecordContext,
+        subPartition,
+        kafkaUrl,
+        beforeProcessingRecordTimestamp);
   }
 }

@@ -1,6 +1,7 @@
 package com.linkedin.davinci.ingestion.main;
 
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_REQUEST_TIMEOUT_SECONDS;
 import static java.lang.Thread.currentThread;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
@@ -74,6 +75,7 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   private final VeniceConfigLoader configLoader;
   private long heartbeatTimeoutMs;
   private volatile long latestHeartbeatTimestamp = -1;
+  private final int requestTimeoutInSeconds;
 
   public MainIngestionMonitorService(
       IsolatedIngestionBackend ingestionBackend,
@@ -99,8 +101,10 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
         .option(ChannelOption.SO_REUSEADDR, true)
         .childOption(ChannelOption.TCP_NODELAY, true);
 
-    heartbeatClient = new MainIngestionRequestClient(this.sslFactory, this.servicePort);
-    metricsClient = new MainIngestionRequestClient(this.sslFactory, this.servicePort);
+    this.requestTimeoutInSeconds =
+        configLoader.getCombinedProperties().getInt(SERVER_INGESTION_ISOLATION_REQUEST_TIMEOUT_SECONDS, 120);
+    heartbeatClient = new MainIngestionRequestClient(this.sslFactory, this.servicePort, requestTimeoutInSeconds);
+    metricsClient = new MainIngestionRequestClient(this.sslFactory, this.servicePort, requestTimeoutInSeconds);
 
   }
 
@@ -249,7 +253,8 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
         "Lost connection to forked ingestion process since timestamp {}, restarting forked process.",
         latestHeartbeatTimestamp);
     heartbeatStats.recordForkedProcessRestart();
-    try (MainIngestionRequestClient client = new MainIngestionRequestClient(sslFactory, servicePort)) {
+    try (MainIngestionRequestClient client =
+        new MainIngestionRequestClient(sslFactory, servicePort, requestTimeoutInSeconds)) {
       /**
        * We need to destroy the previous isolated ingestion process first.
        * The previous isolated ingestion process might have released the port binding, but it might still taking up all
@@ -269,7 +274,8 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   }
 
   private void resumeOngoingIngestionTasks() {
-    try (MainIngestionRequestClient client = new MainIngestionRequestClient(sslFactory, servicePort)) {
+    try (MainIngestionRequestClient client =
+        new MainIngestionRequestClient(sslFactory, servicePort, requestTimeoutInSeconds)) {
       LOGGER.info("Start to recover ongoing ingestion tasks: {}", topicIngestionStatusMap);
       // Re-open metadata partitions in child process for all previously subscribed topics.
       topicIngestionStatusMap.keySet().forEach(client::openStorageEngine);

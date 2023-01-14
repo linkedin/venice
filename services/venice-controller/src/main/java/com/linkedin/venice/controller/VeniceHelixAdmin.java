@@ -44,6 +44,7 @@ import com.linkedin.venice.controller.init.SystemSchemaInitializationRoutine;
 import com.linkedin.venice.controller.kafka.StoreStatusDecider;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.ControllerKafkaClientFactory;
+import com.linkedin.venice.controller.kafka.protocol.admin.HybridStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreViewConfigRecord;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -58,7 +59,7 @@ import com.linkedin.venice.controllerapi.UpdateClusterConfigQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoragePersonaQueryParams;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionResponse;
-import com.linkedin.venice.exceptions.ConfigurationException;
+import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
 import com.linkedin.venice.exceptions.ResourceStillExistsException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -1568,6 +1569,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if (store == null) {
       throwStoreDoesNotExist(clusterName, storeName);
     }
+    if (VeniceSystemStoreUtils.isUserSystemStore(storeName)) {
+      /**
+       * For system stores, such as meta system store/DaVinci push status system store, they
+       * can be managed separately from the corresponding user stores.
+       */
+      return;
+    }
     if (store.isEnableReads() || store.isEnableWrites()) {
       String errorMsg = "Unable to delete the entire store or versions for store: " + storeName
           + ". Store has not been disabled. Both read and write need to be disabled before deleting.";
@@ -2551,11 +2559,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // during transition to version based partition count, some old stores may have partition count on the store
         // config only.
         if (partitionCount == 0) {
+          // Now store-level partition count is set when a store is converted to hybrid
           partitionCount = store.getPartitionCount();
           if (partitionCount == 0) {
-            // TODO: partitioning is currently decided on first version push, and we need to match that versioning
-            // we should evaluate alternatives such as allowing the RT topic request to initialize the number of
-            // partitions, or setting the number of partitions at store creation time instead of at first version
             if (!version.isPresent()) {
               throw new VeniceException("Store: " + storeName + " is not initialized with a version yet");
             } else {
@@ -2984,7 +2990,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * Test if a kafka topic is truncated.
+   * Check if a kafka topic is absent or truncated.
    * @see ConfigKeys#DEPRECATED_TOPIC_MAX_RETENTION_MS
    */
   @Override
@@ -3348,19 +3354,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   public void setStorePartitionCount(String clusterName, String storeName, int partitionCount) {
     VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
     storeMetadataUpdate(clusterName, storeName, store -> {
-      if (store.getPartitionCount() != partitionCount && store.isHybrid()) {
-        throw new ConfigurationException("Cannot change partition count for a hybrid store");
-      }
-
-      int maxPartitionNum = clusterConfig.getMaxNumberOfPartition();
-      if (partitionCount > maxPartitionNum) {
-        throw new ConfigurationException(
-            "Partition count: " + partitionCount + " should be less than max: " + maxPartitionNum);
-      }
-      if (partitionCount < 0) {
-        throw new ConfigurationException("Partition count: " + partitionCount + " should NOT be negative");
-      }
-
+      preCheckStorePartitionCountUpdate(clusterName, store, partitionCount);
       // Do not update the partitionCount on the store.version as version config is immutable. The
       // version.getPartitionCount()
       // is read only in getRealTimeTopic and createInternalStore creation, so modifying currentVersion should not have
@@ -3373,6 +3367,49 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       return store;
     });
+  }
+
+  void preCheckStorePartitionCountUpdate(String clusterName, Store store, int newPartitionCount) {
+    String errorMessagePrefix = "Store update error for " + store.getName() + " in cluster: " + clusterName + ": ";
+    VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
+    if (store.isHybrid() && store.getPartitionCount() != newPartitionCount) {
+      // Allow the update if partition count is not configured and the new partition count matches RT partition count
+      if (store.getPartitionCount() == 0) {
+        TopicManager topicManager;
+        if (isParent()) {
+          // RT might not exist in parent colo. Get RT partition count from a child colo.
+          String childDatacenter = Utils.parseCommaSeparatedStringToList(clusterConfig.getChildDatacenters()).get(0);
+          topicManager = getTopicManager(
+              Pair.create(
+                  multiClusterConfigs.getChildDataCenterKafkaUrlMap().get(childDatacenter),
+                  multiClusterConfigs.getChildDataCenterKafkaZkMap().get(childDatacenter)));
+        } else {
+          topicManager = getTopicManager();
+        }
+        String realTimeTopic = Version.composeRealTimeTopic(store.getName());
+        if (topicManager.containsTopic(realTimeTopic)
+            && topicManager.partitionsFor(realTimeTopic).size() == newPartitionCount) {
+          LOGGER.info("Allow updating store " + store.getName() + " partition count to " + newPartitionCount);
+          return;
+        }
+      }
+      String errorMessage = errorMessagePrefix + "Cannot change partition count for this hybrid store";
+      LOGGER.error(errorMessage);
+      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.INVALID_CONFIG);
+    }
+
+    int maxPartitionNum = clusterConfig.getMaxNumberOfPartition();
+    if (newPartitionCount > maxPartitionNum) {
+      String errorMessage =
+          errorMessagePrefix + "Partition count: " + newPartitionCount + " should be less than max: " + maxPartitionNum;
+      LOGGER.error(errorMessage);
+      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.INVALID_CONFIG);
+    }
+    if (newPartitionCount < 0) {
+      String errorMessage = errorMessagePrefix + "Partition count: " + newPartitionCount + " should NOT be negative";
+      LOGGER.error(errorMessage);
+      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.INVALID_CONFIG);
+    }
   }
 
   void setStorePartitionerConfig(String clusterName, String storeName, PartitionerConfig partitionerConfig) {
@@ -3838,13 +3875,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       newHybridStoreConfig = Optional.empty();
     }
 
-    if (incrementalPushEnabled.orElse(originalStore.isIncrementalPushEnabled())
-        && !isHybrid(newHybridStoreConfig.orElse(originalStore.getHybridStoreConfig()))) {
-      LOGGER.info(
-          "Enabling incremental push for a batch store: {} will convert it to a hybrid store with default configs.",
-          storeName);
-    }
-
     try {
       if (owner.isPresent()) {
         setStoreOwner(clusterName, storeName, owner.get());
@@ -4161,6 +4191,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
+  /**
+   * Enabling hybrid mode for incremental push store is moved into
+   * {@link VeniceParentHelixAdmin#updateStore(String, String, UpdateStoreQueryParams)}
+   * TODO: Remove the method and its usage after the deployment of parent controller updateStore change.
+   */
   private void enableHybridModeOrUpdateSettings(String clusterName, String storeName) {
     storeMetadataUpdate(clusterName, storeName, store -> {
       HybridStoreConfig hybridStoreConfig = store.getHybridStoreConfig();
@@ -6926,14 +6961,31 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return store;
   }
 
+  /**
+   * A store is not hybrid in the following two scenarios:
+   * If hybridStoreConfig is null, it means store is not hybrid.
+   * If all the hybrid config values are negative, it indicates that the store is being set back to batch-only store.
+   */
   boolean isHybrid(HybridStoreConfig hybridStoreConfig) {
-    /** A store is not hybrid in the following two scenarios:
-     * If hybridStoreConfig is null, it means store is not hybrid.
-     * If all of the hybrid config values are negative, it indicates that the store is being set back to batch-only store.
-     */
     return hybridStoreConfig != null
         && (hybridStoreConfig.getRewindTimeInSeconds() >= 0 || hybridStoreConfig.getOffsetLagThresholdToGoOnline() >= 0
             || hybridStoreConfig.getProducerTimestampLagThresholdToGoOnlineInSeconds() >= 0);
+  }
+
+  /**
+   * @see VeniceHelixAdmin#isHybrid(HybridStoreConfig)
+   */
+  boolean isHybrid(HybridStoreConfigRecord hybridStoreConfigRecord) {
+    HybridStoreConfig hybridStoreConfig = null;
+    if (hybridStoreConfigRecord != null) {
+      hybridStoreConfig = new HybridStoreConfigImpl(
+          hybridStoreConfigRecord.rewindTimeInSeconds,
+          hybridStoreConfigRecord.offsetLagThresholdToGoOnline,
+          hybridStoreConfigRecord.producerTimestampLagThresholdToGoOnlineInSeconds,
+          DataReplicationPolicy.valueOf(hybridStoreConfigRecord.dataReplicationPolicy),
+          BufferReplayPolicy.valueOf(hybridStoreConfigRecord.bufferReplayPolicy));
+    }
+    return isHybrid(hybridStoreConfig);
   }
 
   /**

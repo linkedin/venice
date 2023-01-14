@@ -14,10 +14,8 @@ import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.concurrent.Future;
-import java.util.function.BiFunction;
+import java.util.function.BiConsumer;
 import java.util.function.Supplier;
-import org.apache.kafka.clients.producer.RecordMetadata;
 
 
 /**
@@ -47,7 +45,7 @@ public class WriterChunkingHelper {
       Supplier<String> sizeReport,
       int maxSizeForUserPayloadPerMessageInBytes,
       KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer,
-      BiFunction<VeniceWriter.KeyProvider, Put, Future<RecordMetadata>> sendMessageFunction) {
+      BiConsumer<VeniceWriter.KeyProvider, Put> sendMessageFunction) {
     int sizeAvailablePerMessage = maxSizeForUserPayloadPerMessageInBytes - serializedKey.length;
     validateAvailableSizePerMessage(maxSizeForUserPayloadPerMessageInBytes, sizeAvailablePerMessage, sizeReport);
     int numberOfChunks = (int) Math.ceil((double) payload.length / (double) sizeAvailablePerMessage);
@@ -113,20 +111,12 @@ public class WriterChunkingHelper {
         putPayload.putValue = EMPTY_BYTE_BUFFER;
         putPayload.replicationMetadataPayload = chunk;
       }
-
       chunkedKeySuffix.chunkId.chunkIndex = chunkIndex;
       keyProvider = chunkIndex == 0 ? firstKeyProvider : subsequentKeyProvider;
 
       try {
-        /**
-         * Here are the reasons to do a blocking call of 'sendMessage' with 'null' callback:
-         * 1. We don't want the upper layer know the chunking logic here. Right now, if we pass the callback parameter,
-         * it will cause the job failure because the message count of sent/completed in 'VeniceReducer' won't match;
-         * 2. Blocking call could guarantee correctness;
-         * 3. Infinite blocking means the following 'sendMessage' call will follow the config of the internal Kafka Producer,
-         * such as timeout, retries and so on;
-         */
-        sendMessageFunction.apply(keyProvider, putPayload).get();
+        /** Non-blocking */
+        sendMessageFunction.accept(keyProvider, putPayload);
       } catch (Exception e) {
         throw new VeniceException(
             "Caught an exception while attempting to produce a chunk of a large value into Kafka... "

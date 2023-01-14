@@ -15,6 +15,12 @@ dependencies {
   implementation libraries.kafka
   implementation libraries.log4j2api
   implementation libraries.log4j2core
+  implementation (libraries.helix) {
+    // Helix pulls in an ancient version of the zkclient, which lacks some APIs and clashes with Kafka's dependency
+    exclude group: 'com.github.sgroschupf'
+    // Helix use zk 3.6.9, which introduce netty 3.10 and will fail our test.
+    exclude module: 'zookeeper'
+  }
 }
 
 apply from: "$rootDir/gradle/helper/publishing.gradle"
@@ -26,4 +32,8 @@ jar {
                   'Implementation-Version': project.version,
                   'Main-Class'            : 'com.linkedin.venice.AdminTool']
   }
+}
+
+ext {
+  jacocoCoverageThreshold = 0.04
 }

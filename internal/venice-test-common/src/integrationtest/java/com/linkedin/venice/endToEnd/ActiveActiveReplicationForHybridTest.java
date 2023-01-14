@@ -27,13 +27,13 @@ import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_CONTRO
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_D2_ZK_HOSTS;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PUSH_TYPE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_STORE;
-import static com.linkedin.venice.utils.TestPushUtils.STRING_SCHEMA;
-import static com.linkedin.venice.utils.TestPushUtils.sendStreamingDeleteRecord;
-import static com.linkedin.venice.utils.TestPushUtils.sendStreamingRecordWithKeyPrefix;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingDeleteRecord;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecordWithKeyPrefix;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestUtils.createAndVerifyStoreInAllRegions;
 import static com.linkedin.venice.utils.TestUtils.updateStoreToHybrid;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
+import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
@@ -572,13 +572,18 @@ public class ActiveActiveReplicationForHybridTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testAAReplicationCanResolveConflicts(boolean useLogicalTimestamp) {
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testAAReplicationCanResolveConflicts(boolean useLogicalTimestamp, boolean chunkingEnabled) {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = Utils.getUniqueString("test-store");
     try {
       assertCommand(parentControllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA));
-      updateStoreToHybrid(storeName, parentControllerClient, Optional.of(true), Optional.of(true), Optional.of(false));
+      updateStoreToHybrid(
+          storeName,
+          parentControllerClient,
+          Optional.of(true),
+          Optional.of(true),
+          Optional.of(chunkingEnabled));
 
       // Empty push to create a version
       assertCommand(

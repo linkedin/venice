@@ -19,8 +19,8 @@ public class IsolatedIngestionRequestClient implements Closeable {
 
   private final HttpClientTransport httpClientTransport;
 
-  public IsolatedIngestionRequestClient(Optional<SSLFactory> sslFactory, int port) {
-    httpClientTransport = new HttpClientTransport(sslFactory, port);
+  public IsolatedIngestionRequestClient(Optional<SSLFactory> sslFactory, int port, int requestTimeoutInSeconds) {
+    httpClientTransport = new HttpClientTransport(sslFactory, port, requestTimeoutInSeconds);
   }
 
   public void reportIngestionStatus(IngestionTaskReport report) {

@@ -6,15 +6,15 @@ import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.hadoop.VenicePushJob.KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_KAFKA;
 import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_FIELD_PROP;
-import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
-import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
-import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
-import static com.linkedin.venice.utils.TestPushUtils.writeComplexVsonFile;
-import static com.linkedin.venice.utils.TestPushUtils.writeMultiLevelVsonFile;
-import static com.linkedin.venice.utils.TestPushUtils.writeMultiLevelVsonFile2;
-import static com.linkedin.venice.utils.TestPushUtils.writeSimpleVsonFile;
-import static com.linkedin.venice.utils.TestPushUtils.writeSimpleVsonFileWithUserSchema;
-import static com.linkedin.venice.utils.TestPushUtils.writeVsonByteAndShort;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
+import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static com.linkedin.venice.utils.TestWriteUtils.writeComplexVsonFile;
+import static com.linkedin.venice.utils.TestWriteUtils.writeMultiLevelVsonFile;
+import static com.linkedin.venice.utils.TestWriteUtils.writeMultiLevelVsonFile2;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleVsonFile;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleVsonFileWithUserSchema;
+import static com.linkedin.venice.utils.TestWriteUtils.writeVsonByteAndShort;
 
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -30,7 +30,7 @@ import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonSchema;
 import com.linkedin.venice.utils.KeyAndValueSchemas;
 import com.linkedin.venice.utils.Pair;
-import com.linkedin.venice.utils.TestPushUtils;
+import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
@@ -323,7 +323,7 @@ public class TestVsonStoreBatch {
             storeParms).close();
       }
 
-      TestPushUtils.runPushJob("Test Batch push job", props);
+      TestWriteUtils.runPushJob("Test Batch push job", props);
       MetricsRepository metricsRepository = new MetricsRepository();
       avroClient = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName)

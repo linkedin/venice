@@ -32,11 +32,13 @@ public class AggServerHttpRequestStatsTest {
     this.singleGetStats = new AggServerHttpRequestStats(
         metricsRepository,
         RequestType.SINGLE_GET,
+        false,
         Mockito.mock(ReadOnlyStoreRepository.class),
         true);
     this.batchGetStats = new AggServerHttpRequestStats(
         metricsRepository,
         RequestType.MULTI_GET,
+        false,
         Mockito.mock(ReadOnlyStoreRepository.class),
         true);
   }
@@ -49,11 +51,15 @@ public class AggServerHttpRequestStatsTest {
 
   @Test
   public void testMetrics() {
+    ServerHttpRequestStats singleGetServerStatsFoo = singleGetStats.getStoreStats(STORE_FOO);
+    ServerHttpRequestStats singleGetServerStatsBar = singleGetStats.getStoreStats(STORE_BAR);
+    ServerHttpRequestStats batchGetServerStatsFoo = batchGetStats.getStoreStats(STORE_FOO);
+    ServerHttpRequestStats batchGetServerStatsBar = batchGetStats.getStoreStats(STORE_BAR);
 
-    singleGetStats.recordSuccessRequest(STORE_FOO);
-    singleGetStats.recordSuccessRequest(STORE_BAR);
-    singleGetStats.recordErrorRequest(STORE_FOO);
-    singleGetStats.recordErrorRequest();
+    singleGetServerStatsFoo.recordSuccessRequest();
+    singleGetServerStatsFoo.recordSuccessRequest();
+    singleGetServerStatsFoo.recordErrorRequest();
+    singleGetServerStatsBar.recordErrorRequest();
 
     Assert.assertTrue(
         reporter.query("." + STORE_FOO + "--success_request.OccurrenceRate").value() > 0,
@@ -93,10 +99,15 @@ public class AggServerHttpRequestStatsTest {
    */
   @Test
   public void testLargeValueMetrics() {
-    singleGetStats.recordSuccessRequest(STORE_WITH_SMALL_VALUES);
-    singleGetStats.recordMultiChunkLargeValueCount(STORE_WITH_SMALL_VALUES, 0);
-    singleGetStats.recordSuccessRequest(STORE_WITH_LARGE_VALUES);
-    singleGetStats.recordMultiChunkLargeValueCount(STORE_WITH_LARGE_VALUES, 1);
+    ServerHttpRequestStats smallValueStats = singleGetStats.getStoreStats(STORE_WITH_SMALL_VALUES);
+    ServerHttpRequestStats largeValueStats = singleGetStats.getStoreStats(STORE_WITH_LARGE_VALUES);
+    ServerHttpRequestStats batchGetSmallStats = batchGetStats.getStoreStats(STORE_WITH_SMALL_VALUES);
+    ServerHttpRequestStats batchGetLargeStats = batchGetStats.getStoreStats(STORE_WITH_LARGE_VALUES);
+
+    smallValueStats.recordSuccessRequest();
+    smallValueStats.recordMultiChunkLargeValueCount(0);
+    largeValueStats.recordSuccessRequest();
+    largeValueStats.recordMultiChunkLargeValueCount(1);
 
     // Sanity check
     Assert.assertTrue(
@@ -125,12 +136,12 @@ public class AggServerHttpRequestStatsTest {
         1,
         "storage_engine_large_value_lookup rate should be positive");
 
-    batchGetStats.recordSuccessRequest(STORE_WITH_SMALL_VALUES);
-    batchGetStats.recordMultiChunkLargeValueCount(STORE_WITH_SMALL_VALUES, 0);
-    batchGetStats.recordSuccessRequest(STORE_WITH_LARGE_VALUES);
-    batchGetStats.recordMultiChunkLargeValueCount(STORE_WITH_LARGE_VALUES, 5);
-    batchGetStats.recordSuccessRequest(STORE_WITH_LARGE_VALUES);
-    batchGetStats.recordMultiChunkLargeValueCount(STORE_WITH_LARGE_VALUES, 15);
+    batchGetSmallStats.recordSuccessRequest();
+    batchGetSmallStats.recordMultiChunkLargeValueCount(0);
+    batchGetLargeStats.recordSuccessRequest();
+    batchGetLargeStats.recordMultiChunkLargeValueCount(5);
+    batchGetLargeStats.recordSuccessRequest();
+    batchGetLargeStats.recordMultiChunkLargeValueCount(15);
 
     // Sanity check
     Assert.assertTrue(
@@ -139,7 +150,6 @@ public class AggServerHttpRequestStatsTest {
     Assert.assertTrue(
         reporter.query("." + STORE_WITH_LARGE_VALUES + "--multiget_success_request.OccurrenceRate").value() > 0,
         "success_request rate should be positive");
-
     // Main test
     Assert.assertTrue(
         (int) reporter

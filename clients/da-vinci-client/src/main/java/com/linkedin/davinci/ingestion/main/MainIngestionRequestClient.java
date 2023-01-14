@@ -43,8 +43,8 @@ public class MainIngestionRequestClient implements Closeable {
   private static final int HEARTBEAT_REQUEST_TIMEOUT_MS = 10 * Time.MS_PER_SECOND;
   private HttpClientTransport httpClientTransport;
 
-  public MainIngestionRequestClient(Optional<SSLFactory> sslFactory, int port) {
-    httpClientTransport = new HttpClientTransport(sslFactory, port);
+  public MainIngestionRequestClient(Optional<SSLFactory> sslFactory, int port, int requestTimeoutInSeconds) {
+    httpClientTransport = new HttpClientTransport(sslFactory, port, requestTimeoutInSeconds);
   }
 
   public synchronized Process startForkedIngestionProcess(VeniceConfigLoader configLoader) {
@@ -273,6 +273,11 @@ public class MainIngestionRequestClient implements Closeable {
       report = httpClientTransport.sendRequestWithRetry(IngestionAction.COMMAND, command, requestMaxAttempt);
     } catch (Exception e) {
       throw new VeniceException("Caught exception when sending command: " + commandType + commandInfo, e);
+    }
+    if (report != null && report.exceptionThrown) {
+      throw new VeniceException(
+          "Caught exception when executing command in isolated process: " + commandType + commandInfo + " "
+              + report.message);
     }
     return report != null && report.isPositive;
   }

@@ -24,3 +24,7 @@ dependencies {
   testImplementation project(':internal:venice-test-common')
   testImplementation libraries.kafkaClients
 }
+
+ext {
+  jacocoCoverageThreshold = 0.53
+}

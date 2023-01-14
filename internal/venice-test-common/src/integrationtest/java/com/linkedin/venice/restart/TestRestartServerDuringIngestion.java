@@ -20,8 +20,8 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.AvroSerializer;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.SslUtils;
-import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -90,9 +90,9 @@ public abstract class TestRestartServerDuringIngestion {
     Properties properties = new Properties();
     properties.put(VenicePushJob.VENICE_DISCOVER_URL_PROP, veniceUrl);
     properties.put(VenicePushJob.VENICE_STORE_NAME_PROP, storeName);
-    TestPushUtils.createStoreForJob(cluster, stringSchemaStr, stringSchemaStr, properties).close();
-    TestPushUtils.makeStoreLF(cluster, storeName);
-    TestPushUtils.makeStoreHybrid(cluster, storeName, 3600, 10);
+    IntegrationTestPushUtils.createStoreForJob(cluster, stringSchemaStr, stringSchemaStr, properties).close();
+    IntegrationTestPushUtils.makeStoreLF(cluster, storeName);
+    IntegrationTestPushUtils.makeStoreHybrid(cluster, storeName, 3600, 10);
 
     // Create a new version
     VersionCreationResponse versionCreationResponse = null;
@@ -235,9 +235,9 @@ public abstract class TestRestartServerDuringIngestion {
     Properties properties = new Properties();
     properties.put(VenicePushJob.VENICE_DISCOVER_URL_PROP, veniceUrl);
     properties.put(VenicePushJob.VENICE_STORE_NAME_PROP, storeName);
-    TestPushUtils.createStoreForJob(cluster, stringSchemaStr, stringSchemaStr, properties).close();
+    IntegrationTestPushUtils.createStoreForJob(cluster, stringSchemaStr, stringSchemaStr, properties).close();
 
-    TestPushUtils.makeStoreHybrid(cluster, storeName, 3600, 10);
+    IntegrationTestPushUtils.makeStoreHybrid(cluster, storeName, 3600, 10);
 
     // Create a new version
     VersionCreationResponse versionCreationResponse;

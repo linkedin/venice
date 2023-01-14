@@ -48,6 +48,9 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_TO_GO_ONLINE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COMPUTATION_ENABLED;
+import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD;
+import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
+import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REWIND_TIME_IN_SECONDS;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -1360,7 +1363,6 @@ public class VeniceParentHelixAdmin implements Admin {
    * Test if the given certificate has the write-access permission for the given batch-job heartbeat store.
    * @param requesterCert X.509 certificate object.
    * @param batchJobHeartbeatStoreName name of the batch-job heartbeat store.
-   * @param identityParser a parser object to retrieve identity information from a certificate.
    * @return <code>true</code> if input certificate has write-access permission for the given store;
    *         <code>false</code> otherwise.
    * @throws AclException
@@ -2242,39 +2244,15 @@ public class VeniceParentHelixAdmin implements Admin {
 
       // Invalid config update on hybrid will not be populated to admin channel so subsequent updates on the store won't
       // be blocked by retry mechanism.
-      if (currStore.isHybrid()) {
-        // Update-store message copied to the other cluster during store migration also has partitionCount.
-        // Allow updating store if the partitionCount is equal to the existing value.
-        if (partitionCount.isPresent() && partitionCount.get() != currStore.getPartitionCount()) {
-          String errorMessage = errorMessagePrefix + "Cannot change partition count for hybrid stores";
-          LOGGER.error(errorMessage);
-          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.BAD_REQUEST);
-        }
-        if (partitionerClass.isPresent() || partitionerParams.isPresent()) {
-          String errorMessage = errorMessagePrefix + "Cannot change partitioner class and parameters for hybrid stores";
-          LOGGER.error(errorMessage);
-          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.BAD_REQUEST);
-        }
+      if (currStore.isHybrid() && (partitionerClass.isPresent() || partitionerParams.isPresent())) {
+        String errorMessage = errorMessagePrefix + "Cannot change partitioner class and parameters for hybrid stores";
+        LOGGER.error(errorMessage);
+        throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.BAD_REQUEST);
       }
 
       if (partitionCount.isPresent()) {
+        getVeniceHelixAdmin().preCheckStorePartitionCountUpdate(clusterName, currStore, partitionCount.get());
         setStore.partitionNum = partitionCount.get();
-        int maxPartitionNum =
-            getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getConfig().getMaxNumberOfPartition();
-        if (setStore.partitionNum > maxPartitionNum) {
-          String errorMessage = errorMessagePrefix + "Partition count: " + partitionCount + " should be less than max: "
-              + maxPartitionNum;
-          LOGGER.error(errorMessage);
-          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.INVALID_CONFIG);
-        }
-        if (setStore.partitionNum < 0) {
-          String errorMessage = errorMessagePrefix + "Partition count: " + partitionCount + " should NOT be negative";
-          LOGGER.error(errorMessage);
-          throw new VeniceHttpException(
-              HttpStatus.SC_BAD_REQUEST,
-              "Partition count: " + partitionCount + " should NOT be negative",
-              ErrorType.INVALID_CONFIG);
-        }
         updatedConfigsList.add(PARTITION_COUNT);
       } else {
         setStore.partitionNum = currStore.getPartitionCount();
@@ -2403,8 +2381,20 @@ public class VeniceParentHelixAdmin implements Admin {
           && !veniceHelixAdmin.isHybrid(currStore.getHybridStoreConfig())
           && !veniceHelixAdmin.isHybrid(hybridStoreConfig)) {
         LOGGER.info(
-            "Enabling incremental push for a batch store:{} will convert it to a hybrid store with default configs.",
+            "Enabling incremental push for a batch store:{}. Converting it to a hybrid store with default configs.",
             storeName);
+        HybridStoreConfigRecord hybridStoreConfigRecord = new HybridStoreConfigRecord();
+        hybridStoreConfigRecord.rewindTimeInSeconds = DEFAULT_REWIND_TIME_IN_SECONDS;
+        updatedConfigsList.add(REWIND_TIME_IN_SECONDS);
+        hybridStoreConfigRecord.offsetLagThresholdToGoOnline = DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD;
+        updatedConfigsList.add(OFFSET_LAG_TO_GO_ONLINE);
+        hybridStoreConfigRecord.producerTimestampLagThresholdToGoOnlineInSeconds = DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
+        updatedConfigsList.add(TIME_LAG_TO_GO_ONLINE);
+        hybridStoreConfigRecord.dataReplicationPolicy = DataReplicationPolicy.NONE.getValue();
+        updatedConfigsList.add(DATA_REPLICATION_POLICY);
+        hybridStoreConfigRecord.bufferReplayPolicy = BufferReplayPolicy.REWIND_FROM_EOP.getValue();
+        updatedConfigsList.add(BUFFER_REPLAY_POLICY);
+        setStore.hybridStoreConfig = hybridStoreConfigRecord;
       }
 
       /**
@@ -2412,7 +2402,6 @@ public class VeniceParentHelixAdmin implements Admin {
        * do append-only and compaction will happen later.
        * We expose actual disk usage to users, instead of multiplying/dividing the overhead ratio by situations.
        */
-
       setStore.storageQuotaInByte =
           storageQuotaInByte.map(addToUpdatedConfigList(updatedConfigsList, STORAGE_QUOTA_IN_BYTE))
               .orElseGet(currStore::getStorageQuotaInByte);
@@ -2560,6 +2549,19 @@ public class VeniceParentHelixAdmin implements Admin {
         // Dry-run generating Write Compute schemas before sending admin messages to enable Write Compute because Write
         // Compute schema generation may fail due to some reasons. If that happens, abort the store update process.
         addWriteComputeSchemaForStore(clusterName, storeName, true);
+      }
+
+      if (!veniceHelixAdmin.isHybrid(currStore.getHybridStoreConfig())
+          && veniceHelixAdmin.isHybrid(setStore.hybridStoreConfig) && setStore.partitionNum == 0) {
+        // This is a new hybrid store and partition count is not specified. Use default hybrid store partition count.
+        setStore.partitionNum = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName)
+            .getConfig()
+            .getNumberOfPartitionForHybrid();
+        LOGGER.info(
+            "Enforcing default hybrid partition count:{} for a new hybrid store:{}.",
+            setStore.partitionNum,
+            storeName);
+        updatedConfigsList.add(PARTITION_COUNT);
       }
 
       AdminOperation message = new AdminOperation();

@@ -9,6 +9,7 @@ import com.linkedin.venice.migration.MigrationPushStrategy;
 public enum Arg {
   ACCESS_CONTROL("access-control", "acl", true, "Enable/disable store-level access control"),
   URL("url", "u", true, "Venice url, eg. http://localhost:1689  This can be a router or a controller"),
+  VENICE_ZOOKEEPER_URL("venice-zookeeper-url", "vzu", true, "Venice Zookeeper url, eg. localhost:2622"),
   CLUSTER("cluster", "c", true, "Name of Venice cluster"),
   CLUSTER_SRC("cluster-src", "cs", true, "Store migration original Venice cluster name"),
   CLUSTER_DEST("cluster-dest", "cd", true, "Store migration destination Venice cluster name"),
@@ -20,6 +21,7 @@ public enum Arg {
   KEY_SCHEMA("key-schema-file", "ks", true, "Path to text file with key schema"),
   VALUE_SCHEMA_ID("value-schema-id", "vid", true, "value schema id"),
   VALUE_SCHEMA("value-schema-file", "vs", true, "Path to text file with value schema"),
+  ZK_SSL_CONFIG_FILE("zk-ssl-config-file", "zscf", true, "Path to text file with ZK SSL configs"),
   DERIVED_SCHEMA_ID("derived-schema-id", "did", true, "derived schema id"),
   DERIVED_SCHEMA("derived-schema-file", "ds", true, "Path to text file with derived schema"),
   OWNER("owner", "o", true, "Owner email for new store creation"),

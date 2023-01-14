@@ -24,13 +24,12 @@ import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_CONTRO
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_D2_ZK_HOSTS;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PUSH_TYPE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_STORE;
-import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
-import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
-import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
-import static com.linkedin.venice.utils.TestPushUtils.sendStreamingDeleteRecord;
-import static com.linkedin.venice.utils.TestPushUtils.sendStreamingRecord;
-import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithUserSchema;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingDeleteRecord;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestUtils.generateInput;
+import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUserSchema;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.ConfigKeys;
@@ -54,8 +53,8 @@ import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.MockCircularTime;
-import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -79,6 +78,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
+import org.apache.avro.util.Utf8;
 import org.apache.samza.config.MapConfig;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -151,7 +151,8 @@ public class TestActiveActiveIngestion {
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
-    Properties props = defaultVPJProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
+    Properties props =
+        TestWriteUtils.defaultVPJProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
     Map<String, String> viewConfig = new HashMap<>();
@@ -167,10 +168,10 @@ public class TestActiveActiveIngestion {
         .setNativeReplicationEnabled(true);
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
 
-    TestPushUtils.runPushJob("Run push job", props);
+    TestWriteUtils.runPushJob("Run push job", props);
 
     // run samza to stream put and delete
-    runSamzaStreamJob(storeName);
+    runSamzaStreamJob(storeName, null, 10, 10, 0);
 
     // run repush
     props.setProperty(SOURCE_KAFKA, "true");
@@ -178,33 +179,43 @@ public class TestActiveActiveIngestion {
     props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
     // intentionally stop re-consuming from RT so stale records don't affect the testing results
     props.put(REWIND_TIME_IN_SECONDS_OVERRIDE, 0);
-    TestPushUtils.runPushJob("Run repush job", props);
+    TestWriteUtils.runPushJob("Run repush job", props);
     ControllerClient controllerClient =
         new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
     TestUtils.waitForNonDeterministicAssertion(
         5,
         TimeUnit.SECONDS,
         () -> Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 2));
-
     clusterWrapper.refreshAllRouterMetaData();
+
     // Validate repush from version 2
     MetricsRepository metricsRepository = new MetricsRepository();
-    try (AvroGenericStoreClient avroClient = ClientFactory.getAndStartGenericAvroClient(
+    try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
             .setVeniceURL(clusterWrapper.getRandomRouterURL())
             .setMetricsRepository(metricsRepository))) {
-      // test single get
-      for (int i = 0; i < 10; i++) {
-        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "stream_" + i);
-      }
-      // test deletes
-      for (int i = 10; i < 20; i++) {
-        Assert.assertNull(avroClient.get(Integer.toString(i)).get());
-      }
-      // test old data
-      for (int i = 20; i < 100; i++) {
-        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
-      }
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        // test single get
+        for (int i = 0; i < 10; i++) {
+          String key = Integer.toString(i);
+          Utf8 value = client.get(key).get();
+          Assert.assertNotNull(value);
+          Assert.assertEquals(value.toString(), "stream_" + i);
+        }
+        // test deletes
+        for (int i = 10; i < 20; i++) {
+          String key = Integer.toString(i);
+          Utf8 value = client.get(key).get();
+          Assert.assertNull(value);
+        }
+        // test old data
+        for (int i = 20; i < 100; i++) {
+          String key = Integer.toString(i);
+          Utf8 value = client.get(key).get();
+          Assert.assertNotNull(value);
+          Assert.assertEquals(value.toString(), "test_name_" + i);
+        }
+      });
     }
 
     /**
@@ -229,7 +240,7 @@ public class TestActiveActiveIngestion {
     // run samza to stream put and delete
     runSamzaStreamJob(storeName, mockTime, 10, 10, 20);
 
-    TestPushUtils.runPushJob("Run repush job with TTL", props);
+    TestWriteUtils.runPushJob("Run repush job with TTL", props);
     TestUtils.waitForNonDeterministicAssertion(
         5,
         TimeUnit.SECONDS,
@@ -237,14 +248,14 @@ public class TestActiveActiveIngestion {
 
     // Validate repush from version 4
     clusterWrapper.refreshAllRouterMetaData();
-    try (AvroGenericStoreClient avroClient = ClientFactory.getAndStartGenericAvroClient(
+    try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
             .setVeniceURL(clusterWrapper.getRandomRouterURL())
             .setMetricsRepository(metricsRepository))) {
       // test single get
       int validGet = 0, filteredGet = 0;
       for (int i = 20; i < 30; i++) {
-        Object result = avroClient.get(Integer.toString(i)).get();
+        Object result = client.get(Integer.toString(i)).get();
         if (result == null) {
           filteredGet++;
         } else {
@@ -257,12 +268,12 @@ public class TestActiveActiveIngestion {
       // test deletes
       for (int i = 30; i < 40; i++) {
         // not matter the DELETE is TTLed or not, the value should always be null
-        Assert.assertNull(avroClient.get(Integer.toString(i)).get());
+        Assert.assertNull(client.get(Integer.toString(i)).get());
       }
 
       // test old data - should be empty due to empty push
       for (int i = 40; i < 100; i++) {
-        Assert.assertNull(avroClient.get(Integer.toString(i)).get());
+        Assert.assertNull(client.get(Integer.toString(i)).get());
       }
     }
   }
@@ -282,7 +293,8 @@ public class TestActiveActiveIngestion {
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
-    Properties props = defaultVPJProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
+    Properties props =
+        TestWriteUtils.defaultVPJProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
@@ -345,10 +357,6 @@ public class TestActiveActiveIngestion {
         return false;
       }
     });
-  }
-
-  private void runSamzaStreamJob(String storeName) {
-    runSamzaStreamJob(storeName, null, 10, 10, 0);
   }
 
   private void runSamzaStreamJob(String storeName, Time mockedTime, int numPuts, int numDels, int startIdx) {

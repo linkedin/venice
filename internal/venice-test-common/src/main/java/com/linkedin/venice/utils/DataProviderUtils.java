@@ -21,6 +21,7 @@ import org.testng.collections.Lists;
  * make sure your test case has "test" dependency on "venice-test-common" module.
  */
 public class DataProviderUtils {
+  public static final Object[] BOOLEAN_TRUE = { true };
   public static final Object[] BOOLEAN = { false, true };
   public static final Object[] COMPRESSION_STRATEGIES = { NO_OP, GZIP, ZSTD_WITH_DICT };
 
@@ -41,6 +42,11 @@ public class DataProviderUtils {
   @DataProvider(name = "Three-True-and-False")
   public static Object[][] threeBoolean() {
     return allPermutationGenerator(BOOLEAN, BOOLEAN, BOOLEAN);
+  }
+
+  @DataProvider(name = "Four-True-and-False")
+  public static Object[][] fourBoolean() {
+    return allPermutationGenerator(BOOLEAN, BOOLEAN, BOOLEAN, BOOLEAN);
   }
 
   @DataProvider(name = "Five-True-and-False")

@@ -226,6 +226,7 @@ public class ConfigKeys {
   public static final String DEFAULT_ROUTING_STRATEGY = "default.routing.strategy";
   public static final String DEFAULT_REPLICA_FACTOR = "default.replica.factor";
   public static final String DEFAULT_NUMBER_OF_PARTITION = "default.partition.count";
+  public static final String DEFAULT_NUMBER_OF_PARTITION_FOR_HYBRID = "default.partition.count.for.hybrid";
   public static final String DEFAULT_MAX_NUMBER_OF_PARTITIONS = "default.partition.max.count";
   public static final String DEFAULT_PARTITION_SIZE = "default.partition.size";
   public static final String OFFLINE_JOB_START_TIMEOUT_MS = "offline.job.start.timeout.ms";
@@ -658,6 +659,9 @@ public class ConfigKeys {
    * A list of JVM arguments for forked child process, separated by semicolon.
    */
   public static final String SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST = "server.forked.process.jvm.arg.list";
+
+  public static final String SERVER_INGESTION_ISOLATION_REQUEST_TIMEOUT_SECONDS =
+      "server.ingestion.isolation.request.timout.seconds";
 
   /**
    * whether to enable checksum verification in the ingestion path from kafka to database persistency. If enabled it will

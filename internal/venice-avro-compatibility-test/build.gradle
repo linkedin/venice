@@ -20,6 +20,7 @@ dependencies {
   testImplementation project(':clients:da-vinci-client')
   testImplementation project(':clients:venice-thin-client')
   testImplementation project(':internal:venice-common')
+  testImplementation project(path: ':internal:venice-test-common', configuration: 'integrationTestConf')
 
   testImplementation libraries.avroUtilCompatHelper
   testImplementation libraries.classgraph

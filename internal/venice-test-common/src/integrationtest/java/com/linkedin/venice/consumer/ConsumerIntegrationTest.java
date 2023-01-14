@@ -38,7 +38,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
@@ -244,7 +243,7 @@ public class ConsumerIntegrationTest {
         int partition,
         boolean incrementSequenceNumber,
         LeaderMetadataWrapper leaderMetadataWrapper,
-        Optional<Long> logicalTs) {
+        long logicalTs) {
       KafkaMessageEnvelope normalKME =
           super.getKafkaMessageEnvelope(messageType, isEndOfSegment, partition, true, leaderMetadataWrapper, logicalTs);
 

@@ -58,7 +58,9 @@ public class Segment {
    */
   private boolean newSegment;
   private long lastSuccessfulOffset;
+  // record the last timestamp that a validation for this segment happened and passed.
   private long lastRecordTimestamp = -1;
+  // record the last producer message time stamp passed within the ConsumerRecord
   private long lastRecordProducerTimestamp = -1;
 
   public Segment(

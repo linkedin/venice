@@ -213,7 +213,7 @@ public class RocksDBStoragePartitionTest {
 
     // Verify all the key/value pairs
     for (Map.Entry<String, String> entry: inputRecords.entrySet()) {
-      Assert.assertEquals(storagePartition.get(entry.getKey().getBytes(), false), entry.getValue().getBytes());
+      Assert.assertEquals(storagePartition.get(entry.getKey().getBytes()), entry.getValue().getBytes());
     }
 
     // Verify current ingestion mode is in deferred-write mode
@@ -233,9 +233,9 @@ public class RocksDBStoragePartitionTest {
 
     // Test deletion
     String toBeDeletedKey = KEY_PREFIX + 10;
-    Assert.assertNotNull(storagePartition.get(toBeDeletedKey.getBytes(), false));
+    Assert.assertNotNull(storagePartition.get(toBeDeletedKey.getBytes()));
     storagePartition.delete(toBeDeletedKey.getBytes());
-    Assert.assertNull(storagePartition.get(toBeDeletedKey.getBytes(), false));
+    Assert.assertNull(storagePartition.get(toBeDeletedKey.getBytes()));
 
     Options storeOptions = storagePartition.getOptions();
     Assert.assertEquals(storeOptions.level0FileNumCompactionTrigger(), 40);
@@ -342,7 +342,7 @@ public class RocksDBStoragePartitionTest {
 
     // Verify all the key/value pairs
     for (Map.Entry<String, String> entry: inputRecords.entrySet()) {
-      Assert.assertEquals(storagePartition.get(entry.getKey().getBytes(), false), entry.getValue().getBytes());
+      Assert.assertEquals(storagePartition.get(entry.getKey().getBytes()), entry.getValue().getBytes());
     }
 
     // Verify current ingestion mode is in deferred-write mode
@@ -367,14 +367,14 @@ public class RocksDBStoragePartitionTest {
 
     // Verify all the key/value pairs can be read using the new format
     for (Map.Entry<String, String> entry: inputRecords.entrySet()) {
-      Assert.assertEquals(storagePartition.get(entry.getKey().getBytes(), false), entry.getValue().getBytes());
+      Assert.assertEquals(storagePartition.get(entry.getKey().getBytes()), entry.getValue().getBytes());
     }
 
     // Test deletion
     String toBeDeletedKey = KEY_PREFIX + 10;
-    Assert.assertNotNull(storagePartition.get(toBeDeletedKey.getBytes(), false));
+    Assert.assertNotNull(storagePartition.get(toBeDeletedKey.getBytes()));
     storagePartition.delete(toBeDeletedKey.getBytes());
-    Assert.assertNull(storagePartition.get(toBeDeletedKey.getBytes(), false));
+    Assert.assertNull(storagePartition.get(toBeDeletedKey.getBytes()));
 
     Options storeOptions = storagePartition.getOptions();
     Assert.assertEquals(storeOptions.level0FileNumCompactionTrigger(), 40);
@@ -499,7 +499,7 @@ public class RocksDBStoragePartitionTest {
 
     // Verify all the key/value pairs
     for (Map.Entry<String, String> entry: inputRecords.entrySet()) {
-      Assert.assertEquals(storagePartition.get(entry.getKey().getBytes(), false), entry.getValue().getBytes());
+      Assert.assertEquals(storagePartition.get(entry.getKey().getBytes()), entry.getValue().getBytes());
     }
 
     // Verify current ingestion mode is in deferred-write mode
@@ -518,9 +518,9 @@ public class RocksDBStoragePartitionTest {
         rocksDBServerConfig);
     // Test deletion
     String toBeDeletedKey = KEY_PREFIX + 10;
-    Assert.assertNotNull(storagePartition.get(toBeDeletedKey.getBytes(), false));
+    Assert.assertNotNull(storagePartition.get(toBeDeletedKey.getBytes()));
     storagePartition.delete(toBeDeletedKey.getBytes());
-    Assert.assertNull(storagePartition.get(toBeDeletedKey.getBytes(), false));
+    Assert.assertNull(storagePartition.get(toBeDeletedKey.getBytes()));
 
     Options storeOptions = storagePartition.getOptions();
     Assert.assertEquals(storeOptions.level0FileNumCompactionTrigger(), 40);
@@ -585,7 +585,7 @@ public class RocksDBStoragePartitionTest {
 
     storagePartition.close();
     try {
-      storagePartition.get((KEY_PREFIX + "10").getBytes(), false);
+      storagePartition.get((KEY_PREFIX + "10").getBytes());
       Assert.fail("VeniceException is expected when looking up an already closed DB");
     } catch (VeniceException e) {
       Assert.assertTrue(e.getMessage().contains("RocksDB has been closed for store"));
