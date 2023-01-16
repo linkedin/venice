@@ -54,7 +54,7 @@ public class VeniceClientCompatibilityTest {
   private DaVinciClient<String, GenericRecord> daVinciClient;
 
   @BeforeClass
-  private void setUp() throws Exception {
+  public void setUp() throws Exception {
     LOGGER.info("Avro version in unit test: {}", AvroCompatibilityHelper.getRuntimeAvroVersion());
     Assert.assertEquals(
         AvroCompatibilityHelper.getRuntimeAvroVersion(),
@@ -122,7 +122,7 @@ public class VeniceClientCompatibilityTest {
   }
 
   @AfterClass
-  private void cleanUp() {
+  public void cleanUp() {
     Utils.closeQuietlyWithErrorLogged(veniceClient);
     Utils.closeQuietlyWithErrorLogged(daVinciClient);
     if (clusterProcess != null) {

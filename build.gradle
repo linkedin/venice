@@ -262,7 +262,7 @@ subprojects {
 
   tasks.withType(SpotBugsTask) {
     effort = 'max'
-    reportLevel = 'high'
+    reportLevel = 'low'
     includeFilter = file(
       project.hasProperty('spotallbugs') ?
         "$rootDir/gradle/spotbugs/include-all.xml" :

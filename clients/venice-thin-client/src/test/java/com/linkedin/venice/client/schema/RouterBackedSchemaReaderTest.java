@@ -3,7 +3,6 @@ package com.linkedin.venice.client.schema;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
-import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.schema.SchemaReader;
@@ -20,7 +19,7 @@ import org.testng.annotations.Test;
 
 public class RouterBackedSchemaReaderTest {
   private static final ObjectMapper mapper = ObjectMapperFactory.getInstance();
-  private final int TIMEOUT = 3;
+  private final static int TIMEOUT = 3;
 
   @Test
   public void testGetKeySchema() throws IOException, ExecutionException, InterruptedException, VeniceClientException {
@@ -99,7 +98,6 @@ public class RouterBackedSchemaReaderTest {
     CompletableFuture<byte[]> mockFuture = Mockito.mock(CompletableFuture.class);
     Mockito.doReturn(mapper.writeValueAsBytes(schemaResponse)).when(mockFuture).get();
     Mockito.doReturn(mockFuture).when(mockClient).getRaw("key_schema/" + storeName);
-    ClientConfig clientConfig = Mockito.mock(ClientConfig.class);
     SchemaReader schemaReader = new RouterBackedSchemaReader(() -> mockClient);
 
     Mockito.doReturn(mapper.writeValueAsBytes(multiSchemaResponse)).when(mockFuture).get();
@@ -133,7 +131,6 @@ public class RouterBackedSchemaReaderTest {
     schemaResponse.setSchemaStr(keySchemaStr);
     CompletableFuture<byte[]> mockFuture = Mockito.mock(CompletableFuture.class);
     Mockito.doReturn(mapper.writeValueAsBytes(schemaResponse)).when(mockFuture).get();
-    ClientConfig clientConfig = Mockito.mock(ClientConfig.class);
 
     SchemaReader schemaReader = new RouterBackedSchemaReader(() -> mockClient);
     Mockito.doReturn(null).when(mockFuture).get();
@@ -401,7 +398,7 @@ public class RouterBackedSchemaReaderTest {
     }
   }
 
-  private class SchemaResponseWithExtraField extends SchemaResponse {
+  private static class SchemaResponseWithExtraField extends SchemaResponse {
     private int extraField;
 
     public int getExtraField() {

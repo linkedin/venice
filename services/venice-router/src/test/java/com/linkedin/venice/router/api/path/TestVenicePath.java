@@ -6,7 +6,7 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.RouterKey;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
-import com.linkedin.venice.utils.MockTime;
+import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.Time;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -79,7 +79,7 @@ public class TestVenicePath {
 
   @Test
   public void testRetryAbortBecauseOfTimeConstraint() {
-    MockTime time = new MockTime();
+    TestMockTime time = new TestMockTime();
     time.setTime(1);
     SmartRetryVenicePath orgPath = new SmartRetryVenicePath(time);
     orgPath.setLongTailRetryThresholdMs(20);
@@ -98,7 +98,7 @@ public class TestVenicePath {
 
   @Test
   public void testRetryAbortBecauseOfSlowStorageNode() {
-    MockTime time = new MockTime();
+    TestMockTime time = new TestMockTime();
     time.setTime(1);
     SmartRetryVenicePath orgPath = new SmartRetryVenicePath(time);
     orgPath.setLongTailRetryThresholdMs(20);
@@ -121,7 +121,7 @@ public class TestVenicePath {
 
   @Test
   public void testRetryLogicWhenMetBothCriterions() {
-    MockTime time = new MockTime();
+    TestMockTime time = new TestMockTime();
     time.setTime(1);
     SmartRetryVenicePath orgPath = new SmartRetryVenicePath(time);
     orgPath.setLongTailRetryThresholdMs(20);

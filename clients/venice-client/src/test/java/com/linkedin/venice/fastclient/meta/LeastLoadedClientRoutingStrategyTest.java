@@ -10,12 +10,12 @@ import org.testng.annotations.Test;
 
 
 public class LeastLoadedClientRoutingStrategyTest {
-  private final String instance1 = "https://instance1:1234";
-  private final String instance2 = "https://instance2:1234";
-  private final String instance3 = "https://instance3:1234";
-  private final String instance4 = "https://instance4:1234";
-  private final String instance5 = "https://instance5:1234";
-  private final String instance6 = "https://instance6:1234";
+  private final static String instance1 = "https://instance1:1234";
+  private final static String instance2 = "https://instance2:1234";
+  private final static String instance3 = "https://instance3:1234";
+  private final static String instance4 = "https://instance4:1234";
+  private final static String instance5 = "https://instance5:1234";
+  private final static String instance6 = "https://instance6:1234";
 
   private InstanceHealthMonitor mockInstanceHealthyMonitor(
       String[] instances,

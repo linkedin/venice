@@ -115,6 +115,11 @@ public class StoreBufferService extends AbstractStoreBufferService {
     }
 
     @Override
+    public int hashCode() {
+      return consumerRecord.hashCode();
+    }
+
+    @Override
     public int getSize() {
       // TODO:This should not be a big issue but ideally it should calculate the size from leaderProducedRecordContext
       // if present.
@@ -145,6 +150,16 @@ public class StoreBufferService extends AbstractStoreBufferService {
     public CompletableFuture<Void> getQueuedRecordPersistedFuture() {
       return queuedRecordPersistedFuture;
     }
+
+    @Override
+    public int hashCode() {
+      return super.hashCode();
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      return super.equals(o);
+    }
   }
 
   private static class LeaderQueueNode extends QueueNode {
@@ -163,6 +178,16 @@ public class StoreBufferService extends AbstractStoreBufferService {
     @Override
     public LeaderProducedRecordContext getLeaderProducedRecordContext() {
       return this.leaderProducedRecordContext;
+    }
+
+    @Override
+    public int hashCode() {
+      return super.hashCode();
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      return super.equals(o);
     }
   }
 
@@ -194,7 +219,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
       LeaderProducedRecordContext leaderProducedRecordContext = null;
       StoreIngestionTask ingestionTask = null;
       CompletableFuture<Void> recordPersistedFuture = null;
-      long beforeProcessingRecordTimestamp = -1L;
+      long beforeProcessingRecordTimestamp;
       while (isRunning.get()) {
         try {
           node = blockingQueue.take();

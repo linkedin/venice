@@ -230,7 +230,6 @@ public class TestHeartbeatBasedLingeringStoreVersionChecker {
 
   private Admin createCheckBatchJobHasHeartbeatAdmin() throws AclException {
     Admin admin = mock(Admin.class);
-    X509Certificate cert = mock(X509Certificate.class);
     when(
         admin.hasWritePermissionToBatchJobHeartbeatStore(
             DEFAULT_REQUEST_CERT,

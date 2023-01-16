@@ -466,7 +466,7 @@ public class DaVinciBackend implements Closeable {
     return cacheBackend.map(ObjectCacheBackend::getStoreCacheConfig).equals(config);
   }
 
-  Map<String, VersionBackend> getVersionByTopicMap() {
+  final Map<String, VersionBackend> getVersionByTopicMap() {
     return versionByTopicMap;
   }
 
@@ -502,7 +502,7 @@ public class DaVinciBackend implements Closeable {
     }
   }
 
-  protected boolean isIsolatedIngestion() {
+  protected final boolean isIsolatedIngestion() {
     return configLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.ISOLATED);
   }
 

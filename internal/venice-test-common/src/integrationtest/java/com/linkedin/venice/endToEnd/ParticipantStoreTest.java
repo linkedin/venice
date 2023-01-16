@@ -306,30 +306,6 @@ public class ParticipantStoreTest {
     }
   }
 
-  private void assertListenerCounts(
-      TestListener testListener,
-      int expectedCreationCount,
-      int expectedChangeCount,
-      int expectedDeletionCount,
-      String details) {
-    TestUtils.waitForNonDeterministicAssertion(3, TimeUnit.SECONDS, () -> {
-      assertEquals(
-          testListener.getCreationCount(),
-          expectedCreationCount,
-          "Listener's creation count should be " + expectedCreationCount + " following: " + details);
-      assertEquals(
-          testListener.getChangeCount(),
-          expectedChangeCount,
-          "Listener's change count should be " + expectedChangeCount + " following: " + details);
-      assertEquals(
-          testListener.getDeletionCount(),
-          expectedDeletionCount,
-          "Listener's deletion count should be " + expectedDeletionCount + " following: " + details);
-
-      LOGGER.info("Successfully asserted that notifications work after {}", details);
-    });
-  }
-
   private void verifyKillMessageInParticipantStore(String topic, boolean shouldPresent) {
     // Verify the kill push message is in the participant message store.
     ParticipantMessageKey key = new ParticipantMessageKey();

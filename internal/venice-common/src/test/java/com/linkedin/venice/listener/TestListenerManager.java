@@ -12,7 +12,7 @@ import org.testng.annotations.Test;
 
 public class TestListenerManager {
   private ListenerManager<RoutingDataRepository.RoutingDataChangedListener> manager = new ListenerManager<>();
-  private final int TEST_TIME_OUT = 500;
+  private final static int TEST_TIME_OUT = 500;
 
   @Test
   public void testSubscribeAndUnsubscribe() {
@@ -53,7 +53,7 @@ public class TestListenerManager {
     TestUtils.waitForNonDeterministicCompletion(TEST_TIME_OUT, TimeUnit.MILLISECONDS, () -> !listener1.isExecuted);
   }
 
-  private class TestListener implements RoutingDataRepository.RoutingDataChangedListener {
+  private static class TestListener implements RoutingDataRepository.RoutingDataChangedListener {
     private boolean isExecuted = false;
 
     @Override

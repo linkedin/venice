@@ -39,7 +39,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
   private static final Logger LOGGER = LogManager.getLogger(RouterBackedSchemaReader.class);
   private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
   private final Optional<Schema> readerSchema;
-  private Schema keySchema;
+  private volatile Schema keySchema;
   private final Map<Integer, Schema> valueSchemaMap = new VeniceConcurrentHashMap<>();
   private final Map<Schema, Integer> valueSchemaMapR = new VeniceConcurrentHashMap<>();
   private final AtomicReference<SchemaEntry> latestValueSchemaEntry = new AtomicReference<>();

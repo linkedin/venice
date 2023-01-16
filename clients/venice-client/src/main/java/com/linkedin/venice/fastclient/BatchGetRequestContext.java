@@ -133,7 +133,6 @@ public class BatchGetRequestContext<K, V> extends RequestContext {
   void recordRequestSentTimeStamp(String routeId) {
     Validate.notNull(routeId);
     long requestSentTS = System.nanoTime();
-    routeRequests.get(routeId).requestSentTimestampNS = requestSentTS;
     if (firstRequestSentTS.compareAndSet(-1, requestSentTS)) {
       requestSentTimestampNS = firstRequestSentTS.get();
     }
@@ -141,7 +140,6 @@ public class BatchGetRequestContext<K, V> extends RequestContext {
 
   void recordRequestSubmissionToResponseHandlingTime(String routeId) {
     Validate.notNull(routeId);
-    routeRequests.get(routeId).recordRequestSubmissionToResponseHandlingTime();
     firstResponseReceivedTS.compareAndSet(-1, System.nanoTime());
   }
 
@@ -186,32 +184,23 @@ public class BatchGetRequestContext<K, V> extends RequestContext {
    */
   private static class RouteRequestContext<K> {
     List<KeyInfo<K>> keysRequested = new ArrayList<>();
-    boolean complete = false;
     CompletableFuture<TransportClientResponseForRoute> routeRequestCompletion = new CompletableFuture<>();
 
     AtomicLong decompressionTime = new AtomicLong();
     AtomicLong responseDeserializationTime = new AtomicLong();
     AtomicLong recordDeserializationTime = new AtomicLong();
     AtomicLong requestSerializationTime = new AtomicLong();
-    long requestSentTimestampNS = -1;
-    double requestSubmissionToResponseHandlingTime = -1;
 
     void addKeyInfo(K key, int partitionId) {
       keysRequested.add(new KeyInfo<>(key, partitionId));
     }
 
     void setComplete(TransportClientResponseForRoute response) {
-      complete = true;
       routeRequestCompletion.complete(response);
     }
 
     void setCompleteExceptionally(Throwable exception) {
-      complete = true;
       routeRequestCompletion.completeExceptionally(exception);
-    }
-
-    void recordRequestSubmissionToResponseHandlingTime() {
-      requestSubmissionToResponseHandlingTime = LatencyUtils.getLatencyInMS(requestSentTimestampNS);
     }
   }
 

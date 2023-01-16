@@ -54,7 +54,7 @@ public class TestVeniceCompressor {
   }
 
   @Test(dataProvider = "Params", timeOut = TEST_TIMEOUT)
-  private void runTestInternal(CompressionStrategy strategy, SourceDataType type, int frontPadding) throws IOException {
+  public void runTestInternal(CompressionStrategy strategy, SourceDataType type, int frontPadding) throws IOException {
     try (VeniceCompressor compressor = getCompressor(strategy)) {
       int threadPoolSize = 16;
       int numRunnables = 1024;

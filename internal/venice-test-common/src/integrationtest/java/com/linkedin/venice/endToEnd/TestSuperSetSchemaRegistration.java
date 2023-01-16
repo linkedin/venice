@@ -31,7 +31,6 @@ import org.testng.annotations.Test;
 public class TestSuperSetSchemaRegistration {
   private static final int TEST_TIMEOUT = 60 * Time.MS_PER_SECOND;
   private VeniceClusterWrapper veniceCluster;
-  private ControllerClient controllerClient;
 
   /**
    * @param parentDir

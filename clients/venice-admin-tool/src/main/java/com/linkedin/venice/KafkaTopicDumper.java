@@ -167,7 +167,7 @@ public class KafkaTopicDumper implements AutoCloseable {
         && currentMessageCount < messageCount && countdownBeforeStop > 0);
   }
 
-  public void setupDumpFile() {
+  public final void setupDumpFile() {
     // build file
     File dataFile = new File(this.parentDirectory + this.topicName + "_" + this.partition + ".avro");
     List<Schema.Field> outputSchemaFields = new ArrayList<>();

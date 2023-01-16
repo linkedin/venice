@@ -634,7 +634,7 @@ public class StoresRoutes extends AbstractRoute {
         String storeName = request.queryParams(NAME);
         veniceResponse.setCluster(clusterName);
         veniceResponse.setName(storeName);
-        List<Version> deletedVersions = Collections.emptyList();
+        List<Version> deletedVersions;
         Optional<AdminCommandExecutionTracker> adminCommandExecutionTracker =
             admin.getAdminCommandExecutionTracker(clusterName);
         if (adminCommandExecutionTracker.isPresent()) {

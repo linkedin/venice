@@ -5406,18 +5406,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     logAndThrow(errorMessage);
   }
 
-  private void throwPartitionCountMismatch(
-      String clusterName,
-      String storeName,
-      int version,
-      int partitionCount,
-      int storePartitionCount) {
-    String errorMessage = "Partition mismatch for store " + storeName + " version " + version + " in cluster "
-        + clusterName + " Found partition count of " + partitionCount + " but partition count in store config is "
-        + storePartitionCount;
-    logAndThrow(errorMessage);
-  }
-
   private void throwClusterNotInitialized(String clusterName) {
     throw new VeniceNoClusterException(clusterName);
   }

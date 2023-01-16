@@ -51,9 +51,42 @@
       <Bug pattern="DLS_DEAD_LOCAL_STORE"/>
       <Bug pattern="UC_USELESS_CONDITION"/>
       <Bug pattern="DM_BOXED_PRIMITIVE_TOSTRING"/>
-      <Bug pattern="HE_EQUALS_USE_HASHCODE"/>
       <Bug pattern="NP_EQUALS_SHOULD_HANDLE_NULL_ARGUMENT"/>
       <Bug pattern="NP_NONNULL_PARAM_VIOLATION"/>
+      <Bug pattern="SE_NO_SERIALVERSIONID"/>
+      <Bug pattern="SE_BAD_FIELD"/>
+      <Bug pattern="DE_MIGHT_IGNORE"/>
+      <Bug pattern="UWF_FIELD_NOT_INITIALIZED_IN_CONSTRUCTOR"/>
+      <Bug pattern="SS_SHOULD_BE_STATIC"/>
+      <Bug pattern="EQ_DOESNT_OVERRIDE_EQUALS"/>
+      <Bug pattern="NM_SAME_SIMPLE_NAME_AS_SUPERCLASS"/>
+      <Bug pattern="MS_MUTABLE_COLLECTION"/>
+      <Bug pattern="HE_EQUALS_USE_HASHCODE"/>
+      <Bug pattern="VO_VOLATILE_INCREMENT"/>
+      <Bug pattern="IS2_INCONSISTENT_SYNC"/>
+      <Bug pattern="JLM_JSR166_UTILCONCURRENT_MONITORENTER"/>
+      <Bug pattern="SWL_SLEEP_WITH_LOCK_HELD"/>
+      <Bug pattern="HSC_HUGE_SHARED_STRING_CONSTANT"/>
+      <Bug pattern="RV_RETURN_VALUE_IGNORED_NO_SIDE_EFFECT"/>
+      <Bug pattern="RI_REDUNDANT_INTERFACES"/>
+      <Bug pattern="IT_NO_SUCH_ELEMENT"/>
+      <Bug pattern="MS_PKGPROTECT"/>
+      <Bug pattern="PZLA_PREFER_ZERO_LENGTH_ARRAYS"/>
+      <Bug pattern="SE_BAD_FIELD_INNER_CLASS"/>
+      <Bug pattern="SE_COMPARATOR_SHOULD_BE_SERIALIZABLE"/>
+      <Bug pattern="DCN_NULLPOINTER_EXCEPTION"/>
+      <Bug pattern="EQ_UNUSUAL"/>
+      <Bug pattern="MS_EXPOSE_REP"/>
+      <Bug pattern="NO_NOTIFY_NOT_NOTIFYALL"/>
+      <Bug pattern="UW_UNCOND_WAIT"/>
+      <Bug pattern="WA_NOT_IN_LOOP"/>
+      <Bug pattern="NN_NAKED_NOTIFY"/>
+      <Bug pattern="URF_UNREAD_FIELD"/>
+      <Bug pattern="DM_EXIT"/>
+      <Bug pattern="ST_WRITE_TO_STATIC_FROM_INSTANCE_METHOD"/>
+      <Bug pattern="UG_SYNC_SET_UNSYNC_GET"/>
+      <Bug pattern="SC_START_IN_CTOR"/>
+      <Bug pattern="MC_OVERRIDABLE_METHOD_CALL_IN_CONSTRUCTOR"/>
     </Or>
   </Match>
 </FindBugsFilter>

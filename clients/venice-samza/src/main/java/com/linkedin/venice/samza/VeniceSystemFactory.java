@@ -55,6 +55,7 @@ import org.apache.samza.util.SinglePartitionWithoutOffsetsSystemAdmin;
  */
 
 public class VeniceSystemFactory implements SystemFactory, Serializable {
+  private static final long serialVersionUID = -2338626494632177485L;
   private static final Logger LOGGER = LogManager.getLogger(VeniceSystemFactory.class);
 
   public static final String LEGACY_CHILD_D2_ZK_HOSTS_PROPERTY = "__r2d2DefaultClient__.r2d2Client.zkHosts";

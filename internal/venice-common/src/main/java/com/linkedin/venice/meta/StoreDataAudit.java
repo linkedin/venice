@@ -66,7 +66,7 @@ public class StoreDataAudit {
   }
 
   public void insert(String regionName, StoreInfo info) {
-    if (storeName == "")
+    if (storeName.equals(""))
       storeName = info.getName();
     if (getLatestCreatedVersion() == 0) {
       setLatestCreatedVersion(info.getLargestUsedVersionNumber());
@@ -105,16 +105,22 @@ public class StoreDataAudit {
   }
 
   public String toString() {
-    String ret = "{ \"";
-    ret += getStoreName() + "\": { healthy: {";
+    StringBuilder sb = new StringBuilder();
+    sb.append("{ \"");
+    sb.append(getStoreName());
+    sb.append("\": { healthy: {");
     for (Map.Entry<String, StoreInfo> entry: getHealthyRegions().entrySet()) {
-      ret += "\"" + entry.getKey() + "\", ";
+      sb.append("\"");
+      sb.append(entry.getKey());
+      sb.append("\", ");
     }
-    ret += " }, stale: { ";
+    sb.append(" }, stale: { ");
     for (Map.Entry<String, StoreInfo> entry: getStaleRegions().entrySet()) {
-      ret += "\"" + entry.getKey() + "\", ";
+      sb.append("\"");
+      sb.append(entry.getKey());
+      sb.append("\", ");
     }
-    ret += " } }";
-    return ret;
+    sb.append(" } }");
+    return sb.toString();
   }
 }

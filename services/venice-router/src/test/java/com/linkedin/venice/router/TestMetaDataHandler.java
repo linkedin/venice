@@ -167,7 +167,7 @@ public class TestMetaDataHandler {
 
   // The deprecated non inclusive URL must also continue to work.
   @DataProvider(name = "controllerUrlProvider")
-  private static Object[][] dataProvider() {
+  public static Object[][] dataProvider() {
     // go/inclusivecode deprecated (alias="leader_controller")
     return new Object[][] { { "master_controller" }, { "leader_controller" } };
   }

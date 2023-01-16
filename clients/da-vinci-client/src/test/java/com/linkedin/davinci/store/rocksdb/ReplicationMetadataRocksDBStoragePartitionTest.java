@@ -50,10 +50,10 @@ import org.testng.annotations.Test;
 public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStorageEngineTest {
   private static final int PARTITION_ID = 0;
 
-  private final String storeName = Utils.getUniqueString("rocksdb_store_test");
+  private static final String storeName = Utils.getUniqueString("rocksdb_store_test");
   private final ReadOnlyStoreRepository mockReadOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
-  private final int versionNumber = 0;
-  private final String topicName = Version.composeKafkaTopic(storeName, versionNumber);
+  private static final int versionNumber = 0;
+  private static final String topicName = Version.composeKafkaTopic(storeName, versionNumber);
 
   private static final String DATA_BASE_DIR = Utils.getUniqueTempPath();
   private static final String KEY_PREFIX = "key_";

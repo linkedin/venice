@@ -99,7 +99,7 @@ public class AbstractAvroStoreClientTest {
   private static final List<Float> cosineSimilarityParam = Arrays.asList(0.3f, 0.4f);
   private static final List<Float> hadamardProductParam = Arrays.asList(0.5f, 0.6f);
 
-  private class ParameterizedComputeTransportClient extends TransportClient {
+  private static class ParameterizedComputeTransportClient extends TransportClient {
     private final Map<String, String> headerMap;
     private final Optional<byte[]> responseBody;
     private final Optional<VeniceClientException> completedException;

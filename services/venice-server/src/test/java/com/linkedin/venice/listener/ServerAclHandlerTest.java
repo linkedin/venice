@@ -95,7 +95,7 @@ public class ServerAclHandlerTest {
     verify(serverAclApprovedAttr).set(false);
   }
 
-  public class ContextMatcher implements ArgumentMatcher<FullHttpResponse> {
+  public static class ContextMatcher implements ArgumentMatcher<FullHttpResponse> {
     private HttpResponseStatus status;
 
     public ContextMatcher(HttpResponseStatus status) {

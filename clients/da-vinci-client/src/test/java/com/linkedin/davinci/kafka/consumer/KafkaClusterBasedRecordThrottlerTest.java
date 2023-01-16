@@ -10,7 +10,7 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
-import com.linkedin.venice.utils.MockTime;
+import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.util.HashMap;
@@ -41,7 +41,7 @@ public class KafkaClusterBasedRecordThrottlerTest {
 
     AtomicLong remoteKafkaQuota = new AtomicLong(10);
 
-    MockTime testTime = new MockTime();
+    TestMockTime testTime = new TestMockTime();
     long timeWindowMS = 1000L;
     // Unlimited
     EventThrottler localThrottler =

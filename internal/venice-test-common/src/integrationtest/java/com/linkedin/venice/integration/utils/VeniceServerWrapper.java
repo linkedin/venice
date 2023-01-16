@@ -270,20 +270,6 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
     };
   }
 
-  private static String getPropertyWithAlternative(
-      Properties featureProperties,
-      String preferredName,
-      String altName,
-      String defaultValue) {
-    if (featureProperties.getProperty(preferredName) != null) {
-      return featureProperties.getProperty(preferredName, defaultValue);
-    } else if (featureProperties.getProperty(altName) != null) {
-      return featureProperties.getProperty(altName, defaultValue);
-    } else {
-      return defaultValue;
-    }
-  }
-
   private static void joinClusterAllowlist(String zkAddress, String clusterName, int port) throws IOException {
     try (AllowlistAccessor accessor = new ZkAllowlistAccessor(zkAddress)) {
       accessor.addInstanceToAllowList(clusterName, Utils.getHelixNodeIdentifier(port));

@@ -21,7 +21,7 @@ public class StoragePersonaStoreDataListenerTest {
   private ZkClient zkClient;
   private ZkServerWrapper zk;
   private final HelixAdapterSerializer adapter = new HelixAdapterSerializer();
-  private final String testClusterName = "testClusterName";
+  private final static String testClusterName = "testClusterName";
 
   @BeforeMethod
   public void setUp() {

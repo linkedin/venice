@@ -27,7 +27,7 @@ public class ObjectCacheBackendTest {
   public static final String STORE_NAME = "fooStore";
   public static final String TOPIC_NAME = "fooStore_v1";
   public static final int STORE_VERSION = 1;
-  public static final List<Integer> NEW_STORE_VERSIONS = Arrays.asList(2, 3);
+  static final List<Integer> NEW_STORE_VERSIONS = Arrays.asList(2, 3);
   public static final Schema STORE_SCHEMA = Schema.parse(
       "{\"type\":\"record\", \"name\":\"ValueRecord\", \"fields\": [{\"name\":\"number\", " + "\"type\":\"int\"}]}");
 

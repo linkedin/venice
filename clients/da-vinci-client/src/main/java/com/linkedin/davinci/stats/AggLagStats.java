@@ -82,32 +82,32 @@ public class AggLagStats extends AbstractVeniceStats {
     lastLagUpdateTsMs = System.currentTimeMillis();
   }
 
-  public long getAggBatchReplicationLagFuture() {
+  public final long getAggBatchReplicationLagFuture() {
     mayCollectAllLags();
     return aggBatchReplicationLagFuture;
   }
 
-  public long getAggBatchLeaderOffsetLagFuture() {
+  public final long getAggBatchLeaderOffsetLagFuture() {
     mayCollectAllLags();
     return aggBatchLeaderOffsetLagFuture;
   }
 
-  public long getAggBatchFollowerOffsetLagFuture() {
+  public final long getAggBatchFollowerOffsetLagFuture() {
     mayCollectAllLags();
     return aggBatchFollowerOffsetLagFuture;
   }
 
-  public long getAggHybridLeaderOffsetLagTotal() {
+  public final long getAggHybridLeaderOffsetLagTotal() {
     mayCollectAllLags();
     return aggHybridLeaderOffsetLagTotal;
   }
 
-  public long getAggHybridFollowerOffsetLagTotal() {
+  public final long getAggHybridFollowerOffsetLagTotal() {
     mayCollectAllLags();
     return aggHybridFollowerOffsetLagTotal;
   }
 
-  public long getAggRegionHybridOffsetLagTotal(int regionId) {
+  public final long getAggRegionHybridOffsetLagTotal(int regionId) {
     mayCollectAllLags();
     return aggRegionHybridOffsetLagTotalMap.getOrDefault(regionId, 0L);
   }

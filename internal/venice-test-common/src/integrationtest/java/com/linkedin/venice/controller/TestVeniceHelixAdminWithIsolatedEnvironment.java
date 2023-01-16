@@ -231,7 +231,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     int newVersionReplicaCount = 2;
     veniceAdmin
         .updateStore(clusterName, storeName, new UpdateStoreQueryParams().setReplicationFactor(newVersionReplicaCount));
-    Version newVersion = veniceAdmin.incrementVersionIdempotent(
+    veniceAdmin.incrementVersionIdempotent(
         clusterName,
         storeName,
         Version.guidBasedDummyPushId(),
@@ -279,7 +279,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     });
 
     // Now we have 2 replicas in bootstrap in each partition.
-    NodeRemovableResult result = veniceAdmin.isInstanceRemovable(clusterName, NODE_ID, Collections.emptyList(), false);
+    veniceAdmin.isInstanceRemovable(clusterName, NODE_ID, Collections.emptyList(), false);
     Assert.assertTrue(
         veniceAdmin.isInstanceRemovable(clusterName, NODE_ID, Collections.emptyList(), false).isRemovable());
     Assert.assertTrue(

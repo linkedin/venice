@@ -30,6 +30,8 @@ import java.util.function.UnaryOperator;
  * the read operations are used on the hot path.
  */
 public class SparseConcurrentList<E> extends CopyOnWriteArrayList<E> {
+  private static final long serialVersionUID = -1891348945161784512L;
+
   /**
    * A function which behaves like {@link Map#put(Object, Object)}, rather than {@link List#set(int, Object)}.
    *
@@ -122,6 +124,9 @@ public class SparseConcurrentList<E> extends CopyOnWriteArrayList<E> {
   }
 
   public synchronized int addAllAbsent(Collection<? extends E> c) {
+    if (c == null) {
+      return 0;
+    }
     return super.addAllAbsent(c);
   }
 

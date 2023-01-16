@@ -64,6 +64,8 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.util.Utf8;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.samza.config.MapConfig;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.AfterMethod;
@@ -73,6 +75,7 @@ import org.testng.annotations.Test;
 
 
 public class WriteComputeWithActiveActiveReplicationTest {
+  private static final Logger LOGGER = LogManager.getLogger(WriteComputeWithActiveActiveReplicationTest.class);
   private static final int TEST_TIMEOUT = 3 * Time.MS_PER_MINUTE;
   private static final int PUSH_TIMEOUT = TEST_TIMEOUT / 2;
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
@@ -93,10 +96,10 @@ public class WriteComputeWithActiveActiveReplicationTest {
   private String dc0RouterUrl;
   private String dc1RouterUrl;
 
-  private final String KEY_SCHEMA_STR = "{\"type\" : \"string\"}";
-  private final String PERSON_F1_NAME = "name";
-  private final String PERSON_F2_NAME = "age";
-  private final String PERSON_F3_NAME = "hometown";
+  private final static String KEY_SCHEMA_STR = "{\"type\" : \"string\"}";
+  private final static String PERSON_F1_NAME = "name";
+  private final static String PERSON_F2_NAME = "age";
+  private final static String PERSON_F3_NAME = "hometown";
 
   private String storeName;
   private Map<VeniceMultiClusterWrapper, VeniceSystemProducer> systemProducerMap;
@@ -150,7 +153,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
   }
 
   @BeforeMethod
-  private void setupStore() {
+  public void setUpStore() {
     storeName = Utils.getUniqueString("test-store-aa-wc");
     storeClients = new HashMap<>(2);
   }
@@ -161,6 +164,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
       parentControllerClient.disableAndDeleteStore(storeName);
     } catch (Exception e) {
       // ignore... this is just best-effort.
+      LOGGER.info("Failed to delete the store during cleanup with message: {}", e.getLocalizedMessage());
     }
   }
 

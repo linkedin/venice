@@ -53,8 +53,6 @@ public class AggServerHttpRequestStatsTest {
   public void testMetrics() {
     ServerHttpRequestStats singleGetServerStatsFoo = singleGetStats.getStoreStats(STORE_FOO);
     ServerHttpRequestStats singleGetServerStatsBar = singleGetStats.getStoreStats(STORE_BAR);
-    ServerHttpRequestStats batchGetServerStatsFoo = batchGetStats.getStoreStats(STORE_FOO);
-    ServerHttpRequestStats batchGetServerStatsBar = batchGetStats.getStoreStats(STORE_BAR);
 
     singleGetServerStatsFoo.recordSuccessRequest();
     singleGetServerStatsFoo.recordSuccessRequest();

@@ -28,39 +28,412 @@
       <Bug pattern="INSTANCEOF_GENERICRECORD"/>
       <Bug pattern="RCN_REDUNDANT_NULLCHECK_OF_NONNULL_VALUE"/>
       <Bug pattern="RCN_REDUNDANT_NULLCHECK_WOULD_HAVE_BEEN_A_NPE"/>
+      <!--Not require every class has clone method must implement Cloneable interface-->
       <Bug pattern="CN_IMPLEMENTS_CLONE_BUT_NOT_CLONEABLE"/>
+      <!--Not require to handle differently for RuntimeException-->
+      <Bug pattern="REC_CATCH_EXCEPTION"/>
+      <!--Not require to use %n to replace \n for new line-->
+      <Bug pattern="VA_FORMAT_STRING_USES_NEWLINE"/>
+      <!--Not require to make copies for every externally mutable objects-->
+      <Bug pattern="EI_EXPOSE_REP"/>
+      <Bug pattern="EI_EXPOSE_REP2"/>
+      <!--Not require to make assertion for every case to confirm if it's safe-->
+      <Bug pattern="BC_UNCONFIRMED_CAST"/>
+      <Bug pattern="BC_UNCONFIRMED_CAST_OF_RETURN_VALUE"/>
+      <!--Not require to refactor every inner class into a static inner-->
+      <Bug pattern="SIC_INNER_SHOULD_BE_STATIC_ANON"/>
+      <Bug pattern="SIC_INNER_SHOULD_BE_STATIC_NEEDS_THIS"/>
+      <Bug pattern="SIC_INNER_SHOULD_BE_STATIC"/>
+      <!--Not require to make use of every return value. Commonly this rule applies to methods like
+      File.mkdir, Queue.offer, Executor.submit-->
+      <Bug pattern="RV_RETURN_VALUE_IGNORED_BAD_PRACTICE"/>
     </Or>
   </Match>
   <Match>
     <Source name="~.*internal/alpini/.*" />
   </Match>
   <Match>
-    <Bug pattern="NM_SAME_SIMPLE_NAME_AS_SUPERCLASS"/>
+    <!--These classes pass null intentionally for testing purposes-->
+    <Bug pattern="NP_NONNULL_PARAM_VIOLATION"/>
     <Or>
-      <Class name="com.linkedin.venice.utils.MockTime"/>
-      <Class name="com.linkedin.venice.fastclient.stats.ClientStats"/>
+      <Class name="com.linkedin.venice.router.api.TestHostFinder"/>
+      <Class name="com.linkedin.davinci.StoreBackendTest"/>
     </Or>
   </Match>
   <Match>
-    <Bug pattern="NP_NONNULL_PARAM_VIOLATION"/>
-    <Class name="com.linkedin.venice.router.api.TestHostFinder"/>
+    <!--These classes init HashMap that's final static but still modifiable.
+    Using collections.unmodifiablemap may get rid of the warning but it's technically still modifiable, so no plan to change-->
+    <Bug pattern="MS_MUTABLE_COLLECTION"/>
+    <Or>
+      <Class name="com.linkedin.venice.router.api.VeniceResponseAggregator"/>
+      <Class name="com.linkedin.venice.client.store.AbstractAvroStoreClient"/>
+    </Or>
   </Match>
   <Match>
-    <Bug pattern="MS_MUTABLE_COLLECTION"/>
-    <Class name="com.linkedin.venice.router.api.VeniceResponseAggregator"/>
+    <!--Similar reasons as above for MS_MUTABLE_COLLECTION. These classes init static array which is modifiable-->
+    <Bug pattern="MS_EXPOSE_REP"/>
+    <Or>
+      <Class name="com.linkedin.venice.utils.ObjectMapperFactory">
+        <Field name="INSTANCE"/>
+      </Class>
+      <Class name="com.linkedin.venice.utils.RedundantExceptionFilter">
+        <Field name="singleton"/>
+      </Class>
+      <Class name="com.linkedin.venice.controllerapi.ControllerTransport">
+        <Field name="OBJECT_MAPPER"/>
+      </Class>
+      <Class name="com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils">
+        <Field name="DUMMY_COMMAND"/>
+        <Field name="DUMMY_CONTENT"/>
+      </Class>
+    </Or>
   </Match>
+  <Match>
+    <!--Not ideal, but SIT has a modifiable field for testing purpose-->
+    <Bug pattern="MS_SHOULD_BE_FINAL"/>
+    <Class name="com.linkedin.davinci.kafka.consumer.StoreIngestionTask">
+      <Field name="SCHEMA_POLLING_DELAY_MS"/>
+    </Class>
+  </Match>
+  <Match>
+    <!--This field doesn't have to be AtomicObject-->
+    <Bug pattern="VO_VOLATILE_INCREMENT"/>
+    <Class name="com.linkedin.davinci.kafka.consumer.SharedKafkaConsumer"/>
+    <Field name="pollTimes"/>
+  </Match>
+  <Match>
+    <!--Ignore SpotBugs checks on the following cases:
+    1) Fields are intentionally synchronized at write time and have no synchronization at read time for performance reasons.
+    2) Fields doesn't have synchronization at write time however only the main thread can write the field,
+    e.g. the singleton class is inited by the main process
+    -->
+    <Bug pattern="IS2_INCONSISTENT_SYNC"/>
+    <Or>
+      <Class name="com.linkedin.venice.samza.VeniceSystemProducer">
+        <Field name="hybridStoreQuotaMonitor"/>
+        <Field name="isWriteComputeEnabled"/>
+        <Field name="primaryControllerColoD2Client"/>
+        <Field name="pushMonitor"/>
+        <Field name="topicName"/>
+        <Field name="kafkaBootstrapServers"/>
+      </Class>
+      <Class name="com.linkedin.venice.hadoop.VenicePushJob">
+        <Field name="veniceWriter"/>
+      </Class>
+      <Class name="com.linkedin.venice.client.store.AbstractAvroStoreClient">
+        <Field name="whetherStoreInitTriggeredByRequestFail"/>
+      </Class>
+      <Class name="com.linkedin.venice.utils.RedundantExceptionFilter"/>
+      <Class name="com.linkedin.venice.server.VeniceServer">
+        <Field name="zkClient"/>
+      </Class>
+      <Class name="com.linkedin.venice.router.api.path.VenicePath">
+        <Field name="requestId"/>
+      </Class>
+      <Class name="com.linkedin.venice.controller.VeniceControllerStateModel">
+        <Field name="clusterResources"/>
+      </Class>
+      <Class name="com.linkedin.venice.controller.VeniceHelixAdmin">
+        <Field name="controllerClusterKeyBuilder"/>
+      </Class>
+      <Class name="com.linkedin.venice.helix.HelixInstanceConfigRepository">
+        <Field name="instanceGroupIdMapping" />
+        <Field name="groupCount"/>
+      </Class>
+      <Class name="com.linkedin.venice.utils.DiskUsage">
+        <Field name="freeSpaceBytes"/>
+      </Class>
+      <Class name="com.linkedin.davinci.DaVinciBackend">
+        <Field name="ingestionBackend"/>
+      </Class>
+      <Class name="com.linkedin.davinci.client.AvroGenericDaVinciClient">
+        <Field name="keyDeserializer"/>
+      </Class>
+      <Class name="com.linkedin.davinci.store.AbstractStorageEngine">
+        <Field name="metadataPartition"/>
+      </Class>
+      <Class name="com.linkedin.davinci.kafka.consumer.SharedKafkaConsumer">
+        <Field name="currentAssignment"/>
+      </Class>
+    </Or>
+  </Match>
+  <Match>
+    <Bug pattern="SWL_SLEEP_WITH_LOCK_HELD"/>
+    <Or>
+      <!--The change was intentionally introduced to fix a deadlock issue-->
+      <Class name="com.linkedin.venice.client.store.AbstractAvroStoreClient"/>
+      <Class name="com.linkedin.venice.integration.utils.ZkServerWrapper">
+        <Method name="internalStart"/>
+      </Class>
+      <!--Has TODO to track the fix of removing the sleep-->
+      <Class name="com.linkedin.davinci.kafka.consumer.SharedKafkaConsumer">
+        <Method name="poll"/>
+      </Class>
+    </Or>
+  </Match>
+  <Match>
+    <!--The fields in these classes don't need to be a part of the state so no need for serialization-->
+    <Bug pattern="SE_BAD_FIELD"/>
+    <Or>
+      <Class name="com.linkedin.venice.endToEnd.TestBatch$StatCounter">
+        <Field name="accumulator"/>
+      </Class>
+      <Class name="com.linkedin.venice.samza.VeniceSystemFactory">
+        <Field name="systemProducerStatues"/>
+      </Class>
+    </Or>
+  </Match>
+  <Match>
+    <!--These fields are initialized either by public keyword access or not been used at all in the test suite-->
+    <Bug pattern="UWF_FIELD_NOT_INITIALIZED_IN_CONSTRUCTOR"/>
+    <Or>
+      <Class name="~.*?Test.*"/>
+      <Class name="~.*?Benchmark.*"/>
+      <!--These class actually init the field but they use different ways to init instead of constructor hence SpotBug cannot detect it-->
+      <Class name="com.linkedin.venice.client.store.transport.D2TransportClient$1$1"/>
+      <Class name="com.linkedin.venice.controller.NodeRemovableResult"/>
+      <Class name="org.apache.avro.io.OptimizedBinaryDecoder"/>
+    </Or>
+  </Match>
+  <Match>
+    <!--We use large string in test suite-->
+    <Bug pattern="HSC_HUGE_SHARED_STRING_CONSTANT"/>
+    <Or>
+      <Class name="~.*?Test.*"/>
+    </Or>
+  </Match>
+  <Match>
+    <!--Expected behavior when use mock in test-->
+    <Bug pattern="RV_RETURN_VALUE_IGNORED_NO_SIDE_EFFECT"/>
+    <Or>
+      <Class name="~.*?Test.*"/>
+      <Class name="~.*?Mock.*"/>
+    </Or>
+  </Match>
+  <Match>
+    <Bug pattern="URF_UNREAD_PUBLIC_OR_PROTECTED_FIELD"/>
+    <Or>
+      <!--Fields are being used for print-->
+      <Class name="com.linkedin.venice.DumpAdminMessages$AdminOperationInfo"/>
+      <!--Fields are not used but they may be used during performance testing-->
+      <Class name="com.linkedin.venice.client.store.deserialization.BatchDeserializer"/>
+      <!--Fields are being used-->
+      <Class name="com.linkedin.venice.VeniceConstants"/>
+      <Class name="com.linkedin.venice.compute.ComputeRequestWrapper">
+        <Field name="LATEST_SCHEMA_VERSION_FOR_COMPUTE_REQUEST"/>
+      </Class>
+      <!--Not being used but may have value for future when passing configs to partitioners-->
+      <Class name="com.linkedin.venice.partitioner.VenicePartitioner">
+        <Field name="props"/>
+      </Class>
+      <Class name="com.linkedin.venice.views.VeniceView">
+        <Field name="props"/>
+      </Class>
+    </Or>
+  </Match>
+  <Match>
+    <!--Auto-generated classes. No plan to fix-->
+    <Bug pattern="RI_REDUNDANT_INTERFACES"/>
+    <Or>
+      <Class name="com.linkedin.venice.client.store.NamespaceTest"/>
+      <Class name="com.linkedin.venice.client.store.NamespaceTest$Builder"/>
+      <Class name="com.linkedin.venice.schema.NamespaceTest"/>
+      <Class name="com.linkedin.venice.schema.NamespaceTest$Builder"/>
+      <Class name="com.linkedin.venice.serialization.avro.UnionOfEnumRecord"/>
+      <Class name="com.linkedin.venice.serialization.avro.UnionOfEnumRecord$Builder"/>
+      <Class name="com.linkedin.venice.client.store.schemas.TestValueRecord"/>
+      <Class name="com.linkedin.venice.client.store.schemas.TestKeyRecord"/>
+      <Class name="com.linkedin.venice.client.store.schemas.TestValueRecordWithMoreFields"/>
+      <Class name="com.linkedin.venice.fastclient.schema.TestValueSchema"/>
+      <Class name="com.linkedin.venice.utils.TestMockTime"/>
+      <Class name="com.linkedin.venice.serializer.ArrayBasedPrimitiveIntegerSet"/>
+      <Class name="com.linkedin.davinci.ingestion.IsolatedIngestionBackend"/>
+    </Or>
+  </Match>
+  <Match>
+    <!--No plan to throw NoSuchElementException for these iterators-->
+    <Bug pattern="IT_NO_SUCH_ELEMENT"/>
+    <Or>
+      <Class name="com.linkedin.venice.hadoop.VeniceVsonRecordReader$VsonIterator"/>
+      <Class name="com.linkedin.venice.utils.DataProviderUtils$PermutationIterator"/>
+    </Or>
+  </Match>
+  <Match>
+    <!--TestNG Utils-->
+    <Bug pattern="MS_PKGPROTECT"/>
+    <Or>
+      <Class name="com.linkedin.venice.utils.DataProviderUtils"/>
+      <Class name="com.linkedin.venice.fastclient.utils.ClientTestUtils"/>
+    </Or>
+  </Match>
+  <Match>
+    <!--Spotbug suggests return empty array instead of null, but it'd require lots of refactoring-->
+    <Bug pattern="PZLA_PREFER_ZERO_LENGTH_ARRAYS" />
+    <Or>
+      <Class name="com.linkedin.venice.hadoop.AbstractVeniceRecordReader"/>
+      <Class name="com.linkedin.venice.client.store.AvroComputeRequestBuilderV4"/>
+      <Class name="com.linkedin.venice.schema.vson.VsonAvroSerializer"/>
+      <Class name="com.linkedin.venice.router.api.DictionaryRetrievalService"/>
+      <Class name="com.linkedin.davinci.kafka.consumer.ActiveActiveStoreIngestionTask"/>
+      <Class name="com.linkedin.davinci.kafka.consumer.StoreWriteComputeProcessor"/>
+      <Class name="com.linkedin.davinci.store.blackhole.BlackHoleStorageEnginePartition"/>
+      <Class name="com.linkedin.davinci.store.memory.InMemoryStoragePartition"/>
+      <Class name="com.linkedin.davinci.store.rocksdb.RocksDBStoragePartition"/>
+    </Or>
+  </Match>
+  <Match>
+    <!--No need to serialize a class created for testing-->
+    <Bug pattern="SE_BAD_FIELD_INNER_CLASS"/>
+    <Or>
+      <Class name="com.linkedin.venice.utils.MapTest$1NotEmptyHashMap"/>
+      <Class name="com.linkedin.venice.utils.MapTest$1NotEmptyLinkedHashMap"/>
+    </Or>
+  </Match>
+  <!--This comparator has no intention to be stored in a hash-based structure-->
   <Match>
     <Bug pattern="HE_EQUALS_USE_HASHCODE"/>
     <Class name="com.linkedin.venice.utils.HashCodeComparator"/>
   </Match>
   <Match>
-    <Bug pattern="MS_SHOULD_BE_FINAL"/>
-    <Class name="com.linkedin.davinci.kafka.consumer.StoreIngestionTask"/>
-    <Field name="SCHEMA_POLLING_DELAY_MS"/>
+    <Bug pattern="EQ_UNUSUAL"/>
+    <Class name="com.linkedin.venice.utils.HashCodeComparator"/>
   </Match>
   <Match>
-    <Bug pattern="VO_VOLATILE_INCREMENT"/>
-    <Class name="com.linkedin.davinci.kafka.consumer.SharedKafkaConsumer"/>
-    <Field name="pollTimes"/>
+    <Bug pattern="SE_COMPARATOR_SHOULD_BE_SERIALIZABLE"/>
+    <Class name="com.linkedin.venice.utils.HashCodeComparator"/>
+  </Match>
+  <Match>
+    <!--Legacy codes catch NPE and handle them-->
+    <Bug pattern="DCN_NULLPOINTER_EXCEPTION"/>
+    <Or>
+      <Class name="com.linkedin.venice.schema.vson.VsonAvroDatumReader$DeepEqualsHashMap"/>
+      <Class name="com.linkedin.venice.serializer.AvroSerializer"/>
+      <Class name="com.linkedin.venice.helix.HelixPartitionStateAccessor"/>
+      <Class name="com.linkedin.venice.helix.HelixPartitionStatusAccessor"/>
+    </Or>
+  </Match>
+  <Match>
+    <Bug pattern="DE_MIGHT_IGNORE"/>
+    <!--No plan to fix. This test is flaky and legacy so not able to capture what we intended to catch for an exception-->
+    <Class name="com.linkedin.venice.meta.TestZKStore"/>
+  </Match>
+  <Match>
+    <Bug pattern="NO_NOTIFY_NOT_NOTIFYALL"/>
+    <!--No plan to fix. This test class intends to reproduce race conditions so it's intentional to have multithreading mistakes-->
+    <Class name="com.linkedin.venice.utils.LazyTest"/>
+  </Match>
+  <Match>
+    <Bug pattern="UW_UNCOND_WAIT"/>
+    <Or>
+      <!--this class use wait/notify as a lock to delay actions-->
+      <Class name="com.linkedin.davinci.kafka.consumer.ConsumptionTask">
+        <Method name="run"/>
+      </Class>
+      <Class name="com.linkedin.venice.utils.LazyTest"/>
+    </Or>
+  </Match>
+  <Match>
+    <Bug pattern="WA_NOT_IN_LOOP"/>
+    <Or>
+      <!--The waiting for SIT doesn't require a while-loop to check. Waiting for 10 secs is the best effort offering-->
+      <Class name="com.linkedin.davinci.kafka.consumer.StoreIngestionTask">
+        <Method name="shutdown"/>
+      </Class>
+      <Class name="com.linkedin.venice.utils.LazyTest"/>
+    </Or>
+  </Match>
+  <Match>
+    <Bug pattern="NN_NAKED_NOTIFY"/>
+    <Or>
+      <Class name="com.linkedin.venice.utils.LazyTest"/>
+      <!--The wait is only used to act as a lock to perform operations iff stop and setDataReceiver is called and finished -->
+      <Class name="com.linkedin.davinci.kafka.consumer.ConsumptionTask">
+        <Method name="setDataReceiver"/>
+        <Method name="stop"/>
+      </Class>
+      <Class name="com.linkedin.davinci.kafka.consumer.StoreIngestionTask">
+        <Method name="internalClose"/>
+      </Class>
+    </Or>
+  </Match>
+  <Match>
+    <!--Registering sensor is enough to emit metrics and there's no need to use the variable,
+    but we want to keep the reference for code checking and debugging purposes-->
+    <Bug pattern="URF_UNREAD_FIELD"/>
+    <Or>
+      <Class name="~.*?Stats.*"/>
+      <Class name="com.linkedin.venice.kafka.KafkaClientFactory$MetricsParameters"/>
+    </Or>
+  </Match>
+  <Match>
+    <!--Rare cases to use System.exit-->
+    <Bug pattern="DM_EXIT"/>
+    <Or>
+      <Class name="com.linkedin.venice.controller.spark.VeniceSparkEmbeddedJettyServer"/>
+      <Class name="com.linkedin.davinci.ingestion.isolated.IsolatedIngestionServer"/>
+    </Or>
+  </Match>
+  <Match>
+    <!--The static field INSTANCE should only been accessible by the test main thread-->
+    <Bug pattern="ST_WRITE_TO_STATIC_FROM_INSTANCE_METHOD"/>
+    <Or>
+      <Class name="com.linkedin.venice.integration.utils.ZkServerWrapper"/>
+      <Class name="com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest"/>
+    </Or>
+  </Match>
+  <Match>
+    <!--Though the GET method is not synchronized explicitly, its re-uses the GET method from super class, which is thread safe-->
+    <Bug pattern="UG_SYNC_SET_UNSYNC_GET"/>
+    <Class name="com.linkedin.venice.utils.SparseConcurrentList"/>
+  </Match>
+  <Match>
+    <Bug pattern="JLM_JSR166_UTILCONCURRENT_MONITORENTER"/>
+    <Or>
+      <Class name="com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository$StoreConfigChangedListener"/>
+      <Class name="com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository$StoreConfigAddedOrDeletedChangedListener"/>
+      <Class name="com.linkedin.venice.router.throttle.ReadRequestThrottler"/>
+    </Or>
+  </Match>
+  <Match>
+    <Bug pattern="SC_START_IN_CTOR"/>
+    <!--Constructor shouldn't start a thread but this class has been extended to a mock test,
+    so it's hard to eliminate this exception-->
+    <Class name="com.linkedin.venice.httpclient.CachedDnsResolver"/>
+  </Match>
+  <Match>
+    <!--
+    Ignore SpotBugs checks on the following cases:
+    1) classes have methods owned by interfaces/abstract class or other libs, which cannot be marked as static/final/private
+    2) classes that have lots of tests mock on getter methods such that these methods cannot be marked as final w/o lots of refactoring-->
+    <Bug pattern="MC_OVERRIDABLE_METHOD_CALL_IN_CONSTRUCTOR"/>
+    <Or>
+      <Class name="com.linkedin.venice.controller.stats.AggPartitionHealthStats"/>
+      <Class name="com.linkedin.venice.listener.ReadQuotaEnforcementHandler"/>
+      <Class name="com.linkedin.venice.hadoop.input.kafka.VeniceKafkaInputReducer"/>
+      <Class name="com.linkedin.venice.fastclient.meta.InstanceHealthMonitor"/>
+      <Class name="com.linkedin.venice.fastclient.stats.FastClientStats"/>
+      <Class name="com.linkedin.venice.helix.HelixReadOnlySchemaRepository"/>
+      <Class name="com.linkedin.venice.helix.ZkRoutersClusterManager"/>
+      <Class name="com.linkedin.venice.stats.HttpConnectionPoolStats"/>
+      <Class name="com.linkedin.venice.stats.HttpConnectionPoolStats$RouteHttpConnectionPoolStats"/>
+      <Class name="com.linkedin.venice.router.throttle.NoopRouterThrottler"/>
+      <Class name="com.linkedin.venice.router.throttle.ReadRequestThrottler"/>
+      <Class name="com.linkedin.venice.router.streaming.VeniceChunkedResponse$StreamingResponseMeta"/>
+      <Class name="com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter"/>
+      <Class name="com.linkedin.davinci.stats.AbstractVeniceStatsReporter"/>
+      <Class name="com.linkedin.davinci.VersionBackend"/>
+      <Class name="com.linkedin.davinci.kafka.consumer.KafkaConsumerService"/>
+      <Class name="com.linkedin.davinci.store.rocksdb.RocksDBStorageEngine"/>
+      <Class name="com.linkedin.davinci.stats.AbstractVeniceAggVersionedStats"/>
+      <Class name="com.linkedin.venice.router.api.path.VeniceComputePath"/>
+      <Class name="com.linkedin.venice.router.api.path.VeniceMultiGetPath"/>
+      <Class name="com.linkedin.venice.router.api.path.VeniceSingleGetPath"/>
+      <Class name="com.linkedin.venice.router.api.path.VeniceSingleGetPath"/>
+      <Class name="com.linkedin.davinci.config.VeniceStoreVersionConfig"/>
+      <Class name="com.linkedin.davinci.kafka.consumer.LeaderFollowerStoreIngestionTask"/>
+      <Class name="com.linkedin.venice.controller.VeniceParentHelixAdmin"/>
+      <Class name="com.linkedin.venice.controller.VeniceHelixAdmin"/>
+      <Class name="com.linkedin.davinci.kafka.consumer.ActiveActiveStoreIngestionTask"/>
+    </Or>
   </Match>
 </FindBugsFilter>

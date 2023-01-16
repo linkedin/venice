@@ -9,14 +9,11 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
 public class AbstractVeniceStatsTest {
-  private AtomicInteger counter = new AtomicInteger();
-
   static class StatsTestImpl extends AbstractVeniceStats {
     public StatsTestImpl(MetricsRepository metricsRepository, String name) {
       super(metricsRepository, name);

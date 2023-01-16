@@ -48,7 +48,7 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
-public class ProduceWithSSL {
+public class TestProduceWithSSL {
   private VeniceClusterWrapper cluster;
 
   @BeforeClass
@@ -100,7 +100,8 @@ public class ProduceWithSSL {
     File file = new File(path);
     try (FileInputStream fis = new FileInputStream(file)) {
       byte[] data = new byte[(int) file.length()];
-      fis.read(data);
+      int length = fis.read(data);
+      assert length == file.length();
       return data;
     }
   }

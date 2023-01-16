@@ -47,7 +47,7 @@ public class StoreBackendConfig {
     return Collections.emptyList();
   }
 
-  public void load() {
+  public final void load() {
     try (InputStream in = new FileInputStream(file)) {
       props.load(in);
       LOGGER.info("Loaded store config from {}: {}", file.getAbsolutePath(), props);

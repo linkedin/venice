@@ -41,7 +41,6 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
-import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -63,16 +62,15 @@ public abstract class AbstractPushMonitorTest {
   private RoutingDataRepository mockRoutingDataRepo;
   private StoreCleaner mockStoreCleaner;
   private AggPushHealthStats mockPushHealthStats;
-  private MetricsRepository metricsRepository;
   private ClusterLockManager clusterLockManager;
 
-  private String clusterName = Utils.getUniqueString("test_cluster");
-  private String aggregateRealTimeSourceKafkaUrl = "aggregate-real-time-source-kafka-url";
+  private final static String clusterName = Utils.getUniqueString("test_cluster");
+  private final static String aggregateRealTimeSourceKafkaUrl = "aggregate-real-time-source-kafka-url";
   private String storeName;
   private String topic;
 
-  private int numberOfPartition = 1;
-  private int replicationFactor = 3;
+  private final static int numberOfPartition = 1;
+  private final static int replicationFactor = 3;
 
   protected AbstractPushMonitor getPushMonitor() {
     return getPushMonitor(mock(RealTimeTopicSwitcher.class));
@@ -92,7 +90,6 @@ public abstract class AbstractPushMonitorTest {
     mockStoreRepo = mock(ReadWriteStoreRepository.class);
     mockRoutingDataRepo = mock(RoutingDataRepository.class);
     mockPushHealthStats = mock(AggPushHealthStats.class);
-    metricsRepository = new MetricsRepository();
     clusterLockManager = new ClusterLockManager(clusterName);
     monitor = getPushMonitor();
   }
@@ -316,9 +313,9 @@ public abstract class AbstractPushMonitorTest {
 
   private PushStatusStoreReader statusStoreReaderMock;
   private HelixCustomizedViewOfflinePushRepository customizedViewMock;
-  private final String incrementalPushVersion = "IncPush_42";
-  private final int partitionCountForIncPushTests = 3;
-  private final int replicationFactorForIncPushTests = 3;
+  private final static String incrementalPushVersion = "IncPush_42";
+  private final static int partitionCountForIncPushTests = 3;
+  private final static int replicationFactorForIncPushTests = 3;
 
   private void prepareForIncrementalPushStatusTest(
       Map<Integer, Map<CharSequence, Integer>> pushStatusMap,
@@ -757,7 +754,7 @@ public abstract class AbstractPushMonitorTest {
         "At least one replica already received end_of_push, so we send SOBR and update push status to END_OF_PUSH_RECEIVED");
   }
 
-  private class MockStoreCleaner implements StoreCleaner {
+  private static class MockStoreCleaner implements StoreCleaner {
     private final ClusterLockManager clusterLockManager;
 
     public MockStoreCleaner(ClusterLockManager clusterLockManager) {

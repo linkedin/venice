@@ -89,8 +89,9 @@ public class ConsumerTest {
     try {
       messageFromObliviousDeserializer.get(NEW_FIELD);
       Assert.fail("The new field name should not be available because the reader does not want it.");
-    } catch (NullPointerException e) {
+    } catch (Exception e) {
       // Expected
+      Assert.assertEquals(e.getClass(), NullPointerException.class);
     }
     Assert.assertNotEquals(
         messageFromObliviousDeserializer,

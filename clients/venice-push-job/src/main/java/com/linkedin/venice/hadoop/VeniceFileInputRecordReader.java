@@ -31,6 +31,7 @@ class VeniceFileInputRecordReader implements RecordReader<IntWritable, NullWrita
   }
 
   public VeniceFileInputRecordReader(InputSplit split, JobConf job) throws IOException {
+    assert split instanceof VeniceFileInputSplit;
     inputDirectory = ((VeniceFileInputSplit) split).getInputDirectory();
     finishedNumberOfFiles = 0;
     totalNumberOfFiles = getTotalNumberOfFiles(inputDirectory, job);

@@ -19,8 +19,8 @@ import org.testng.annotations.Test;
 public class InMemoryStorageEngineTest extends AbstractStorageEngineTest {
   StorageService service;
   VeniceStoreVersionConfig storeConfig;
-  final String STORE_NAME = "testng-in-memory";
-  final int PARTITION_ID = 0;
+  final static String STORE_NAME = "testng-in-memory";
+  final static int PARTITION_ID = 0;
 
   public InMemoryStorageEngineTest() {
   }

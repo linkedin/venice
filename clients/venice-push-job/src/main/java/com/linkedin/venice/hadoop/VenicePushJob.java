@@ -393,8 +393,6 @@ public class VenicePushJob implements AutoCloseable {
 
   protected static class PushJobSetting {
     boolean enablePush;
-    boolean enableSsl;
-    String sslFactoryClassName;
     String veniceControllerUrl;
     String veniceRouterUrl;
     String storeName;
@@ -450,7 +448,6 @@ public class VenicePushJob implements AutoCloseable {
     // Kafka url will get from Venice backend for store push
     String kafkaUrl;
     boolean sslToKafka;
-    boolean daVinciPushStatusStoreEnabled;
     CompressionStrategy compressionStrategy;
     String partitionerClass;
     Map<String, String> partitionerParams;
@@ -473,7 +470,6 @@ public class VenicePushJob implements AutoCloseable {
     boolean isWriteComputeEnabled;
     boolean isIncrementalPushEnabled;
     Version sourceKafkaInputVersionInfo;
-    Version sourceKafkaOutputVersionInfo;
     long storeRewindTimeInSeconds;
   }
 
@@ -634,13 +630,6 @@ public class VenicePushJob implements AutoCloseable {
     PushJobSetting pushJobSettingToReturn = new PushJobSetting();
     pushJobSettingToReturn.veniceControllerUrl = veniceControllerUrl;
     pushJobSettingToReturn.enablePush = props.getBoolean(ENABLE_PUSH, true);
-    /**
-     * TODO: after controller SSL support is rolled out everywhere, change the default behavior for ssl enabled to true;
-     * Besides, change the venice controller urls list for all push job to use the new port
-     */
-    pushJobSettingToReturn.enableSsl = isSslEnabled();
-    pushJobSettingToReturn.sslFactoryClassName =
-        props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
     if (props.containsKey(SOURCE_GRID_FABRIC)) {
       pushJobSettingToReturn.sourceGridFabric = props.getString(SOURCE_GRID_FABRIC);
     }
@@ -2185,7 +2174,6 @@ public class VenicePushJob implements AutoCloseable {
     kafkaTopicInfo.partitionerClass = versionCreationResponse.getPartitionerClass();
     kafkaTopicInfo.partitionerParams = versionCreationResponse.getPartitionerParams();
     kafkaTopicInfo.amplificationFactor = versionCreationResponse.getAmplificationFactor();
-    kafkaTopicInfo.daVinciPushStatusStoreEnabled = versionCreationResponse.isDaVinciPushStatusStoreEnabled();
     kafkaTopicInfo.chunkingEnabled = storeSetting.isChunkingEnabled && !Version.isRealTimeTopic(kafkaTopicInfo.topic);
 
     if (pushJobSetting.isSourceKafka) {
@@ -2216,7 +2204,6 @@ public class VenicePushJob implements AutoCloseable {
                 + " with urls: " + setting.veniceControllerUrl);
       }
       Version newVersion = newVersionOptional.get();
-      storeSetting.sourceKafkaOutputVersionInfo = newVersion;
       Version sourceVersion = storeSetting.sourceKafkaInputVersionInfo;
 
       if (sourceVersion.getCompressionStrategy() != newVersion.getCompressionStrategy()) {

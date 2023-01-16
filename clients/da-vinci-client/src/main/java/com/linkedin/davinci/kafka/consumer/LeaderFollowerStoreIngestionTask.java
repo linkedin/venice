@@ -2049,6 +2049,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 kafkaClusterId,
                 beforeProcessingRecordTimestamp);
             break;
+          default:
+            // do nothing
         }
         if (!isSegmentControlMsg(controlMessageType)) {
           LOGGER.info(
