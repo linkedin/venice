@@ -2620,7 +2620,7 @@ public class VeniceParentHelixAdmin implements Admin {
         if (valueSchemaEntry.getId() == maxId) {
           throw new VeniceException(
               "For store " + storeName + " cannot generate update schema for value schema ID :"
-                  + valueSchemaEntry.getId() + "top level field probably missing defaults.",
+                  + valueSchemaEntry.getId() + ", top level field probably missing defaults.",
               e);
         }
       }
@@ -2758,7 +2758,8 @@ public class VeniceParentHelixAdmin implements Admin {
     acquireAdminMessageLock(clusterName, storeName);
     try {
       Schema newValueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(newValueSchemaStr);
-      AvroSchemaUtils.validateTopLevelFieldDefaultsValueRecordSchema(newValueSchema);
+      // TODO: Enable the following check for all new schema registration.
+      // AvroSchemaUtils.validateTopLevelFieldDefaultsValueRecordSchema(newValueSchema);
       final int newValueSchemaId = getVeniceHelixAdmin().checkPreConditionForAddValueSchemaAndGetNewSchemaId(
           clusterName,
           storeName,
