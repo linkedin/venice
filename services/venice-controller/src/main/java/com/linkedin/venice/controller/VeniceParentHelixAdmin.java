@@ -47,6 +47,9 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_MIG
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_TO_GO_ONLINE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COMPUTATION_ENABLED;
+import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD;
+import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
+import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REWIND_TIME_IN_SECONDS;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -2370,21 +2373,26 @@ public class VeniceParentHelixAdmin implements Admin {
         hybridStoreConfigRecord.dataReplicationPolicy = hybridStoreConfig.getDataReplicationPolicy().getValue();
         hybridStoreConfigRecord.bufferReplayPolicy = hybridStoreConfig.getBufferReplayPolicy().getValue();
         setStore.hybridStoreConfig = hybridStoreConfigRecord;
-        if (!currStore.isHybrid() && setStore.partitionNum == 0) {
-          // This is a new hybrid store. Update store partition count from 0 to default value.
-          setStore.partitionNum = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName)
-              .getConfig()
-              .getNumberOfPartitionForHybrid();
-          updatedConfigsList.add(PARTITION_COUNT);
-        }
       }
 
       if (incrementalPushEnabled.orElse(currStore.isIncrementalPushEnabled())
           && !veniceHelixAdmin.isHybrid(currStore.getHybridStoreConfig())
           && !veniceHelixAdmin.isHybrid(hybridStoreConfig)) {
         LOGGER.info(
-            "Enabling incremental push for a batch store:{} will convert it to a hybrid store with default configs.",
+            "Enabling incremental push for a batch store:{}. Converting it to a hybrid store with default configs.",
             storeName);
+        HybridStoreConfigRecord hybridStoreConfigRecord = new HybridStoreConfigRecord();
+        hybridStoreConfigRecord.rewindTimeInSeconds = DEFAULT_REWIND_TIME_IN_SECONDS;
+        updatedConfigsList.add(REWIND_TIME_IN_SECONDS);
+        hybridStoreConfigRecord.offsetLagThresholdToGoOnline = DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD;
+        updatedConfigsList.add(OFFSET_LAG_TO_GO_ONLINE);
+        hybridStoreConfigRecord.producerTimestampLagThresholdToGoOnlineInSeconds = DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
+        updatedConfigsList.add(TIME_LAG_TO_GO_ONLINE);
+        hybridStoreConfigRecord.dataReplicationPolicy = DataReplicationPolicy.NONE.getValue();
+        updatedConfigsList.add(DATA_REPLICATION_POLICY);
+        hybridStoreConfigRecord.bufferReplayPolicy = BufferReplayPolicy.REWIND_FROM_EOP.getValue();
+        updatedConfigsList.add(BUFFER_REPLAY_POLICY);
+        setStore.hybridStoreConfig = hybridStoreConfigRecord;
       }
 
       /**
@@ -2392,7 +2400,6 @@ public class VeniceParentHelixAdmin implements Admin {
        * do append-only and compaction will happen later.
        * We expose actual disk usage to users, instead of multiplying/dividing the overhead ratio by situations.
        */
-
       setStore.storageQuotaInByte =
           storageQuotaInByte.map(addToUpdatedConfigList(updatedConfigsList, STORAGE_QUOTA_IN_BYTE))
               .orElseGet(currStore::getStorageQuotaInByte);
@@ -2540,6 +2547,19 @@ public class VeniceParentHelixAdmin implements Admin {
         // Dry-run generating Write Compute schemas before sending admin messages to enable Write Compute because Write
         // Compute schema generation may fail due to some reasons. If that happens, abort the store update process.
         addWriteComputeSchemaForStore(clusterName, storeName, true);
+      }
+
+      if (!veniceHelixAdmin.isHybrid(currStore.getHybridStoreConfig())
+          && veniceHelixAdmin.isHybrid(setStore.hybridStoreConfig) && setStore.partitionNum == 0) {
+        // This is a new hybrid store and partition count is not specified. Use default hybrid store partition count.
+        setStore.partitionNum = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName)
+            .getConfig()
+            .getNumberOfPartitionForHybrid();
+        LOGGER.info(
+            "Enforcing default hybrid partition count:{} for a new hybrid store:{}.",
+            setStore.partitionNum,
+            storeName);
+        updatedConfigsList.add(PARTITION_COUNT);
       }
 
       AdminOperation message = new AdminOperation();
