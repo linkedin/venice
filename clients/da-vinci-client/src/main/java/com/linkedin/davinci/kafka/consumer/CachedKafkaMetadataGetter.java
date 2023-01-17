@@ -8,6 +8,8 @@ import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -78,38 +80,37 @@ class CachedKafkaMetadataGetter {
    * @param key cache key: Topic name or TopicPartition
    * @param metadataCache cache for this specific metadata
    * @param valueSupplier function to fetch metadata from Kafka
-   * @param <K> type of the cache key
    * @param <T> type of the metadata
    * @return the cache value or the fresh metadata from Kafka
    */
-  private <K, T> T fetchMetadata(K key, Map<K, ValueAndExpiryTime<T>> metadataCache, Supplier<T> valueSupplier) {
+  <T> T fetchMetadata(
+      KafkaMetadataCacheKey key,
+      Map<KafkaMetadataCacheKey, ValueAndExpiryTime<T>> metadataCache,
+      Supplier<T> valueSupplier) {
     final long now = System.nanoTime();
+    final ValueAndExpiryTime<T> cachedValue =
+        metadataCache.computeIfAbsent(key, k -> new ValueAndExpiryTime<>(valueSupplier.get(), now + ttlNs));
 
-    ValueAndExpiryTime<T> cachedValue = metadataCache.get(key);
-    /**
-     * The first entry of the pair is the expired time of this metadata; if the expired time is bigger than the current time,
-     * reuse the cached value.
-     */
-    if (cachedValue != null && cachedValue.getExpiryTimeNs() > now) {
-      return cachedValue.getValue();
-    }
-    T newValue = valueSupplier.get();
-    if (cachedValue == null) {
-      cachedValue = new ValueAndExpiryTime<>(newValue, now + ttlNs);
-      metadataCache.put(key, cachedValue);
-    } else {
-      // Reuse the existing object instead of creating a one to be more memory efficient.
-      cachedValue.setValueAndExpiryTimeMs(newValue, now + ttlNs);
+    // For a given key in the given cache, we will only issue one async request at the same time.
+    if (cachedValue.getExpiryTimeNs() <= now && cachedValue.valueUpdateInProgress.compareAndSet(false, true)) {
+      CompletableFuture.runAsync(() -> {
+        try {
+          T newValue = valueSupplier.get();
+          metadataCache.put(key, new ValueAndExpiryTime<>(newValue, System.nanoTime() + ttlNs));
+        } catch (Exception e) {
+          metadataCache.remove(key);
+        }
+      });
     }
     return cachedValue.getValue();
   }
 
-  private static class KafkaMetadataCacheKey {
+  static class KafkaMetadataCacheKey {
     private final String kafkaServer;
     private final String topicName;
     private final int partitionId;
 
-    private KafkaMetadataCacheKey(String kafkaServer, String topicName, int partitionId) {
+    KafkaMetadataCacheKey(String kafkaServer, String topicName, int partitionId) {
       this.kafkaServer = kafkaServer;
       this.topicName = topicName;
       this.partitionId = partitionId;
@@ -144,11 +145,12 @@ class CachedKafkaMetadataGetter {
    *
    * @param <T> Type of the value.
    */
-  private static class ValueAndExpiryTime<T> {
-    private T value;
-    private long expiryTimeNs;
+  static class ValueAndExpiryTime<T> {
+    private final T value;
+    private final long expiryTimeNs;
+    private final AtomicBoolean valueUpdateInProgress = new AtomicBoolean(false);
 
-    private ValueAndExpiryTime(T value, long expiryTimeNs) {
+    ValueAndExpiryTime(T value, long expiryTimeNs) {
       this.value = value;
       this.expiryTimeNs = expiryTimeNs;
     }
@@ -159,11 +161,6 @@ class CachedKafkaMetadataGetter {
 
     long getExpiryTimeNs() {
       return expiryTimeNs;
-    }
-
-    void setValueAndExpiryTimeMs(T newValue, long newExpiryTimeNs) {
-      value = newValue;
-      expiryTimeNs = newExpiryTimeNs;
     }
   }
 }
