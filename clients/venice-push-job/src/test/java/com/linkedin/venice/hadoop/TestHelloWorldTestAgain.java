@@ -9,8 +9,8 @@ public class TestHelloWorldTestAgain {
     HelloWorldTestAgain.checkNumber(1);
   }
 
-  // @Test
-  // public void testNegative() {
-  // HelloWorldTestAgain.checkNumber(-1);
-  // }
+  @Test
+  public void testNegative() {
+    HelloWorldTestAgain.checkNumber(-1);
+  }
 }
