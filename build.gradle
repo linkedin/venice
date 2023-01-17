@@ -576,14 +576,15 @@ idea.project.ipr {
 // See https://github.com/form-com/diff-coverage-gradle/issues/73
 ext.createDiffFile = { ->
   def file = Files.createTempFile(URLEncoder.encode(project.name, 'UTF-8'), '.diff').toFile()
-  def diffBase = 'refs/remotes/origin/main'
-  if (System.getenv('JENKINS_HOME')) {
-    // running on Jenkins
-    diffBase = 'upstream/main'
-  } else if (System.getenv('CI')) {
-    // running on Github action
-    diffBase = 'origin/main'
-  }
+  // def diffBase = 'refs/remotes/upstream/main'
+  def diffBase = "${git.getUpstreamRemote()}/main"
+//  if (System.getenv('JENKINS_HOME')) {
+//    // running on Jenkins
+//    diffBase = 'upstream/main'
+//  } else if (System.getenv('CI')) {
+//    // running on Github action
+//    diffBase = 'origin/main'
+//  }
   file.withOutputStream { out ->
     exec {
       commandLine 'git', 'diff', '--no-color', '--minimal', diffBase
