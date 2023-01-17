@@ -1,7 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
@@ -29,13 +28,11 @@ public class CachedKafkaMetadataGetterTest {
       Assert.assertEquals(actualResult, expectedResult);
     });
 
-    // TopicDoesNotExistException is caught and thrown.
+    // For persisting exception, it will be caught and thrown.
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-      Assert.assertThrows(
-          TopicDoesNotExistException.class,
-          () -> cachedKafkaMetadataGetter.fetchMetadata(key, offsetCache, () -> {
-            throw new TopicDoesNotExistException("dummy exception");
-          }));
+      Assert.assertThrows(VeniceException.class, () -> cachedKafkaMetadataGetter.fetchMetadata(key, offsetCache, () -> {
+        throw new VeniceException("dummy exception");
+      }));
     });
 
     // Reset the cached value to 1.
@@ -54,7 +51,6 @@ public class CachedKafkaMetadataGetterTest {
       });
       Long expectedResult = 2L;
       Assert.assertEquals(actualResult, expectedResult);
-      Assert.assertNull(offsetCache.get(key).getException());
     });
   }
 }
