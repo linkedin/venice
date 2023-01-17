@@ -50,14 +50,12 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COM
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REWIND_TIME_IN_SECONDS;
-import static org.apache.avro.Schema.Type.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.acl.DynamicAccessController;
@@ -2746,20 +2744,6 @@ public class VeniceParentHelixAdmin implements Admin {
     return getVeniceHelixAdmin().getValueSchema(clusterName, storeName, id);
   }
 
-  private void validateTopLevelFieldDefaultsValueRecordSchema(Schema valueRecordSchema) {
-    Validate.notNull(valueRecordSchema);
-    if (valueRecordSchema.getType() != RECORD) {
-      return;
-    }
-    for (Schema.Field field: valueRecordSchema.getFields()) {
-      if (!AvroCompatibilityHelper.fieldHasDefault(field)) {
-        throw new IllegalArgumentException(
-            "Schema must have default in each top-level field. schema: " + valueRecordSchema + " field: "
-                + field.name());
-      }
-    }
-  }
-
   /**
    * Add a new value schema for the given store with all specified properties by sending a
    * {@link AdminMessageType#VALUE_SCHEMA_CREATION VALUE_SCHEMA_CREATION} admin message.
@@ -2774,7 +2758,7 @@ public class VeniceParentHelixAdmin implements Admin {
     acquireAdminMessageLock(clusterName, storeName);
     try {
       Schema newValueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(newValueSchemaStr);
-      validateTopLevelFieldDefaultsValueRecordSchema(newValueSchema);
+      AvroSchemaUtils.validateTopLevelFieldDefaultsValueRecordSchema(newValueSchema);
       final int newValueSchemaId = getVeniceHelixAdmin().checkPreConditionForAddValueSchemaAndGetNewSchemaId(
           clusterName,
           storeName,

@@ -1,5 +1,7 @@
 package com.linkedin.venice.utils;
 
+import static org.apache.avro.Schema.Type.*;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
@@ -21,6 +23,7 @@ import org.apache.avro.SchemaCompatibility;
 import org.apache.avro.io.ResolvingDecoder;
 import org.apache.avro.io.parsing.Symbol;
 import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang.Validate;
 
 
 public class AvroSchemaUtils {
@@ -364,5 +367,19 @@ public class AvroSchemaUtils {
       }
     }
     return false;
+  }
+
+  public static void validateTopLevelFieldDefaultsValueRecordSchema(Schema valueRecordSchema) {
+    Validate.notNull(valueRecordSchema);
+    if (valueRecordSchema.getType() != RECORD) {
+      return;
+    }
+    for (Schema.Field field: valueRecordSchema.getFields()) {
+      if (!AvroCompatibilityHelper.fieldHasDefault(field)) {
+        throw new IllegalArgumentException(
+            "Schema must have default in each top-level field. schema: " + valueRecordSchema + " field: "
+                + field.name());
+      }
+    }
   }
 }
