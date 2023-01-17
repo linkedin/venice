@@ -91,17 +91,8 @@ class CachedKafkaMetadataGetter {
     final ValueAndExpiryTime<T> cachedValue =
         metadataCache.computeIfAbsent(key, k -> new ValueAndExpiryTime<>(valueSupplier.get(), now + ttlNs));
 
-    /**
-     * The first entry of the pair is the expired time of this metadata; if the expired time is bigger than the current time,
-     * reuse the cached value.
-     */
-    if (cachedValue.getExpiryTimeNs() > now) {
-      return cachedValue.getValue();
-    }
-
-    // Update the value in the async fashion, for a given key and cache, we will only issue one async request at the
-    // same time.
-    if (cachedValue.valueUpdateInProgress.compareAndSet(false, true)) {
+    // For a given key in the given cache, we will only issue one async request at the same time.
+    if (cachedValue.getExpiryTimeNs() <= now && cachedValue.valueUpdateInProgress.compareAndSet(false, true)) {
       CompletableFuture.runAsync(() -> {
         try {
           T newValue = valueSupplier.get();
