@@ -2613,19 +2613,18 @@ public class VeniceParentHelixAdmin implements Admin {
     int maxId = valueSchemaEntries.stream().map(SchemaEntry::getId).max(Comparator.naturalOrder()).get();
 
     for (SchemaEntry valueSchemaEntry: valueSchemaEntries) {
-      Schema writeComputeSchema = null;
       try {
-        writeComputeSchema = writeComputeSchemaConverter.convertFromValueRecordSchema(valueSchemaEntry.getSchema());
+        Schema writeComputeSchema =
+            writeComputeSchemaConverter.convertFromValueRecordSchema(valueSchemaEntry.getSchema());
+        writeComputeSchemaEntries.add(new SchemaEntry(valueSchemaEntry.getId(), writeComputeSchema));
       } catch (VeniceException e) {
-        // Allow write compute schema error in all schema except the latest value schema
+        // Allow failure in write-compute schema generation in all schema except the latest value schema
         if (valueSchemaEntry.getId() == maxId) {
           throw new VeniceException(
-              "Cannot generate update schema for value schema, schema missing defaults." + valueSchemaEntry,
+              "For store " + storeName + " cannot generate update schema for value schema ID :"
+                  + valueSchemaEntry.getId() + "top level field probably missing defaults.",
               e);
         }
-      }
-      if (writeComputeSchema != null) {
-        writeComputeSchemaEntries.add(new SchemaEntry(valueSchemaEntry.getId(), writeComputeSchema));
       }
     }
     // Start adding write compute schemas only after all write compute schema generation is successful.
@@ -2747,7 +2746,7 @@ public class VeniceParentHelixAdmin implements Admin {
     return getVeniceHelixAdmin().getValueSchema(clusterName, storeName, id);
   }
 
-  private void validateValueRecordSchema(Schema valueRecordSchema) {
+  private void validateTopLevelFieldDefaultsValueRecordSchema(Schema valueRecordSchema) {
     Validate.notNull(valueRecordSchema);
     if (valueRecordSchema.getType() != RECORD) {
       return;
@@ -2775,7 +2774,7 @@ public class VeniceParentHelixAdmin implements Admin {
     acquireAdminMessageLock(clusterName, storeName);
     try {
       Schema newValueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(newValueSchemaStr);
-      validateValueRecordSchema(newValueSchema);
+      validateTopLevelFieldDefaultsValueRecordSchema(newValueSchema);
       final int newValueSchemaId = getVeniceHelixAdmin().checkPreConditionForAddValueSchemaAndGetNewSchemaId(
           clusterName,
           storeName,
