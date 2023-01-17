@@ -6,6 +6,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -37,25 +38,23 @@ public class CachedKafkaMetadataGetterTest {
           }));
     });
 
-    // TopicDoesNotExistException flag is cleaned up and other types of exception won't be thrown.
-    long initialExpiredTime = offsetCache.get(key).getExpiryTimeNs();
+    // Reset the cached value to 1.
+    valueCache = new CachedKafkaMetadataGetter.ValueAndExpiryTime<>(1L, System.nanoTime());
+    offsetCache.put(key, valueCache);
+
+    // The first call throws a transient exception, and it should be updated to expected value after second call.
+    AtomicBoolean exceptionFlag = new AtomicBoolean(false);
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, false, true, () -> {
       Long actualResult = cachedKafkaMetadataGetter.fetchMetadata(key, offsetCache, () -> {
-        throw new VeniceException("do not throw this exception!");
+        if (exceptionFlag.compareAndSet(false, true)) {
+          throw new VeniceException("do not throw this exception!");
+        } else {
+          return 2L;
+        }
       });
       Long expectedResult = 2L;
       Assert.assertEquals(actualResult, expectedResult);
       Assert.assertNull(offsetCache.get(key).getException());
     });
-    // Value is not updated at all, but tts is refreshed.
-    Assert.assertNotEquals(offsetCache.get(key).getExpiryTimeNs(), initialExpiredTime);
-
-    // Successful call will update the value from 2 to 3.
-    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-      Long actualResult = cachedKafkaMetadataGetter.fetchMetadata(key, offsetCache, () -> 3L);
-      Long expectedResult = 3L;
-      Assert.assertEquals(actualResult, expectedResult);
-    });
-
   }
 }
