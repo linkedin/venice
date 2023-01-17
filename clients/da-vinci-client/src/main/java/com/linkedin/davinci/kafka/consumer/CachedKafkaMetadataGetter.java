@@ -88,14 +88,8 @@ class CachedKafkaMetadataGetter {
       Map<KafkaMetadataCacheKey, ValueAndExpiryTime<T>> metadataCache,
       Supplier<T> valueSupplier) {
     final long now = System.nanoTime();
-    final ValueAndExpiryTime<T> cachedValue = metadataCache.get(key);
-
-    // If there is no value cached before, trigger refresh to fill the cache and return.
-    if (cachedValue == null) {
-      T newValue = valueSupplier.get();
-      metadataCache.put(key, new ValueAndExpiryTime<>(newValue, now + ttlNs));
-      return newValue;
-    }
+    final ValueAndExpiryTime<T> cachedValue =
+        metadataCache.computeIfAbsent(key, k -> new ValueAndExpiryTime<>(valueSupplier.get(), now + ttlNs));
 
     /**
      * The first entry of the pair is the expired time of this metadata; if the expired time is bigger than the current time,
@@ -174,7 +168,6 @@ class CachedKafkaMetadataGetter {
   static class ValueAndExpiryTime<T> {
     private final T value;
     private long expiryTimeNs;
-
     private final AtomicBoolean valueUpdateInProgress = new AtomicBoolean(false);
     private TopicDoesNotExistException exception = null;
 
