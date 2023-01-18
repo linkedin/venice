@@ -223,7 +223,7 @@ task generateGHCI() {
   appendToGHCI(paramFileContent, targetFilePath, otherTest, 120, integTestGradleArgs + "Z")
   jobs << otherTest
 
-  // define a job that depends others but does nothing to manage the status check
+  // define a job that depends others to manage the status check
   appendToGHCI(paramFileContent, targetFilePath, "DummyStep", 120, "clean", jobs)
 
   def finalDestinationPath = Paths.get(rootDir.getPath() + "/.github/workflows/gh-ci.yml")
