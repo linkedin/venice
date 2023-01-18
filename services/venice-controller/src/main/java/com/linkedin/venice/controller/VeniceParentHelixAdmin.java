@@ -2615,7 +2615,7 @@ public class VeniceParentHelixAdmin implements Admin {
         Schema writeComputeSchema =
             writeComputeSchemaConverter.convertFromValueRecordSchema(valueSchemaEntry.getSchema());
         writeComputeSchemaEntries.add(new SchemaEntry(valueSchemaEntry.getId(), writeComputeSchema));
-      } catch (VeniceException e) {
+      } catch (Exception e) {
         // Allow failure in write-compute schema generation in all schema except the latest value schema
         if (valueSchemaEntry.getId() == maxId) {
           throw new VeniceException(

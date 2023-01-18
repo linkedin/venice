@@ -1,6 +1,6 @@
 package com.linkedin.venice.utils;
 
-import static org.apache.avro.Schema.Type.*;
+import static org.apache.avro.Schema.Type.RECORD;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -352,7 +352,7 @@ public class AvroSchemaUtils {
     }
 
     // Recurse down for RECORD type schemas only. s1 and s2 have same schema type.
-    if (s1.getType() == Schema.Type.RECORD) {
+    if (s1.getType() == RECORD) {
       for (Schema.Field f1: s1.getFields()) {
         Schema.Field f2 = s2.getField(f1.name());
         if (f2 == null) {
@@ -377,8 +377,7 @@ public class AvroSchemaUtils {
     for (Schema.Field field: valueRecordSchema.getFields()) {
       if (!AvroCompatibilityHelper.fieldHasDefault(field)) {
         throw new IllegalArgumentException(
-            "Schema must have default in each top-level field. schema: " + valueRecordSchema + " field: "
-                + field.name());
+            "Top-level field " + field.name() + " is missing default. Value schema: " + valueRecordSchema);
       }
     }
   }
