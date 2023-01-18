@@ -20,7 +20,6 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    needs: 
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v3
@@ -50,7 +49,6 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    needs: 
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v3
@@ -80,7 +78,6 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    needs: 
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
@@ -110,7 +107,6 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    needs: 
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
@@ -140,7 +136,6 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    needs: 
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
@@ -170,7 +165,6 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    needs: 
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
@@ -200,7 +194,6 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    needs: 
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
@@ -230,7 +223,6 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    needs: 
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
@@ -260,7 +252,6 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    needs: 
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
@@ -290,7 +281,6 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    needs: 
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
@@ -320,7 +310,6 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    needs: 
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
@@ -350,7 +339,6 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    needs: 
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
@@ -380,7 +368,6 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    needs: 
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
@@ -410,7 +397,6 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    needs: 
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
@@ -440,7 +426,6 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    needs: 
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
@@ -470,7 +455,6 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    needs: 
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
@@ -500,7 +484,6 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    needs: 
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
@@ -530,7 +513,6 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    needs: 
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
@@ -560,7 +542,6 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    needs: 
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
@@ -590,7 +571,6 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    needs: 
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
