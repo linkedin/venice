@@ -12,10 +12,10 @@ public class SchemaConstants {
       + "  \"type\": \"record\",   " + "  \"name\": \"User\",     " + "  \"fields\": [           "
       + "       { \"name\": \"id\", \"type\": \"string\", \"default\": \"\"} " + "  ] " + " } ";
 
-  static final String VALUE_SCHEMA_FOR_WRITE_COMPUTE_V2 =
+  static final String BAD_VALUE_SCHEMA_FOR_WRITE_COMPUTE_V2 =
       " {" + "  \"namespace\" : \"example.avro\",  " + "  \"type\": \"record\",   " + "  \"name\": \"User\",     "
           + "  \"fields\": [           " + "       { \"name\": \"id\", \"type\": \"string\", \"default\": \"\"}, "
-          + "       { \"name\": \"age\", \"type\": \"int\", \"default\": 30}  " + "  ] " + " } ";
+          + "       { \"name\": \"age\", \"type\": \"int\"}  " + "  ] " + " } ";
 
   static final String VALUE_SCHEMA_FOR_WRITE_COMPUTE_V3 =
       " {" + "  \"namespace\" : \"example.avro\",  " + "  \"type\": \"record\",   " + "  \"name\": \"User\",     "

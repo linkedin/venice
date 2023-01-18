@@ -5,8 +5,8 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SY
 import static com.linkedin.venice.ConfigKeys.REPLICATION_METADATA_VERSION_ID;
 import static com.linkedin.venice.ConfigKeys.TERMINAL_STATE_TOPIC_CHECK_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS;
+import static com.linkedin.venice.controller.SchemaConstants.BAD_VALUE_SCHEMA_FOR_WRITE_COMPUTE_V2;
 import static com.linkedin.venice.controller.SchemaConstants.VALUE_SCHEMA_FOR_WRITE_COMPUTE_V1;
-import static com.linkedin.venice.controller.SchemaConstants.VALUE_SCHEMA_FOR_WRITE_COMPUTE_V2;
 import static com.linkedin.venice.controller.SchemaConstants.VALUE_SCHEMA_FOR_WRITE_COMPUTE_V3;
 import static com.linkedin.venice.controller.SchemaConstants.VALUE_SCHEMA_FOR_WRITE_COMPUTE_V4;
 import static com.linkedin.venice.controller.SchemaConstants.VALUE_SCHEMA_FOR_WRITE_COMPUTE_V5;
@@ -745,25 +745,28 @@ public class VeniceParentHelixAdminTest {
     Assert.assertEquals(registeredWriteComputeSchema.get(0).getSchemaStr(), expectedWriteComputeSchema.toString());
 
     // Step 4. Add more value schemas and expect to get their corresponding write compute schemas.
-    parentControllerClient.addValueSchema(storeName, VALUE_SCHEMA_FOR_WRITE_COMPUTE_V2);
+    parentControllerClient.addValueSchema(storeName, BAD_VALUE_SCHEMA_FOR_WRITE_COMPUTE_V2); // This wont generate any
+                                                                                             // derived schema
     parentControllerClient.addValueSchema(storeName, VALUE_SCHEMA_FOR_WRITE_COMPUTE_V3);
     registeredSchemas = parentControllerClient.getAllValueAndDerivedSchema(storeName).getSchemas();
-    Assert.assertEquals(registeredSchemas.length, 6);
+    Assert.assertEquals(registeredSchemas.length, 4);
 
     registeredWriteComputeSchema = getWriteComputeSchemaStrs(registeredSchemas);
-    Assert.assertEquals(registeredWriteComputeSchema.size(), 3);
+    Assert.assertEquals(registeredWriteComputeSchema.size(), 2);
     // Sort registered write compute schemas by their value schema IDs.
     registeredWriteComputeSchema.sort(Comparator.comparingInt(MultiSchemaResponse.Schema::getId));
     // Validate all registered write compute schemas are generated as expected.
     expectedWriteComputeSchema =
         writeComputeSchemaConverter.convertFromValueRecordSchemaStr(VALUE_SCHEMA_FOR_WRITE_COMPUTE_V1);
     Assert.assertEquals(registeredWriteComputeSchema.get(0).getSchemaStr(), expectedWriteComputeSchema.toString());
-    expectedWriteComputeSchema =
-        writeComputeSchemaConverter.convertFromValueRecordSchemaStr(VALUE_SCHEMA_FOR_WRITE_COMPUTE_V2);
-    Assert.assertEquals(registeredWriteComputeSchema.get(1).getSchemaStr(), expectedWriteComputeSchema.toString());
+    // Missing top field default will fail
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> writeComputeSchemaConverter.convertFromValueRecordSchemaStr(BAD_VALUE_SCHEMA_FOR_WRITE_COMPUTE_V2));
+    // Assert.assertEquals(registeredWriteComputeSchema.get(1).getSchemaStr(), expectedWriteComputeSchema.toString());
     expectedWriteComputeSchema =
         writeComputeSchemaConverter.convertFromValueRecordSchemaStr(VALUE_SCHEMA_FOR_WRITE_COMPUTE_V3);
-    Assert.assertEquals(registeredWriteComputeSchema.get(2).getSchemaStr(), expectedWriteComputeSchema.toString());
+    Assert.assertEquals(registeredWriteComputeSchema.get(1).getSchemaStr(), expectedWriteComputeSchema.toString());
 
     for (MultiSchemaResponse.Schema writeComputeSchema: registeredWriteComputeSchema) {
       Assert.assertEquals(writeComputeSchema.getDerivedSchemaId(), 1);
