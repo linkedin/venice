@@ -96,11 +96,12 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
       MRJobCounterHelper.incrRepushTtlFilterCount(reporter, 1L);
       return null;
     } else {
-      // TODO: RMD Chunking is not supported, so don't include RMD info in VeniceWriterMessage yet.
       return new VeniceWriterMessage(
           keyBytes,
           value.getBytes(),
           value.getSchemaID(),
+          value.getReplicationMetadataVersionId(),
+          value.getReplicationMetadataPayload(),
           getCallback(),
           isEnableWriteCompute(),
           getDerivedValueSchemaId());

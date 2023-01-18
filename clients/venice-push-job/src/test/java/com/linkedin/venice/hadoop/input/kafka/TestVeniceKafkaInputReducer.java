@@ -68,8 +68,7 @@ public class TestVeniceKafkaInputReducer {
     Assert.assertEquals(message.getKeyBytes(), keyBytes);
     Assert.assertEquals(message.getValueBytes(), (VALUE_PREFIX + 2).getBytes());
     Assert.assertEquals(message.getValueSchemaId(), 1);
-    // TODO: RMD chunking is not supported so RMD info doesn't get wrote back and remains -1.
-    Assert.assertEquals(message.getRmdVersionId(), isChunkingEnabled ? -1 : 1);
+    Assert.assertEquals(message.getRmdVersionId(), 1);
 
     /**
      * Construct a list of values, which contains both 'PUT' and 'DELETE', but 'DELETE' is the last one.
@@ -77,11 +76,7 @@ public class TestVeniceKafkaInputReducer {
     values = getValues(Arrays.asList(MapperValueType.PUT, MapperValueType.PUT, MapperValueType.DELETE));
 
     message = reducer.extract(keyWritable, values.iterator(), Mockito.mock(Reporter.class));
-    if (isChunkingEnabled) {
-      Assert.assertNull(message);
-    } else {
-      Assert.assertNotNull(message);
-    }
+    Assert.assertNotNull(message);
 
     /**
      * Construct a list of values, which contains both 'PUT' and 'DELETE', but 'DELETE' is in the middle.
@@ -93,8 +88,7 @@ public class TestVeniceKafkaInputReducer {
     Assert.assertEquals(message.getKeyBytes(), keyBytes);
     Assert.assertEquals(message.getValueBytes(), (VALUE_PREFIX + 2).getBytes());
     Assert.assertEquals(message.getValueSchemaId(), 1);
-    // TODO: RMD chunking is not supported so RMD info doesn't get wrote back and remains -1.
-    Assert.assertEquals(message.getRmdVersionId(), isChunkingEnabled ? -1 : 1);
+    Assert.assertEquals(message.getRmdVersionId(), 1);
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)

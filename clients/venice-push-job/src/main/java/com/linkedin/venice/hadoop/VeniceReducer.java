@@ -113,9 +113,6 @@ public class VeniceReducer extends AbstractMapReduceTask
       this.rmdVersionId = rmdVersionId;
       this.consumer = writer -> {
         if (rmdPayload != null) {
-          if (rmdPayload.remaining() == 0) {
-            throw new VeniceException("Found empty replication metadata");
-          }
           if (valueBytes == null) {
             DeleteMetadata deleteMetadata = new DeleteMetadata(valueSchemaId, rmdVersionId, rmdPayload);
             writer.delete(keyBytes, callback, deleteMetadata);
