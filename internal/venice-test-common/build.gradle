@@ -201,26 +201,41 @@ task generateGHCI() {
   append(targetFilePath, "on: [push, pull_request]\n\n")
   append(targetFilePath, "jobs:\n")
 
+  def jobs = []
+
   def common = "--continue --no-daemon "
   def staticAnalysisFlowGradleArgs = common + "-Pspotallbugs -Pspotbugs.xml -Pspotbugs.ignoreFailures clean check -x spotlessCheck -x test -x integrationTest"
-  appendToGHCI(paramFileContent, targetFilePath, "StaticAnalysis", 20, staticAnalysisFlowGradleArgs)
-  appendToGHCI(paramFileContent, targetFilePath, "UnitTestsAndCodeCoverage", 60, "jacocoTestCoverageVerification")
+
+  def staticAnalysis = "StaticAnalysis"
+  appendToGHCI(paramFileContent, targetFilePath, staticAnalysis, 20, staticAnalysisFlowGradleArgs)
+  jobs << staticAnalysis
+  def unitTestsAndCodeCoverage = "UnitTestsAndCodeCoverage"
+  appendToGHCI(paramFileContent, targetFilePath, unitTestsAndCodeCoverage, 60, "jacocoTestCoverageVerification")
+  jobs << unitTestsAndCodeCoverage
+
   def integTestGradleArgs = common + "-DforkEvery=1 -DmaxParallelForks=1 integrationTest"
   integrationTestBuckets.each { name, patterns ->
     def flowName = "IntegrationTests" + name
+    jobs << flowName
     appendToGHCI(paramFileContent, targetFilePath, flowName, 120, integTestGradleArgs + name)
   }
-  appendToGHCI(paramFileContent, targetFilePath, "IntegrationTestsZ", 120, integTestGradleArgs + "Z")
+  def otherTest = "IntegrationTestsZ"
+  appendToGHCI(paramFileContent, targetFilePath, otherTest, 120, integTestGradleArgs + "Z")
+  jobs << otherTest
+
+  // define a job that depends others but does nothing to manage the status check
+  appendToGHCI(paramFileContent, targetFilePath, "DummyStep", 120, "clean", jobs)
 
   def finalDestinationPath = Paths.get(rootDir.getPath() + "/.github/workflows/gh-ci.yml")
   Files.move(targetFilePath, finalDestinationPath, StandardCopyOption.REPLACE_EXISTING)
 }
 
-def appendToGHCI(String paramFileContent, Path targetFilePath, String flowName, int timeOut, String gradleArguments) {
+def appendToGHCI(String paramFileContent, Path targetFilePath, String flowName, int timeOut, String gradleArguments, ArrayList dependency=null) {
   String postProcessing = paramFileContent
       .replace("\$FlowName", flowName)
       .replace("\$TimeOut", Integer.toString(timeOut))
       .replace("\$GradleArguments", gradleArguments)
+      .replace("\$Dependency", dependency == null ? "" : dependency.toString())
 
   append(targetFilePath, postProcessing)
   append(targetFilePath, "\n")
