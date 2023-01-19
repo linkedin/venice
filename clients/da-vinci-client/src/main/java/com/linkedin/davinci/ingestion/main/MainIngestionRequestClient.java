@@ -274,6 +274,11 @@ public class MainIngestionRequestClient implements Closeable {
     } catch (Exception e) {
       throw new VeniceException("Caught exception when sending command: " + commandType + commandInfo, e);
     }
+    if (report != null && report.exceptionThrown) {
+      throw new VeniceException(
+          "Caught exception when executing command in isolated process: " + commandType + commandInfo + " "
+              + report.message);
+    }
     return report != null && report.isPositive;
   }
 

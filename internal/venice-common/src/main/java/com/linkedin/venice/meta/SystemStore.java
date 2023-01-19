@@ -217,35 +217,31 @@ public class SystemStore extends AbstractStore {
   }
 
   /**
-   * This function is used to check the precondition for store deletion.
-   * Since the system store should deleted together with the corresponding regular Venice store, so
-   * this function will delegate the call to the regular Venice store.
-   * @return
+   * System stores are the internal stores, and even the corresponding user store is not writable, and the
+   * internal system stores could be writable, which is controlled by the {@link #zkSharedStore}.
    */
   @Override
   public boolean isEnableWrites() {
-    return veniceStore.isEnableWrites();
+    return zkSharedStore.isEnableWrites();
   }
 
   @Override
   public void setEnableWrites(boolean enableWrites) {
-    // do nothing since it will follow the regular Venice store.
+    // do nothing since it will follow the ZK shared Venice store.
   }
 
   /**
-   * This function is used to check the precondition for store deletion.
-   * Since the system store should deleted together with the corresponding regular Venice store, so
-   * this function will delegate the call to the regular Venice store.
-   * @return
+   * System stores are the internal stores, and even the corresponding user store is not readable, and the
+   * internal system stores could be readable, which is controlled by the {@link #zkSharedStore}.
    */
   @Override
   public boolean isEnableReads() {
-    return veniceStore.isEnableReads();
+    return zkSharedStore.isEnableReads();
   }
 
   @Override
   public void setEnableReads(boolean enableReads) {
-    // Do nothing since it will follow the regular Venice store
+    // Do nothing since it will follow the ZK shared Venice store
   }
 
   @Override

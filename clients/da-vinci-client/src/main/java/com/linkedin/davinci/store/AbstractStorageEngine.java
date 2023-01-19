@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -76,7 +77,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
    *
    * TODO: evaluate whether we could remove `synchronized` keyword from the functions in this class.
    */
-  private final ReadWriteLock rwLockForStoragePartitionAdjustment = new ReentrantReadWriteLock();
+  private final List<ReadWriteLock> rwLockForStoragePartitionAdjustmentList = new SparseConcurrentList<>();
 
   public AbstractStorageEngine(
       String storeName,
@@ -86,6 +87,18 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     this.metadataPartition = null;
     this.storeVersionStateSerializer = storeVersionStateSerializer;
     this.partitionStateSerializer = partitionStateSerializer;
+  }
+
+  /**
+   * Making it public is for testing purpose.
+   */
+  public ReadWriteLock getRWLockForPartitionOrThrow(int partitionId) {
+    ReadWriteLock readWriteLock = rwLockForStoragePartitionAdjustmentList.get(partitionId);
+    if (readWriteLock == null) {
+      throw new VeniceException(
+          "Failed to get read-write lock for partition: " + partitionId + ", store: " + getStoreName());
+    }
+    return readWriteLock;
   }
 
   public String getStoreName() {
@@ -167,15 +180,6 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     adjustStoragePartition(partitionConfig);
   }
 
-  public void warmUpStoragePartition(int partitionId) {
-    if (!containsPartition(partitionId)) {
-      LOGGER.warn("Partition {}_{} doesn't exist.", storeName, partitionId);
-      return;
-    }
-    AbstractStoragePartition storagePartition = getPartitionOrThrow(partitionId);
-    storagePartition.warmUp();
-  }
-
   /**
    * Adjust the opened storage partition according to the provided storagePartitionConfig.
    * It will throw exception if there is no opened storage partition for the given partition id.
@@ -190,25 +194,14 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     }
     // Need to re-open storage partition according to the provided partition config
     LOGGER.info("Reopen database with storage partition config: {}", partitionConfig);
-    rwLockForStoragePartitionAdjustment.writeLock().lock();
+    ReadWriteLock readWriteLock = getRWLockForPartitionOrThrow(partitionId);
+    readWriteLock.writeLock().lock();
     try {
       closePartition(partitionId);
       addStoragePartition(partitionConfig);
     } finally {
-      rwLockForStoragePartitionAdjustment.writeLock().unlock();
+      readWriteLock.writeLock().unlock();
     }
-  }
-
-  /**
-   * Reopen the underlying database.
-   */
-  public void reopenStoragePartition(int partitionId) {
-    if (!containsPartition(partitionId)) {
-      LOGGER.warn("Partition {}_{} doesn't exist.", storeName, partitionId);
-      return;
-    }
-    AbstractStoragePartition storagePartition = getPartitionOrThrow(partitionId);
-    storagePartition.reopen();
   }
 
   public void addStoragePartition(int partitionId) {
@@ -234,6 +227,16 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
 
     Partition partition = createStoragePartition(storagePartitionConfig);
     this.partitionList.set(partitionId, partition);
+    if (this.rwLockForStoragePartitionAdjustmentList.get(partitionId) == null) {
+      /**
+       * It is intentional to keep the read-write lock even the partition gets moved to other places
+       * since the same partition can be moved back or reopened.
+       * Creating a new instance of read-write lock in this function will introduce some race condition
+       * since some function could be waiting on a previous instance and some other function may start
+       * using the new instance of the read-write lock for the same partition.
+       */
+      this.rwLockForStoragePartitionAdjustmentList.set(partitionId, new ReentrantReadWriteLock());
+    }
   }
 
   public synchronized void closePartition(int partitionId) {
@@ -389,66 +392,137 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     }
   }
 
+  private void executeWithSafeGuard(int partitionId, Runnable runnable) {
+    executeWithSafeGuard(partitionId, () -> {
+      runnable.run();
+      return null;
+    });
+  }
+
+  private <T> T executeWithSafeGuard(int partitionId, Callable<T> callable) {
+    ReadWriteLock readWriteLock = getRWLockForPartitionOrThrow(partitionId);
+    readWriteLock.readLock().lock();
+    try {
+      return callable.call();
+    } catch (Exception e) {
+      if (e instanceof VeniceException) {
+        throw (VeniceException) e;
+      }
+      throw new VeniceException(e);
+    } finally {
+      readWriteLock.readLock().unlock();
+    }
+  }
+
+  public void warmUpStoragePartition(int partitionId) {
+    executeWithSafeGuard(partitionId, () -> {
+      if (!containsPartition(partitionId)) {
+        LOGGER.warn("Partition {}_{} doesn't exist.", storeName, partitionId);
+        return;
+      }
+      AbstractStoragePartition storagePartition = getPartitionOrThrow(partitionId);
+      storagePartition.warmUp();
+    });
+  }
+
+  /**
+   * Reopen the underlying database.
+   */
+  public void reopenStoragePartition(int partitionId) {
+    executeWithSafeGuard(partitionId, () -> {
+      if (!containsPartition(partitionId)) {
+        LOGGER.warn("Partition {}_{} doesn't exist.", storeName, partitionId);
+        return;
+      }
+      AbstractStoragePartition storagePartition = getPartitionOrThrow(partitionId);
+      storagePartition.reopen();
+    });
+  }
+
   public void put(int partitionId, byte[] key, byte[] value) throws VeniceException {
-    AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
-    partition.put(key, value);
+    executeWithSafeGuard(partitionId, () -> {
+      AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
+      partition.put(key, value);
+    });
   }
 
   public void put(int partitionId, byte[] key, ByteBuffer value) throws VeniceException {
-    AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
-    partition.put(key, value);
+    executeWithSafeGuard(partitionId, () -> {
+      AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
+      partition.put(key, value);
+    });
   }
 
   public void putWithReplicationMetadata(int partitionId, byte[] key, ByteBuffer value, byte[] replicationMetadata)
       throws VeniceException {
-    AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
-    partition.putWithReplicationMetadata(key, value, replicationMetadata);
+    executeWithSafeGuard(partitionId, () -> {
+      AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
+      partition.putWithReplicationMetadata(key, value, replicationMetadata);
+    });
   }
 
   public void putReplicationMetadata(int partitionId, byte[] key, byte[] replicationMetadata) throws VeniceException {
-    AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
-    partition.putReplicationMetadata(key, replicationMetadata);
+    executeWithSafeGuard(partitionId, () -> {
+      AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
+      partition.putReplicationMetadata(key, replicationMetadata);
+    });
   }
 
   public <K, V> void put(int partitionId, K key, V value) {
-    AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
-    partition.put(key, value);
+    executeWithSafeGuard(partitionId, () -> {
+      AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
+      partition.put(key, value);
+    });
   }
 
   public byte[] get(int partitionId, byte[] key) throws VeniceException {
-    AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
-    return partition.get(key);
+    return executeWithSafeGuard(partitionId, () -> {
+      AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
+      return partition.get(key);
+    });
   }
 
   public ByteBuffer get(int partitionId, byte[] key, ByteBuffer valueToBePopulated) throws VeniceException {
-    AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
-    return partition.get(key, valueToBePopulated);
+    return executeWithSafeGuard(partitionId, () -> {
+      AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
+      return partition.get(key, valueToBePopulated);
+    });
   }
 
   public byte[] get(int partitionId, ByteBuffer keyBuffer) throws VeniceException {
-    AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
-    return partition.get(keyBuffer);
+    return executeWithSafeGuard(partitionId, () -> {
+      AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
+      return partition.get(keyBuffer);
+    });
   }
 
   public void getByKeyPrefix(int partitionId, byte[] partialKey, BytesStreamingCallback bytesStreamingCallback) {
-    AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
-    partition.getByKeyPrefix(partialKey, bytesStreamingCallback);
+    executeWithSafeGuard(partitionId, () -> {
+      AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
+      partition.getByKeyPrefix(partialKey, bytesStreamingCallback);
+    });
   }
 
   public void delete(int partitionId, byte[] key) throws VeniceException {
-    AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
-    partition.delete(key);
+    executeWithSafeGuard(partitionId, () -> {
+      AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
+      partition.delete(key);
+    });
   }
 
   public void deleteWithReplicationMetadata(int partitionId, byte[] key, byte[] replicationMetadata)
       throws VeniceException {
-    AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
-    partition.deleteWithReplicationMetadata(key, replicationMetadata);
+    executeWithSafeGuard(partitionId, () -> {
+      AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
+      partition.deleteWithReplicationMetadata(key, replicationMetadata);
+    });
   }
 
   public byte[] getReplicationMetadata(int partitionId, byte[] key) {
-    AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
-    return partition.getReplicationMetadata(key);
+    return executeWithSafeGuard(partitionId, () -> {
+      AbstractStoragePartition partition = getPartitionOrThrow(partitionId);
+      return partition.getReplicationMetadata(key);
+    });
   }
 
   /**
@@ -598,11 +672,12 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
 
   public AbstractStoragePartition getPartitionOrThrow(int partitionId) {
     AbstractStoragePartition partition;
-    rwLockForStoragePartitionAdjustment.readLock().lock();
+    ReadWriteLock readWriteLock = getRWLockForPartitionOrThrow(partitionId);
+    readWriteLock.readLock().lock();
     try {
       partition = partitionList.get(partitionId);
     } finally {
-      rwLockForStoragePartitionAdjustment.readLock().unlock();
+      readWriteLock.readLock().unlock();
     }
     if (partition == null) {
       VeniceException e = new PersistenceFailureException(
