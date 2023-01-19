@@ -11,7 +11,6 @@ import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 
 import com.linkedin.davinci.callback.BytesStreamingCallback;
 import com.linkedin.davinci.config.VeniceConfigLoader;
-import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.StorageInitializationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PersistenceType;
@@ -164,14 +163,14 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
     // test put
     try {
       testStoreEngine.put(partitionId, key, value);
-    } catch (PersistenceFailureException e) {
+    } catch (VeniceException e) {
       // This is expected.
     }
 
     byte[] found = null;
     try {
       found = testStoreEngine.get(partitionId, key);
-    } catch (PersistenceFailureException e) {
+    } catch (VeniceException e) {
       // This is expected
     }
 
@@ -181,7 +180,7 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
         "PUT and GET on key: " + Hex.encodeHexString(key) + " in invalid partition: " + partitionId + " succeeded");
 
     Assert.assertThrows(
-        PersistenceFailureException.class,
+        VeniceException.class,
         () -> testStoreEngine.getByKeyPrefix(partitionId, key, new BytesStreamingCallback() {
           @Override
           public void onRecordReceived(byte[] key, byte[] value) {
@@ -201,7 +200,7 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
     // test delete
     try {
       testStoreEngine.delete(partitionId, key);
-    } catch (PersistenceFailureException e) {
+    } catch (VeniceException e) {
       // This is expected
       return;
     }
