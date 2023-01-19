@@ -114,7 +114,7 @@ public class VsonAvroDatumReader<D> extends GenericDatumReader<D> {
    * Most of the logic is copied from {@link java.util.AbstractMap#equals(Object)}
    */
   public static class DeepEqualsHashMap extends HashMap<String, Object> {
-    private static final long serialVersionUID = -5193126493127412312L;
+    private static final long serialVersionUID = 1L;
 
     @Override
     public boolean equals(Object o) {
@@ -166,7 +166,7 @@ public class VsonAvroDatumReader<D> extends GenericDatumReader<D> {
    * Most of the logic is copied from {@link java.util.AbstractList#equals(Object)}
    */
   public static class DeepEqualsArrayList extends ArrayList<Object> {
-    private static final long serialVersionUID = 2133400551086625355L;
+    private static final long serialVersionUID = 1L;
 
     public DeepEqualsArrayList() {
       super();

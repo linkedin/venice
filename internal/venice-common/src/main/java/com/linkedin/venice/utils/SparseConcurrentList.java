@@ -30,7 +30,7 @@ import java.util.function.UnaryOperator;
  * the read operations are used on the hot path.
  */
 public class SparseConcurrentList<E> extends CopyOnWriteArrayList<E> {
-  private static final long serialVersionUID = -1891348945161784512L;
+  private static final long serialVersionUID = 1L;
 
   /**
    * A function which behaves like {@link Map#put(Object, Object)}, rather than {@link List#set(int, Object)}.

@@ -10,7 +10,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  * This class simply exposes publicly the protected methods of its parent, for debugging purposes.
  */
 public class VeniceReentrantReadWriteLock extends ReentrantReadWriteLock {
-  private static final long serialVersionUID = -2514123274632141232L;
+  private static final long serialVersionUID = 1L;
 
   /**
    * Returns the thread that currently owns the write lock, or

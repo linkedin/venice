@@ -8,7 +8,7 @@ import java.util.Set;
 
 
 public class VeniceResponseMapImpl<K, V> extends HashMap<K, V> implements VeniceResponseMap<K, V> {
-  private static final long serialVersionUID = -1856226145692111285L;
+  private static final long serialVersionUID = 1L;
 
   private final Set<K> nonExistingKeys;
   private final boolean fullResponse;

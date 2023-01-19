@@ -8,7 +8,7 @@ import java.util.Map;
  * A map implementation with a bounded size.
  */
 public class BoundedHashMap<K, V> extends LinkedHashMap<K, V> {
-  private static final long serialVersionUID = 687991492884005033L;
+  private static final long serialVersionUID = 1L;
   private static final float DEFAULT_LOAD_FACTOR = 0.75f;
 
   private final int maxSize;
