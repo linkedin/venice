@@ -12,11 +12,17 @@ import com.linkedin.venice.controller.lingeringjob.DefaultLingeringStoreVersionC
 import com.linkedin.venice.controller.lingeringjob.HeartbeatBasedCheckerStats;
 import com.linkedin.venice.controller.lingeringjob.HeartbeatBasedLingeringStoreVersionChecker;
 import com.linkedin.venice.controller.lingeringjob.LingeringStoreVersionChecker;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
+import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
+import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashMap;
 import java.util.Map;
@@ -84,13 +90,21 @@ public class VeniceControllerService extends AbstractVeniceService {
     }
     // The admin consumer needs to use VeniceHelixAdmin to update Zookeeper directly
     consumerServicesByClusters = new HashMap<>(multiClusterConfigs.getClusters().size());
+    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+    KafkaValueSerializer kafkaValueSerializer = new OptimizedKafkaValueSerializer();
+    kafkaMessageEnvelopeSchemaReader.ifPresent(kafkaValueSerializer::setSchemaReader);
+    KafkaPubSubMessageDeserializer pubSubMessageDeserializer = new KafkaPubSubMessageDeserializer(
+        kafkaValueSerializer,
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
     for (String cluster: multiClusterConfigs.getClusters()) {
       AdminConsumerService adminConsumerService = new AdminConsumerService(
           cluster,
           internalAdmin,
           multiClusterConfigs.getControllerConfig(cluster),
           metricsRepository,
-          kafkaMessageEnvelopeSchemaReader);
+          pubSubTopicRepository,
+          pubSubMessageDeserializer);
       this.consumerServicesByClusters.put(cluster, adminConsumerService);
 
       this.admin.setAdminConsumerService(cluster, adminConsumerService);

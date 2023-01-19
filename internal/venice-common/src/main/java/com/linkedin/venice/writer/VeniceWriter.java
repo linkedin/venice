@@ -32,6 +32,7 @@ import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -44,8 +45,8 @@ import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -58,12 +59,17 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 import java.util.function.Supplier;
 import javax.annotation.Nonnull;
+import org.apache.avro.Schema;
 import org.apache.avro.specific.FixedSize;
 import org.apache.avro.util.Utf8;
 import org.apache.commons.lang.Validate;
 import org.apache.kafka.clients.producer.Callback;
+import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.errors.TopicAuthorizationException;
+import org.apache.kafka.common.header.Header;
+import org.apache.kafka.common.header.internals.RecordHeader;
+import org.apache.kafka.common.header.internals.RecordHeaders;
 import org.apache.kafka.common.protocol.Errors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -193,7 +199,11 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   public static final LeaderMetadataWrapper DEFAULT_LEADER_METADATA_WRAPPER =
       new LeaderMetadataWrapper(DEFAULT_UPSTREAM_OFFSET, DEFAULT_UPSTREAM_KAFKA_CLUSTER_ID);
 
+  private static final RecordHeaders emptyHeaders = new RecordHeaders();
+
   // Immutable state
+  private final RecordHeaders protocolSchemaHeaders;
+
   private final VeniceKafkaSerializer<K> keySerializer;
   private final VeniceKafkaSerializer<V> valueSerializer;
   private final VeniceKafkaSerializer<U> writeComputeSerializer;
@@ -215,7 +225,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    *                 new data are "duplicated" because they are using stale producer metadata (e.g. segment number 0
    *                 and sequence number 0)
    */
-  private final Map<Integer, Segment> segmentsMap = new VeniceConcurrentHashMap<>();
+  private final Segment[] segments;
   /**
    * Map of partition to its segment creation time in milliseconds.
    * -1: the current segment is ended
@@ -247,6 +257,20 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       VeniceWriterOptions params,
       VeniceProperties props,
       Supplier<KafkaProducerWrapper> producerWrapperSupplier) {
+    this(params, props, producerWrapperSupplier, KafkaMessageEnvelope.SCHEMA$);
+  }
+
+  /**
+   * This constructor is currently used only in tests, in order to override the behavior of passing the protocol schema
+   * into the header of control messages.
+   *
+   * @param overrideProtocolSchema The schema to pass in CM headers, or null to omit that header entirely
+   */
+  public VeniceWriter(
+      VeniceWriterOptions params,
+      VeniceProperties props,
+      Supplier<KafkaProducerWrapper> producerWrapperSupplier,
+      Schema overrideProtocolSchema) {
     super(params.getTopicName());
     this.keySerializer = params.getKeySerializer();
     this.valueSerializer = params.getValueSerializer();
@@ -293,6 +317,12 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       }
     }
     this.producerGUID = GuidUtils.getGUID(props);
+    this.protocolSchemaHeaders = overrideProtocolSchema == null
+        ? emptyHeaders
+        : new RecordHeaders(
+            new Header[] { new RecordHeader(
+                KafkaPubSubMessageDeserializer.VENICE_TRANSPORT_PROTOCOL_HEADER,
+                overrideProtocolSchema.toString().getBytes(StandardCharsets.UTF_8)) });
     this.logger =
         LogManager.getLogger(VeniceWriter.class.getSimpleName() + " [" + GuidUtils.getHexFromGuid(producerGUID) + "]");
 
@@ -310,11 +340,12 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       this.segmentsCreationTimeArray = new long[this.numberOfPartitions];
       // Prepare locks for all partitions instead of using map to avoid the searching and creation cost during
       // ingestion.
-      this.partitionLocks = new Object[numberOfPartitions];
+      this.partitionLocks = new Object[this.numberOfPartitions];
       for (int i = 0; i < numberOfPartitions; i++) {
         partitionLocks[i] = new Object();
         segmentsCreationTimeArray[i] = -1L;
       }
+      this.segments = new Segment[this.numberOfPartitions];
       OPEN_VENICE_WRITER_COUNT.incrementAndGet();
     } catch (Exception e) {
       logger.error("VeniceWriter cannot be constructed with the props: {}", props);
@@ -351,7 +382,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     close(true);
   }
 
-  public KafkaProducerWrapper getProducer() {
+  /** Used in tests only */
+  KafkaProducerWrapper getProducer() {
     return producer;
   }
 
@@ -724,11 +756,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     leaderMetadata.upstreamOffset = leaderMetadataWrapper.getUpstreamOffset();
     leaderMetadata.upstreamKafkaClusterId = leaderMetadataWrapper.getUpstreamKafkaClusterId();
     leaderMetadata.hostName = writerId;
+    kafkaMessageEnvelope.leaderMetadataFooter = leaderMetadata;
 
-    return () -> {
-      kafkaMessageEnvelope.leaderMetadataFooter = leaderMetadata;
-      return kafkaMessageEnvelope;
-    };
+    return () -> kafkaMessageEnvelope;
   }
 
   /**
@@ -982,7 +1012,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * @param partition The partition to be closed.
    */
   public void closePartition(int partition) {
-    if (segmentsMap.containsKey(partition)) {
+    if (segments[partition] != null) {
       logger.info("Closing partition: {} in VeniceWriter.", partition);
       endSegment(partition, true);
     }
@@ -1064,7 +1094,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       KafkaMessageEnvelope kafkaValue = valueProvider.getKafkaMessageEnvelope();
       KafkaKey key = keyProvider.getKey(kafkaValue.producerMetadata);
       if (updateDIV) {
-        Segment segment = segmentsMap.get(partition);
+        Segment segment = segments[partition];
         if (segment == null) {
           throw new VeniceException("segmentMap does not contain partition " + partition + " for topic " + topicName);
         }
@@ -1081,7 +1111,13 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       }
 
       try {
-        return producer.sendMessage(topicName, key, kafkaValue, partition, messageCallback);
+        ProducerRecord<KafkaKey, KafkaMessageEnvelope> kafkaRecord = new ProducerRecord<>(
+            topicName,
+            partition,
+            key,
+            kafkaValue,
+            key.isControlMessage() ? protocolSchemaHeaders : emptyHeaders);
+        return producer.sendMessage(kafkaRecord, messageCallback);
       } catch (Exception e) {
         if (ExceptionUtils.recursiveClassEquals(e, TopicAuthorizationException.class)) {
           throw new TopicAuthorizationVeniceException(
@@ -1239,7 +1275,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     ControlMessage controlMessage = new ControlMessage();
     controlMessage.controlMessageType = ControlMessageType.END_OF_SEGMENT.getValue();
     EndOfSegment endOfSegment = new EndOfSegment();
-    endOfSegment.checksumValue = ByteBuffer.wrap(segmentsMap.get(partition).getFinalCheckSum());
+    endOfSegment.checksumValue = ByteBuffer.wrap(segments[partition].getFinalCheckSum());
     endOfSegment.computedAggregates = new ArrayList<>(); // TODO Add extra aggregates
     endOfSegment.finalSegment = finalSegment;
     controlMessage.controlMessageUnion = endOfSegment;
@@ -1493,7 +1529,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    *         a new one if none existed previously.
    */
   private Segment getSegment(int partition, boolean sendEndOfSegment) {
-    Segment currentSegment = segmentsMap.get(partition);
+    Segment currentSegment = segments[partition];
     if (currentSegment == null || currentSegment.isEnded()) {
       currentSegment = startSegment(partition);
     } else if (elapsedTimeForClosingSegmentEnabled) {
@@ -1527,15 +1563,15 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    */
   private Segment startSegment(int partition) {
     synchronized (this.partitionLocks[partition]) {
-      Segment currentSegment = segmentsMap.get(partition);
+      Segment currentSegment = segments[partition];
 
       if (currentSegment == null) {
         currentSegment = new Segment(partition, 0, checkSumType);
-        segmentsMap.put(partition, currentSegment);
+        segments[partition] = currentSegment;
       } else if (currentSegment.isEnded()) {
         int newSegmentNumber = currentSegment.getSegmentNumber() + 1;
         currentSegment = new Segment(partition, newSegmentNumber, checkSumType);
-        segmentsMap.put(partition, currentSegment);
+        segments[partition] = currentSegment;
       }
       segmentsCreationTimeArray[partition] = time.getMilliseconds();
       if (!currentSegment.isStarted()) {
@@ -1548,7 +1584,13 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   }
 
   private void endAllSegments(boolean finalSegment) {
-    segmentsMap.keySet().stream().forEach(partition -> endSegment(partition, finalSegment));
+    Segment segment;
+    for (int i = 0; i < segments.length; i++) {
+      segment = segments[i];
+      if (segment != null) {
+        endSegment(i, finalSegment);
+      }
+    }
   }
 
   /**
@@ -1556,7 +1598,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    */
   public void endSegment(int partition, boolean finalSegment) {
     synchronized (this.partitionLocks[partition]) {
-      Segment currentSegment = segmentsMap.get(partition);
+      Segment currentSegment = segments[partition];
       if (currentSegment == null) {
         logger.warn("endSegment(partition {}) called but currentSegment == null. Ignoring.", partition);
       } else if (!currentSegment.isStarted()) {

@@ -4,9 +4,9 @@ import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 
 
@@ -16,7 +16,7 @@ public class ActiveActiveProducerCallback extends LeaderProducerCallback {
 
   public ActiveActiveProducerCallback(
       LeaderFollowerStoreIngestionTask ingestionTask,
-      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> sourceConsumerRecord,
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> sourceConsumerRecord,
       PartitionConsumptionState partitionConsumptionState,
       LeaderProducedRecordContext leaderProducedRecordContext,
       int subPartition,

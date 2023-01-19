@@ -9,14 +9,11 @@ import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.schema.SchemaReader;
-import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Properties;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -55,9 +52,7 @@ public class ConsumerTest {
     SchemaReader mockSchemaReader = mock(SchemaReader.class);
     doReturn(NEW_PROTOCOL_SCHEMA).when(mockSchemaReader).getValueSchema(NEW_PROTOCOL_VERSION);
     KafkaValueSerializer obliviousDeserializer = new KafkaValueSerializer();
-    Map<String, Object> configMap = new HashMap<>();
-    configMap.put(InternalAvroSpecificSerializer.VENICE_SCHEMA_READER_CONFIG, mockSchemaReader);
-    obliviousDeserializer.configure(configMap, false);
+    obliviousDeserializer.setSchemaReader(mockSchemaReader);
 
     // Sanity checks to make sure the new protocol has not somehow crept into the fresh (not warmed up) serializer
     Assert.assertEquals(

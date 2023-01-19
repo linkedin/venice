@@ -13,7 +13,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericArray;
 import org.apache.avro.generic.GenericData;
@@ -144,8 +143,7 @@ public class TestWriteComputeProcessor {
     recordUpdateRecord.put("hits", noOpRecord);
     recordUpdateRecord.put("hasNext", true);
 
-    Object result =
-        writeComputeHandler.updateValueRecord(recordSchema, Optional.of(originalRecord), recordUpdateRecord);
+    Object result = writeComputeHandler.updateValueRecord(recordSchema, originalRecord, recordUpdateRecord);
     Assert.assertTrue(result instanceof GenericData.Record);
     Assert.assertEquals(((GenericData.Record) result).get("hits"), innerArray);
     Assert.assertEquals(((GenericData.Record) result).get("hasNext"), true);
@@ -161,7 +159,7 @@ public class TestWriteComputeProcessor {
     collectionUpdateRecord.put(SET_DIFF, Collections.emptyList());
     recordUpdateRecord.put("hits", collectionUpdateRecord);
 
-    result = writeComputeHandler.updateValueRecord(recordSchema, Optional.of(originalRecord), recordUpdateRecord);
+    result = writeComputeHandler.updateValueRecord(recordSchema, originalRecord, recordUpdateRecord);
     List hitsList = (List) ((GenericData.Record) result).get("hits");
     Assert.assertEquals(hitsList.size(), 2);
     Assert.assertTrue(hitsList.contains(innerRecord));
@@ -170,7 +168,7 @@ public class TestWriteComputeProcessor {
     // test passing a "null" as the original value. The write compute adapter should set noOp field to
     // its default value if it's possible
     recordUpdateRecord.put("hasNext", noOpRecord);
-    result = writeComputeHandler.updateValueRecord(recordSchema, Optional.empty(), recordUpdateRecord);
+    result = writeComputeHandler.updateValueRecord(recordSchema, null, recordUpdateRecord);
     Assert.assertEquals(((GenericData.Record) result).get("hasNext"), false);
   }
 
@@ -190,8 +188,8 @@ public class TestWriteComputeProcessor {
     writeComputeRecord.put("nullableArray", noOpRecord);
     writeComputeRecord.put("intField", noOpRecord);
 
-    GenericData.Record result = (GenericData.Record) writeComputeProcessor
-        .updateRecord(nullableRecordSchema, Optional.empty(), writeComputeRecord);
+    GenericData.Record result =
+        (GenericData.Record) writeComputeProcessor.updateRecord(nullableRecordSchema, null, writeComputeRecord);
 
     Assert.assertNull(result.get("nullableArray"));
     Assert.assertEquals(result.get("intField"), 0);
@@ -203,8 +201,7 @@ public class TestWriteComputeProcessor {
     listOpsRecord.put(SET_DIFF, Collections.emptyList());
     writeComputeRecord.put("nullableArray", listOpsRecord);
 
-    result = (GenericData.Record) writeComputeProcessor
-        .updateRecord(nullableRecordSchema, Optional.of(result), writeComputeRecord);
+    result = (GenericData.Record) writeComputeProcessor.updateRecord(nullableRecordSchema, result, writeComputeRecord);
     GenericArray array = (GenericArray) result.get("nullableArray");
     Assert.assertEquals(array.size(), 2);
     Assert.assertTrue(array.contains(1) && array.contains(2));
@@ -224,7 +221,7 @@ public class TestWriteComputeProcessor {
     writeComputeRecord.put("nestedRecord", nestedRecord);
 
     GenericData.Record result =
-        (GenericData.Record) writeComputeProcessor.updateRecord(recordSchema, Optional.empty(), writeComputeRecord);
+        (GenericData.Record) writeComputeProcessor.updateRecord(recordSchema, null, writeComputeRecord);
 
     Assert.assertNotNull(result);
     Assert.assertEquals(result.get("nestedRecord"), nestedRecord);

@@ -73,6 +73,14 @@ public class KafkaKey {
     return key == null ? 0 : key.length;
   }
 
+  public int getEstimatedObjectSizeOnHeap() {
+    int size = getKeyLength() + 36;
+    if (chunkId != null) {
+      size += 72;
+    }
+    return size;
+  }
+
   public String toString() {
     return getClass().getSimpleName() + "(" + (isControlMessage() ? "CONTROL_MESSAGE" : "PUT or DELETE") + ", "
         + ByteUtils.toHexString(key) + ")";

@@ -5541,7 +5541,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * @see ConfigKeys#SSL_TO_KAFKA
    */
   @Override
-  public boolean isSslToKafka() {
+  public final boolean isSslToKafka() {
     return this.multiClusterConfigs.isSslToKafka();
   }
 

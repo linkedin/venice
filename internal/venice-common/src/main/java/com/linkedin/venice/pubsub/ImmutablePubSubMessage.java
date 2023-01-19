@@ -1,26 +1,30 @@
-package com.linkedin.venice.pubsub.kafka;
+package com.linkedin.venice.pubsub;
 
 import com.linkedin.venice.pubsub.api.PubSubMessage;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 
 
-public class KafkaMessage<K, V> implements PubSubMessage<K, V, KafkaTopicPartition, Long> {
+public class ImmutablePubSubMessage<K, V> implements PubSubMessage<K, V, Long> {
   private final K key;
   private final V value;
-  private final KafkaTopicPartition topicPartition;
+  private final PubSubTopicPartition topicPartition;
   private final long offset;
   private final long timestamp;
+  private final int payloadSize;
 
-  KafkaMessage(ConsumerRecord<K, V> kafkaRecord, KafkaTopicPartition topicPartition) {
-    this(kafkaRecord.key(), kafkaRecord.value(), topicPartition, kafkaRecord.offset(), kafkaRecord.timestamp());
-  }
-
-  KafkaMessage(K key, V value, KafkaTopicPartition topicPartition, long offset, long timestamp) {
+  public ImmutablePubSubMessage(
+      K key,
+      V value,
+      PubSubTopicPartition topicPartition,
+      long offset,
+      long timestamp,
+      int payloadSize) {
     this.key = key;
     this.value = value;
     this.topicPartition = topicPartition;
     this.offset = offset;
     this.timestamp = timestamp;
+    this.payloadSize = payloadSize;
   }
 
   @Override
@@ -34,7 +38,7 @@ public class KafkaMessage<K, V> implements PubSubMessage<K, V, KafkaTopicPartiti
   }
 
   @Override
-  public KafkaTopicPartition getTopicPartition() {
+  public PubSubTopicPartition getTopicPartition() {
     return topicPartition;
   }
 
@@ -46,5 +50,10 @@ public class KafkaMessage<K, V> implements PubSubMessage<K, V, KafkaTopicPartiti
   @Override
   public long getPubSubMessageTime() {
     return timestamp;
+  }
+
+  @Override
+  public int getPayloadSize() {
+    return payloadSize;
   }
 }

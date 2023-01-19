@@ -384,7 +384,10 @@
   <Match>
     <!--Though the GET method is not synchronized explicitly, its re-uses the GET method from super class, which is thread safe-->
     <Bug pattern="UG_SYNC_SET_UNSYNC_GET"/>
-    <Class name="com.linkedin.venice.utils.SparseConcurrentList"/>
+    <Or>
+      <Class name="com.linkedin.venice.utils.SparseConcurrentList"/>
+      <Class name="com.linkedin.venice.utils.SparseConcurrentListWithOffset"/>
+    </Or>
   </Match>
   <Match>
     <Bug pattern="JLM_JSR166_UTILCONCURRENT_MONITORENTER"/>

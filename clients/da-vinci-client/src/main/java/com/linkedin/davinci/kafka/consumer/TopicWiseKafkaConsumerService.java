@@ -4,6 +4,7 @@ import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -46,6 +47,7 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
       final long sharedConsumerNonExistingTopicCleanupDelayMS,
       final TopicExistenceChecker topicExistenceChecker,
       final boolean liveConfigBasedKafkaThrottlingEnabled,
+      KafkaPubSubMessageDeserializer pubSubDeserializer,
       final Time time,
       final KafkaConsumerServiceStats stats) {
     super(
@@ -61,6 +63,7 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
         sharedConsumerNonExistingTopicCleanupDelayMS,
         topicExistenceChecker,
         liveConfigBasedKafkaThrottlingEnabled,
+        pubSubDeserializer,
         time,
         stats);
     LOGGER = LogManager.getLogger(TopicWiseKafkaConsumerService.class + " [" + kafkaUrl + "]");

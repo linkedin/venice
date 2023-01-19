@@ -1,6 +1,10 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import io.tehuti.utils.Utils;
 import java.util.Optional;
 
 
@@ -12,46 +16,41 @@ import java.util.Optional;
  */
 public class ConsumerAction implements Comparable<ConsumerAction> {
   private final ConsumerActionType type;
-  private final String topic;
-  private final int partition;
+  private final PubSubTopicPartition topicPartition;
   private final int sequenceNumber;
   private final LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker;
   private final LeaderFollowerStateType leaderState;
 
   private int attempts = 0;
 
-  public ConsumerAction(ConsumerActionType type, String topic, int partition, int sequenceNumber) {
-    this(type, topic, partition, sequenceNumber, null, Optional.empty());
+  public ConsumerAction(ConsumerActionType type, PubSubTopicPartition topicPartition, int sequenceNumber) {
+    this(type, topicPartition, sequenceNumber, null, Optional.empty());
   }
 
   public ConsumerAction(
       ConsumerActionType type,
-      String topic,
-      int partition,
+      PubSubTopicPartition topicPartition,
       int sequenceNumber,
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker) {
-    this(type, topic, partition, sequenceNumber, checker, Optional.empty());
+    this(type, topicPartition, sequenceNumber, checker, Optional.empty());
   }
 
   public ConsumerAction(
       ConsumerActionType type,
-      String topic,
-      int partition,
+      PubSubTopicPartition topicPartition,
       int sequenceNumber,
       Optional<LeaderFollowerStateType> leaderState) {
-    this(type, topic, partition, sequenceNumber, null, leaderState);
+    this(type, topicPartition, sequenceNumber, null, leaderState);
   }
 
-  public ConsumerAction(
+  private ConsumerAction(
       ConsumerActionType type,
-      String topic,
-      int partition,
+      PubSubTopicPartition topicPartition,
       int sequenceNumber,
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker checker,
       Optional<LeaderFollowerStateType> leaderState) {
     this.type = type;
-    this.topic = topic;
-    this.partition = partition;
+    this.topicPartition = Utils.notNull(topicPartition);
     this.sequenceNumber = sequenceNumber;
     this.checker = checker;
     this.leaderState = leaderState.orElse(LeaderFollowerStateType.STANDBY);
@@ -61,12 +60,16 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
     return type;
   }
 
+  public PubSubTopicPartition getTopicPartition() {
+    return topicPartition;
+  }
+
   public String getTopic() {
-    return topic;
+    return topicPartition.getPubSubTopic().getName();
   }
 
   public int getPartition() {
-    return partition;
+    return topicPartition.getPartitionNumber();
   }
 
   public void incrementAttempt() {
@@ -91,7 +94,7 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
 
   @Override
   public String toString() {
-    return "KafkaTaskMessage{" + "type=" + type + ", topic='" + topic + '\'' + ", partition=" + partition
+    return "KafkaTaskMessage{" + "type=" + type + ", topic='" + getTopic() + '\'' + ", partition=" + getPartition()
         + ", attempts=" + attempts + ", sequenceNumber=" + sequenceNumber + '}';
   }
 
@@ -125,19 +128,14 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
     }
     ConsumerAction other = (ConsumerAction) obj;
 
-    if (topic.equals(other.topic) && partition == other.partition && sequenceNumber == other.sequenceNumber
-        && type.equals(other.type) && leaderState.equals(other.leaderState)) {
-      return true;
-    }
-
-    return false;
+    return topicPartition.equals(other.topicPartition) && sequenceNumber == other.sequenceNumber
+        && type.equals(other.type) && leaderState.equals(other.leaderState);
   }
 
   @Override
   public int hashCode() {
     int result = 1;
-    result = result * 31 + topic.hashCode();
-    result = result * 31 + partition;
+    result = result * 31 + topicPartition.hashCode();
     result = result * 31 + sequenceNumber;
     result = result * 31 + type.hashCode();
     result = result * 31 + leaderState.hashCode();
@@ -148,7 +146,7 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
    * Create a kill consumer action. As kill action apply on all of partitions in given topic, so use 0 as partition
    * value for no meaning.
    */
-  public static ConsumerAction createKillAction(String topic, int sequenceNumber) {
-    return new ConsumerAction(ConsumerActionType.KILL, topic, 0, sequenceNumber);
+  public static ConsumerAction createKillAction(PubSubTopic topic, int sequenceNumber) {
+    return new ConsumerAction(ConsumerActionType.KILL, new PubSubTopicPartitionImpl(topic, 0), sequenceNumber);
   }
 }

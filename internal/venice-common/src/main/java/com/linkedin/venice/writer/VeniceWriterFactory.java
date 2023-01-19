@@ -78,20 +78,6 @@ public class VeniceWriterFactory {
    * the new code.
    */
 
-  /**
-   * Create a basic venice writer with default serializer.
-   *
-   * @deprecated
-   * This method is being deprecated and will be removed in the next release.
-   * <p> Use {@link VeniceWriterFactory#createVeniceWriter(VeniceWriterOptions)} instead.
-   *
-   */
-  @Deprecated
-  public VeniceWriter<byte[], byte[], byte[]> createBasicVeniceWriter(String topicName, Time time) {
-    VeniceWriterOptions options = new VeniceWriterOptions.Builder(topicName).setTime(time).build();
-    return createVeniceWriter(options);
-  }
-
   @Deprecated
   public VeniceWriter<byte[], byte[], byte[]> createBasicVeniceWriter(
       String topicName,
@@ -179,23 +165,6 @@ public class VeniceWriterFactory {
     VeniceWriterOptions options = new VeniceWriterOptions.Builder(topicName).setKeySerializer(keySerializer)
         .setValueSerializer(valueSerializer)
         .setChunkingEnabled(chunkingEnabled)
-        .build();
-    return createVeniceWriter(options);
-  }
-
-  @Deprecated
-  public <K, V, U> VeniceWriter<K, V, U> createVeniceWriter(
-      String topic,
-      VeniceKafkaSerializer<K> keySerializer,
-      VeniceKafkaSerializer<V> valueSerializer,
-      VeniceKafkaSerializer<U> writeComputeSerializer,
-      Optional<Boolean> chunkingEnabled,
-      Time time) {
-    VeniceWriterOptions options = new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer)
-        .setValueSerializer(valueSerializer)
-        .setWriteComputeSerializer(writeComputeSerializer)
-        .setChunkingEnabled(chunkingEnabled.orElse(false))
-        .setTime(time)
         .build();
     return createVeniceWriter(options);
   }

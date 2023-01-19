@@ -9,10 +9,14 @@ import static org.mockito.Mockito.when;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
+import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import java.util.HashSet;
@@ -26,6 +30,11 @@ import org.testng.annotations.Test;
 
 
 public class KafkaConsumerServiceTest {
+  private final KafkaPubSubMessageDeserializer pubSubDeserializer = new KafkaPubSubMessageDeserializer(
+      new OptimizedKafkaValueSerializer(),
+      new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+      new LandFillObjectPool<>(KafkaMessageEnvelope::new));
+
   @Test
   public void testTopicWiseGetConsumer() throws Exception {
     SharedKafkaConsumer consumer1 = mock(SharedKafkaConsumer.class);
@@ -68,6 +77,7 @@ public class KafkaConsumerServiceTest {
         TimeUnit.MINUTES.toMillis(1),
         mock(TopicExistenceChecker.class),
         false,
+        pubSubDeserializer,
         SystemTime.INSTANCE,
         null);
     consumerService.start();
@@ -145,6 +155,7 @@ public class KafkaConsumerServiceTest {
         TimeUnit.MINUTES.toMillis(1),
         mock(TopicExistenceChecker.class),
         false,
+        pubSubDeserializer,
         SystemTime.INSTANCE,
         null);
     consumerService.start();
@@ -231,6 +242,7 @@ public class KafkaConsumerServiceTest {
         TimeUnit.MINUTES.toMillis(1),
         mock(TopicExistenceChecker.class),
         false,
+        pubSubDeserializer,
         SystemTime.INSTANCE,
         null);
     consumerService.start();

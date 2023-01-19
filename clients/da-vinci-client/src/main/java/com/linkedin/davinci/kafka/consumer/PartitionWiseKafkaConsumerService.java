@@ -5,6 +5,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -51,6 +52,7 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
       final long sharedConsumerNonExistingTopicCleanupDelayMS,
       final TopicExistenceChecker topicExistenceChecker,
       final boolean liveConfigBasedKafkaThrottlingEnabled,
+      KafkaPubSubMessageDeserializer pubSubDeserializer,
       final Time time,
       final KafkaConsumerServiceStats stats) {
     super(
@@ -66,6 +68,7 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
         sharedConsumerNonExistingTopicCleanupDelayMS,
         topicExistenceChecker,
         liveConfigBasedKafkaThrottlingEnabled,
+        pubSubDeserializer,
         time,
         stats);
     this.logger = LogManager.getLogger(PartitionWiseKafkaConsumerService.class + " [" + kafkaUrl + "]");

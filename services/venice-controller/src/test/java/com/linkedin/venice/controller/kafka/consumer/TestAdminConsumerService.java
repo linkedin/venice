@@ -14,11 +14,16 @@ import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.kafka.KafkaClientFactory;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
+import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.util.Collections;
@@ -59,17 +64,33 @@ public class TestAdminConsumerService {
 
     AdminConsumerService adminConsumerService1 = null;
     AdminConsumerService adminConsumerService2 = null;
+    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+    KafkaPubSubMessageDeserializer pubSubMessageDeserializer = new KafkaPubSubMessageDeserializer(
+        new OptimizedKafkaValueSerializer(),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
+
     try {
-      adminConsumerService1 =
-          new AdminConsumerService("cluster1", admin, controllerConfig, metricsRepository, Optional.empty());
+      adminConsumerService1 = new AdminConsumerService(
+          "cluster1",
+          admin,
+          controllerConfig,
+          metricsRepository,
+          pubSubTopicRepository,
+          pubSubMessageDeserializer);
 
       /**
        * The creation of a second {@link AdminConsumerService} crashed after introducing a regression
        * which caused duplicate metrics getting registered.
        */
       try {
-        adminConsumerService2 =
-            new AdminConsumerService("cluster2", admin, controllerConfig, metricsRepository, Optional.empty());
+        adminConsumerService2 = new AdminConsumerService(
+            "cluster2",
+            admin,
+            controllerConfig,
+            metricsRepository,
+            pubSubTopicRepository,
+            pubSubMessageDeserializer);
       } catch (Exception e) {
         Assert.fail("Creating a second " + AdminConsumerService.class.getSimpleName() + " should not fail", e);
       }

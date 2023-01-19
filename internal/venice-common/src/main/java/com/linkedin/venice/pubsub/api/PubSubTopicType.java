@@ -5,7 +5,9 @@ import com.linkedin.venice.meta.Version;
 
 
 public enum PubSubTopicType {
-  VERSION_TOPIC, REALTIME_TOPIC, REPROCESSING_TOPIC;
+  VERSION_TOPIC, REALTIME_TOPIC, REPROCESSING_TOPIC, ADMIN_TOPIC;
+
+  public static final String ADMIN_TOPIC_PREFIX = "venice_admin_";
 
   public static PubSubTopicType getPubSubTopicType(String topicName) {
     if (Version.isRealTimeTopic(topicName)) {
@@ -14,8 +16,14 @@ public enum PubSubTopicType {
       return REPROCESSING_TOPIC;
     } else if (Version.isVersionTopic(topicName)) {
       return VERSION_TOPIC;
+    } else if (isAdminTopic(topicName)) {
+      return ADMIN_TOPIC;
     } else {
       throw new VeniceException("Unsupported topic type for: " + topicName);
     }
+  }
+
+  public static boolean isAdminTopic(String topicName) {
+    return topicName.startsWith(PubSubTopicType.ADMIN_TOPIC_PREFIX);
   }
 }

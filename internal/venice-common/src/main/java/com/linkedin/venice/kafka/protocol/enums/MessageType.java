@@ -19,7 +19,8 @@ import com.linkedin.venice.utils.VeniceEnumValue;
  *       not support evolution (i.e.: adding values) properly.
  */
 public enum MessageType implements VeniceEnumValue {
-  PUT(0, (byte) 0), DELETE(1, (byte) 0), CONTROL_MESSAGE(2, (byte) 2), UPDATE(3, (byte) 4);
+  PUT(0, Constants.PUT_KEY_HEADER_BYTE), DELETE(1, Constants.PUT_KEY_HEADER_BYTE),
+  CONTROL_MESSAGE(2, Constants.CONTROL_MESSAGE_KEY_HEADER_BYTE), UPDATE(3, Constants.UPDATE_KEY_HEADER_BYTE);
 
   private static final MessageType[] TYPES_ARRAY = EnumUtils.getEnumValuesArray(MessageType.class);
 
@@ -81,5 +82,11 @@ public enum MessageType implements VeniceEnumValue {
 
   public static MessageType valueOf(KafkaMessageEnvelope kafkaMessageEnvelope) {
     return valueOf(kafkaMessageEnvelope.messageType);
+  }
+
+  public static class Constants {
+    public static final byte PUT_KEY_HEADER_BYTE = 0;
+    public static final byte CONTROL_MESSAGE_KEY_HEADER_BYTE = 2;
+    public static final byte UPDATE_KEY_HEADER_BYTE = 4;
   }
 }

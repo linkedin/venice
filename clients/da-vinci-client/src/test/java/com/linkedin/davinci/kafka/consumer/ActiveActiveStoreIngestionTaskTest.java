@@ -7,7 +7,6 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -31,6 +30,7 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -52,8 +52,8 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.producer.Callback;
+import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.mockito.ArgumentCaptor;
 import org.mockito.stubbing.Answer;
@@ -93,31 +93,27 @@ public class ActiveActiveStoreIngestionTaskTest {
     when(mockedProducer.getNumberOfPartitions(any())).thenReturn(1);
     when(mockedProducer.getNumberOfPartitions(any(), anyInt(), any())).thenReturn(1);
     AtomicLong offset = new AtomicLong(0);
-    ArgumentCaptor<KafkaKey> kafkaKeyArgumentCaptor = ArgumentCaptor.forClass(KafkaKey.class);
-    ArgumentCaptor<KafkaMessageEnvelope> kafkaMessageEnvelopeArgumentCaptor =
-        ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
-    when(
-        mockedProducer.sendMessage(
-            anyString(),
-            kafkaKeyArgumentCaptor.capture(),
-            kafkaMessageEnvelopeArgumentCaptor.capture(),
-            anyInt(),
-            any())).thenAnswer((Answer<Future>) invocation -> {
-              KafkaKey kafkaKey = invocation.getArgument(1);
-              KafkaMessageEnvelope kafkaMessageEnvelope = invocation.getArgument(2);
-              Callback callback = invocation.getArgument(4);
-              RecordMetadata recordMetadata = mock(RecordMetadata.class);
-              offset.addAndGet(1);
-              when(recordMetadata.offset()).thenReturn(offset.get());
-              when(recordMetadata.serializedKeySize()).thenReturn(kafkaKey.getKeyLength());
-              MessageType messageType = MessageType.valueOf(kafkaMessageEnvelope.messageType);
-              when(recordMetadata.serializedValueSize()).thenReturn(
-                  messageType.equals(MessageType.PUT)
-                      ? ((Put) (kafkaMessageEnvelope.payloadUnion)).putValue.remaining()
-                      : 0);
-              callback.onCompletion(recordMetadata, null);
-              return mockedFuture;
-            });
+    ArgumentCaptor<ProducerRecord<KafkaKey, KafkaMessageEnvelope>> producerRecordArgumentCaptor =
+        ArgumentCaptor.forClass(ProducerRecord.class);
+    ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
+    when(mockedProducer.sendMessage(producerRecordArgumentCaptor.capture(), any()))
+        .thenAnswer((Answer<Future>) invocation -> {
+          ProducerRecord<KafkaKey, KafkaMessageEnvelope> producerRecord = invocation.getArgument(0);
+          KafkaKey kafkaKey = producerRecord.key();
+          KafkaMessageEnvelope kafkaMessageEnvelope = producerRecord.value();
+          Callback callback = invocation.getArgument(1);
+          RecordMetadata recordMetadata = mock(RecordMetadata.class);
+          offset.addAndGet(1);
+          when(recordMetadata.offset()).thenReturn(offset.get());
+          when(recordMetadata.serializedKeySize()).thenReturn(kafkaKey.getKeyLength());
+          MessageType messageType = MessageType.valueOf(kafkaMessageEnvelope.messageType);
+          when(recordMetadata.serializedValueSize()).thenReturn(
+              messageType.equals(MessageType.PUT)
+                  ? ((Put) (kafkaMessageEnvelope.payloadUnion)).putValue.remaining()
+                  : 0);
+          callback.onCompletion(recordMetadata, null);
+          return mockedFuture;
+        });
     Properties writerProperties = new Properties();
     writerProperties.put(ENABLE_CHUNKING, true);
 
@@ -139,16 +135,16 @@ public class ActiveActiveStoreIngestionTaskTest {
     System.arraycopy(valueBytes, 0, schemaIdPrependedValueBytes, 4, valueBytes.length);
     ByteBuffer updatedValueBytes = ByteBuffer.wrap(schemaIdPrependedValueBytes, 4, valueBytes.length);
     ByteBuffer updatedRmdBytes = ByteBuffer.wrap(new byte[] { 0xa, 0xb });
-    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord = mock(ConsumerRecord.class);
-    when(consumerRecord.offset()).thenReturn(100L);
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord = mock(PubSubMessage.class);
+    when(consumerRecord.getOffset()).thenReturn(100L);
 
     Put updatedPut = new Put();
     updatedPut.putValue = ByteUtils.prependIntHeaderToByteBuffer(updatedValueBytes, valueSchemaId, resultReuseInput);
     updatedPut.schemaId = valueSchemaId;
     updatedPut.replicationMetadataVersionId = rmdProtocolVersionID;
     updatedPut.replicationMetadataPayload = updatedRmdBytes;
-    LeaderProducedRecordContext leaderProducedRecordContext =
-        LeaderProducedRecordContext.newPutRecord(kafkaClusterId, consumerRecord.offset(), updatedKeyBytes, updatedPut);
+    LeaderProducedRecordContext leaderProducedRecordContext = LeaderProducedRecordContext
+        .newPutRecord(kafkaClusterId, consumerRecord.getOffset(), updatedKeyBytes, updatedPut);
 
     PartitionConsumptionState partitionConsumptionState = mock(PartitionConsumptionState.class);
     ingestionTask.produceToLocalKafka(
@@ -167,7 +163,7 @@ public class ActiveActiveStoreIngestionTaskTest {
         beforeProcessingRecordTimestamp);
 
     // Send 1 SOS, 2 Chunks, 1 Manifest.
-    verify(mockedProducer, times(4)).sendMessage(eq(testTopic), any(), any(), anyInt(), any());
+    verify(mockedProducer, times(4)).sendMessage(any(), any());
     ArgumentCaptor<LeaderProducedRecordContext> leaderProducedRecordContextArgumentCaptor =
         ArgumentCaptor.forClass(LeaderProducedRecordContext.class);
     verify(ingestionTask, times(3)).produceToStoreBufferService(
@@ -180,22 +176,22 @@ public class ActiveActiveStoreIngestionTaskTest {
     // Make sure the chunks && manifest are exactly the same for both produced to VT and drain to leader storage.
     Assert.assertEquals(
         leaderProducedRecordContextArgumentCaptor.getAllValues().get(0).getValueUnion(),
-        kafkaMessageEnvelopeArgumentCaptor.getAllValues().get(1).payloadUnion);
+        producerRecordArgumentCaptor.getAllValues().get(1).value().payloadUnion);
     Assert.assertEquals(
         leaderProducedRecordContextArgumentCaptor.getAllValues().get(1).getValueUnion(),
-        kafkaMessageEnvelopeArgumentCaptor.getAllValues().get(2).payloadUnion);
+        producerRecordArgumentCaptor.getAllValues().get(2).value().payloadUnion);
     Assert.assertEquals(
         leaderProducedRecordContextArgumentCaptor.getAllValues().get(2).getValueUnion(),
-        kafkaMessageEnvelopeArgumentCaptor.getAllValues().get(3).payloadUnion);
+        producerRecordArgumentCaptor.getAllValues().get(3).value().payloadUnion);
     Assert.assertEquals(
         leaderProducedRecordContextArgumentCaptor.getAllValues().get(0).getKeyBytes(),
-        kafkaKeyArgumentCaptor.getAllValues().get(1).getKey());
+        producerRecordArgumentCaptor.getAllValues().get(1).key().getKey());
     Assert.assertEquals(
         leaderProducedRecordContextArgumentCaptor.getAllValues().get(1).getKeyBytes(),
-        kafkaKeyArgumentCaptor.getAllValues().get(2).getKey());
+        producerRecordArgumentCaptor.getAllValues().get(2).key().getKey());
     Assert.assertEquals(
         leaderProducedRecordContextArgumentCaptor.getAllValues().get(2).getKeyBytes(),
-        kafkaKeyArgumentCaptor.getAllValues().get(3).getKey());
+        producerRecordArgumentCaptor.getAllValues().get(3).key().getKey());
   }
 
   @Test

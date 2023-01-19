@@ -1,7 +1,6 @@
 package com.linkedin.davinci.replication.merge;
 
 import java.nio.ByteBuffer;
-import java.util.Optional;
 import org.apache.avro.generic.GenericRecord;
 
 
@@ -12,14 +11,14 @@ import org.apache.avro.generic.GenericRecord;
 public class MergeConflictResult {
   private static final MergeConflictResult IGNORED_RESULT = new MergeConflictResult();
 
-  private Optional<ByteBuffer> newValue;
+  private ByteBuffer newValue;
   private int valueSchemaId;
   private final boolean updateIgnored; // Whether we should skip the incoming message since it could be a stale message.
   private boolean resultReusesInput;
   private GenericRecord rmdRecord;
 
   public MergeConflictResult(
-      Optional<ByteBuffer> newValue,
+      ByteBuffer newValue,
       int valueSchemaID,
       boolean resultReusesInput,
       GenericRecord rmdRecord) {
@@ -42,7 +41,7 @@ public class MergeConflictResult {
     return this.valueSchemaId;
   }
 
-  public Optional<ByteBuffer> getNewValue() {
+  public ByteBuffer getNewValue() {
     return this.newValue;
   }
 

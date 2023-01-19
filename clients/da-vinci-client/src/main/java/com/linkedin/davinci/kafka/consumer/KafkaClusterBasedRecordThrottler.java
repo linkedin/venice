@@ -5,8 +5,6 @@ import static com.linkedin.davinci.kafka.consumer.StoreIngestionTask.REDUNDANT_L
 import com.linkedin.venice.exceptions.QuotaExceededException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
@@ -23,32 +21,30 @@ public class KafkaClusterBasedRecordThrottler {
   // Kafka URL to records throttler
   private final Map<String, EventThrottler> kafkaUrlToRecordsThrottler;
   // Kafka URL to throttled records
-  protected Map<String, ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> kafkaUrlToThrottledRecords;
+  protected Map<String, ConsumerRecords<byte[], byte[]>> kafkaUrlToThrottledRecords;
 
   public KafkaClusterBasedRecordThrottler(Map<String, EventThrottler> kafkaUrlToRecordsThrottler) {
     this.kafkaUrlToRecordsThrottler = kafkaUrlToRecordsThrottler;
     this.kafkaUrlToThrottledRecords = new VeniceConcurrentHashMap<>();
   }
 
-  public ConsumerRecords<KafkaKey, KafkaMessageEnvelope> poll(
-      KafkaConsumerWrapper consumer,
-      String kafkaUrl,
-      long pollTimeoutMs) {
-    ConsumerRecords<KafkaKey, KafkaMessageEnvelope> consumerRecords;
-    if (kafkaUrlToThrottledRecords.containsKey(kafkaUrl)) {
-      consumerRecords = kafkaUrlToThrottledRecords.get(kafkaUrl);
-    } else {
+  public ConsumerRecords<byte[], byte[]> poll(KafkaConsumerWrapper consumer, String kafkaUrl, long pollTimeoutMs) {
+    ConsumerRecords<byte[], byte[]> consumerRecords = kafkaUrlToThrottledRecords.get(kafkaUrl);
+    if (consumerRecords == null) {
       consumerRecords = consumer.poll(pollTimeoutMs);
       if (consumerRecords == null) {
         consumerRecords = ConsumerRecords.empty();
       }
     }
 
-    if (kafkaUrlToRecordsThrottler != null && kafkaUrlToRecordsThrottler.containsKey(kafkaUrl)) {
+    if (kafkaUrlToRecordsThrottler != null) {
       try {
-        kafkaUrlToRecordsThrottler.get(kafkaUrl).maybeThrottle(consumerRecords.count());
-        // if code reaches here, then the consumer records should be ingested to storage engine
-        kafkaUrlToThrottledRecords.remove(kafkaUrl);
+        EventThrottler eventThrottler = kafkaUrlToRecordsThrottler.get(kafkaUrl);
+        if (eventThrottler != null) {
+          eventThrottler.maybeThrottle(consumerRecords.count());
+          // if code reaches here, then the consumer records should be ingested to storage engine
+          kafkaUrlToThrottledRecords.remove(kafkaUrl);
+        }
       } catch (QuotaExceededException quotaExceededException) {
         String msgIdentifier = kafkaUrl + "_records_quota_exceeded";
         if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msgIdentifier)) {

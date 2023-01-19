@@ -9,10 +9,8 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.KafkaClientFactory.MetricsParameters;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
-import com.linkedin.venice.schema.SchemaReader;
-import com.linkedin.venice.serialization.KafkaKeySerializer;
-import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
-import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import io.tehuti.metrics.MetricsRepository;
@@ -42,20 +40,25 @@ public class AdminConsumerService extends AbstractVeniceService {
   private final ThreadFactory threadFactory = new DaemonThreadFactory("AdminTopicConsumer");
   private Thread consumerThread;
 
-  private final Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader;
+  private final PubSubTopicRepository pubSubTopicRepository;
+
+  private final KafkaPubSubMessageDeserializer pubSubMessageDeserializer;
 
   public AdminConsumerService(
       String cluster,
       VeniceHelixAdmin admin,
       VeniceControllerConfig config,
       MetricsRepository metricsRepository,
-      Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader) {
+      PubSubTopicRepository pubSubTopicRepository,
+      KafkaPubSubMessageDeserializer pubSubMessageDeserializer) {
     this.config = config;
     this.admin = admin;
     this.adminTopicMetadataAccessor =
         new ZkAdminTopicMetadataAccessor(admin.getZkClient(), admin.getAdapterSerializer());
     this.metricsRepository = metricsRepository;
     this.remoteConsumptionEnabled = config.isAdminTopicRemoteConsumptionEnabled();
+    this.pubSubTopicRepository = pubSubTopicRepository;
+    this.pubSubMessageDeserializer = pubSubMessageDeserializer;
     if (remoteConsumptionEnabled) {
       String adminTopicSourceRegion = config.getAdminTopicSourceRegion();
       remoteKafkaServerUrl = Optional.of(config.getChildDataCenterKafkaUrlMap().get(adminTopicSourceRegion));
@@ -73,7 +76,6 @@ public class AdminConsumerService extends AbstractVeniceService {
       remoteKafkaServerUrl = Optional.empty();
       remoteKafkaZkAddress = Optional.empty();
     }
-    this.kafkaMessageEnvelopeSchemaReader = kafkaMessageEnvelopeSchemaReader;
   }
 
   @Override
@@ -114,7 +116,9 @@ public class AdminConsumerService extends AbstractVeniceService {
         config.getAdminTopicReplicationFactor(),
         config.getMinInSyncReplicasAdminTopics(),
         config.getAdminConsumptionCycleTimeoutMs(),
-        config.getAdminConsumptionMaxWorkerThreadPoolSize());
+        config.getAdminConsumptionMaxWorkerThreadPoolSize(),
+        pubSubTopicRepository,
+        pubSubMessageDeserializer);
   }
 
   /**
@@ -213,18 +217,7 @@ public class AdminConsumerService extends AbstractVeniceService {
      * 1. {@link AdminConsumptionTask} is persisting {@link com.linkedin.venice.offsets.OffsetRecord} in Zookeeper.
      */
     kafkaConsumerProperties.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
-    // This is a temporary fix for the issue described here
-    // https://stackoverflow.com/questions/37363119/kafka-producer-org-apache-kafka-common-serialization-stringserializer-could-no
-    // In our case "com.linkedin.venice.serialization.KafkaKeySerializer" class can not be found
-    // because class loader has no venice-common in class path. This can be only reproduced on JDK11
-    // Trying to avoid class loading via Kafka's ConfigDef class
-    kafkaConsumerProperties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class);
-    kafkaConsumerProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, KafkaValueSerializer.class);
 
-    if (kafkaMessageEnvelopeSchemaReader.isPresent()) {
-      kafkaConsumerProperties
-          .put(InternalAvroSpecificSerializer.VENICE_SCHEMA_READER_CONFIG, kafkaMessageEnvelopeSchemaReader.get());
-    }
     return consumerFactory.getConsumer(kafkaConsumerProperties);
   }
 }

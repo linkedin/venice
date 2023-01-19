@@ -7,9 +7,7 @@ import static com.linkedin.venice.writer.VeniceWriter.ENABLE_RMD_CHUNKING;
 import static com.linkedin.venice.writer.VeniceWriter.VENICE_DEFAULT_LOGICAL_TS;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
-import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.atLeast;
-import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -159,7 +157,7 @@ public class VeniceWriterTest {
     Future mockedFuture = mock(Future.class);
     when(mockedProducer.getNumberOfPartitions(any())).thenReturn(1);
     when(mockedProducer.getNumberOfPartitions(any(), anyInt(), any())).thenReturn(1);
-    when(mockedProducer.sendMessage(anyString(), any(), any(), anyInt(), any())).thenReturn(mockedFuture);
+    when(mockedProducer.sendMessage(any(), any())).thenReturn(mockedFuture);
     Properties writerProperties = new Properties();
     writerProperties.put(VeniceWriter.MAX_ELAPSED_TIME_FOR_SEGMENT_IN_MS, 0);
     String stringSchema = "\"string\"";
@@ -176,12 +174,12 @@ public class VeniceWriterTest {
     for (int i = 0; i < 1000; i++) {
       writer.put(Integer.toString(i), Integer.toString(i), 1, null);
     }
-    ArgumentCaptor<KafkaMessageEnvelope> kafkaMessageEnvelopeArgumentCaptor =
-        ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
-    verify(mockedProducer, atLeast(1000))
-        .sendMessage(eq(testTopic), any(), kafkaMessageEnvelopeArgumentCaptor.capture(), anyInt(), any());
+    ArgumentCaptor<ProducerRecord<KafkaKey, KafkaMessageEnvelope>> producerRecordArgumentCaptor =
+        ArgumentCaptor.forClass(ProducerRecord.class);
+    verify(mockedProducer, atLeast(1000)).sendMessage(producerRecordArgumentCaptor.capture(), any());
     int segmentNumber = -1;
-    for (KafkaMessageEnvelope envelope: kafkaMessageEnvelopeArgumentCaptor.getAllValues()) {
+    for (ProducerRecord<KafkaKey, KafkaMessageEnvelope> producerRecord: producerRecordArgumentCaptor.getAllValues()) {
+      KafkaMessageEnvelope envelope = producerRecord.value();
       if (segmentNumber == -1) {
         segmentNumber = envelope.producerMetadata.segmentNumber;
       } else {
@@ -198,7 +196,7 @@ public class VeniceWriterTest {
     Future mockedFuture = mock(Future.class);
     when(mockedProducer.getNumberOfPartitions(any())).thenReturn(1);
     when(mockedProducer.getNumberOfPartitions(any(), anyInt(), any())).thenReturn(1);
-    when(mockedProducer.sendMessage(anyString(), any(), any(), anyInt(), any())).thenReturn(mockedFuture);
+    when(mockedProducer.sendMessage(any(), any())).thenReturn(mockedFuture);
     Properties writerProperties = new Properties();
     String stringSchema = "\"string\"";
     VeniceKafkaSerializer serializer = new VeniceAvroKafkaSerializer(stringSchema);
@@ -239,19 +237,18 @@ public class VeniceWriterTest {
     writer.delete(Integer.toString(5), null, VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER, deleteMetadata);
     writer.put(Integer.toString(6), Integer.toString(1), 1, null, VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER);
 
-    ArgumentCaptor<KafkaMessageEnvelope> kafkaMessageEnvelopeArgumentCaptor =
-        ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
-    verify(mockedProducer, atLeast(2))
-        .sendMessage(eq(testTopic), any(), kafkaMessageEnvelopeArgumentCaptor.capture(), anyInt(), any());
+    ArgumentCaptor<ProducerRecord<KafkaKey, KafkaMessageEnvelope>> producerRecordArgumentCaptor =
+        ArgumentCaptor.forClass(ProducerRecord.class);
+    verify(mockedProducer, atLeast(2)).sendMessage(producerRecordArgumentCaptor.capture(), any());
 
     // first one will be control message SOS, there should not be any aa metadata.
-    KafkaMessageEnvelope value0 = kafkaMessageEnvelopeArgumentCaptor.getAllValues().get(0);
+    KafkaMessageEnvelope value0 = producerRecordArgumentCaptor.getAllValues().get(0).value();
     Assert.assertEquals(value0.producerMetadata.logicalTimestamp, VENICE_DEFAULT_LOGICAL_TS);
 
     // verify timestamp is encoded correctly.
-    KafkaMessageEnvelope value1 = kafkaMessageEnvelopeArgumentCaptor.getAllValues().get(1);
-    KafkaMessageEnvelope value3 = kafkaMessageEnvelopeArgumentCaptor.getAllValues().get(3);
-    KafkaMessageEnvelope value4 = kafkaMessageEnvelopeArgumentCaptor.getAllValues().get(4);
+    KafkaMessageEnvelope value1 = producerRecordArgumentCaptor.getAllValues().get(1).value();
+    KafkaMessageEnvelope value3 = producerRecordArgumentCaptor.getAllValues().get(3).value();
+    KafkaMessageEnvelope value4 = producerRecordArgumentCaptor.getAllValues().get(4).value();
     for (KafkaMessageEnvelope kme: Arrays.asList(value1, value3, value4)) {
       Assert.assertEquals(kme.producerMetadata.logicalTimestamp, ctime);
     }
@@ -268,7 +265,7 @@ public class VeniceWriterTest {
     Assert.assertEquals(delete.replicationMetadataPayload, ByteBuffer.wrap(new byte[0]));
 
     // verify replicationMetadata is encoded correctly for Put.
-    KafkaMessageEnvelope value2 = kafkaMessageEnvelopeArgumentCaptor.getAllValues().get(2);
+    KafkaMessageEnvelope value2 = producerRecordArgumentCaptor.getAllValues().get(2).value();
     Assert.assertEquals(value2.messageType, MessageType.PUT.getValue());
     put = (Put) value2.payloadUnion;
     Assert.assertEquals(put.schemaId, 1);
@@ -277,7 +274,7 @@ public class VeniceWriterTest {
     Assert.assertEquals(value2.producerMetadata.logicalTimestamp, APP_DEFAULT_LOGICAL_TS);
 
     // verify replicationMetadata is encoded correctly for Delete.
-    KafkaMessageEnvelope value5 = kafkaMessageEnvelopeArgumentCaptor.getAllValues().get(5);
+    KafkaMessageEnvelope value5 = producerRecordArgumentCaptor.getAllValues().get(5).value();
     Assert.assertEquals(value5.messageType, MessageType.DELETE.getValue());
     delete = (Delete) value5.payloadUnion;
     Assert.assertEquals(delete.schemaId, 1);
@@ -286,7 +283,7 @@ public class VeniceWriterTest {
     Assert.assertEquals(value5.producerMetadata.logicalTimestamp, APP_DEFAULT_LOGICAL_TS);
 
     // verify default logical_ts is encoded correctly
-    KafkaMessageEnvelope value6 = kafkaMessageEnvelopeArgumentCaptor.getAllValues().get(6);
+    KafkaMessageEnvelope value6 = producerRecordArgumentCaptor.getAllValues().get(6).value();
     Assert.assertEquals(value6.messageType, MessageType.PUT.getValue());
     Assert.assertEquals(value6.producerMetadata.logicalTimestamp, APP_DEFAULT_LOGICAL_TS);
   }
@@ -297,7 +294,7 @@ public class VeniceWriterTest {
     Future mockedFuture = mock(Future.class);
     when(mockedProducer.getNumberOfPartitions(any())).thenReturn(1);
     when(mockedProducer.getNumberOfPartitions(any(), anyInt(), any())).thenReturn(1);
-    when(mockedProducer.sendMessage(anyString(), any(), any(), anyInt(), any())).thenReturn(mockedFuture);
+    when(mockedProducer.sendMessage(any(), any())).thenReturn(mockedFuture);
     Properties writerProperties = new Properties();
     writerProperties.put(ENABLE_CHUNKING, true);
     writerProperties.put(ENABLE_RMD_CHUNKING, true);
@@ -331,15 +328,9 @@ public class VeniceWriterTest {
         VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER,
         APP_DEFAULT_LOGICAL_TS,
         putMetadata);
-    ArgumentCaptor<KafkaKey> kafkaKeyArgumentCaptor = ArgumentCaptor.forClass(KafkaKey.class);
-    ArgumentCaptor<KafkaMessageEnvelope> kafkaMessageEnvelopeArgumentCaptor =
-        ArgumentCaptor.forClass(KafkaMessageEnvelope.class);
-    verify(mockedProducer, atLeast(2)).sendMessage(
-        eq(testTopic),
-        kafkaKeyArgumentCaptor.capture(),
-        kafkaMessageEnvelopeArgumentCaptor.capture(),
-        anyInt(),
-        any());
+    ArgumentCaptor<ProducerRecord<KafkaKey, KafkaMessageEnvelope>> producerRecordArgumentCaptor =
+        ArgumentCaptor.forClass(ProducerRecord.class);
+    verify(mockedProducer, atLeast(2)).sendMessage(producerRecordArgumentCaptor.capture(), any());
     KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer = new KeyWithChunkingSuffixSerializer();
     byte[] serializedKey = serializer.serialize(testTopic, Integer.toString(1));
     byte[] serializedValue = serializer.serialize(testTopic, valueString);
@@ -347,10 +338,10 @@ public class VeniceWriterTest {
     int availableMessageSize = DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES - serializedKey.length;
 
     // The order should be SOS, valueChunk1, valueChunk2, replicationMetadataChunk1, manifest for value and RMD.
-    Assert.assertEquals(kafkaMessageEnvelopeArgumentCaptor.getAllValues().size(), 5);
+    Assert.assertEquals(producerRecordArgumentCaptor.getAllValues().size(), 5);
 
     // Verify value of the 1st chunk.
-    KafkaMessageEnvelope actualValue1 = kafkaMessageEnvelopeArgumentCaptor.getAllValues().get(1);
+    KafkaMessageEnvelope actualValue1 = producerRecordArgumentCaptor.getAllValues().get(1).value();
     Assert.assertEquals(actualValue1.messageType, MessageType.PUT.getValue());
     Assert.assertEquals(((Put) actualValue1.payloadUnion).schemaId, -10);
     Assert.assertEquals(((Put) actualValue1.payloadUnion).replicationMetadataVersionId, -1);
@@ -359,7 +350,7 @@ public class VeniceWriterTest {
     Assert.assertEquals(actualValue1.producerMetadata.logicalTimestamp, VENICE_DEFAULT_LOGICAL_TS);
 
     // Verify value of the 2nd chunk.
-    KafkaMessageEnvelope actualValue2 = kafkaMessageEnvelopeArgumentCaptor.getAllValues().get(2);
+    KafkaMessageEnvelope actualValue2 = producerRecordArgumentCaptor.getAllValues().get(2).value();
     Assert.assertEquals(actualValue2.messageType, MessageType.PUT.getValue());
     Assert.assertEquals(((Put) actualValue2.payloadUnion).schemaId, -10);
     Assert.assertEquals(((Put) actualValue2.payloadUnion).replicationMetadataVersionId, -1);
@@ -389,7 +380,7 @@ public class VeniceWriterTest {
         ByteBuffer.wrap(keyWithChunkingSuffixSerializer.serializeChunkedKey(serializedKey, chunkedKeySuffix));
     chunkedValueManifest.keysWithChunkIdSuffix.add(keyWithSuffix);
     KafkaKey expectedKey1 = new KafkaKey(MessageType.PUT, keyWithSuffix.array());
-    KafkaKey actualKey1 = kafkaKeyArgumentCaptor.getAllValues().get(1);
+    KafkaKey actualKey1 = producerRecordArgumentCaptor.getAllValues().get(1).key();
     Assert.assertEquals(actualKey1.getKey(), expectedKey1.getKey());
 
     // Verify key of the 2nd value chunk.
@@ -398,11 +389,11 @@ public class VeniceWriterTest {
         ByteBuffer.wrap(keyWithChunkingSuffixSerializer.serializeChunkedKey(serializedKey, chunkedKeySuffix));
     chunkedValueManifest.keysWithChunkIdSuffix.add(keyWithSuffix);
     KafkaKey expectedKey2 = new KafkaKey(MessageType.PUT, keyWithSuffix.array());
-    KafkaKey actualKey2 = kafkaKeyArgumentCaptor.getAllValues().get(2);
+    KafkaKey actualKey2 = producerRecordArgumentCaptor.getAllValues().get(2).key();
     Assert.assertEquals(actualKey2.getKey(), expectedKey2.getKey());
 
     // Check value of the 1st RMD chunk.
-    KafkaMessageEnvelope actualValue3 = kafkaMessageEnvelopeArgumentCaptor.getAllValues().get(3);
+    KafkaMessageEnvelope actualValue3 = producerRecordArgumentCaptor.getAllValues().get(3).value();
     Assert.assertEquals(actualValue3.messageType, MessageType.PUT.getValue());
     Assert.assertEquals(((Put) actualValue3.payloadUnion).schemaId, -10);
     Assert.assertEquals(((Put) actualValue3.payloadUnion).replicationMetadataVersionId, -1);
@@ -428,17 +419,17 @@ public class VeniceWriterTest {
         ByteBuffer.wrap(keyWithChunkingSuffixSerializer.serializeChunkedKey(serializedKey, chunkedKeySuffix));
     chunkedRmdManifest.keysWithChunkIdSuffix.add(keyWithSuffix);
     KafkaKey expectedKey3 = new KafkaKey(MessageType.PUT, keyWithSuffix.array());
-    KafkaKey actualKey3 = kafkaKeyArgumentCaptor.getAllValues().get(3);
+    KafkaKey actualKey3 = producerRecordArgumentCaptor.getAllValues().get(3).key();
     Assert.assertEquals(actualKey3.getKey(), expectedKey3.getKey());
 
     // Check key of the manifest.
     byte[] topLevelKey = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(serializedKey);
     KafkaKey expectedKey4 = new KafkaKey(MessageType.PUT, topLevelKey);
-    KafkaKey actualKey4 = kafkaKeyArgumentCaptor.getAllValues().get(4);
+    KafkaKey actualKey4 = producerRecordArgumentCaptor.getAllValues().get(4).key();
     Assert.assertEquals(actualKey4.getKey(), expectedKey4.getKey());
 
     // Check manifest for both value and rmd.
-    KafkaMessageEnvelope actualValue4 = kafkaMessageEnvelopeArgumentCaptor.getAllValues().get(4);
+    KafkaMessageEnvelope actualValue4 = producerRecordArgumentCaptor.getAllValues().get(4).value();
     Assert.assertEquals(actualValue4.messageType, MessageType.PUT.getValue());
     Assert.assertEquals(
         ((Put) actualValue4.payloadUnion).schemaId,

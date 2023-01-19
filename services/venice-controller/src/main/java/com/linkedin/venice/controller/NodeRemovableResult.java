@@ -19,7 +19,7 @@ public class NodeRemovableResult {
   }
 
   public String getBlockingReason() {
-    return blockingReason.toString();
+    return blockingReason == null ? "N/A" : blockingReason.toString();
   }
 
   public String getDetails() {
