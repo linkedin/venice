@@ -154,7 +154,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     this.configLoader = new VeniceConfigLoader(loadedVeniceProperties, loadedVeniceProperties, kafkaClusterMap);
     this.servicePort = configLoader.getVeniceServerConfig().getIngestionServicePort();
     this.heartbeatTimeoutMs = configLoader.getCombinedProperties()
-        .getLong(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, 60 * Time.MS_PER_SECOND);
+        .getLong(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, 180 * Time.MS_PER_SECOND);
     // Initialize Netty server.
     Class<? extends ServerChannel> serverSocketChannelClass = NioServerSocketChannel.class;
     bossGroup = new NioEventLoopGroup();
