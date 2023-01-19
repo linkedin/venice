@@ -73,6 +73,11 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   private KafkaStoreIngestionService storeIngestionService;
   private ReadOnlyStoreRepository storeRepository;
   private final VeniceConfigLoader configLoader;
+  /**
+   * Heartbeat timeout acknowledge disconnection between main and forked processes. After this timeout, main process
+   * should (1) Try to kill lingering forked process to release port (2) Respawn new forked ingestion process to continue
+   * ingestion work.
+   */
   private long heartbeatTimeoutMs;
   private volatile long latestHeartbeatTimestamp = -1;
   private final int requestTimeoutInSeconds;

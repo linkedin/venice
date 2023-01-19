@@ -124,6 +124,10 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   private final Map<String, Map<Integer, AtomicBoolean>> topicPartitionSubscriptionMap =
       new VeniceConcurrentHashMap<>();
   private final Map<String, Double> metricsMap = new VeniceConcurrentHashMap<>();
+  /**
+   * Heartbeat timeout acknowledge disconnection between main and forked processes. After this timeout, forked process
+   * should stop running gracefully.
+   */
   private final long heartbeatTimeoutMs;
 
   private ChannelFuture serverFuture;
