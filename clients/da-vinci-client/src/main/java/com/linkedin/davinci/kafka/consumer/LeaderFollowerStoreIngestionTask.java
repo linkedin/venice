@@ -2051,6 +2051,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             break;
           default:
             // do nothing
+            break;
         }
         if (!isSegmentControlMsg(controlMessageType)) {
           LOGGER.info(
