@@ -2606,11 +2606,24 @@ public class VeniceParentHelixAdmin implements Admin {
 
   private void addWriteComputeSchemaForStore(String clusterName, String storeName, boolean dryRun) {
     Collection<SchemaEntry> valueSchemaEntries = getValueSchemas(clusterName, storeName);
+
     List<SchemaEntry> writeComputeSchemaEntries = new ArrayList<>(valueSchemaEntries.size());
+    int maxId = valueSchemaEntries.stream().map(SchemaEntry::getId).max(Comparator.naturalOrder()).get();
+
     for (SchemaEntry valueSchemaEntry: valueSchemaEntries) {
-      Schema writeComputeSchema =
-          writeComputeSchemaConverter.convertFromValueRecordSchema(valueSchemaEntry.getSchema());
-      writeComputeSchemaEntries.add(new SchemaEntry(valueSchemaEntry.getId(), writeComputeSchema));
+      try {
+        Schema writeComputeSchema =
+            writeComputeSchemaConverter.convertFromValueRecordSchema(valueSchemaEntry.getSchema());
+        writeComputeSchemaEntries.add(new SchemaEntry(valueSchemaEntry.getId(), writeComputeSchema));
+      } catch (Exception e) {
+        // Allow failure in write-compute schema generation in all schema except the latest value schema
+        if (valueSchemaEntry.getId() == maxId) {
+          throw new VeniceException(
+              "For store " + storeName + " cannot generate update schema for value schema ID :"
+                  + valueSchemaEntry.getId() + ", top level field probably missing defaults.",
+              e);
+        }
+      }
     }
     // Start adding write compute schemas only after all write compute schema generation is successful.
     if (dryRun) {
@@ -2744,6 +2757,9 @@ public class VeniceParentHelixAdmin implements Admin {
       DirectionalSchemaCompatibilityType expectedCompatibilityType) {
     acquireAdminMessageLock(clusterName, storeName);
     try {
+      Schema newValueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(newValueSchemaStr);
+      // TODO: Enable the following check for all new schema registration.
+      // AvroSchemaUtils.validateTopLevelFieldDefaultsValueRecordSchema(newValueSchema);
       final int newValueSchemaId = getVeniceHelixAdmin().checkPreConditionForAddValueSchemaAndGetNewSchemaId(
           clusterName,
           storeName,
@@ -2765,7 +2781,6 @@ public class VeniceParentHelixAdmin implements Admin {
 
       final boolean doUpdateSupersetSchemaID;
       if (existingValueSchema != null && (store.isReadComputationEnabled() || store.isWriteComputationEnabled())) {
-        Schema newValueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(newValueSchemaStr);
         Schema newSuperSetSchema = AvroSupersetSchemaUtils.generateSuperSetSchema(existingValueSchema, newValueSchema);
         String newSuperSetSchemaStr = newSuperSetSchema.toString();
 
