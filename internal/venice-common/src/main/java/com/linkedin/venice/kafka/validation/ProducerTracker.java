@@ -73,7 +73,7 @@ public class ProducerTracker {
     this.logger = LogManager.getLogger(this.toString());
   }
 
-  public String toString() {
+  public final String toString() {
     return ProducerTracker.class.getSimpleName() + "(GUID: " + ByteUtils.toHexString(producerGUID.bytes()) + ", topic: "
         + topicName + ")";
   }
@@ -284,17 +284,15 @@ public class ProducerTracker {
     Map<CharSequence, CharSequence> debugInfo = new HashMap<>();
     Map<CharSequence, Long> aggregates = new HashMap<>();
 
-    switch (MessageType.valueOf(consumerRecord.value())) {
-      case CONTROL_MESSAGE:
-        ControlMessage controlMessage = (ControlMessage) consumerRecord.value().payloadUnion;
-        switch (ControlMessageType.valueOf(controlMessage)) {
-          case START_OF_SEGMENT:
-            StartOfSegment startOfSegment = (StartOfSegment) controlMessage.controlMessageUnion;
-            checkSumType = CheckSumType.valueOf(startOfSegment.checksumType);
-            debugInfo = controlMessage.debugInfo;
-            startOfSegment.upcomingAggregates.stream().forEach(aggregate -> aggregates.put(aggregate, 0L));
-            unregisteredProducer = false;
-        }
+    if (MessageType.valueOf(consumerRecord.value()) == MessageType.CONTROL_MESSAGE) {
+      ControlMessage controlMessage = (ControlMessage) consumerRecord.value().payloadUnion;
+      if (ControlMessageType.valueOf(controlMessage) == ControlMessageType.START_OF_SEGMENT) {
+        StartOfSegment startOfSegment = (StartOfSegment) controlMessage.controlMessageUnion;
+        checkSumType = CheckSumType.valueOf(startOfSegment.checksumType);
+        debugInfo = controlMessage.debugInfo;
+        startOfSegment.upcomingAggregates.stream().forEach(aggregate -> aggregates.put(aggregate, 0L));
+        unregisteredProducer = false;
+      }
     }
 
     Segment newSegment = new Segment(
@@ -734,15 +732,18 @@ public class ProducerTracker {
     }
 
     private <K, V> String printMap(Map<K, V> map) {
-      String msg = "{";
+      StringBuilder sb = new StringBuilder();
+      sb.append("{");
       for (Map.Entry<K, V> entry: map.entrySet()) {
-        msg += "\n\t" + entry.getKey() + ": " + entry.getValue();
+        sb.append("\n\t");
+        sb.append(entry.getKey());
+        sb.append(entry.getValue());
       }
       if (!map.isEmpty()) {
-        msg += "\n";
+        sb.append("\n");
       }
-      msg += "}";
-      return msg;
+      sb.append("}");
+      return sb.toString();
     }
   }
 

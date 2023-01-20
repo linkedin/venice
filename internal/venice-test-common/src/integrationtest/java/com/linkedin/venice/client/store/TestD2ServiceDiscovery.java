@@ -13,7 +13,7 @@ import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.integration.utils.MockVeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
-import com.linkedin.venice.utils.MockTime;
+import com.linkedin.venice.utils.TestMockTime;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -59,6 +59,6 @@ public class TestD2ServiceDiscovery {
     doThrow(e).when(mockFuture).get(anyLong(), any());
     doReturn(mockFuture).when(mockTransportClient).get(anyString(), any());
 
-    new D2ServiceDiscovery(new MockTime()).find(mockTransportClient, "test");
+    new D2ServiceDiscovery(new TestMockTime()).find(mockTransportClient, "test");
   }
 }

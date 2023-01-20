@@ -24,12 +24,12 @@ import org.testng.annotations.Test;
 
 @Test
 public class StorageUtilizationManagerTest {
-  private final long storeQuotaInBytes = 100L;
-  private final long newStoreQuotaInBytes = 200L;
-  private final int storePartitionCount = 10;
-  private final String storeName = "TestTopic";
-  private final String topic = Version.composeKafkaTopic(storeName, 1);
-  private final int storeVersion = Version.parseVersionFromKafkaTopicName(topic);
+  private final static long storeQuotaInBytes = 100L;
+  private final static long newStoreQuotaInBytes = 200L;
+  private final static int storePartitionCount = 10;
+  private final static String storeName = "TestTopic";
+  private final static String topic = Version.composeKafkaTopic(storeName, 1);
+  private final static int storeVersion = Version.parseVersionFromKafkaTopicName(topic);
 
   private ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap;
   private AbstractStorageEngine storageEngine;
@@ -46,7 +46,7 @@ public class StorageUtilizationManagerTest {
   }
 
   @BeforeMethod
-  private void buildNewQuotaEnforcer() {
+  public void buildNewQuotaEnforcer() {
     statusReportAdapter = mock(StatusReportAdapter.class);
     partitionConsumptionStateMap = new VeniceConcurrentHashMap<>();
 

@@ -167,7 +167,7 @@ public class TestMetaDataHandler {
 
   // The deprecated non inclusive URL must also continue to work.
   @DataProvider(name = "controllerUrlProvider")
-  private static Object[][] dataProvider() {
+  public static Object[][] dataProvider() {
     // go/inclusivecode deprecated (alias="leader_controller")
     return new Object[][] { { "master_controller" }, { "leader_controller" } };
   }
@@ -403,7 +403,6 @@ public class TestMetaDataHandler {
     String storeName = "test-store";
     HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
     Mockito.doReturn(Optional.empty()).when(storeConfigRepository).getStoreConfig(storeName);
-    Map<String, String> clusterToD2Map = new HashMap<>();
     FullHttpResponse response = passRequestToMetadataHandler(
         "http://myRouterHost:4567/discover_cluster/" + storeName,
         null,

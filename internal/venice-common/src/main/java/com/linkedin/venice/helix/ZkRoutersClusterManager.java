@@ -341,7 +341,7 @@ public class ZkRoutersClusterManager
     clear();
   }
 
-  protected String getRouterRootPath() {
+  protected final String getRouterRootPath() {
     return HelixUtils.getHelixClusterZkPath(clusterName) + PREFIX_PATH;
   }
 

@@ -9,7 +9,7 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
 import com.linkedin.venice.fastclient.meta.InstanceHealthMonitor;
-import com.linkedin.venice.fastclient.stats.ClientStats;
+import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.utils.TestUtils;
 import io.tehuti.Metric;
@@ -309,7 +309,7 @@ public class RetriableAvroGenericStoreClientTest {
   }
 
   private Map<String, ? extends Metric> getStats(ClientConfig clientConfig) {
-    ClientStats stats = clientConfig.getStats(RequestType.SINGLE_GET);
+    FastClientStats stats = clientConfig.getStats(RequestType.SINGLE_GET);
     MetricsRepository metricsRepository = stats.getMetricsRepository();
     Map<String, ? extends Metric> metrics = metricsRepository.metrics();
     return metrics;

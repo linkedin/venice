@@ -160,7 +160,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     }
   }
 
-  protected synchronized void restoreStoragePartitions() {
+  protected final synchronized void restoreStoragePartitions() {
     restoreStoragePartitions(true, true);
   }
 

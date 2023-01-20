@@ -41,11 +41,11 @@ public class PushStatusStoreReaderTest {
 
   private D2Client d2ClientMock;
   private AvroSpecificStoreClient<PushStatusKey, PushStatusValue> storeClientMock;
-  private final int storeVersion = 42;
-  private final String storeName = "venice-test-push-status-store";
-  private final String incPushVersion = "ip-2022";
-  private final int partitionCount = 2;
-  private final int replicationFactor = 3;
+  private final static int storeVersion = 42;
+  private final static String storeName = "venice-test-push-status-store";
+  private final static String incPushVersion = "ip-2022";
+  private final static int partitionCount = 2;
+  private final static int replicationFactor = 3;
 
   @BeforeMethod
   public void setUp() {

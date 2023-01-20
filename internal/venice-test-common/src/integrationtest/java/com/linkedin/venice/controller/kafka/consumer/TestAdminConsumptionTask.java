@@ -136,14 +136,14 @@ public class TestAdminConsumptionTask {
 
   private String clusterName;
   private String topicName;
-  private final byte[] emptyKeyBytes = new byte[] { 'a' };
+  private static final byte[] emptyKeyBytes = new byte[] { 'a' };
   private final AdminOperationSerializer adminOperationSerializer = new AdminOperationSerializer();
 
-  private final String storeName = Utils.getUniqueString("test_store");
-  private final String storeTopicName = storeName + "_v1";
-  private final String owner = "test_owner";
-  private final String keySchema = "\"string\"";
-  private final String valueSchema = "\"string\"";
+  private static final String storeName = Utils.getUniqueString("test_store");
+  private static final String storeTopicName = storeName + "_v1";
+  private static final String owner = "test_owner";
+  private static final String keySchema = "\"string\"";
+  private static final String valueSchema = "\"string\"";
 
   // Objects will be used by each test method
   private KafkaConsumerWrapper mockKafkaConsumer;

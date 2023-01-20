@@ -160,7 +160,7 @@ class ConsumptionTask implements Runnable {
   void stop() {
     running = false;
     synchronized (this) {
-      notify();
+      notifyAll();
     }
   }
 
@@ -186,7 +186,7 @@ class ConsumptionTask implements Runnable {
               + ", New: " + consumedDataReceiver);
     }
     synchronized (this) {
-      notify();
+      notifyAll();
     }
   }
 

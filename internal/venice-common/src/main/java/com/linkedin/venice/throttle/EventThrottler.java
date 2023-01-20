@@ -236,7 +236,7 @@ public class EventThrottler {
     }
   }
 
-  public long getMaxRatePerSecond() {
+  public final long getMaxRatePerSecond() {
     long maxRatePerSecond = maxRatePerSecondProvider.getAsLong();
     // If quota was disabled but enabled at run time, we need to initialize the required structures.
     initialize(maxRatePerSecond);

@@ -114,7 +114,7 @@ public class ActiveActiveReplicationForHybridTest {
 
   protected static final int NUMBER_OF_CHILD_DATACENTERS = 3;
   protected static final int NUMBER_OF_CLUSTERS = 1;
-  protected static final String[] CLUSTER_NAMES =
+  static final String[] CLUSTER_NAMES =
       IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
   // ["venice-cluster0", "venice-cluster1", ...];
 

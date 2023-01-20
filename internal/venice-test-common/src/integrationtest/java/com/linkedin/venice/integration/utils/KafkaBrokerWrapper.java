@@ -2,7 +2,7 @@ package com.linkedin.venice.integration.utils;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.KafkaSSLUtils;
-import com.linkedin.venice.utils.MockTime;
+import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.util.ArrayList;
@@ -43,7 +43,7 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
    */
   static StatefulServiceProvider<KafkaBrokerWrapper> generateService(
       ZkServerWrapper zkServerWrapper,
-      Optional<MockTime> mockTime) {
+      Optional<TestMockTime> mockTime) {
     return (String serviceName, File dir) -> {
       int port = Utils.getFreePort();
       int sslPort = Utils.getFreePort();
@@ -77,8 +77,8 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
   /**
    * This function encapsulates all of the Scala weirdness required to interop with the {@link KafkaServer}.
    */
-  private static KafkaServer instantiateNewKafkaServer(KafkaConfig kafkaConfig, Optional<MockTime> mockTime) {
-    // We cannot get a kafka.utils.Time out of an Optional<MockTime>, even though MockTime implements it.
+  private static KafkaServer instantiateNewKafkaServer(KafkaConfig kafkaConfig, Optional<TestMockTime> mockTime) {
+    // We cannot get a kafka.utils.Time out of an Optional<TestMockTime>, even though TestMockTime implements it.
     org.apache.kafka.common.utils.Time time =
         Optional.<org.apache.kafka.common.utils.Time>ofNullable(mockTime.orElse(null)).orElse(SystemTime.SYSTEM);
     int port = kafkaConfig.getInt(KafkaConfig.PortProp());
@@ -95,7 +95,7 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
   private KafkaServer kafkaServer;
   private final ZkServerWrapper zkServerWrapper;
   private final KafkaConfig kafkaConfig;
-  private final Optional<MockTime> mockTime;
+  private final Optional<TestMockTime> mockTime;
 
   /**
    * The constructor is private because {@link #generateService(ZkServerWrapper, Optional)} should be the only
@@ -110,7 +110,7 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
       KafkaServer kafkaServer,
       File dataDirectory,
       ZkServerWrapper zkServerWrapper,
-      Optional<MockTime> mockTime,
+      Optional<TestMockTime> mockTime,
       int sslPort) {
     super(SERVICE_NAME, dataDirectory);
     this.kafkaConfig = kafkaConfig;

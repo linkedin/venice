@@ -5,6 +5,8 @@ import java.util.function.Function;
 
 
 public class VeniceConcurrentHashMap<K, V> extends ConcurrentHashMap<K, V> {
+  private static final long serialVersionUID = 1L;
+
   public VeniceConcurrentHashMap() {
     super();
   }

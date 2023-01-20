@@ -6,7 +6,7 @@ import java.util.Map;
 
 
 public abstract class AbstractVeniceAggStats<T extends AbstractVeniceStats> {
-  public static String STORE_NAME_FOR_TOTAL_STAT = "total";
+  public final static String STORE_NAME_FOR_TOTAL_STAT = "total";
   protected T totalStats;
   protected final Map<String, T> storeStats = new VeniceConcurrentHashMap<>();
 

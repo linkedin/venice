@@ -14,7 +14,6 @@ import com.linkedin.venice.writer.VeniceWriter;
 import java.util.HashMap;
 import java.util.Properties;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
@@ -142,7 +141,7 @@ public class LeaderFollowerThreadPoolTest {
     ExecutorService leaderFollowerPool =
         server0.getVeniceServer().getHelixParticipationService().getLeaderFollowerHelixStateTransitionThreadPool();
 
-    Future blockingTask = leaderFollowerPool.submit(() -> {
+    leaderFollowerPool.submit(() -> {
       LOGGER.info("blocking task is running...");
       lock.lock();
       try {

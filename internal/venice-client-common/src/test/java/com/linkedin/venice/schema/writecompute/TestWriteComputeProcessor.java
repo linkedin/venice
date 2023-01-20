@@ -22,7 +22,7 @@ import org.testng.annotations.Test;
 
 
 public class TestWriteComputeProcessor {
-  private final String recordSchemaStr = "{\n" + "  \"type\" : \"record\",\n" + "  \"name\" : \"testRecord\",\n"
+  private final static String recordSchemaStr = "{\n" + "  \"type\" : \"record\",\n" + "  \"name\" : \"testRecord\",\n"
       + "  \"namespace\" : \"com.linkedin.avro\",\n" + "  \"fields\" : [ {\n" + "    \"name\" : \"hits\",\n"
       + "    \"type\" : {\n" + "      \"type\" : \"array\",\n" + "      \"items\" : {\n"
       + "        \"type\" : \"record\",\n" + "        \"name\" : \"JobAlertHit\",\n" + "        \"fields\" : [ {\n"
@@ -31,18 +31,13 @@ public class TestWriteComputeProcessor {
       + "    },\n" + "    \"default\" : [ ]\n" + "  }, {\n" + "    \"name\" : \"hasNext\",\n"
       + "    \"type\" : \"boolean\",\n" + "    \"default\" : false\n" + "  } ]\n" + "}";
 
-  private final String simpleRecordSchemaStr = "{\n" + "  \"type\" : \"record\",\n"
-      + "  \"name\" : \"simpleTestRecord\",\n" + "  \"namespace\" : \"com.linkedin.avro\",\n" + "  \"fields\" : [ {\n"
-      + "    \"name\" : \"field1\",\n" + "    \"type\" : \"int\",\n" + "    \"default\" : 0\n" + "  }, {\n"
-      + "    \"name\" : \"field2\",\n" + "    \"type\" : \"int\",\n" + "    \"default\" : 0\n" + " } ]\n" + "}";
-
-  private final String nullableRecordStr =
+  private final static String nullableRecordStr =
       "{\n" + "  \"type\" : \"record\",\n" + "  \"name\" : \"nullableRecord\",\n" + "  \"fields\" : [ {\n"
           + "    \"name\" : \"nullableArray\",\n" + "    \"type\" : [ \"null\", {\n" + "      \"type\" : \"array\",\n"
           + "      \"items\" : \"int\"\n" + "    } ],\n" + "    \"default\" : null\n" + "  }, {\n"
           + "    \"name\" : \"intField\",\n" + "    \"type\" : \"int\",\n" + "    \"default\" : 0\n" + "  } ]\n" + "}";
 
-  private final String nestedRecordStr = "{\n" + "  \"type\" : \"record\",\n" + "  \"name\" : \"testRecord\",\n"
+  private final static String nestedRecordStr = "{\n" + "  \"type\" : \"record\",\n" + "  \"name\" : \"testRecord\",\n"
       + "  \"fields\" : [ {\n" + "    \"name\" : \"nestedRecord\",\n" + "    \"type\" : {\n"
       + "      \"type\" : \"record\",\n" + "      \"name\" : \"nestedRecord\",\n" + "      \"fields\" : [ {\n"
       + "        \"name\" : \"intField\",\n" + "        \"type\" : \"int\"\n" + "      } ]\n" + "    },\n"

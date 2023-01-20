@@ -78,10 +78,6 @@ public class TestVenicePushJobConfig {
     return repushProps;
   }
 
-  private VenicePushJob getSpyVenicePushJob() {
-    return getSpyVenicePushJob(Optional.empty(), Optional.empty());
-  }
-
   private VenicePushJob getSpyVenicePushJob(Optional<Properties> props, Optional<ControllerClient> client) {
     Properties baseProps = TestWriteUtils.defaultVPJProps(TEST_URL, TEST_PATH, TEST_STORE);
     // for mocked tests, only attempt once.

@@ -19,15 +19,29 @@ public class TestMapAwareGenericDatumWriter {
    */
   private static class TestString extends Utf8 {
     private int i;
+    private String s;
 
     TestString(int i, String s) {
       super(s);
+      this.s = s;
       this.i = i;
     }
 
     @Override
     public int hashCode() {
       return i;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) {
+        return true;
+      }
+      if (o == null || getClass() != o.getClass()) {
+        return false;
+      }
+      TestString object = (TestString) o;
+      return object.i == this.i && object.s.equals(this.s);
     }
   }
 

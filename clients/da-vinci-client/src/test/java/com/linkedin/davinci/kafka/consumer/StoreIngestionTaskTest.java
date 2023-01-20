@@ -144,11 +144,11 @@ import com.linkedin.venice.utils.ByteArray;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.DiskUsage;
-import com.linkedin.venice.utils.MockTime;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SystemTime;
+import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -1174,7 +1174,7 @@ public abstract class StoreIngestionTaskTest {
 
     localVeniceWriter.broadcastStartOfPush(new HashMap<>());
     RecordMetadata putMetadata1 = (RecordMetadata) localVeniceWriter.put(putKeyFoo, putValueToCorrupt, SCHEMA_ID).get();
-    RecordMetadata putMetadata2 = (RecordMetadata) localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
+    localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
     RecordMetadata putMetadata3 =
         (RecordMetadata) localVeniceWriter.put(putKeyFoo2, putValueToCorrupt, SCHEMA_ID).get();
     RecordMetadata putMetadata4 = (RecordMetadata) localVeniceWriter.put(putKeyFoo2, putValue, SCHEMA_ID).get();
@@ -1395,7 +1395,7 @@ public abstract class StoreIngestionTaskTest {
     AbstractStoragePartition mockPartition = mock(AbstractStoragePartition.class);
     doReturn(mockPartition).when(mockAbstractStorageEngine).getPartitionOrThrow(PARTITION_FOO);
     doReturn(true).when(mockPartition).validateBatchIngestion();
-    StoragePartitionConfig storagePartitionConfigFoo = new StoragePartitionConfig(topic, PARTITION_FOO);
+    new StoragePartitionConfig(topic, PARTITION_FOO);
 
     runTest(Utils.setOf(PARTITION_FOO), () -> {
       verify(mockAbstractStorageEngine, never()).preparePartitionForReading(PARTITION_FOO);
@@ -1415,7 +1415,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(storeNameWithoutVersionInfo).when(mockStore).getName();
     StoragePartitionConfig storagePartitionConfigFoo = new StoragePartitionConfig(topic, PARTITION_FOO);
     storagePartitionConfigFoo.setWriteOnlyConfig(true);
-    StoragePartitionConfig storagePartitionConfigBar = new StoragePartitionConfig(topic, PARTITION_BAR);
+    new StoragePartitionConfig(topic, PARTITION_BAR);
 
     runTest(Utils.setOf(PARTITION_FOO), () -> {
       verify(mockAbstractStorageEngine, never()).preparePartitionForReading(PARTITION_FOO);
@@ -1591,6 +1591,9 @@ public abstract class StoreIngestionTaskTest {
                       transformedMessageEnvelope.payloadUnion = transformedControlMessage;
                     }
                   }
+                  break;
+                default:
+                  // do nothing
                   break;
               }
 
@@ -2139,7 +2142,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(false).when(rocksDBServerConfig).isRocksDBPlainTableFormatEnabled();
     setStoreVersionStateSupplier(true);
     localVeniceWriter.broadcastStartOfPush(true, new HashMap<>());
-    RecordMetadata putMetadata = (RecordMetadata) localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
+    localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
     // intentionally not sending the EOP so that expectedSSTFileChecksum calculation does not get reset.
     // veniceWriter.broadcastEndOfPush(new HashMap<>());
 
@@ -2222,7 +2225,7 @@ public abstract class StoreIngestionTaskTest {
    * @throws Exception
    */
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void StoreIngestionTaskRespectsDiskUsage(boolean isActiveActiveReplicationEnabled) throws Exception {
+  public void testStoreIngestionTaskRespectsDiskUsage(boolean isActiveActiveReplicationEnabled) throws Exception {
     localVeniceWriter.broadcastStartOfPush(new HashMap<>());
     localVeniceWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID);
     localVeniceWriter.broadcastEndOfPush(new HashMap<>());
@@ -2589,7 +2592,7 @@ public abstract class StoreIngestionTaskTest {
 
     AtomicLong remoteKafkaQuota = new AtomicLong(10);
 
-    MockTime testTime = new MockTime();
+    TestMockTime testTime = new TestMockTime();
     long timeWindowMS = 1000L;
     // Unlimited
     EventThrottler localThrottler =

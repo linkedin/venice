@@ -204,7 +204,7 @@ task generateGHCI() {
   def jobs = []
 
   def common = "--continue --no-daemon "
-  def staticAnalysisFlowGradleArgs = common + "-Pspotallbugs -Pspotbugs.xml -Pspotbugs.ignoreFailures clean check -x spotlessCheck -x test -x integrationTest"
+  def staticAnalysisFlowGradleArgs = common + "-Pspotallbugs clean check -x spotlessCheck -x test -x integrationTest -x jacocoTestCoverageVerification"
 
   def staticAnalysis = "StaticAnalysis"
   appendToGHCI(paramFileContent, targetFilePath, staticAnalysis, 20, staticAnalysisFlowGradleArgs)

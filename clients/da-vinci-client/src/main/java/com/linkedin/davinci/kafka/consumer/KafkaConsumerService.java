@@ -389,7 +389,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
         KafkaConsumerServiceStats stats);
   }
 
-  void recordPartitionsPerConsumerSensor() {
+  final void recordPartitionsPerConsumerSensor() {
     int totalPartitions = 0;
     int minPartitionsPerConsumer = Integer.MAX_VALUE;
     int maxPartitionsPerConsumer = Integer.MIN_VALUE;

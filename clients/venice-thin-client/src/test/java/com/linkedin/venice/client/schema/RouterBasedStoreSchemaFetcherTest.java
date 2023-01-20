@@ -20,19 +20,19 @@ public class RouterBasedStoreSchemaFetcherTest {
   private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
   private static final WriteComputeSchemaConverter UPDATE_SCHEMA_CONVERTER = WriteComputeSchemaConverter.getInstance();
 
-  private final String storeName = "test_store";
-  private final String keySchemaStr = "\"string\"";
-  private final String valueSchemaStr1 =
+  private static final String storeName = "test_store";
+  private static final String keySchemaStr = "\"string\"";
+  private static final String valueSchemaStr1 =
       "{" + "  \"namespace\" : \"example.avro\",  " + "  \"type\": \"record\",   " + "  \"name\": \"User\",     "
           + "  \"fields\": [           " + "       { \"name\": \"id\", \"type\": \"string\", \"default\": \"id\"},  "
           + "       { \"name\": \"name\", \"type\": \"string\", \"default\": \"id\"}  " + "  ] " + " } ";
-  private final String valueSchemaStr2 =
+  private static final String valueSchemaStr2 =
       "{" + "  \"namespace\" : \"example.avro\",  " + "  \"type\": \"record\",   " + "  \"name\": \"User\",     "
           + "  \"fields\": [           " + "       { \"name\": \"id\", \"type\": \"string\", \"default\": \"id\"},  "
           + "       { \"name\": \"name\", \"type\": \"string\", \"default\": \"id\"},  "
           + "       { \"name\": \"age\", \"type\": \"int\", \"default\": -1 }" + "  ] " + " } ";
 
-  private final int TIMEOUT = 3;
+  private static final int TIMEOUT = 3;
 
   @Test
   public void testGetKeySchema() throws IOException, ExecutionException, InterruptedException, VeniceClientException {

@@ -40,6 +40,8 @@ import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.samza.system.OutgoingMessageEnvelope;
 import org.apache.samza.system.SystemProducer;
 import org.apache.samza.system.SystemStream;
@@ -49,6 +51,8 @@ import org.testng.annotations.BeforeClass;
 
 
 public class TestActiveActiveReplicationWithDownColo {
+  private static final Logger LOGGER = LogManager.getLogger(TestActiveActiveReplicationWithDownColo.class);
+
   private static final int TEST_TIMEOUT = 90_000; // ms
   private static final int RECORDS_TO_POPULATE = 4;
 
@@ -132,6 +136,11 @@ public class TestActiveActiveReplicationWithDownColo {
     int zkPort = multiColoMultiClusterWrapper.getZkServerWrapper().getPort();
     int dc0Kafka = multiColoMultiClusterWrapper.getClusters().get(0).getKafkaBrokerWrapper().getPort();
     int dc1kafka = multiColoMultiClusterWrapper.getClusters().get(1).getKafkaBrokerWrapper().getPort();
+
+    // Spotbug doesn't like unused variables. Given they are assigned for debugging purposes, print them out.
+    LOGGER.info("zkPort: {}", zkPort);
+    LOGGER.info("dc0Kafka: {}", dc0Kafka);
+    LOGGER.info("dc1kafka: {}", dc1kafka);
 
     // Create a store in all colos with A/A and hybrid enabled
     String clusterName = CLUSTER_NAMES[0];

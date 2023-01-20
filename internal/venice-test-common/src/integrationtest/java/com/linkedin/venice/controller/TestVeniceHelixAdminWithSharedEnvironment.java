@@ -20,7 +20,6 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
-import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixReadOnlyLiveClusterConfigRepository;
 import com.linkedin.venice.helix.HelixStatusMessageChannel;
 import com.linkedin.venice.helix.SafeHelixManager;
@@ -694,14 +693,11 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     });
 
     // Now all of replica in bootstrap state
-    StorageNodeStatus status1 = veniceAdmin.getStorageNodesStatus(clusterName, NODE_ID);
     StorageNodeStatus status2 = veniceAdmin.getStorageNodesStatus(clusterName, newNodeId);
 
     // TODO: Ideally this test should use CUSTOMIZEDVIEW to determine per instance status, but this test mock doesn't
     // actually build a CUSTOMIZEDVIEW for the
     // the cluster. Needs to be refactored.
-    HelixCustomizedViewOfflinePushRepository clusterResources =
-        veniceAdmin.getHelixVeniceClusterResources(clusterName).getCustomizedViewRepository();
     OfflinePushStatusInfo pushStatusInfo =
         veniceAdmin.getOffLinePushStatus(clusterName, Version.composeKafkaTopic(storeName, 1));
 
@@ -868,7 +864,6 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         Version.guidBasedDummyPushId(),
         partitionCount,
         replicaFactor);
-    Map<String, Integer> nodesToPartitionMap = new HashMap<>();
     TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> {
       try {
         PartitionAssignment partitionAssignment = veniceAdmin.getHelixVeniceClusterResources(clusterName)
@@ -1279,7 +1274,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
 
     RoutingDataRepository routingDataRepository =
         veniceAdmin.getHelixVeniceClusterResources(clusterName).getRoutingDataRepository();
-    Map<String, String> result = veniceAdmin.findAllBootstrappingVersions(clusterName);
+    veniceAdmin.findAllBootstrappingVersions(clusterName);
     // After participant restart, the original participant store version will hang on bootstrap state. Instead of
     // checking #
     // of versions having bootstrapping replicas, we directly checking bootstrapping replicas the test store's versions.

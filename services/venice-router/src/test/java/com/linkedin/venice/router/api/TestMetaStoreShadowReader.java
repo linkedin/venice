@@ -33,7 +33,7 @@ import org.testng.annotations.Test;
 
 
 public class TestMetaStoreShadowReader {
-  private final String storeName = "testStore";
+  private final static String storeName = "testStore";
   private final RecordSerializer<StoreMetaKey> keySerializer =
       SerializerDeserializerFactory.getAvroGenericSerializer(StoreMetaKey.getClassSchema());
   private final RecordDeserializer<StoreMetaValue> valueDeserializer =

@@ -25,9 +25,9 @@ import static com.linkedin.venice.utils.TestWriteUtils.ETL_KEY_SCHEMA_STRING;
 import static com.linkedin.venice.utils.TestWriteUtils.ETL_UNION_VALUE_SCHEMA_STRING_WITHOUT_NULL;
 import static com.linkedin.venice.utils.TestWriteUtils.ETL_UNION_VALUE_SCHEMA_STRING_WITH_NULL;
 import static com.linkedin.venice.utils.TestWriteUtils.ETL_VALUE_SCHEMA_STRING;
+import static com.linkedin.venice.utils.TestWriteUtils.TestRecordType;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestWriteUtils.loadFileAsString;
-import static com.linkedin.venice.utils.TestWriteUtils.testRecordType;
 import static com.linkedin.venice.utils.TestWriteUtils.writeAlternateSimpleAvroFileWithUserSchema;
 import static com.linkedin.venice.utils.TestWriteUtils.writeAvroFileWithManyFloatsAndCustomTotalSize;
 import static com.linkedin.venice.utils.TestWriteUtils.writeETLFileWithUnionWithNullSchema;
@@ -141,7 +141,7 @@ public abstract class TestBatch {
     try (AvroGenericStoreClient avroClient = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
       try {
-        Object value1 = avroClient.get("key1").get();
+        avroClient.get("key1").get();
         Assert.fail("Single get request on store with no push should fail");
       } catch (Exception e) {
         Assert.assertTrue(e.getMessage().contains("Please push data to that store"));
@@ -151,7 +151,7 @@ public abstract class TestBatch {
         Set<String> keys = new HashSet<>();
         keys.add("key2");
         keys.add("key3");
-        Object values = avroClient.batchGet(keys).get();
+        avroClient.batchGet(keys).get();
         Assert.fail("Batch get request on store with no push should fail");
       } catch (Exception e) {
         Assert.assertTrue(e.getMessage().contains("Please push data to that store"));
@@ -1039,7 +1039,7 @@ public abstract class TestBatch {
           Schema sourceSchema = keyRecord.getSchema().getField("source").schema();
           keyRecord.put("memberId", (long) 1);
           keyRecord
-              .put("source", AvroCompatibilityHelper.newEnumSymbol(sourceSchema, testRecordType.OFFLINE.toString()));
+              .put("source", AvroCompatibilityHelper.newEnumSymbol(sourceSchema, TestRecordType.OFFLINE.toString()));
           IndexedRecord value = (IndexedRecord) avroClient.get(keyRecord).get();
           Assert.assertEquals(value.get(0).toString(), "LOGO");
           Assert.assertEquals(value.get(1), 1);
@@ -1050,7 +1050,7 @@ public abstract class TestBatch {
               new GenericData.Record(schemaWithSymbolDoc.getField(DEFAULT_KEY_FIELD_PROP).schema());
           keyRecord2.put("memberId", (long) 2);
           keyRecord2
-              .put("source", AvroCompatibilityHelper.newEnumSymbol(sourceSchema, testRecordType.NEARLINE.toString()));
+              .put("source", AvroCompatibilityHelper.newEnumSymbol(sourceSchema, TestRecordType.NEARLINE.toString()));
           IndexedRecord value2 = (IndexedRecord) avroClient.get(keyRecord2).get();
           Assert.assertEquals(value2.get(0).toString(), "INDUSTRY");
           Assert.assertEquals(value2.get(1), 2);
@@ -1058,6 +1058,7 @@ public abstract class TestBatch {
   }
 
   private static class StatCounter extends AtomicLong {
+    private static final long serialVersionUID = 1L;
     final long initialValue;
     final LongBinaryOperator accumulator;
 
@@ -1077,18 +1078,24 @@ public abstract class TestBatch {
   }
 
   private static class MaxLong extends StatCounter {
+    private static final long serialVersionUID = 1L;
+
     public MaxLong() {
       super(Integer.MIN_VALUE, Math::max);
     }
   }
 
   private static class MinLong extends StatCounter {
+    private static final long serialVersionUID = 1L;
+
     public MinLong() {
       super(Integer.MAX_VALUE, Math::min);
     }
   }
 
   private static class TotalLong extends StatCounter {
+    private static final long serialVersionUID = 1L;
+
     public TotalLong() {
       super(0, Long::sum);
     }

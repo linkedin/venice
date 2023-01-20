@@ -58,7 +58,6 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
   private RouterServer service;
   private final String clusterName;
   private final int port;
-  private final boolean sslToStorageNodes;
 
   MockVeniceRouterWrapper(
       String serviceName,
@@ -71,7 +70,6 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
     this.service = service;
     this.port = port;
     this.clusterName = clusterName;
-    this.sslToStorageNodes = sslToStorageNodes;
   }
 
   static StatefulServiceProvider<MockVeniceRouterWrapper> generateService(

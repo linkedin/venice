@@ -55,7 +55,7 @@ public class StoreClientBenchmark {
       + "    \"name\": \"TestValueRecord\",\n" + "    \"namespace\": \"com.linkedin.venice.schemas\",\n"
       + "    \"type\": \"record\"\n" + "}";
 
-  private final int KEY_CNT = 2000;
+  private static final int KEY_CNT = 2000;
 
   private D2Client d2Client;
   private AvroGenericStoreClient<String, Object> d2StoreClient;

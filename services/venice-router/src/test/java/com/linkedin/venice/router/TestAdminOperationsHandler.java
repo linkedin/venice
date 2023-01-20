@@ -70,7 +70,7 @@ public class TestAdminOperationsHandler {
 
   private final ConfigFake fake = new ConfigFake();
 
-  private class ConfigFake {
+  private static class ConfigFake {
     private boolean readThrottlingEnabled;
     private boolean earlyThrottleEnabled;
   };

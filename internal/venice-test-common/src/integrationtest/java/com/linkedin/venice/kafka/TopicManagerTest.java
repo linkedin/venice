@@ -37,7 +37,7 @@ import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
-import com.linkedin.venice.utils.MockTime;
+import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -81,7 +81,7 @@ public class TopicManagerTest {
 
   private KafkaBrokerWrapper kafka;
   private TopicManager topicManager;
-  private MockTime mockTime;
+  private TestMockTime mockTime;
   private ZkServerWrapper zkServer;
 
   private String getTopic() {
@@ -100,7 +100,7 @@ public class TopicManagerTest {
   @BeforeClass
   public void setUp() {
     zkServer = ServiceFactory.getZkServer();
-    mockTime = new MockTime();
+    mockTime = new TestMockTime();
     kafka = ServiceFactory.getKafkaBroker(zkServer, Optional.of(mockTime));
     topicManager = new TopicManager(
         DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
@@ -148,7 +148,7 @@ public class TopicManagerTest {
     }
     // Produce several control messages at the end
     for (int i = 1; i <= 3; i++) {
-      produceToKafka(topic, false, timestamp + i * 1000);
+      produceToKafka(topic, false, timestamp + i * 1000L);
     }
     retrievedTimestamp = topicManager.getProducerTimestampOfLastDataRecord(topic, 0, 1);
     Assert.assertEquals(retrievedTimestamp, timestamp);

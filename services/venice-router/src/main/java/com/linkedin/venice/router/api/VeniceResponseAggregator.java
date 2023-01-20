@@ -190,7 +190,6 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
     String storeName = venicePath.getStoreName();
     int versionNumber = venicePath.getVersionNumber();
 
-    VeniceResponseDecompressor responseDecompressor = venicePath.getResponseDecompressor();
     FullHttpResponse finalResponse;
     if (venicePath.isStreamingRequest()) {
       /**

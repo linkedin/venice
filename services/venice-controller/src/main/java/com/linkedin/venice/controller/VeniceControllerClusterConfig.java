@@ -481,7 +481,7 @@ public class VeniceControllerClusterConfig {
     return clusterName;
   }
 
-  public String getZkAddress() {
+  public final String getZkAddress() {
     return zkAddress;
   }
 

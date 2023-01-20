@@ -51,21 +51,27 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
     super(innerStoreClient);
     MetricsRepository metricsRepository = Optional.ofNullable(clientConfig.getMetricsRepository())
         .orElse(TehutiUtils.getMetricsRepository(STAT_VENICE_CLIENT_NAME));
-    this.singleGetStats =
-        ClientStats.getClientStats(metricsRepository, getStoreName(), RequestType.SINGLE_GET, clientConfig);
-    this.multiGetStats =
-        ClientStats.getClientStats(metricsRepository, getStoreName(), RequestType.MULTI_GET, clientConfig);
-    this.multiGetStreamingStats =
-        ClientStats.getClientStats(metricsRepository, getStoreName(), RequestType.MULTI_GET_STREAMING, clientConfig);
+    this.singleGetStats = ClientStats
+        .getClientStats(metricsRepository, innerStoreClient.getStoreName(), RequestType.SINGLE_GET, clientConfig);
+    this.multiGetStats = ClientStats
+        .getClientStats(metricsRepository, innerStoreClient.getStoreName(), RequestType.MULTI_GET, clientConfig);
+    this.multiGetStreamingStats = ClientStats.getClientStats(
+        metricsRepository,
+        innerStoreClient.getStoreName(),
+        RequestType.MULTI_GET_STREAMING,
+        clientConfig);
     this.schemaReaderStats = ClientStats.getClientStats(
         metricsRepository,
-        getStoreName() + "_" + STAT_SCHEMA_READER,
+        innerStoreClient.getStoreName() + "_" + STAT_SCHEMA_READER,
         RequestType.SINGLE_GET,
         clientConfig);
-    this.computeStats =
-        ClientStats.getClientStats(metricsRepository, getStoreName(), RequestType.COMPUTE, clientConfig);
-    this.computeStreamingStats =
-        ClientStats.getClientStats(metricsRepository, getStoreName(), RequestType.COMPUTE_STREAMING, clientConfig);
+    this.computeStats = ClientStats
+        .getClientStats(metricsRepository, innerStoreClient.getStoreName(), RequestType.COMPUTE, clientConfig);
+    this.computeStreamingStats = ClientStats.getClientStats(
+        metricsRepository,
+        innerStoreClient.getStoreName(),
+        RequestType.COMPUTE_STREAMING,
+        clientConfig);
   }
 
   @Override
