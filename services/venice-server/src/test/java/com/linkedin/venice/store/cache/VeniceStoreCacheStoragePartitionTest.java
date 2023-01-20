@@ -20,7 +20,6 @@ public class VeniceStoreCacheStoragePartitionTest {
       FastSerializerDeserializerFactory.getFastAvroGenericSerializer(valueSchema);
   VeniceStoreCacheStoragePartition cacheStoragePartition;
   private static Integer PRESENT_KEY = 20;
-  private static Integer NON_PRESENT_KEY = 1000;
   private static Integer VALUE = 10;
   private static Integer NEW_VALUE = 30;
 

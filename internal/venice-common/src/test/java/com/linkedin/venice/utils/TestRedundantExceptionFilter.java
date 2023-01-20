@@ -18,7 +18,6 @@ public class TestRedundantExceptionFilter {
     HttpResponseStatus status = HttpResponseStatus.NOT_FOUND;
     HttpResponseStatus status1 = HttpResponseStatus.TOO_MANY_REQUESTS;
     Exception e = new RouterException(HttpResponseStatus.class, status, status.code(), "test", false);
-    Exception e1 = new RouterException(HttpResponseStatus.class, status1, status1.code(), "test", false);
     Assert.assertFalse(filter.isRedundantException(store, e), "This is the first time we see this exception.");
     Assert.assertFalse(filter.isRedundantException(store1, e), "This is the first time we see this exception.");
     Assert.assertFalse(

@@ -470,11 +470,11 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     return getRandomRunningVeniceComponent(veniceControllerWrappers);
   }
 
-  public void setExternalControllerDiscoveryURL(String externalControllerDiscoveryURL) {
+  public synchronized void setExternalControllerDiscoveryURL(String externalControllerDiscoveryURL) {
     this.externalControllerDiscoveryURL = externalControllerDiscoveryURL;
   }
 
-  public synchronized String getAllControllersURLs() {
+  public final synchronized String getAllControllersURLs() {
     return veniceControllerWrappers.isEmpty()
         ? externalControllerDiscoveryURL
         : veniceControllerWrappers.values()
@@ -717,7 +717,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
    * @deprecated consider using {@link #useControllerClient(Consumer)} instead for guaranteed resource cleanup
    */
   @Deprecated
-  public ControllerClient getControllerClient() {
+  public final ControllerClient getControllerClient() {
     return new ControllerClient(clusterName, getAllControllersURLs());
   }
 
@@ -774,8 +774,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     long storeSize = 1024;
 
     // Create new store
-    NewStoreResponse newStoreResponse =
-        assertCommand(controllerClient.get().createNewStore(storeName, storeOwner, keySchema, valueSchema));
+    assertCommand(controllerClient.get().createNewStore(storeName, storeOwner, keySchema, valueSchema));
     // Create new version
     return assertCommand(
         controllerClient.get()

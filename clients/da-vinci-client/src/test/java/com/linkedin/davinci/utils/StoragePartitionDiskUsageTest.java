@@ -10,8 +10,8 @@ import org.testng.annotations.Test;
 
 @Test
 public class StoragePartitionDiskUsageTest {
-  private final int partitionNum = 1;
-  private final int smallRecordSizeToBeAdded = 10;
+  private final static int partitionNum = 1;
+  private final static int smallRecordSizeToBeAdded = 10;
 
   private AbstractStorageEngine storageEngine;
   private StoragePartitionDiskUsage partitionDiskUsage;

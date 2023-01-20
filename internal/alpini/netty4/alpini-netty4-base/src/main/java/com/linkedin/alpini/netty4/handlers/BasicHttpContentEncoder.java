@@ -350,20 +350,20 @@ public abstract class BasicHttpContentEncoder extends MessageToMessageCodec<Http
 
   @Override
   public void handlerRemoved(ChannelHandlerContext ctx) throws Exception {
-    cleanup();
+    cleanUp();
     super.handlerRemoved(ctx);
   }
 
   @Override
   public void channelInactive(ChannelHandlerContext ctx) throws Exception {
     try {
-      cleanup();
+      cleanUp();
     } finally {
       super.channelInactive(ctx);
     }
   }
 
-  private void cleanup() {
+  private void cleanUp() {
     if (encoder != null) {
       // Clean-up the previous encoder if not cleaned up correctly.
       if (encoder.finish()) {

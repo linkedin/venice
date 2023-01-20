@@ -167,4 +167,12 @@ public class Partition {
 
     return false;
   }
+
+  @Override
+  public int hashCode() {
+    int result = 1;
+    result = 31 * id;
+    result = 31 * result + stateToInstancesMap.hashCode();
+    return result;
+  }
 }

@@ -37,7 +37,7 @@ public class TestHelixInstanceConverter {
     record.setIntField("HTTP_PORT", httpPort);
     record.setIntField("ADMIN_PORT", adminPort);
     try {
-      Instance instance = HelixInstanceConverter.convertZNRecordToInstance(record);
+      HelixInstanceConverter.convertZNRecordToInstance(record);
       Assert.fail("Invalid port is assigned.");
     } catch (IllegalArgumentException iae) {
       // expected.

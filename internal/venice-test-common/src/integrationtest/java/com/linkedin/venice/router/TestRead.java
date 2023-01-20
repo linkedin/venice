@@ -418,6 +418,7 @@ public abstract class TestRead {
         storeClient.batchGet(keySet).get();
         fail("Should receive exception since the batch request key count exceeds cluster-level threshold");
       } catch (Exception e) {
+        LOGGER.info(e);
       }
       // Bump up store-level max key count in batch-get request
       updateStore(10000L, MAX_KEY_LIMIT + 1);
@@ -476,8 +477,7 @@ public abstract class TestRead {
           quotaExceptionsCount,
           "The throttled_request metric is inconsistent with the number of quota exceptions received by the client!");
 
-      double throttledRequestLatencyForSingleGetAfterQueries =
-          getAggregateRouterMetricValue(".total--throttled_request_latency.Max");
+      getAggregateRouterMetricValue(".total--throttled_request_latency.Max");
       /** TODO Re-enable this assertion once we stop throwing batch get quota exceptions from {@link com.linkedin.venice.router.api.VeniceDelegateMode} */
       // Assert.assertTrue(throttledRequestLatencyForSingleGetAfterQueries > 0.0, "There should be single get throttled
       // request latency now!");
@@ -549,8 +549,7 @@ public abstract class TestRead {
           quotaExceptionsCountForBatchGet,
           "The throttled_request metric is inconsistent with the number of quota exceptions received by the client!");
 
-      double throttledRequestLatencyForBatchGetAfterQueries =
-          getAggregateRouterMetricValue(".total--multiget_throttled_request_latency.Max");
+      getAggregateRouterMetricValue(".total--multiget_throttled_request_latency.Max");
       /** TODO Re-enable this assertion once we stop throwing batch get quota exceptions from {@link com.linkedin.venice.router.api.VeniceDelegateMode} */
       // Assert.assertTrue(throttledRequestLatencyForBatchGetAfterQueries > 0.0, "There should be batch get throttled
       // request latency now!");

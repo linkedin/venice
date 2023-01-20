@@ -13,7 +13,6 @@ public class RedundantExceptionFilter {
 
   private static RedundantExceptionFilter singleton;
 
-  private final long noRedundantExceptionDurationMs;
   private final int bitSetSize;
   private final ScheduledExecutorService cleanerExecutor = Executors.newScheduledThreadPool(1);
 
@@ -21,7 +20,6 @@ public class RedundantExceptionFilter {
   private BitSet oldBitSet;
 
   public RedundantExceptionFilter(int bitSetSize, long noRedundantExceptionDurationMs) {
-    this.noRedundantExceptionDurationMs = noRedundantExceptionDurationMs;
     this.bitSetSize = bitSetSize;
     activeBitset = new BitSet(bitSetSize);
     oldBitSet = new BitSet(bitSetSize);
@@ -74,7 +72,7 @@ public class RedundantExceptionFilter {
     return isRedundant(index);
   }
 
-  public void clearBitSet() {
+  public final void clearBitSet() {
     synchronized (this) {
       // Swap bit sets so we are not blocked by clear operation.
       BitSet temp = oldBitSet;

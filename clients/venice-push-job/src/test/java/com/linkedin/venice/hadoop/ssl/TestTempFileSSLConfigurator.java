@@ -27,7 +27,8 @@ public class TestTempFileSSLConfigurator {
     File file = new File(path);
     try (FileInputStream fis = new FileInputStream(file)) {
       byte[] result = new byte[testCert.length];
-      fis.read(result);
+      int length = fis.read(result);
+      Assert.assertEquals(length, testCert.length);
       Assert.assertTrue(Arrays.equals(testCert, result));
     }
   }
@@ -75,7 +76,8 @@ public class TestTempFileSSLConfigurator {
       File file = new File(path);
       try (FileInputStream fis = new FileInputStream(file)) {
         byte[] result = new byte[testCert.length];
-        fis.read(result);
+        int length = fis.read(result);
+        Assert.assertEquals(length, testCert.length);
         Assert.assertTrue(Arrays.equals(testCert, result));
       }
     }

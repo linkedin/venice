@@ -51,6 +51,7 @@ public class TestRouter {
       Assert.fail("Cannot connect with secure router with http.");
     } catch (Exception e) {
       // expected
+      Assert.assertEquals(e.getClass(), ExecutionException.class);
     }
   }
 
@@ -68,7 +69,7 @@ public class TestRouter {
 
       try (MockVeniceRouterWrapper router =
           ServiceFactory.getMockVeniceRouter(zk.getAddress(), SSL_TO_STORAGE_NODES, extraConfigs)) {
-        D2Client d2Client = null;
+        D2Client d2Client;
         if (https) {
           d2Client = D2TestUtils.getAndStartHttpsD2Client(zk.getAddress());
         } else {
@@ -107,7 +108,7 @@ public class TestRouter {
                 ClientConfig.defaultGenericClientConfig("myStore")
                     .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
                     .setD2Client(d2Client))) {
-          byte[] value = storeClient.getRaw("storage/myStore/myKey").get();
+          storeClient.getRaw("storage/myStore/myKey").get();
           Assert.fail("Router with Mock components should trigger VeniceClientHttpException");
         } catch (ExecutionException e) {
           if (e.getCause() instanceof VeniceClientHttpException) {

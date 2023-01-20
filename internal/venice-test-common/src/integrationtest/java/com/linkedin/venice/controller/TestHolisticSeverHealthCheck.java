@@ -58,7 +58,7 @@ public class TestHolisticSeverHealthCheck {
     return !response.isError() && response.getNodeState() == state;
   }
 
-  private boolean VerifyNodeIsError(String nodeId) {
+  private boolean verifyNodeIsError(String nodeId) {
     NodeReplicasReadinessResponse response = controllerClient.nodeReplicasReadiness(nodeId);
     return response.isError();
   }
@@ -68,7 +68,7 @@ public class TestHolisticSeverHealthCheck {
     for (VeniceServerWrapper server: cluster.getVeniceServers()) {
       String nodeId = Utils.getHelixNodeIdentifier(server.getPort());
       Assert.assertTrue(verifyNodeReplicasState(nodeId, NodeReplicasReadinessState.READY));
-      Assert.assertTrue(VerifyNodeIsError(wrongNodeId));
+      Assert.assertTrue(verifyNodeIsError(wrongNodeId));
     }
   }
 

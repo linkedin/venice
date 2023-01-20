@@ -37,7 +37,6 @@ public class TestMergeConflictResolver {
   protected Schema userSchemaV1;
   protected Schema userRmdSchemaV1;
   protected Schema userSchemaV2;
-  protected Schema userRmdSchemaV2;
   protected Schema personSchemaV1;
   protected Schema personRmdSchemaV1;
   protected Schema personSchemaV2;
@@ -59,7 +58,6 @@ public class TestMergeConflictResolver {
     this.userSchemaV1 = userV1Schema.getValueSchema();
     this.userRmdSchemaV1 = userV1Schema.getRmdSchema();
     this.userSchemaV2 = userV2Schema.getValueSchema();
-    this.userRmdSchemaV2 = userV2Schema.getRmdSchema();
     this.personSchemaV1 = personV1Schema.getValueSchema();
     this.personRmdSchemaV1 = personV1Schema.getRmdSchema();
     this.personSchemaV2 = personV2Schema.getValueSchema();

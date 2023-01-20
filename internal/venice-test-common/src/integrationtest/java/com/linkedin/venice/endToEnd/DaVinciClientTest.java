@@ -672,12 +672,12 @@ public class DaVinciClientTest {
         client3.unsubscribeAll();
 
         client3.subscribe(Collections.singleton(partition)).get(0, TimeUnit.SECONDS);
-        for (Integer i = 0; i < KEY_COUNT; i++) {
+        for (int i = 0; i < KEY_COUNT; i++) {
           final int key = i;
           // Both client2 & client4 are not subscribed to any partition. But client2 is not-isolated so it can
           // access partitions of other clients, when client4 cannot.
-          assertEquals(client2.get(i).get(), i);
-          assertEquals(client3.get(i).get(), i);
+          assertEquals((int) client2.get(i).get(), i);
+          assertEquals((int) client3.get(i).get(), i);
           assertThrows(NonLocalAccessException.class, () -> client4.get(key).get());
         }
       }

@@ -5,6 +5,7 @@
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
+    needs: $Dependency
     timeout-minutes: $TimeOut
     steps:
       - uses: actions/checkout@v3

@@ -90,6 +90,7 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -261,7 +262,7 @@ public class TestHybrid {
   /**
    * This test validates the hybrid batch + streaming semantics and verifies that configured rewind time works as expected.
    *
-   * TODO: This test needs to be refactored in order to leverage {@link com.linkedin.venice.utils.MockTime},
+   * TODO: This test needs to be refactored in order to leverage {@link TestMockTime},
    *       which would allow the test to run faster and more deterministically.
    *
    * @param multiDivStream if false, rewind will happen in the middle of a DIV Segment, which was originally broken.

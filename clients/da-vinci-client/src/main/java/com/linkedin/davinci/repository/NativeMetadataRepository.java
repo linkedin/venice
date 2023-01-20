@@ -359,7 +359,7 @@ public abstract class NativeMetadataRepository
    * This method will be triggered periodically to keep the store/schema information up-to-date.
    */
   @Override
-  public void refresh() {
+  public final void refresh() {
     LOGGER.debug("Refresh started for {}", getClass().getSimpleName());
     for (String storeName: subscribedStoreMap.keySet()) {
       try {

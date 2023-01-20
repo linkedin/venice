@@ -225,7 +225,7 @@ public class PartitionConsumptionState {
     return getLatestProcessedLocalVersionTopicOffset() > 0;
   }
 
-  public boolean isEndOfPushReceived() {
+  public final boolean isEndOfPushReceived() {
     return this.offsetRecord.isEndOfPushReceived();
   }
 
@@ -281,7 +281,7 @@ public class PartitionConsumptionState {
     return !hybrid || lagCaughtUp;
   }
 
-  public boolean isHybrid() {
+  public final boolean isHybrid() {
     return hybrid;
   }
 
@@ -334,7 +334,7 @@ public class PartitionConsumptionState {
     this.leaderFollowerState = state;
   }
 
-  public LeaderFollowerStateType getLeaderFollowerState() {
+  public final LeaderFollowerStateType getLeaderFollowerState() {
     return this.leaderFollowerState;
   }
 

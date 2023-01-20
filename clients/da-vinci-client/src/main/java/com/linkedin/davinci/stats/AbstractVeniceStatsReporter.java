@@ -6,9 +6,11 @@ import io.tehuti.metrics.MetricsRepository;
 
 public abstract class AbstractVeniceStatsReporter<STATS> extends AbstractVeniceStats {
   private STATS stats;
+  protected String storeName;
 
   public AbstractVeniceStatsReporter(MetricsRepository metricsRepository, String storeName) {
     super(metricsRepository, storeName);
+    this.storeName = storeName;
     registerStats();
   }
 

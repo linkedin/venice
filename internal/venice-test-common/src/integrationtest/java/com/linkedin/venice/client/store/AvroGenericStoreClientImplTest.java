@@ -310,11 +310,7 @@ public class AvroGenericStoreClientImplTest {
     final int TEST_ITERATIONS = 100;
 
     String keyStr = "test_key";
-    int valueSchemaId = 1;
     String valueStr = "test_value";
-    String valueSchemaStr = "\"long\"";
-    Map<Integer, String> valueSchemaEntries = new HashMap<>();
-    valueSchemaEntries.put(valueSchemaId, valueSchemaStr);
 
     int nonExistingSchemaId = 2;
     FullHttpResponse valueResponse =
@@ -361,9 +357,6 @@ public class AvroGenericStoreClientImplTest {
     String keyStr = "test_key";
     int valueSchemaId = 1;
     String valueStr = "test_value";
-    String valueSchemaStr = "\"long\"";
-    Map<Integer, String> valueSchemaEntries = new HashMap<>();
-    valueSchemaEntries.put(valueSchemaId, valueSchemaStr);
 
     FullHttpResponse valueResponse = StoreClientTestUtils.constructStoreResponse(valueSchemaId, valueStr.getBytes());
     valueResponse.headers().remove(HttpConstants.VENICE_SCHEMA_ID);
@@ -594,7 +587,7 @@ public class AvroGenericStoreClientImplTest {
     for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry: storeClients.entrySet()) {
       LOGGER.info("Execute test for transport client: {}", entry.getKey());
       try {
-        Map<String, Object> result = entry.getValue().batchGet(keys).get(10, TimeUnit.SECONDS);
+        entry.getValue().batchGet(keys).get(10, TimeUnit.SECONDS);
         Assert.fail("Should receive exception here because of non-existing data schema id");
       } catch (ExecutionException e) {
         // expected

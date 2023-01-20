@@ -13,7 +13,6 @@ import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compute.ComputeOperationUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
-import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.ErrorType;
@@ -169,7 +168,7 @@ public class ReadComputeValidationTest {
       ControllerClient controllerClient = new ControllerClient(
           veniceCluster.getClusterName(),
           veniceCluster.getRandomVeniceController().getControllerUrl());
-      SchemaResponse schemaResponse = controllerClient.addValueSchema(storeName, VALUE_SCHEMA_FOR_COMPUTE_2);
+      controllerClient.addValueSchema(storeName, VALUE_SCHEMA_FOR_COMPUTE_2);
       // Restart the server to get new schemas
       veniceCluster.stopAndRestartVeniceServer(veniceCluster.getVeniceServers().get(0).getPort());
 
@@ -247,7 +246,7 @@ public class ReadComputeValidationTest {
       ControllerClient controllerClient = new ControllerClient(
           veniceCluster.getClusterName(),
           veniceCluster.getRandomVeniceController().getControllerUrl());
-      SchemaResponse schemaResponse = controllerClient.addValueSchema(storeName, VALUE_SCHEMA_FOR_COMPUTE_2);
+      controllerClient.addValueSchema(storeName, VALUE_SCHEMA_FOR_COMPUTE_2);
       // Restart the server to get new schemas
       veniceCluster.stopAndRestartVeniceServer(veniceCluster.getVeniceServers().get(0).getPort());
 

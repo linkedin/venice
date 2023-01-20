@@ -24,7 +24,7 @@ public class TestVeniceResponseDecompressor {
    * compression strategy in the response header.
    */
   @Test
-  public void TestRouterPassThroughContentIfClientSupportsDecompression() {
+  public void testRouterPassThroughContentIfClientSupportsDecompression() {
     BasicFullHttpRequest request = new BasicFullHttpRequest(
         HttpVersion.HTTP_1_1,
         HttpMethod.GET,
@@ -50,7 +50,7 @@ public class TestVeniceResponseDecompressor {
    * NO_OP compression strategy in the response header.
    */
   @Test
-  public void TestRouterDecompressesRecordIfClientDoesntSupportsDecompression() {
+  public void testRouterDecompressesRecordIfClientDoesntSupportsDecompression() {
     BasicFullHttpRequest request = new BasicFullHttpRequest(
         HttpVersion.HTTP_1_1,
         HttpMethod.GET,
@@ -90,7 +90,7 @@ public class TestVeniceResponseDecompressor {
    * NO_OP compression strategy in the response header.
    */
   @Test
-  public void TestRouterReturnsNoopCompressionStrategyHeaderIfClientDoesntSupportsDecompressionForMultiGet() {
+  public void testRouterReturnsNoopCompressionStrategyHeaderIfClientDoesntSupportsDecompressionForMultiGet() {
     BasicFullHttpRequest request = new BasicFullHttpRequest(
         HttpVersion.HTTP_1_1,
         HttpMethod.GET,

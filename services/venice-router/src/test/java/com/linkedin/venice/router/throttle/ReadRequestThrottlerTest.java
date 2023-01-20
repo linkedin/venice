@@ -26,7 +26,7 @@ public class ReadRequestThrottlerTest {
   private long totalQuota;
   private int routerCount;
   private ReadRequestThrottler throttler;
-  private long maxCapacity = 400;
+  private final static long maxCapacity = 400;
 
   @BeforeMethod
   public void setUp() {
@@ -106,8 +106,9 @@ public class ReadRequestThrottlerTest {
     throttler.handleRouterCountChanged(routerCount - 1);
     try {
       throttler.mayThrottleRead(store.getName(), (int) (totalQuota / (routerCount - 1)), Optional.of("test"));
-      Mockito.verify(stats, Mockito.atLeastOnce()).recordTotalQuota(totalQuota / (routerCount - 1));
-      Mockito.verify(stats, Mockito.atLeastOnce()).recordQuota(store.getName(), totalQuota / (routerCount - 1));
+      Mockito.verify(stats, Mockito.atLeastOnce()).recordTotalQuota((double) totalQuota / (routerCount - 1));
+      Mockito.verify(stats, Mockito.atLeastOnce())
+          .recordQuota(store.getName(), (double) totalQuota / (routerCount - 1));
     } catch (QuotaExceededException e) {
       Assert.fail("Usage has not exceeded the quota.");
     }
@@ -127,7 +128,7 @@ public class ReadRequestThrottlerTest {
 
     long newQuota = totalQuota + 200;
     try {
-      throttler.mayThrottleRead(store.getName(), (int) newQuota / routerCount, Optional.of("test"));
+      throttler.mayThrottleRead(store.getName(), (double) newQuota / routerCount, Optional.of("test"));
       Assert.fail("Quota has not been updated.");
     } catch (QuotaExceededException e) {
       // expected
@@ -138,11 +139,11 @@ public class ReadRequestThrottlerTest {
     Mockito.doReturn(newQuota).when(storeRepository).getTotalStoreReadQuota();
 
     throttler.handleStoreChanged(store);
-    Mockito.verify(stats, Mockito.atLeastOnce()).recordTotalQuota(newQuota / routerCount);
-    Mockito.verify(stats, Mockito.atLeastOnce()).recordQuota(store.getName(), newQuota / routerCount);
+    Mockito.verify(stats, Mockito.atLeastOnce()).recordTotalQuota((double) newQuota / routerCount);
+    Mockito.verify(stats, Mockito.atLeastOnce()).recordQuota(store.getName(), (double) newQuota / routerCount);
 
     try {
-      throttler.mayThrottleRead(store.getName(), (int) newQuota / routerCount, Optional.of("test"));
+      throttler.mayThrottleRead(store.getName(), (double) newQuota / routerCount, Optional.of("test"));
     } catch (QuotaExceededException e) {
       Assert.fail("Quota has been updated. Usage does not exceed the new quota.", e);
     }
@@ -159,7 +160,7 @@ public class ReadRequestThrottlerTest {
     for (int i = 0; i < storeCount; i++) {
       stores[i] =
           TestUtils.createTestStore("testOnStoreQuotaChangedWithMultiStores" + i, "test", System.currentTimeMillis());
-      stores[i].setReadQuotaInCU(100 * (i + 1));
+      stores[i].setReadQuotaInCU((long) 100 * (i + 1));
       stores[i].setCurrentVersion(1);
     }
     Mockito.doReturn(Arrays.asList(stores)).when(storeRepository).getAllStores();
@@ -185,9 +186,9 @@ public class ReadRequestThrottlerTest {
     stores[0].setReadQuotaInCU(stores[0].getReadQuotaInCU() + extraQuota);
     Mockito.doReturn(totalQuota).when(storeRepository).getTotalStoreReadQuota();
     multiStoreThrottler.handleStoreChanged(stores[0]);
-    Mockito.verify(stats, Mockito.atLeastOnce()).recordTotalQuota(totalQuota / routerCount);
+    Mockito.verify(stats, Mockito.atLeastOnce()).recordTotalQuota((double) totalQuota / routerCount);
     Mockito.verify(stats, Mockito.atLeastOnce())
-        .recordQuota(stores[0].getName(), stores[0].getReadQuotaInCU() / routerCount);
+        .recordQuota(stores[0].getName(), (double) stores[0].getReadQuotaInCU() / routerCount);
 
     for (int i = 0; i < storeCount; i++) {
       Assert.assertEquals(
@@ -202,7 +203,8 @@ public class ReadRequestThrottlerTest {
     // store in proportion.
     // Ideally store quota will be [400, 200, 300] but actually we have [200, 100, 150]
     Mockito.verify(stats, Mockito.atLeastOnce()).recordTotalQuota(maxCapcity);
-    Mockito.verify(stats, Mockito.atLeastOnce()).recordQuota(stores[0].getName(), stores[0].getReadQuotaInCU() / 2);
+    Mockito.verify(stats, Mockito.atLeastOnce())
+        .recordQuota(stores[0].getName(), (double) stores[0].getReadQuotaInCU() / 2);
     for (int i = 0; i < storeCount; i++) {
       Assert.assertEquals(
           multiStoreThrottler.getStoreReadThrottler("testOnStoreQuotaChangedWithMultiStores" + i).getQuota(),

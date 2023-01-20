@@ -27,7 +27,7 @@ public class TestCollectionRmdTimestamp {
   private CollectionRmdTimestamp<String> collectionRmdTimestampStr;
 
   @BeforeMethod
-  public void setup() {
+  public void setUp() {
     tsSchemaStr = CollectionRmdTimestamp.createCollectionTimeStampSchema(
         "array_CollectionMetadata_0",
         "com.linkedin.avro",

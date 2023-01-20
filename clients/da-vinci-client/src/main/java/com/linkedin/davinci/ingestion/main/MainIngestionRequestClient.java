@@ -23,7 +23,6 @@ import com.linkedin.venice.ingestion.protocol.enums.IngestionComponentType;
 import com.linkedin.venice.meta.IngestionMetadataUpdateType;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.ForkedJavaProcess;
-import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
 import java.util.ArrayList;
@@ -40,7 +39,7 @@ import org.apache.logging.log4j.Logger;
 public class MainIngestionRequestClient implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(MainIngestionRequestClient.class);
   private static final int REQUEST_MAX_ATTEMPT = 10;
-  private static final int HEARTBEAT_REQUEST_TIMEOUT_MS = 10 * Time.MS_PER_SECOND;
+  private static final int PERIODIC_REQUEST_TIMEOUT_SECONDS = 5;
   private HttpClientTransport httpClientTransport;
 
   public MainIngestionRequestClient(Optional<SSLFactory> sslFactory, int port, int requestTimeoutInSeconds) {
@@ -224,7 +223,8 @@ public class MainIngestionRequestClient implements Closeable {
 
   public boolean collectMetrics(IsolatedIngestionProcessStats isolatedIngestionProcessStats) {
     try {
-      IngestionMetricsReport metricsReport = httpClientTransport.sendRequest(IngestionAction.METRIC, getDummyCommand());
+      IngestionMetricsReport metricsReport =
+          httpClientTransport.sendRequest(IngestionAction.METRIC, getDummyCommand(), PERIODIC_REQUEST_TIMEOUT_SECONDS);
       if (LOGGER.isDebugEnabled()) {
         LOGGER
             .debug("Collected " + metricsReport.aggregatedMetrics.size() + " metrics from isolated ingestion service.");
@@ -240,7 +240,7 @@ public class MainIngestionRequestClient implements Closeable {
 
   public boolean sendHeartbeatRequest() {
     try {
-      httpClientTransport.sendRequest(IngestionAction.HEARTBEAT, getDummyCommand(), HEARTBEAT_REQUEST_TIMEOUT_MS);
+      httpClientTransport.sendRequest(IngestionAction.HEARTBEAT, getDummyCommand(), PERIODIC_REQUEST_TIMEOUT_SECONDS);
       return true;
     } catch (Exception e) {
       // Don't spam the server logging.

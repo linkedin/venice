@@ -42,7 +42,7 @@ public class TestTransportClientHttpCallback {
   }
 
   @Test
-  void TestNormalResponse() {
+  void testNormalResponse() {
     transportClientCallback.completeFuture(HttpStatus.SC_OK, SCHEMA_ID, CompressionStrategy.NO_OP, mockResponseBody);
     verify(mockFuture).complete(new TransportClientResponse(SCHEMA_ID, CompressionStrategy.NO_OP, mockResponseBody));
 
