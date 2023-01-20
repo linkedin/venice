@@ -4,6 +4,7 @@ import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.STANDBY;
 import static com.linkedin.venice.VeniceConstants.REWIND_TIME_DECIDED_BY_SERVER;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.davinci.replication.merge.MergeConflictResolver;
@@ -56,6 +57,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.BooleanSupplier;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.io.BinaryDecoder;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -66,12 +68,23 @@ import org.apache.logging.log4j.Logger;
  */
 public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestionTask {
   private static final Logger LOGGER = LogManager.getLogger(ActiveActiveStoreIngestionTask.class);
+  private static final byte[] BINARY_DECODER_PARAM = new byte[16];
+
   private final int rmdProtocolVersionID;
   private final MergeConflictResolver mergeConflictResolver;
   private final RmdSerDe rmdSerDe;
   private final Lazy<KeyLevelLocksManager> keyLevelLocksManager;
   private final AggVersionedIngestionStats aggVersionedIngestionStats;
   private final RemoteIngestionRepairService remoteIngestionRepairService;
+
+  private static class ReusableObjects {
+    // reuse buffer for rocksDB value object
+    final ByteBuffer reusedByteBuffer = ByteBuffer.allocate(1024 * 1024);
+    final BinaryDecoder binaryDecoder =
+        AvroCompatibilityHelper.newBinaryDecoder(BINARY_DECODER_PARAM, 0, BINARY_DECODER_PARAM.length, null);
+  }
+
+  private final ThreadLocal<ReusableObjects> threadLocalReusableObjects = ThreadLocal.withInitial(ReusableObjects::new);
 
   public ActiveActiveStoreIngestionTask(
       StoreIngestionTaskFactory.Builder builder,
@@ -501,13 +514,17 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     PartitionConsumptionState.TransientRecord transientRecord = partitionConsumptionState.getTransientRecord(key);
     if (transientRecord == null) {
       long lookupStartTimeInNS = System.nanoTime();
+      ReusableObjects reusableObjects = threadLocalReusableObjects.get();
+      ByteBuffer reusedRawValue = reusableObjects.reusedByteBuffer;
+      BinaryDecoder binaryDecoder = reusableObjects.binaryDecoder;
+
       originalValue = RawBytesChunkingAdapter.INSTANCE.get(
           storageEngine,
           getSubPartitionId(key, topic, partition),
           ByteBuffer.wrap(key),
           isChunked,
-          null,
-          null,
+          reusedRawValue,
+          binaryDecoder,
           null,
           compressionStrategy,
           serverConfig.isComputeFastAvroEnabled(),
