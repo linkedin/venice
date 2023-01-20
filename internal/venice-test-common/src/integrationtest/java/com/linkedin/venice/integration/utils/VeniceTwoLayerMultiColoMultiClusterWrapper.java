@@ -328,6 +328,11 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
   }
 
   @Override
+  public String getComponentTagForLogging() {
+    return getServiceName();
+  }
+
+  @Override
   protected void internalStart() throws Exception {
     // Everything should already be started. So this is a no-op.
   }

@@ -28,6 +28,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
   private final KafkaBrokerWrapper kafkaBrokerWrapper;
   private final Map<String, String> clusterToD2;
   private final D2Client clientConfigD2Client;
+  private final String coloName;
 
   VeniceMultiClusterWrapper(
       File dataDirectory,
@@ -36,7 +37,8 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       Map<String, VeniceClusterWrapper> clusters,
       Map<Integer, VeniceControllerWrapper> controllers,
       Map<String, String> clusterToD2,
-      D2Client clientConfigD2Client) {
+      D2Client clientConfigD2Client,
+      String coloName) {
     super(SERVICE_NAME, dataDirectory);
     this.zkServerWrapper = zkServerWrapper;
     this.kafkaBrokerWrapper = kafkaBrokerWrapper;
@@ -44,6 +46,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
     this.clusters = clusters;
     this.clusterToD2 = clusterToD2;
     this.clientConfigD2Client = clientConfigD2Client;
+    this.coloName = coloName;
   }
 
   static ServiceProvider<VeniceMultiClusterWrapper> generateService(VeniceMultiClusterCreateOptions options) {
@@ -94,7 +97,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
               .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
               .setD2Client(clientConfigD2Client));
       VeniceControllerCreateOptions controllerCreateOptions =
-          new VeniceControllerCreateOptions.Builder(clusterNames, kafkaBrokerWrapper)
+          new VeniceControllerCreateOptions.Builder(clusterNames, kafkaBrokerWrapper).coloName(options.getColoName())
               .replicationFactor(options.getReplicationFactor())
               .partitionSize(options.getPartitionSize())
               .rebalanceDelayMs(options.getRebalanceDelayMs())
@@ -153,7 +156,8 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
           clusterWrapperMap,
           controllerMap,
           clusterToD2,
-          clientConfigD2Client);
+          clientConfigD2Client,
+          options.getColoName());
     } catch (Exception e) {
       controllerMap.values().forEach(Utils::closeQuietlyWithErrorLogged);
       clusterWrapperMap.values().forEach(Utils::closeQuietlyWithErrorLogged);
@@ -171,6 +175,11 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
   @Override
   public int getPort() {
     throw new VeniceException("Not applicable since this is a whole cluster of many different services.");
+  }
+
+  @Override
+  public String getComponentTagForLogging() {
+    return new StringBuilder(getComponentTagPrefix(coloName)).append(getServiceName()).toString();
   }
 
   @Override

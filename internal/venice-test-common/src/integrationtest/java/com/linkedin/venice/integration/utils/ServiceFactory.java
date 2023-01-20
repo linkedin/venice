@@ -161,12 +161,14 @@ public class ServiceFactory {
   }
 
   public static VeniceServerWrapper getVeniceServer(
+      String coloName,
       String clusterName,
       KafkaBrokerWrapper kafkaBrokerWrapper,
       String zkAddress,
       Properties featureProperties,
       Properties configProperties) {
     return getVeniceServer(
+        coloName,
         clusterName,
         kafkaBrokerWrapper,
         zkAddress,
@@ -178,6 +180,7 @@ public class ServiceFactory {
   }
 
   public static VeniceServerWrapper getVeniceServer(
+      String coloName,
       String clusterName,
       KafkaBrokerWrapper kafkaBrokerWrapper,
       String zkAddress,
@@ -191,6 +194,7 @@ public class ServiceFactory {
     return getStatefulService(
         VeniceServerWrapper.SERVICE_NAME,
         VeniceServerWrapper.generateService(
+            coloName,
             clusterName,
             kafkaBrokerWrapper,
             featureProperties,
@@ -201,6 +205,7 @@ public class ServiceFactory {
   }
 
   static VeniceRouterWrapper getVeniceRouter(
+      String coloName,
       String clusterName,
       ZkServerWrapper zkServerWrapper,
       KafkaBrokerWrapper kafkaBrokerWrapper,
@@ -210,6 +215,7 @@ public class ServiceFactory {
     return getService(
         VeniceRouterWrapper.SERVICE_NAME,
         VeniceRouterWrapper.generateService(
+            coloName,
             clusterName,
             zkServerWrapper,
             kafkaBrokerWrapper,
