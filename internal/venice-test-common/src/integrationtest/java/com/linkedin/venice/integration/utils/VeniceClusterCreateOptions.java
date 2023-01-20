@@ -216,7 +216,7 @@ public class VeniceClusterCreateOptions {
 
   public static class Builder {
     private String clusterName;
-    private String coloName;
+    private String coloName = "";
     private Map<String, String> clusterToD2 = null;
     private int numberOfControllers = DEFAULT_NUMBER_OF_CONTROLLERS;
     private int numberOfServers = DEFAULT_NUMBER_OF_SERVERS;

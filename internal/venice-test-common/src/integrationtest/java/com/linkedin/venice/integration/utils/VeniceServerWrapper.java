@@ -88,6 +88,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
    * proper configurations.
    */
   private boolean forkServer = false;
+  private String coloName = "";
   private String clusterName;
   private int listenPort;
   private String serverConfigPath;
@@ -107,7 +108,8 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       VeniceProperties serverProps,
       VeniceConfigLoader config,
       Optional<ClientConfig> consumerClientConfig,
-      Optional<SSLFactory> sslFactory) {
+      Optional<SSLFactory> sslFactory,
+      String coloName) {
     super(serviceName, dataDirectory);
     this.dataDirectory = dataDirectory;
     this.veniceServer = veniceServer;
@@ -115,6 +117,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
     this.config = config;
     this.consumerClientConfig = consumerClientConfig;
     this.sslFactory = sslFactory;
+    this.coloName = coloName;
   }
 
   VeniceServerWrapper(
@@ -132,8 +135,9 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       boolean ssl,
       boolean enableServerAllowlist,
       boolean isAutoJoin,
-      String serverName) {
-    this(serviceName, dataDirectory, veniceServer, serverProps, config, consumerClientConfig, sslFactory);
+      String serverName,
+      String coloName) {
+    this(serviceName, dataDirectory, veniceServer, serverProps, config, consumerClientConfig, sslFactory, coloName);
     this.forkServer = forkServer;
     this.clusterName = clusterName;
     this.listenPort = listenPort;
@@ -147,9 +151,11 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       this.d2ServiceName = consumerClientConfig.get().getD2ServiceName();
     }
     this.serverName = serverName;
+    this.coloName = coloName;
   }
 
   static StatefulServiceProvider<VeniceServerWrapper> generateService(
+      String coloName,
       String clusterName,
       KafkaBrokerWrapper kafkaBrokerWrapper,
       Properties featureProperties,
@@ -247,7 +253,8 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
             serverProps,
             veniceConfigLoader,
             consumerClientConfig,
-            sslFactory);
+            sslFactory,
+            coloName);
       } else {
         VeniceServerWrapper veniceServerWrapper = new VeniceServerWrapper(
             serviceName,
@@ -264,7 +271,8 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
             ssl,
             enableServerAllowlist,
             isAutoJoin,
-            serverName);
+            serverName,
+            coloName);
         return veniceServerWrapper;
       }
     };
@@ -339,7 +347,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
           cmdList,
           Arrays.asList("-Xms64m", "-Xmx128m"),
           true,
-          Optional.of(serverName));
+          Optional.of(getComponentTagForLogging()));
       LOGGER.info("VeniceServer {} is started!", serverName);
     }
   }
@@ -378,6 +386,11 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
     } else {
       throw new VeniceException("getMetricsRepository is not supported in forked Mode");
     }
+  }
+
+  @Override
+  public String getComponentTagForLogging() {
+    return new StringBuilder(getComponentTagPrefix(coloName)).append(super.getComponentTagForLogging()).toString();
   }
 
   public static void main(String args[]) throws Exception {
