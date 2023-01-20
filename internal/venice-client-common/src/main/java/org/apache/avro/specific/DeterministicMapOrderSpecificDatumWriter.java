@@ -5,7 +5,6 @@ import java.util.SortedMap;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.DeterministicMapOrderDatumWriter;
 import org.apache.avro.generic.DeterministicMapOrderGenericDatumWriter;
-import org.apache.avro.generic.GenericData;
 import org.apache.avro.io.Encoder;
 
 
@@ -39,9 +38,7 @@ public class DeterministicMapOrderSpecificDatumWriter<T> extends SpecificDatumWr
 
   /** Returns the {@link SpecificData} implementation used by this writer. */
   public SpecificData getSpecificData() {
-    GenericData data = getData();
-    assert data instanceof SpecificData;
-    return (SpecificData) data;
+    return (SpecificData) getData();
   }
 
   @Override

@@ -101,7 +101,7 @@ public class TestProduceWithSSL {
     try (FileInputStream fis = new FileInputStream(file)) {
       byte[] data = new byte[(int) file.length()];
       int length = fis.read(data);
-      assert length == file.length();
+      Assert.assertEquals(length, file.length());
       return data;
     }
   }
