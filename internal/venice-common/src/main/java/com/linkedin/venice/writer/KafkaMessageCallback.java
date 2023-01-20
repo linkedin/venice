@@ -21,7 +21,8 @@ class KafkaMessageCallback implements Callback {
       logger.error(
           "Failed to send out message to Kafka producer: [value.messageType: {}, value.producerMetadata: {}]",
           value.messageType,
-          value.producerMetadata);
+          value.producerMetadata,
+          e);
     }
   }
 }
