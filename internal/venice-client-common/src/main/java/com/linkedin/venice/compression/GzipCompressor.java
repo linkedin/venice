@@ -9,9 +9,13 @@ import java.nio.ByteBuffer;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 import org.apache.commons.io.IOUtils;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class GzipCompressor extends VeniceCompressor {
+  private static final Logger LOGGER = LogManager.getLogger(GzipCompressor.class);
+
   private final GzipPool gzipPool;
 
   public GzipCompressor() {
@@ -37,6 +41,8 @@ public class GzipCompressor extends VeniceCompressor {
     try {
       gzipPool.close();
     } catch (Exception e) {
+      // ignore the failure
+      LOGGER.info("Failed to close gzipPool. Suppress the exception.", e);
     }
   }
 

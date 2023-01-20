@@ -184,6 +184,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         case VALUE:
           storageEngine.put(partition, keyBytes, put.putValue);
           break;
+        default:
+          // do nothing
+          break;
       }
     } catch (PersistenceFailureException e) {
       throwOrLogStorageFailureDependingIfStillSubscribed(partition, e);
@@ -202,6 +205,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           break;
         case VALUE:
           storageEngine.delete(partition, keyBytes);
+          break;
+        default:
+          // do nothing
           break;
       }
     } catch (PersistenceFailureException e) {

@@ -8,6 +8,8 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -16,6 +18,8 @@ import org.testng.annotations.Test;
  * Test cases for Venice Store.
  */
 public class TestZKStore {
+  private static final Logger LOGGER = LogManager.getLogger(TestZKStore.class);
+
   @Test
   public void testVersionsAreAddedInOrdered() {
     Store s = TestUtils.createTestStore("s1", "owner", System.currentTimeMillis());
@@ -347,7 +351,7 @@ public class TestZKStore {
 
   @Test(expectedExceptions = VeniceException.class)
   public void invalidStoreNameThrows() {
-    Store store = new ZKStore(
+    new ZKStore(
         "My Store Name",
         "owner",
         System.currentTimeMillis(),
@@ -382,6 +386,7 @@ public class TestZKStore {
       Assert.fail("Store must not allow adding a new version with same pushId");
     } catch (Exception e) {
       // expected
+      LOGGER.info("Expected exception: {}", e.getLocalizedMessage());
     }
   }
 

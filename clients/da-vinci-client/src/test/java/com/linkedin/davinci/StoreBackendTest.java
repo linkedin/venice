@@ -363,7 +363,7 @@ public class StoreBackendTest {
   void testRollbackAndRollForward() {
     int partition = 1;
     // Expecting to subscribe to the latest version (v1).
-    CompletableFuture subscribeResult = storeBackend.subscribe(ComplementSet.of(partition));
+    storeBackend.subscribe(ComplementSet.of(partition));
     versionMap.get(version1.kafkaTopicName()).completePartition(partition);
 
     store.setCurrentVersion(version2.getNumber());

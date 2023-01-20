@@ -70,9 +70,9 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.DataProviderUtils;
-import com.linkedin.venice.utils.MockTime;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SystemTime;
+import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -246,7 +246,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     AsyncSetupMockVeniceParentHelixAdmin mockVeniceParentHelixAdmin =
         new AsyncSetupMockVeniceParentHelixAdmin(internalAdmin, asyncEnabledConfig);
     mockVeniceParentHelixAdmin.setVeniceWriterForCluster(arbitraryCluster, veniceWriter);
-    mockVeniceParentHelixAdmin.setTimer(new MockTime());
+    mockVeniceParentHelixAdmin.setTimer(new TestMockTime());
     try {
       mockVeniceParentHelixAdmin.initStorageCluster(arbitraryCluster);
       TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> {
@@ -1486,7 +1486,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   @Test
   public void testGetIncrementalPushVersion() {
     String storeName = "testStore";
-    String rtTopic = Version.composeRealTimeTopic(storeName);
     Version incrementalPushVersion = new VersionImpl(storeName, 1);
     Assert.assertEquals(
         parentAdmin.getIncrementalPushVersion(incrementalPushVersion, ExecutionStatus.COMPLETED),
@@ -1696,7 +1695,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(store).when(internalAdmin).getStore(anyString(), anyString());
     completeMap.remove("cluster-slow");
     offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic2_v1", completeMap);
-    extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.COMPLETED);
     verify(internalAdmin, timeout(TIMEOUT_IN_MS)).truncateKafkaTopic("topic2_v1");
 
@@ -1856,6 +1854,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       Assert.fail("The partitioner creation should not be successful");
     } catch (Exception e) {
       Assert.assertTrue(e.getClass().isAssignableFrom(VeniceHttpException.class));
+      Assert.assertTrue(e instanceof VeniceHttpException);
       VeniceHttpException veniceHttpException = (VeniceHttpException) e;
       Assert.assertEquals(veniceHttpException.getHttpStatusCode(), HttpStatus.SC_BAD_REQUEST);
       Assert.assertEquals(veniceHttpException.getErrorType(), ErrorType.INVALID_SCHEMA);
@@ -1886,9 +1885,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     verify(veniceWriter, times(1)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
     byte[] valueBytes = valueCaptor.getValue();
     int schemaId = schemaCaptor.getValue();
-
-    valueBytes = valueCaptor.getValue();
-    schemaId = schemaCaptor.getValue();
     AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
     UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
     Assert.assertTrue(
@@ -2111,7 +2107,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.COMPLETED, extraInfo)).when(mockParentAdmin)
         .getOffLinePushStatus(clusterName, latestTopic);
     doCallRealMethod().when(mockParentAdmin).setTimer(any());
-    mockParentAdmin.setTimer(new MockTime());
+    mockParentAdmin.setTimer(new TestMockTime());
     currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
     Assert.assertFalse(currentPush.isPresent());
     verify(mockParentAdmin, times(7)).getOffLinePushStatus(clusterName, latestTopic);
@@ -2235,7 +2231,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin =
         new PartialMockVeniceParentHelixAdmin(internalAdmin, config)) {
       long startTime = System.currentTimeMillis();
-      MockTime mockTime = new MockTime(startTime);
+      TestMockTime mockTime = new TestMockTime(startTime);
       partialMockParentAdmin.setTimer(mockTime);
       mockTime.addMilliseconds(TimeUnit.HOURS.toMillis(30));
       String storeName = "test_store";

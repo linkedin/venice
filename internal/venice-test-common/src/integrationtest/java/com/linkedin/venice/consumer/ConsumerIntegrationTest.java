@@ -39,7 +39,6 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Properties;
-import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
@@ -76,7 +75,6 @@ public class ConsumerIntegrationTest {
     // - Adding new types to a union (not supported gracefully at the moment...).
 
     // General info about the current protocol
-    Set<Integer> knownProtocols = new KafkaValueSerializer().knownProtocols();
     AvroProtocolDefinition protocolDef = AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE;
     Schema currentProtocolSchema = protocolDef.getCurrentProtocolVersionSchema();
     List<Schema.Field> protocolSchemaFields = currentProtocolSchema.getFields()

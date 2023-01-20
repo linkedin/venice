@@ -29,7 +29,7 @@ import org.apache.commons.lang.StringUtils;
  * 2. Added a helper function that builds a {@link Config} from {@link Properties}
  */
 public class DefaultSSLFactory implements SSLFactory {
-  public static final String[] CIPHER_SUITE_ALLOWLIST = {
+  static final String[] CIPHER_SUITE_ALLOWLIST = {
       // Preferred ciphersuites:
       "TLS_RSA_WITH_AES_128_CBC_SHA256", "TLS_RSA_WITH_AES_128_GCM_SHA256",
       // For java 1.6 support:
@@ -138,7 +138,7 @@ public class DefaultSSLFactory implements SSLFactory {
    * Cloned from {@link com.linkedin.security.ssl.access.control.SSLContextFactory}; this is made as a private class
    * of DefaultSSLFactory on purpose.
    */
-  private class SSLContextFactory {
+  static private class SSLContextFactory {
     private SSLContext _secureContext = null;
     private static final String DEFAULT_ALGORITHM = "SunX509";
     private static final String DEFAULT_PROTOCOL = "TLS";

@@ -53,7 +53,7 @@ public class RouteHttpRequestStats {
     return stat.pendingRequestCount.get();
   }
 
-  class InternalHostStats extends AbstractVeniceStats {
+  static class InternalHostStats extends AbstractVeniceStats {
     private final Sensor pendingRequestCountSensor;
     private final Sensor unhealthyPendingQueueDuration;
     private final Sensor unhealthyPendingRateSensor;

@@ -10,7 +10,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 
 
 public class ChangeCaptureView extends VeniceView {
-  public static String CHANGE_CAPTURE_TOPIC_SUFFIX = "_cc";
+  public final static String CHANGE_CAPTURE_TOPIC_SUFFIX = "_cc";
 
   public ChangeCaptureView(VeniceProperties props, Store store) {
     super(props, store);

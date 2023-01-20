@@ -6,8 +6,8 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.fastclient.meta.ClientRoutingStrategy;
-import com.linkedin.venice.fastclient.stats.ClientStats;
 import com.linkedin.venice.fastclient.stats.ClusterStats;
+import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
@@ -26,7 +26,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final boolean speculativeQueryEnabled;
   private final Class<T> specificValueClass;
   private final String storeName;
-  private final Map<RequestType, ClientStats> clientStatsMap = new VeniceConcurrentHashMap<>();
+  private final Map<RequestType, FastClientStats> clientStatsMap = new VeniceConcurrentHashMap<>();
   private final Executor deserializationExecutor;
   private final ClientRoutingStrategy clientRoutingStrategy;
   /**
@@ -102,8 +102,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     // TODO consider changing the implementation or make it explicit that the config builder can only build once with
     // the same metricsRepository
     for (RequestType requestType: RequestType.values()) {
-      clientStatsMap
-          .put(requestType, ClientStats.getClientStats(metricsRepository, this.statsPrefix, storeName, requestType));
+      clientStatsMap.put(
+          requestType,
+          FastClientStats.getClientStats(metricsRepository, this.statsPrefix, storeName, requestType));
     }
     this.clusterStats = new ClusterStats(metricsRepository, storeName);
     this.speculativeQueryEnabled = speculativeQueryEnabled;
@@ -189,7 +190,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return r2Client;
   }
 
-  public ClientStats getStats(RequestType requestType) {
+  public FastClientStats getStats(RequestType requestType) {
     return clientStatsMap.get(requestType);
   }
 

@@ -15,11 +15,8 @@ import java.util.function.Function;
  * collection/visualization system.
  */
 public class DIVStatsReporter extends AbstractVeniceStatsReporter<DIVStats> {
-  private final String storeName;
-
   public DIVStatsReporter(MetricsRepository metricsRepository, String storeName) {
     super(metricsRepository, storeName);
-    this.storeName = storeName;
   }
 
   @Override

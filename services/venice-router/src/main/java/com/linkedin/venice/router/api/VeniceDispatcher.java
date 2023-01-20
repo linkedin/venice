@@ -58,7 +58,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, VenicePath, RouterKey> {
+public final class VeniceDispatcher implements PartitionDispatchHandler4<Instance, VenicePath, RouterKey> {
   private static final Logger LOGGER = LogManager.getLogger(VeniceDispatcher.class);
   /**
    * This map is used to capture all the {@link CompletableFuture} returned by {@link #storageNodeClient},

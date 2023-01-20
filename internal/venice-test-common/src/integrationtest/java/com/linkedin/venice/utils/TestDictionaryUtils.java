@@ -36,7 +36,7 @@ public class TestDictionaryUtils {
   private KafkaBrokerWrapper kafka;
   private ZkServerWrapper zkServer;
   private TopicManager manager;
-  private MockTime mockTime;
+  private TestMockTime mockTime;
 
   private String getTopic() {
     String callingFunction = Thread.currentThread().getStackTrace()[2].getMethodName();
@@ -63,7 +63,7 @@ public class TestDictionaryUtils {
   @BeforeClass
   public void setUp() {
     zkServer = ServiceFactory.getZkServer();
-    mockTime = new MockTime();
+    mockTime = new TestMockTime();
     kafka = ServiceFactory.getKafkaBroker(zkServer, Optional.of(mockTime));
     manager = new TopicManager(
         DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,

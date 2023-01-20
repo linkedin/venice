@@ -15,7 +15,7 @@ import org.testng.annotations.Test;
 
 
 public class InstanceHealthMonitorTest {
-  private final String instance = "https://test.host:1234";
+  private final static String instance = "https://test.host:1234";
 
   @Test
   public void testPendingRequestCounterWithSuccessfulRequest() {

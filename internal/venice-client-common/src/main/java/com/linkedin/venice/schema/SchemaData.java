@@ -30,9 +30,9 @@ public final class SchemaData {
   private Map<RmdVersionId, RmdSchemaEntry> replicationMetadataSchemaMap;
   private Map<Schema, RmdVersionId> replicationMetadataSchemaRMap;
 
-  public static int UNKNOWN_SCHEMA_ID = 0;
-  public static int INVALID_VALUE_SCHEMA_ID = -1;
-  public static int DUPLICATE_VALUE_SCHEMA_CODE = -2;
+  public final static int UNKNOWN_SCHEMA_ID = 0;
+  public final static int INVALID_VALUE_SCHEMA_ID = -1;
+  public final static int DUPLICATE_VALUE_SCHEMA_CODE = -2;
 
   public SchemaData(String storeName) {
     this.storeName = storeName;

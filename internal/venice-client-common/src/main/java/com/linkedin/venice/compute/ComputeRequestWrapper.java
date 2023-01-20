@@ -29,7 +29,7 @@ import org.apache.avro.specific.SpecificRecord;
  * schema.
  */
 public class ComputeRequestWrapper {
-  public static int LATEST_SCHEMA_VERSION_FOR_COMPUTE_REQUEST = 3;
+  public static final int LATEST_SCHEMA_VERSION_FOR_COMPUTE_REQUEST = 3;
 
   private static final Map<Integer, Schema> SCHEMA_MAP = new HashMap<Integer, Schema>() {
     {

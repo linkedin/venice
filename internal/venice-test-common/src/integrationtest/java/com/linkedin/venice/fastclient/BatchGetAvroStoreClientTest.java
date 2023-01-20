@@ -5,7 +5,7 @@ import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
 import com.linkedin.venice.fastclient.schema.TestValueSchema;
-import com.linkedin.venice.fastclient.stats.ClientStats;
+import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.fastclient.utils.AbstractClientEndToEndSetup;
 import com.linkedin.venice.read.RequestType;
 import io.tehuti.Metric;
@@ -50,7 +50,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
       return;
     // Prints all available stats. Useful for debugging
     Map<String, List<Metric>> metricsSan = new HashMap<>();
-    ClientStats stats = clientConfig.getStats(RequestType.MULTI_GET);
+    FastClientStats stats = clientConfig.getStats(RequestType.MULTI_GET);
     MetricsRepository metricsRepository = stats.getMetricsRepository();
     Map<String, ? extends Metric> metrics = metricsRepository.metrics();
     for (Map.Entry<String, ? extends Metric> metricName: metrics.entrySet()) {
@@ -137,7 +137,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
       GenericRecord value = results.get(key);
       Assert.assertEquals(value.get(VALUE_FIELD_NAME), i);
     }
-    ClientStats stats = clientConfig.getStats(RequestType.MULTI_GET);
+    FastClientStats stats = clientConfig.getStats(RequestType.MULTI_GET);
     LOGGER.info("STATS: {}", stats.buildSensorStatSummary("multiget_healthy_request_latency"));
     printAllStats();
   }
@@ -284,7 +284,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
     Assert.assertFalse(
         results.containsKey("nonExisting"),
         " Results contained nonExisting key with value " + results.get("nonExisting"));
-    ClientStats stats = clientConfig.getStats(RequestType.MULTI_GET);
+    FastClientStats stats = clientConfig.getStats(RequestType.MULTI_GET);
     List<Double> metricValues = stats.getMetricValues("multiget_request_key_count", "Avg");
     Assert.assertEquals(metricValues.get(0), 101.0);
     metricValues = stats.getMetricValues("multiget_success_request_key_count", "Avg");

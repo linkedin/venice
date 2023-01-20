@@ -27,7 +27,7 @@ public class RouteHttpStats {
     routeStats.recordResponseWaitingTime(waitingTime);
   }
 
-  class InternalRouteHttpStats extends AbstractVeniceHttpStats {
+  static class InternalRouteHttpStats extends AbstractVeniceHttpStats {
     private final Sensor responseWaitingTimeSensor;
     private final Sensor requestSensor;
 

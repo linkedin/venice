@@ -19,7 +19,7 @@ public class ThreadPoolStatsTest {
 
     ThreadPoolExecutor threadPool = Mockito.mock(ThreadPoolExecutor.class);
     String name = "test_pool";
-    ThreadPoolStats stats = new ThreadPoolStats(metricsRepository, threadPool, name);
+    new ThreadPoolStats(metricsRepository, threadPool, name);
 
     int activeThreadNumber = 1;
     int maxThreadNumber = 2;

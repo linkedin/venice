@@ -9,8 +9,8 @@ import static org.mockito.Mockito.verify;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
-import com.linkedin.venice.utils.MockTime;
 import com.linkedin.venice.utils.SystemTime;
+import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
@@ -171,16 +171,14 @@ public class TestStoreBackupVersionCleanupService {
     versions.put(2, VersionStatus.ONLINE);
     Store storeWithTwoVersions = mockStore(-1, System.currentTimeMillis() - defaultRetentionMs * 2, versions, 2);
 
-    Set<String> stores = new HashSet<>();
     String clusterName = "test_cluster";
-    stores.add(storeWithTwoVersions.getName());
     Set<String> clusters = new HashSet<>();
     clusters.add(clusterName);
     doReturn(clusters).when(config).getClusters();
     List<Store> storeList = new ArrayList<>();
     storeList.add(storeWithTwoVersions);
     doReturn(storeList).when(admin).getAllStores(any());
-    MockTime time = new MockTime();
+    TestMockTime time = new TestMockTime();
     StoreBackupVersionCleanupService service = new StoreBackupVersionCleanupService(admin, config, time);
     service.startInner();
     TestUtils.waitForNonDeterministicAssertion(

@@ -540,14 +540,6 @@ public class VsonAvroSerializer {
           "Object of type " + o.getClass() + " can not be coerced to type " + VsonTypes.DATE);
   }
 
-  private Date readDate(DataInputStream stream) throws IOException {
-    long l = stream.readLong();
-    if (l == Long.MIN_VALUE)
-      return null;
-    else
-      return new Date(l);
-  }
-
   private void writeDate(DataOutputStream output, Date d) throws IOException {
     if (d == null)
       output.writeLong(Long.MIN_VALUE);

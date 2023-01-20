@@ -6,7 +6,7 @@ import java.util.List;
 
 
 public class AdminTopicUtils {
-  public static int PARTITION_NUM_FOR_ADMIN_TOPIC = 1;
+  public static final int PARTITION_NUM_FOR_ADMIN_TOPIC = 1;
   public static final int ADMIN_TOPIC_PARTITION_ID = 0;
   // TODO: Maybe we should make this prefix configurable so that different environments can share
   // the same Kafka cluster

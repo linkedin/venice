@@ -831,7 +831,7 @@ public class TopicManager implements Closeable {
    */
   public static long getExpectedRetentionTimeInMs(Store store, HybridStoreConfig hybridConfig) {
     long rewindTimeInMs = hybridConfig.getRewindTimeInSeconds() * Time.MS_PER_SECOND;
-    long bootstrapToOnlineTimeInMs = store.getBootstrapToOnlineTimeoutInHours() * Time.MS_PER_HOUR;
+    long bootstrapToOnlineTimeInMs = (long) store.getBootstrapToOnlineTimeoutInHours() * Time.MS_PER_HOUR;
     long minimumRetentionInMs = rewindTimeInMs + bootstrapToOnlineTimeInMs + BUFFER_REPLAY_MINIMAL_SAFETY_MARGIN;
     return Math.max(minimumRetentionInMs, TopicManager.DEFAULT_TOPIC_RETENTION_POLICY_MS);
   }

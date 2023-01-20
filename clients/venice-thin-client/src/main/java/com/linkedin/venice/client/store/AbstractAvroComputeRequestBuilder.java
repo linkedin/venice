@@ -69,7 +69,6 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
 
   private boolean executed = false;
   private Time time = new SystemTime();
-  private Optional<ClientStats> stats = Optional.empty();
   private Optional<ClientStats> streamingStats = Optional.empty();
 
   private boolean reuseObjects = false;
@@ -105,10 +104,7 @@ public abstract class AbstractAvroComputeRequestBuilder<K> implements ComputeReq
     return this;
   }
 
-  public AbstractAvroComputeRequestBuilder<K> setStats(
-      Optional<ClientStats> stats,
-      Optional<ClientStats> streamingStats) {
-    this.stats = stats;
+  public AbstractAvroComputeRequestBuilder<K> setStats(Optional<ClientStats> streamingStats) {
     this.streamingStats = streamingStats;
     return this;
   }
