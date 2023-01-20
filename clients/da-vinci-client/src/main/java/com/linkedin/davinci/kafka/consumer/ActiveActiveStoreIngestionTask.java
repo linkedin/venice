@@ -36,7 +36,6 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.schema.rmd.RmdUtils;
-import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Time;
@@ -78,7 +77,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   private final AggVersionedIngestionStats aggVersionedIngestionStats;
   private final RemoteIngestionRepairService remoteIngestionRepairService;
 
-  private static class ReusableObjects extends AvroSerializer.AvroSerializerReusableObjects {
+  private static class ReusableObjects {
     // reuse buffer for rocksDB value object
     final ByteBuffer reusedByteBuffer = ByteBuffer.allocate(1024 * 1024);
     final BinaryDecoder binaryDecoder =
