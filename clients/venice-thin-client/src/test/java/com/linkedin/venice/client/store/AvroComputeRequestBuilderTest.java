@@ -241,8 +241,7 @@ public class AvroComputeRequestBuilderTest {
   @Test(expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = "Only value schema with 'RECORD' type is supported")
   public void testComputeAgainstNonRecordSchema() {
     AbstractAvroStoreClient mockClient = getMockClient();
-    AvroComputeRequestBuilderV3<String> computeRequestBuilder =
-        new AvroComputeRequestBuilderV3(mockClient, ARRAY_SCHEMA);
+    new AvroComputeRequestBuilderV3(mockClient, ARRAY_SCHEMA);
   }
 
   @Test

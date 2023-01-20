@@ -170,7 +170,6 @@ public class MockTestStateModelFactory extends StateModelFactory<StateModel> {
 
     @Transition(to = HelixState.LEADER_STATE, from = HelixState.STANDBY_STATE)
     public void onBecomeLeaderFromStandby(Message message, NotificationContext context) {
-      int a = 0;
     }
 
     @Transition(to = HelixState.STANDBY_STATE, from = HelixState.LEADER_STATE)

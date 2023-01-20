@@ -79,7 +79,7 @@ public class RmdUtils {
     RmdTimestampType rmdTimestampType = getRmdTimestampType(timestampObject);
 
     if (rmdTimestampType == RmdTimestampType.VALUE_LEVEL_TIMESTAMP) {
-      return Collections.singletonList((long) timestampObject);
+      return Collections.singletonList((Long) timestampObject);
     } else {
       // not supported yet so ignore it
       // TODO Must clone the results when PER_FIELD_TIMESTAMP mode is enabled to return the list.

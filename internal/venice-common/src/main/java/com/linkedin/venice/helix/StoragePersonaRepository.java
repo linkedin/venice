@@ -78,15 +78,18 @@ public class StoragePersonaRepository {
   /**
    * Clears the cache and re-loads the cache data from Zookeeper.
    */
-  public void refresh() {
+  public final void refresh() {
     personaLock.lock();
-    List<StoragePersona> personas = storagePersonaAccessor.getAllPersonasFromZk();
-    personaMap = new VeniceConcurrentHashMap<>();
-    storeNamePersonaMap = new VeniceConcurrentHashMap<>();
-    for (StoragePersona persona: personas) {
-      cachePersona(persona);
+    try {
+      List<StoragePersona> personas = storagePersonaAccessor.getAllPersonasFromZk();
+      personaMap = new VeniceConcurrentHashMap<>();
+      storeNamePersonaMap = new VeniceConcurrentHashMap<>();
+      for (StoragePersona persona: personas) {
+        cachePersona(persona);
+      }
+    } finally {
+      personaLock.unlock();
     }
-    personaLock.unlock();
   }
 
   /**

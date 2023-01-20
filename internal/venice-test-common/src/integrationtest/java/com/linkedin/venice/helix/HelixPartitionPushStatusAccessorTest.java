@@ -38,7 +38,7 @@ public class HelixPartitionPushStatusAccessorTest {
   private ZkServerWrapper zkServerWrapper;
 
   @BeforeMethod(alwaysRun = true)
-  public void HelixSetup() throws Exception {
+  public void setupHelix() throws Exception {
     zkServerWrapper = ServiceFactory.getZkServer();
     zkAddress = zkServerWrapper.getAddress();
     admin = new ZKHelixAdmin(zkAddress);
@@ -85,7 +85,7 @@ public class HelixPartitionPushStatusAccessorTest {
   }
 
   @AfterMethod(alwaysRun = true)
-  public void HelixCleanup() {
+  public void cleanupHelix() {
     manager1.disconnect();
     manager2.disconnect();
     admin.dropCluster(clusterName);

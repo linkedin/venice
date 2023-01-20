@@ -30,7 +30,7 @@ public class TestRmdUtils {
   private GenericRecord rmdRecordWithPerFieldLevelTimeStamp;
 
   @BeforeClass
-  public void setup() {
+  public void setUp() {
     valueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(VALUE_RECORD_SCHEMA_STR);
     rmdSchema = RmdSchemaGenerator.generateMetadataSchema(valueSchema, 1);
   }

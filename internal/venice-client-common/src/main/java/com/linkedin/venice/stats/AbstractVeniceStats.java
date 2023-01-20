@@ -38,11 +38,11 @@ public class AbstractVeniceStats {
     return metricsRepository;
   }
 
-  protected boolean isTotalStats() {
+  protected final boolean isTotalStats() {
     return isTotalStats;
   }
 
-  public String getName() {
+  public final String getName() {
     // add "." in front of the name because dot separator is a must in Tehuti to split package name and sensor name
     return "." + name;
   }
@@ -162,11 +162,11 @@ public class AbstractVeniceStats {
     return resourceName + AbstractVeniceStats.DELIMITER + sensorName;
   }
 
-  protected MeasurableStat[] avgAndMax() {
+  protected final MeasurableStat[] avgAndMax() {
     return new MeasurableStat[] { new Avg(), new Max() };
   }
 
-  protected MeasurableStat[] avgAndTotal() {
+  protected final MeasurableStat[] avgAndTotal() {
     return new MeasurableStat[] { new Avg(), new Total() };
   }
 }

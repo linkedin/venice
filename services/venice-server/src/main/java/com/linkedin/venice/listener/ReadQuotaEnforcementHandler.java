@@ -91,7 +91,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
   /**
    * Initialize token buckets for all resources in the routingDataRepository
    */
-  public void init() {
+  public final void init() {
     storeRepository.registerStoreDataChangedListener(this);
     ResourceAssignment resourceAssignment = routingRepository.getResourceAssignment();
     if (resourceAssignment == null) {

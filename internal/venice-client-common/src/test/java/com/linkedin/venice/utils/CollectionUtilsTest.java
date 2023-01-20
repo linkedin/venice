@@ -96,7 +96,7 @@ public class CollectionUtilsTest {
     assertTrue(CollectionUtils.listEquals(list1, list2), errorMessage);
   }
 
-  class TestContentObject {
+  static class TestContentObject {
     Integer intVal;
     Boolean booleanVal;
     String stringVal;
@@ -121,6 +121,15 @@ public class CollectionUtilsTest {
         return false;
       }
       return true;
+    }
+
+    @Override
+    public int hashCode() {
+      int res = 1;
+      res = res * 31 + intVal;
+      res = res * 31 + booleanVal.hashCode();
+      res = res * 31 + stringVal.hashCode();
+      return res;
     }
   }
 }

@@ -137,7 +137,6 @@ public class ReplicationConsumptionBenchmark {
     if (sorted) {
       storagePartition.beginBatchWrite(new HashMap<>(), checksumSupplier);
     }
-    Map<String, String> checkpointingInfo = new HashMap<>();
 
     for (Map.Entry<String, Pair<String, String>> entry: inputRecords.entrySet()) {
       if (entry.getValue().getFirst() == null) {

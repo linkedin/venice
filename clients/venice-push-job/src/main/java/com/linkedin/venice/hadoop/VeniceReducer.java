@@ -588,7 +588,7 @@ public class VeniceReducer extends AbstractMapReduceTask
         LOGGER.error("Exception thrown in send message callback. ", e);
         sendException = e;
       } else {
-        long messageCount = messageCompleted.incrementAndGet();
+        messageCompleted.incrementAndGet();
         int partition = recordMetadata.partition();
         partitionSet.add(partition);
         if (partition != getTaskId()) {

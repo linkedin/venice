@@ -152,7 +152,7 @@ public class TestKafkaInputRecordReader {
         // PUT
         Assert.assertEquals(value.valueType, MapperValueType.PUT);
         Assert.assertEquals(ByteUtils.extractByteArray(value.value), (KAFKA_MESSAGE_VALUE_PREFIX + i).getBytes());
-      } else if (i >= 11 && i <= 20) {
+      } else if (i <= 20) {
         // DELETE
         Assert.assertEquals(value.valueType, MapperValueType.DELETE);
       }

@@ -1,6 +1,5 @@
 package com.linkedin.venice.benchmark;
 
-import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
@@ -75,7 +74,7 @@ public class SerdeBenchmark {
   @Benchmark
   @OperationsPerInvocation(NUM_QUERIES)
   public void fastAvroSerdeBenchmarkTest(Blackhole bh) {
-    Map<String, Float> metricsDelta = BenchmarkUtils.runWithMetrics(
+    BenchmarkUtils.runWithMetrics(
         () -> BenchmarkUtils.avroBenchmark(true, valueSize, NUM_QUERIES, serializeOnce, accessData, bh),
         "fastAvro_" + testNameSuffix(),
         NUM_QUERIES,
@@ -86,7 +85,7 @@ public class SerdeBenchmark {
   @Benchmark
   @OperationsPerInvocation(NUM_QUERIES)
   public void avroSerdeBenchmarkTest(Blackhole bh) {
-    Map<String, Float> metricsDelta = BenchmarkUtils.runWithMetrics(
+    BenchmarkUtils.runWithMetrics(
         () -> BenchmarkUtils.avroBenchmark(false, valueSize, NUM_QUERIES, serializeOnce, accessData, bh),
         "avro_" + testNameSuffix(),
         NUM_QUERIES,

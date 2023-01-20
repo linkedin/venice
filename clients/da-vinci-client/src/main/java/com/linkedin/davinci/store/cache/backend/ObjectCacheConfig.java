@@ -48,6 +48,14 @@ public class ObjectCacheConfig {
   }
 
   @Override
+  public int hashCode() {
+    int result = 1;
+    result = result * 31 + maxCacheSize.hashCode();
+    result = result * 31 + ttlInMilliseconds.hashCode();
+    return result;
+  }
+
+  @Override
   public String toString() {
     return "ObjectCacheConfig{" + "maxCacheSize=" + maxCacheSize + ", ttlInMilliseconds=" + ttlInMilliseconds + "}";
   }

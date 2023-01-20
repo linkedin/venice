@@ -33,7 +33,7 @@ import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
-import com.linkedin.venice.utils.MockTime;
+import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -71,8 +71,8 @@ public class KafkaConsumptionTest {
   private KafkaBrokerWrapper remoteKafka;
   private TopicManager topicManager;
   private TopicManager remoteTopicManager;
-  private MockTime mockTime;
-  private MockTime remoteMockTime;
+  private TestMockTime mockTime;
+  private TestMockTime remoteMockTime;
   private ZkServerWrapper localZkServer;
   private ZkServerWrapper remoteZkServer;
   private String versionTopic;
@@ -99,7 +99,7 @@ public class KafkaConsumptionTest {
 
   @BeforeClass
   public void setUp() {
-    mockTime = new MockTime();
+    mockTime = new TestMockTime();
     localZkServer = ServiceFactory.getZkServer();
     localKafka = ServiceFactory.getKafkaBroker(localZkServer, Optional.of(mockTime));
     localKafkaClientFactory = IntegrationTestPushUtils.getVeniceConsumerFactory(localKafka);
@@ -110,7 +110,7 @@ public class KafkaConsumptionTest {
     topicManager.setTopicConfigCache(cacheNothingCache);
 
     remoteZkServer = ServiceFactory.getZkServer();
-    remoteMockTime = new MockTime();
+    remoteMockTime = new TestMockTime();
     remoteKafka = ServiceFactory.getKafkaBroker(remoteZkServer, Optional.of(remoteMockTime));
     remoteKafkaClientFactory = IntegrationTestPushUtils.getVeniceConsumerFactory(remoteKafka);
     remoteTopicManager =

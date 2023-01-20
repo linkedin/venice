@@ -7,7 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
-import com.linkedin.venice.utils.MockTime;
+import com.linkedin.venice.utils.TestMockTime;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -35,7 +35,7 @@ public class ConsumerSubscriptionCleanerTest {
     currentAssignment.add(existingTopicPartitionWithoutIngestionTask);
     currentAssignment.add(nonExistentTopicPartition);
 
-    MockTime time = new MockTime();
+    TestMockTime time = new TestMockTime();
 
     Consumer<Set<TopicPartition>> batchUnsubFunction = mock(Consumer.class);
     int batchUnsubFunctionExpectedCallCount = 0;

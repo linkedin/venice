@@ -25,7 +25,7 @@ public class RouteHttpRequestStatsTest {
   }
 
   @Test
-  public void RouterMetricsTest() {
+  public void routerMetricsTest() {
     stats.recordPendingRequest("my_host1");
     stats.recordPendingRequest("my_host2");
 

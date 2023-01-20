@@ -52,7 +52,7 @@ public class TestHelixExternalViewRepository {
   private SafeHelixManager readManager;
 
   @BeforeMethod(alwaysRun = true)
-  public void HelixSetup() throws Exception {
+  public void setupHelix() throws Exception {
     zkServerWrapper = ServiceFactory.getZkServer();
     zkAddress = zkServerWrapper.getAddress();
     admin = new ZKHelixAdmin(zkAddress);
@@ -100,7 +100,7 @@ public class TestHelixExternalViewRepository {
   }
 
   @AfterMethod(alwaysRun = true)
-  public void HelixCleanup() {
+  public void cleanupHelix() {
     manager.disconnect();
     readManager.disconnect();
     controller.disconnect();

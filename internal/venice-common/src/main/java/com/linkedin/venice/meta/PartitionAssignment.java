@@ -87,4 +87,13 @@ public class PartitionAssignment {
 
     return false;
   }
+
+  @Override
+  public int hashCode() {
+    int result = 1;
+    result = 31 * result + topic.hashCode();
+    result = 31 * result + idToPartitionMap.hashCode();
+    result = 31 * result + expectedNumberOfPartitions;
+    return result;
+  }
 }

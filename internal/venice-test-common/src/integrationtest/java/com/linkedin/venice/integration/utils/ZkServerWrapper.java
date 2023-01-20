@@ -210,7 +210,7 @@ public class ZkServerWrapper extends ProcessWrapper {
     return getHost() + ":" + getPort();
   }
 
-  public static boolean IsSingleton() {
+  public static boolean isSingleton() {
     return isSingleton;
   }
 

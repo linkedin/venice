@@ -76,4 +76,13 @@ public class Persona {
         && this.storesToEnforce.equals(persona.storesToEnforce) && this.owners.equals(persona.owners);
   }
 
+  @Override
+  public int hashCode() {
+    int result = 1;
+    result = result * 31 + this.name.hashCode();
+    result = result * 31 + Long.hashCode(quotaNumber);
+    result = result * 31 + this.storesToEnforce.hashCode();
+    result = result * 31 + this.owners.hashCode();
+    return result;
+  }
 }

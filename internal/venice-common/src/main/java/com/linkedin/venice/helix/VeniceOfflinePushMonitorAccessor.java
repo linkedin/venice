@@ -360,7 +360,7 @@ public class VeniceOfflinePushMonitorAccessor implements OfflinePushAccessor {
     }
   }
 
-  public String getOfflinePushStatuesParentPath() {
+  public final String getOfflinePushStatuesParentPath() {
     return HelixUtils.getHelixClusterZkPath(clusterName) + "/" + OFFLINE_PUSH_SUB_PATH;
   }
 

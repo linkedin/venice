@@ -174,7 +174,7 @@ public class VeniceChunkedResponse {
     this.chunkedWriteHandler.setWriteMessageCallback(new WriteMessageCallbackImpl());
   }
 
-  private class StreamingCallbackOnlyFreeResponseOnSuccess<T> implements StreamingCallback<T> {
+  private static class StreamingCallbackOnlyFreeResponseOnSuccess<T> implements StreamingCallback<T> {
     private final FullHttpResponse response;
     private final ChannelPromise promise;
 

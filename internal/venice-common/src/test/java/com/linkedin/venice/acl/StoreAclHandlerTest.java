@@ -196,7 +196,7 @@ public class StoreAclHandlerTest {
     }
   }
 
-  public class ContextMatcher implements ArgumentMatcher<FullHttpResponse> {
+  public static class ContextMatcher implements ArgumentMatcher<FullHttpResponse> {
     private HttpResponseStatus status;
 
     public ContextMatcher(HttpResponseStatus status) {

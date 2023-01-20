@@ -45,11 +45,8 @@ import java.util.function.DoubleSupplier;
  * collection/visualization system.
  */
 public class IngestionStatsReporter extends AbstractVeniceStatsReporter<IngestionStats> {
-  private final String storeName;
-
   public IngestionStatsReporter(MetricsRepository metricsRepository, String storeName) {
     super(metricsRepository, storeName);
-    this.storeName = storeName;
   }
 
   @Override

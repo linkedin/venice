@@ -37,8 +37,8 @@ import org.testng.annotations.Test;
 @Test(singleThreaded = true)
 public class TestHelixReadOnlyStoreRepositoryAdapter {
   private ZkClient zkClient;
-  private final String cluster = "test-metadata-cluster";
-  private final String clusterPath = "/test-metadata-cluster";
+  private final static String cluster = "test-metadata-cluster";
+  private final static String clusterPath = "/test-metadata-cluster";
   private ZkServerWrapper zkServerWrapper;
   private final HelixAdapterSerializer adapter = new HelixAdapterSerializer();
 

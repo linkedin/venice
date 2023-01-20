@@ -100,8 +100,8 @@ public abstract class AbstractClientEndToEndSetup {
       + "\"fields\": [\n" + "  {\"name\": \"" + VALUE_FIELD_NAME + "\", \"type\": \"int\"}]\n" + "}";
   protected static final Schema VALUE_SCHEMA = new Schema.Parser().parse(VALUE_SCHEMA_STR);
 
-  protected final String keyPrefix = "key_";
-  protected final int recordCnt = 100;
+  protected static final String keyPrefix = "key_";
+  protected static final int recordCnt = 100;
 
   /**
    * two sizes: default 2 (initial FC batch get implementation size) and max of recordCnt

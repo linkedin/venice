@@ -86,8 +86,8 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   private static final Map<String, String> MULTI_GET_HEADER_MAP_FOR_STREAMING;
   private static final Map<String, String> COMPUTE_HEADER_MAP_V2 = new HashMap<>();
   private static final Map<String, String> COMPUTE_HEADER_MAP_V3 = new HashMap<>();
-  protected static final Map<String, String> COMPUTE_HEADER_MAP_FOR_STREAMING_V2;
-  protected static final Map<String, String> COMPUTE_HEADER_MAP_FOR_STREAMING_V3;
+  static final Map<String, String> COMPUTE_HEADER_MAP_FOR_STREAMING_V2;
+  static final Map<String, String> COMPUTE_HEADER_MAP_FOR_STREAMING_V3;
 
   static {
     /**
@@ -216,7 +216,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     this.compressorFactory = new CompressorFactory();
   }
 
-  protected boolean isUseFastAvro() {
+  protected final boolean isUseFastAvro() {
     return useFastAvro;
   }
 
@@ -628,7 +628,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       final InternalAvroStoreClient computeStoreClient,
       final long preRequestTimeInNS) {
     AbstractAvroComputeRequestBuilder<K> builder =
-        new AvroComputeRequestBuilderV3<K>(computeStoreClient, getLatestValueSchema()).setStats(stats, streamingStats)
+        new AvroComputeRequestBuilderV3<K>(computeStoreClient, getLatestValueSchema()).setStats(streamingStats)
             .setValidateProjectionFields(clientConfig.isProjectionFieldValidationEnabled());
     if (reuseObjectsForSerialization) {
       AvroSerializer.ReusableObjects reusableObjects = AvroSerializer.REUSE.get();
@@ -729,31 +729,10 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     }
   }
 
-  private RecordDeserializer<MultiGetResponseRecordV1> getMultiGetResponseRecordDeserializer(int schemaId) {
-    // TODO: get multi-get response write schema from Router
-    validateMultiGetResponseSchemaId(schemaId);
-    if (useFastAvro) {
-      return FastSerializerDeserializerFactory
-          .getFastAvroSpecificDeserializer(MultiGetResponseRecordV1.SCHEMA$, MultiGetResponseRecordV1.class);
-    } else {
-      return SerializerDeserializerFactory.getAvroSpecificDeserializer(MultiGetResponseRecordV1.class);
-    }
-  }
-
   private void validateComputeResponseSchemaId(int schemaId) {
     int protocolVersion = ReadAvroProtocolDefinition.COMPUTE_RESPONSE_V1.getProtocolVersion();
     if (protocolVersion != schemaId) {
       throw new VeniceClientException("schemaId: " + schemaId + " is not expected, should be " + protocolVersion);
-    }
-  }
-
-  private RecordDeserializer<ComputeResponseRecordV1> getComputeResponseRecordDeserializer(int schemaId) {
-    validateComputeResponseSchemaId(schemaId);
-    if (useFastAvro) {
-      return FastSerializerDeserializerFactory
-          .getFastAvroSpecificDeserializer(ComputeResponseRecordV1.SCHEMA$, ComputeResponseRecordV1.class);
-    } else {
-      return SerializerDeserializerFactory.getAvroSpecificDeserializer(ComputeResponseRecordV1.class);
     }
   }
 
@@ -830,8 +809,6 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     private final long preSubmitTimeInNS;
     private final Optional<ClientStats> clientStats;
     private final LongAdder deserializationTimeInNS = new LongAdder();
-
-    private List<CompletableFuture<Void>> callbackFutures = new ArrayList<>();
 
     public StoreClientStreamingCallback(
         List<K> keyList,
