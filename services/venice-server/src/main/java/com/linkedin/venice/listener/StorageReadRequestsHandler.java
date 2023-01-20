@@ -653,7 +653,6 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
       Map<String, Object> globalContext,
       ByteBuffer reuseRawValue,
       VeniceCompressor compressor) {
-
     reuseValueRecord = GenericRecordChunkingAdapter.INSTANCE.get(
         storeName,
         store,
