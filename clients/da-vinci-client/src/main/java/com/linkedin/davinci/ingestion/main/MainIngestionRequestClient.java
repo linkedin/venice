@@ -239,7 +239,7 @@ public class MainIngestionRequestClient implements Closeable {
       // Don't spam the server logging.
       LOGGER.warn("Unable to collect metrics from ingestion service");
       if (!REDUNDANT_EXCEPTION_FILTER.isRedundantException(e.getMessage())) {
-        LOGGER.info(e);
+        LOGGER.warn(e);
       }
       return false;
     }
