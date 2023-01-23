@@ -238,6 +238,9 @@ public class MainIngestionRequestClient implements Closeable {
     } catch (Exception e) {
       // Don't spam the server logging.
       LOGGER.warn("Unable to collect metrics from ingestion service");
+      if (!REDUNDANT_EXCEPTION_FILTER.isRedundantException(e.getMessage())) {
+        LOGGER.info(e);
+      }
       return false;
     }
   }
@@ -249,9 +252,6 @@ public class MainIngestionRequestClient implements Closeable {
     } catch (Exception e) {
       // Don't spam the server logging.
       LOGGER.warn("Unable to get heartbeat from ingestion service");
-      if (!REDUNDANT_EXCEPTION_FILTER.isRedundantException(e.getMessage())) {
-        LOGGER.info(e);
-      }
       return false;
     }
   }
