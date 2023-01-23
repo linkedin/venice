@@ -1479,14 +1479,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * @param key the {@link KafkaKey} for which we want to get the partition.
    * @return the partition number that the provided key belongs to.
    */
-  private int getPartition(KafkaKey key) {
-    return getPartition(key.getKey());
-  }
-
-  /**
-   * @param key the {@link KafkaKey} for which we want to get the partition.
-   * @return the partition number that the provided key belongs to.
-   */
   private int getPartition(byte[] key) {
     return partitioner.getPartitionId(key, numberOfPartitions);
   }
