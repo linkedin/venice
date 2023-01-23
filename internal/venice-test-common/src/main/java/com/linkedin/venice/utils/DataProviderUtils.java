@@ -93,7 +93,7 @@ public class DataProviderUtils {
   }
 
   @DataProvider(name = "Chunking-And-Partition-Counts")
-  public static Object[][] numberOfPartitions() {
+  public static Object[][] chunkingAndPartitionCountsCombination() {
     return allPermutationGenerator(BOOLEAN, PARTITION_COUNTS);
   }
 

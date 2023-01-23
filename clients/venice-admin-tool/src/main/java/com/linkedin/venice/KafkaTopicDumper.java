@@ -230,7 +230,7 @@ public class KafkaTopicDumper implements AutoCloseable {
       LeaderMetadata leaderMetadata = kafkaMessageEnvelope.leaderMetadataFooter;
 
       LOGGER.info(
-          "{} {} Offset:{} ProducerMd=(guid:{},seg:{},msn:{},mts:{},lts:{}) LeaderMd=(host:{},uo:{},ukcId:{})",
+          "{} {} Offset:{} ProducerMd=(guid:{},seg:{},seq:{},mts:{},lts:{}) LeaderMd=(host:{},uo:{},ukcId:{})",
           kafkaKey.isControlMessage() ? CONTROL_REC : REGULAR_REC,
           msgType,
           record.offset(),
