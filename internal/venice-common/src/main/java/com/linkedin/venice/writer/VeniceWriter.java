@@ -498,6 +498,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       long logicalTs,
       Optional<DeleteMetadata> deleteMetadata) {
     byte[] serializedKey = keySerializer.serialize(topicName, key);
+    int partition = getPartition(serializedKey);
+
     isChunkingFlagInvoked = true;
 
     int rmdPayloadSize = deleteMetadata.map(DeleteMetadata::getSerializedSize).orElse(0);
@@ -515,8 +517,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     }
 
     KafkaKey kafkaKey = new KafkaKey(MessageType.DELETE, serializedKey);
-
-    int partition = getPartition(kafkaKey);
 
     Delete delete = new Delete();
     if (deleteMetadata.isPresent()) {
@@ -1462,14 +1462,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     kafkaValue.leaderMetadataFooter.upstreamKafkaClusterId = leaderMetadataWrapper.getUpstreamKafkaClusterId();
 
     return kafkaValue;
-  }
-
-  /**
-   * @param key the {@link KafkaKey} for which we want to get the partition.
-   * @return the partition number that the provided key belongs to.
-   */
-  private int getPartition(KafkaKey key) {
-    return getPartition(key.getKey());
   }
 
   /**
