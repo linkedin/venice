@@ -23,6 +23,7 @@ import com.linkedin.venice.ingestion.protocol.enums.IngestionComponentType;
 import com.linkedin.venice.meta.IngestionMetadataUpdateType;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.ForkedJavaProcess;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
 import java.util.ArrayList;
@@ -38,6 +39,9 @@ import org.apache.logging.log4j.Logger;
  */
 public class MainIngestionRequestClient implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(MainIngestionRequestClient.class);
+  private static final RedundantExceptionFilter REDUNDANT_EXCEPTION_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
+
   private static final int REQUEST_MAX_ATTEMPT = 10;
   private static final int PERIODIC_REQUEST_TIMEOUT_SECONDS = 5;
   private HttpClientTransport httpClientTransport;
@@ -245,6 +249,9 @@ public class MainIngestionRequestClient implements Closeable {
     } catch (Exception e) {
       // Don't spam the server logging.
       LOGGER.warn("Unable to get heartbeat from ingestion service");
+      if (!REDUNDANT_EXCEPTION_FILTER.isRedundantException(e.getMessage())) {
+        LOGGER.info(e);
+      }
       return false;
     }
   }
