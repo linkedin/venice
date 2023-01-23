@@ -58,8 +58,10 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
   private RouterServer service;
   private final String d2ClusterName;
   private final String clusterDiscoveryD2ClusterName;
+  private final String coloName;
 
   VeniceRouterWrapper(
+      String coloName,
       String serviceName,
       File dataDirectory,
       RouterServer service,
@@ -73,9 +75,11 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
     this.zkAddress = zkAddress;
     this.d2ClusterName = d2ClusterName;
     this.clusterDiscoveryD2ClusterName = clusterDiscoveryD2ClusterName;
+    this.coloName = coloName;
   }
 
   static StatefulServiceProvider<VeniceRouterWrapper> generateService(
+      String coloName,
       String clusterName,
       ZkServerWrapper zkServerWrapper,
       KafkaBrokerWrapper kafkaBrokerWrapper,
@@ -141,6 +145,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
           Optional.empty(),
           Optional.of(H2SSLUtils.getLocalHttp2SslFactory()));
       return new VeniceRouterWrapper(
+          coloName,
           serviceName,
           dataDirectory,
           router,
@@ -196,6 +201,11 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
 
     service =
         new RouterServer(properties, d2Servers, Optional.empty(), Optional.of(SslUtils.getVeniceLocalSslFactory()));
+  }
+
+  @Override
+  public String getComponentTagForLogging() {
+    return new StringBuilder(getComponentTagPrefix(coloName)).append(super.getComponentTagForLogging()).toString();
   }
 
   public HelixBaseRoutingRepository getRoutingDataRepository() {

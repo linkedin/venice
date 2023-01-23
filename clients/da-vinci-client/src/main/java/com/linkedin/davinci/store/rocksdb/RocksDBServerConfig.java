@@ -185,8 +185,6 @@ public class RocksDBServerConfig {
   public static final String ROCKSDB_LEVEL0_STOPS_WRITES_TRIGGER_WRITE_ONLY_VERSION =
       "rocksdb.level0.stops.writes.trigger.write.only.version";
 
-  public static final String ROCKSDB_COMPUTE_ACCESS_MODE = "rocksdb.compute.access.mode";
-
   public static final String ROCKSDB_PUT_REUSE_BYTE_BUFFER = "rocksdb.put.reuse.byte.buffer";
 
   /**
@@ -266,8 +264,6 @@ public class RocksDBServerConfig {
   private final boolean atomicFlushEnabled;
   private final boolean separateRMDCacheEnabled;
   private int blockBaseFormatVersion;
-
-  private final RocksDBComputeAccessMode serverStorageOperation;
 
   public RocksDBServerConfig(VeniceProperties props) {
     // Do not use Direct IO for reads by default
@@ -376,20 +372,6 @@ public class RocksDBServerConfig {
     this.separateRMDCacheEnabled = props.getBoolean(ROCKSDB_SEPARATE_RMD_CACHE_ENABLED, false);
 
     this.blockBaseFormatVersion = props.getInt(ROCKSDB_BLOCK_BASE_FORMAT_VERSION, 2);
-    String rocksDBOperationType =
-        props.getString(ROCKSDB_COMPUTE_ACCESS_MODE, RocksDBComputeAccessMode.SINGLE_GET.name());
-    try {
-      this.serverStorageOperation = RocksDBComputeAccessMode.valueOf(rocksDBOperationType);
-    } catch (IllegalArgumentException e) {
-      throw new VeniceException(
-          "Invalid operation type: " + rocksDBOperationType + ", available types: "
-              + Arrays.toString(RocksDBComputeAccessMode.values()));
-    }
-
-  }
-
-  public RocksDBComputeAccessMode getServerStorageOperation() {
-    return serverStorageOperation;
   }
 
   public int getLevel0FileNumCompactionTriggerWriteOnlyVersion() {

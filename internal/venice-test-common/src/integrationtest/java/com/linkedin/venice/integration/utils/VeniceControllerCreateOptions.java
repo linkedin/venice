@@ -31,6 +31,7 @@ public class VeniceControllerCreateOptions {
   private final KafkaBrokerWrapper kafkaBroker;
   private final Properties extraProperties;
   private final AuthorizerService authorizerService;
+  private final String coloName;
 
   private VeniceControllerCreateOptions(Builder builder) {
     sslToKafka = builder.sslToKafka;
@@ -47,11 +48,15 @@ public class VeniceControllerCreateOptions {
     extraProperties = builder.extraProperties;
     authorizerService = builder.authorizerService;
     isParent = builder.childControllers != null && builder.childControllers.length != 0;
+    coloName = builder.coloName;
   }
 
   @Override
   public String toString() {
-    return new StringBuilder().append("isParent:")
+    return new StringBuilder().append("coloName:")
+        .append(coloName)
+        .append(", ")
+        .append("isParent:")
         .append(isParent)
         .append(", ")
         .append("sslToKafka:")
@@ -158,6 +163,10 @@ public class VeniceControllerCreateOptions {
     return authorizerService;
   }
 
+  public String getColoName() {
+    return coloName;
+  }
+
   public static class Builder {
     private final String[] clusterNames;
     private final KafkaBrokerWrapper kafkaBroker;
@@ -173,6 +182,7 @@ public class VeniceControllerCreateOptions {
     private VeniceControllerWrapper[] childControllers = null;
     private Properties extraProperties = new Properties();
     private AuthorizerService authorizerService;
+    private String coloName = "";
 
     public Builder(String[] clusterNames, KafkaBrokerWrapper kafkaBroker) {
       this.clusterNames = clusterNames;
@@ -236,6 +246,11 @@ public class VeniceControllerCreateOptions {
 
     public Builder authorizerService(AuthorizerService authorizerService) {
       this.authorizerService = authorizerService;
+      return this;
+    }
+
+    public Builder coloName(String coloName) {
+      this.coloName = coloName;
       return this;
     }
 
