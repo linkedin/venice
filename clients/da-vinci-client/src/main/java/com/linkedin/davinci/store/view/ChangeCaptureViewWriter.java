@@ -157,9 +157,7 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
 
     // Build key/value Serializers for the kafka producer
     VeniceWriterOptions.Builder configBuilder = new VeniceWriterOptions.Builder(changeCaptureTopicName);
-    VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(keySchema);
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(RecordChangeEvent.getClassSchema());
-    // configBuilder.setKeySerializer(keySerializer);
     configBuilder.setValueSerializer(valueSerializer);
 
     // Set writer properties based on the store version config

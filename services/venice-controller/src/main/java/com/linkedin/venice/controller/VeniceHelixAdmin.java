@@ -717,7 +717,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public boolean isResourceStillAlive(String resourceName) {
-    if (!Version.isVersionTopicOrStreamReprocessingTopic(resourceName)) {
+    if (!Version.isATopicThatIsVersioned(resourceName)) {
       throw new VeniceException("Resource name: " + resourceName + " is invalid");
     }
     String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
@@ -1971,6 +1971,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if (viewConfigs == null || viewConfigs.isEmpty()) {
       return;
     }
+
+    // Construct Kafka topics
+    // TODO: Today we only have support for creating Kafka topics as a resource for a given view, but later we would
+    // like
+    // to add support for potentially other resource types (maybe helix RG's as an example?)
     Map<String, VeniceProperties> topicNamesAndConfigs = new HashMap<>();
     for (ViewConfig rawView: viewConfigs.values()) {
       VeniceView adminView =
@@ -1989,6 +1994,30 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           kafkaTopicConfigs.getBoolean(LOG_COMPACTION_ENABLED),
           kafkaTopicConfigs.getOptionalInt(KAFKA_MIN_IN_SYNC_REPLICAS),
           kafkaTopicConfigs.getBoolean(USE_FAST_KAFKA_OPERATION_TIMEOUT));
+    }
+  }
+
+  private void cleanUpViewResources(Properties params, Store store, int version) {
+    Map<String, ViewConfig> viewConfigs = store.getViewConfigs();
+    if (viewConfigs == null || viewConfigs.isEmpty()) {
+      return;
+    }
+
+    // Deconstruct Kafka topics
+    // TODO: Today we only have support for Kafka topics as a resource for a given view, but later we would like
+    // to add support for potentially other resource types (maybe helix RG's as an example?)
+    Map<String, VeniceProperties> topicNamesAndConfigs = new HashMap<>();
+    for (ViewConfig rawView: viewConfigs.values()) {
+      VeniceView adminView =
+          ViewUtils.getVeniceView(rawView.getViewClassName(), params, store, rawView.getViewParameters());
+      topicNamesAndConfigs.putAll(adminView.getTopicNamesAndConfigsForVersion(version));
+    }
+    Set<String> versionTopicToDelete = topicNamesAndConfigs.keySet()
+        .stream()
+        .filter(t -> VeniceView.parseVersionFromViewTopic(t) == version)
+        .collect(Collectors.toSet());
+    for (String topic: versionTopicToDelete) {
+      truncateKafkaTopic(topic);
     }
   }
 
@@ -2814,6 +2843,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           if (deletedVersion.get().getPushType().isStreamReprocessing()) {
             truncateKafkaTopic(Version.composeStreamReprocessingTopic(storeName, versionNumber));
           }
+          cleanUpViewResources(new Properties(), store, deletedVersion.get().getNumber());
         }
         if (store.isDaVinciPushStatusStoreEnabled() && pushStatusStoreDeleter.isPresent()) {
           pushStatusStoreDeleter.get()
@@ -3119,7 +3149,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Set<String> allTopics = getTopicManager().listTopics();
     Set<String> allTopicsRelatedToThisStore = allTopics.stream()
         /** Exclude RT buffer topics, admin topics and all other special topics */
-        .filter(t -> Version.isVersionTopicOrStreamReprocessingTopic(t))
+        .filter(t -> Version.isATopicThatIsVersioned(t))
         /** Keep only those topics pertaining to the store in question */
         .filter(t -> Version.parseStoreFromKafkaTopicName(t).equals(store.getName()))
         .collect(Collectors.toSet());
@@ -3162,7 +3192,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (truncateKafkaTopic(t, topicConfigs)) {
           ++numberOfNewTopicsMarkedForDelete;
         }
-        deleteHelixResource(clusterName, t);
+        if (!VeniceView.isViewTopic(t)) {
+          deleteHelixResource(clusterName, t);
+        }
       }
       LOGGER.info("Deleted {} old HelixResources for store: {}.", numberOfNewTopicsMarkedForDelete, store.getName());
       LOGGER.info(
@@ -4343,7 +4375,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   static Map<String, StoreViewConfigRecord> mergeNewViewConfigsIntoOldConfigs(
       Store oldStore,
-      Map<String, String> viewParameters) {
+      Map<String, String> viewParameters) throws VeniceException {
     // TODO: This should do some kind of merge logic based on what kind of views are being set up.
     // since we only support one kind of view, we just overwrite the entire map. Merging logic should
     // be some heuristic based on the type of view. For example, we may want multiple different kinds

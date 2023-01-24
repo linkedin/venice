@@ -242,27 +242,6 @@ public class RealTimeTopicSwitcher {
         || ((nextStoreVersion.getViewConfigs() != null) && !nextStoreVersion.getViewConfigs().isEmpty());
   }
 
-  public boolean hasHybridTopics(Store store, Version nextStoreVersion, Version previousStoreVersion) {
-    HybridStoreConfig hybridStoreConfig;
-    if (nextStoreVersion.isUseVersionLevelHybridConfig()) {
-      hybridStoreConfig = nextStoreVersion.getHybridStoreConfig();
-    } else {
-      hybridStoreConfig = store.getHybridStoreConfig();
-    }
-    if (hybridStoreConfig != null) {
-      return true;
-    }
-    if (previousStoreVersion.isUseVersionLevelHybridConfig()) {
-      hybridStoreConfig = previousStoreVersion.getHybridStoreConfig();
-    } else {
-      hybridStoreConfig = store.getHybridStoreConfig();
-    }
-    if (hybridStoreConfig != null) {
-      return true;
-    }
-    return false;
-  }
-
   public void switchToRealTimeTopic(
       String realTimeTopicName,
       String topicWhereToSendTheTopicSwitch,

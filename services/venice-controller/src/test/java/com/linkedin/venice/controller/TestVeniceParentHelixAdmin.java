@@ -2175,7 +2175,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     topics.add(storeName + "_v8");
     topics.add(storeName + "_v5");
     topics.add(storeName + "_v7");
-    doReturn(topics).when(mockParentAdmin).existingTopicsForStore(storeName);
+    doReturn(topics).when(mockParentAdmin).existingVersionTopicsForStore(storeName);
     // isTopicTruncated will return false for other topics
     doReturn(true).when(mockParentAdmin).isTopicTruncated(storeName + "_v8");
     doCallRealMethod().when(mockParentAdmin).truncateTopicsBasedOnMaxErroredTopicNumToKeep(any(), anyBoolean(), any());
@@ -2201,7 +2201,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     topics1.add(storeName1 + "_v8");
     topics1.add(storeName1 + "_v5");
     topics1.add(storeName1 + "_v7");
-    doReturn(topics1).when(mockParentAdmin).existingTopicsForStore(storeName1);
+    doReturn(topics1).when(mockParentAdmin).existingVersionTopicsForStore(storeName1);
     doReturn(true).when(mockParentAdmin).isTopicTruncated(storeName1 + "_v10");
     doReturn(true).when(mockParentAdmin).isTopicTruncated(storeName1 + "_v7");
     doReturn(true).when(mockParentAdmin).isTopicTruncated(storeName1 + "_v8");

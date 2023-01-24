@@ -1830,7 +1830,6 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     try {
       KafkaKey kafkaKey = consumerRecord.key();
       KafkaMessageEnvelope kafkaValue = consumerRecord.value();
-
       /**
        * partitionConsumptionState must be in a valid state and no error reported. This is made sure by calling
        * {@link shouldProcessRecord} before processing any record.
@@ -2061,6 +2060,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 kafkaClusterId,
                 beforeProcessingRecordTimestamp);
             break;
+          case VERSION_SWAP:
+            return DelegateConsumerRecordResult.QUEUED_TO_DRAINER;
         }
         if (!isSegmentControlMsg(controlMessageType)) {
           LOGGER.info(
