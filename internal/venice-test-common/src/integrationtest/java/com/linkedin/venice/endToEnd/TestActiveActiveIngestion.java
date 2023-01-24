@@ -164,12 +164,20 @@ public class TestActiveActiveIngestion {
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
     TestWriteUtils.runPushJob("Run push job", props);
 
-    // Run Samza job to send PUT and DELETE requests.
-    runSamzaStreamJob(storeName, null, 10, 10, 0);
+    Map<String, String> samzaConfig = getSamzaConfig(storeName);
+    VeniceSystemFactory factory = new VeniceSystemFactory();
     // Use a unique key for DELETE with RMD validation
     int deleteWithRmdKeyIndex = 1000;
-    // Produce a DELETE record with large timestamp
-    produceRecordWithLogicalTimestamp(storeName, deleteWithRmdKeyIndex, 1000, true);
+
+    try (
+        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
+      veniceProducer.start();
+      // Run Samza job to send PUT and DELETE requests.
+      runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 0);
+      // Produce a DELETE record with large timestamp
+      produceRecordWithLogicalTimestamp(veniceProducer, storeName, deleteWithRmdKeyIndex, 1000, true);
+    }
+
     try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
             .setVeniceURL(clusterWrapper.getRandomRouterURL())
@@ -222,11 +230,16 @@ public class TestActiveActiveIngestion {
         }
       });
     }
-    // Produce a new PUT with smaller logical timestamp, it is expected to be ignored as there was a DELETE with larger
-    // timestamp
-    produceRecordWithLogicalTimestamp(storeName, deleteWithRmdKeyIndex, 2, false);
-    // Produce another record to the same partition to make sure the above PUT is processed during validation stage.
-    produceRecordWithLogicalTimestamp(storeName, deleteWithRmdKeyIndex + 1, 1, false);
+    try (
+        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
+      veniceProducer.start();
+      // Produce a new PUT with smaller logical timestamp, it is expected to be ignored as there was a DELETE with
+      // larger
+      // timestamp
+      produceRecordWithLogicalTimestamp(veniceProducer, storeName, deleteWithRmdKeyIndex, 2, false);
+      // Produce another record to the same partition to make sure the above PUT is processed during validation stage.
+      produceRecordWithLogicalTimestamp(veniceProducer, storeName, deleteWithRmdKeyIndex + 1, 1, false);
+    }
     try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
             .setVeniceURL(clusterWrapper.getRandomRouterURL())
@@ -258,8 +271,12 @@ public class TestActiveActiveIngestion {
     mockTimestampInMs.add(past.toEpochMilli());
     Time mockTime = new MockCircularTime(mockTimestampInMs);
 
-    // run samza to stream put and delete
-    runSamzaStreamJob(storeName, mockTime, 10, 10, 20);
+    try (
+        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
+      veniceProducer.start();
+      // run samza to stream put and delete
+      runSamzaStreamJob(veniceProducer, storeName, mockTime, 10, 10, 20);
+    }
 
     TestWriteUtils.runPushJob("Run repush job with TTL", props);
     TestUtils.waitForNonDeterministicAssertion(
@@ -380,48 +397,42 @@ public class TestActiveActiveIngestion {
     });
   }
 
-  private void runSamzaStreamJob(String storeName, Time mockedTime, int numPuts, int numDels, int startIdx) {
-    Map<String, String> samzaConfig = getSamzaConfig(storeName);
-    VeniceSystemFactory factory = new VeniceSystemFactory();
-
-    try (
-        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
-      veniceProducer.start();
-      // send puts
-      for (int i = startIdx; i < startIdx + numPuts; i++) {
-        sendStreamingRecord(
-            veniceProducer,
-            storeName,
-            Integer.toString(i),
-            "stream_" + i,
-            mockedTime == null ? null : mockedTime.getMilliseconds());
-      }
-      // send deletes
-      for (int i = startIdx + numPuts; i < startIdx + numPuts + numDels; i++) {
-        sendStreamingDeleteRecord(
-            veniceProducer,
-            storeName,
-            Integer.toString(i),
-            mockedTime == null ? null : mockedTime.getMilliseconds());
-      }
+  private void runSamzaStreamJob(
+      VeniceSystemProducer veniceProducer,
+      String storeName,
+      Time mockedTime,
+      int numPuts,
+      int numDels,
+      int startIdx) {
+    // Send PUT requests.
+    for (int i = startIdx; i < startIdx + numPuts; i++) {
+      sendStreamingRecord(
+          veniceProducer,
+          storeName,
+          Integer.toString(i),
+          "stream_" + i,
+          mockedTime == null ? null : mockedTime.getMilliseconds());
+    }
+    // Send DELETE requests.
+    for (int i = startIdx + numPuts; i < startIdx + numPuts + numDels; i++) {
+      sendStreamingDeleteRecord(
+          veniceProducer,
+          storeName,
+          Integer.toString(i),
+          mockedTime == null ? null : mockedTime.getMilliseconds());
     }
   }
 
   private void produceRecordWithLogicalTimestamp(
+      VeniceSystemProducer veniceProducer,
       String storeName,
       int index,
       long logicalTimestamp,
       boolean isDeleteOperation) {
-    Map<String, String> samzaConfig = getSamzaConfig(storeName);
-    VeniceSystemFactory factory = new VeniceSystemFactory();
-    try (
-        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
-      veniceProducer.start();
-      if (isDeleteOperation) {
-        sendStreamingDeleteRecord(veniceProducer, storeName, Integer.toString(index), logicalTimestamp);
-      } else {
-        sendStreamingRecord(veniceProducer, storeName, Integer.toString(index), "stream_" + index, logicalTimestamp);
-      }
+    if (isDeleteOperation) {
+      sendStreamingDeleteRecord(veniceProducer, storeName, Integer.toString(index), logicalTimestamp);
+    } else {
+      sendStreamingRecord(veniceProducer, storeName, Integer.toString(index), "stream_" + index, logicalTimestamp);
     }
   }
 
