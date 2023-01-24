@@ -158,13 +158,26 @@ public class TestActiveActiveIngestion {
         .setHybridRewindSeconds(360)
         .setHybridOffsetLagThreshold(8)
         .setChunkingEnabled(isChunkingEnabled)
-        .setNativeReplicationEnabled(true);
+        .setNativeReplicationEnabled(true)
+        .setPartitionCount(1);
+    MetricsRepository metricsRepository = new MetricsRepository();
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
-
     TestWriteUtils.runPushJob("Run push job", props);
 
-    // run samza to stream put and delete
+    // Run Samza job to send PUT and DELETE requests.
     runSamzaStreamJob(storeName, null, 10, 10, 0);
+    // Use a unique key for DELETE with RMD validation
+    int deleteWithRmdKeyIndex = 1000;
+    // Produce a DELETE record with large timestamp
+    produceRecordWithLogicalTimestamp(storeName, deleteWithRmdKeyIndex, 1000, true);
+    try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName)
+            .setVeniceURL(clusterWrapper.getRandomRouterURL())
+            .setMetricsRepository(metricsRepository))) {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        Assert.assertNull(client.get(Integer.toString(deleteWithRmdKeyIndex)).get());
+      });
+    }
 
     // run repush
     props.setProperty(SOURCE_KAFKA, "true");
@@ -182,7 +195,6 @@ public class TestActiveActiveIngestion {
     clusterWrapper.refreshAllRouterMetaData();
 
     // Validate repush from version 2
-    MetricsRepository metricsRepository = new MetricsRepository();
     try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
             .setVeniceURL(clusterWrapper.getRandomRouterURL())
@@ -208,6 +220,22 @@ public class TestActiveActiveIngestion {
           Assert.assertNotNull(value);
           Assert.assertEquals(value.toString(), "test_name_" + i);
         }
+      });
+    }
+    // Produce a new PUT with smaller logical timestamp, it is expected to be ignored as there was a DELETE with larger
+    // timestamp
+    produceRecordWithLogicalTimestamp(storeName, deleteWithRmdKeyIndex, 2, false);
+    // Produce another record to the same partition to make sure the above PUT is processed during validation stage.
+    produceRecordWithLogicalTimestamp(storeName, deleteWithRmdKeyIndex + 1, 1, false);
+    try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName)
+            .setVeniceURL(clusterWrapper.getRandomRouterURL())
+            .setMetricsRepository(metricsRepository))) {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        Assert.assertNotNull(client.get(Integer.toString(deleteWithRmdKeyIndex + 1)).get());
+      });
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        Assert.assertNull(client.get(Integer.toString(deleteWithRmdKeyIndex)).get());
       });
     }
 
@@ -375,6 +403,24 @@ public class TestActiveActiveIngestion {
             storeName,
             Integer.toString(i),
             mockedTime == null ? null : mockedTime.getMilliseconds());
+      }
+    }
+  }
+
+  private void produceRecordWithLogicalTimestamp(
+      String storeName,
+      int index,
+      long logicalTimestamp,
+      boolean isDeleteOperation) {
+    Map<String, String> samzaConfig = getSamzaConfig(storeName);
+    VeniceSystemFactory factory = new VeniceSystemFactory();
+    try (
+        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
+      veniceProducer.start();
+      if (isDeleteOperation) {
+        sendStreamingDeleteRecord(veniceProducer, storeName, Integer.toString(index), logicalTimestamp);
+      } else {
+        sendStreamingRecord(veniceProducer, storeName, Integer.toString(index), "stream_" + index, logicalTimestamp);
       }
     }
   }
