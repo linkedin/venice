@@ -96,6 +96,15 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
       MRJobCounterHelper.incrRepushTtlFilterCount(reporter, 1L);
       return null;
     } else {
+      if (value.getReplicationMetadataPayload().remaining() == 0) {
+        return new VeniceWriterMessage(
+            keyBytes,
+            value.getBytes(),
+            value.getSchemaID(),
+            getCallback(),
+            isEnableWriteCompute(),
+            getDerivedValueSchemaId());
+      }
       return new VeniceWriterMessage(
           keyBytes,
           value.getBytes(),
