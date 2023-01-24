@@ -1,6 +1,10 @@
 package com.linkedin.davinci.ingestion.isolated;
 
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_REQUEST_TIMEOUT_SECONDS;
+
+import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.HttpClientTransport;
+import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionReportType;
@@ -12,14 +16,18 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * IsolatedIngestionRequestClient sends requests to monitor service in main process and retrieves responses.
+ * This class sends requests to monitor service in main process and retrieves responses.
  */
 public class IsolatedIngestionRequestClient implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(IsolatedIngestionRequestClient.class);
 
   private final HttpClientTransport httpClientTransport;
 
-  public IsolatedIngestionRequestClient(Optional<SSLFactory> sslFactory, int port, int requestTimeoutInSeconds) {
+  public IsolatedIngestionRequestClient(VeniceConfigLoader configLoader) {
+    Optional<SSLFactory> sslFactory = IsolatedIngestionUtils.getSSLFactory(configLoader);
+    int port = configLoader.getVeniceServerConfig().getIngestionApplicationPort();
+    int requestTimeoutInSeconds =
+        configLoader.getCombinedProperties().getInt(SERVER_INGESTION_ISOLATION_REQUEST_TIMEOUT_SECONDS, 120);
     httpClientTransport = new HttpClientTransport(sslFactory, port, requestTimeoutInSeconds);
   }
 
