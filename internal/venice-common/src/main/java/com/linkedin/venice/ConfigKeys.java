@@ -646,9 +646,6 @@ public class ConfigKeys {
   public static final String SERVER_INGESTION_ISOLATION_STATS_CLASS_LIST =
       "server.ingestion.isolation.stats.class.list";
 
-  public static final String SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS =
-      "server.ingestion.isolation.heartbeat.timout.ms";
-
   public static final String SERVER_INGESTION_ISOLATION_SSL_ENABLED = "server.ingestion.isolation.ssl.enabled";
 
   public static final String SERVER_INGESTION_ISOLATION_ACL_ENABLED = "server.ingestion.isolation.acl.enabled";
@@ -660,8 +657,17 @@ public class ConfigKeys {
    */
   public static final String SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST = "server.forked.process.jvm.arg.list";
 
+  public static final String SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_MS =
+      "server.ingestion.isolation.connection.timout.ms";
+
   public static final String SERVER_INGESTION_ISOLATION_REQUEST_TIMEOUT_SECONDS =
       "server.ingestion.isolation.request.timout.seconds";
+
+  public static final String SERVER_INGESTION_ISOLATION_HEARTBEAT_REQUEST_TIMEOUT_SECONDS =
+      "server.ingestion.isolation.heartbeat.request.timout.seconds";
+
+  public static final String SERVER_INGESTION_ISOLATION_METRIC_REQUEST_TIMEOUT_SECONDS =
+      "server.ingestion.isolation.metric.request.timout.seconds";
 
   /**
    * whether to enable checksum verification in the ingestion path from kafka to database persistency. If enabled it will

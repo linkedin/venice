@@ -6,7 +6,7 @@ import static com.linkedin.venice.ConfigKeys.D2_ZK_HOSTS_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER;
-import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_SERVICE_PORT;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.VENICE_PARTITIONERS;
@@ -17,6 +17,8 @@ import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJ
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithIntToStringSchema;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotEquals;
@@ -36,6 +38,7 @@ import com.linkedin.davinci.client.NonLocalAccessException;
 import com.linkedin.davinci.client.NonLocalAccessPolicy;
 import com.linkedin.davinci.client.StorageClass;
 import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
+import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.ingestion.main.MainIngestionRequestClient;
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
@@ -360,7 +363,7 @@ public class DaVinciClientTest {
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(DEFAULT_VALUE_SCHEMA);
 
     Map<String, Object> extraBackendConfigMap = TestUtils.getIngestionIsolationPropertyMap();
-    extraBackendConfigMap.put(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, 5 * Time.MS_PER_SECOND);
+    extraBackendConfigMap.put(SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_MS, 5 * Time.MS_PER_SECOND);
 
     DaVinciTestContext<Integer, Integer> daVinciTestContext =
         ServiceFactory.getGenericAvroDaVinciFactoryAndClientWithRetries(
@@ -406,8 +409,13 @@ public class DaVinciClientTest {
       dummyOffsetMetadata.partitionId = 0;
       dummyOffsetMetadata.payload =
           ByteBuffer.wrap(new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer()).toBytes());
-      MainIngestionRequestClient requestClient =
-          new MainIngestionRequestClient(Optional.empty(), isolatedIngestionServicePort, 120);
+      VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+      when(serverConfig.getIngestionServicePort()).thenReturn(12345);
+      VeniceConfigLoader configLoader = mock(VeniceConfigLoader.class);
+      when(configLoader.getVeniceServerConfig()).thenReturn(serverConfig);
+      VeniceProperties combinedProperties = mock(VeniceProperties.class);
+      when(configLoader.getCombinedProperties()).thenReturn(combinedProperties);
+      MainIngestionRequestClient requestClient = new MainIngestionRequestClient(configLoader);
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
         assertTrue(requestClient.updateMetadata(dummyOffsetMetadata));
       });
