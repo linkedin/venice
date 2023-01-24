@@ -188,4 +188,32 @@ public class ReplicaStatus {
     String[] parts = replicaId.split(":");
     return parts[parts.length - 1];
   }
+
+  /**
+   * @return the start status snapshot from the status history.
+   */
+  public StatusSnapshot findStartStatus() {
+    StatusSnapshot result = null;
+    for (StatusSnapshot status: statusHistory) {
+      if (status.getStatus() == STARTED && (result == null
+          || LocalDateTime.parse(status.getTime()).isBefore(LocalDateTime.parse(result.getTime())))) {
+        result = status;
+      }
+    }
+    return result;
+  }
+
+  /**
+   * @return the completed status snapshot from the status history.
+   */
+  public StatusSnapshot findCompleteStatus() {
+    StatusSnapshot result = null;
+    for (StatusSnapshot status: statusHistory) {
+      if (status.getStatus() == COMPLETED
+          && (result == null || LocalDateTime.parse(status.getTime()).isAfter(LocalDateTime.parse(result.getTime())))) {
+        result = status;
+      }
+    }
+    return result;
+  }
 }

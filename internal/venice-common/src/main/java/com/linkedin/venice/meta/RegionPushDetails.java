@@ -1,8 +1,11 @@
 package com.linkedin.venice.meta;
 
+import com.linkedin.venice.pushmonitor.OfflinePushStatus;
+import com.linkedin.venice.pushmonitor.PartitionStatus;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.List;
 
 
 public class RegionPushDetails {
@@ -14,6 +17,23 @@ public class RegionPushDetails {
   private String errorMessage = null;
   private ArrayList<Integer> versions = new ArrayList<>();
   private Integer currentVersion = -1;
+  private List<PartitionDetail> partitionDetails = new ArrayList<>();
+
+  public List<PartitionDetail> getPartitionDetails() {
+    return partitionDetails;
+  }
+
+  public void setPartitionDetails(List<PartitionDetail> partitionDetails) {
+    this.partitionDetails = partitionDetails;
+  }
+
+  public ArrayList<Integer> getVersions() {
+    return versions;
+  }
+
+  public void setVersions(ArrayList<Integer> versions) {
+    this.versions = versions;
+  }
 
   public Integer getCurrentVersion() {
     return currentVersion;
@@ -23,8 +43,8 @@ public class RegionPushDetails {
     this.currentVersion = currentVersion;
   }
 
-  public RegionPushDetails(String _regionName) {
-    setRegionName(_regionName);
+  public RegionPushDetails(String regionName) {
+    this.regionName = regionName;
   }
 
   public RegionPushDetails() {
@@ -89,12 +109,29 @@ public class RegionPushDetails {
     this.errorMessage = errorMessage;
   }
 
-  public ArrayList<Integer> getVersions() {
-    return versions;
+  public void addVersion(int version) {
+    versions.add(version);
   }
 
-  public void setVersions(ArrayList<Integer> versions) {
-    this.versions = (ArrayList<Integer>) versions.clone();
+  public void addPartitionDetails(final OfflinePushStatus status) {
+    int numOfPartition = status.getNumberOfPartition();
+    for (int pid = 0; pid < numOfPartition; pid++) {
+      PartitionStatus partition = status.getPartitionStatus(pid);
+      if (partition == null) {
+        continue;
+      }
+      PartitionDetail pDetail = new PartitionDetail(partition.getPartitionId());
+      pDetail.addReplicaDetails(partition);
+      partitionDetails.add(pDetail);
+    }
   }
 
+  @Override
+  public String toString() {
+    return "RegionPushDetails{" + "regionName='" + regionName + '\'' + ", pushStartLocalDateTime='"
+        + pushStartLocalDateTime + '\'' + ", pushEndLocalDateTime='" + pushEndLocalDateTime + '\'' + ", dataAge='"
+        + dataAge + '\'' + ", latestFailedPush='" + latestFailedPush + '\'' + ", errorMessage='" + errorMessage + '\''
+        + ", versions=" + versions + ", currentVersion=" + currentVersion + ", partitionDetails=" + partitionDetails
+        + '}';
+  }
 }

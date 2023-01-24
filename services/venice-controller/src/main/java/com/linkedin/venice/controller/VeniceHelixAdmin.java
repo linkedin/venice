@@ -6684,7 +6684,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   @Override
-  public Map<String, RegionPushDetails> listStorePushInfo(String clusterName, String storeName) {
+  public Map<String, RegionPushDetails> listStorePushInfo(
+      String clusterName,
+      String storeName,
+      boolean isPartitionDetailEnabled) {
     throw new UnsupportedOperationException("This function has not been implemented.");
   }
 
@@ -6692,7 +6695,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * @return <code>RegionPushDetails</code> object containing the specified store's push status.
    */
   @Override
-  public RegionPushDetails getRegionPushDetails(String clusterName, String storeName) {
+  public RegionPushDetails getRegionPushDetails(String clusterName, String storeName, boolean isPartitionDetailAdded) {
     RegionPushDetails ret = new RegionPushDetails();
     StoreInfo s = StoreInfo.fromStore(getStore(clusterName, storeName));
 
@@ -6704,23 +6707,36 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     OfflinePushStatus zkData = accessor.getOfflinePushStatusAndItsPartitionStatuses(kafkaTopic);
 
     for (StatusSnapshot status: zkData.getStatusHistory()) {
-      LOGGER.error(status.getTime());
-      LocalDateTime timestamp = LocalDateTime.parse(status.getTime());
-      if (status.getStatus() == ExecutionStatus.COMPLETED && (ret.getPushEndTimestamp() == null
-          || timestamp.compareTo(LocalDateTime.parse(ret.getPushEndTimestamp())) > 0)) {
-        ret.setPushEndTimestamp(timestamp.toString());
-      } else if (status.getStatus() == ExecutionStatus.STARTED && (ret.getPushStartTimestamp()) == null
-          || timestamp.compareTo(LocalDateTime.parse(ret.getPushStartTimestamp())) <= 0) {
-        ret.setPushStartTimestamp(timestamp.toString());
+      if (shouldUpdateEndTime(ret, status)) {
+        ret.setPushEndTimestamp(status.getTime());
+      } else if (shouldUpdateStartTime(ret, status)) {
+        ret.setPushStartTimestamp(status.getTime());
       } else if (status.getStatus() == ExecutionStatus.ERROR) {
         ret.setErrorMessage(accessor.getOfflinePushStatusAndItsPartitionStatuses(kafkaTopic).getStatusDetails());
-        ret.setLatestFailedPush(timestamp.toString());
+        ret.setLatestFailedPush(status.getTime());
       }
     }
-    for (Version v: s.getVersions())
-      ret.getVersions().add(v.getNumber());
+
+    for (Version v: s.getVersions()) {
+      ret.addVersion(v.getNumber());
+    }
     ret.setCurrentVersion(s.getCurrentVersion());
+    if (isPartitionDetailAdded) {
+      ret.addPartitionDetails(zkData);
+    }
     return ret;
+  }
+
+  private boolean shouldUpdateStartTime(final RegionPushDetails curResult, final StatusSnapshot status) {
+    LocalDateTime timestamp = LocalDateTime.parse(status.getTime());
+    return status.getStatus() == ExecutionStatus.STARTED && (curResult.getPushStartTimestamp() == null
+        || timestamp.isBefore(LocalDateTime.parse(curResult.getPushStartTimestamp())));
+  }
+
+  private boolean shouldUpdateEndTime(final RegionPushDetails curResult, final StatusSnapshot status) {
+    LocalDateTime timestamp = LocalDateTime.parse(status.getTime());
+    return status.getStatus() == ExecutionStatus.COMPLETED && (curResult.getPushEndTimestamp() == null
+        || timestamp.isAfter(LocalDateTime.parse(curResult.getPushEndTimestamp())));
   }
 
   /**

@@ -2273,8 +2273,12 @@ public class AdminTool {
     String urlParam = getRequiredArgument(cmd, Arg.URL);
     String clusterParam = getRequiredArgument(cmd, Arg.CLUSTER);
     String storeParam = getRequiredArgument(cmd, Arg.STORE);
+    boolean isPartitionDetailEnabled = Optional.ofNullable(getOptionalArgument(cmd, Arg.PARTITION_DETAIL_ENABLED))
+        .map(Boolean::parseBoolean)
+        .orElse(false);
 
-    StoreHealthAuditResponse response = controllerClient.listStorePushInfo(clusterParam, urlParam, storeParam);
+    StoreHealthAuditResponse response =
+        controllerClient.listStorePushInfo(clusterParam, urlParam, storeParam, isPartitionDetailEnabled);
     printObject(response);
   }
 

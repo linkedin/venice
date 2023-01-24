@@ -137,6 +137,8 @@ public class ControllerApiConstants {
 
   public static final String REPLICATION_METADATA_VERSION_ID = "replication_metadata_version_id";
 
+  public static final String PARTITION_DETAIL_ENABLED = "partition_detail_enabled";
+
   /**
    * How many records that one server could consume from Kafka at most in one second from the specified regions.
    * If the consume rate reached this quota, the consumption thread will be blocked until there is the available quota.

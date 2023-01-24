@@ -31,6 +31,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.OPERATION
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OWNER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITIONERS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION_COUNT;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION_DETAIL_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_OWNERS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_QUOTA;
@@ -994,19 +995,30 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.GET_STORE_LARGEST_USED_VERSION, params, VersionResponse.class);
   }
 
-  public RegionPushDetailsResponse getRegionPushDetails(String storeName, String clusterName) {
-    QueryParams params = newParams().add(CLUSTER, clusterName).add(NAME, storeName);
+  public RegionPushDetailsResponse getRegionPushDetails(
+      String storeName,
+      String clusterName,
+      boolean isPartitionDetailEnabled) {
+    QueryParams params = newParams().add(CLUSTER, clusterName)
+        .add(NAME, storeName)
+        .add(PARTITION_DETAIL_ENABLED, isPartitionDetailEnabled);
     return request(ControllerRoute.GET_REGION_PUSH_DETAILS, params, RegionPushDetailsResponse.class);
   }
 
-  public StoreHealthAuditResponse listStorePushInfo(String clusterName, String parentControllerUrl, String storeName) {
-    QueryParams params = newParams().add(CLUSTER, clusterName).add(NAME, storeName);
+  public StoreHealthAuditResponse listStorePushInfo(
+      String clusterName,
+      String parentControllerUrl,
+      String storeName,
+      boolean isPartitionDetailEnabled) {
+    QueryParams params = newParams().add(CLUSTER, clusterName)
+        .add(NAME, storeName)
+        .add(PARTITION_DETAIL_ENABLED, isPartitionDetailEnabled);
     try (ControllerTransport transport = new ControllerTransport(sslFactory)) {
       return transport
           .request(parentControllerUrl, ControllerRoute.LIST_STORE_PUSH_INFO, params, StoreHealthAuditResponse.class);
     } catch (Exception e) {
       return makeErrorResponse(
-          "controllerapi:ControllerClient:listStorePushInfo - " + e.toString(),
+          "controllerapi:ControllerClient:listStorePushInfo - ",
           e,
           StoreHealthAuditResponse.class);
     }
