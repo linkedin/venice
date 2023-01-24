@@ -3,7 +3,9 @@ package com.linkedin.davinci.ingestion.main;
 import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.buildAndSaveConfigsForForkedIngestionProcess;
 import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.getDummyCommand;
 import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.saveForkedIngestionKafkaClusterMapConfig;
-import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_HEARTBEAT_REQUEST_TIMEOUT_SECONDS;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_METRIC_REQUEST_TIMEOUT_SECONDS;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_REQUEST_TIMEOUT_SECONDS;
 import static com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType.START_CONSUMPTION;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
