@@ -661,8 +661,8 @@ public class ConfigKeys {
    * Timeout for connection between main process and forked ingestion process. If heartbeat is not refreshed within this
    * timeout, both processes should act to reconstruct the state in order to restore connection and service.
    */
-  public static final String SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_MS =
-      "server.ingestion.isolation.connection.timeout.ms";
+  public static final String SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_SECONDS =
+      "server.ingestion.isolation.connection.timeout.seconds";
 
   /**
    * Timeout for single ingestion command request sent from main process to forked ingestion process.

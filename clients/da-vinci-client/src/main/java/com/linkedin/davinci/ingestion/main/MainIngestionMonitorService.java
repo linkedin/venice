@@ -1,6 +1,6 @@
 package com.linkedin.davinci.ingestion.main;
 
-import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_MS;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_SECONDS;
 import static java.lang.Thread.currentThread;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
@@ -77,7 +77,7 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
    * should (1) Try to kill lingering forked process to release port (2) Respawn new forked ingestion process to continue
    * ingestion work.
    */
-  private long heartbeatTimeoutMs;
+  private long connectionTimeoutMs;
   private volatile long latestHeartbeatTimestamp = -1;
 
   public MainIngestionMonitorService(
@@ -113,8 +113,9 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   public boolean startInner() throws Exception {
     serverFuture = bootstrap.bind(applicationPort).sync();
     LOGGER.info("Report listener service started on port: {}", applicationPort);
-    heartbeatTimeoutMs = configLoader.getCombinedProperties()
-        .getLong(SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_MS, 180 * Time.MS_PER_SECOND);
+    connectionTimeoutMs =
+        configLoader.getCombinedProperties().getLong(SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_SECONDS, 180)
+            * Time.MS_PER_SECOND;
     setupMetricsCollection();
 
     // There is no async process in this function, so we are completely finished with the start-up process.
@@ -247,7 +248,7 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
      * this call. Here we use synchronized modifier and add timeout checking here to make sure we only restart forked
      * process once.
      */
-    if ((System.currentTimeMillis() - latestHeartbeatTimestamp) <= heartbeatTimeoutMs) {
+    if ((System.currentTimeMillis() - latestHeartbeatTimestamp) <= connectionTimeoutMs) {
       return;
     }
     LOGGER.warn(
@@ -297,7 +298,7 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   private void collectIngestionServiceMetrics() {
     long requestTimestamp = System.currentTimeMillis();
     if (metricsClient.collectMetrics(isolatedIngestionProcessStats)) {
-      LOGGER.info(
+      LOGGER.debug(
           "Metric request completed in {} seconds.",
           TimeUnit.MILLISECONDS.toSeconds(System.currentTimeMillis() - requestTimestamp));
     } else {
@@ -329,7 +330,7 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
     }
 
     if (latestHeartbeatTimestamp != -1) {
-      if ((requestTimestamp - latestHeartbeatTimestamp) > heartbeatTimeoutMs) {
+      if ((requestTimestamp - latestHeartbeatTimestamp) > connectionTimeoutMs) {
         tryRestartForkedProcess();
       }
     }

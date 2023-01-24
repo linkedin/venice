@@ -1,7 +1,7 @@
 package com.linkedin.davinci;
 
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
-import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_MS;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_MODE;
 import static com.linkedin.venice.meta.IngestionMode.ISOLATED;
 
@@ -44,8 +44,7 @@ public class DaVinciUserApp {
 
     Map<String, Object> extraBackendConfig = new HashMap<>();
     extraBackendConfig.put(SERVER_INGESTION_MODE, ISOLATED);
-    extraBackendConfig
-        .put(SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_MS, TimeUnit.SECONDS.toMillis(heartbeatTimeoutSeconds));
+    extraBackendConfig.put(SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_SECONDS, heartbeatTimeoutSeconds);
     extraBackendConfig.put(DATA_BASE_PATH, baseDataPath);
 
     DaVinciTestContext<Integer, Integer> daVinciTestContext =
