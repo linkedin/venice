@@ -564,10 +564,12 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
 
     SchemaReader partitionStateSchemaReader = ClientFactory.getSchemaReader(
         ClientConfig.cloneConfig(clientConfig)
-            .setStoreName(AvroProtocolDefinition.PARTITION_STATE.getSystemStoreName()));
+            .setStoreName(AvroProtocolDefinition.PARTITION_STATE.getSystemStoreName()),
+        null);
     SchemaReader storeVersionStateSchemaReader = ClientFactory.getSchemaReader(
         ClientConfig.cloneConfig(clientConfig)
-            .setStoreName(AvroProtocolDefinition.STORE_VERSION_STATE.getSystemStoreName()));
+            .setStoreName(AvroProtocolDefinition.STORE_VERSION_STATE.getSystemStoreName()),
+        null);
     partitionStateSerializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
     partitionStateSerializer.setSchemaReader(partitionStateSchemaReader);
     storeVersionStateSerializer = AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
@@ -634,7 +636,8 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     // Create SchemaReader
     SchemaReader kafkaMessageEnvelopeSchemaReader = ClientFactory.getSchemaReader(
         ClientConfig.cloneConfig(clientConfig)
-            .setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName()));
+            .setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName()),
+        null);
 
     storageMetadataService =
         new StorageEngineMetadataService(storageService.getStorageEngineRepository(), partitionStateSerializer);

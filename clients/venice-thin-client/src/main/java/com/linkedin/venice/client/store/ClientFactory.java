@@ -9,6 +9,7 @@ import com.linkedin.venice.client.store.transport.HttpTransportClient;
 import com.linkedin.venice.client.store.transport.HttpsTransportClient;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.schema.SchemaReader;
+import com.linkedin.venice.service.ICProvider;
 import java.util.Optional;
 import org.apache.avro.specific.SpecificRecord;
 
@@ -70,7 +71,7 @@ public class ClientFactory {
     }
   }
 
-  public static SchemaReader getSchemaReader(ClientConfig clientConfig) {
+  public static SchemaReader getSchemaReader(ClientConfig clientConfig, ICProvider icProvider) {
     /**
      * N.B.: instead of returning a new {@link SchemaReader}, we could instead return
      * {@link AbstractAvroStoreClient#getSchemaReader()}, but then the calling code would
@@ -84,7 +85,8 @@ public class ClientFactory {
     return new RouterBackedSchemaReader(
         () -> new AvroGenericStoreClientImpl<>(getTransportClient(clientConfig), false, clientConfig),
         Optional.empty(),
-        clientConfig.getPreferredSchemaFilter());
+        clientConfig.getPreferredSchemaFilter(),
+        icProvider);
   }
 
   public static StoreSchemaFetcher createStoreSchemaFetcher(ClientConfig clientConfig) {

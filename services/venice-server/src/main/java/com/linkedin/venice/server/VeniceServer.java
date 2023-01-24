@@ -206,10 +206,11 @@ public class VeniceServer {
 
     Optional<SchemaReader> partitionStateSchemaReader = clientConfigForConsumer.map(
         cc -> ClientFactory
-            .getSchemaReader(cc.setStoreName(AvroProtocolDefinition.PARTITION_STATE.getSystemStoreName())));
+            .getSchemaReader(cc.setStoreName(AvroProtocolDefinition.PARTITION_STATE.getSystemStoreName()), icProvider));
     Optional<SchemaReader> storeVersionStateSchemaReader = clientConfigForConsumer.map(
-        cc -> ClientFactory
-            .getSchemaReader(cc.setStoreName(AvroProtocolDefinition.STORE_VERSION_STATE.getSystemStoreName())));
+        cc -> ClientFactory.getSchemaReader(
+            cc.setStoreName(AvroProtocolDefinition.STORE_VERSION_STATE.getSystemStoreName()),
+            icProvider));
     final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
         AvroProtocolDefinition.PARTITION_STATE.getSerializer();
     partitionStateSchemaReader.ifPresent(partitionStateSerializer::setSchemaReader);
@@ -300,11 +301,13 @@ public class VeniceServer {
     storageService.getRocksDBAggregatedStatistics().ifPresent(stat -> new AggRocksDBStats(metricsRepository, stat));
 
     Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader = clientConfigForConsumer.map(
-        cc -> ClientFactory
-            .getSchemaReader(cc.setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName())));
+        cc -> ClientFactory.getSchemaReader(
+            cc.setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName()),
+            icProvider));
     Optional<SchemaReader> metaSystemStoreSchemaReader = clientConfigForConsumer.map(
         cc -> ClientFactory.getSchemaReader(
-            cc.setStoreName(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getSystemStoreName())));
+            cc.setStoreName(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getSystemStoreName()),
+            icProvider));
 
     // verify the current version of the system schemas are registered in ZK before moving ahead
     if (serverConfig.isSchemaPresenceCheckEnabled()) {

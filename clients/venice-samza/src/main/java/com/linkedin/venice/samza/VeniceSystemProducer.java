@@ -378,7 +378,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       clientConfigForKafkaMessageEnvelopeSchemaReader.setD2ServiceName(sysStoreDiscoveryResponse.getD2Service());
       clientConfigForKafkaMessageEnvelopeSchemaReader.setD2Client(childColoD2Client);
       SchemaReader kafkaMessageEnvelopeSchemaReader =
-          ClientFactory.getSchemaReader(clientConfigForKafkaMessageEnvelopeSchemaReader);
+          ClientFactory.getSchemaReader(clientConfigForKafkaMessageEnvelopeSchemaReader, null);
       new SchemaPresenceChecker(kafkaMessageEnvelopeSchemaReader, AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE)
           .verifySchemaVersionPresentOrExit();
       LOGGER.info("Successfully verified the latest protocols at runtime are valid in Venice backend.");
