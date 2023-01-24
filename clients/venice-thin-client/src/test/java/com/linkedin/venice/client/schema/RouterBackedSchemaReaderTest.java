@@ -6,9 +6,11 @@ import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.schema.SchemaReader;
+import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.io.IOException;
 import java.util.Optional;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import org.apache.avro.Schema;
@@ -20,6 +22,12 @@ import org.testng.annotations.Test;
 public class RouterBackedSchemaReaderTest {
   private static final ObjectMapper mapper = ObjectMapperFactory.getInstance();
   private final static int TIMEOUT = 3;
+  private final ICProvider mockICProvider = new ICProvider() {
+    @Override
+    public <T> T call(String traceContext, Callable<T> callable) throws Exception {
+      return callable.call();
+    }
+  };
 
   @Test
   public void testGetKeySchema() throws IOException, ExecutionException, InterruptedException, VeniceClientException {
@@ -247,7 +255,8 @@ public class RouterBackedSchemaReaderTest {
     try (SchemaReader schemaReader = new RouterBackedSchemaReader(
         () -> clientMock,
         Optional.empty(),
-        Optional.of(schema -> schema.toString().equals(valueSchemaStr1)))) {
+        Optional.of(schema -> schema.toString().equals(valueSchemaStr1)),
+        mockICProvider)) {
       Assert.assertEquals(schemaReader.getValueSchema(valueSchemaId1).toString(), valueSchemaStr1);
       Assert.assertEquals(schemaReader.getValueSchema(valueSchemaId2).toString(), valueSchemaStr2);
       Assert.assertEquals(schemaReader.getLatestValueSchema().toString(), valueSchemaStr1);
@@ -256,7 +265,7 @@ public class RouterBackedSchemaReaderTest {
     }
 
     try (SchemaReader schemaReader =
-        new RouterBackedSchemaReader(() -> clientMock, Optional.empty(), Optional.empty())) {
+        new RouterBackedSchemaReader(() -> clientMock, Optional.empty(), Optional.empty(), mockICProvider)) {
       Assert.assertEquals(schemaReader.getValueSchema(valueSchemaId1).toString(), valueSchemaStr1);
       Assert.assertEquals(schemaReader.getValueSchema(valueSchemaId2).toString(), valueSchemaStr2);
       Assert.assertEquals(schemaReader.getLatestValueSchema().toString(), valueSchemaStr2);

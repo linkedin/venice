@@ -669,7 +669,8 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       this.schemaReader = new RouterBackedSchemaReader(
           this::getStoreClientForSchemaReader,
           getReaderSchema(),
-          clientConfig.getPreferredSchemaFilter());
+          clientConfig.getPreferredSchemaFilter(),
+          null);
     }
     warmUpVeniceClient();
   }
