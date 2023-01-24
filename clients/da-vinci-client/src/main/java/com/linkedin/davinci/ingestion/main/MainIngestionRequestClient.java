@@ -43,7 +43,8 @@ public class MainIngestionRequestClient implements Closeable {
       RedundantExceptionFilter.getRedundantExceptionFilter();
 
   private static final int REQUEST_MAX_ATTEMPT = 10;
-  private static final int PERIODIC_REQUEST_TIMEOUT_SECONDS = 5;
+  private static final int HEARTBEAT_REQUEST_TIMEOUT_SECONDS = 5;
+  private static final int METRIC_REQUEST_TIMEOUT_SECONDS = 60;
   private HttpClientTransport httpClientTransport;
 
   public MainIngestionRequestClient(Optional<SSLFactory> sslFactory, int port, int requestTimeoutInSeconds) {
@@ -228,16 +229,11 @@ public class MainIngestionRequestClient implements Closeable {
   public boolean collectMetrics(IsolatedIngestionProcessStats isolatedIngestionProcessStats) {
     try {
       IngestionMetricsReport metricsReport =
-          httpClientTransport.sendRequest(IngestionAction.METRIC, getDummyCommand(), PERIODIC_REQUEST_TIMEOUT_SECONDS);
-      if (LOGGER.isDebugEnabled()) {
-        LOGGER
-            .debug("Collected " + metricsReport.aggregatedMetrics.size() + " metrics from isolated ingestion service.");
-      }
+          httpClientTransport.sendRequest(IngestionAction.METRIC, getDummyCommand(), METRIC_REQUEST_TIMEOUT_SECONDS);
       isolatedIngestionProcessStats.updateMetricMap(metricsReport.aggregatedMetrics);
       return true;
     } catch (Exception e) {
       // Don't spam the server logging.
-      LOGGER.warn("Unable to collect metrics from ingestion service");
       if (!REDUNDANT_EXCEPTION_FILTER.isRedundantException(e.getMessage())) {
         LOGGER.warn(e);
       }
@@ -247,7 +243,7 @@ public class MainIngestionRequestClient implements Closeable {
 
   public boolean sendHeartbeatRequest() {
     try {
-      httpClientTransport.sendRequest(IngestionAction.HEARTBEAT, getDummyCommand(), PERIODIC_REQUEST_TIMEOUT_SECONDS);
+      httpClientTransport.sendRequest(IngestionAction.HEARTBEAT, getDummyCommand(), HEARTBEAT_REQUEST_TIMEOUT_SECONDS);
       return true;
     } catch (Exception e) {
       // Don't spam the server logging.

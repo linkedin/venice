@@ -302,11 +302,14 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
 
   private void collectIngestionServiceMetrics() {
     long requestTimestamp = System.currentTimeMillis();
-    if (!metricsClient.collectMetrics(isolatedIngestionProcessStats)) {
+    if (metricsClient.collectMetrics(isolatedIngestionProcessStats)) {
+      LOGGER.info(
+          "Metric request completed in {} seconds.",
+          TimeUnit.MILLISECONDS.toSeconds(System.currentTimeMillis() - requestTimestamp));
+    } else {
       LOGGER.warn(
-          "Metric request to forked process issued at {}, failed at {}",
-          System.currentTimeMillis(),
-          requestTimestamp);
+          "Unable to collect metrics from ingestion service after {} s.",
+          TimeUnit.MILLISECONDS.toSeconds(System.currentTimeMillis() - requestTimestamp));
     }
   }
 
