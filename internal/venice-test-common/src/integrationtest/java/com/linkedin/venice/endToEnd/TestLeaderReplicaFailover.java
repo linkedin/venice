@@ -154,7 +154,6 @@ public class TestLeaderReplicaFailover {
       }
       veniceWriter.broadcastEndOfPush(Collections.emptyMap());
     }
-    LeaderDoomNotifier.resetFlag();
     // Wait push completed.
     TestUtils.waitForNonDeterministicCompletion(60, TimeUnit.SECONDS, () -> {
       try {
@@ -173,7 +172,7 @@ public class TestLeaderReplicaFailover {
       HelixAdmin admin = new ZKHelixAdmin(clusterWrapper.getZk().getAddress());
       InstanceConfig instanceConfig = admin.getInstanceConfig(clusterName, finalLeader1.getNodeId());
       // disabling for now, its flaky
-      // Assert.assertEquals(instanceConfig.getDisabledPartitionsMap().size(), 1);
+      Assert.assertEquals(instanceConfig.getDisabledPartitionsMap().size(), 1);
     });
 
     // Stop the server

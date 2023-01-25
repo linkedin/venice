@@ -756,7 +756,6 @@ public abstract class AbstractPushMonitorTest {
         "At least one replica already received end_of_push, so we send SOBR and update push status to END_OF_PUSH_RECEIVED");
   }
 
-
   protected class MockStoreCleaner implements StoreCleaner {
     private final ClusterLockManager clusterLockManager;
 
