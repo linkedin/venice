@@ -113,7 +113,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private static final int READ_CYCLE_DELAY_MS = 1000;
   private static final int MAX_DUPLICATE_MESSAGE_LOGS = 20;
   private static final long CONSUMPTION_LAG_UPDATE_INTERVAL_IN_MS = TimeUnit.MINUTES.toMillis(5);
-  public static int IGNORED_CURRENT_VERSION = -1;
+  public static final int IGNORED_CURRENT_VERSION = -1;
 
   /** Used by the storage persona in the admin operations map because the persona operations are not associated with
    * any particular store */

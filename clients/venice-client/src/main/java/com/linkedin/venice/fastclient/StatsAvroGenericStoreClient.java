@@ -6,8 +6,8 @@ import com.linkedin.venice.client.store.AppTimeOutTrackingCompletableFuture;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
 import com.linkedin.venice.fastclient.meta.InstanceHealthMonitor;
-import com.linkedin.venice.fastclient.stats.ClientStats;
 import com.linkedin.venice.fastclient.stats.ClusterStats;
+import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Time;
@@ -28,8 +28,8 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
   private static final Logger LOGGER = LogManager.getLogger(StatsAvroGenericStoreClient.class);
   private static final int TIMEOUT_IN_SECOND = 5;
 
-  private final ClientStats clientStatsForSingleGet;
-  private final ClientStats clientStatsForBatchGet;
+  private final FastClientStats clientStatsForSingleGet;
+  private final FastClientStats clientStatsForBatchGet;
   private final ClusterStats clusterStats;
 
   private final int maxAllowedKeyCntInBatchGetReq;
@@ -94,7 +94,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
       int numberOfKeys,
       CompletableFuture<R> innerFuture,
       long startTimeInNS,
-      ClientStats clientStats) {
+      FastClientStats clientStats) {
     CompletableFuture<R> statFuture =
         recordRequestMetrics(requestContext, numberOfKeys, innerFuture, startTimeInNS, clientStats);
     // Record per replica metric
@@ -108,7 +108,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
       int numberOfKeys,
       CompletableFuture<R> innerFuture,
       long startTimeInNS,
-      ClientStats clientStats) {
+      FastClientStats clientStats) {
 
     return innerFuture.handle((value, throwable) -> {
       double latency = LatencyUtils.getLatencyInMS(startTimeInNS);
@@ -181,7 +181,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
     });
   }
 
-  private void recordPerRouteMetrics(RequestContext requestContext, ClientStats clientStats) {
+  private void recordPerRouteMetrics(RequestContext requestContext, FastClientStats clientStats) {
     final long requestSentTimestampNS = requestContext.requestSentTimestampNS;
     if (requestSentTimestampNS > 0) {
       Map<String, CompletableFuture<HttpStatus>> replicaRequestFuture = requestContext.routeRequestMap;

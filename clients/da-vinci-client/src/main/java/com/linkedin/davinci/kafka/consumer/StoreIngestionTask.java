@@ -1716,9 +1716,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         consumerActionsQueue.remove(action);
         if (state != null && !state.isCompletionReported()) {
           reportError(
-              "Error when processing consumer action: " + action.toString(),
+              "Error when processing consumer action: " + action,
               action.getPartition(),
-              (e instanceof Exception) ? (Exception) e : new VeniceException(e));
+              new VeniceException(e));
         }
       }
     }

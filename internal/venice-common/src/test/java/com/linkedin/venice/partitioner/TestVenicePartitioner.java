@@ -1,7 +1,5 @@
 package com.linkedin.venice.partitioner;
 
-import com.linkedin.venice.kafka.protocol.enums.MessageType;
-import com.linkedin.venice.message.KafkaKey;
 import java.nio.ByteBuffer;
 import org.apache.kafka.common.PartitionInfo;
 import org.testng.Assert;
@@ -22,8 +20,6 @@ public class TestVenicePartitioner {
     VenicePartitioner vp = new DefaultVenicePartitioner();
 
     byte[] keyBytes = "key1".getBytes();
-    KafkaKey key = new KafkaKey(MessageType.PUT, keyBytes); // OperationType doesn't matter. We are just testing the
-                                                            // partitioning.
 
     PartitionInfo[] partitionArray = { new PartitionInfo("", 0, null, null, null),
         new PartitionInfo("", 1, null, null, null), new PartitionInfo("", 2, null, null, null) };

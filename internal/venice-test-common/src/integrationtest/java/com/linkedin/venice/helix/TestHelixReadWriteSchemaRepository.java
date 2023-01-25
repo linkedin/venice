@@ -230,7 +230,7 @@ public class TestHelixReadWriteSchemaRepository {
     createStore(storeName);
     SchemaEntry valueSchema1 = schemaRepo.addValueSchema(storeName, valueSchemaStr1);
     Assert.assertEquals(valueSchema1.getId(), 1);
-    SchemaEntry valueSchema2 = schemaRepo.addValueSchema(storeName, valueSchemaStr2);
+    schemaRepo.addValueSchema(storeName, valueSchemaStr2);
   }
 
   @Test

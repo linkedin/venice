@@ -21,13 +21,13 @@ import org.testng.annotations.Test;
 
 public class TestSslTransportClient {
   @DataProvider(name = "leaderControllerPathProvider")
-  private static Object[][] dataProvider() {
+  public static Object[][] dataProvider() {
     // go/inclusivecode deprecated (alias="leader_controller")
     return new Object[][] { { "master_controller" }, { "leader_controller" } };
   }
 
   @Test(dataProvider = "leaderControllerPathProvider")
-  public void SslTransportClientCanTalkToRouter(String leaderControllerPath)
+  public void testSslTransportClientCanTalkToRouter(String leaderControllerPath)
       throws ExecutionException, InterruptedException, IOException {
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
         MockVeniceRouterWrapper router =

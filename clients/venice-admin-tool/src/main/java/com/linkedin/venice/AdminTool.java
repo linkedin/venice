@@ -2259,6 +2259,7 @@ public class AdminTool {
     Optional<String> storeName = Optional.ofNullable(getOptionalArgument(cmd, Arg.STORE));
     Optional<Integer> versionNum = Optional.ofNullable(getOptionalArgument(cmd, Arg.VERSION)).map(Integer::parseInt);
     ControllerResponse response = controllerClient.wipeCluster(fabric, storeName, versionNum);
+    printObject(response);
   }
 
   private static void listClusterStaleStores(CommandLine cmd) {

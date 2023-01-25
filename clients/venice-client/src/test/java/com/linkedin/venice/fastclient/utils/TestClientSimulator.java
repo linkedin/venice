@@ -274,7 +274,7 @@ public class TestClientSimulator implements Client {
     abstract CompletableFuture<Integer> execute();
   }
 
-  class RequestInfo {
+  static class RequestInfo {
     int requestId;
     String route;
     Map<String, String> keyValues;

@@ -42,12 +42,12 @@ public class VeniceSystemFactoryTest {
   private VeniceClusterWrapper cluster;
 
   @BeforeClass
-  private void setUp() {
+  public void setUp() {
     cluster = ServiceFactory.getVeniceCluster();
   }
 
   @AfterClass
-  private void cleanUp() {
+  public void cleanUp() {
     Utils.closeQuietlyWithErrorLogged(cluster);
   }
 
@@ -99,7 +99,7 @@ public class VeniceSystemFactoryTest {
       // Send the record to Venice using the SystemProducer
       GenericRecord record = new GenericData.Record(Schema.parse(valueSchema));
       record.put("string", "somestring");
-      record.put("number", 3.14);
+      record.put("number", 3.74);
       record.put("intArray", new GenericData.Array<>(intArraySchema, Collections.singletonList(1)));
 
       IntegrationTestPushUtils.sendStreamingRecord(producer, storeName, key, record);
@@ -122,7 +122,7 @@ public class VeniceSystemFactoryTest {
 
         Object numberField = recordFromVenice.get("number");
         assertNotNull(numberField, "'number' field should not be null");
-        assertEquals(numberField, 3.14);
+        assertEquals(numberField, 3.74);
 
         Object intArrayField = recordFromVenice.get("intArray");
         assertEquals(intArrayField, new GenericData.Array<>(intArraySchema, Collections.singletonList(1)));

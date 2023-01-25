@@ -2,8 +2,7 @@ package com.linkedin.davinci.ingestion.isolated;
 
 import static com.linkedin.venice.ConfigKeys.CLUSTER_DISCOVERY_D2_SERVICE;
 import static com.linkedin.venice.ConfigKeys.D2_ZK_HOSTS_ADDRESS;
-import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS;
-import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_REQUEST_TIMEOUT_SECONDS;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_STATS_CLASS_LIST;
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_WAIT_RETRIES_NUM;
@@ -124,7 +123,11 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   private final Map<String, Map<Integer, AtomicBoolean>> topicPartitionSubscriptionMap =
       new VeniceConcurrentHashMap<>();
   private final Map<String, Double> metricsMap = new VeniceConcurrentHashMap<>();
-  private final long heartbeatTimeoutMs;
+  /**
+   * Heartbeat timeout acknowledge disconnection between main and forked processes. After this timeout, forked process
+   * should stop running gracefully.
+   */
+  private final long connectionTimeoutMs;
 
   private ChannelFuture serverFuture;
   private MetricsRepository metricsRepository = null;
@@ -153,8 +156,9 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         IsolatedIngestionUtils.loadForkedIngestionKafkaClusterMapConfig(configBasePath);
     this.configLoader = new VeniceConfigLoader(loadedVeniceProperties, loadedVeniceProperties, kafkaClusterMap);
     this.servicePort = configLoader.getVeniceServerConfig().getIngestionServicePort();
-    this.heartbeatTimeoutMs = configLoader.getCombinedProperties()
-        .getLong(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, 60 * Time.MS_PER_SECOND);
+    this.connectionTimeoutMs =
+        configLoader.getCombinedProperties().getLong(SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_SECONDS, 180)
+            * Time.MS_PER_SECOND;
     // Initialize Netty server.
     Class<? extends ServerChannel> serverSocketChannelClass = NioServerSocketChannel.class;
     bossGroup = new NioEventLoopGroup();
@@ -501,10 +505,10 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
             heartbeatTimeInMs);
       }
 
-      if ((currentTimeMillis - heartbeatTimeInMs) > heartbeatTimeoutMs) {
+      if ((currentTimeMillis - heartbeatTimeInMs) > connectionTimeoutMs) {
         LOGGER.warn(
             "Lost connection to parent process after {} ms, will shutdown the ingestion backend gracefully.",
-            heartbeatTimeoutMs);
+            connectionTimeoutMs);
         isShuttingDown.set(true);
         try {
           stop();
@@ -560,10 +564,12 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
 
     SchemaReader partitionStateSchemaReader = ClientFactory.getSchemaReader(
         ClientConfig.cloneConfig(clientConfig)
-            .setStoreName(AvroProtocolDefinition.PARTITION_STATE.getSystemStoreName()));
+            .setStoreName(AvroProtocolDefinition.PARTITION_STATE.getSystemStoreName()),
+        null);
     SchemaReader storeVersionStateSchemaReader = ClientFactory.getSchemaReader(
         ClientConfig.cloneConfig(clientConfig)
-            .setStoreName(AvroProtocolDefinition.STORE_VERSION_STATE.getSystemStoreName()));
+            .setStoreName(AvroProtocolDefinition.STORE_VERSION_STATE.getSystemStoreName()),
+        null);
     partitionStateSerializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
     partitionStateSerializer.setSchemaReader(partitionStateSchemaReader);
     storeVersionStateSerializer = AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
@@ -630,7 +636,8 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     // Create SchemaReader
     SchemaReader kafkaMessageEnvelopeSchemaReader = ClientFactory.getSchemaReader(
         ClientConfig.cloneConfig(clientConfig)
-            .setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName()));
+            .setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName()),
+        null);
 
     storageMetadataService =
         new StorageEngineMetadataService(storageService.getStorageEngineRepository(), partitionStateSerializer);
@@ -667,10 +674,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         "Starting report client with target application port: {}",
         configLoader.getVeniceServerConfig().getIngestionApplicationPort());
     // Create Netty client to report status back to application.
-    reportClient = new IsolatedIngestionRequestClient(
-        IsolatedIngestionUtils.getSSLFactory(configLoader),
-        configLoader.getVeniceServerConfig().getIngestionApplicationPort(),
-        configLoader.getCombinedProperties().getInt(SERVER_INGESTION_ISOLATION_REQUEST_TIMEOUT_SECONDS, 120));
+    reportClient = new IsolatedIngestionRequestClient(configLoader);
 
     // Mark the IsolatedIngestionServer as initiated.
     isInitiated = true;

@@ -20,8 +20,8 @@ import org.testng.annotations.Test;
 
 
 public class TestStartMultiControllers {
-  final int minControllerCount = 3;
-  final int controllerCount = minControllerCount + 1;
+  final static int minControllerCount = 3;
+  final static int controllerCount = minControllerCount + 1;
   private VeniceClusterWrapper cluster;
   private SafeHelixManager helixManager;
 

@@ -93,7 +93,7 @@ public class VeniceMetadataRepositoryBuilder {
     return Optional.ofNullable(readOnlyZKSharedSchemaRepository);
   }
 
-  public boolean isDaVinciClient() {
+  public final boolean isDaVinciClient() {
     return configLoader.getVeniceServerConfig().isDaVinciClient();
   }
 

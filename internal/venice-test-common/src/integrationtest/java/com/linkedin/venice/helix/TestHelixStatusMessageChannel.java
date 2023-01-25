@@ -34,10 +34,10 @@ import org.testng.annotations.Test;
  * Test cases for HelixStatusMessageChannel
  */
 public class TestHelixStatusMessageChannel {
-  private String cluster = "UnitTestCluster";
-  private String kafkaTopic = "test_resource_1";
-  private int partitionId = 0;
-  private int port = 4396;
+  private final static String cluster = "UnitTestCluster";
+  private final static String kafkaTopic = "test_resource_1";
+  private final static int partitionId = 0;
+  private final static int port = 4396;
   private String instanceId;
   private ExecutionStatus status = ExecutionStatus.COMPLETED;
   private ZkServerWrapper zkServerWrapper;
@@ -48,7 +48,7 @@ public class TestHelixStatusMessageChannel {
   private HelixAdmin admin;
   private SafeHelixManager controller;
   private RoutingDataRepository routingDataRepository;
-  private final long WAIT_ZK_TIME = 1000l;
+  private final static long WAIT_ZK_TIME = 1000l;
 
   @BeforeMethod(alwaysRun = true)
   public void setUp() throws Exception {
@@ -146,7 +146,7 @@ public class TestHelixStatusMessageChannel {
   public void testSendMessage() throws IOException, InterruptedException {
     // Register handler for message in controler side.
     StoreStatusMessageHandler handler = new StoreStatusMessageHandler();
-    HelixStatusMessageChannel controllerChannel = getControllerChannel(handler);
+    getControllerChannel(handler);
 
     StoreStatusMessage veniceMessage = new StoreStatusMessage(kafkaTopic, partitionId, instanceId, status);
     channel.sendToController(veniceMessage);
@@ -173,7 +173,7 @@ public class TestHelixStatusMessageChannel {
   public void testSendMessageFailed() throws IOException, InterruptedException {
     int retryCount = 1;
     FailedTestStoreStatusMessageHandler handler = new FailedTestStoreStatusMessageHandler(retryCount);
-    HelixStatusMessageChannel controllerChannel = getControllerChannel(handler);
+    getControllerChannel(handler);
 
     StoreStatusMessage veniceMessage = new StoreStatusMessage(kafkaTopic, partitionId, instanceId, status);
     channel.sendToController(veniceMessage, 0, 0);
@@ -184,7 +184,7 @@ public class TestHelixStatusMessageChannel {
   public void testSendMessageRetryFailed() throws IOException, InterruptedException {
     int retryCount = 5;
     FailedTestStoreStatusMessageHandler handler = new FailedTestStoreStatusMessageHandler(retryCount);
-    HelixStatusMessageChannel controllerChannel = getControllerChannel(handler);
+    getControllerChannel(handler);
 
     StoreStatusMessage veniceMessage = new StoreStatusMessage(kafkaTopic, partitionId, instanceId, status);
     channel.sendToController(veniceMessage, 2, 0);
@@ -195,7 +195,7 @@ public class TestHelixStatusMessageChannel {
   public void testSendMessageRetrySuccessful() throws IOException, InterruptedException {
     int retryCount = 2;
     FailedTestStoreStatusMessageHandler handler = new FailedTestStoreStatusMessageHandler(retryCount);
-    HelixStatusMessageChannel controllerChannel = getControllerChannel(handler);
+    getControllerChannel(handler);
 
     StoreStatusMessage veniceMessage = new StoreStatusMessage(kafkaTopic, partitionId, instanceId, status);
     try {
@@ -209,7 +209,7 @@ public class TestHelixStatusMessageChannel {
   public void testSendMessageTimeout() throws IOException, InterruptedException {
     int timeoutCount = 1;
     TimeoutTestStoreStatusMessageHandler handler = new TimeoutTestStoreStatusMessageHandler(timeoutCount);
-    HelixStatusMessageChannel controllerChannel = getControllerChannel(handler);
+    getControllerChannel(handler);
 
     StoreStatusMessage veniceMessage = new StoreStatusMessage(kafkaTopic, partitionId, instanceId, status);
     channel.sendToController(veniceMessage, 0, 0);
@@ -220,7 +220,7 @@ public class TestHelixStatusMessageChannel {
   public void testSendMessageHandleTimeout() throws IOException, InterruptedException {
     int timeoutCount = 1;
     TimeoutTestStoreStatusMessageHandler handler = new TimeoutTestStoreStatusMessageHandler(timeoutCount);
-    HelixStatusMessageChannel controllerChannel = getControllerChannel(handler);
+    getControllerChannel(handler);
 
     StoreStatusMessage veniceMessage = new StoreStatusMessage(kafkaTopic, partitionId, instanceId, status);
     try {

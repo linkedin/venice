@@ -1,7 +1,6 @@
 package com.linkedin.davinci.ingestion.main;
 
-import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS;
-import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_REQUEST_TIMEOUT_SECONDS;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_SECONDS;
 import static java.lang.Thread.currentThread;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
@@ -73,9 +72,13 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   private KafkaStoreIngestionService storeIngestionService;
   private ReadOnlyStoreRepository storeRepository;
   private final VeniceConfigLoader configLoader;
-  private long heartbeatTimeoutMs;
+  /**
+   * Heartbeat timeout acknowledge disconnection between main and forked processes. After this timeout, main process
+   * should (1) Try to kill lingering forked process to release port (2) Respawn new forked ingestion process to continue
+   * ingestion work.
+   */
+  private long connectionTimeoutMs;
   private volatile long latestHeartbeatTimestamp = -1;
-  private final int requestTimeoutInSeconds;
 
   public MainIngestionMonitorService(
       IsolatedIngestionBackend ingestionBackend,
@@ -101,10 +104,8 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
         .option(ChannelOption.SO_REUSEADDR, true)
         .childOption(ChannelOption.TCP_NODELAY, true);
 
-    this.requestTimeoutInSeconds =
-        configLoader.getCombinedProperties().getInt(SERVER_INGESTION_ISOLATION_REQUEST_TIMEOUT_SECONDS, 120);
-    heartbeatClient = new MainIngestionRequestClient(this.sslFactory, this.servicePort, requestTimeoutInSeconds);
-    metricsClient = new MainIngestionRequestClient(this.sslFactory, this.servicePort, requestTimeoutInSeconds);
+    heartbeatClient = new MainIngestionRequestClient(configLoader);
+    metricsClient = new MainIngestionRequestClient(configLoader);
 
   }
 
@@ -112,11 +113,12 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   public boolean startInner() throws Exception {
     serverFuture = bootstrap.bind(applicationPort).sync();
     LOGGER.info("Report listener service started on port: {}", applicationPort);
-    heartbeatTimeoutMs = configLoader.getCombinedProperties()
-        .getLong(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, 60 * Time.MS_PER_SECOND);
+    connectionTimeoutMs =
+        configLoader.getCombinedProperties().getLong(SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_SECONDS, 180)
+            * Time.MS_PER_SECOND;
     setupMetricsCollection();
 
-    // There is no async process in this function, so we are completely finished with the start up process.
+    // There is no async process in this function, so we are completely finished with the start-up process.
     return true;
   }
 
@@ -246,15 +248,14 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
      * this call. Here we use synchronized modifier and add timeout checking here to make sure we only restart forked
      * process once.
      */
-    if ((System.currentTimeMillis() - latestHeartbeatTimestamp) <= heartbeatTimeoutMs) {
+    if ((System.currentTimeMillis() - latestHeartbeatTimestamp) <= connectionTimeoutMs) {
       return;
     }
     LOGGER.warn(
         "Lost connection to forked ingestion process since timestamp {}, restarting forked process.",
         latestHeartbeatTimestamp);
     heartbeatStats.recordForkedProcessRestart();
-    try (MainIngestionRequestClient client =
-        new MainIngestionRequestClient(sslFactory, servicePort, requestTimeoutInSeconds)) {
+    try (MainIngestionRequestClient client = new MainIngestionRequestClient(configLoader)) {
       /**
        * We need to destroy the previous isolated ingestion process first.
        * The previous isolated ingestion process might have released the port binding, but it might still taking up all
@@ -274,8 +275,7 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   }
 
   private void resumeOngoingIngestionTasks() {
-    try (MainIngestionRequestClient client =
-        new MainIngestionRequestClient(sslFactory, servicePort, requestTimeoutInSeconds)) {
+    try (MainIngestionRequestClient client = new MainIngestionRequestClient(configLoader)) {
       LOGGER.info("Start to recover ongoing ingestion tasks: {}", topicIngestionStatusMap);
       // Re-open metadata partitions in child process for all previously subscribed topics.
       topicIngestionStatusMap.keySet().forEach(client::openStorageEngine);
@@ -296,33 +296,41 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   }
 
   private void collectIngestionServiceMetrics() {
+    long requestTimestamp = System.currentTimeMillis();
     if (metricsClient.collectMetrics(isolatedIngestionProcessStats)) {
-      // Update heartbeat time.
-      latestHeartbeatTimestamp = System.currentTimeMillis();
+      LOGGER.debug(
+          "Metric request completed in {} seconds.",
+          TimeUnit.MILLISECONDS.toSeconds(System.currentTimeMillis() - requestTimestamp));
+    } else {
+      LOGGER.warn(
+          "Unable to collect metrics from ingestion service after {} s.",
+          TimeUnit.MILLISECONDS.toSeconds(System.currentTimeMillis() - requestTimestamp));
     }
   }
 
   private void checkHeartbeatTimeout() {
-    long currentTimeMillis = System.currentTimeMillis();
+    long requestTimestamp = System.currentTimeMillis();
     LOGGER.info(
         "Checking heartbeat timeout at {}, latest heartbeat received: {}",
-        currentTimeMillis,
+        requestTimestamp,
         latestHeartbeatTimestamp);
     if (heartbeatClient.sendHeartbeatRequest()) {
       // Update heartbeat time.
       latestHeartbeatTimestamp = System.currentTimeMillis();
       heartbeatStats.recordHeartbeatAge(0);
-      LOGGER.info("Received isolated ingestion server heartbeat at: {}", latestHeartbeatTimestamp);
+      LOGGER.info("Received forked process heartbeat ack at: {}", latestHeartbeatTimestamp);
     } else {
-      heartbeatStats.recordHeartbeatAge(currentTimeMillis - latestHeartbeatTimestamp);
+      long responseTimestamp = System.currentTimeMillis();
+      heartbeatStats.recordHeartbeatAge(requestTimestamp - latestHeartbeatTimestamp);
       LOGGER.warn(
-          "Failed to connect to forked ingestion process at {}, last successful timestamp: {}",
-          currentTimeMillis,
+          "Heartbeat request to forked process issued at {}, failed at {}, latest successful timestamp: {}",
+          responseTimestamp,
+          requestTimestamp,
           latestHeartbeatTimestamp);
     }
 
     if (latestHeartbeatTimestamp != -1) {
-      if ((currentTimeMillis - latestHeartbeatTimestamp) > heartbeatTimeoutMs) {
+      if ((requestTimestamp - latestHeartbeatTimestamp) > connectionTimeoutMs) {
         tryRestartForkedProcess();
       }
     }

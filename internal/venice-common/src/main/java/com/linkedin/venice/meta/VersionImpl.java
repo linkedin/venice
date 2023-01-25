@@ -83,7 +83,7 @@ public class VersionImpl implements Version {
   }
 
   @Override
-  public int getNumber() {
+  public final int getNumber() {
     return this.storeVersion.number;
   }
 
@@ -180,7 +180,7 @@ public class VersionImpl implements Version {
   }
 
   @Override
-  public String getStoreName() {
+  public final String getStoreName() {
     return this.storeVersion.storeName.toString();
   }
 

@@ -25,7 +25,7 @@ public class AggRouterHttpRequestStatsTest {
   }
 
   @Test
-  public void RouterMetricsTest() {
+  public void testAggRouterMetrics() {
     AggRouterHttpRequestStats stats =
         new AggRouterHttpRequestStats(metricsRepository, RequestType.SINGLE_GET, storeMetadataRepository, true);
 
@@ -56,7 +56,7 @@ public class AggRouterHttpRequestStatsTest {
   }
 
   @Test
-  public void TestProfilingMetrics() {
+  public void testProfilingMetrics() {
     AggRouterHttpRequestStats stats =
         new AggRouterHttpRequestStats(metricsRepository, RequestType.COMPUTE, true, storeMetadataRepository, true);
 

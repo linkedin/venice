@@ -103,8 +103,10 @@ public class VeniceControllerWrapper extends ProcessWrapper {
   private final String zkAddress;
   private final List<ServiceDiscoveryAnnouncer> d2ServerList;
   private final MetricsRepository metricsRepository;
+  private final String coloName;
 
   private VeniceControllerWrapper(
+      String coloName,
       String serviceName,
       File dataDirectory,
       VeniceController service,
@@ -124,6 +126,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
     this.zkAddress = zkAddress;
     this.d2ServerList = d2ServerList;
     this.metricsRepository = metricsRepository;
+    this.coloName = coloName;
   }
 
   static StatefulServiceProvider<VeniceControllerWrapper> generateService(VeniceControllerCreateOptions options) {
@@ -315,6 +318,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           consumerClientConfig,
           Optional.empty());
       return new VeniceControllerWrapper(
+          options.getColoName(),
           serviceName,
           dataDirectory,
           veniceController,
@@ -455,5 +459,10 @@ public class VeniceControllerWrapper extends ProcessWrapper {
 
   public MetricsRepository getMetricRepository() {
     return metricsRepository;
+  }
+
+  @Override
+  public String getComponentTagForLogging() {
+    return new StringBuilder(getComponentTagPrefix(coloName)).append(super.getComponentTagForLogging()).toString();
   }
 }

@@ -647,11 +647,11 @@ public class TestWriteUtils {
     return new KeyAndValueSchemas(VsonAvroSchemaAdapter.parse(vsonInteger), VsonAvroSchemaAdapter.parse(vsonString));
   }
 
-  public enum testRecordType {
+  public enum TestRecordType {
     NEARLINE, OFFLINE
   }
 
-  public enum testTargetedField {
+  public enum TestTargetedField {
     WEBSITE_URL, LOGO, INDUSTRY
   }
 
@@ -670,10 +670,10 @@ public class TestWriteUtils {
         Schema sourceSchema = keyRecord.getSchema().getField("source").schema();
         if (i % 2 == 0) {
           keyRecord
-              .put("source", AvroCompatibilityHelper.newEnumSymbol(sourceSchema, testRecordType.NEARLINE.toString()));
+              .put("source", AvroCompatibilityHelper.newEnumSymbol(sourceSchema, TestRecordType.NEARLINE.toString()));
         } else {
           keyRecord
-              .put("source", AvroCompatibilityHelper.newEnumSymbol(sourceSchema, testRecordType.OFFLINE.toString()));
+              .put("source", AvroCompatibilityHelper.newEnumSymbol(sourceSchema, TestRecordType.OFFLINE.toString()));
         }
 
         GenericRecord valueRecord = new GenericData.Record(schemaWithSymbolDoc.getField("value").schema());
@@ -682,15 +682,15 @@ public class TestWriteUtils {
         if (i % 3 == 0) {
           valueRecord.put(
               "targetedField",
-              AvroCompatibilityHelper.newEnumSymbol(targetSchema, testTargetedField.WEBSITE_URL.toString()));
+              AvroCompatibilityHelper.newEnumSymbol(targetSchema, TestTargetedField.WEBSITE_URL.toString()));
         } else if (i % 3 == 1) {
           valueRecord.put(
               "targetedField",
-              AvroCompatibilityHelper.newEnumSymbol(targetSchema, testTargetedField.LOGO.toString()));
+              AvroCompatibilityHelper.newEnumSymbol(targetSchema, TestTargetedField.LOGO.toString()));
         } else {
           valueRecord.put(
               "targetedField",
-              AvroCompatibilityHelper.newEnumSymbol(targetSchema, testTargetedField.INDUSTRY.toString()));
+              AvroCompatibilityHelper.newEnumSymbol(targetSchema, TestTargetedField.INDUSTRY.toString()));
         }
 
         newRecord.put("key", keyRecord);

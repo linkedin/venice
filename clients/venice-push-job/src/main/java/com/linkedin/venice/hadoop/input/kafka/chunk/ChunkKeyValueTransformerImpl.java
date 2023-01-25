@@ -50,7 +50,7 @@ public class ChunkKeyValueTransformerImpl implements ChunkKeyValueTransformer {
   private RawKeyBytesAndChunkedKeySuffix splitKeyWithChunkedKeySuffix(byte[] compositeKey) {
     BinaryDecoder decoder = OptimizedBinaryDecoderFactory.defaultFactory()
         .createOptimizedBinaryDecoder(compositeKey, 0, compositeKey.length);
-    Object ignore = keyDeserializer.deserialize(decoder);
+    keyDeserializer.deserialize(decoder);
     int chunkedKeySuffixByteCount;
     try {
       // Remaining number of bytes must be the size in the decoder's input stream buffer. So the remaining available

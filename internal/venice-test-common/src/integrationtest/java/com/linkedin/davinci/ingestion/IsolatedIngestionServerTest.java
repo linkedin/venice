@@ -7,7 +7,7 @@ import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.D2_ZK_HOSTS_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_ZK_ADDRESS;
-import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_SERVICE_PORT;
 import static com.linkedin.venice.ConfigKeys.SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
@@ -51,8 +51,7 @@ public class IsolatedIngestionServerTest {
   public void testShutdownAfterHeartbeatTimeout() {
     int servicePort = Utils.getFreePort();
     VeniceConfigLoader configLoader = getConfigLoader(servicePort);
-    try (MainIngestionRequestClient client =
-        new MainIngestionRequestClient(IsolatedIngestionUtils.getSSLFactory(configLoader), servicePort, 120)) {
+    try (MainIngestionRequestClient client = new MainIngestionRequestClient(configLoader)) {
       Process isolatedIngestionService = client.startForkedIngestionProcess(configLoader);
       TestUtils.waitForNonDeterministicAssertion(
           10,
@@ -71,8 +70,7 @@ public class IsolatedIngestionServerTest {
   public void testReleaseTargetPortBinding() {
     int servicePort = Utils.getFreePort();
     VeniceConfigLoader configLoader = getConfigLoader(servicePort);
-    try (MainIngestionRequestClient client =
-        new MainIngestionRequestClient(IsolatedIngestionUtils.getSSLFactory(configLoader), servicePort, 120)) {
+    try (MainIngestionRequestClient client = new MainIngestionRequestClient(configLoader)) {
       // Make sure the process is forked successfully.
       ForkedJavaProcess isolatedIngestionService = (ForkedJavaProcess) client.startForkedIngestionProcess(configLoader);
       Assert.assertTrue(isolatedIngestionService.isAlive());
@@ -130,7 +128,7 @@ public class IsolatedIngestionServerTest {
         .put(KAFKA_ZK_ADDRESS, Utils.getUniqueString())
         .put(D2_ZK_HOSTS_ADDRESS, zkServerWrapper.getAddress())
         .put(SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS, 100)
-        .put(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, 10 * Time.MS_PER_SECOND)
+        .put(SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_SECONDS, 10)
         .put(INGESTION_ISOLATION_CONFIG_PREFIX + "." + SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS, 10)
         .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, servicePort)
         .build();

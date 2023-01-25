@@ -151,10 +151,10 @@ public class StatTrackingStoreClientTest {
     }
   }
 
-  private static class StoreClientForMultiGetStreamTestWithException<K, V> extends SimpleStoreClient<K, V> {
+  private static class MultiGetStreamTestWithExceptionStoreClient<K, V> extends SimpleStoreClient<K, V> {
     private final VeniceClientException veniceException;
 
-    public StoreClientForMultiGetStreamTestWithException(
+    public MultiGetStreamTestWithExceptionStoreClient(
         TransportClient transportClient,
         String storeName,
         boolean needSchemaReader,
@@ -329,7 +329,7 @@ public class StatTrackingStoreClientTest {
 
     MetricsRepository repository = new MetricsRepository();
 
-    InternalAvroStoreClient innerClient = new StoreClientForMultiGetStreamTestWithException(
+    InternalAvroStoreClient innerClient = new MultiGetStreamTestWithExceptionStoreClient(
         mock(TransportClient.class),
         storeName,
         true,
@@ -513,7 +513,7 @@ public class StatTrackingStoreClientTest {
 
   @Test
   public void multiGetStreamTestWithException() {
-    InternalAvroStoreClient innerClient = new StoreClientForMultiGetStreamTestWithException(
+    InternalAvroStoreClient innerClient = new MultiGetStreamTestWithExceptionStoreClient(
         mock(TransportClient.class),
         storeName,
         false,

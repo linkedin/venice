@@ -133,6 +133,17 @@ public class ConsumerAction implements Comparable<ConsumerAction> {
     return false;
   }
 
+  @Override
+  public int hashCode() {
+    int result = 1;
+    result = result * 31 + topic.hashCode();
+    result = result * 31 + partition;
+    result = result * 31 + sequenceNumber;
+    result = result * 31 + type.hashCode();
+    result = result * 31 + leaderState.hashCode();
+    return result;
+  }
+
   /**
    * Create a kill consumer action. As kill action apply on all of partitions in given topic, so use 0 as partition
    * value for no meaning.

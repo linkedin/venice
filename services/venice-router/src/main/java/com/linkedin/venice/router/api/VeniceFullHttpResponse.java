@@ -24,4 +24,15 @@ public class VeniceFullHttpResponse extends DefaultFullHttpResponse {
   public long getDecompressionTimeInNs() {
     return decompressionTimeInNs;
   }
+
+  @Override
+  public boolean equals(Object o) {
+    // equals method for the subclass should be same as the parent
+    return super.equals(o);
+  }
+
+  @Override
+  public int hashCode() {
+    return super.hashCode() * 31 * Long.hashCode(decompressionTimeInNs);
+  }
 }

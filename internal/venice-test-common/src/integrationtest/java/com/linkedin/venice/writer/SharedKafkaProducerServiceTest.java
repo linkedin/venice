@@ -50,7 +50,7 @@ public class SharedKafkaProducerServiceTest {
   private ZkServerWrapper zkServer;
 
   @BeforeClass
-  private void setUp() {
+  public void setUp() {
     zkServer = ServiceFactory.getZkServer();
     kafka = ServiceFactory.getKafkaBroker(zkServer);
     kafkaClientFactory = IntegrationTestPushUtils.getVeniceConsumerFactory(kafka);
@@ -58,7 +58,7 @@ public class SharedKafkaProducerServiceTest {
   }
 
   @AfterClass
-  private void cleanUp() {
+  public void cleanUp() {
     Utils.closeQuietlyWithErrorLogged(kafka, topicManager, zkServer);
   }
 
@@ -190,13 +190,13 @@ public class SharedKafkaProducerServiceTest {
 
       // Create at least 8 tasks to assign each producer a task.
       KafkaProducerWrapper producer1 = sharedKafkaProducerService.acquireKafkaProducer("task1");
-      KafkaProducerWrapper producer2 = sharedKafkaProducerService.acquireKafkaProducer("task2");
-      KafkaProducerWrapper producer3 = sharedKafkaProducerService.acquireKafkaProducer("task3");
-      KafkaProducerWrapper producer4 = sharedKafkaProducerService.acquireKafkaProducer("task4");
+      sharedKafkaProducerService.acquireKafkaProducer("task2");
+      sharedKafkaProducerService.acquireKafkaProducer("task3");
+      sharedKafkaProducerService.acquireKafkaProducer("task4");
       KafkaProducerWrapper producer5 = sharedKafkaProducerService.acquireKafkaProducer("task5");
-      KafkaProducerWrapper producer6 = sharedKafkaProducerService.acquireKafkaProducer("task6");
-      KafkaProducerWrapper producer7 = sharedKafkaProducerService.acquireKafkaProducer("task7");
-      KafkaProducerWrapper producer8 = sharedKafkaProducerService.acquireKafkaProducer("task8");
+      sharedKafkaProducerService.acquireKafkaProducer("task6");
+      sharedKafkaProducerService.acquireKafkaProducer("task7");
+      sharedKafkaProducerService.acquireKafkaProducer("task8");
 
       // verify same task acquires the same producer.
       Assert.assertEquals(producer1, sharedKafkaProducerService.acquireKafkaProducer("task1"));

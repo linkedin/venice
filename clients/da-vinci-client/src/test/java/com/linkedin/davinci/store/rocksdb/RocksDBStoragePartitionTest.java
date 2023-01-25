@@ -86,7 +86,7 @@ public class RocksDBStoragePartitionTest {
   }
 
   @DataProvider(name = "testIngestionDataProvider")
-  private Object[][] testIngestionDataProvider() {
+  public Object[][] testIngestionDataProvider() {
     return new Object[][] { { true, false, false, true }, // Sorted input without interruption, with verifyChecksum
         { true, false, false, false }, // Sorted input without interruption, without verifyChecksum
         { true, true, true, false }, // Sorted input with interruption, without verifyChecksum

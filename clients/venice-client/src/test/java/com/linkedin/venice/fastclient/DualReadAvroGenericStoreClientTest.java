@@ -13,7 +13,7 @@ import static org.testng.Assert.fail;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
-import com.linkedin.venice.fastclient.stats.ClientStats;
+import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.concurrent.CompletableFuture;
@@ -21,14 +21,15 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.Test;
 
 
 public class DualReadAvroGenericStoreClientTest {
   private final ScheduledExecutorService scheduledExecutor = Executors.newSingleThreadScheduledExecutor();
-  private final String fastClientResponse = "fast_client_response";
-  private final String thinClientResponse = "thin_client_response";
+  private final static String fastClientResponse = "fast_client_response";
+  private final static String thinClientResponse = "thin_client_response";
 
   @AfterClass
   public void tearDown() throws InterruptedException {
@@ -42,7 +43,7 @@ public class DualReadAvroGenericStoreClientTest {
       boolean thinClientThrowExceptionWhenSending,
       boolean thinClientSucceed,
       long thinClientDelayMS,
-      ClientStats clientStatsForSingleGet) {
+      FastClientStats clientStatsForSingleGet) {
     InternalAvroStoreClient<String, String> fastClient = mock(InternalAvroStoreClient.class);
     AvroGenericStoreClient<String, String> thinClient = mock(AvroGenericStoreClient.class);
     ClientConfig clientConfig = mock(ClientConfig.class);
@@ -116,7 +117,7 @@ public class DualReadAvroGenericStoreClientTest {
   @Test
   public void testGet() throws ExecutionException, InterruptedException {
     // Both returns, but fast-client is faster
-    ClientStats clientStatsForSingleGet = mock(ClientStats.class);
+    FastClientStats clientStatsForSingleGet = mock(FastClientStats.class);
     AvroGenericStoreClient<String, String> dualReadClient =
         prepareClients(false, true, 0, false, true, 1000, clientStatsForSingleGet);
     String res = dualReadClient.get("test_key").get();
@@ -126,7 +127,7 @@ public class DualReadAvroGenericStoreClientTest {
     verify(clientStatsForSingleGet, timeout(2000)).recordThinClientFastClientLatencyDelta(anyDouble());
 
     // Both returns, but thin-client is faster
-    clientStatsForSingleGet = mock(ClientStats.class);
+    clientStatsForSingleGet = mock(FastClientStats.class);
     dualReadClient = prepareClients(false, true, 1000, false, true, 0, clientStatsForSingleGet);
     res = dualReadClient.get("test_key").get();
     assertEquals(res, thinClientResponse, "Thin client response should be returned since it is faster");
@@ -135,7 +136,7 @@ public class DualReadAvroGenericStoreClientTest {
     verify(clientStatsForSingleGet).recordThinClientFastClientLatencyDelta(anyDouble());
 
     // Fast-client returns ok, but thin-client returns error
-    clientStatsForSingleGet = mock(ClientStats.class);
+    clientStatsForSingleGet = mock(FastClientStats.class);
     dualReadClient = prepareClients(false, true, 1000, false, false, 0, clientStatsForSingleGet);
     res = dualReadClient.get("test_key").get();
     assertEquals(res, fastClientResponse, "Fast client response should be returned since it succeeds");
@@ -144,7 +145,7 @@ public class DualReadAvroGenericStoreClientTest {
     verify(clientStatsForSingleGet, never()).recordThinClientFastClientLatencyDelta(anyDouble());
 
     // Fast-client returns error, but thin-client returns ok
-    clientStatsForSingleGet = mock(ClientStats.class);
+    clientStatsForSingleGet = mock(FastClientStats.class);
     dualReadClient = prepareClients(false, false, 0, false, true, 1000, clientStatsForSingleGet);
     res = dualReadClient.get("test_key").get();
     assertEquals(res, thinClientResponse, "Thin client response should be returned since it succeeds");
@@ -153,17 +154,18 @@ public class DualReadAvroGenericStoreClientTest {
     verify(clientStatsForSingleGet, never()).recordThinClientFastClientLatencyDelta(anyDouble());
 
     // Both return error
-    clientStatsForSingleGet = mock(ClientStats.class);
+    clientStatsForSingleGet = mock(FastClientStats.class);
     dualReadClient = prepareClients(false, false, 1000, false, false, 0, clientStatsForSingleGet);
     try {
       dualReadClient.get("test_key").get();
       fail("Exception is expected here when both clients return error");
     } catch (Exception e) {
       // expected
+      Assert.assertEquals(e.getClass(), ExecutionException.class);
     }
 
     // Fast-client returns ok, but thin-client fails to send out request
-    clientStatsForSingleGet = mock(ClientStats.class);
+    clientStatsForSingleGet = mock(FastClientStats.class);
     dualReadClient = prepareClients(false, true, 1000, true, true, 0, clientStatsForSingleGet);
     res = dualReadClient.get("test_key").get();
     assertEquals(res, fastClientResponse, "Fast client response should be returned since it succeeds");
@@ -172,7 +174,7 @@ public class DualReadAvroGenericStoreClientTest {
     verify(clientStatsForSingleGet, never()).recordThinClientFastClientLatencyDelta(anyDouble());
 
     // Fast-client fails to send out request, but thin-client returns ok
-    clientStatsForSingleGet = mock(ClientStats.class);
+    clientStatsForSingleGet = mock(FastClientStats.class);
     dualReadClient = prepareClients(true, true, 0, false, true, 1000, clientStatsForSingleGet);
     res = dualReadClient.get("test_key").get();
     assertEquals(res, thinClientResponse, "Thin client response should be returned since it succeeds");
@@ -181,13 +183,14 @@ public class DualReadAvroGenericStoreClientTest {
     verify(clientStatsForSingleGet, never()).recordThinClientFastClientLatencyDelta(anyDouble());
 
     // Both fail to send out request
-    clientStatsForSingleGet = mock(ClientStats.class);
+    clientStatsForSingleGet = mock(FastClientStats.class);
     dualReadClient = prepareClients(true, true, 1000, true, true, 0, clientStatsForSingleGet);
     try {
       dualReadClient.get("test_key").get();
       fail("Exception is expected here when both clients return error");
     } catch (Exception e) {
       // expected
+      Assert.assertEquals(e.getClass(), ExecutionException.class);
     }
   }
 }

@@ -714,7 +714,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
   public void canCreateAHybridStore() {
     String storeName = Utils.getUniqueString("store");
     String owner = Utils.getUniqueString("owner");
-    NewStoreResponse newStoreResponse = controllerClient.createNewStore(storeName, owner, "\"string\"", "\"string\"");
+    controllerClient.createNewStore(storeName, owner, "\"string\"", "\"string\"");
     try {
       controllerClient.updateStore(
           storeName,

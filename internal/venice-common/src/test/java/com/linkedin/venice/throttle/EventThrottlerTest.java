@@ -86,7 +86,7 @@ public class EventThrottlerTest {
     // Sleep 1.5 time window
     testTime.sleep((long) (timeWindowMS * 1.5));
     // Now we could use the quota for 15 sec
-    throttler.maybeThrottle((int) quota * 30 / 2);
+    throttler.maybeThrottle(quota * 30 / (double) 2);
     try {
       throttler.maybeThrottle(1);
       Assert.fail("Usage exceeds the quota, throttler should reject them.");

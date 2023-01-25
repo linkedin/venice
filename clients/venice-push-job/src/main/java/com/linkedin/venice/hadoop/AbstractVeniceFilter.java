@@ -8,10 +8,7 @@ import java.io.Closeable;
  * An abstraction to filter given data type. It can be used in conjunction with {@link FilterChain}.
  */
 public abstract class AbstractVeniceFilter<INPUT_VALUE> implements Closeable {
-  protected final VeniceProperties props;
-
   public AbstractVeniceFilter(final VeniceProperties props) {
-    this.props = props;
   }
 
   /**

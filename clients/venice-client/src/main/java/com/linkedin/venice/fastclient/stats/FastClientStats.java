@@ -23,8 +23,8 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-public class ClientStats extends com.linkedin.venice.client.stats.ClientStats {
-  private static final Logger LOGGER = LogManager.getLogger(ClientStats.class);
+public class FastClientStats extends com.linkedin.venice.client.stats.ClientStats {
+  private static final Logger LOGGER = LogManager.getLogger(FastClientStats.class);
 
   private final String storeName;
 
@@ -44,16 +44,16 @@ public class ClientStats extends com.linkedin.venice.client.stats.ClientStats {
   // Routing stats
   private final Map<String, RouteStats> perRouteStats = new VeniceConcurrentHashMap<>();
 
-  public static ClientStats getClientStats(
+  public static FastClientStats getClientStats(
       MetricsRepository metricsRepository,
       String statsPrefix,
       String storeName,
       RequestType requestType) {
     String metricName = statsPrefix.isEmpty() ? storeName : statsPrefix + "." + storeName;
-    return new ClientStats(metricsRepository, metricName, requestType);
+    return new FastClientStats(metricsRepository, metricName, requestType);
   }
 
-  private ClientStats(MetricsRepository metricsRepository, String storeName, RequestType requestType) {
+  private FastClientStats(MetricsRepository metricsRepository, String storeName, RequestType requestType) {
     super(metricsRepository, storeName, requestType);
 
     this.storeName = storeName;

@@ -114,6 +114,8 @@ public class VsonAvroDatumReader<D> extends GenericDatumReader<D> {
    * Most of the logic is copied from {@link java.util.AbstractMap#equals(Object)}
    */
   public static class DeepEqualsHashMap extends HashMap<String, Object> {
+    private static final long serialVersionUID = 1L;
+
     @Override
     public boolean equals(Object o) {
       if (o == this)
@@ -149,9 +151,7 @@ public class VsonAvroDatumReader<D> extends GenericDatumReader<D> {
               return false;
           }
         }
-      } catch (ClassCastException unused) {
-        return false;
-      } catch (NullPointerException unused) {
+      } catch (ClassCastException | NullPointerException unused) {
         return false;
       }
 
@@ -166,6 +166,8 @@ public class VsonAvroDatumReader<D> extends GenericDatumReader<D> {
    * Most of the logic is copied from {@link java.util.AbstractList#equals(Object)}
    */
   public static class DeepEqualsArrayList extends ArrayList<Object> {
+    private static final long serialVersionUID = 1L;
+
     public DeepEqualsArrayList() {
       super();
     }
@@ -200,6 +202,11 @@ public class VsonAvroDatumReader<D> extends GenericDatumReader<D> {
         }
       }
       return !(e1.hasNext() || e2.hasNext());
+    }
+
+    @Override
+    public int hashCode() {
+      return listIterator().hashCode();
     }
   }
 }

@@ -447,6 +447,8 @@ public class StoreClientPerfTest {
    * A utility class to contain results while also easily printing them out.
    */
   private static class ResultsContainer extends ArrayList<Object> {
+    private static final long serialVersionUID = 1L;
+
     /**
      * @param value to be added into the container.
      * @return the passed in {@param value}

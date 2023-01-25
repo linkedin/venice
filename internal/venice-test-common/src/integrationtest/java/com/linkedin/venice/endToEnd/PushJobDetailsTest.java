@@ -74,7 +74,7 @@ import org.testng.annotations.Test;
 
 public class PushJobDetailsTest {
   private final Map<Integer, Schema> schemaVersionMap = new HashMap<>();
-  private final int latestSchemaId = 2;
+  private final static int latestSchemaId = 2;
   private VeniceClusterWrapper venice;
   private VeniceControllerWrapper parentController;
   private ZkServerWrapper zkWrapper;

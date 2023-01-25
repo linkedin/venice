@@ -2062,6 +2062,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             break;
           case VERSION_SWAP:
             return DelegateConsumerRecordResult.QUEUED_TO_DRAINER;
+          default:
+            // do nothing
+            break;
         }
         if (!isSegmentControlMsg(controlMessageType)) {
           LOGGER.info(

@@ -60,7 +60,7 @@ public class TestInboundContentDebugHandler {
   }
 
   @BeforeClass
-  public void setup() throws InterruptedException {
+  public void setUp() throws InterruptedException {
     LocalAddress localAddress = new LocalAddress(UUID.randomUUID().toString());
     _group = new DefaultEventLoopGroup(4);
 

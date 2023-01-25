@@ -17,9 +17,9 @@ import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.ExceptionUtils;
-import com.linkedin.venice.utils.MockTime;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReflectUtils;
+import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -58,7 +58,7 @@ public class ServiceFactory {
   static {
     TestUtils.preventSystemExit();
 
-    String ulimitOutput;
+    StringBuilder sb;
     try {
       String[] cmd = { "/bin/bash", "-c", "ulimit -a" };
       Process proc = Runtime.getRuntime().exec(cmd);
@@ -66,18 +66,18 @@ public class ServiceFactory {
           InputStreamReader isr = new InputStreamReader(stderr);
           BufferedReader br = new BufferedReader(isr)) {
         String line;
-        ulimitOutput = "";
+        sb = new StringBuilder();
         while ((line = br.readLine()) != null) {
-          ulimitOutput += line + "\n";
+          sb.append(line).append("\n");
         }
       } finally {
         proc.destroyForcibly();
       }
     } catch (IOException e) {
-      ulimitOutput = "N/A";
+      sb = new StringBuilder("N/A");
       LOGGER.error("Could not run ulimit.");
     }
-    ULIMIT = ulimitOutput;
+    ULIMIT = sb.toString();
 
     RuntimeMXBean runtimeMxBean = ManagementFactory.getRuntimeMXBean();
     List<String> args = runtimeMxBean.getInputArguments();
@@ -119,7 +119,7 @@ public class ServiceFactory {
     return getKafkaBroker(zkServerWrapper, Optional.empty());
   }
 
-  public static KafkaBrokerWrapper getKafkaBroker(ZkServerWrapper zkServerWrapper, Optional<MockTime> mockTime) {
+  public static KafkaBrokerWrapper getKafkaBroker(ZkServerWrapper zkServerWrapper, Optional<TestMockTime> mockTime) {
     return getStatefulService(
         KafkaBrokerWrapper.SERVICE_NAME,
         KafkaBrokerWrapper.generateService(zkServerWrapper, mockTime));
@@ -161,12 +161,14 @@ public class ServiceFactory {
   }
 
   public static VeniceServerWrapper getVeniceServer(
+      String coloName,
       String clusterName,
       KafkaBrokerWrapper kafkaBrokerWrapper,
       String zkAddress,
       Properties featureProperties,
       Properties configProperties) {
     return getVeniceServer(
+        coloName,
         clusterName,
         kafkaBrokerWrapper,
         zkAddress,
@@ -178,6 +180,7 @@ public class ServiceFactory {
   }
 
   public static VeniceServerWrapper getVeniceServer(
+      String coloName,
       String clusterName,
       KafkaBrokerWrapper kafkaBrokerWrapper,
       String zkAddress,
@@ -191,6 +194,7 @@ public class ServiceFactory {
     return getStatefulService(
         VeniceServerWrapper.SERVICE_NAME,
         VeniceServerWrapper.generateService(
+            coloName,
             clusterName,
             kafkaBrokerWrapper,
             featureProperties,
@@ -201,6 +205,7 @@ public class ServiceFactory {
   }
 
   static VeniceRouterWrapper getVeniceRouter(
+      String coloName,
       String clusterName,
       ZkServerWrapper zkServerWrapper,
       KafkaBrokerWrapper kafkaBrokerWrapper,
@@ -210,6 +215,7 @@ public class ServiceFactory {
     return getService(
         VeniceRouterWrapper.SERVICE_NAME,
         VeniceRouterWrapper.generateService(
+            coloName,
             clusterName,
             zkServerWrapper,
             kafkaBrokerWrapper,

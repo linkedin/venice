@@ -1126,7 +1126,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     return offsetRecordArray;
   }
 
-  public ReadOnlyStoreRepository getMetadataRepo() {
+  public final ReadOnlyStoreRepository getMetadataRepo() {
     return metadataRepo;
   }
 

@@ -13,7 +13,6 @@ import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.SingleGetChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
-import com.linkedin.davinci.store.rocksdb.RocksDBComputeAccessMode;
 import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.cleaner.ResourceReadUsageTracker;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -121,7 +120,6 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
   private final boolean parallelBatchGetEnabled;
   private final int parallelBatchGetChunkSize;
   private final boolean keyValueProfilingEnabled;
-  private final RocksDBComputeAccessMode rocksDBComputeAccessMode;
   private final VeniceServerConfig serverConfig;
   private final Map<String, VenicePartitioner> resourceToPartitionerMap = new VeniceConcurrentHashMap<>();
   private final Map<String, PartitionerConfig> resourceToPartitionConfigMap = new VeniceConcurrentHashMap<>();
@@ -180,7 +178,6 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     this.parallelBatchGetEnabled = parallelBatchGetEnabled;
     this.parallelBatchGetChunkSize = parallelBatchGetChunkSize;
     this.keyValueProfilingEnabled = serverConfig.isKeyValueProfilingEnabled();
-    this.rocksDBComputeAccessMode = serverConfig.getRocksDBServerConfig().getServerStorageOperation();
     this.serverConfig = serverConfig;
     this.compressorFactory = compressorFactory;
     this.resourceReadUsageTracker = resourceReadUsageTracker;
@@ -580,12 +577,9 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
         .computeIfAbsent(computeResultSchema, k -> new GenericData.Record(finalComputeResultSchema1));
 
     // Reuse the same value record and result record instances for all values
-    ByteBuffer reusedRawValue = null;
-    if (rocksDBComputeAccessMode == RocksDBComputeAccessMode.SINGLE_GET_WITH_REUSE) {
-      reusedRawValue = reusableObjects.reusedByteBuffer;
-    }
-
+    ByteBuffer reusedRawValue = reusableObjects.reusedByteBuffer;
     RecordSerializer<GenericRecord> resultSerializer;
+
     if (fastAvroEnabled) {
       resultSerializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(computeResultSchema);
     } else {
@@ -659,42 +653,20 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
       Map<String, Object> globalContext,
       ByteBuffer reuseRawValue,
       VeniceCompressor compressor) {
-
-    switch (rocksDBComputeAccessMode) {
-      case SINGLE_GET:
-        reuseValueRecord = GenericRecordChunkingAdapter.INSTANCE.get(
-            store,
-            partition,
-            key,
-            isChunked,
-            reuseValueRecord,
-            reusableObjects.binaryDecoder,
-            response,
-            compressionStrategy,
-            fastAvroEnabled,
-            this.schemaRepo,
-            storeName,
-            compressor);
-        break;
-      case SINGLE_GET_WITH_REUSE:
-        reuseValueRecord = GenericRecordChunkingAdapter.INSTANCE.get(
-            storeName,
-            store,
-            partition,
-            ByteUtils.extractByteArray(key),
-            reuseRawValue,
-            reuseValueRecord,
-            reusableObjects.binaryDecoder,
-            isChunked,
-            compressionStrategy,
-            fastAvroEnabled,
-            this.schemaRepo,
-            response,
-            compressor);
-        break;
-      default:
-        throw new VeniceException("Unknown rocksDB compute storage operation");
-    }
+    reuseValueRecord = GenericRecordChunkingAdapter.INSTANCE.get(
+        storeName,
+        store,
+        partition,
+        ByteUtils.extractByteArray(key),
+        reuseRawValue,
+        reuseValueRecord,
+        reusableObjects.binaryDecoder,
+        isChunked,
+        compressionStrategy,
+        fastAvroEnabled,
+        this.schemaRepo,
+        response,
+        compressor);
 
     if (reuseValueRecord == null) {
       if (isStreaming) {

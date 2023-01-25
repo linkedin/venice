@@ -40,7 +40,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
         with:
-          arguments: "--continue --no-daemon -Pspotallbugs -Pspotbugs.xml -Pspotbugs.ignoreFailures clean check -x spotlessCheck -x test -x integrationTest"
+          arguments: "--continue --no-daemon -Pspotallbugs clean check -x spotlessCheck -x test -x integrationTest -x jacocoTestCoverageVerification"
 
   UnitTestsAndCodeCoverage:
     strategy:
@@ -69,7 +69,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
         with:
-          arguments: "jacocoTestCoverageVerification"
+          arguments: "jacocoTestCoverageVerification diffCoverage"
 
   IntegrationTestsA:
     strategy:
@@ -592,4 +592,34 @@ jobs:
         uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestZ"
+
+  DummyStep:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        jdk: [11]
+    runs-on: ${{ matrix.os }}
+    needs: [StaticAnalysis, UnitTestsAndCodeCoverage, IntegrationTestsA, IntegrationTestsB, IntegrationTestsC, IntegrationTestsD, IntegrationTestsE, IntegrationTestsF, IntegrationTestsG, IntegrationTestsH, IntegrationTestsI, IntegrationTestsJ, IntegrationTestsK, IntegrationTestsL, IntegrationTestsM, IntegrationTestsN, IntegrationTestsO, IntegrationTestsP, IntegrationTestsQ, IntegrationTestsZ]
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          java-version: ${{ matrix.jdk }}
+          distribution: 'microsoft'
+      - shell: bash
+        run: |
+          git remote set-head origin --auto
+          git remote add upstream https://github.com/linkedin/venice
+          git fetch upstream
+      - name: Validate Gradle wrapper
+        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+      - name: Build with Gradle
+        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        with:
+          arguments: "clean"
 

@@ -105,7 +105,7 @@ public class TestPushJobWithSourceGridFabricSelection {
    * Verify that grid source fabric config overrides the store level NR source fabric
    */
   @Test(timeOut = TEST_TIMEOUT_MS, dataProvider = "storeSize")
-  public void TestPushJobWithSourceGridFabricSelection(int recordCount, int partitionCount) throws Exception {
+  public void testPushJobWithSourceGridFabricSelection(int recordCount, int partitionCount) throws Exception {
     String clusterName = CLUSTER_NAMES[0];
     File inputDir = getTempDataDirectory();
     Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, recordCount);

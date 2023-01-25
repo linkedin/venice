@@ -107,7 +107,7 @@ public class CachedResourceZKStateListenerTest {
 
   private static class MockVeniceResource implements VeniceResource {
     protected volatile boolean isRefreshed;
-    protected volatile int refreshCount = 0;
+    protected int refreshCount = 0;
 
     @Override
     public void refresh() {

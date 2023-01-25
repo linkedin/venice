@@ -2,11 +2,14 @@ package com.linkedin.davinci.ingestion.main;
 
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.ingestion.HttpClientTransport;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
-import java.util.Optional;
+import com.linkedin.venice.utils.VeniceProperties;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -18,9 +21,13 @@ public class TestMainIngestionRequestClient {
     String topicName = "testTopic";
     int partitionId = 1;
 
-    try (
-        MainIngestionRequestClient ingestionRequestClient =
-            new MainIngestionRequestClient(Optional.empty(), 12345, 120);
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(serverConfig.getIngestionServicePort()).thenReturn(12345);
+    VeniceConfigLoader configLoader = mock(VeniceConfigLoader.class);
+    when(configLoader.getVeniceServerConfig()).thenReturn(serverConfig);
+    VeniceProperties combinedProperties = mock(VeniceProperties.class);
+    when(configLoader.getCombinedProperties()).thenReturn(combinedProperties);
+    try (MainIngestionRequestClient ingestionRequestClient = new MainIngestionRequestClient(configLoader);
         HttpClientTransport mockTransport = Mockito.mock(HttpClientTransport.class)) {
       // Client should throw exception when connection is bad.
       Assert.assertThrows(() -> ingestionRequestClient.startConsumption(topicName, partitionId));

@@ -1,6 +1,7 @@
 package com.linkedin.venice.serializer;
 
 import java.util.AbstractSet;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 import java.util.Set;
@@ -139,12 +140,26 @@ public class ArrayBasedPrimitiveIntegerSet extends AbstractSet<Integer> implemen
 
   // Comparison and hashing
 
+  @Override
   public int hashCode() {
     int hashCode = 1;
     for (int i = 0; i < this.size; i++) {
       hashCode = 31 * hashCode + Integer.hashCode(elements[i]);
     }
     return hashCode;
+  }
+
+  @Override
+  public boolean equals(Object obj) {
+    if (this == obj) {
+      return true;
+    }
+
+    if (!(obj instanceof ArrayBasedPrimitiveIntegerSet)) {
+      return false;
+    }
+    ArrayBasedPrimitiveIntegerSet other = (ArrayBasedPrimitiveIntegerSet) obj;
+    return Arrays.equals(other.elements, this.elements) && other.size == this.size;
   }
 
   private int[] getBackingArray() {

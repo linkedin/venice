@@ -58,7 +58,7 @@ public class TestHelixCustomizedViewOfflinePushRepository {
   private HelixPartitionStatusAccessor accessor0, accessor1;
 
   @BeforeMethod(alwaysRun = true)
-  public void HelixSetup() throws Exception {
+  public void setupHelix() throws Exception {
     zkServerWrapper = ServiceFactory.getZkServer();
     zkAddress = zkServerWrapper.getAddress();
     admin = new ZKHelixAdmin(zkAddress);
@@ -144,7 +144,7 @@ public class TestHelixCustomizedViewOfflinePushRepository {
   }
 
   @AfterMethod(alwaysRun = true)
-  public void HelixCleanup() {
+  public void cleanupHelix() {
     manager0.disconnect();
     manager1.disconnect();
     readManager.disconnect();

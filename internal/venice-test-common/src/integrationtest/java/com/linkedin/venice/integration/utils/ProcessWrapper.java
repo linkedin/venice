@@ -6,9 +6,11 @@ import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.ThreadContext;
 
 
 /**
@@ -62,7 +64,7 @@ public abstract class ProcessWrapper implements Closeable {
      * So no need to report the following error for {@link ZkServerWrapper}, and this hook will be in charge of closing it properly.
      */
     this.shutdownHook = new Thread(() -> closeAudit("JVM shutdown time"));
-    if (!(getClass().equals(ZkServerWrapper.class) && ZkServerWrapper.IsSingleton())) {
+    if (!(getClass().equals(ZkServerWrapper.class) && ZkServerWrapper.isSingleton())) {
       Runtime.getRuntime().addShutdownHook(shutdownHook);
     }
   }
@@ -95,6 +97,21 @@ public abstract class ProcessWrapper implements Closeable {
     }
   }
 
+  public String getServiceName() {
+    return serviceName;
+  }
+
+  public String getComponentTagForLogging() {
+    /**
+     * We intentionally ignore hostname here since it will be always 'localhost' for the local integration tests.
+     */
+    return getServiceName() + "-" + getPort();
+  }
+
+  public static String getComponentTagPrefix(String prefix) {
+    return prefix.isEmpty() ? "" : prefix + "-";
+  }
+
   /**
    * This function should start the wrapped service AND block until the service is fully started.
    *
@@ -104,7 +121,24 @@ public abstract class ProcessWrapper implements Closeable {
     if (!isRunning) {
       isStarted = true;
       long startTime = System.currentTimeMillis();
-      internalStart();
+      final AtomicReference<Exception> startException = new AtomicReference();
+      /**
+       * Spinning up a separate thread is to avoid polluting the {@link ThreadContext} of the current thread.
+       */
+      Thread startThread = new Thread(() -> {
+        // Setup component tag for logging
+        ThreadContext.put("component", getComponentTagForLogging());
+        try {
+          internalStart();
+        } catch (Exception e) {
+          startException.set(e);
+        }
+      });
+      startThread.start();
+      startThread.join();
+      if (startException.get() != null) {
+        throw startException.get();
+      }
       LOGGER.info("{} startup took {} ms.", serviceName, System.currentTimeMillis() - startTime);
       isRunning = true;
     } else {

@@ -99,7 +99,7 @@ public class DaVinciClientMetaStoreBasedRepository extends NativeMetadataReposit
     ClientConfig clonedClientConfig = ClientConfig.cloneConfig(clientConfig)
         .setStoreName(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getSystemStoreName())
         .setSpecificValueClass(StoreMetaValue.class);
-    metaStoreSchemaReader = ClientFactory.getSchemaReader(clonedClientConfig);
+    metaStoreSchemaReader = ClientFactory.getSchemaReader(clonedClientConfig, null);
     registerStoreDataChangedListener(metaSystemStoreChangeListener);
   }
 

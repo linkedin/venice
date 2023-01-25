@@ -20,7 +20,7 @@ import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.utils.MockTime;
+import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -37,7 +37,7 @@ import org.testng.annotations.Test;
 
 public class RealTimeTopicSwitcherRewindTest {
   private RealTimeTopicSwitcher topicReplicator;
-  private MockTime mockTime;
+  private TestMockTime mockTime;
 
   @BeforeTest
   public void setUp() {
@@ -52,7 +52,7 @@ public class RealTimeTopicSwitcherRewindTest {
     VeniceWriter<byte[], byte[], byte[]> veniceWriter = mock(VeniceWriter.class);
     topicReplicator = mock(RealTimeTopicSwitcher.class);
     VeniceWriterFactory veniceWriterFactory = mock(VeniceWriterFactory.class);
-    mockTime = new MockTime();
+    mockTime = new TestMockTime();
 
     when(topicReplicator.getTopicManager()).thenReturn(topicManager);
     when(topicReplicator.getVeniceWriterFactory()).thenReturn(veniceWriterFactory);

@@ -3,6 +3,9 @@ package com.linkedin.davinci.ingestion.main;
 import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.buildAndSaveConfigsForForkedIngestionProcess;
 import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.getDummyCommand;
 import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.saveForkedIngestionKafkaClusterMapConfig;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_HEARTBEAT_REQUEST_TIMEOUT_SECONDS;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_METRIC_REQUEST_TIMEOUT_SECONDS;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_REQUEST_TIMEOUT_SECONDS;
 import static com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType.START_CONSUMPTION;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
@@ -23,7 +26,7 @@ import com.linkedin.venice.ingestion.protocol.enums.IngestionComponentType;
 import com.linkedin.venice.meta.IngestionMetadataUpdateType;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.ForkedJavaProcess;
-import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
 import java.util.ArrayList;
@@ -39,11 +42,23 @@ import org.apache.logging.log4j.Logger;
  */
 public class MainIngestionRequestClient implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(MainIngestionRequestClient.class);
-  private static final int REQUEST_MAX_ATTEMPT = 10;
-  private static final int HEARTBEAT_REQUEST_TIMEOUT_MS = 10 * Time.MS_PER_SECOND;
-  private HttpClientTransport httpClientTransport;
+  private static final RedundantExceptionFilter REDUNDANT_EXCEPTION_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter();
 
-  public MainIngestionRequestClient(Optional<SSLFactory> sslFactory, int port, int requestTimeoutInSeconds) {
+  private static final int REQUEST_MAX_ATTEMPT = 10;
+  private HttpClientTransport httpClientTransport;
+  private final int heartbeatRequestTimeoutSeconds;
+  private final int metricRequestTimeoutSeconds;
+
+  public MainIngestionRequestClient(VeniceConfigLoader configLoader) {
+    heartbeatRequestTimeoutSeconds =
+        configLoader.getCombinedProperties().getInt(SERVER_INGESTION_ISOLATION_HEARTBEAT_REQUEST_TIMEOUT_SECONDS, 5);
+    metricRequestTimeoutSeconds =
+        configLoader.getCombinedProperties().getInt(SERVER_INGESTION_ISOLATION_METRIC_REQUEST_TIMEOUT_SECONDS, 60);
+    Optional<SSLFactory> sslFactory = IsolatedIngestionUtils.getSSLFactory(configLoader);
+    int port = configLoader.getVeniceServerConfig().getIngestionServicePort();
+    int requestTimeoutInSeconds =
+        configLoader.getCombinedProperties().getInt(SERVER_INGESTION_ISOLATION_REQUEST_TIMEOUT_SECONDS, 120);
     httpClientTransport = new HttpClientTransport(sslFactory, port, requestTimeoutInSeconds);
   }
 
@@ -224,23 +239,22 @@ public class MainIngestionRequestClient implements Closeable {
 
   public boolean collectMetrics(IsolatedIngestionProcessStats isolatedIngestionProcessStats) {
     try {
-      IngestionMetricsReport metricsReport = httpClientTransport.sendRequest(IngestionAction.METRIC, getDummyCommand());
-      if (LOGGER.isDebugEnabled()) {
-        LOGGER
-            .debug("Collected " + metricsReport.aggregatedMetrics.size() + " metrics from isolated ingestion service.");
-      }
+      IngestionMetricsReport metricsReport =
+          httpClientTransport.sendRequest(IngestionAction.METRIC, getDummyCommand(), metricRequestTimeoutSeconds);
       isolatedIngestionProcessStats.updateMetricMap(metricsReport.aggregatedMetrics);
       return true;
     } catch (Exception e) {
       // Don't spam the server logging.
-      LOGGER.warn("Unable to collect metrics from ingestion service");
+      if (!REDUNDANT_EXCEPTION_FILTER.isRedundantException(e.getMessage())) {
+        LOGGER.warn(e);
+      }
       return false;
     }
   }
 
   public boolean sendHeartbeatRequest() {
     try {
-      httpClientTransport.sendRequest(IngestionAction.HEARTBEAT, getDummyCommand(), HEARTBEAT_REQUEST_TIMEOUT_MS);
+      httpClientTransport.sendRequest(IngestionAction.HEARTBEAT, getDummyCommand(), heartbeatRequestTimeoutSeconds);
       return true;
     } catch (Exception e) {
       // Don't spam the server logging.

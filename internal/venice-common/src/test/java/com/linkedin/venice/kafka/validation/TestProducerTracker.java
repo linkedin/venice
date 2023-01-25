@@ -209,7 +209,7 @@ public class TestProducerTracker {
     ConsumerRecord<KafkaKey, KafkaMessageEnvelope> fourthConsumerRecord = new ConsumerRecord<>(
         topic,
         partitionId,
-        offset++,
+        offset,
         System.currentTimeMillis() + 1000,
         TimestampType.NO_TIMESTAMP_TYPE,
         ConsumerRecord.NULL_CHECKSUM,
@@ -258,7 +258,7 @@ public class TestProducerTracker {
     ConsumerRecord<KafkaKey, KafkaMessageEnvelope> firstConsumerRecord = new ConsumerRecord<>(
         topic,
         partitionId,
-        offset++,
+        offset,
         System.currentTimeMillis() + 1000,
         TimestampType.NO_TIMESTAMP_TYPE,
         ConsumerRecord.NULL_CHECKSUM,
@@ -341,7 +341,7 @@ public class TestProducerTracker {
     ConsumerRecord<KafkaKey, KafkaMessageEnvelope> firstConsumerRecord = new ConsumerRecord<>(
         topic,
         partitionId,
-        offset++,
+        offset,
         System.currentTimeMillis() + 1000,
         TimestampType.NO_TIMESTAMP_TYPE,
         ConsumerRecord.NULL_CHECKSUM,
@@ -395,7 +395,7 @@ public class TestProducerTracker {
     ConsumerRecord<KafkaKey, KafkaMessageEnvelope> firstConsumerRecord = new ConsumerRecord<>(
         topic,
         partitionId,
-        offset++,
+        offset,
         System.currentTimeMillis() + 1000,
         TimestampType.NO_TIMESTAMP_TYPE,
         ConsumerRecord.NULL_CHECKSUM,
