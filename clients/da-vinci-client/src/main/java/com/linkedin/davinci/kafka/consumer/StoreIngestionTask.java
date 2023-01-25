@@ -1389,6 +1389,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (emitMetrics.get()) {
       long currentQuota = store.getStorageQuotaInByte();
       hostLevelIngestionStats.recordDiskQuotaAllowed(currentQuota);
+      hostLevelIngestionStats.recordStorageQuotaUsed(storageUtilizationManager.getDiskQuotaUsage());
     }
   }
 

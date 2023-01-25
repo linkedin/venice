@@ -1,16 +1,21 @@
 package com.linkedin.venice.restart;
 
-import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
+
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceClusterWrapperConstants;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.RoutingDataRepository;
-import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.writer.VeniceWriter;
-import java.util.HashMap;
+import io.tehuti.Metric;
+import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -18,81 +23,82 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
-@Test(singleThreaded = true)
 public class TestRestartServer {
+  private static final int REPLICATION_FACTOR = 2;
   private VeniceClusterWrapper cluster;
-  int replicaFactor = 2;
-  int partitionSize = 1000;
 
   @BeforeClass
   public void setUp() {
-    int numberOfController = 1;
-    int numberOfServer = 2;
-    int numberOfRouter = 1;
-
-    cluster = ServiceFactory.getVeniceCluster(
-        numberOfController,
-        numberOfServer,
-        numberOfRouter,
-        replicaFactor,
-        partitionSize,
-        false,
-        false);
+    Utils.thisIsLocalhost();
+    Properties clusterConfig = new Properties();
+    clusterConfig.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
+    VeniceClusterCreateOptions options = new VeniceClusterCreateOptions.Builder().numberOfServers(REPLICATION_FACTOR)
+        .replicationFactor(REPLICATION_FACTOR)
+        .extraProperties(clusterConfig)
+        .build();
+    cluster = ServiceFactory.getVeniceCluster(options);
   }
 
   @AfterClass
   public void cleanUp() {
-    cluster.close();
+    Utils.closeQuietlyWithErrorLogged(cluster);
   }
 
   @Test(timeOut = 120 * Time.MS_PER_SECOND)
   public void testRestartServerAfterPushCompleted() {
-    String storeName = Utils.getUniqueString("testRestartServerAfterPushCompleted");
-    int dataSize = 2000;
-    int partitionCount = dataSize / partitionSize;
-    cluster.getNewStore(storeName);
-    VersionCreationResponse response = cluster.getNewVersion(storeName, dataSize);
+    int keyCount = REPLICATION_FACTOR * VeniceClusterWrapperConstants.DEFAULT_PARTITION_SIZE_BYTES;
+    String storeName = cluster.createStore(keyCount);
+    String kafkaTopic = Version.composeKafkaTopic(storeName, 1);
+    String quotaUsedMetricName = String.format(".%s--storage_quota_used.Gauge", storeName);
 
-    String topicName = response.getKafkaTopic();
-    Assert.assertEquals(response.getReplicas(), replicaFactor);
-    Assert.assertEquals(response.getPartitions(), dataSize / partitionSize);
+    RoutingDataRepository routingDataRepository = cluster.getRandomVeniceRouter().getRoutingDataRepository();
+    Assert.assertTrue(routingDataRepository.containsKafkaTopic(kafkaTopic));
+    int partitionCount = routingDataRepository.getNumberOfPartitions(kafkaTopic);
+    Assert.assertTrue(partitionCount > 1);
 
-    try (VeniceWriter<String, String, byte[]> veniceWriter = cluster.getVeniceWriter(topicName)) {
-      veniceWriter.broadcastStartOfPush(new HashMap<>());
-      veniceWriter.put("test", "test", 1);
-      veniceWriter.broadcastEndOfPush(new HashMap<>());
-    }
-
-    // Wait push completed.
-    TestUtils.waitForNonDeterministicCompletion(
-        20,
-        TimeUnit.SECONDS,
-        () -> cluster.getLeaderVeniceController()
-            .getVeniceAdmin()
-            .getOffLinePushStatus(cluster.getClusterName(), topicName)
-            .getExecutionStatus()
-            .equals(ExecutionStatus.COMPLETED));
-
-    // restart servers
-    for (VeniceServerWrapper failedServer: cluster.getVeniceServers()) {
-      cluster.stopVeniceServer(failedServer.getPort());
-    }
-
-    // After all server are shutdown, not partition assigned.
-    TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, true, true, () -> {
-      Assert.assertFalse(cluster.getRandomVeniceRouter().getRoutingDataRepository().containsKafkaTopic(topicName));
+    cluster.updateStore(storeName, new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA));
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      for (VeniceServerWrapper server: cluster.getVeniceServers()) {
+        Metric quotaUsedMetric = server.getMetricsRepository().getMetric(quotaUsedMetricName);
+        Assert.assertNotNull(quotaUsedMetric);
+        Assert.assertEquals(quotaUsedMetric.value(), -1., .0);
+      }
     });
 
-    for (VeniceServerWrapper restartServer: cluster.getVeniceServers()) {
-      cluster.restartVeniceServer(restartServer.getPort());
+    cluster.updateStore(storeName, new UpdateStoreQueryParams().setStorageQuotaInByte(1));
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      for (VeniceServerWrapper server: cluster.getVeniceServers()) {
+        Metric quotaUsedMetric = server.getMetricsRepository().getMetric(quotaUsedMetricName);
+        Assert.assertTrue(quotaUsedMetric.value() > keyCount);
+      }
+    });
+
+    for (VeniceServerWrapper server: cluster.getVeniceServers()) {
+      cluster.stopVeniceServer(server.getPort());
     }
 
-    // After restart, all replicas become ready to serve again.
+    // Check no partitions are assigned after all the servers were shutdown.
+    TestUtils.waitForNonDeterministicAssertion(
+        20,
+        TimeUnit.SECONDS,
+        () -> Assert.assertFalse(routingDataRepository.containsKafkaTopic(kafkaTopic)));
+
+    for (VeniceServerWrapper server: cluster.getVeniceServers()) {
+      cluster.restartVeniceServer(server.getPort());
+    }
+
+    // After restart, all partitions should become ready to serve again.
     TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, () -> {
-      RoutingDataRepository routingDataRepository = cluster.getRandomVeniceRouter().getRoutingDataRepository();
-      Assert.assertTrue(routingDataRepository.containsKafkaTopic(topicName));
-      for (int i = 0; i < partitionCount; i++) {
-        Assert.assertEquals(routingDataRepository.getReadyToServeInstances(topicName, i).size(), replicaFactor);
+      Assert.assertTrue(routingDataRepository.containsKafkaTopic(kafkaTopic));
+      for (int i = 0; i < partitionCount; ++i) {
+        Assert.assertEquals(routingDataRepository.getReadyToServeInstances(kafkaTopic, i).size(), REPLICATION_FACTOR);
+      }
+    });
+
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      for (VeniceServerWrapper server: cluster.getVeniceServers()) {
+        Metric quotaUsedMetric = server.getMetricsRepository().getMetric(quotaUsedMetricName);
+        Assert.assertTrue(quotaUsedMetric.value() > keyCount);
       }
     });
   }
