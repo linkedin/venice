@@ -2,7 +2,10 @@ package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.*;
 import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.utils.TestPushUtils.*;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
+import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUserSchema;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.helix.HelixParticipationService;
@@ -41,8 +44,6 @@ import org.apache.avro.generic.GenericData;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.model.InstanceConfig;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.rocksdb.ComparatorOptions;
 import org.rocksdb.util.BytewiseComparator;
 import org.testng.Assert;
@@ -53,7 +54,7 @@ import org.testng.annotations.Test;
 
 @Test(singleThreaded = true)
 public class TestLeaderReplicaFailover {
-  private static final Logger LOGGER = LogManager.getLogger(TestLeaderReplicaFailover.class);
+  private static final int TEST_TIMEOUT = 360 * Time.MS_PER_SECOND;
 
   String stringSchemaStr = "\"string\"";
   String valueSchemaStr =
@@ -61,8 +62,7 @@ public class TestLeaderReplicaFailover {
   AvroSerializer serializer = new AvroSerializer(AvroCompatibilityHelper.parse(stringSchemaStr));
   AvroSerializer valueSerializer = new AvroSerializer(AvroCompatibilityHelper.parse(valueSchemaStr));
 
-  private static final int TEST_TIMEOUT = 360 * Time.MS_PER_SECOND;
-  private static String clusterName;
+  private String clusterName;
   private VeniceClusterWrapper clusterWrapper;
 
   @BeforeClass
@@ -154,7 +154,7 @@ public class TestLeaderReplicaFailover {
       }
       veniceWriter.broadcastEndOfPush(Collections.emptyMap());
     }
-
+    LeaderDoomNotifier.resetFlag();
     // Wait push completed.
     TestUtils.waitForNonDeterministicCompletion(60, TimeUnit.SECONDS, () -> {
       try {
