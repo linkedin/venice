@@ -63,10 +63,17 @@ public class ChunkAssembler {
     mapperValue = KAFKA_INPUT_MAPPER_VALUE_AVRO_SPECIFIC_DESERIALIZER.deserialize(mapperValue, largestValueBytes);
 
     if (mapperValue.valueType == MapperValueType.DELETE) {
+      if (mapperValue.replicationMetadataPayload.remaining() != 0) {
+        return new ValueBytesAndSchemaId(
+            null,
+            mapperValue.schemaId,
+            mapperValue.replicationMetadataVersionId,
+            mapperValue.replicationMetadataPayload);
+      }
       return null;
     } else if (mapperValue.schemaId > 0) {
       return new ValueBytesAndSchemaId(
-          mapperValue.value,
+          ByteUtils.extractByteArray(mapperValue.value),
           mapperValue.schemaId,
           mapperValue.replicationMetadataVersionId,
           mapperValue.replicationMetadataPayload);
@@ -158,10 +165,6 @@ public class ChunkAssembler {
 
     private final int replicationMetadataVersionId;
     private final ByteBuffer replicationMetadataPayload;
-
-    ValueBytesAndSchemaId(ByteBuffer byteBuffer, int schemaID, int rmdId, ByteBuffer rmdPayload) {
-      this(ByteUtils.extractByteArray(byteBuffer), schemaID, rmdId, rmdPayload);
-    }
 
     ValueBytesAndSchemaId(byte[] bytes, int schemaID, int rmdId, ByteBuffer rmdPayload) {
       this.bytes = bytes;
