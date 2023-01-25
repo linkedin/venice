@@ -49,8 +49,8 @@ public class TestVeniceKafkaInputReducer {
     Assert.assertNotNull(reducer.initFilterChain(getTestProps()));
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testExtract(boolean isChunkingEnabled) {
+  @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testExtract(boolean isChunkingEnabled, boolean valueContainsRmdPayload) {
     byte[] keyBytes = "test_key".getBytes();
     BytesWritable keyWritable = new BytesWritable();
     keyWritable.set(keyBytes, 0, keyBytes.length);
@@ -59,8 +59,9 @@ public class TestVeniceKafkaInputReducer {
     /**
      * Construct a list of values, which contain only 'PUT'.
      */
-    List<BytesWritable> values =
-        getValues(Arrays.asList(MapperValueType.PUT, MapperValueType.PUT, MapperValueType.PUT));
+    List<BytesWritable> values = getValues(
+        Arrays.asList(MapperValueType.PUT, MapperValueType.PUT, MapperValueType.PUT),
+        valueContainsRmdPayload);
 
     VeniceReducer.VeniceWriterMessage message =
         reducer.extract(keyWritable, values.iterator(), Mockito.mock(Reporter.class));
@@ -68,27 +69,36 @@ public class TestVeniceKafkaInputReducer {
     Assert.assertEquals(message.getKeyBytes(), keyBytes);
     Assert.assertEquals(message.getValueBytes(), (VALUE_PREFIX + 2).getBytes());
     Assert.assertEquals(message.getValueSchemaId(), 1);
-    Assert.assertEquals(message.getRmdVersionId(), 1);
+    Assert.assertEquals(message.getRmdVersionId(), valueContainsRmdPayload ? 1 : -1);
 
     /**
      * Construct a list of values, which contains both 'PUT' and 'DELETE', but 'DELETE' is the last one.
      */
-    values = getValues(Arrays.asList(MapperValueType.PUT, MapperValueType.PUT, MapperValueType.DELETE));
+    values = getValues(
+        Arrays.asList(MapperValueType.PUT, MapperValueType.PUT, MapperValueType.DELETE),
+        valueContainsRmdPayload);
 
     message = reducer.extract(keyWritable, values.iterator(), Mockito.mock(Reporter.class));
-    Assert.assertNotNull(message);
+    // If DELETE contains RMD, it should be kept.
+    if (valueContainsRmdPayload) {
+      Assert.assertNotNull(message);
+    } else {
+      Assert.assertNull(message);
+    }
 
     /**
      * Construct a list of values, which contains both 'PUT' and 'DELETE', but 'DELETE' is in the middle.
      */
-    values = getValues(Arrays.asList(MapperValueType.PUT, MapperValueType.DELETE, MapperValueType.PUT));
+    values = getValues(
+        Arrays.asList(MapperValueType.PUT, MapperValueType.DELETE, MapperValueType.PUT),
+        valueContainsRmdPayload);
 
     message = reducer.extract(keyWritable, values.iterator(), Mockito.mock(Reporter.class));
     Assert.assertNotNull(message);
     Assert.assertEquals(message.getKeyBytes(), keyBytes);
     Assert.assertEquals(message.getValueBytes(), (VALUE_PREFIX + 2).getBytes());
     Assert.assertEquals(message.getValueSchemaId(), 1);
-    Assert.assertEquals(message.getRmdVersionId(), 1);
+    Assert.assertEquals(message.getRmdVersionId(), valueContainsRmdPayload ? 1 : -1);
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
@@ -110,7 +120,7 @@ public class TestVeniceKafkaInputReducer {
      * Construct a list of values, which contain only 'PUT'.
      */
     List<BytesWritable> values =
-        getValues(Arrays.asList(MapperValueType.PUT, MapperValueType.PUT, MapperValueType.PUT));
+        getValues(Arrays.asList(MapperValueType.PUT, MapperValueType.PUT, MapperValueType.PUT), true);
 
     VeniceReducer.VeniceWriterMessage message =
         reducer.extract(keyWritable, values.iterator(), Mockito.mock(Reporter.class));
@@ -124,7 +134,7 @@ public class TestVeniceKafkaInputReducer {
     }
   }
 
-  public List<BytesWritable> getValues(List<MapperValueType> valueTypes) {
+  public List<BytesWritable> getValues(List<MapperValueType> valueTypes, boolean hasRmdPayload) {
     List<BytesWritable> values = new ArrayList<>();
     long offset = 0;
     for (MapperValueType valueType: valueTypes) {
@@ -132,8 +142,9 @@ public class TestVeniceKafkaInputReducer {
       value.offset = offset++;
       value.schemaId = 1;
       value.valueType = valueType;
-      value.replicationMetadataVersionId = 1;
-      value.replicationMetadataPayload = ByteBuffer.wrap(RMD_VALUE_PREFIX.getBytes());
+      value.replicationMetadataVersionId = hasRmdPayload ? 1 : -1;
+      value.replicationMetadataPayload =
+          hasRmdPayload ? ByteBuffer.wrap(RMD_VALUE_PREFIX.getBytes()) : ByteBuffer.allocate(0);
       if (valueType.equals(MapperValueType.DELETE)) {
         value.value = ByteBuffer.wrap(new byte[0]);
       } else {
