@@ -67,6 +67,8 @@ services:
         interval: 5s
         timeout: 20s
         retries: 5
+    ports:
+       - "7777:7777"
 
   venice-client:
     image: venicedb/venice-client:latest
