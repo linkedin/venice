@@ -53,11 +53,19 @@ with various values and find ones that work for you.
 # Run jacoco code coverage check, which will also generate jacoco report
 ./gradlew jacocoTestCoverageVerification
  
+# Run jacoco code coverage check along with jacoco report and diff coverage check
+# Note that Jacoco task must be run before running diffCoverage otherwise the coverage data is 0
+# Also make sure the git origin is up-to-date with the git upstream otherwise the diff may show files not from the commit
+./gradlew jacocoTestCoverageVerification diffCoverage
+
 # Run enabled checks only for main code and in da-vinci-client subproject
 ./gradlew :clients:da-vinci-client:spotbugsMain
 
- # Run jacoco code coverage check for a specific module along with jacoco report
+# Run jacoco code coverage check for a specific module along with jacoco report
 ./gradlew :clients:da-vinci-client:jacocoTestCoverageVerification
+
+# Run jacoco code coverage check for a specific module along with jacoco report and diff coverage check
+./gradlew :clients:da-vinci-client:jacocoTestCoverageVerification diffCoverage
 
 # Run a specific test in any module
 $ ./gradlew :sub-module:testType --tests "fully.qualified.name.of.the.test"
