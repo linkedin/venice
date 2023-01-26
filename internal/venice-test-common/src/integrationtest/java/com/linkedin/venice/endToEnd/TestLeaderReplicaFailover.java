@@ -90,7 +90,7 @@ public class TestLeaderReplicaFailover {
     clusterWrapper.close();
   }
 
-  @Test(timeOut = TEST_TIMEOUT, invocationCount = 1)
+  @Test(timeOut = TEST_TIMEOUT)
   public void testLeaderReplicaFailover() throws Exception {
     ControllerClient parentControllerClient =
         new ControllerClient(clusterWrapper.getClusterName(), clusterWrapper.getAllControllersURLs());
