@@ -1,6 +1,7 @@
 package com.linkedin.davinci.client;
 
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
+import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
@@ -55,4 +56,8 @@ public interface DaVinciClient<K, V> extends AvroGenericStoreClient<K, V> {
    * @return partition count
    */
   int getPartitionCount();
+
+  default <T> TransformedCacheStoreClient<K, T> getTransformedCacheStoreClient() {
+    throw new VeniceUnsupportedOperationException("getTransformedCacheStoreClient");
+  }
 }

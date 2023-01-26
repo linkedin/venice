@@ -1,11 +1,13 @@
 package com.linkedin.davinci.store.cache.backend;
 
+import com.linkedin.davinci.client.CacheValueTransformer;
 import java.util.Optional;
 
 
 public class ObjectCacheConfig {
   private Optional<Long> maxCacheSize = Optional.empty();
   private Optional<Long> ttlInMilliseconds = Optional.empty();
+  private Optional<CacheValueTransformer> valueTransformer = Optional.empty();
 
   public ObjectCacheConfig setMaxPerPartitionCacheSize(Long maxPerPartitionCacheSize) {
     this.maxCacheSize = Optional.of(maxPerPartitionCacheSize);
@@ -14,6 +16,11 @@ public class ObjectCacheConfig {
 
   public ObjectCacheConfig setTtlInMilliseconds(Long ttlInMilliseconds) {
     this.ttlInMilliseconds = Optional.of(ttlInMilliseconds);
+    return this;
+  }
+
+  public ObjectCacheConfig setValueTransformer(CacheValueTransformer transformer) {
+    this.valueTransformer = Optional.of(transformer);
     return this;
   }
 
@@ -27,24 +34,15 @@ public class ObjectCacheConfig {
 
   @Override
   public boolean equals(Object o) {
-    if (o == null) {
-      return false;
-    }
-
-    if (o == this) {
+    if (this == o) {
       return true;
     }
-    if (!(o instanceof ObjectCacheConfig)) {
+    if (o == null || getClass() != o.getClass()) {
       return false;
     }
-    ObjectCacheConfig c = (ObjectCacheConfig) o;
-    if (!this.getTtlInMilliseconds().orElse(-1L).equals(c.getTtlInMilliseconds().orElse(-1L))) {
-      return false;
-    }
-    if (!this.getMaxCacheSize().orElse(-1L).equals(c.getMaxCacheSize().orElse(-1L))) {
-      return false;
-    }
-    return true;
+    ObjectCacheConfig that = (ObjectCacheConfig) o;
+    return maxCacheSize.equals(that.maxCacheSize) && ttlInMilliseconds.equals(that.ttlInMilliseconds)
+        && valueTransformer.equals(that.valueTransformer);
   }
 
   @Override
@@ -52,6 +50,7 @@ public class ObjectCacheConfig {
     int result = 1;
     result = result * 31 + maxCacheSize.hashCode();
     result = result * 31 + ttlInMilliseconds.hashCode();
+    result = result * 31 + valueTransformer.hashCode();
     return result;
   }
 
