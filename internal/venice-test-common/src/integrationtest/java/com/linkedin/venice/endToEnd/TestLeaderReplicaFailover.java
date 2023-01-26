@@ -9,7 +9,7 @@ import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUs
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.helix.HelixParticipationService;
-import com.linkedin.davinci.notifier.LeaderDoomNotifier;
+import com.linkedin.davinci.notifier.LeaderErrorNotifier;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -90,7 +90,7 @@ public class TestLeaderReplicaFailover {
     clusterWrapper.close();
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT, invocationCount = 1)
   public void testLeaderReplicaFailover() throws Exception {
     ControllerClient parentControllerClient =
         new ControllerClient(clusterWrapper.getClusterName(), clusterWrapper.getAllControllersURLs());
@@ -134,16 +134,17 @@ public class TestLeaderReplicaFailover {
         .getRoutingDataRepository();
     Instance leader = routingDataRepo.getLeaderInstance(topic, 0);
     for (VeniceServerWrapper serverWrapper: clusterWrapper.getVeniceServers()) {
-      // Add a doom notifier which will report leader to be in ERROR instead of COMPLETE
+      // Add error notifier which will report leader to be in ERROR instead of COMPLETE
       if (serverWrapper.getPort() == leader.getPort()) {
         HelixParticipationService participationService = serverWrapper.getVeniceServer().getHelixParticipationService();
-        LeaderDoomNotifier leaderDoomNotifier = new LeaderDoomNotifier(
+        LeaderErrorNotifier leaderErrorNotifier = new LeaderErrorNotifier(
             participationService.getVeniceOfflinePushMonitorAccessor(),
+            participationService.getStatusStoreWriter(),
+            participationService.getHelixReadOnlyStoreRepository(),
             participationService.getInstance().getNodeId());
-        participationService.replaceAndAddTestIngestionNotifier(leaderDoomNotifier);
+        participationService.replaceAndAddTestIngestionNotifier(leaderErrorNotifier);
       }
     }
-    Instance finalLeader1 = leader;
 
     try (VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterFactory.createBasicVeniceWriter(topic)) {
       veniceWriter.broadcastStartOfPush(true, Collections.emptyMap());
@@ -153,18 +154,7 @@ public class TestLeaderReplicaFailover {
       }
       veniceWriter.broadcastEndOfPush(Collections.emptyMap());
     }
-    // Wait push completed.
-    /* TestUtils.waitForNonDeterministicCompletion(60, TimeUnit.SECONDS, () -> {
-      try {
-        return clusterWrapper.getLeaderVeniceController()
-            .getVeniceAdmin()
-            .getOffLinePushStatus(clusterWrapper.getClusterName(), topic)
-            .getExecutionStatus()
-            .equals(ExecutionStatus.COMPLETED);
-      } catch (Exception e) {
-        return false;
-      }
-    });*/
+
     TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
       int currentVersion = clusterWrapper.getLeaderVeniceController()
           .getVeniceAdmin()
@@ -175,7 +165,7 @@ public class TestLeaderReplicaFailover {
     // Verify the leader is disabled.
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       HelixAdmin admin = new ZKHelixAdmin(clusterWrapper.getZk().getAddress());
-      InstanceConfig instanceConfig = admin.getInstanceConfig(clusterName, finalLeader1.getNodeId());
+      InstanceConfig instanceConfig = admin.getInstanceConfig(clusterName, leader.getNodeId());
       Assert.assertEquals(instanceConfig.getDisabledPartitionsMap().size(), 1);
     });
 

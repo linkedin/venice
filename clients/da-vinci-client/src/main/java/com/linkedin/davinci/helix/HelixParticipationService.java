@@ -77,7 +77,7 @@ public class HelixParticipationService extends AbstractVeniceService
   private final VeniceIngestionBackend ingestionBackend;
   private final CompletableFuture<SafeHelixManager> managerFuture; // complete this future when the manager is connected
   private final CompletableFuture<HelixPartitionStatusAccessor> partitionPushStatusAccessorFuture;
-
+  private PushStatusStoreWriter statusStoreWriter;
   private ZkClient zkClient;
   private SafeHelixManager helixManager;
   private AbstractStateModelFactory leaderFollowerParticipantModelFactory;
@@ -290,7 +290,7 @@ public class HelixParticipationService extends AbstractVeniceService
     // we use push status store for persisting incremental push statuses
     VeniceProperties veniceProperties = veniceConfigLoader.getVeniceServerConfig().getClusterProperties();
     VeniceWriterFactory writerFactory = new VeniceWriterFactory(veniceProperties.toProperties());
-    PushStatusStoreWriter statusStoreWriter = new PushStatusStoreWriter(
+    statusStoreWriter = new PushStatusStoreWriter(
         writerFactory,
         instance.getNodeId(),
         veniceProperties.getInt(PUSH_STATUS_STORE_DERIVED_SCHEMA_ID, 1));
@@ -362,6 +362,14 @@ public class HelixParticipationService extends AbstractVeniceService
 
   public VeniceOfflinePushMonitorAccessor getVeniceOfflinePushMonitorAccessor() {
     return veniceOfflinePushMonitorAccessor;
+  }
+
+  public PushStatusStoreWriter getStatusStoreWriter() {
+    return statusStoreWriter;
+  }
+
+  public ReadOnlyStoreRepository getHelixReadOnlyStoreRepository() {
+    return helixReadOnlyStoreRepository;
   }
 
   @Override
