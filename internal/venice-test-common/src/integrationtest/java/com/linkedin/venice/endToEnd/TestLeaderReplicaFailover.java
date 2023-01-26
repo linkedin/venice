@@ -23,7 +23,6 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -141,7 +140,7 @@ public class TestLeaderReplicaFailover {
         LeaderDoomNotifier leaderDoomNotifier = new LeaderDoomNotifier(
             participationService.getVeniceOfflinePushMonitorAccessor(),
             participationService.getInstance().getNodeId());
-        participationService.addTestIngestionNotifier(leaderDoomNotifier);
+        participationService.replaceAndAddTestIngestionNotifier(leaderDoomNotifier);
       }
     }
     Instance finalLeader1 = leader;
@@ -155,7 +154,7 @@ public class TestLeaderReplicaFailover {
       veniceWriter.broadcastEndOfPush(Collections.emptyMap());
     }
     // Wait push completed.
-    TestUtils.waitForNonDeterministicCompletion(60, TimeUnit.SECONDS, () -> {
+    /* TestUtils.waitForNonDeterministicCompletion(60, TimeUnit.SECONDS, () -> {
       try {
         return clusterWrapper.getLeaderVeniceController()
             .getVeniceAdmin()
@@ -165,13 +164,18 @@ public class TestLeaderReplicaFailover {
       } catch (Exception e) {
         return false;
       }
+    });*/
+    TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
+      int currentVersion = clusterWrapper.getLeaderVeniceController()
+          .getVeniceAdmin()
+          .getCurrentVersion(clusterWrapper.getClusterName(), storeName);
+      return currentVersion == 1;
     });
 
     // Verify the leader is disabled.
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       HelixAdmin admin = new ZKHelixAdmin(clusterWrapper.getZk().getAddress());
       InstanceConfig instanceConfig = admin.getInstanceConfig(clusterName, finalLeader1.getNodeId());
-      // disabling for now, its flaky
       Assert.assertEquals(instanceConfig.getDisabledPartitionsMap().size(), 1);
     });
 

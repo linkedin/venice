@@ -301,8 +301,8 @@ public abstract class PushStatusDecider {
       return COMPLETED;
     }
 
-    if (executionStatusMap.containsKey(ERROR) && executionStatusMap.get(ERROR)
-        + previouslyDisabledReplica > instanceToStateMap.size() - replicationFactor + numberOfToleratedErrors) {
+    if (executionStatusMap.containsKey(ERROR) && (executionStatusMap.get(ERROR)
+        + previouslyDisabledReplica > instanceToStateMap.size() - replicationFactor + numberOfToleratedErrors)) {
       return ERROR;
     }
 

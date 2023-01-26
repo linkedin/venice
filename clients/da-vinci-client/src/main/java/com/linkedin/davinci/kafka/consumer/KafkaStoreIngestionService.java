@@ -17,6 +17,7 @@ import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.listener.response.AdminResponse;
 import com.linkedin.davinci.notifier.LogNotifier;
 import com.linkedin.davinci.notifier.MetaSystemStoreReplicaStatusNotifier;
+import com.linkedin.davinci.notifier.PartitionPushStatusNotifier;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.AggLagStats;
@@ -923,6 +924,12 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   @Override
   public void addIngestionNotifier(VeniceNotifier notifier) {
+    leaderFollowerNotifiers.add(notifier);
+  }
+
+  // test only
+  public void replaceAndAddTestNotifier(VeniceNotifier notifier) {
+    leaderFollowerNotifiers.removeIf(veniceNotifier -> veniceNotifier instanceof PartitionPushStatusNotifier);
     leaderFollowerNotifiers.add(notifier);
   }
 

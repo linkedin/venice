@@ -351,8 +351,9 @@ public class HelixParticipationService extends AbstractVeniceService
     });
   }
 
-  public void addTestIngestionNotifier(VeniceNotifier notifier) {
-    ingestionBackend.addPushStatusNotifier(notifier);
+  // test only
+  public void replaceAndAddTestIngestionNotifier(VeniceNotifier notifier) {
+    ingestionBackend.replaceAndAddTestPushStatusNotifier(notifier);
   }
 
   public Instance getInstance() {
