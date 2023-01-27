@@ -483,30 +483,6 @@ task spotbugs {
 }
 check.dependsOn(spotbugs)
 
-tasks.register("CodeCoverageAggregateReport", JacocoReport) {
-  subprojects { subproject ->
-    subproject.plugins.withType(JacocoPlugin).configureEach {
-      subproject.tasks.matching({ t -> t.extensions.findByType(JacocoTaskExtension) }).configureEach { testTask ->
-        sourceSets subproject.sourceSets.main
-        executionData(testTask)
-      }
-
-      // To automatically run `test` every time `./gradlew codeCoverageReport` is called,
-      // you may want to set up a task dependency between them as shown below.
-      // Note that this requires the `test` tasks to be resolved eagerly (see `forEach`) which
-      // may have a negative effect on the configuration time of your build.
-//      subproject.tasks.matching({ t -> t.extensions.findByType(JacocoTaskExtension) }).forEach {
-//        rootProject.tasks.codeCoverageReport.dependsOn(it)
-//      }
-    }
-  }
-
-  reports {
-    html.enabled true
-    html.destination file("${buildDir}/report/jacocoHtml")
-  }
-}
-
 test {
   mustRunAfter spotbugs
   dependsOn subprojects.test
