@@ -1,19 +1,39 @@
 package com.linkedin.venice.utils;
 
-import static com.linkedin.venice.CommonConfigKeys.*;
-import static com.linkedin.venice.VeniceConstants.*;
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
-import static com.linkedin.venice.samza.VeniceSystemFactory.*;
+import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
+import static com.linkedin.venice.VeniceConstants.DEFAULT_PER_ROUTER_READ_QUOTA;
+import static com.linkedin.venice.hadoop.VenicePushJob.D2_ZK_HOSTS_PREFIX;
+import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_KEY_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_VALUE_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.KEY_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.MULTI_REGION;
+import static com.linkedin.venice.hadoop.VenicePushJob.PARENT_CONTROLLER_REGION_NAME;
+import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_GRID_FABRIC;
+import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_DISCOVER_URL_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
+import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
+import static com.linkedin.venice.samza.VeniceSystemFactory.DOT;
+import static com.linkedin.venice.samza.VeniceSystemFactory.SYSTEMS_PREFIX;
+import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_CONTROLLER_D2_SERVICE;
+import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_D2_ZK_HOSTS;
+import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_CONTROLLER_D2_SERVICE;
+import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_D2_ZK_HOSTS;
+import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PUSH_TYPE;
+import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_STORE;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.meta.Store;
@@ -21,10 +41,12 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.samza.VeniceObjectWithTimestamp;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.samza.config.MapConfig;
@@ -36,8 +58,62 @@ import org.testng.Assert;
 
 public class IntegrationTestPushUtils {
   public static Properties defaultVPJProps(VeniceClusterWrapper veniceCluster, String inputDirPath, String storeName) {
-    return TestWriteUtils
-        .defaultVPJProps(veniceCluster.getRandomVeniceController().getControllerUrl(), inputDirPath, storeName);
+    Map<String, String> childColoNamesToZkAddress =
+        Collections.singletonMap(veniceCluster.getColoName(), veniceCluster.getZk().getAddress());
+    return TestWriteUtils.defaultVPJPropsWithD2Routing(
+        null,
+        null,
+        childColoNamesToZkAddress,
+        VeniceControllerWrapper.PARENT_D2_SERVICE_NAME,
+        VeniceControllerWrapper.D2_SERVICE_NAME,
+        inputDirPath,
+        storeName);
+  }
+
+  public static Properties defaultVPJPropsWithoutD2Routing(
+      VeniceClusterWrapper veniceCluster,
+      String inputDirPath,
+      String storeName) {
+    return TestWriteUtils.defaultVPJProps(veniceCluster.getAllControllersURLs(), inputDirPath, storeName);
+  }
+
+  public static Properties defaultVPJProps(
+      VeniceMultiClusterWrapper veniceMultiCluster,
+      String inputDirPath,
+      String storeName) {
+    Map<String, String> childColoNamesToZkAddress = Collections
+        .singletonMap(veniceMultiCluster.getColoName(), veniceMultiCluster.getZkServerWrapper().getAddress());
+    return TestWriteUtils.defaultVPJPropsWithD2Routing(
+        null,
+        null,
+        childColoNamesToZkAddress,
+        VeniceControllerWrapper.PARENT_D2_SERVICE_NAME,
+        VeniceControllerWrapper.D2_SERVICE_NAME,
+        inputDirPath,
+        storeName);
+  }
+
+  public static Properties defaultVPJProps(
+      VeniceTwoLayerMultiColoMultiClusterWrapper multiColoMultiClusterWrapper,
+      String inputDirPath,
+      String storeName) {
+    String parentColoZkAddress = multiColoMultiClusterWrapper.getZkServerWrapper().getAddress();
+    String parentColoName = multiColoMultiClusterWrapper.getParentColoName();
+
+    Map<String, String> childColoNamesToZkAddress = multiColoMultiClusterWrapper.getChildColoList()
+        .stream()
+        .collect(
+            Collectors.toMap(
+                veniceColo -> veniceColo.getColoName(),
+                veniceColo -> veniceColo.getZkServerWrapper().getAddress()));
+    return TestWriteUtils.defaultVPJPropsWithD2Routing(
+        parentColoName,
+        parentColoZkAddress,
+        childColoNamesToZkAddress,
+        VeniceControllerWrapper.PARENT_D2_SERVICE_NAME,
+        VeniceControllerWrapper.D2_SERVICE_NAME,
+        inputDirPath,
+        storeName);
   }
 
   public static Properties sslVPJProps(VeniceClusterWrapper veniceCluster, String inputDirPath, String storeName) {
@@ -162,7 +238,6 @@ public class IntegrationTestPushUtils {
       String valueSchemaStr,
       Properties props,
       UpdateStoreQueryParams storeParams) {
-
     ControllerClient controllerClient = getControllerClient(veniceClusterName, props);
     NewStoreResponse newStoreResponse = controllerClient
         .createNewStore(props.getProperty(VENICE_STORE_NAME_PROP), "test@linkedin.com", keySchemaStr, valueSchemaStr);
@@ -186,9 +261,24 @@ public class IntegrationTestPushUtils {
     }
   }
 
-  private static ControllerClient getControllerClient(String veniceClusterName, Properties props) {
-    String veniceUrl = props.getProperty(VENICE_DISCOVER_URL_PROP);
-    return ControllerClient.constructClusterControllerClient(veniceClusterName, veniceUrl);
+  private static ControllerClient getControllerClient(String veniceClusterName, Properties pushJobProps) {
+    String veniceUrl = pushJobProps.getProperty(VENICE_DISCOVER_URL_PROP);
+    String d2Prefix = "d2://";
+    if (veniceUrl.startsWith(d2Prefix)) {
+      final String d2ServiceName = veniceUrl.substring(d2Prefix.length());
+      final String d2ZkHosts;
+      boolean multiRegion = Boolean.parseBoolean(pushJobProps.get(MULTI_REGION).toString());
+      if (multiRegion) {
+        String parentControllerColoName = pushJobProps.getProperty(PARENT_CONTROLLER_REGION_NAME);
+        d2ZkHosts = pushJobProps.getProperty(D2_ZK_HOSTS_PREFIX + parentControllerColoName);
+      } else {
+        String childControllerColoName = pushJobProps.getProperty(SOURCE_GRID_FABRIC);
+        d2ZkHosts = pushJobProps.getProperty(D2_ZK_HOSTS_PREFIX + childControllerColoName);
+      }
+      return D2ControllerClient.constructClusterControllerClient(veniceClusterName, d2ServiceName, d2ZkHosts);
+    } else {
+      return ControllerClient.constructClusterControllerClient(veniceClusterName, veniceUrl);
+    }
   }
 
   /**

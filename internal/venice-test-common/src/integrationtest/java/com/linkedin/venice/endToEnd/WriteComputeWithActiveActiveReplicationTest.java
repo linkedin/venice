@@ -131,7 +131,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
         false);
 
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
-    childDatacenters = multiColoMultiClusterWrapper.getClusters();
+    childDatacenters = multiColoMultiClusterWrapper.getChildColoList();
 
     String clusterName = CLUSTER_NAMES[0];
     String parentControllerURLs =

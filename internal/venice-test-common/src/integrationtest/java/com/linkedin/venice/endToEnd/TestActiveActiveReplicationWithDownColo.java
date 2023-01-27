@@ -38,7 +38,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -109,7 +108,7 @@ public class TestActiveActiveReplicationWithDownColo {
         Optional.of(controllerProps),
         Optional.of(new VeniceProperties(serverProperties)),
         false);
-    childDatacenters = multiColoMultiClusterWrapper.getClusters();
+    childDatacenters = multiColoMultiClusterWrapper.getChildColoList();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
   }
 
@@ -134,8 +133,8 @@ public class TestActiveActiveReplicationWithDownColo {
     // These variable don't do anything other than to make it easy to find their values in the debugger so you can hook
     // up ZooInspector and figure which colo is assigned where
     int zkPort = multiColoMultiClusterWrapper.getZkServerWrapper().getPort();
-    int dc0Kafka = multiColoMultiClusterWrapper.getClusters().get(0).getKafkaBrokerWrapper().getPort();
-    int dc1kafka = multiColoMultiClusterWrapper.getClusters().get(1).getKafkaBrokerWrapper().getPort();
+    int dc0Kafka = multiColoMultiClusterWrapper.getChildColoList().get(0).getKafkaBrokerWrapper().getPort();
+    int dc1kafka = multiColoMultiClusterWrapper.getChildColoList().get(1).getKafkaBrokerWrapper().getPort();
 
     // Spotbug doesn't like unused variables. Given they are assigned for debugging purposes, print them out.
     LOGGER.info("zkPort: {}", zkPort);
@@ -145,8 +144,7 @@ public class TestActiveActiveReplicationWithDownColo {
     // Create a store in all colos with A/A and hybrid enabled
     String clusterName = CLUSTER_NAMES[0];
     String storeName = Utils.getUniqueString("test-store");
-    String parentControllerUrls =
-        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
+    String parentControllerUrls = multiColoMultiClusterWrapper.getControllerConnectString();
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrls)) {
       parentControllerClient.createNewStore(storeName, "owner", INT_SCHEMA, STRING_SCHEMA);
       TestUtils.updateStoreToHybrid(
@@ -263,7 +261,10 @@ public class TestActiveActiveReplicationWithDownColo {
     // should succeed in the OTHER colos and go live.
 
     // It's simple, we kill the kafka broker
-    multiColoMultiClusterWrapper.getClusters().get(NUMBER_OF_CHILD_DATACENTERS - 1).getKafkaBrokerWrapper().close();
+    multiColoMultiClusterWrapper.getChildColoList()
+        .get(NUMBER_OF_CHILD_DATACENTERS - 1)
+        .getKafkaBrokerWrapper()
+        .close();
 
     // Execute a new push by writing some rows and sending an endOfPushMessage
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrls)) {

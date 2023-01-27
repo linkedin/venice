@@ -24,6 +24,7 @@ import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
@@ -34,7 +35,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.apache.commons.io.FileUtils;
@@ -106,7 +106,7 @@ public class TestPushJobWithNativeReplicationSharedProducer {
         Optional.of(controllerProps),
         Optional.of(new VeniceProperties(serverProperties)),
         false);
-    childDatacenters = multiColoMultiClusterWrapper.getClusters();
+    childDatacenters = multiColoMultiClusterWrapper.getChildColoList();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
   }
 
@@ -125,15 +125,15 @@ public class TestPushJobWithNativeReplicationSharedProducer {
 
     String clusterName = CLUSTER_NAMES[0];
     File inputDir = getTempDataDirectory();
-    String parentControllerUrls =
-        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
+    String parentControllerUrls = multiColoMultiClusterWrapper.getControllerConnectString();
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
 
     try {
       for (int i = 0; i < storeCount; i++) {
         String storeName = Utils.getUniqueString("store");
         storeNames[i] = storeName;
-        Properties props = TestWriteUtils.defaultVPJProps(parentControllerUrls, inputDirPath, storeName);
+        Properties props =
+            IntegrationTestPushUtils.defaultVPJProps(multiColoMultiClusterWrapper, inputDirPath, storeName);
         storeProps[i] = props;
         props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
 

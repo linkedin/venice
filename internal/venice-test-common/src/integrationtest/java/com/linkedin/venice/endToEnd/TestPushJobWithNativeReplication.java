@@ -75,6 +75,7 @@ import com.linkedin.venice.status.BatchJobHeartbeatConfigs;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatKey;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
@@ -95,7 +96,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -168,7 +168,7 @@ public class TestPushJobWithNativeReplication {
         Optional.of(controllerProps),
         Optional.of(new VeniceProperties(serverProperties)),
         false);
-    childDatacenters = multiColoMultiClusterWrapper.getClusters();
+    childDatacenters = multiColoMultiClusterWrapper.getChildColoList();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
   }
 
@@ -450,18 +450,20 @@ public class TestPushJobWithNativeReplication {
           // Prevent heartbeat from being deleted when the VPJ run finishes.
           props.put(BatchJobHeartbeatConfigs.HEARTBEAT_LAST_HEARTBEAT_IS_DELETE_CONFIG.getConfigName(), false);
 
-          TestWriteUtils.updateStore(
-              VPJ_HEARTBEAT_STORE_NAME,
-              parentControllerClient,
-              new UpdateStoreQueryParams().setLeaderFollowerModel(true).setNativeReplicationEnabled(true));
-          childDatacenters.get(0)
-              .getClusters()
-              .get(clusterName)
-              .useControllerClient(
-                  dc0Client -> childDatacenters.get(1).getClusters().get(clusterName).useControllerClient(dc1Client ->
-          // verify the update store command has taken effect before starting the push job.
-          NativeReplicationTestUtils
-              .verifyDCConfigNativeRepl(Arrays.asList(dc0Client, dc1Client), VPJ_HEARTBEAT_STORE_NAME, true)));
+          try (
+              ControllerClient dc0Client =
+                  new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
+              ControllerClient dc1Client =
+                  new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString())) {
+            TestWriteUtils.updateStore(
+                VPJ_HEARTBEAT_STORE_NAME,
+                parentControllerClient,
+                new UpdateStoreQueryParams().setLeaderFollowerModel(true).setNativeReplicationEnabled(true));
+
+            // verify the update store command has taken effect before starting the push job.
+            NativeReplicationTestUtils
+                .verifyDCConfigNativeRepl(Arrays.asList(dc0Client, dc1Client), VPJ_HEARTBEAT_STORE_NAME, true);
+          }
 
           try (VenicePushJob job = new VenicePushJob("Test push job", props)) {
             job.run();
@@ -811,8 +813,7 @@ public class TestPushJobWithNativeReplication {
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
-    String childControllerUrl = childDatacenters.get(0).getControllerConnectString();
-    Properties props = TestWriteUtils.defaultVPJProps(childControllerUrl, inputDirPath, storeName);
+    Properties props = IntegrationTestPushUtils.defaultVPJProps(childDatacenters.get(0), inputDirPath, storeName);
     createStoreForJob(clusterName, recordSchema, props).close();
 
     TestWriteUtils.runPushJob("Test push job", props);
@@ -879,11 +880,10 @@ public class TestPushJobWithNativeReplication {
       NativeReplicationTest test) throws Exception {
     String clusterName = CLUSTER_NAMES[0];
     File inputDir = getTempDataDirectory();
-    String parentControllerUrls =
-        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
+    String parentControllerUrls = multiColoMultiClusterWrapper.getControllerConnectString();
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
-    Properties props = TestWriteUtils.defaultVPJProps(parentControllerUrls, inputDirPath, storeName);
+    Properties props = IntegrationTestPushUtils.defaultVPJProps(multiColoMultiClusterWrapper, inputDirPath, storeName);
     props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
 
     UpdateStoreQueryParams updateStoreParams = updateStoreParamsTransformer

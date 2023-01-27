@@ -164,7 +164,7 @@ public class ActiveActiveReplicationForHybridTest {
         Optional.of(controllerProps),
         Optional.of(new VeniceProperties(serverProperties)),
         false);
-    childDatacenters = multiColoMultiClusterWrapper.getClusters();
+    childDatacenters = multiColoMultiClusterWrapper.getChildColoList();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
 
     // Set up a d2 client for DC0 region
@@ -384,7 +384,7 @@ public class ActiveActiveReplicationForHybridTest {
       // disable the purging of transientRecord buffer using reflection.
       if (useTransientRecordCache) {
         String topicName = Version.composeKafkaTopic(storeName, versionNumber);
-        for (VeniceMultiClusterWrapper veniceColo: multiColoMultiClusterWrapper.getClusters()) {
+        for (VeniceMultiClusterWrapper veniceColo: multiColoMultiClusterWrapper.getChildColoList()) {
           VeniceClusterWrapper veniceCluster = veniceColo.getClusters().get(clusterName);
           for (VeniceServerWrapper veniceServerWrapper: veniceCluster.getVeniceServers()) {
             StoreIngestionTaskBackdoor.setPurgeTransientRecordBuffer(veniceServerWrapper, topicName, false);

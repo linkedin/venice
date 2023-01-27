@@ -77,6 +77,7 @@ import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -112,33 +113,57 @@ public class ControllerClient implements Closeable {
   private final String clusterName;
   private final VeniceJsonSerializer<Version> versionVeniceJsonSerializer = new VeniceJsonSerializer<>(Version.class);
   private String leaderControllerUrl;
+  private final String controllerClientCacheKey;
   private final List<String> controllerDiscoveryUrls;
+  private boolean isShared = false;
 
-  private static final Map<String, ControllerClient> clusterToClientMap = new VeniceConcurrentHashMap<>();
+  private static final Map<String, ReferenceCounted<ControllerClient>> clusterToClientMap =
+      new VeniceConcurrentHashMap<>();
 
   /**
    * The key to find a cluster in clusterToClientMap is clusterName + url,
    * where url is either a set of discoveryUrls or a D2 service name.
    */
 
-  public static Map<String, ControllerClient> getClusterToClientMap() {
+  public static Map<String, ReferenceCounted<ControllerClient>> getClusterToClientMap() {
     return Collections.unmodifiableMap(clusterToClientMap);
   }
 
-  public static void addClusterToClientMapEntry(String clusterName, String url, ControllerClient value) {
-    clusterToClientMap.computeIfAbsent(clusterName + url, k -> value);
+  protected String getControllerClientCacheKey() {
+    return controllerClientCacheKey;
   }
 
-  public static void deleteClusterToClientMapEntry(String clusterName, String url) {
-    clusterToClientMap.remove(clusterName + url);
+  private static String getControllerClientCacheKey(String clusterName, String discoveryUrls) {
+    return clusterName + discoveryUrls;
   }
 
-  public static ControllerClient getClusterToClientMapEntry(String clusterName, String url) {
-    return getClusterToClientMap().get(clusterName + url);
+  private void setShared(boolean isShared) {
+    this.isShared = isShared;
   }
 
-  public static boolean clusterToClientMapContains(String clusterName, String url) {
-    return getClusterToClientMap().containsKey(clusterName + url);
+  public static void addClusterToClientMapEntry(ControllerClient value) {
+    String identifier = value.getControllerClientCacheKey();
+    clusterToClientMap.computeIfAbsent(identifier, id -> {
+      value.setShared(true);
+      return new ReferenceCounted<>(value, client -> {
+        deleteClusterToClientMapEntry(client.getControllerClientCacheKey());
+        client.setShared(false);
+        client.close(); // Doesn't run anything right now - but is useful to clean up if close method adds some cleanup
+                        // functionality later
+      });
+    });
+  }
+
+  public static void deleteClusterToClientMapEntry(String controllerClientCacheKey) {
+    clusterToClientMap.remove(controllerClientCacheKey);
+  }
+
+  public static ReferenceCounted<ControllerClient> getClusterToClientMapEntry(String controllerClientCacheKey) {
+    return getClusterToClientMap().get(controllerClientCacheKey);
+  }
+
+  public static boolean clusterToClientMapContains(String controllerClientCacheKey) {
+    return getClusterToClientMap().containsKey(controllerClientCacheKey);
   }
 
   public ControllerClient(String clusterName, String discoveryUrls) {
@@ -155,6 +180,7 @@ public class ControllerClient implements Closeable {
 
     this.sslFactory = sslFactory;
     this.clusterName = clusterName;
+    this.controllerClientCacheKey = getControllerClientCacheKey(clusterName, discoveryUrls);
     this.controllerDiscoveryUrls =
         Arrays.stream(discoveryUrls.split(",")).map(String::trim).collect(Collectors.toList());
     if (this.controllerDiscoveryUrls.isEmpty()) {
@@ -168,12 +194,7 @@ public class ControllerClient implements Closeable {
       Optional<SSLFactory> sslFactory,
       int retryAttempts) {
     String clusterName = discoverCluster(discoveryUrls, storeName, sslFactory, retryAttempts).getCluster();
-    if (!clusterToClientMapContains(clusterName, discoveryUrls))
-      addClusterToClientMapEntry(
-          clusterName,
-          discoveryUrls,
-          new ControllerClient(clusterName, discoveryUrls, sslFactory));
-    return getClusterToClientMapEntry(clusterName, discoveryUrls);
+    return constructClusterControllerClient(clusterName, discoveryUrls, sslFactory);
   }
 
   public static ControllerClient constructClusterControllerClient(String clusterName, String discoveryUrls) {
@@ -184,18 +205,23 @@ public class ControllerClient implements Closeable {
       String clusterName,
       String discoveryUrls,
       Optional<SSLFactory> sslFactory) {
-    if (!clusterToClientMapContains(clusterName, discoveryUrls)) {
-      addClusterToClientMapEntry(
-          clusterName,
-          discoveryUrls,
-          new ControllerClient(clusterName, discoveryUrls, sslFactory));
+    String controllerClientCacheKey = getControllerClientCacheKey(clusterName, discoveryUrls);
+    if (!clusterToClientMapContains(controllerClientCacheKey)) {
+      ControllerClient controllerClient = new ControllerClient(clusterName, discoveryUrls, sslFactory);
+      addClusterToClientMapEntry(controllerClient);
+      return controllerClient;
+    } else {
+      ReferenceCounted<ControllerClient> controllerClientRef = getClusterToClientMapEntry(controllerClientCacheKey);
+      controllerClientRef.retain();
+      return controllerClientRef.get();
     }
-    return getClusterToClientMapEntry(clusterName, discoveryUrls);
   }
 
   @Override
   public void close() {
-    clusterToClientMap.clear();
+    if (isShared) {
+      getClusterToClientMapEntry(getControllerClientCacheKey()).release();
+    }
   }
 
   protected String discoverLeaderController() {
@@ -232,9 +258,9 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.STORE, params, StoreResponse.class, timeoutMs, 1, null);
   }
 
-  public RepushInfoResponse getRepushInfo(String storeName, Optional<String> fabircName) {
+  public RepushInfoResponse getRepushInfo(String storeName, Optional<String> fabricName) {
     QueryParams params = newParams().add(NAME, storeName);
-    fabircName.ifPresent(s -> params.add(FABRIC, s));
+    fabricName.ifPresent(s -> params.add(FABRIC, s));
     return request(ControllerRoute.GET_REPUSH_INFO, params, RepushInfoResponse.class);
   }
 
@@ -290,7 +316,7 @@ public class ControllerClient implements Closeable {
    * idempotent and will return the same topic.
    * @param storeName Name of the store being written to.
    * @param storeSize Estimated size of push in bytes, used to determine partitioning
-   * @param pushJobId Unique Id for this job
+   * @param pushJobId Unique identifier for this job
    * @param sendStartOfPush Whether controller should send START_OF_PUSH message to the newly created topic,
    *                        while adding a new version. This is currently used in Samza batch load, a.k.a. grandfather
    * @param sorted Whether the push is going to contain sorted data (in each partition) or not
@@ -385,8 +411,8 @@ public class ControllerClient implements Closeable {
    * @param pushJobId the push job id for the push
    * @param storeSize the size of the store (currently unused)
    * @param timeOut max amount of time this function should take before returning in MILLISECONDS.  Retries sent to the controller
-   *                have 2 second sleeps between them.  So a timeout should be chosen that is larger, and a multiple of
-   *                2 seconds preferablly.
+   *                have 2-second sleeps between them.  So a timeout should be chosen that is larger, and a multiple of
+   *                2 seconds preferably.
    * @return the response from the controller.  Either a successful one, or a failed one with more information.
    */
   public ControllerResponse sendEmptyPushAndWait(String storeName, String pushJobId, long storeSize, long timeOut) {
@@ -458,7 +484,7 @@ public class ControllerClient implements Closeable {
       }
     } finally {
       if (creationResponse == null || updateResponse == null) {
-        // If any step in this process failed (that is, the store was created in some inconsistent state, clean up.
+        // If any step in this process failed (that is, the store was created in some inconsistent state), clean up.
         if (!this.getStore(storeName).isError()) {
           this.disableAndDeleteStore(storeName);
         }
@@ -508,7 +534,7 @@ public class ControllerClient implements Closeable {
   }
 
   /**
-   * This commmand should be sent to src controller, not dest controler
+   * This command should be sent to src controller, not dest controller
    */
   public StoreMigrationResponse abortMigration(String storeName, String destClusterName) {
     QueryParams params = newParams().add(NAME, storeName).add(CLUSTER_DEST, destClusterName);
@@ -589,10 +615,10 @@ public class ControllerClient implements Closeable {
   /**
    * Useful for pieces of code which want to have a test mocking the result of the function that's passed in...
    */
-  public static <R extends ControllerResponse> R retryableRequest(
-      ControllerClient client,
+  public static <C extends ControllerClient, R extends ControllerResponse> R retryableRequest(
+      C client,
       int totalAttempts,
-      Function<ControllerClient, R> request) {
+      Function<C, R> request) {
     if (totalAttempts < 1) {
       throw new VeniceException(
           "Querying with retries requires at least one attempt, called with " + totalAttempts + " attempts");
@@ -872,13 +898,13 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.LAST_SUCCEED_EXECUTION_ID, newParams(), LastSucceedExecutionIdResponse.class);
   }
 
-  public ControllerResponse enableThrotting(boolean isThrottlingEnabled) {
+  public ControllerResponse enableThrottling(boolean isThrottlingEnabled) {
     QueryParams params = newParams().add(STATUS, isThrottlingEnabled);
     return request(ControllerRoute.ENABLE_THROTTLING, params, ControllerResponse.class);
   }
 
-  public ControllerResponse enableMaxCapacityProtection(boolean isMaxCapacityProtion) {
-    QueryParams params = newParams().add(STATUS, isMaxCapacityProtion);
+  public ControllerResponse enableMaxCapacityProtection(boolean isMaxCapacityProtection) {
+    QueryParams params = newParams().add(STATUS, isMaxCapacityProtection);
     return request(ControllerRoute.ENABLE_MAX_CAPACITY_PROTECTION, params, ControllerResponse.class);
   }
 

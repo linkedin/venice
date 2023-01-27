@@ -16,8 +16,8 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
-import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -72,7 +72,7 @@ public class TestStaleDataVisibility {
         Optional.of(new VeniceProperties(serverProperties)),
         false);
 
-    childClusters = multiColoMultiClusterWrapper.getClusters();
+    childClusters = multiColoMultiClusterWrapper.getChildColoList();
     childControllers = childClusters.stream()
         .map(veniceClusterWrapper -> new ArrayList<>(veniceClusterWrapper.getControllers().values()))
         .collect(Collectors.toList());
@@ -107,11 +107,10 @@ public class TestStaleDataVisibility {
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
-    String parentControllerUrls =
-        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
+    String parentControllerUrls = multiColoMultiClusterWrapper.getControllerConnectString();
 
     // create a store via parent controller url
-    Properties props = TestWriteUtils.defaultVPJProps(parentControllerUrls, inputDirPath, storeName);
+    Properties props = IntegrationTestPushUtils.defaultVPJProps(multiColoMultiClusterWrapper, inputDirPath, storeName);
     createStoreForJob(clusterName, recordSchema, props).close();
     try (ControllerClient controllerClient = new ControllerClient(clusterName, parentControllerUrls)) {
       String pushStatusStoreVersionName =
@@ -136,8 +135,8 @@ public class TestStaleDataVisibility {
       Assert.assertFalse(emptyResponse.getAuditMap().containsKey(storeName));
 
       // get single child controller, empty push to it
-      VeniceControllerWrapper childController = childControllers.get(0).get(0);
-      Properties props2 = TestWriteUtils.defaultVPJProps(childController.getControllerUrl(), inputDirPath, storeName);
+      Properties props2 = IntegrationTestPushUtils
+          .defaultVPJProps(multiColoMultiClusterWrapper.getChildColoList().get(0), inputDirPath, storeName);
       try (VenicePushJob job = new VenicePushJob("Test push job", props2)) {
         job.run();
       }

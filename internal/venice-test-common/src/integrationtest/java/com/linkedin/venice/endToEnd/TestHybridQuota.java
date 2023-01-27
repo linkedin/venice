@@ -137,6 +137,8 @@ public class TestHybridQuota {
               .setChunkingEnabled(chunkingEnabled)
               .setHybridStoreDiskQuotaEnabled(true));
 
+      Assert.assertFalse(response.isError());
+
       HelixAdmin helixAdmin = null;
       try {
         helixAdmin = new ZKHelixAdmin(sharedVenice.getZk().getAddress());
@@ -146,7 +148,6 @@ public class TestHybridQuota {
           helixAdmin.close();
         }
       }
-      Assert.assertFalse(response.isError());
 
       readManager = new SafeHelixManager(
           HelixManagerFactory.getZKHelixManager(

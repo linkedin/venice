@@ -13,7 +13,6 @@ import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
 import com.linkedin.venice.utils.TestUtils;
@@ -26,7 +25,6 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -38,8 +36,8 @@ public class AdminToolBackfillTest {
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2; // DO NOT CHANGE
   private static final int NUMBER_OF_CLUSTERS = 1;
 
+  private String[] clusterNames;
   private List<VeniceMultiClusterWrapper> childDatacenters;
-  private List<VeniceControllerWrapper> parentControllers;
 
   private VeniceTwoLayerMultiColoMultiClusterWrapper multiColoMultiClusterWrapper;
 
@@ -62,8 +60,8 @@ public class AdminToolBackfillTest {
         Optional.empty(),
         Optional.empty(),
         false);
-    childDatacenters = multiColoMultiClusterWrapper.getClusters();
-    parentControllers = multiColoMultiClusterWrapper.getParentControllers();
+    childDatacenters = multiColoMultiClusterWrapper.getChildColoList();
+    clusterNames = multiColoMultiClusterWrapper.getClusterNames();
   }
 
   @AfterClass(alwaysRun = true)
@@ -73,11 +71,10 @@ public class AdminToolBackfillTest {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testMetaSystemStoreBackfill() throws Exception {
-    String clusterName = multiColoMultiClusterWrapper.getClusters().get(0).getClusterNames()[0];
+    String clusterName = clusterNames[0];
     String testStoreName = Utils.getUniqueString("test-store");
 
-    String parentControllerUrls =
-        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
+    String parentControllerUrls = multiColoMultiClusterWrapper.getControllerConnectString();
     ControllerClient parentControllerClient =
         ControllerClient.constructClusterControllerClient(clusterName, parentControllerUrls);
     ControllerClient dc0Client = ControllerClient
@@ -143,11 +140,10 @@ public class AdminToolBackfillTest {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testPushStatusStoreBackfill() throws Exception {
-    String clusterName = multiColoMultiClusterWrapper.getClusters().get(0).getClusterNames()[0];
+    String clusterName = clusterNames[0];
     String testStoreName = Utils.getUniqueString("test-store");
 
-    String parentControllerUrls =
-        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
+    String parentControllerUrls = multiColoMultiClusterWrapper.getControllerConnectString();
     ControllerClient parentControllerClient =
         ControllerClient.constructClusterControllerClient(clusterName, parentControllerUrls);
     ControllerClient dc0Client = ControllerClient

@@ -57,7 +57,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.SystemProducer;
@@ -111,7 +110,7 @@ public class DataRecoveryTest {
         Optional.of(controllerProps),
         Optional.of(new VeniceProperties(serverProperties)),
         false);
-    childDatacenters = multiColoMultiClusterWrapper.getClusters();
+    childDatacenters = multiColoMultiClusterWrapper.getChildColoList();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
     clusterName = CLUSTER_NAMES[0];
   }
@@ -124,8 +123,7 @@ public class DataRecoveryTest {
   @Test(timeOut = TEST_TIMEOUT)
   public void testStartDataRecoveryAPIs() {
     String storeName = Utils.getUniqueString("dataRecovery-store");
-    String parentControllerURLs =
-        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
+    String parentControllerURLs = multiColoMultiClusterWrapper.getControllerConnectString();
 
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
         ControllerClient dc0Client =
@@ -180,8 +178,7 @@ public class DataRecoveryTest {
   @Test(timeOut = TEST_TIMEOUT)
   public void testBatchOnlyDataRecovery() throws Exception {
     String storeName = Utils.getUniqueString("dataRecovery-store-batch");
-    String parentControllerURLs =
-        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
+    String parentControllerURLs = multiColoMultiClusterWrapper.getControllerConnectString();
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
         ControllerClient dc0Client =
             new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
@@ -255,8 +252,7 @@ public class DataRecoveryTest {
   @Test(timeOut = TEST_TIMEOUT * 2)
   public void testHybridAADataRecovery() throws Exception {
     String storeName = Utils.getUniqueString("dataRecovery-store-hybrid-AA");
-    String parentControllerURLs =
-        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
+    String parentControllerURLs = multiColoMultiClusterWrapper.getControllerConnectString();
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
         ControllerClient dc0Client =
             new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());

@@ -1,13 +1,21 @@
 package com.linkedin.venice.utils;
 
 import static com.linkedin.venice.hadoop.VenicePushJob.CONTROLLER_REQUEST_RETRY_ATTEMPTS;
+import static com.linkedin.venice.hadoop.VenicePushJob.D2_ZK_HOSTS_PREFIX;
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.INPUT_PATH_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.KEY_INPUT_FILE_DATA_SIZE;
 import static com.linkedin.venice.hadoop.VenicePushJob.KEY_ZSTD_COMPRESSION_DICTIONARY;
+import static com.linkedin.venice.hadoop.VenicePushJob.MULTI_REGION;
+import static com.linkedin.venice.hadoop.VenicePushJob.PARENT_CONTROLLER_REGION_NAME;
 import static com.linkedin.venice.hadoop.VenicePushJob.POLL_JOB_STATUS_INTERVAL_MS;
 import static com.linkedin.venice.hadoop.VenicePushJob.PUSH_JOB_STATUS_UPLOAD_ENABLE;
+import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_GRID_FABRIC;
+import static com.linkedin.venice.hadoop.VenicePushJob.SSL_KEY_PASSWORD_PROPERTY_NAME;
+import static com.linkedin.venice.hadoop.VenicePushJob.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME;
+import static com.linkedin.venice.hadoop.VenicePushJob.SSL_KEY_STORE_PROPERTY_NAME;
+import static com.linkedin.venice.hadoop.VenicePushJob.SSL_TRUST_STORE_PROPERTY_NAME;
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_DISCOVER_URL_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
 
@@ -58,12 +66,12 @@ public class TestWriteUtils {
           + "\", \"type\": \"string\"},  " + "       { \"name\": \"age\", \"type\": \"int\" }" + "  ] " + " } ";
 
   public static final String ETL_KEY_SCHEMA_STRING = "{\n" + "    \"type\":\"record\",\n" + "    \"name\":\"key\",\n"
-      + "    \"namespace\":\"com.linkedin.vencie.testkey\",\n" + "    \"fields\":[\n" + "        {\n"
+      + "    \"namespace\":\"com.linkedin.venice.testkey\",\n" + "    \"fields\":[\n" + "        {\n"
       + "            \"name\":\"" + DEFAULT_KEY_FIELD_PROP + "\",\n" + "            \"type\":\"string\"\n"
       + "        }\n" + "    ]\n" + "}";
 
   public static final String ETL_VALUE_SCHEMA_STRING = "{\n" + "    \"type\":\"record\",\n"
-      + "    \"name\":\"value\",\n" + "    \"namespace\":\"com.linkedin.vencie.testvalue\",\n" + "    \"fields\":[\n"
+      + "    \"name\":\"value\",\n" + "    \"namespace\":\"com.linkedin.venice.testvalue\",\n" + "    \"fields\":[\n"
       + "        {\n" + "            \"name\":\"" + DEFAULT_VALUE_FIELD_PROP + "\",\n"
       + "            \"type\":\"string\"\n" + "        }\n" + "    ],\n" + "    \"version\":10\n" + "}";
 
@@ -824,16 +832,16 @@ public class TestWriteUtils {
 
   private static void writeVsonFile(
       String keySchemaStr,
-      String valueSchemStr,
+      String valueSchemaStr,
       File parentDir,
       String fileName,
       VsonFileWriter fileWriter) throws IOException {
     SequenceFile.Metadata metadata = new SequenceFile.Metadata();
     metadata.set(new Text("key.schema"), new Text(keySchemaStr));
-    metadata.set(new Text("value.schema"), new Text(valueSchemStr));
+    metadata.set(new Text("value.schema"), new Text(valueSchemaStr));
 
     VsonAvroSerializer keySerializer = VsonAvroSerializer.fromSchemaStr(keySchemaStr);
-    VsonAvroSerializer valueSerializer = VsonAvroSerializer.fromSchemaStr(valueSchemStr);
+    VsonAvroSerializer valueSerializer = VsonAvroSerializer.fromSchemaStr(valueSchemaStr);
 
     try (SequenceFile.Writer writer = SequenceFile.createWriter(
         new Configuration(),
@@ -854,14 +862,53 @@ public class TestWriteUtils {
     void write(Schema recordSchema, DataFileWriter writer) throws IOException;
   }
 
+  public static Properties defaultVPJPropsWithD2Routing(
+      String parentRegionName,
+      String parentRegionD2ZkAddress,
+      Map<String, String> childRegionNamesToZkAddress,
+      String parentControllerD2ServiceName,
+      String childControllerD2ServiceName,
+      String inputDirPath,
+      String storeName) {
+    final String controllerServiceName;
+    parentRegionName = parentRegionName == null ? "parentRegion" : parentRegionName;
+    Properties props = new Properties();
+    if (parentRegionD2ZkAddress != null) {
+      controllerServiceName = parentControllerD2ServiceName;
+      props.put(PARENT_CONTROLLER_REGION_NAME, parentRegionName);
+      props.put(D2_ZK_HOSTS_PREFIX + parentRegionName, parentRegionD2ZkAddress);
+      props.put(MULTI_REGION, true);
+    } else {
+      controllerServiceName = childControllerD2ServiceName;
+      props.put(MULTI_REGION, false);
+    }
+
+    props.put(VENICE_DISCOVER_URL_PROP, String.format("d2://%s", controllerServiceName));
+    props.put(SOURCE_GRID_FABRIC, childRegionNamesToZkAddress.entrySet().iterator().next().getKey());
+
+    childRegionNamesToZkAddress.forEach(
+        (childRegionIdentifier, childRegionD2ZkAddress) -> props
+            .put(D2_ZK_HOSTS_PREFIX + childRegionIdentifier, childRegionD2ZkAddress));
+
+    return defaultVPJPropsInternal(props, inputDirPath, storeName);
+  }
+
   public static Properties defaultVPJProps(String veniceUrl, String inputDirPath, String storeName) {
     Properties props = new Properties();
     props.put(VENICE_DISCOVER_URL_PROP, veniceUrl);
+    return defaultVPJPropsInternal(props, inputDirPath, storeName);
+  }
+
+  private static Properties defaultVPJPropsInternal(Properties props, String inputDirPath, String storeName) {
     props.put(VENICE_STORE_NAME_PROP, storeName);
     props.put(INPUT_PATH_PROP, inputDirPath);
     // No need for a big close timeout in tests. This is just to speed up discovery of certain regressions.
     props.put(VeniceWriter.CLOSE_TIMEOUT_MS, 500);
     props.put(POLL_JOB_STATUS_INTERVAL_MS, 1000);
+    props.setProperty(SSL_KEY_STORE_PROPERTY_NAME, "test");
+    props.setProperty(SSL_TRUST_STORE_PROPERTY_NAME, "test");
+    props.setProperty(SSL_KEY_STORE_PASSWORD_PROPERTY_NAME, "test");
+    props.setProperty(SSL_KEY_PASSWORD_PROPERTY_NAME, "test");
     props.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, "false");
     props.setProperty(CONTROLLER_REQUEST_RETRY_ATTEMPTS, "5");
     return props;

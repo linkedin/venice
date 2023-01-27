@@ -89,7 +89,7 @@ public class PushStatusStoreMultiColoTest {
         Optional.of(extraProperties),
         Optional.empty(),
         false);
-    childDatacenters = multiColoMultiClusterWrapper.getClusters();
+    childDatacenters = multiColoMultiClusterWrapper.getChildColoList();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
 
     String[] clusterNames = childDatacenters.get(0).getClusterNames();

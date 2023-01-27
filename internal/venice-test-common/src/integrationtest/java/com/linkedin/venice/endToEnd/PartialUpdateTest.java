@@ -41,8 +41,8 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
-import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -104,7 +104,7 @@ public class PartialUpdateTest {
         Optional.of(new Properties(controllerProps)),
         Optional.of(new VeniceProperties(serverProperties)),
         false);
-    this.childDatacenters = multiColoMultiClusterWrapper.getClusters();
+    this.childDatacenters = multiColoMultiClusterWrapper.getChildColoList();
     List<VeniceControllerWrapper> parentControllers = multiColoMultiClusterWrapper.getParentControllers();
     if (parentControllers.size() != 1) {
       throw new IllegalStateException("Expect only one parent controller. Got: " + parentControllers.size());
@@ -199,7 +199,7 @@ public class PartialUpdateTest {
     ByteBuffer rmdKeyByteBuffer = ByteBuffer.wrap(
         ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(serializeStringKeyToByteArray(key)));
     String kafkaTopic = Version.composeKafkaTopic(storeName, 1);
-    for (VeniceServerWrapper serverWrapper: multiColoMultiClusterWrapper.getClusters()
+    for (VeniceServerWrapper serverWrapper: multiColoMultiClusterWrapper.getChildColoList()
         .get(0)
         .getClusters()
         .get("venice-cluster0")
@@ -338,7 +338,8 @@ public class PartialUpdateTest {
       // Records 1-100, id string to name record
       Schema recordSchema = writeSimpleAvroFileWithStringToRecordSchema(inputDir, true);
       VeniceClusterWrapper veniceClusterWrapper = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
-      Properties vpjProperties = TestWriteUtils.defaultVPJProps(parentControllerURL, inputDirPath, storeName);
+      Properties vpjProperties =
+          IntegrationTestPushUtils.defaultVPJProps(multiColoMultiClusterWrapper, inputDirPath, storeName);
       try (ControllerClient controllerClient = new ControllerClient(CLUSTER_NAME, parentControllerURL);
           AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
               ClientConfig.defaultGenericClientConfig(storeName)

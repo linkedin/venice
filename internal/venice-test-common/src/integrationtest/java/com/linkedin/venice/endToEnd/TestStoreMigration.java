@@ -40,7 +40,6 @@ import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.DaVinciTestContext;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
@@ -64,7 +63,6 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -139,19 +137,16 @@ public class TestStoreMigration {
         Optional.of(new VeniceProperties(serverProperties)),
         true);
 
-    multiClusterWrapper = twoLayerMultiColoMultiClusterWrapper.getClusters().get(0);
+    multiClusterWrapper = twoLayerMultiColoMultiClusterWrapper.getChildColoList().get(0);
     String[] clusterNames = multiClusterWrapper.getClusterNames();
     Arrays.sort(clusterNames);
     srcClusterName = clusterNames[0]; // venice-cluster0
     destClusterName = clusterNames[1]; // venice-cluster1
-    parentControllerUrl = twoLayerMultiColoMultiClusterWrapper.getParentControllers()
-        .stream()
-        .map(VeniceControllerWrapper::getControllerUrl)
-        .collect(Collectors.joining(","));
+    parentControllerUrl = twoLayerMultiColoMultiClusterWrapper.getControllerConnectString();
     childControllerUrl0 = multiClusterWrapper.getControllerConnectString();
   }
 
-  @AfterClass
+  @AfterClass(alwaysRun = true)
   public void cleanUp() {
     twoLayerMultiColoMultiClusterWrapper.close();
   }
@@ -159,7 +154,7 @@ public class TestStoreMigration {
   @Test(timeOut = TEST_TIMEOUT)
   public void testStoreMigrationOnParentController() throws Exception {
     String storeName = Utils.getUniqueString("store");
-    createAndPushStore(parentControllerUrl, srcClusterName, storeName);
+    createAndPushStore(srcClusterName, storeName);
 
     String srcD2ServiceName = multiClusterWrapper.getClusterToD2().get(srcClusterName);
     String destD2ServiceName = multiClusterWrapper.getClusterToD2().get(destClusterName);
@@ -197,7 +192,7 @@ public class TestStoreMigration {
   @Test(timeOut = TEST_TIMEOUT)
   public void testStoreMigrationWithNewPushesAndUpdatesOnParentController() throws Exception {
     String storeName = Utils.getUniqueString("store");
-    Properties props = createAndPushStore(parentControllerUrl, srcClusterName, storeName);
+    Properties props = createAndPushStore(srcClusterName, storeName);
 
     try (ControllerClient srcParentControllerClient = new ControllerClient(srcClusterName, parentControllerUrl);
         ControllerClient destParentControllerClient = new ControllerClient(destClusterName, parentControllerUrl)) {
@@ -249,7 +244,7 @@ public class TestStoreMigration {
   @Test(timeOut = TEST_TIMEOUT)
   public void testStoreMigrationWithMetaSystemStoreOnParentController() throws Exception {
     String storeName = Utils.getUniqueString("store");
-    createAndPushStore(parentControllerUrl, srcClusterName, storeName);
+    createAndPushStore(srcClusterName, storeName);
 
     try (ControllerClient srcParentControllerClient = new ControllerClient(srcClusterName, parentControllerUrl)) {
       // Enable the meta system store
@@ -314,7 +309,7 @@ public class TestStoreMigration {
   @Test(timeOut = TEST_TIMEOUT)
   public void testStoreMigrationWithDaVinciPushStatusSystemStoreOnParentController() throws Exception {
     String storeName = Utils.getUniqueString("store");
-    createAndPushStore(parentControllerUrl, srcClusterName, storeName);
+    createAndPushStore(srcClusterName, storeName);
 
     try (ControllerClient srcParentControllerClient = new ControllerClient(srcClusterName, parentControllerUrl)) {
       // Enable the da vinci push status system store
@@ -388,18 +383,19 @@ public class TestStoreMigration {
   @Test(timeOut = TEST_TIMEOUT)
   public void testStoreMigrationOnChildController() throws Exception {
     String storeName = Utils.getUniqueString("store");
-    createAndPushStore(parentControllerUrl, srcClusterName, storeName);
+    createAndPushStore(srcClusterName, storeName);
 
     startMigration(childControllerUrl0, storeName);
     completeMigration(childControllerUrl0, storeName);
     endMigration(childControllerUrl0, storeName);
   }
 
-  private Properties createAndPushStore(String controllerUrl, String clusterName, String storeName) throws Exception {
+  private Properties createAndPushStore(String clusterName, String storeName) throws Exception {
     File inputDir = getTempDataDirectory();
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, RECORD_COUNT);
-    Properties props = TestWriteUtils.defaultVPJProps(controllerUrl, inputDirPath, storeName);
+    Properties props =
+        IntegrationTestPushUtils.defaultVPJProps(twoLayerMultiColoMultiClusterWrapper, inputDirPath, storeName);
     String keySchemaStr = recordSchema.getField(props.getProperty(VenicePushJob.KEY_FIELD_PROP)).schema().toString();
     String valueSchemaStr =
         recordSchema.getField(props.getProperty(VenicePushJob.VALUE_FIELD_PROP)).schema().toString();
