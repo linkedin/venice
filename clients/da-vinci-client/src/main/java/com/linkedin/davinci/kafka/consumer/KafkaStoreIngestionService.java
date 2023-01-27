@@ -835,6 +835,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       int partitionId,
       int sleepSeconds,
       int numRetries) {
+    String topicName = veniceStore.getStoreVersionName();
     if (isPartitionConsuming(veniceStore, partitionId)) {
       stopConsumption(veniceStore, partitionId);
       try {
@@ -844,7 +845,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
             LOGGER.info(
                 "Partition: {} of topic: {} has stopped consumption in {}ms.",
                 partitionId,
-                veniceStore.getStoreVersionName(),
+                topicName,
                 LatencyUtils.getElapsedTimeInMs(startTimeInMs));
             break;
           }
@@ -853,20 +854,20 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         LOGGER.error(
             "Partition: {} of store: {} is still consuming after waiting for it to stop for {} seconds.",
             partitionId,
-            veniceStore.getStoreVersionName(),
+            topicName,
             numRetries * sleepSeconds);
       } catch (InterruptedException e) {
         LOGGER.warn("Waiting for partition to stop consumption was interrupted", e);
         currentThread().interrupt();
       }
     } else {
-      LOGGER.warn(
-          "Partition: {} of topic: {} is not consuming, skipped the stop consumption.",
-          partitionId,
-          veniceStore.getStoreVersionName());
+      LOGGER.warn("Partition: {} of topic: {} is not consuming, skipped the stop consumption.", partitionId, topicName);
     }
     resetConsumptionOffset(veniceStore, partitionId);
-    maybeShutdownStoreIngestionTask(veniceStore.getStoreVersionName());
+    if (!(isIsolatedIngestion || ingestionTaskHasAnySubscription(topicName))) {
+      LOGGER.info("Shutting down store ingestion task of topic {}", topicName);
+      shutdownStoreIngestionTask(topicName);
+    }
   }
 
   /**
@@ -1121,21 +1122,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   public final ReadOnlyStoreRepository getMetadataRepo() {
     return metadataRepo;
-  }
-
-  /**
-   * Only kill ingestion task when ingestion is happening in main process and there is no active partition for the topic.
-   * @param topic Topic name of the store ingestion task to be shutdown.
-   */
-  void maybeShutdownStoreIngestionTask(String topic) {
-    if (!(isIsolatedIngestion() || ingestionTaskHasAnySubscription(topic))) {
-      LOGGER.info("Shutting down store ingestion task of topic {}", topic);
-      shutdownStoreIngestionTask(topic);
-    }
-  }
-
-  private boolean isIsolatedIngestion() {
-    return isIsolatedIngestion;
   }
 
   private boolean ingestionTaskHasAnySubscription(String topic) {
