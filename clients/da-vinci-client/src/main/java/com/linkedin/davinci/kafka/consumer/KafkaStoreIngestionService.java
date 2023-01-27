@@ -680,10 +680,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   /**
    * This method closes the specified {@link StoreIngestionTask} and wait for up to 10 seconds for fully shutdown.
-   * @param veniceStoreVersionConfig store version config that carries topic information.
+   * @param topicName Topic name of the ingestion task to be shutdown.
    */
-  protected void shutdownStoreIngestionTask(VeniceStoreVersionConfig veniceStoreVersionConfig) {
-    String topicName = veniceStoreVersionConfig.getStoreVersionName();
+  protected void shutdownStoreIngestionTask(String topicName) {
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topicName)) {
       if (topicNameToIngestionTaskMap.containsKey(topicName)) {
         StoreIngestionTask storeIngestionTask = topicNameToIngestionTaskMap.remove(topicName);
@@ -867,9 +866,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           veniceStore.getStoreVersionName());
     }
     resetConsumptionOffset(veniceStore, partitionId);
-    if (!ingestionTaskHasAnySubscription(veniceStore.getStoreVersionName())) {
-      shutdownStoreIngestionTask(veniceStore);
-    }
+    maybeShutdownStoreIngestionTask(veniceStore.getStoreVersionName());
   }
 
   /**
@@ -1124,6 +1121,21 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   public final ReadOnlyStoreRepository getMetadataRepo() {
     return metadataRepo;
+  }
+
+  /**
+   * Only kill ingestion task when ingestion is happening in main process and there is no active partition for the topic.
+   * @param topic Topic name of the store ingestion task to be shutdown.
+   */
+  void maybeShutdownStoreIngestionTask(String topic) {
+    if (!(isIsolatedIngestion() || ingestionTaskHasAnySubscription(topic))) {
+      LOGGER.info("Shutting down store ingestion task of topic {}", topic);
+      shutdownStoreIngestionTask(topic);
+    }
+  }
+
+  private boolean isIsolatedIngestion() {
+    return isIsolatedIngestion;
   }
 
   private boolean ingestionTaskHasAnySubscription(String topic) {

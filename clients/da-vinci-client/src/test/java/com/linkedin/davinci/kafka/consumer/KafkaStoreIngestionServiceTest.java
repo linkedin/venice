@@ -37,6 +37,7 @@ import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
@@ -329,7 +330,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     VeniceProperties veniceProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
     kafkaStoreIngestionService.startConsumption(new VeniceStoreVersionConfig(topicName, veniceProperties), 0);
     StoreIngestionTask storeIngestionTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
-    kafkaStoreIngestionService.shutdownStoreIngestionTask(new VeniceStoreVersionConfig(topicName, veniceProperties));
+    kafkaStoreIngestionService.shutdownStoreIngestionTask(topicName);
     StoreIngestionTask closedStoreIngestionTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
     Assert.assertNull(closedStoreIngestionTask);
 
@@ -340,5 +341,63 @@ public abstract class KafkaStoreIngestionServiceTest {
     Assert.assertNotNull(newStoreIngestionTask);
     Assert.assertNotEquals(storeIngestionTask, newStoreIngestionTask);
     assertEquals(newStoreIngestionTask.getStorageEngine(), storageEngine2);
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testStoreIngestionTaskShutdownLastPartition(boolean isIsolatedIngestion) {
+    kafkaStoreIngestionService = new KafkaStoreIngestionService(
+        mockStorageEngineRepository,
+        mockVeniceConfigLoader,
+        storageMetadataService,
+        mockClusterInfoProvider,
+        mockMetadataRepo,
+        mockSchemaRepo,
+        mockLiveClusterConfigRepo,
+        new MetricsRepository(),
+        Optional.empty(),
+        Optional.empty(),
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer(),
+        Optional.empty(),
+        null,
+        isIsolatedIngestion,
+        compressorFactory,
+        Optional.empty(),
+        false,
+        null);
+    String topicName = "test-store_v1";
+    String storeName = Version.parseStoreFromKafkaTopicName(topicName);
+    Store mockStore = new ZKStore(
+        storeName,
+        "unit-test",
+        0,
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_ALL_REPLICAS,
+        1);
+
+    AbstractStorageEngine storageEngine1 = mock(AbstractStorageEngine.class);
+    Mockito.when(mockStorageEngineRepository.getLocalStorageEngine(topicName)).thenReturn(storageEngine1);
+
+    mockStore.addVersion(new VersionImpl(storeName, 1, "test-job-id"));
+    doReturn(mockStore).when(mockMetadataRepo).getStore(storeName);
+    doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeName);
+    doReturn(new Pair<>(mockStore, mockStore.getVersion(1).get())).when(mockMetadataRepo)
+        .waitVersion(eq(storeName), eq(1), any());
+    VeniceProperties veniceProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
+    VeniceStoreVersionConfig config = new VeniceStoreVersionConfig(topicName, veniceProperties);
+    kafkaStoreIngestionService.startConsumption(config, 0);
+    kafkaStoreIngestionService.stopConsumptionAndWait(config, 0, 1, 1);
+    StoreIngestionTask storeIngestionTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
+    if (isIsolatedIngestion) {
+      Assert.assertNotNull(storeIngestionTask);
+    } else {
+      Assert.assertNull(storeIngestionTask);
+    }
+    kafkaStoreIngestionService.startConsumption(config, 0);
+    storeIngestionTask = kafkaStoreIngestionService.getStoreIngestionTask(topicName);
+    storeIngestionTask.setPartitionConsumptionState(1, mock(PartitionConsumptionState.class));
+    kafkaStoreIngestionService.stopConsumptionAndWait(config, 0, 1, 1);
+    Assert.assertNotNull(storeIngestionTask);
   }
 }
