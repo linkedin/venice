@@ -132,6 +132,7 @@ public class TestLeaderReplicaFailover {
         .getVeniceHelixAdmin()
         .getHelixVeniceClusterResources(clusterWrapper.getClusterName())
         .getRoutingDataRepository();
+
     Instance leader = routingDataRepo.getLeaderInstance(topic, 0);
     for (VeniceServerWrapper serverWrapper: clusterWrapper.getVeniceServers()) {
       // Add error notifier which will report leader to be in ERROR instead of COMPLETE
