@@ -280,7 +280,7 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
                   .info("Recovered ingestion task in isolated process for topic: {}, partition: {}", topic, partition);
               count.addAndGet(1);
             } catch (Exception e) {
-              LOGGER.info("Recovery of ingestion failed for topic: {}, partition: {}", topic, partition, e);
+              LOGGER.warn("Recovery of ingestion failed for topic: {}, partition: {}", topic, partition, e);
             }
           }
         });
