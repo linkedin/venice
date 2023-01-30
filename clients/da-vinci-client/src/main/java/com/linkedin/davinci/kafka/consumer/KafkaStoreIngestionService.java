@@ -680,10 +680,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   /**
    * This method closes the specified {@link StoreIngestionTask} and wait for up to 10 seconds for fully shutdown.
-   * @param veniceStoreVersionConfig store version config that carries topic information.
+   * @param topicName Topic name of the ingestion task to be shutdown.
    */
-  protected void shutdownStoreIngestionTask(VeniceStoreVersionConfig veniceStoreVersionConfig) {
-    String topicName = veniceStoreVersionConfig.getStoreVersionName();
+  protected void shutdownStoreIngestionTask(String topicName) {
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topicName)) {
       if (topicNameToIngestionTaskMap.containsKey(topicName)) {
         StoreIngestionTask storeIngestionTask = topicNameToIngestionTaskMap.remove(topicName);
@@ -836,6 +835,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       int partitionId,
       int sleepSeconds,
       int numRetries) {
+    String topicName = veniceStore.getStoreVersionName();
     if (isPartitionConsuming(veniceStore, partitionId)) {
       stopConsumption(veniceStore, partitionId);
       try {
@@ -845,7 +845,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
             LOGGER.info(
                 "Partition: {} of topic: {} has stopped consumption in {}ms.",
                 partitionId,
-                veniceStore.getStoreVersionName(),
+                topicName,
                 LatencyUtils.getElapsedTimeInMs(startTimeInMs));
             break;
           }
@@ -854,21 +854,23 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         LOGGER.error(
             "Partition: {} of store: {} is still consuming after waiting for it to stop for {} seconds.",
             partitionId,
-            veniceStore.getStoreVersionName(),
+            topicName,
             numRetries * sleepSeconds);
       } catch (InterruptedException e) {
         LOGGER.warn("Waiting for partition to stop consumption was interrupted", e);
         currentThread().interrupt();
       }
     } else {
-      LOGGER.warn(
-          "Partition: {} of topic: {} is not consuming, skipped the stop consumption.",
-          partitionId,
-          veniceStore.getStoreVersionName());
+      LOGGER.warn("Partition: {} of topic: {} is not consuming, skipped the stop consumption.", partitionId, topicName);
     }
     resetConsumptionOffset(veniceStore, partitionId);
-    if (!ingestionTaskHasAnySubscription(veniceStore.getStoreVersionName())) {
-      shutdownStoreIngestionTask(veniceStore);
+    if (!ingestionTaskHasAnySubscription(topicName)) {
+      if (isIsolatedIngestion) {
+        LOGGER.info("Ingestion task for topic {} will be kept open for the access from main process.", topicName);
+      } else {
+        LOGGER.info("Shutting down ingestion task of topic {}", topicName);
+        shutdownStoreIngestionTask(topicName);
+      }
     }
   }
 
