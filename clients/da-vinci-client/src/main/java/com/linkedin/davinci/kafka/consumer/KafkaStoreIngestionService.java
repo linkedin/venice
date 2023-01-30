@@ -864,9 +864,13 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       LOGGER.warn("Partition: {} of topic: {} is not consuming, skipped the stop consumption.", partitionId, topicName);
     }
     resetConsumptionOffset(veniceStore, partitionId);
-    if (!(isIsolatedIngestion || ingestionTaskHasAnySubscription(topicName))) {
-      LOGGER.info("Shutting down store ingestion task of topic {}", topicName);
-      shutdownStoreIngestionTask(topicName);
+    if (!ingestionTaskHasAnySubscription(topicName)) {
+      if (isIsolatedIngestion) {
+        LOGGER.info("Ingestion task for topic {} will be kept open for the access from main process.", topicName);
+      } else {
+        LOGGER.info("Shutting down ingestion task of topic {}", topicName);
+        shutdownStoreIngestionTask(topicName);
+      }
     }
   }
 
