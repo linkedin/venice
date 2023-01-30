@@ -32,6 +32,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
+import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionReportType;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -65,6 +66,7 @@ import java.io.FileNotFoundException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
@@ -105,6 +107,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   private final EventLoopGroup workerGroup;
   private final ExecutorService ingestionExecutor = Executors.newFixedThreadPool(10);
   private final ScheduledExecutorService heartbeatCheckScheduler = Executors.newScheduledThreadPool(1);
+  private final ScheduledExecutorService metricsCollectionScheduler = Executors.newScheduledThreadPool(1);
   private final AtomicBoolean isShuttingDown = new AtomicBoolean(false);
   private final int servicePort;
   private final ExecutorService longRunningTaskExecutor = Executors.newFixedThreadPool(10);
@@ -142,6 +145,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   private InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer;
   private boolean isInitiated = false;
   private IsolatedIngestionRequestClient reportClient;
+  private IsolatedIngestionRequestClient metricClient;
   private volatile long heartbeatTimeInMs = System.currentTimeMillis();
   private int stopConsumptionWaitRetriesNum;
   private DefaultIngestionBackend ingestionBackend;
@@ -203,6 +207,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     LOGGER.info("All ingestion components are initialized.");
 
     heartbeatCheckScheduler.scheduleAtFixedRate(this::checkHeartbeatTimeout, 0, 5, TimeUnit.SECONDS);
+    metricsCollectionScheduler.scheduleAtFixedRate(this::reportMetricsUpdateToMainProcess, 0, 10, TimeUnit.SECONDS);
     // There is no async process in this function, so we are completely finished with the start-up process.
     repairService.start();
     return true;
@@ -232,6 +237,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     }
 
     heartbeatCheckScheduler.shutdownNow();
+    metricsCollectionScheduler.shutdownNow();
     ingestionExecutor.shutdown();
     longRunningTaskExecutor.shutdown();
     try {
@@ -522,6 +528,37 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     }
   }
 
+  void reportMetricsUpdateToMainProcess() {
+    IngestionMetricsReport report = new IngestionMetricsReport();
+    report.aggregatedMetrics = new HashMap<>();
+    if (getMetricsRepository() != null) {
+      getMetricsRepository().metrics().forEach((name, metric) -> {
+        if (metric != null) {
+          try {
+            // Best-effort to reduce metrics delta size sent from child process to main process.
+            Double originalValue = getMetricsMap().get(name);
+            Double newValue = metric.value();
+            if (originalValue == null || !originalValue.equals(newValue)) {
+              report.aggregatedMetrics.put(name, newValue);
+            }
+            getMetricsMap().put(name, newValue);
+          } catch (Exception e) {
+            String exceptionLogMessage = "Encounter exception when retrieving value of metric: " + name;
+            if (!getRedundantExceptionFilter().isRedundantException(exceptionLogMessage)) {
+              LOGGER.error(exceptionLogMessage, e);
+            }
+          }
+        }
+      });
+    }
+    LOGGER.info("DEBUGGING");
+    getMetricClient().reportMetricUpdate(report);
+  }
+
+  IsolatedIngestionRequestClient getMetricClient() {
+    return metricClient;
+  }
+
   private void initializeIsolatedIngestionServer() {
     stopConsumptionWaitRetriesNum =
         configLoader.getCombinedProperties().getInt(SERVER_STOP_CONSUMPTION_WAIT_RETRIES_NUM, 180);
@@ -673,8 +710,10 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     LOGGER.info(
         "Starting report client with target application port: {}",
         configLoader.getVeniceServerConfig().getIngestionApplicationPort());
-    // Create Netty client to report status back to application.
+    // Create Netty client to report ingestion status back to main application.
     reportClient = new IsolatedIngestionRequestClient(configLoader);
+    // Create Netty client to report metrics update back to main application.
+    metricClient = new IsolatedIngestionRequestClient(configLoader);
 
     // Mark the IsolatedIngestionServer as initiated.
     isInitiated = true;
