@@ -1,5 +1,6 @@
 package com.linkedin.venice.pushmonitor;
 
+import com.linkedin.venice.controller.HelixAdminClient;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
@@ -51,7 +52,8 @@ public class PushMonitorDelegator implements PushMonitor {
       RealTimeTopicSwitcher leaderFollowerTopicReplicator,
       ClusterLockManager clusterLockManager,
       String aggregateRealTimeSourceKafkaUrl,
-      List<String> activeActiveRealTimeSourceKafkaURLs) {
+      List<String> activeActiveRealTimeSourceKafkaURLs,
+      HelixAdminClient helixAdminClient) {
     this.clusterName = clusterName;
     this.metadataRepository = metadataRepository;
     this.offlinePushAccessor = offlinePushAccessor;
@@ -66,7 +68,8 @@ public class PushMonitorDelegator implements PushMonitor {
         leaderFollowerTopicReplicator,
         clusterLockManager,
         aggregateRealTimeSourceKafkaUrl,
-        activeActiveRealTimeSourceKafkaURLs);
+        activeActiveRealTimeSourceKafkaURLs,
+        helixAdminClient);
     this.clusterLockManager = clusterLockManager;
 
     this.topicToPushMonitorMap = new VeniceConcurrentHashMap<>();

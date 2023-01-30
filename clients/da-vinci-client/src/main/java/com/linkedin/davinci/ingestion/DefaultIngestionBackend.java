@@ -125,6 +125,11 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
   }
 
   @Override
+  public void replaceAndAddTestPushStatusNotifier(VeniceNotifier pushStatusNotifier) {
+    getStoreIngestionService().replaceAndAddTestNotifier(pushStatusNotifier);
+  }
+
+  @Override
   public void setStorageEngineReference(
       String topicName,
       AtomicReference<AbstractStorageEngine> storageEngineReference) {

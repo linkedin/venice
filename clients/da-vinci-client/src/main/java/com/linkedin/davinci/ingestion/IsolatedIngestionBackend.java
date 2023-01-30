@@ -13,7 +13,6 @@ import com.linkedin.davinci.ingestion.main.MainIngestionMonitorService;
 import com.linkedin.davinci.ingestion.main.MainIngestionRequestClient;
 import com.linkedin.davinci.ingestion.main.MainIngestionStorageMetadataService;
 import com.linkedin.davinci.ingestion.main.MainPartitionIngestionStatus;
-import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.notifier.RelayNotifier;
@@ -24,7 +23,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionComponentType;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
@@ -67,14 +65,13 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
     int servicePort = configLoader.getVeniceServerConfig().getIngestionServicePort();
     int listenerPort = configLoader.getVeniceServerConfig().getIngestionApplicationPort();
     this.configLoader = configLoader;
-    Optional<SSLFactory> sslFactory = IsolatedIngestionUtils.getSSLFactory(configLoader);
     // Create the ingestion request client.
     mainIngestionRequestClient = new MainIngestionRequestClient(configLoader);
     // Create the forked isolated ingestion process.
     isolatedIngestionServiceProcess = mainIngestionRequestClient.startForkedIngestionProcess(configLoader);
     // Create and start the ingestion report listener.
     try {
-      mainIngestionMonitorService = new MainIngestionMonitorService(this, configLoader, sslFactory);
+      mainIngestionMonitorService = new MainIngestionMonitorService(this, configLoader);
       mainIngestionMonitorService.setStoreRepository(storeRepository);
       mainIngestionMonitorService.setMetricsRepository(metricsRepository);
       mainIngestionMonitorService.setStoreIngestionService(storeIngestionService);

@@ -201,7 +201,7 @@ class AbstractTestVeniceHelixAdmin {
     properties.put(CLUSTER_NAME, clusterName);
     properties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getAddress());
     properties.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, MAX_NUMBER_OF_PARTITION);
-    properties.put(DEFAULT_PARTITION_SIZE, 100);
+    properties.put(DEFAULT_PARTITION_SIZE, 10);
     properties.put(CLUSTER_TO_D2, TestUtils.getClusterToD2String(Collections.singletonMap(clusterName, "dummy_d2")));
     properties.put(CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL, true);
     properties.put(ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED, false);
