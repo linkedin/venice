@@ -1,0 +1,95 @@
+package com.linkedin.venice.pubsub.api;
+
+
+import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
+import com.linkedin.venice.pubsub.PubSubTopicImpl;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.common.TopicPartition;
+
+
+public class PubSubMessages<K, V> {
+  @SuppressWarnings("unchecked")
+  public static final PubSubMessages<Object, Object> EMPTY = new PubSubMessages<>(Collections.EMPTY_MAP);
+
+  private final Map<PubSubTopicPartition, List<PubSubMessage<K, V, Long>>> records;
+
+  public PubSubMessages(Map<PubSubTopicPartition, List<PubSubMessage<K, V, Long>>> records) {
+    this.records = records;
+  }
+
+  public PubSubMessages(ConsumerRecords<K, V> consumerRecords) {
+    records = new HashMap<>();
+    Set<TopicPartition> topicPartitions = consumerRecords.partitions();
+
+    for (TopicPartition topicPartition : topicPartitions) {
+      List<PubSubMessage<K, V, Long>> pubSubMessageList = new ArrayList<>();
+      List<ConsumerRecord<K, V>> consumerRecordsList = consumerRecords.records(topicPartition);
+      for (ConsumerRecord<K, V> consumerRecord : consumerRecordsList) {
+        pubSubMessageList.add(new ImmutablePubSubMessage<>(
+            consumerRecord.key(),
+            consumerRecord.value(),
+
+            )
+        );
+      }
+      records.put(
+          new PubSubTopicPartitionImpl(
+              new PubSubTopicImpl(topicPartition.topic()),
+              topicPartition.partition()
+          ),
+
+
+      )
+    }
+  }
+
+  /**
+   * Get just the records for the given partition
+   *
+   * @param partition The partition to get records for
+   */
+  public List<PubSubMessage<K, V, Long>> records(PubSubTopicPartition partition) {
+    List<PubSubMessage<K, V, Long>> recs = this.records.get(partition);
+    if (recs == null)
+      return Collections.emptyList();
+    else
+      return Collections.unmodifiableList(recs);
+  }
+
+
+  /**
+   * Get the partitions which have records contained in this record set.
+   * @return the set of partitions with data in this record set (may be empty if no data was returned)
+   */
+  public Set<PubSubTopicPartition> partitions() {
+    return Collections.unmodifiableSet(records.keySet());
+  }
+
+
+  /**
+   * The number of records for all topics
+   */
+  public int count() {
+    int count = 0;
+    for (List<PubSubMessage<K, V, Long>> recs: this.records.values())
+      count += recs.size();
+    return count;
+  }
+
+  public boolean isEmpty() {
+    return records.isEmpty();
+  }
+
+  @SuppressWarnings("unchecked")
+  public static <K, V> PubSubMessages<K, V> empty() {
+    return (PubSubMessages<K, V>) EMPTY;
+  }
+}

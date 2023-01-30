@@ -17,7 +17,7 @@ public class PubSubTopicImpl implements PubSubTopic {
    * instances can be gotten from, so that the internal state is computed just once, and then reused for the lifetime
    * of the topic.
    */
-  PubSubTopicImpl(String name) {
+  public PubSubTopicImpl(String name) {
     this.name = Utils.notNull(name);
     this.pubSubTopicType = PubSubTopicType.getPubSubTopicType(name);
     this.storeName = Version.parseStoreFromKafkaTopicName(name);

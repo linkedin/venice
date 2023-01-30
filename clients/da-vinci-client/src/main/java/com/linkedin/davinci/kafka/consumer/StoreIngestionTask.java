@@ -179,6 +179,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /** Per-partition consumption state map */
   protected final ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap;
   protected final AbstractStoreBufferService storeBufferService;
+
   /**
    * Persists partitions that encountered exceptions in other threads. i.e. consumer, producer and drainer.
    *
@@ -1695,7 +1696,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           partitionIngestionExceptionList.set(partition, null);
         } else {
           LOGGER.info(
-              "{} No need to reset offset by Kafka consumer, since the consumer is not subscribing: {}",
+              "{} No need to reset offset by Kafka consumer, since the consumer is not " + "subscribing: {}",
               consumerTaskId,
               topicPartition);
         }

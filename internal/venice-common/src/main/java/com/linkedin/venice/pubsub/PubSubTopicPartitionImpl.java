@@ -44,7 +44,6 @@ public class PubSubTopicPartitionImpl implements PubSubTopicPartition {
   public int hashCode() {
     return hashCode;
   }
-
   @Override
   public String toString() {
     if (this.toStringOutput == null) {
