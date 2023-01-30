@@ -76,6 +76,8 @@ public interface StoreIngestionService extends MetadataRetriever {
    */
   void addIngestionNotifier(VeniceNotifier notifier);
 
+  void replaceAndAddTestNotifier(VeniceNotifier notifier);
+
   /**
    * Check whether there is a running consumption task for given store.
    */
