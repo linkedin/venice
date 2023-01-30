@@ -12,6 +12,7 @@ import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionService;
 import com.linkedin.davinci.notifier.PartitionPushStatusNotifier;
 import com.linkedin.davinci.notifier.PushMonitorNotifier;
+import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.ThreadPoolStats;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.storage.StorageService;
@@ -76,12 +77,13 @@ public class HelixParticipationService extends AbstractVeniceService
   private final VeniceIngestionBackend ingestionBackend;
   private final CompletableFuture<SafeHelixManager> managerFuture; // complete this future when the manager is connected
   private final CompletableFuture<HelixPartitionStatusAccessor> partitionPushStatusAccessorFuture;
-
+  private PushStatusStoreWriter statusStoreWriter;
   private ZkClient zkClient;
   private SafeHelixManager helixManager;
   private AbstractStateModelFactory leaderFollowerParticipantModelFactory;
   private HelixPartitionStatusAccessor partitionPushStatusAccessor;
   private ThreadPoolExecutor leaderFollowerHelixStateTransitionThreadPool;
+  private VeniceOfflinePushMonitorAccessor veniceOfflinePushMonitorAccessor;
 
   // This is ONLY for testing purpose.
   public ThreadPoolExecutor getLeaderFollowerHelixStateTransitionThreadPool() {
@@ -288,20 +290,22 @@ public class HelixParticipationService extends AbstractVeniceService
     // we use push status store for persisting incremental push statuses
     VeniceProperties veniceProperties = veniceConfigLoader.getVeniceServerConfig().getClusterProperties();
     VeniceWriterFactory writerFactory = new VeniceWriterFactory(veniceProperties.toProperties());
-    PushStatusStoreWriter statusStoreWriter = new PushStatusStoreWriter(
+    statusStoreWriter = new PushStatusStoreWriter(
         writerFactory,
         instance.getNodeId(),
         veniceProperties.getInt(PUSH_STATUS_STORE_DERIVED_SCHEMA_ID, 1));
 
     // Record replica status in Zookeeper.
     // Need to be started before connecting to ZK, otherwise some notification will not be sent by this notifier.
+    veniceOfflinePushMonitorAccessor = new VeniceOfflinePushMonitorAccessor(
+        clusterName,
+        zkClient,
+        new HelixAdapterSerializer(),
+        veniceConfigLoader.getVeniceClusterConfig().getRefreshAttemptsForZkReconnect(),
+        veniceConfigLoader.getVeniceClusterConfig().getRefreshIntervalForZkReconnectInMs());
+
     PushMonitorNotifier pushMonitorNotifier = new PushMonitorNotifier(
-        new VeniceOfflinePushMonitorAccessor(
-            clusterName,
-            zkClient,
-            new HelixAdapterSerializer(),
-            veniceConfigLoader.getVeniceClusterConfig().getRefreshAttemptsForZkReconnect(),
-            veniceConfigLoader.getVeniceClusterConfig().getRefreshIntervalForZkReconnectInMs()),
+        veniceOfflinePushMonitorAccessor,
         statusStoreWriter,
         helixReadOnlyStoreRepository,
         instance.getNodeId());
@@ -345,6 +349,27 @@ public class HelixParticipationService extends AbstractVeniceService
       serviceState.set(ServiceState.STARTED);
       LOGGER.info("Successfully started Helix Participation Service.");
     });
+  }
+
+  // test only
+  public void replaceAndAddTestIngestionNotifier(VeniceNotifier notifier) {
+    ingestionBackend.replaceAndAddTestPushStatusNotifier(notifier);
+  }
+
+  public Instance getInstance() {
+    return instance;
+  }
+
+  public VeniceOfflinePushMonitorAccessor getVeniceOfflinePushMonitorAccessor() {
+    return veniceOfflinePushMonitorAccessor;
+  }
+
+  public PushStatusStoreWriter getStatusStoreWriter() {
+    return statusStoreWriter;
+  }
+
+  public ReadOnlyStoreRepository getHelixReadOnlyStoreRepository() {
+    return helixReadOnlyStoreRepository;
   }
 
   @Override

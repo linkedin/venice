@@ -21,4 +21,7 @@ public interface VeniceIngestionBackend extends IngestionBackendBase {
    */
   void addPushStatusNotifier(VeniceNotifier pushStatusNotifier);
 
+  // test only
+  default void replaceAndAddTestPushStatusNotifier(VeniceNotifier pushStatusNotifier) {
+  };
 }
