@@ -31,7 +31,7 @@ Venice has 4 modules, `all-modules`, `clients`, `internal` and `services`. Each 
 
 ### Description
 This will check the overall code coverage at the submodule level.
-Jacoco generates the report based off the current submodule, perform the coverage verification and fail the build if the
+Jacoco generates the report based off the current submodule, performs the coverage verification and fails the build if the
 coverage is below the threshold. The threshold, targets at the branch coverage, is defined in the `build.gradle` of each 
 submodule independently.
 
@@ -58,8 +58,8 @@ execute the unit tests thus no jacoco report will be generated. Please be sure t
 ### Description
 This will check the overall code coverage at the commit-level.
 DiffCoverage, which is an extension of Jacoco, gathers the diff files by comparing the local branch and remote upstream 
-main branch, and leverage the Jacoco report, to re-generate a new report only for these newly added lines/files. Similarly,
-it performs the coverage verification and fail the build if the coverage is below the threshold. The threshold is defined 
+main branch, and leverages the Jacoco report, to re-generate a new report only for these newly added lines/files. Similarly,
+it performs the coverage verification and fails the build if the coverage is below the threshold. The threshold is defined
 at 60% for branch coverage.
 
 ### Example commands
@@ -74,8 +74,8 @@ The report will be located at `<module name>/build/reports/jacoco/diffCoverage/h
 
 ### Debugging notes
 
-#### Integ tests are added but DiffCoverage doesn't identify the code coverage of it
-Though Integ tests is strongly encouraged, both Jacoco and DiffCoverage only work with unit tests so please consider writing 
+#### Integration tests are added but DiffCoverage doesn't identify the code coverage of it
+Though integration tests are strongly encouraged, both Jacoco and DiffCoverage only work with unit tests so please consider writing
 unit tests.
 
 #### Unit tests are added but the DiffCoverage report doesn't reflect my changes
@@ -101,5 +101,4 @@ Please do the followings:
 2. Run `git fetch upstream` locally and pull the latest changes to your `main` branch
 3. Merge `main` branch to your feature branch.
 4. Confirm the diff are only your changes by running `git diff upstream/main`.
-
 
