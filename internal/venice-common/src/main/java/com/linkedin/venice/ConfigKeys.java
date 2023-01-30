@@ -613,7 +613,7 @@ public class ConfigKeys {
 
   /**
    * A boolean config to specify if we are using Da Vinci client for ingestion. This config will be parsed by
-   * isDaVinciConfig variable in VeniceServerConfig. By default it is false (use Venice Server)
+   * isDaVinciConfig variable in VeniceServerConfig. By default, it is false (use Venice Server)
    */
   public static final String INGESTION_USE_DA_VINCI_CLIENT = "ingestion.use.da.vinci.client";
 
@@ -623,14 +623,12 @@ public class ConfigKeys {
   public static final String SERVER_STOP_CONSUMPTION_WAIT_RETRIES_NUM = "server.stop.consumption.wait.retries.num";
 
   /**
-   * Port number for ingestion listener. For Parent/Child mode, it will be used by child process. For SplitService mode,
-   * it will be used by IngestionService.
+   * Service listening port number for main ingestion service.
    */
   public static final String SERVER_INGESTION_ISOLATION_SERVICE_PORT = "server.ingestion.isolation.service.port";
 
   /**
-   * Port number for ingestion listener. For Parent/Child mode, it will be used by parent process. For SplitService mode,
-   * it will be used by venice server that are using the ingestion service.
+   * Service listening port number for forked ingestion process.
    */
   public static final String SERVER_INGESTION_ISOLATION_APPLICATION_PORT =
       "server.ingestion.isolation.application.port";

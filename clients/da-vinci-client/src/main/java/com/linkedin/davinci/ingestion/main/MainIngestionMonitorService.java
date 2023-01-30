@@ -11,7 +11,6 @@ import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.IsolatedIngestionProcessHeartbeatStats;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -26,11 +25,11 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -49,10 +48,6 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   private final ServerBootstrap bootstrap;
   private final EventLoopGroup bossGroup;
   private final EventLoopGroup workerGroup;
-  // Application port is the port Da Vinci application is binding and listening to.
-  private final int applicationPort;
-  // Service port is the port isolated ingestion process is binding and listening to.
-  private final int servicePort;
   private final IsolatedIngestionBackend ingestionBackend;
   private final ScheduledExecutorService metricsRequestScheduler = Executors.newScheduledThreadPool(1);
   private final ScheduledExecutorService heartbeatCheckScheduler = Executors.newScheduledThreadPool(1);
@@ -62,7 +57,6 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   private final Map<String, MainTopicIngestionStatus> topicIngestionStatusMap = new VeniceConcurrentHashMap<>();
   private final List<VeniceNotifier> ingestionNotifierList = new ArrayList<>();
   private final List<VeniceNotifier> pushStatusNotifierList = new ArrayList<>();
-  private final Optional<SSLFactory> sslFactory;
 
   private IsolatedIngestionProcessHeartbeatStats heartbeatStats;
   private ChannelFuture serverFuture;
@@ -80,15 +74,9 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   private long connectionTimeoutMs;
   private volatile long latestHeartbeatTimestamp = -1;
 
-  public MainIngestionMonitorService(
-      IsolatedIngestionBackend ingestionBackend,
-      VeniceConfigLoader configLoader,
-      Optional<SSLFactory> sslFactory) {
+  public MainIngestionMonitorService(IsolatedIngestionBackend ingestionBackend, VeniceConfigLoader configLoader) {
     this.configLoader = configLoader;
-    this.servicePort = configLoader.getVeniceServerConfig().getIngestionServicePort();
-    this.applicationPort = configLoader.getVeniceServerConfig().getIngestionApplicationPort();
     this.ingestionBackend = ingestionBackend;
-    this.sslFactory = sslFactory;
 
     // Initialize Netty server.
     Class<? extends ServerChannel> serverSocketChannelClass = NioServerSocketChannel.class;
@@ -111,6 +99,7 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
 
   @Override
   public boolean startInner() throws Exception {
+    int applicationPort = configLoader.getVeniceServerConfig().getIngestionApplicationPort();
     serverFuture = bootstrap.bind(applicationPort).sync();
     LOGGER.info("Report listener service started on port: {}", applicationPort);
     connectionTimeoutMs =
@@ -274,25 +263,31 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
     longRunningTaskExecutor.execute(this::resumeOngoingIngestionTasks);
   }
 
-  private void resumeOngoingIngestionTasks() {
-    try (MainIngestionRequestClient client = new MainIngestionRequestClient(configLoader)) {
-      LOGGER.info("Start to recover ongoing ingestion tasks: {}", topicIngestionStatusMap);
+  int resumeOngoingIngestionTasks() {
+    AtomicInteger count = new AtomicInteger();
+    try (MainIngestionRequestClient client = createClient()) {
+      Map<String, MainTopicIngestionStatus> topicIngestionStatusMap = getTopicIngestionStatusMap();
+      LOGGER.info("Start to recover ongoing ingestion tasks: {}", topicIngestionStatusMap.keySet());
       // Re-open metadata partitions in child process for all previously subscribed topics.
       topicIngestionStatusMap.keySet().forEach(client::openStorageEngine);
       // All previously subscribed topics are stored in the keySet of this topic partition map.
-      topicIngestionStatusMap.forEach((topicName, partitionStatus) -> {
-        partitionStatus.getPartitionIngestionStatusSet().forEach((partitionId, status) -> {
+      topicIngestionStatusMap.forEach((topic, partitionStatus) -> {
+        partitionStatus.getPartitionIngestionStatusSet().forEach((partition, status) -> {
           if (status.equals(MainPartitionIngestionStatus.ISOLATED)) {
-            client.startConsumption(topicName, partitionId);
-            LOGGER.info(
-                "Recovered ingestion task for topic: {}, partition: {} in isolated process.",
-                topicName,
-                partitionId);
+            try {
+              client.startConsumption(topic, partition);
+              LOGGER
+                  .info("Recovered ingestion task in isolated process for topic: {}, partition: {}", topic, partition);
+              count.addAndGet(1);
+            } catch (Exception e) {
+              LOGGER.info("Recovery of ingestion failed for topic: {}, partition: {}", topic, partition, e);
+            }
           }
         });
       });
-      LOGGER.info("All ongoing ingestion tasks has resumed.");
+      LOGGER.info("Resumed {} topic partition ingestion tasks.", count.get());
     }
+    return count.get();
   }
 
   private void collectIngestionServiceMetrics() {
@@ -346,5 +341,13 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
     } catch (InterruptedException e) {
       currentThread().interrupt();
     }
+  }
+
+  MainIngestionRequestClient createClient() {
+    return new MainIngestionRequestClient(configLoader);
+  }
+
+  Map<String, MainTopicIngestionStatus> getTopicIngestionStatusMap() {
+    return topicIngestionStatusMap;
   }
 }
