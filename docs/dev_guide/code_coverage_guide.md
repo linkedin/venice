@@ -4,11 +4,12 @@ title: Code Coverage Guide
 parent: Developer Guides
 permalink: /docs/dev_guide/code_coverage_guide
 ---
-# Code coverage Guide
+# Code Coverage Guide
 
 The Venice repository has two code coverage check on GitHub Action, submodule-level coverage verification
 and new-commit coverage verification, which aim to improve the testability and code quality overall. The
-GitHub Action fails the Pull Request if the coverage check doesn't meet the requirements.
+GitHub Action fails the Pull Request if the coverage check doesn't meet the requirements. This guide provides the details
+on how these reports are generated and how to debug them.
 
 ## Module structure
 
