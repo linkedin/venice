@@ -6750,7 +6750,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return ret;
   }
 
-  OfflinePushStatus retrievePushStatus(String clusterName, String storeName) {
+  public OfflinePushStatus retrievePushStatus(String clusterName, String storeName) {
     StoreInfo store = StoreInfo.fromStore(getStore(clusterName, storeName));
 
     VeniceOfflinePushMonitorAccessor accessor =
