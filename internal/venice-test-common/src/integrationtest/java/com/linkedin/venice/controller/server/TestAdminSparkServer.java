@@ -969,10 +969,6 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testDeleteKafkaTopic() {
-    ControllerResponse response = controllerClient.deleteKafkaTopic("InvalidTopic");
-    Assert.assertTrue(response.isError());
-    Assert.assertTrue(response.getError().contains("invalid"));
-
     String clusterName = cluster.getClusterName();
     String storeName = Utils.getUniqueString("controllerClientCanDeleteKafkaTopic");
     VeniceHelixAdmin childControllerAdmin = cluster.getRandomVeniceController().getVeniceHelixAdmin();

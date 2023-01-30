@@ -1673,6 +1673,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       LOGGER.error("Error while closing venice writers", e);
     }
 
+    try {
+      closeVeniceViewWriters();
+    } catch (Exception e) {
+      LOGGER.error("Error while closing venice view writer", e);
+    }
+
     close();
     synchronized (this) {
       notifyAll();
@@ -1681,6 +1687,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected void closeVeniceWriters(boolean doFlush) {
+  }
+
+  protected void closeVeniceViewWriters() {
   }
 
   /**

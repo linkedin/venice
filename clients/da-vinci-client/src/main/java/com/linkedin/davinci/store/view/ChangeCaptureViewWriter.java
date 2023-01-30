@@ -149,6 +149,11 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
     veniceWriter.close();
   }
 
+  // for testing only
+  public void setVeniceWriter(VeniceWriter veniceWriter) {
+    this.veniceWriter = veniceWriter;
+  }
+
   synchronized private void initializeVeniceWriter(int version) {
     if (veniceWriter != null) {
       return;

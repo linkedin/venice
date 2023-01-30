@@ -239,7 +239,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     this.veniceWriter = Lazy.of(() -> veniceWriterFactory.createVeniceWriter(writerOptions));
     this.kafkaClusterIdToUrlMap = serverConfig.getKafkaClusterIdToUrlMap();
     this.kafkaDataIntegrityValidatorForLeaders = new KafkaDataIntegrityValidator(kafkaVersionTopic);
-    if (builder.getVeniceViewWriterFactory() != null) {
+    if (builder.getVeniceViewWriterFactory() != null && !store.getViewConfigs().isEmpty()) {
       viewWriters = builder.getVeniceViewWriterFactory()
           .buildStoreViewWriters(
               store,
@@ -254,6 +254,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   protected void closeVeniceWriters(boolean doFlush) {
     if (veniceWriter.isPresent()) {
       veniceWriter.get().close(doFlush);
+    }
+  }
+
+  @Override
+  protected void closeVeniceViewWriters() {
+    if (!viewWriters.isEmpty()) {
+      viewWriters.forEach((k, v) -> v.close());
     }
   }
 

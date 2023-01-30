@@ -9,6 +9,25 @@ import java.util.Map;
 import java.util.Properties;
 
 
+/**
+ * This is the abstract implementation of the 'management' component for a venice view.  This
+ * class is meant to be lightweight and is leveraged by the controller in order to understand
+ * what resources need to be maintained for the view. The first (and so far) only resource we
+ * have in the interface is for KafkaTopics.  Creators of views should implement both this class
+ * and it's component class {@link com.linkedin.davinci.store.view.VeniceViewWriter} and make sure
+ * it's full package name is returned by
+ * {@link com.linkedin.venice.views.VeniceView#getWriterClassName()}
+ *
+ * Ideally, all details about management and functionality for any given view is strictly contained
+ * within these two classes, and as little implementation details are leaked through the rest of the
+ * code base.
+ *
+ * TODO:
+ * Despite best intentions, there is still a little bit of work to do in this interface. We've had to
+ * leak some implementation details in the first cut about specific views here in order to define the
+ * naming convention for resources which must be cleaned up.  Additionally, there should be support in
+ * this interface for lifecycle management of arbitrary resources (not just kafka topics).
+ */
 public abstract class VeniceView {
   protected final Properties props;
   protected final Store store;
@@ -21,14 +40,23 @@ public abstract class VeniceView {
   }
 
   /**
-   * Implementations override to return a map of topicName:topic Configs relevant for topic materialization (things like partition count, RF, etc.)
-   * TODO: Come up with list of config names that should be parsed by VeniceAdmin to pass along to TopicManager.
-   * @return
+   * Implementations should override to return a map of topicName:topic Configs relevant for topic
+   * materialization (things like partition count, RF, etc.)
+   * TODO: Come up with list of config names that should be parsed by VeniceAdmin to pass along to
+   * TopicManager.
+   * @return a map keyed by the name of the topic to be created and the configs which should be applied
+   * for that creation
    */
   public Map<String, VeniceProperties> getTopicNamesAndConfigsForVersion(int version) {
     return Collections.emptyMap();
   }
 
+  /**
+   * Implementations should return the fully specified class name for the component VeniceViewWriter
+   * implementation.
+   *
+   * @return returns the className of the writer which should be instantiated.
+   */
   public String getWriterClassName() {
     throw new VeniceException("No Writer Class associated with VeniceView base class!");
   }

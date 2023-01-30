@@ -211,7 +211,6 @@ public class RealTimeTopicSwitcher {
     // if a previous version didn't have an RT, then there will be no
     // version consuming the topic switch message. We'll transmit the version switch
     // message so long as there exists some RT
-    String realtimeTopic = Version.composeRealTimeTopic(store.getName());
     if (!topicManager.containsTopic(Version.composeRealTimeTopic(store.getName()))) {
       // NoOp
       return;

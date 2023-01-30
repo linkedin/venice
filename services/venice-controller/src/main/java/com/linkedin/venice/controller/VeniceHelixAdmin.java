@@ -14,7 +14,10 @@ import static com.linkedin.venice.meta.VersionStatus.ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.PUSHED;
 import static com.linkedin.venice.meta.VersionStatus.STARTED;
 import static com.linkedin.venice.utils.AvroSchemaUtils.isValidAvroSchema;
-import static com.linkedin.venice.views.ViewUtils.*;
+import static com.linkedin.venice.views.ViewUtils.ETERNAL_TOPIC_RETENTION_ENABLED;
+import static com.linkedin.venice.views.ViewUtils.LOG_COMPACTION_ENABLED;
+import static com.linkedin.venice.views.ViewUtils.SUB_PARTITION_COUNT;
+import static com.linkedin.venice.views.ViewUtils.USE_FAST_KAFKA_OPERATION_TIMEOUT;
 
 import com.linkedin.avroutil1.compatibility.AvroIncompatibleSchemaException;
 import com.linkedin.avroutil1.compatibility.RandomRecordGenerator;
@@ -2012,11 +2015,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           ViewUtils.getVeniceView(rawView.getViewClassName(), params, store, rawView.getViewParameters());
       topicNamesAndConfigs.putAll(adminView.getTopicNamesAndConfigsForVersion(version));
     }
-    Set<String> versionTopicToDelete = topicNamesAndConfigs.keySet()
+    Set<String> versionTopicsToDelete = topicNamesAndConfigs.keySet()
         .stream()
         .filter(t -> VeniceView.parseVersionFromViewTopic(t) == version)
         .collect(Collectors.toSet());
-    for (String topic: versionTopicToDelete) {
+    for (String topic: versionTopicsToDelete) {
       truncateKafkaTopic(topic);
     }
   }

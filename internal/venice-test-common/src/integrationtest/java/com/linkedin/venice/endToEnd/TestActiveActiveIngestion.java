@@ -138,11 +138,11 @@ public class TestActiveActiveIngestion {
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testAAIngestionWithStoreView(boolean isChunkingEnabled) throws Exception {
+    ControllerClient childControllerClient =
+        new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
     String parentControllerURLs =
         parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
     ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
-    ControllerClient childControllerClient =
-        new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
     TestUtils.assertCommand(
         parentControllerClient.configureActiveActiveReplicationForCluster(
             true,
@@ -162,25 +162,41 @@ public class TestActiveActiveIngestion {
     viewConfig.put(
         "testView",
         "{\"viewClassName\" : \"" + TestView.class.getCanonicalName() + "\", \"viewParameters\" : {}}");
+
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setLeaderFollowerModel(true)
         .setActiveActiveReplicationEnabled(true)
         .setHybridRewindSeconds(360)
+        .setStoreViews(viewConfig)
         .setHybridOffsetLagThreshold(8)
         .setChunkingEnabled(isChunkingEnabled)
-        .setStoreViews(viewConfig)
-        .setNativeReplicationEnabled(true);
+        .setNativeReplicationEnabled(true)
+        .setPartitionCount(1);
+    MetricsRepository metricsRepository = new MetricsRepository();
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
-
     TestWriteUtils.runPushJob("Run push job", props);
 
-    // run samza to stream put and delete
-    runSamzaStreamJob(storeName, null, 10, 10, 0);
+    Map<String, String> samzaConfig = getSamzaConfig(storeName);
+    VeniceSystemFactory factory = new VeniceSystemFactory();
+    // Use a unique key for DELETE with RMD validation
+    int deleteWithRmdKeyIndex = 1000;
 
-    // Verify that the right number of messages were transmitted to our test view (should be 20 since only 1 colo)
-    TestUtils.waitForNonDeterministicAssertion(
-        5,
-        TimeUnit.SECONDS,
-        () -> Assert.assertEquals(TestView.getInstance().getRecordCountForStore(storeName), 20));
+    try (
+        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
+      veniceProducer.start();
+      // Run Samza job to send PUT and DELETE requests.
+      runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 0);
+      // Produce a DELETE record with large timestamp
+      produceRecordWithLogicalTimestamp(veniceProducer, storeName, deleteWithRmdKeyIndex, 1000, true);
+    }
+
+    try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName)
+            .setVeniceURL(clusterWrapper.getRandomRouterURL())
+            .setMetricsRepository(metricsRepository))) {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        Assert.assertNull(client.get(Integer.toString(deleteWithRmdKeyIndex)).get());
+      });
+    }
 
     // run repush
     props.setProperty(SOURCE_KAFKA, "true");
@@ -198,7 +214,6 @@ public class TestActiveActiveIngestion {
     clusterWrapper.refreshAllRouterMetaData();
 
     // Validate repush from version 2
-    MetricsRepository metricsRepository = new MetricsRepository();
     try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
             .setVeniceURL(clusterWrapper.getRandomRouterURL())
@@ -226,6 +241,27 @@ public class TestActiveActiveIngestion {
         }
       });
     }
+    try (
+        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
+      veniceProducer.start();
+      // Produce a new PUT with smaller logical timestamp, it is expected to be ignored as there was a DELETE with
+      // larger
+      // timestamp
+      produceRecordWithLogicalTimestamp(veniceProducer, storeName, deleteWithRmdKeyIndex, 2, false);
+      // Produce another record to the same partition to make sure the above PUT is processed during validation stage.
+      produceRecordWithLogicalTimestamp(veniceProducer, storeName, deleteWithRmdKeyIndex + 1, 1, false);
+    }
+    try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName)
+            .setVeniceURL(clusterWrapper.getRandomRouterURL())
+            .setMetricsRepository(metricsRepository))) {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        Assert.assertNotNull(client.get(Integer.toString(deleteWithRmdKeyIndex + 1)).get());
+      });
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        Assert.assertNull(client.get(Integer.toString(deleteWithRmdKeyIndex)).get());
+      });
+    }
 
     /**
      * Test Repush with TTL
@@ -246,8 +282,12 @@ public class TestActiveActiveIngestion {
     mockTimestampInMs.add(past.toEpochMilli());
     Time mockTime = new MockCircularTime(mockTimestampInMs);
 
-    // run samza to stream put and delete
-    runSamzaStreamJob(storeName, mockTime, 10, 10, 20);
+    try (
+        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
+      veniceProducer.start();
+      // run samza to stream put and delete
+      runSamzaStreamJob(veniceProducer, storeName, mockTime, 10, 10, 20);
+    }
 
     TestWriteUtils.runPushJob("Run repush job with TTL", props);
     TestUtils.waitForNonDeterministicAssertion(
@@ -297,7 +337,7 @@ public class TestActiveActiveIngestion {
     TestUtils.waitForNonDeterministicAssertion(
         5,
         TimeUnit.SECONDS,
-        () -> Assert.assertEquals(TestView.getInstance().getRecordCountForStore(storeName), 80));
+        () -> Assert.assertEquals(TestView.getInstance().getRecordCountForStore(storeName), 85));
 
     parentControllerClient.disableAndDeleteStore(storeName);
 
