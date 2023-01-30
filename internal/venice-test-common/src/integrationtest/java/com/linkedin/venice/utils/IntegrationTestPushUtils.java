@@ -82,7 +82,7 @@ public class IntegrationTestPushUtils {
       String inputDirPath,
       String storeName) {
     Map<String, String> childColoNamesToZkAddress = Collections
-        .singletonMap(veniceMultiCluster.getColoName(), veniceMultiCluster.getZkServerWrapper().getAddress());
+        .singletonMap(veniceMultiCluster.getRegionName(), veniceMultiCluster.getZkServerWrapper().getAddress());
     return TestWriteUtils.defaultVPJPropsWithD2Routing(
         null,
         null,
@@ -98,13 +98,13 @@ public class IntegrationTestPushUtils {
       String inputDirPath,
       String storeName) {
     String parentColoZkAddress = multiColoMultiClusterWrapper.getZkServerWrapper().getAddress();
-    String parentColoName = multiColoMultiClusterWrapper.getParentColoName();
+    String parentColoName = multiColoMultiClusterWrapper.getParentRegionName();
 
-    Map<String, String> childColoNamesToZkAddress = multiColoMultiClusterWrapper.getChildColoList()
+    Map<String, String> childColoNamesToZkAddress = multiColoMultiClusterWrapper.getChildRegionList()
         .stream()
         .collect(
             Collectors.toMap(
-                veniceColo -> veniceColo.getColoName(),
+                veniceColo -> veniceColo.getRegionName(),
                 veniceColo -> veniceColo.getZkServerWrapper().getAddress()));
     return TestWriteUtils.defaultVPJPropsWithD2Routing(
         parentColoName,

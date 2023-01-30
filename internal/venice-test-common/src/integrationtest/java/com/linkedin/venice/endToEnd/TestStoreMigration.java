@@ -137,7 +137,7 @@ public class TestStoreMigration {
         Optional.of(new VeniceProperties(serverProperties)),
         true);
 
-    multiClusterWrapper = twoLayerMultiColoMultiClusterWrapper.getChildColoList().get(0);
+    multiClusterWrapper = twoLayerMultiColoMultiClusterWrapper.getChildRegionList().get(0);
     String[] clusterNames = multiClusterWrapper.getClusterNames();
     Arrays.sort(clusterNames);
     srcClusterName = clusterNames[0]; // venice-cluster0

@@ -279,7 +279,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
     }
   }
 
-  public String getColoName() {
+  public String getRegionName() {
     return coloName;
   }
 }

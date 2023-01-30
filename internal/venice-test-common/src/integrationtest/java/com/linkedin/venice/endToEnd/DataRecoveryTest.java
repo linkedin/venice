@@ -110,7 +110,7 @@ public class DataRecoveryTest {
         Optional.of(controllerProps),
         Optional.of(new VeniceProperties(serverProperties)),
         false);
-    childDatacenters = multiColoMultiClusterWrapper.getChildColoList();
+    childDatacenters = multiColoMultiClusterWrapper.getChildRegionList();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
     clusterName = CLUSTER_NAMES[0];
   }

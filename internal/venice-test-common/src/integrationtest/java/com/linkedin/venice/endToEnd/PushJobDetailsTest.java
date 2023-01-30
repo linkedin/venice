@@ -114,7 +114,7 @@ public class PushJobDetailsTest {
         false);
     String clusterName = multiColoMultiClusterWrapper.getClusterNames()[0];
 
-    VeniceMultiClusterWrapper childColoMultiClusterWrapper = multiColoMultiClusterWrapper.getChildColoList().get(0);
+    VeniceMultiClusterWrapper childColoMultiClusterWrapper = multiColoMultiClusterWrapper.getChildRegionList().get(0);
     childColoClusterWrapper = childColoMultiClusterWrapper.getClusters().get(clusterName);
 
     controllerClient = new ControllerClient(clusterName, childColoMultiClusterWrapper.getControllerConnectString());

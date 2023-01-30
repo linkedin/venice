@@ -72,7 +72,7 @@ public class TestStaleDataVisibility {
         Optional.of(new VeniceProperties(serverProperties)),
         false);
 
-    childClusters = multiColoMultiClusterWrapper.getChildColoList();
+    childClusters = multiColoMultiClusterWrapper.getChildRegionList();
     childControllers = childClusters.stream()
         .map(veniceClusterWrapper -> new ArrayList<>(veniceClusterWrapper.getControllers().values()))
         .collect(Collectors.toList());
@@ -136,7 +136,7 @@ public class TestStaleDataVisibility {
 
       // get single child controller, empty push to it
       Properties props2 = IntegrationTestPushUtils
-          .defaultVPJProps(multiColoMultiClusterWrapper.getChildColoList().get(0), inputDirPath, storeName);
+          .defaultVPJProps(multiColoMultiClusterWrapper.getChildRegionList().get(0), inputDirPath, storeName);
       try (VenicePushJob job = new VenicePushJob("Test push job", props2)) {
         job.run();
       }

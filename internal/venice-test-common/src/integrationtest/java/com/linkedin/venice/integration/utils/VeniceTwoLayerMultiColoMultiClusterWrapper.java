@@ -49,9 +49,9 @@ import org.apache.logging.log4j.Logger;
 public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
   private static final Logger LOGGER = LogManager.getLogger(VeniceTwoLayerMultiColoMultiClusterWrapper.class);
   public static final String SERVICE_NAME = "VeniceTwoLayerMultiCluster";
-  private final String parentColoName;
-  private final List<String> childColoNames;
-  private final List<VeniceMultiClusterWrapper> childColoList;
+  private final String parentRegionName;
+  private final List<String> childRegionNames;
+  private final List<VeniceMultiClusterWrapper> childRegionList;
   private final List<VeniceControllerWrapper> parentControllers;
   private final String[] clusterNames;
   private final ZkServerWrapper zkServerWrapper;
@@ -61,18 +61,18 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
       File dataDirectory,
       ZkServerWrapper zkServerWrapper,
       KafkaBrokerWrapper parentKafkaBrokerWrapper,
-      List<VeniceMultiClusterWrapper> childColoList,
+      List<VeniceMultiClusterWrapper> childRegionList,
       List<VeniceControllerWrapper> parentControllers,
-      String parentColoName,
-      List<String> childColoNames) {
+      String parentRegionName,
+      List<String> childRegionNames) {
     super(SERVICE_NAME, dataDirectory);
     this.zkServerWrapper = zkServerWrapper;
     this.parentKafkaBrokerWrapper = parentKafkaBrokerWrapper;
     this.parentControllers = parentControllers;
-    this.childColoList = childColoList;
-    this.parentColoName = parentColoName;
-    this.childColoNames = childColoNames;
-    this.clusterNames = childColoList.get(0).getClusterNames();
+    this.childRegionList = childRegionList;
+    this.parentRegionName = parentRegionName;
+    this.childRegionNames = childRegionNames;
+    this.clusterNames = childRegionList.get(0).getClusterNames();
   }
 
   static ServiceProvider<VeniceTwoLayerMultiColoMultiClusterWrapper> generateService(
@@ -350,7 +350,7 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
   @Override
   protected void internalStop() throws Exception {
     parentControllers.forEach(IOUtils::closeQuietly);
-    childColoList.forEach(IOUtils::closeQuietly);
+    childRegionList.forEach(IOUtils::closeQuietly);
     IOUtils.closeQuietly(parentKafkaBrokerWrapper);
     IOUtils.closeQuietly(zkServerWrapper);
   }
@@ -360,8 +360,8 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
     throw new UnsupportedOperationException("Cluster does not support to create new process.");
   }
 
-  public List<VeniceMultiClusterWrapper> getChildColoList() {
-    return childColoList;
+  public List<VeniceMultiClusterWrapper> getChildRegionList() {
+    return childRegionList;
   }
 
   public List<VeniceControllerWrapper> getParentControllers() {
@@ -393,12 +393,12 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
     throw new VeniceException("Leader controller does not exist, cluster=" + clusterName);
   }
 
-  public String getParentColoName() {
-    return parentColoName;
+  public String getParentRegionName() {
+    return parentRegionName;
   }
 
-  public List<String> getChildColoNames() {
-    return childColoNames;
+  public List<String> getChildRegionNames() {
+    return childRegionNames;
   }
 
   public String[] getClusterNames() {

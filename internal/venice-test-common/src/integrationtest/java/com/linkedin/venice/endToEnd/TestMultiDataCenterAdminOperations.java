@@ -73,7 +73,7 @@ public class TestMultiDataCenterAdminOperations {
         Optional.of(new VeniceProperties(serverProperties)),
         false);
 
-    childClusters = multiColoMultiClusterWrapper.getChildColoList();
+    childClusters = multiColoMultiClusterWrapper.getChildRegionList();
     childControllers = childClusters.stream()
         .map(veniceClusterWrapper -> new ArrayList<>(veniceClusterWrapper.getControllers().values()))
         .collect(Collectors.toList());

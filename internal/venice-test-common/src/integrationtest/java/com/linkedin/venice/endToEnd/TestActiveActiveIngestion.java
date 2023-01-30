@@ -123,7 +123,7 @@ public class TestActiveActiveIngestion {
         Optional.of(new VeniceProperties(serverProperties)),
         false);
 
-    childDatacenters = multiColoMultiClusterWrapper.getChildColoList();
+    childDatacenters = multiColoMultiClusterWrapper.getChildRegionList();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
     clusterName = CLUSTER_NAMES[0];
     clusterWrapper = childDatacenters.get(0).getClusters().get(clusterName);

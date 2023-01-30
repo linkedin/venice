@@ -82,7 +82,7 @@ public class DaVinciClusterAgnosticTest {
         Optional.empty(),
         Optional.empty(),
         false);
-    multiClusterVenice = multiColoMultiClusterWrapper.getChildColoList().get(0);
+    multiClusterVenice = multiColoMultiClusterWrapper.getChildRegionList().get(0);
     clusterNames = multiClusterVenice.getClusterNames();
     parentControllerURLs = multiColoMultiClusterWrapper.getParentControllers()
         .stream()
