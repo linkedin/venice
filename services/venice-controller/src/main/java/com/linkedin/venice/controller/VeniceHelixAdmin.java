@@ -6697,14 +6697,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   @Override
   public RegionPushDetails getRegionPushDetails(String clusterName, String storeName, boolean isPartitionDetailAdded) {
     RegionPushDetails ret = new RegionPushDetails();
-    StoreInfo s = StoreInfo.fromStore(getStore(clusterName, storeName));
-
-    VeniceOfflinePushMonitorAccessor accessor =
-        new VeniceOfflinePushMonitorAccessor(clusterName, getZkClient(), getAdapterSerializer());
-
-    Optional<Version> currentVersion = s.getVersion(s.getCurrentVersion());
-    String kafkaTopic = currentVersion.isPresent() ? currentVersion.get().kafkaTopicName() : "";
-    OfflinePushStatus zkData = accessor.getOfflinePushStatusAndItsPartitionStatuses(kafkaTopic);
+    OfflinePushStatus zkData = retrievePushStatus(clusterName, storeName);
 
     for (StatusSnapshot status: zkData.getStatusHistory()) {
       if (shouldUpdateEndTime(ret, status)) {
@@ -6712,19 +6705,32 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       } else if (shouldUpdateStartTime(ret, status)) {
         ret.setPushStartTimestamp(status.getTime());
       } else if (status.getStatus() == ExecutionStatus.ERROR) {
-        ret.setErrorMessage(accessor.getOfflinePushStatusAndItsPartitionStatuses(kafkaTopic).getStatusDetails());
+        ret.setErrorMessage(zkData.getStatusDetails());
         ret.setLatestFailedPush(status.getTime());
       }
     }
 
-    for (Version v: s.getVersions()) {
+    StoreInfo store = StoreInfo.fromStore(getStore(clusterName, storeName));
+    for (Version v: store.getVersions()) {
       ret.addVersion(v.getNumber());
     }
-    ret.setCurrentVersion(s.getCurrentVersion());
+    ret.setCurrentVersion(store.getCurrentVersion());
     if (isPartitionDetailAdded) {
       ret.addPartitionDetails(zkData);
     }
     return ret;
+  }
+
+  OfflinePushStatus retrievePushStatus(String clusterName, String storeName) {
+    StoreInfo store = StoreInfo.fromStore(getStore(clusterName, storeName));
+
+    VeniceOfflinePushMonitorAccessor accessor =
+        new VeniceOfflinePushMonitorAccessor(clusterName, getZkClient(), getAdapterSerializer());
+
+    Optional<Version> currentVersion = store.getVersion(store.getCurrentVersion());
+    String kafkaTopic = currentVersion.isPresent() ? currentVersion.get().kafkaTopicName() : "";
+    OfflinePushStatus status = accessor.getOfflinePushStatusAndItsPartitionStatuses(kafkaTopic);
+    return status;
   }
 
   private boolean shouldUpdateStartTime(final RegionPushDetails curResult, final StatusSnapshot status) {

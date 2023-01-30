@@ -4504,7 +4504,6 @@ public class VeniceParentHelixAdmin implements Admin {
       String storeName,
       boolean isPartitionDetailEnabled) {
     Map<String, RegionPushDetails> retMap = new HashMap<>();
-
     try {
       Map<String, ControllerClient> controllerClientMap = getVeniceHelixAdmin().getControllerClientMap(clusterName);
       for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
