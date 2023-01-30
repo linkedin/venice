@@ -74,6 +74,7 @@ public class StatusReportAdapterTest {
       // Mock pcs APIs
       Mockito.doReturn(i).when(pcs).getPartition();
       Mockito.doReturn(0).when(pcs).getUserPartition();
+      Mockito.doReturn(LeaderFollowerStateType.STANDBY).when(pcs).getLeaderFollowerState();
       Mockito.doReturn(true).when(pcs).isComplete();
       Mockito.doReturn(mockedOffsetRecord).when(pcs).getOffsetRecord();
       pcsMap.put(i, pcs);
@@ -124,7 +125,7 @@ public class StatusReportAdapterTest {
       }
 
       @Override
-      public void completed(String kafkaTopic, int partitionId, long offset) {
+      public void completed(String kafkaTopic, int partitionId, long offset, String message) {
         recordStatus(ExecutionStatus.COMPLETED);
       }
     };

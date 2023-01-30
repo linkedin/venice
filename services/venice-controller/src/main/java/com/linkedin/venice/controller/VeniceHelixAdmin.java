@@ -75,6 +75,7 @@ import com.linkedin.venice.exceptions.VeniceStoreAlreadyExistsException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
+import com.linkedin.venice.helix.HelixLiveInstanceMonitor;
 import com.linkedin.venice.helix.HelixPartitionState;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
@@ -109,6 +110,7 @@ import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.InstanceStatus;
 import com.linkedin.venice.meta.LiveClusterConfig;
+import com.linkedin.venice.meta.LiveInstanceChangedListener;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
@@ -174,6 +176,7 @@ import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.SslUtils;
@@ -590,6 +593,34 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         realTimeTopicSwitcher,
         accessController,
         helixAdminClient);
+
+    for (String clusterName: multiClusterConfigs.getClusters()) {
+      HelixLiveInstanceMonitor liveInstanceMonitor = new HelixLiveInstanceMonitor(this.zkClient, clusterName);
+      // Register new instance callback
+      liveInstanceMonitor.registerLiveInstanceChangedListener(new LiveInstanceChangedListener() {
+        @Override
+        public void handleNewInstances(Set<Instance> newInstances) {
+          long startTime = System.currentTimeMillis();
+          for (Instance instance: newInstances) {
+            Map<String, List<String>> disabledPartitions =
+                helixAdminClient.getDisabledPartitionsMap(clusterName, instance.getNodeId());
+            for (Map.Entry<String, List<String>> entry: disabledPartitions.entrySet()) {
+              helixAdminClient
+                  .enablePartition(true, clusterName, instance.getNodeId(), entry.getKey(), entry.getValue());
+              LOGGER.info("Enabled disabled replica of resource {}, partitions {}", entry.getKey(), entry.getValue());
+            }
+          }
+          LOGGER.info(
+              "Enabling disabled replicas for instances {} took {} ms",
+              newInstances.stream().map(Instance::getNodeId).collect(Collectors.joining(",")),
+              LatencyUtils.getElapsedTimeInMs(startTime));
+        }
+
+        @Override
+        public void handleDeletedInstances(Set<Instance> deletedInstances) {
+        }
+      });
+    }
   }
 
   private void checkAndCreateVeniceControllerCluster(boolean isControllerInAzure) {
@@ -2078,7 +2109,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if (isClusterInMaintenanceMode(clusterName)) {
       throw new HelixClusterMaintenanceModeException(clusterName);
     }
-
     checkControllerLeadershipFor(clusterName);
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
     ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
@@ -2362,7 +2392,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               strategy,
               clusterConfig.getOffLineJobWaitTimeInMilliseconds(),
               replicationFactor);
-
           // Early delete backup version on start of a push, controlled by store config earlyDeleteBackupEnabled
           if (backupStrategy == BackupStrategy.DELETE_ON_NEW_PUSH_START
               && multiClusterConfigs.getControllerConfig(clusterName).isEarlyDeleteBackUpEnabled()) {

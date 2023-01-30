@@ -396,7 +396,7 @@ public abstract class StoreIngestionTaskTest {
       Object[] args = invocation.getArguments();
       mockNotifierCompleted.add(args);
       return null;
-    }).when(mockLogNotifier).completed(anyString(), anyInt(), anyLong());
+    }).when(mockLogNotifier).completed(anyString(), anyInt(), anyLong(), anyString());
     mockNotifierError = new ArrayList<>();
     doAnswer(invocation -> {
       Object[] args = invocation.getArguments();
@@ -1329,21 +1329,21 @@ public abstract class StoreIngestionTaskTest {
        * we need to add 1 to last data message offset.
        */
       verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce())
-          .completed(topic, PARTITION_FOO, fooLastOffset + 1);
+          .completed(topic, PARTITION_FOO, fooLastOffset + 1, "STANDBY");
       verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce())
-          .completed(topic, PARTITION_BAR, barLastOffset + 1);
+          .completed(topic, PARTITION_BAR, barLastOffset + 1, "STANDBY");
       verify(mockPartitionStatusNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce())
-          .completed(topic, PARTITION_FOO, fooLastOffset + 1);
+          .completed(topic, PARTITION_FOO, fooLastOffset + 1, "STANDBY");
       verify(mockPartitionStatusNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce())
-          .completed(topic, PARTITION_BAR, barLastOffset + 1);
+          .completed(topic, PARTITION_BAR, barLastOffset + 1, "STANDBY");
       verify(mockLeaderFollowerStateModelNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce())
           .catchUpVersionTopicOffsetLag(topic, PARTITION_FOO);
       verify(mockLeaderFollowerStateModelNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce())
           .catchUpVersionTopicOffsetLag(topic, PARTITION_BAR);
       verify(mockLeaderFollowerStateModelNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce())
-          .completed(topic, PARTITION_FOO, fooLastOffset + 1);
+          .completed(topic, PARTITION_FOO, fooLastOffset + 1, "STANDBY");
       verify(mockLeaderFollowerStateModelNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce())
-          .completed(topic, PARTITION_BAR, barLastOffset + 1);
+          .completed(topic, PARTITION_BAR, barLastOffset + 1, "STANDBY");
       verify(mockStorageMetadataService)
           .put(eq(topic), eq(PARTITION_FOO), eq(getOffsetRecord(fooLastOffset + 1, true)));
       verify(mockStorageMetadataService)
@@ -1740,7 +1740,7 @@ public abstract class StoreIngestionTaskTest {
 
     runTest(Utils.setOf(PARTITION_FOO, PARTITION_BAR), () -> {
       verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS))
-          .completed(eq(topic), eq(PARTITION_FOO), LongEqualOrGreaterThanMatcher.get(fooLastOffset));
+          .completed(eq(topic), eq(PARTITION_FOO), LongEqualOrGreaterThanMatcher.get(fooLastOffset), eq("STANDBY"));
 
       verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).error(
           eq(topic),
@@ -1770,7 +1770,7 @@ public abstract class StoreIngestionTaskTest {
         () -> doReturn(getOffsetRecord(offset, true)).when(mockStorageMetadataService)
             .getLastOffset(topic, PARTITION_FOO),
         () -> {
-          verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).completed(topic, PARTITION_FOO, offset);
+          verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).completed(topic, PARTITION_FOO, offset, "STANDBY");
         },
         isActiveActiveReplicationEnabled);
   }
@@ -1792,7 +1792,7 @@ public abstract class StoreIngestionTaskTest {
       doReturn(getOffsetRecord(offset, true)).when(mockStorageMetadataService).getLastOffset(topic, PARTITION_FOO);
     }, () -> {
       TopicPartition topicPartition = new TopicPartition(topic, PARTITION_FOO);
-      verify(mockLogNotifier, timeout(LONG_TEST_TIMEOUT)).completed(topic, PARTITION_FOO, offset);
+      verify(mockLogNotifier, timeout(LONG_TEST_TIMEOUT)).completed(topic, PARTITION_FOO, offset, "STANDBY");
       verify(aggKafkaConsumerService, timeout(LONG_TEST_TIMEOUT))
           .batchUnsubscribeConsumerFor(topic, Collections.singleton(topicPartition));
       verify(aggKafkaConsumerService, never()).unsubscribeConsumerFor(topic, topic, PARTITION_BAR);
@@ -1817,7 +1817,7 @@ public abstract class StoreIngestionTaskTest {
       doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
       doReturn(getOffsetRecord(offset, true)).when(mockStorageMetadataService).getLastOffset(topic, PARTITION_FOO);
     },
-        () -> verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).completed(topic, PARTITION_FOO, offset),
+        () -> verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).completed(topic, PARTITION_FOO, offset, "STANDBY"),
         isActiveActiveReplicationEnabled);
   }
 
@@ -1982,7 +1982,7 @@ public abstract class StoreIngestionTaskTest {
             long offset = entry.getValue();
             LOGGER.info("Verifying completed was called for partition {} and offset {} or greater.", partition, offset);
             verify(mockLogNotifier, timeout(LONG_TEST_TIMEOUT).atLeastOnce())
-                .completed(eq(topic), eq(partition), LongEqualOrGreaterThanMatcher.get(offset));
+                .completed(eq(topic), eq(partition), LongEqualOrGreaterThanMatcher.get(offset), eq("STANDBY"));
           });
 
       // After this, all asynchronous processing should be finished, so there's no need for time outs anymore.
@@ -2214,7 +2214,7 @@ public abstract class StoreIngestionTaskTest {
       }
 
       verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS).atLeast(ALL_PARTITIONS.size()))
-          .completed(anyString(), anyInt(), anyLong());
+          .completed(anyString(), anyInt(), anyLong(), anyString());
     }, isActiveActiveReplicationEnabled);
   }
 
@@ -2327,7 +2327,8 @@ public abstract class StoreIngestionTaskTest {
           verify(mockLogNotifier).completed(
               eq(topic),
               eq(PARTITION_FOO),
-              longThat(completionOffset -> (completionOffset == fooOffset + 1) || (completionOffset == fooOffset + 2)));
+              longThat(completionOffset -> (completionOffset == fooOffset + 1) || (completionOffset == fooOffset + 2)),
+              anyString());
           verify(mockAbstractStorageEngine).warmUpStoragePartition(PARTITION_FOO);
         }),
         Optional.empty(),
@@ -2362,7 +2363,8 @@ public abstract class StoreIngestionTaskTest {
       verify(mockLogNotifier).completed(
           eq(topic),
           eq(PARTITION_FOO),
-          longThat(completionOffset -> (completionOffset == fooOffset + 1) || (completionOffset == fooOffset + 2)));
+          longThat(completionOffset -> (completionOffset == fooOffset + 1) || (completionOffset == fooOffset + 2)),
+          eq("STANDBY"));
     }),
         Optional.empty(),
         false,
@@ -2407,7 +2409,8 @@ public abstract class StoreIngestionTaskTest {
       verify(mockLogNotifier).completed(
           eq(topic),
           eq(PARTITION_FOO),
-          longThat(completionOffset -> (completionOffset == fooOffset + 1) || (completionOffset == fooOffset + 2)));
+          longThat(completionOffset -> (completionOffset == fooOffset + 1) || (completionOffset == fooOffset + 2)),
+          eq("STANDBY"));
     }),
         Optional.empty(),
         false,
@@ -2442,7 +2445,7 @@ public abstract class StoreIngestionTaskTest {
 
     runTest(Utils.setOf(PARTITION_FOO, PARTITION_BAR), () -> {
       verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS))
-          .completed(eq(topic), eq(PARTITION_BAR), LongEqualOrGreaterThanMatcher.get(barLastOffset));
+          .completed(eq(topic), eq(PARTITION_BAR), LongEqualOrGreaterThanMatcher.get(barLastOffset), eq("STANDBY"));
 
       verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).error(eq(topic), eq(PARTITION_FOO), anyString(), any());
       verify(mockLogNotifier, never()).completed(eq(topic), eq(PARTITION_FOO), anyLong());
