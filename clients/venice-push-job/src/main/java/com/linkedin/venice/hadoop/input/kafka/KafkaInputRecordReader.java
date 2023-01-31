@@ -3,6 +3,7 @@ package com.linkedin.venice.hadoop.input.kafka;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.MRJobCounterHelper;
 import com.linkedin.venice.hadoop.VenicePushJob;
+import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperKey;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.input.kafka.avro.MapperValueType;
 import com.linkedin.venice.hadoop.input.kafka.chunk.ChunkKeyValueTransformer;
@@ -22,7 +23,6 @@ import java.nio.ByteBuffer;
 import java.util.Iterator;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
-import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.mapred.InputSplit;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.RecordReader;
@@ -46,7 +46,7 @@ import org.apache.logging.log4j.Logger;
  * 3. Offset.
  * 4. Value type, which could be 'PUT' or 'DELETE'.
  */
-public class KafkaInputRecordReader implements RecordReader<BytesWritable, KafkaInputMapperValue> {
+public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey, KafkaInputMapperValue> {
   public static final String KIF_RECORD_READER_KAFKA_CONFIG_PREFIX = "kif.record.reader.kafka.";
 
   private static final ByteBuffer EMPTY_BYTE_BUFFER = ByteBuffer.wrap(new byte[0]);
@@ -111,7 +111,7 @@ public class KafkaInputRecordReader implements RecordReader<BytesWritable, Kafka
    * This function will skip all the Control Messages right now.
    */
   @Override
-  public boolean next(BytesWritable key, KafkaInputMapperValue value) throws IOException {
+  public boolean next(KafkaInputMapperKey key, KafkaInputMapperValue value) throws IOException {
     while (hasPendingData()) {
       try {
         loadRecords();
@@ -134,15 +134,15 @@ public class KafkaInputRecordReader implements RecordReader<BytesWritable, Kafka
 
         MessageType messageType = MessageType.valueOf(kafkaMessageEnvelope);
 
+        key.offset = record.offset();
         if (isChunkingEnabled) {
           RawKeyBytesAndChunkedKeySuffix rawKeyAndChunkedKeySuffix =
               splitCompositeKey(kafkaKey.getKey(), messageType, getSchemaIdFromValue(kafkaMessageEnvelope));
-          ByteBuffer keyBytes = rawKeyAndChunkedKeySuffix.getRawKeyBytes();
-          key.set(keyBytes.array(), keyBytes.position(), keyBytes.remaining());
-          value.chunkedKeySuffix = rawKeyAndChunkedKeySuffix.getChunkedKeySuffixBytes();
+          key.key = rawKeyAndChunkedKeySuffix.getRawKeyBytes();
 
+          value.chunkedKeySuffix = rawKeyAndChunkedKeySuffix.getChunkedKeySuffixBytes();
         } else {
-          key.set(kafkaKey.getKey(), 0, kafkaKey.getKeyLength());
+          key.key = ByteBuffer.wrap(kafkaKey.getKey(), 0, kafkaKey.getKeyLength());
         }
         value.offset = record.offset();
         switch (messageType) {
@@ -220,8 +220,8 @@ public class KafkaInputRecordReader implements RecordReader<BytesWritable, Kafka
   }
 
   @Override
-  public BytesWritable createKey() {
-    return new BytesWritable();
+  public KafkaInputMapperKey createKey() {
+    return new KafkaInputMapperKey();
   }
 
   @Override
