@@ -2530,12 +2530,15 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(status).when(internalAdmin).retrievePushStatus(anyString(), anyString());
 
     Store s = TestUtils.createTestStore(storeName, owner, System.currentTimeMillis());
+    s.addVersion(new VersionImpl(s.getName(), 1, "pushJobId"));
+    s.setCurrentVersion(1);
     when(internalAdmin.getRegionPushDetails(anyString(), anyString(), anyBoolean())).thenCallRealMethod();
     doReturn(s).when(internalAdmin).getStore(anyString(), anyString());
 
     RegionPushDetails details = internalAdmin.getRegionPushDetails(clusterName, storeName, true);
     Assert.assertEquals(details.getPushEndTimestamp(), now.plusHours(1).toString());
-    Assert.assertEquals(details.getCurrentVersion().intValue(), Store.NON_EXISTING_VERSION);
+    Assert.assertEquals(details.getVersions().size(), 1);
+    Assert.assertEquals(details.getCurrentVersion().intValue(), 1);
     Assert.assertEquals(details.getPartitionDetails().size(), numOfPartition);
     for (int i = 0; i < numOfPartition; i++) {
       Assert.assertEquals(details.getPartitionDetails().get(i).getReplicaDetails().size(), replicationFactor);
