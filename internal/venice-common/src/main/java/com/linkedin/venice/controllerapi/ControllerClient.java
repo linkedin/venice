@@ -77,10 +77,8 @@ import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.security.SSLFactory;
-import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -89,7 +87,6 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
@@ -113,57 +110,16 @@ public class ControllerClient implements Closeable {
   private final String clusterName;
   private final VeniceJsonSerializer<Version> versionVeniceJsonSerializer = new VeniceJsonSerializer<>(Version.class);
   private String leaderControllerUrl;
-  private final String controllerClientCacheKey;
   private final List<String> controllerDiscoveryUrls;
-  private boolean isShared = false;
+  private boolean isShared = false; // Denote if the object is shared in multiple places and each can close it
+                                    // independently
 
-  private static final Map<String, ReferenceCounted<ControllerClient>> clusterToClientMap =
-      new VeniceConcurrentHashMap<>();
-
-  /**
-   * The key to find a cluster in clusterToClientMap is clusterName + url,
-   * where url is either a set of discoveryUrls or a D2 service name.
-   */
-
-  public static Map<String, ReferenceCounted<ControllerClient>> getClusterToClientMap() {
-    return Collections.unmodifiableMap(clusterToClientMap);
-  }
-
-  protected String getControllerClientCacheKey() {
-    return controllerClientCacheKey;
-  }
-
-  private static String getControllerClientCacheKey(String clusterName, String discoveryUrls) {
-    return clusterName + discoveryUrls;
-  }
-
-  private void setShared(boolean isShared) {
+  protected void setShared(boolean isShared) {
     this.isShared = isShared;
   }
 
-  public static void addClusterToClientMapEntry(ControllerClient value) {
-    String identifier = value.getControllerClientCacheKey();
-    clusterToClientMap.computeIfAbsent(identifier, id -> {
-      value.setShared(true);
-      return new ReferenceCounted<>(value, client -> {
-        deleteClusterToClientMapEntry(client.getControllerClientCacheKey());
-        client.setShared(false);
-        client.close(); // Doesn't run anything right now - but is useful to clean up if close method adds some cleanup
-                        // functionality later
-      });
-    });
-  }
-
-  public static void deleteClusterToClientMapEntry(String controllerClientCacheKey) {
-    clusterToClientMap.remove(controllerClientCacheKey);
-  }
-
-  public static ReferenceCounted<ControllerClient> getClusterToClientMapEntry(String controllerClientCacheKey) {
-    return getClusterToClientMap().get(controllerClientCacheKey);
-  }
-
-  public static boolean clusterToClientMapContains(String controllerClientCacheKey) {
-    return getClusterToClientMap().containsKey(controllerClientCacheKey);
+  protected boolean getShared() {
+    return this.isShared;
   }
 
   public ControllerClient(String clusterName, String discoveryUrls) {
@@ -180,7 +136,6 @@ public class ControllerClient implements Closeable {
 
     this.sslFactory = sslFactory;
     this.clusterName = clusterName;
-    this.controllerClientCacheKey = getControllerClientCacheKey(clusterName, discoveryUrls);
     this.controllerDiscoveryUrls =
         Arrays.stream(discoveryUrls.split(",")).map(String::trim).collect(Collectors.toList());
     if (this.controllerDiscoveryUrls.isEmpty()) {
@@ -205,22 +160,14 @@ public class ControllerClient implements Closeable {
       String clusterName,
       String discoveryUrls,
       Optional<SSLFactory> sslFactory) {
-    String controllerClientCacheKey = getControllerClientCacheKey(clusterName, discoveryUrls);
-    if (!clusterToClientMapContains(controllerClientCacheKey)) {
-      ControllerClient controllerClient = new ControllerClient(clusterName, discoveryUrls, sslFactory);
-      addClusterToClientMapEntry(controllerClient);
-      return controllerClient;
-    } else {
-      ReferenceCounted<ControllerClient> controllerClientRef = getClusterToClientMapEntry(controllerClientCacheKey);
-      controllerClientRef.retain();
-      return controllerClientRef.get();
-    }
+    return ControllerClientFactory.getControllerClient(clusterName, discoveryUrls, sslFactory);
   }
 
   @Override
   public void close() {
-    if (isShared) {
-      getClusterToClientMapEntry(getControllerClientCacheKey()).release();
+    if (getShared()) {
+      // Object is still in use at other places. Do not release resources right now.
+      ControllerClientFactory.release(this);
     }
   }
 

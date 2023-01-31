@@ -25,7 +25,7 @@ import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_STORE;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
-import com.linkedin.venice.controllerapi.D2ControllerClient;
+import com.linkedin.venice.controllerapi.D2ControllerClientFactory;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -275,7 +275,8 @@ public class IntegrationTestPushUtils {
         String childControllerColoName = pushJobProps.getProperty(SOURCE_GRID_FABRIC);
         d2ZkHosts = pushJobProps.getProperty(D2_ZK_HOSTS_PREFIX + childControllerColoName);
       }
-      return D2ControllerClient.constructClusterControllerClient(veniceClusterName, d2ServiceName, d2ZkHosts);
+      return D2ControllerClientFactory
+          .getControllerClient(d2ServiceName, veniceClusterName, d2ZkHosts, Optional.empty());
     } else {
       return ControllerClient.constructClusterControllerClient(veniceClusterName, veniceUrl);
     }

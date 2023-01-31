@@ -19,7 +19,7 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
-import com.linkedin.venice.controllerapi.D2ControllerClient;
+import com.linkedin.venice.controllerapi.D2ControllerClientFactory;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.RepushInfoResponse;
@@ -1590,7 +1590,7 @@ public class VenicePushJob implements AutoCloseable {
       Optional<SSLFactory> sslFactory,
       int retryAttempts) {
     if (useD2ControllerClient) {
-      return D2ControllerClient.discoverAndConstructControllerClient(
+      return D2ControllerClientFactory.discoverAndConstructControllerClient(
           storeName,
           controllerD2ServiceName,
           d2ZkHosts,
