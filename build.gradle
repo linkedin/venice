@@ -128,8 +128,6 @@ publishing {
 }
 
 subprojects {
-  def thisProject = project
-
   //apply group and version to all submodules
   group = rootProject.group
   version = rootProject.version
