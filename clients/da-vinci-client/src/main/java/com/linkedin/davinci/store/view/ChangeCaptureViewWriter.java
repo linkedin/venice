@@ -43,6 +43,8 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
   private VeniceWriter veniceWriter;
   private final Object2IntMap<String> kafkaClusterUrlToIdMap;
 
+  private final int maxColoIdValue;
+
   public ChangeCaptureViewWriter(
       VeniceConfigLoader props,
       Store store,
@@ -51,6 +53,7 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
     super(props, store, keySchema, extraViewParameters);
     internalView = new ChangeCaptureView(props.getCombinedProperties().toProperties(), store, extraViewParameters);
     kafkaClusterUrlToIdMap = props.getVeniceServerConfig().getKafkaClusterUrlToIdMap();
+    maxColoIdValue = kafkaClusterUrlToIdMap.values().stream().max(Integer::compareTo).orElse(-1);
   }
 
   @Override
@@ -113,11 +116,17 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
     }
 
     Map<String, Long> sortedWaterMarkOffsets = partitionConsumptionState.getLatestProcessedUpstreamRTOffsetMap();
-    List<Long> highWaterMarkOffsets = new ArrayList<>();
-    for (String url: sortedWaterMarkOffsets.keySet()) {
-      highWaterMarkOffsets.add(
-          kafkaClusterUrlToIdMap.getInt(url),
-          partitionConsumptionState.getLatestProcessedUpstreamRTOffsetMap().get(url));
+
+    List<Long> highWaterMarkOffsets;
+    if (maxColoIdValue > -1) {
+      highWaterMarkOffsets = new ArrayList<>(Collections.nCopies(maxColoIdValue + 1, 0L));
+      for (String url: sortedWaterMarkOffsets.keySet()) {
+        highWaterMarkOffsets.set(
+            kafkaClusterUrlToIdMap.getInt(url),
+            partitionConsumptionState.getLatestProcessedUpstreamRTOffsetMap().get(url));
+      }
+    } else {
+      highWaterMarkOffsets = Collections.emptyList();
     }
 
     // Write the message on veniceWriter to the change capture topic
@@ -149,15 +158,12 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
     veniceWriter.close();
   }
 
-  // for testing only
-  public void setVeniceWriter(VeniceWriter veniceWriter) {
+  // package private, for testing only
+  void setVeniceWriter(VeniceWriter veniceWriter) {
     this.veniceWriter = veniceWriter;
   }
 
-  synchronized private void initializeVeniceWriter(int version) {
-    if (veniceWriter != null) {
-      return;
-    }
+  VeniceWriterOptions buildWriterOptions(int version) {
     String changeCaptureTopicName = this.getTopicNamesAndConfigsForVersion(version).keySet().stream().findAny().get();
 
     // Build key/value Serializers for the kafka producer
@@ -168,14 +174,23 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
     // Set writer properties based on the store version config
     Version storeVersionConfig = store.getVersion(version).get();
     PartitionerConfig partitionerConfig = storeVersionConfig.getPartitionerConfig();
+
     if (partitionerConfig != null) {
       // TODO: It would make sense to give the option to set a different partitioner for this view. Might
       // want to consider adding it as a param available to this view type.
       VenicePartitioner venicePartitioner = PartitionUtils.getVenicePartitioner(partitionerConfig);
       configBuilder.setPartitioner(venicePartitioner);
     }
+
     configBuilder.setChunkingEnabled(storeVersionConfig.isChunkingEnabled());
-    veniceWriter = new VeniceWriterFactory(props).createVeniceWriter(configBuilder.build());
+    return configBuilder.build();
+  }
+
+  synchronized private void initializeVeniceWriter(int version) {
+    if (veniceWriter != null) {
+      return;
+    }
+    veniceWriter = new VeniceWriterFactory(props).createVeniceWriter(buildWriterOptions(version));
   }
 
   private ValueBytes constructValueBytes(ByteBuffer value, int schemaId) {
