@@ -129,7 +129,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
     }
   }
 
-  private void maybeRegisterAndPopulateMetadataSchema(Store store, SchemaData schemaData) {
+  void maybeRegisterAndPopulateRmdSchema(Store store, SchemaData schemaData) {
     if (store.isActiveActiveReplicationEnabled()) {
       String storeName = store.getName();
       getAccessor().subscribeReplicationMetadataSchemaCreationChange(storeName, replicationMetadataSchemaChildListener);
@@ -137,7 +137,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
     }
   }
 
-  private void maybeRegisterAndPopulatePartialUpdateSchema(Store store, SchemaData schemaData) {
+  void maybeRegisterAndPopulateUpdateSchema(Store store, SchemaData schemaData) {
     if (store.isWriteComputationEnabled()) {
       String storeName = store.getName();
       getAccessor().subscribeDerivedSchemaCreationChange(storeName, derivedSchemaChildListener);
@@ -511,8 +511,8 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
 
       // Fetch derived schemas if they are existing
       Store store = storeRepository.getStoreOrThrow(storeName);
-      maybeRegisterAndPopulatePartialUpdateSchema(store, schemaData);
-      maybeRegisterAndPopulateMetadataSchema(store, schemaData);
+      maybeRegisterAndPopulateUpdateSchema(store, schemaData);
+      maybeRegisterAndPopulateRmdSchema(store, schemaData);
 
       return schemaData;
     });
@@ -602,8 +602,8 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
       schemaLock.readLock().unlock();
     }
 
-    maybeRegisterAndPopulatePartialUpdateSchema(store, schemaData);
-    maybeRegisterAndPopulateMetadataSchema(store, schemaData);
+    maybeRegisterAndPopulateUpdateSchema(store, schemaData);
+    maybeRegisterAndPopulateRmdSchema(store, schemaData);
   }
 
   private class KeySchemaChildListener extends SchemaChildListener {

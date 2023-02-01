@@ -1,12 +1,16 @@
 package com.linkedin.venice.helix;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.alpini.io.IOUtils;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -37,11 +41,38 @@ public class HelixReadOnlySchemaRepositoryTest {
       WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(VALUE_SCHEMA);
 
   @Test
+  public void testMaybeSubscribeAndPopulateSchema() {
+    HelixReadOnlySchemaRepository schemaRepository = mock(HelixReadOnlySchemaRepository.class);
+    doCallRealMethod().when(schemaRepository).maybeRegisterAndPopulateRmdSchema(any(), any());
+    doCallRealMethod().when(schemaRepository).maybeRegisterAndPopulateUpdateSchema(any(), any());
+    Store store = mock(Store.class);
+    String storeName = "testStore";
+    when(store.getName()).thenReturn(storeName);
+    when(store.isWriteComputationEnabled()).thenReturn(true);
+    when(store.isActiveActiveReplicationEnabled()).thenReturn(true);
+    SchemaEntry schemaEntry = new SchemaEntry(1, VALUE_SCHEMA.toString());
+    DerivedSchemaEntry derivedSchemaEntry = new DerivedSchemaEntry(1, 1, UPDATE_SCHEMA.toString());
+    RmdSchemaEntry rmdSchemaEntry = new RmdSchemaEntry(1, 1, UPDATE_SCHEMA.toString());
+    HelixSchemaAccessor schemaAccessor = mock(HelixSchemaAccessor.class);
+    when(schemaRepository.getAccessor()).thenReturn(schemaAccessor);
+    when(schemaAccessor.getAllValueSchemas(storeName)).thenReturn(Collections.singletonList(schemaEntry));
+    when(schemaAccessor.getAllDerivedSchemas(storeName)).thenReturn(Collections.singletonList(derivedSchemaEntry));
+    when(schemaAccessor.getAllReplicationMetadataSchemas(storeName))
+        .thenReturn(Collections.singletonList(rmdSchemaEntry));
+    SchemaData schemaData = new SchemaData(storeName);
+
+    schemaRepository.maybeRegisterAndPopulateUpdateSchema(store, schemaData);
+    verify(schemaAccessor, times(1)).subscribeDerivedSchemaCreationChange(anyString(), any());
+    Assert.assertEquals(schemaData.getDerivedSchema(1, 1).getSchema(), UPDATE_SCHEMA);
+    schemaRepository.maybeRegisterAndPopulateRmdSchema(store, schemaData);
+    verify(schemaAccessor, times(1)).subscribeReplicationMetadataSchemaCreationChange(anyString(), any());
+    Assert.assertEquals(schemaData.getReplicationMetadataSchema(1, 1).getSchema(), UPDATE_SCHEMA);
+  }
+
+  @Test
   public void testForceRefreshSchemaData() {
     HelixReadOnlySchemaRepository schemaRepository = mock(HelixReadOnlySchemaRepository.class);
     doCallRealMethod().when(schemaRepository).forceRefreshSchemaData(any(), any());
-    HelixSchemaAccessor schemaAccessor = mock(HelixSchemaAccessor.class);
-    when(schemaRepository.getAccessor()).thenReturn(schemaAccessor);
     Store store = mock(Store.class);
     String storeName = "testStore";
     when(store.getName()).thenReturn(storeName);
@@ -52,6 +83,8 @@ public class HelixReadOnlySchemaRepositoryTest {
     SchemaEntry schemaEntry = new SchemaEntry(1, VALUE_SCHEMA.toString());
     DerivedSchemaEntry derivedSchemaEntry = new DerivedSchemaEntry(1, 1, UPDATE_SCHEMA.toString());
     RmdSchemaEntry rmdSchemaEntry = new RmdSchemaEntry(1, 1, UPDATE_SCHEMA.toString());
+    HelixSchemaAccessor schemaAccessor = mock(HelixSchemaAccessor.class);
+    when(schemaRepository.getAccessor()).thenReturn(schemaAccessor);
     when(schemaAccessor.getAllValueSchemas(storeName)).thenReturn(Collections.singletonList(schemaEntry));
     when(schemaAccessor.getAllDerivedSchemas(storeName)).thenReturn(Collections.singletonList(derivedSchemaEntry));
     when(schemaAccessor.getAllReplicationMetadataSchemas(storeName))
@@ -78,8 +111,12 @@ public class HelixReadOnlySchemaRepositoryTest {
     when(schemaRepository.getSupersetSchema(storeName)).thenCallRealMethod();
     when(schemaRepository.getSchemaMap()).thenReturn(schemaDataMap);
     when(store.getLatestSuperSetValueSchemaId()).thenReturn(1);
-    LOGGER.info(schemaRepository.getSupersetSchema(storeName));
-
+    Assert.assertTrue(schemaRepository.getSupersetSchema(storeName).isPresent());
+    Assert.assertEquals(schemaRepository.getSupersetSchema(storeName).get().getSchema(), VALUE_SCHEMA);
+    when(store.getLatestSuperSetValueSchemaId()).thenReturn(2);
+    Assert.assertThrows(InvalidVeniceSchemaException.class, () -> schemaRepository.getSupersetSchema(storeName));
+    when(store.getLatestSuperSetValueSchemaId()).thenReturn(SchemaData.INVALID_VALUE_SCHEMA_ID);
+    Assert.assertFalse(schemaRepository.getSupersetSchema(storeName).isPresent());
   }
 
   private static String loadFileAsString(String fileName) {
