@@ -4490,7 +4490,7 @@ public class VeniceParentHelixAdmin implements Admin {
    * Unsupported operation in the parent controller.
    */
   @Override
-  public RegionPushDetails getRegionPushDetails(String clusterName, String storeName) {
+  public RegionPushDetails getRegionPushDetails(String clusterName, String storeName, boolean isPartitionDetailAdded) {
     throw new UnsupportedOperationException("This function has no implementation.");
   }
 
@@ -4499,18 +4499,22 @@ public class VeniceParentHelixAdmin implements Admin {
    * push jobs for that store across all regions.
    */
   @Override
-  public Map<String, RegionPushDetails> listStorePushInfo(String clusterName, String storeName) {
+  public Map<String, RegionPushDetails> listStorePushInfo(
+      String clusterName,
+      String storeName,
+      boolean isPartitionDetailEnabled) {
     Map<String, RegionPushDetails> retMap = new HashMap<>();
-
     try {
       Map<String, ControllerClient> controllerClientMap = getVeniceHelixAdmin().getControllerClientMap(clusterName);
       for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
-        RegionPushDetailsResponse detailsResp = entry.getValue().getRegionPushDetails(storeName, clusterName);
+        RegionPushDetailsResponse detailsResp =
+            entry.getValue().getRegionPushDetails(storeName, isPartitionDetailEnabled);
         if (detailsResp != null && detailsResp.getRegionPushDetails() != null) {
           detailsResp.getRegionPushDetails().setRegionName(entry.getKey());
           retMap.put(entry.getKey(), detailsResp.getRegionPushDetails());
         }
       }
+
     } catch (Exception e) {
       throw new VeniceException("Something went wrong trying to get store push info. ", e);
     }
