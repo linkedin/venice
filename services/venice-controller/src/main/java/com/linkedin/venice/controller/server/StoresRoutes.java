@@ -11,6 +11,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_SOURCE_FABRIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OPERATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OWNER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION_DETAIL_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_OPERATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_WRITE_OPERATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REGIONS_FILTER;
@@ -989,7 +990,7 @@ public class StoresRoutes extends AbstractRoute {
   }
 
   /**
-   * @see Admin#listStorePushInfo(String, String)
+   * @see Admin#listStorePushInfo(String, String, boolean)
    */
   public Route listStorePushInfo(Admin admin) {
     return new VeniceRouteHandler<StoreHealthAuditResponse>(StoreHealthAuditResponse.class) {
@@ -998,7 +999,8 @@ public class StoresRoutes extends AbstractRoute {
         AdminSparkServer.validateParams(request, LIST_STORE_PUSH_INFO.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
         String store = request.queryParams(NAME);
-        Map<String, RegionPushDetails> details = admin.listStorePushInfo(cluster, store);
+        boolean isPartitionDetailEnabled = Boolean.valueOf(request.queryParams(PARTITION_DETAIL_ENABLED));
+        Map<String, RegionPushDetails> details = admin.listStorePushInfo(cluster, store, isPartitionDetailEnabled);
 
         veniceResponse.setName(store);
         veniceResponse.setCluster(cluster);
@@ -1008,7 +1010,7 @@ public class StoresRoutes extends AbstractRoute {
   }
 
   /**
-   * @see Admin#getRegionPushDetails(String, String)
+   * @see Admin#getRegionPushDetails(String, String, boolean)
    */
   public Route getRegionPushDetails(Admin admin) {
     return new VeniceRouteHandler<RegionPushDetailsResponse>(RegionPushDetailsResponse.class) {
@@ -1017,7 +1019,8 @@ public class StoresRoutes extends AbstractRoute {
         AdminSparkServer.validateParams(request, GET_REGION_PUSH_DETAILS.getParams(), admin);
         String store = request.queryParams(NAME);
         String cluster = request.queryParams(CLUSTER);
-        RegionPushDetails details = admin.getRegionPushDetails(cluster, store);
+        boolean isPartitionDetailEnabled = Boolean.valueOf(request.queryParams(PARTITION_DETAIL_ENABLED));
+        RegionPushDetails details = admin.getRegionPushDetails(cluster, store, isPartitionDetailEnabled);
         veniceResponse.setRegionPushDetails(details);
       }
     };

@@ -150,16 +150,15 @@ public class TestStaleDataVisibility {
       Assert.assertEquals(response.getAuditMap().get(storeName).getHealthyRegions().size(), 1);
 
       // test store health check
-      StoreHealthAuditResponse healthResponse =
-          controllerClient.listStorePushInfo(clusterName, parentControllerUrls, storeName);
+      StoreHealthAuditResponse healthResponse = controllerClient.listStorePushInfo(storeName, true);
       Assert.assertTrue(response.getAuditMap().containsKey(healthResponse.getName()));
       Map<String, StoreInfo> auditMapEntry = response.getAuditMap().get(healthResponse.getName()).getStaleRegions();
-      for (Map.Entry<String, StoreInfo> entry: auditMapEntry.entrySet())
-        if (Objects.equals(entry.getValue().getName(), storeName))
-          Assert.assertTrue(healthResponse.getRegionsWithStaleData().contains(entry.getKey())); // verify that the same
-                                                                                                // regions are stale
-                                                                                                // across both responses
-                                                                                                // for the same store
+      for (Map.Entry<String, StoreInfo> entry: auditMapEntry.entrySet()) {
+        if (Objects.equals(entry.getValue().getName(), storeName)) {
+          // verify that the same regions are stale across both responses for the same store.
+          Assert.assertTrue(healthResponse.getRegionsWithStaleData().contains(entry.getKey()));
+        }
+      }
     }
   }
 }

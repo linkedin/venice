@@ -6713,7 +6713,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   @Override
-  public Map<String, RegionPushDetails> listStorePushInfo(String clusterName, String storeName) {
+  public Map<String, RegionPushDetails> listStorePushInfo(
+      String clusterName,
+      String storeName,
+      boolean isPartitionDetailEnabled) {
     throw new UnsupportedOperationException("This function has not been implemented.");
   }
 
@@ -6721,35 +6724,54 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * @return <code>RegionPushDetails</code> object containing the specified store's push status.
    */
   @Override
-  public RegionPushDetails getRegionPushDetails(String clusterName, String storeName) {
+  public RegionPushDetails getRegionPushDetails(String clusterName, String storeName, boolean isPartitionDetailAdded) {
     RegionPushDetails ret = new RegionPushDetails();
-    StoreInfo s = StoreInfo.fromStore(getStore(clusterName, storeName));
+    OfflinePushStatus zkData = retrievePushStatus(clusterName, storeName);
+
+    for (StatusSnapshot status: zkData.getStatusHistory()) {
+      if (shouldUpdateEndTime(ret, status)) {
+        ret.setPushEndTimestamp(status.getTime());
+      } else if (shouldUpdateStartTime(ret, status)) {
+        ret.setPushStartTimestamp(status.getTime());
+      } else if (status.getStatus() == ExecutionStatus.ERROR) {
+        ret.setErrorMessage(zkData.getStatusDetails());
+        ret.setLatestFailedPush(status.getTime());
+      }
+    }
+
+    StoreInfo store = StoreInfo.fromStore(getStore(clusterName, storeName));
+    for (Version v: store.getVersions()) {
+      ret.addVersion(v.getNumber());
+    }
+    ret.setCurrentVersion(store.getCurrentVersion());
+    if (isPartitionDetailAdded) {
+      ret.addPartitionDetails(zkData);
+    }
+    return ret;
+  }
+
+  public OfflinePushStatus retrievePushStatus(String clusterName, String storeName) {
+    StoreInfo store = StoreInfo.fromStore(getStore(clusterName, storeName));
 
     VeniceOfflinePushMonitorAccessor accessor =
         new VeniceOfflinePushMonitorAccessor(clusterName, getZkClient(), getAdapterSerializer());
 
-    Optional<Version> currentVersion = s.getVersion(s.getCurrentVersion());
+    Optional<Version> currentVersion = store.getVersion(store.getCurrentVersion());
     String kafkaTopic = currentVersion.isPresent() ? currentVersion.get().kafkaTopicName() : "";
-    OfflinePushStatus zkData = accessor.getOfflinePushStatusAndItsPartitionStatuses(kafkaTopic);
+    OfflinePushStatus status = accessor.getOfflinePushStatusAndItsPartitionStatuses(kafkaTopic);
+    return status;
+  }
 
-    for (StatusSnapshot status: zkData.getStatusHistory()) {
-      LOGGER.error(status.getTime());
-      LocalDateTime timestamp = LocalDateTime.parse(status.getTime());
-      if (status.getStatus() == ExecutionStatus.COMPLETED && (ret.getPushEndTimestamp() == null
-          || timestamp.compareTo(LocalDateTime.parse(ret.getPushEndTimestamp())) > 0)) {
-        ret.setPushEndTimestamp(timestamp.toString());
-      } else if (status.getStatus() == ExecutionStatus.STARTED && (ret.getPushStartTimestamp()) == null
-          || timestamp.compareTo(LocalDateTime.parse(ret.getPushStartTimestamp())) <= 0) {
-        ret.setPushStartTimestamp(timestamp.toString());
-      } else if (status.getStatus() == ExecutionStatus.ERROR) {
-        ret.setErrorMessage(accessor.getOfflinePushStatusAndItsPartitionStatuses(kafkaTopic).getStatusDetails());
-        ret.setLatestFailedPush(timestamp.toString());
-      }
-    }
-    for (Version v: s.getVersions())
-      ret.getVersions().add(v.getNumber());
-    ret.setCurrentVersion(s.getCurrentVersion());
-    return ret;
+  private boolean shouldUpdateStartTime(final RegionPushDetails curResult, final StatusSnapshot status) {
+    LocalDateTime timestamp = LocalDateTime.parse(status.getTime());
+    return status.getStatus() == ExecutionStatus.STARTED && (curResult.getPushStartTimestamp() == null
+        || timestamp.isBefore(LocalDateTime.parse(curResult.getPushStartTimestamp())));
+  }
+
+  private boolean shouldUpdateEndTime(final RegionPushDetails curResult, final StatusSnapshot status) {
+    LocalDateTime timestamp = LocalDateTime.parse(status.getTime());
+    return status.getStatus() == ExecutionStatus.COMPLETED && (curResult.getPushEndTimestamp() == null
+        || timestamp.isAfter(LocalDateTime.parse(curResult.getPushEndTimestamp())));
   }
 
   /**
