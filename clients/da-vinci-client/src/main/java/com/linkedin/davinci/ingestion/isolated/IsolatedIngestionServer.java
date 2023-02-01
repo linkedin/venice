@@ -529,30 +529,33 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   }
 
   void reportMetricsUpdateToMainProcess() {
-    IngestionMetricsReport report = new IngestionMetricsReport();
-    report.aggregatedMetrics = new HashMap<>();
-    if (getMetricsRepository() != null) {
-      getMetricsRepository().metrics().forEach((name, metric) -> {
-        if (metric != null) {
-          try {
-            // Best-effort to reduce metrics delta size sent from child process to main process.
-            Double originalValue = getMetricsMap().get(name);
-            Double newValue = metric.value();
-            if (originalValue == null || !originalValue.equals(newValue)) {
-              report.aggregatedMetrics.put(name, newValue);
-            }
-            getMetricsMap().put(name, newValue);
-          } catch (Exception e) {
-            String exceptionLogMessage = "Encounter exception when retrieving value of metric: " + name;
-            if (!getRedundantExceptionFilter().isRedundantException(exceptionLogMessage)) {
-              LOGGER.error(exceptionLogMessage, e);
+    try {
+      IngestionMetricsReport report = new IngestionMetricsReport();
+      report.aggregatedMetrics = new HashMap<>();
+      if (getMetricsRepository() != null) {
+        getMetricsRepository().metrics().forEach((name, metric) -> {
+          if (metric != null) {
+            try {
+              // Best-effort to reduce metrics delta size sent from child process to main process.
+              Double originalValue = getMetricsMap().get(name);
+              Double newValue = metric.value();
+              if (originalValue == null || !originalValue.equals(newValue)) {
+                report.aggregatedMetrics.put(name, newValue);
+              }
+              getMetricsMap().put(name, newValue);
+            } catch (Exception e) {
+              String exceptionLogMessage = "Encounter exception when retrieving value of metric: " + name;
+              if (!getRedundantExceptionFilter().isRedundantException(exceptionLogMessage)) {
+                LOGGER.error(exceptionLogMessage, e);
+              }
             }
           }
-        }
-      });
+        });
+      }
+      getMetricClient().reportMetricUpdate(report);
+    } catch (Exception e) {
+      LOGGER.warn("Encounter exception when fetching latest metrics and reporting back to main process", e);
     }
-    LOGGER.info("DEBUGGING");
-    getMetricClient().reportMetricUpdate(report);
   }
 
   IsolatedIngestionRequestClient getMetricClient() {
@@ -710,12 +713,11 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     LOGGER.info(
         "Starting report client with target application port: {}",
         configLoader.getVeniceServerConfig().getIngestionApplicationPort());
-    // Create Netty client to report ingestion status back to main application.
+    // Create Netty client to report ingestion status back to main process.
     reportClient = new IsolatedIngestionRequestClient(configLoader);
-    // Create Netty client to report metrics update back to main application.
+    // Create Netty client to report metrics update back to main process.
     metricClient = new IsolatedIngestionRequestClient(configLoader);
-
-    // Mark the IsolatedIngestionServer as initiated.
+    // Mark the isolated ingestion service as initiated.
     isInitiated = true;
   }
 
