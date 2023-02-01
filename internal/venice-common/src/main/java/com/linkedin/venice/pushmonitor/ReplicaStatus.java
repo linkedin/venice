@@ -7,6 +7,7 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.STARTED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.TOPIC_SWITCH_RECEIVED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.isIncrementalPushStatus;
 
+import com.linkedin.venice.utils.Pair;
 import java.time.LocalDateTime;
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -190,30 +191,40 @@ public class ReplicaStatus {
   }
 
   /**
-   * @return the start status snapshot from the status history.
+   * @return the started and completed status snapshot from the status history.
    */
-  public StatusSnapshot findStartStatus() {
-    StatusSnapshot result = null;
-    for (StatusSnapshot status: statusHistory) {
-      if (status.getStatus() == STARTED && (result == null
-          || LocalDateTime.parse(status.getTime()).isBefore(LocalDateTime.parse(result.getTime())))) {
-        result = status;
-      }
-    }
-    return result;
-  }
+  public Pair<StatusSnapshot, StatusSnapshot> findStartedAndCompletedStatus() {
+    int idx = 0, startedIdx = -1, completedIdx = -1;
+    StatusSnapshot startedStatus = null, completedStatus = null;
 
-  /**
-   * @return the completed status snapshot from the status history.
-   */
-  public StatusSnapshot findCompleteStatus() {
-    StatusSnapshot result = null;
-    for (StatusSnapshot status: statusHistory) {
-      if (status.getStatus() == COMPLETED
-          && (result == null || LocalDateTime.parse(status.getTime()).isAfter(LocalDateTime.parse(result.getTime())))) {
-        result = status;
+    // We assume that StatusSnapshot in statusHistory is sorted by its time.
+    Iterator<StatusSnapshot> iter = statusHistory.listIterator();
+    while (iter.hasNext() && (startedStatus == null || completedStatus == null)) {
+      StatusSnapshot status = iter.next();
+      if (status.getStatus() == STARTED && startedStatus == null) {
+        startedStatus = status;
+        startedIdx = idx;
+      } else if (status.getStatus() == COMPLETED && completedStatus == null) {
+        completedStatus = status;
+        completedIdx = idx;
       }
+      idx++;
     }
-    return result;
+
+    // Cannot find a started and completed pair.
+    if (startedStatus == null || completedStatus == null) {
+      return null;
+    }
+
+    /**
+     * When server restarts, it adds new started and completed statuses into the history.
+     * (see {@link StoreIngestionTask#checkConsumptionStateWhenStart}). We compare the distance between two the indexes
+     * and claim that for a real <started, completed> pair, there should be other states in between.
+     */
+    if (completedIdx - startedIdx <= 1) {
+      return null;
+    }
+
+    return Pair.create(startedStatus, completedStatus);
   }
 }

@@ -150,8 +150,7 @@ public class TestStaleDataVisibility {
       Assert.assertEquals(response.getAuditMap().get(storeName).getHealthyRegions().size(), 1);
 
       // test store health check
-      StoreHealthAuditResponse healthResponse =
-          controllerClient.listStorePushInfo(clusterName, parentControllerUrls, storeName, true);
+      StoreHealthAuditResponse healthResponse = controllerClient.listStorePushInfo(storeName, true);
       Assert.assertTrue(response.getAuditMap().containsKey(healthResponse.getName()));
       Map<String, StoreInfo> auditMapEntry = response.getAuditMap().get(healthResponse.getName()).getStaleRegions();
       for (Map.Entry<String, StoreInfo> entry: auditMapEntry.entrySet()) {

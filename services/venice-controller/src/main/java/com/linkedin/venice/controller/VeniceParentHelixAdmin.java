@@ -4508,12 +4508,11 @@ public class VeniceParentHelixAdmin implements Admin {
       Map<String, ControllerClient> controllerClientMap = getVeniceHelixAdmin().getControllerClientMap(clusterName);
       for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
         RegionPushDetailsResponse detailsResp =
-            entry.getValue().getRegionPushDetails(storeName, clusterName, isPartitionDetailEnabled);
+            entry.getValue().getRegionPushDetails(storeName, isPartitionDetailEnabled);
         if (detailsResp != null && detailsResp.getRegionPushDetails() != null) {
           detailsResp.getRegionPushDetails().setRegionName(entry.getKey());
           retMap.put(entry.getKey(), detailsResp.getRegionPushDetails());
         }
-
       }
 
     } catch (Exception e) {

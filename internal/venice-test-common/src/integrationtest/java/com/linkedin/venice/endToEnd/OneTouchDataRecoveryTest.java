@@ -134,8 +134,7 @@ public class OneTouchDataRecoveryTest {
           TimeUnit.SECONDS);
 
       // Call listStorePushInfo with isPartitionDetailEnabled set to true.
-      StoreHealthAuditResponse resp =
-          parentControllerCli.listStorePushInfo(CLUSTER_NAME, parentControllerUrls, storeName, true);
+      StoreHealthAuditResponse resp = parentControllerCli.listStorePushInfo(storeName, true);
       LOGGER.info("StoreHealthAuditResponse = {}", resp);
       Assert.assertFalse(resp.isError());
       Assert.assertFalse(resp.getRegionPushDetails().isEmpty());
@@ -147,7 +146,7 @@ public class OneTouchDataRecoveryTest {
       }
 
       // Call listStorePushInfo with isPartitionDetailEnabled set to false.
-      resp = parentControllerCli.listStorePushInfo(CLUSTER_NAME, parentControllerUrls, storeName, false);
+      resp = parentControllerCli.listStorePushInfo(storeName, false);
       LOGGER.info("StoreHealthAuditResponse = {}", resp);
       Assert.assertFalse(resp.isError());
       Assert.assertFalse(resp.getRegionPushDetails().isEmpty());
