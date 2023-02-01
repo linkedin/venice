@@ -13,9 +13,9 @@ import org.testng.annotations.Test;
 
 
 public class TestOneTouchDataRecovery {
-  final int numOfPartition = 5;
-  final int replicationFactor = 3;
-  final String kafkaTopic = "test_v1";
+  static final int NUM_OF_PARTITION = 5;
+  static final int REPLICATION_FACTOR = 3;
+  static final String KAFKA_TOPIC = "test_v1";
 
   @Test
   public void testDataRecoveryDataStructure() {
@@ -30,14 +30,14 @@ public class TestOneTouchDataRecovery {
 
   private RegionPushDetails buildPushStatus(LocalDateTime timestamp, boolean isNormal) {
     OfflinePushStatus status = new OfflinePushStatus(
-        kafkaTopic,
-        numOfPartition,
-        replicationFactor,
+        KAFKA_TOPIC,
+        NUM_OF_PARTITION,
+        REPLICATION_FACTOR,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
 
-    for (int i = 0; i < numOfPartition; i++) {
+    for (int i = 0; i < NUM_OF_PARTITION; i++) {
       PartitionStatus partition = new PartitionStatus(i);
-      for (int j = 0; j < replicationFactor; j++) {
+      for (int j = 0; j < REPLICATION_FACTOR; j++) {
         if (isNormal) {
           partition.updateReplicaStatus("instanceId-" + j, ExecutionStatus.STARTED, StringUtils.EMPTY);
           partition.updateReplicaStatus("instanceId-" + j, ExecutionStatus.END_OF_PUSH_RECEIVED, StringUtils.EMPTY);
@@ -58,9 +58,9 @@ public class TestOneTouchDataRecovery {
   }
 
   private void verifyPushStatus(final RegionPushDetails result, LocalDateTime timestamp, boolean isNormal) {
-    Assert.assertEquals(result.getPartitionDetails().size(), numOfPartition);
-    for (int i = 0; i < numOfPartition; i++) {
-      Assert.assertEquals(result.getPartitionDetails().get(i).getReplicaDetails().size(), replicationFactor);
+    Assert.assertEquals(result.getPartitionDetails().size(), NUM_OF_PARTITION);
+    for (int i = 0; i < NUM_OF_PARTITION; i++) {
+      Assert.assertEquals(result.getPartitionDetails().get(i).getReplicaDetails().size(), REPLICATION_FACTOR);
       for (ReplicaDetail replica: result.getPartitionDetails().get(i).getReplicaDetails()) {
         Assert.assertNotEquals(replica.getInstanceId(), StringUtils.EMPTY);
         if (isNormal) {
