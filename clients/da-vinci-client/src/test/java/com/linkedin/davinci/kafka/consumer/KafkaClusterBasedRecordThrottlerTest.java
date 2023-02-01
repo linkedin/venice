@@ -5,7 +5,7 @@ import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
-import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
+import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
 import com.linkedin.venice.utils.TestMockTime;
@@ -64,8 +64,8 @@ public class KafkaClusterBasedRecordThrottlerTest {
     ConsumerRecords<byte[], byte[]> consumerRecords = mock(ConsumerRecords.class);
     doReturn(10).when(consumerRecords).count();
 
-    KafkaConsumerWrapper localConsumer = mock(KafkaConsumerWrapper.class);
-    KafkaConsumerWrapper remoteConsumer = mock(KafkaConsumerWrapper.class);
+    PubSubConsumer localConsumer = mock(PubSubConsumer.class);
+    PubSubConsumer remoteConsumer = mock(PubSubConsumer.class);
 
     // Assume consumer.poll always returns some records
     doReturn(consumerRecords).when(localConsumer).poll(anyLong());

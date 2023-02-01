@@ -940,7 +940,7 @@ public abstract class StoreIngestionTaskTest {
       }
       StorePartitionDataReceiver dataReceiver =
           new StorePartitionDataReceiver(storeIngestionTask, topicPartition, kafkaUrl, kafkaClusterId);
-      kafkaConsumerService.startConsumptionIntoDataReceiver(kafkaTopicPartition, offset, dataReceiver);
+      kafkaConsumerService.startConsumptionIntoDataReceiver(topicPartition, offset, dataReceiver);
 
       if (local) {
         localConsumedDataReceiver = dataReceiver;
@@ -958,21 +958,23 @@ public abstract class StoreIngestionTaskTest {
     }).when(aggKafkaConsumerService).hasAnyConsumerAssignedForVersionTopic(anyString());
 
     doAnswer(invocation -> {
-      String topic = invocation.getArgument(1, String.class);
-      int partition = invocation.getArgument(2, Integer.class);
+      PubSubTopicPartition pubSubTopicPartition = invocation.getArgument(1, PubSubTopicPartition.class);
+      String topic = pubSubTopicPartition.getPubSubTopic().getName();
+      int partition = pubSubTopicPartition.getPartitionNumber();
       return inMemoryLocalKafkaConsumer.hasSubscription(topic, partition)
           || inMemoryRemoteKafkaConsumer.hasSubscription(topic, partition);
-    }).when(aggKafkaConsumerService).hasConsumerAssignedFor(anyString(), anyString(), anyInt());
+    }).when(aggKafkaConsumerService).hasConsumerAssignedFor(anyString(), any());
 
     doAnswer(invocation -> {
       String kafkaUrl = invocation.getArgument(0, String.class);
-      String topic = invocation.getArgument(2, String.class);
-      int partition = invocation.getArgument(3, Integer.class);
+      PubSubTopicPartition pubSubTopicPartition = invocation.getArgument(2, PubSubTopicPartition.class);
+      String topic = pubSubTopicPartition.getPubSubTopic().getName();
+      int partition = pubSubTopicPartition.getPartitionNumber();
       if (kafkaUrl.equals(inMemoryLocalKafkaBroker.getKafkaBootstrapServer())) {
         return inMemoryLocalKafkaConsumer.hasSubscription(topic, partition);
       }
       return inMemoryRemoteKafkaConsumer.hasSubscription(topic, partition);
-    }).when(aggKafkaConsumerService).hasConsumerAssignedFor(anyString(), anyString(), anyString(), anyInt());
+    }).when(aggKafkaConsumerService).hasConsumerAssignedFor(anyString(), anyString(), any());
 
     doAnswer(invocation -> {
       String versionTopic = invocation.getArgument(0, String.class);
@@ -992,8 +994,9 @@ public abstract class StoreIngestionTaskTest {
 
     doAnswer(invocation -> {
       String versionTopic = invocation.getArgument(0, String.class);
-      String topic = invocation.getArgument(1, String.class);
-      int partition = invocation.getArgument(2, Integer.class);
+      PubSubTopicPartition pubSubTopicPartition = invocation.getArgument(1, PubSubTopicPartition.class);
+      String topic = pubSubTopicPartition.getPubSubTopic().getName();
+      int partition = pubSubTopicPartition.getPartitionNumber();
       /**
        * The internal {@link SharedKafkaConsumer} has special logic for unsubscription to avoid some race condition
        * between the fast unsubscribe and re-subscribe.
@@ -1003,17 +1006,20 @@ public abstract class StoreIngestionTaskTest {
        * they don't have the proper synchronization.
        */
       if (inMemoryLocalKafkaConsumer.hasSubscription(topic, partition)) {
-        localKafkaConsumerService.unSubscribe(versionTopic, topic, partition);
+        localKafkaConsumerService
+            .unSubscribe(versionTopic, pubSubTopicRepository.getPubSubTopicPartition(topic, partition));
       }
       if (inMemoryRemoteKafkaConsumer.hasSubscription(topic, partition)) {
-        remoteKafkaConsumerService.unSubscribe(versionTopic, topic, partition);
+        remoteKafkaConsumerService
+            .unSubscribe(versionTopic, pubSubTopicRepository.getPubSubTopicPartition(topic, partition));
       }
       return null;
-    }).when(aggKafkaConsumerService).unsubscribeConsumerFor(anyString(), anyString(), anyInt());
+    }).when(aggKafkaConsumerService).unsubscribeConsumerFor(anyString(), any());
 
     doAnswer(invocation -> {
-      String topic = invocation.getArgument(1, String.class);
-      int partition = invocation.getArgument(2, Integer.class);
+      PubSubTopicPartition pubSubTopicPartition = invocation.getArgument(1, PubSubTopicPartition.class);
+      String topic = pubSubTopicPartition.getPubSubTopic().getName();
+      int partition = pubSubTopicPartition.getPartitionNumber();
       if (inMemoryLocalKafkaConsumer.hasSubscription(topic, partition)) {
         inMemoryLocalKafkaConsumer.resetOffset(topic, partition);
       }
@@ -1021,11 +1027,12 @@ public abstract class StoreIngestionTaskTest {
         inMemoryRemoteKafkaConsumer.resetOffset(topic, partition);
       }
       return null;
-    }).when(aggKafkaConsumerService).resetOffsetFor(anyString(), anyString(), anyInt());
+    }).when(aggKafkaConsumerService).resetOffsetFor(anyString(), any());
 
     doAnswer(invocation -> {
-      String topic = invocation.getArgument(1, String.class);
-      int partition = invocation.getArgument(2, Integer.class);
+      PubSubTopicPartition pubSubTopicPartition = invocation.getArgument(1, PubSubTopicPartition.class);
+      String topic = pubSubTopicPartition.getPubSubTopic().getName();
+      int partition = pubSubTopicPartition.getPartitionNumber();
       if (inMemoryLocalKafkaConsumer.hasSubscription(topic, partition)) {
         inMemoryLocalKafkaConsumer.pause(topic, partition);
       }
@@ -1033,7 +1040,7 @@ public abstract class StoreIngestionTaskTest {
         inMemoryRemoteKafkaConsumer.pause(topic, partition);
       }
       return null;
-    }).when(aggKafkaConsumerService).pauseConsumerFor(anyString(), anyString(), anyInt());
+    }).when(aggKafkaConsumerService).pauseConsumerFor(anyString(), any());
 
     doAnswer(invocation -> {
       String versionTopic = invocation.getArgument(0, String.class);
@@ -1044,8 +1051,9 @@ public abstract class StoreIngestionTaskTest {
     }).when(aggKafkaConsumerService).getKafkaUrlsFor(anyString());
 
     doAnswer(invocation -> {
-      String topic = invocation.getArgument(1, String.class);
-      int partition = invocation.getArgument(2, Integer.class);
+      PubSubTopicPartition pubSubTopicPartition = invocation.getArgument(1, PubSubTopicPartition.class);
+      String topic = pubSubTopicPartition.getPubSubTopic().getName();
+      int partition = pubSubTopicPartition.getPartitionNumber();
       if (inMemoryLocalKafkaConsumer.hasSubscription(topic, partition)) {
         inMemoryLocalKafkaConsumer.resume(topic, partition);
       }
@@ -1053,7 +1061,7 @@ public abstract class StoreIngestionTaskTest {
         inMemoryRemoteKafkaConsumer.resume(topic, partition);
       }
       return null;
-    }).when(aggKafkaConsumerService).resumeConsumerFor(anyString(), anyString(), anyInt());
+    }).when(aggKafkaConsumerService).resumeConsumerFor(anyString(), any());
   }
 
   void setDefaultStoreVersionStateSupplier() {
@@ -1824,7 +1832,8 @@ public abstract class StoreIngestionTaskTest {
       verify(mockLogNotifier, timeout(LONG_TEST_TIMEOUT)).completed(topic, PARTITION_FOO, offset, "STANDBY");
       verify(aggKafkaConsumerService, timeout(LONG_TEST_TIMEOUT))
           .batchUnsubscribeConsumerFor(topic, Collections.singleton(topicPartition));
-      verify(aggKafkaConsumerService, never()).unsubscribeConsumerFor(topic, topic, PARTITION_BAR);
+      verify(aggKafkaConsumerService, never())
+          .unsubscribeConsumerFor(topic, pubSubTopicRepository.getPubSubTopicPartition(topic, PARTITION_BAR));
       verify(mockLocalKafkaConsumer, timeout(LONG_TEST_TIMEOUT))
           .batchUnsubscribe(Collections.singleton(kafkaTopicPartition));
       verify(mockLocalKafkaConsumer, never()).unSubscribe(topic, PARTITION_BAR);
@@ -2295,7 +2304,7 @@ public abstract class StoreIngestionTaskTest {
         Collections.emptyMap());
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, invocationCount = 10)
   public void testIncrementalPush(boolean isActiveActiveReplicationEnabled) throws Exception {
     setStoreVersionStateSupplier(true);
     localVeniceWriter.broadcastStartOfPush(true, new HashMap<>());
@@ -2317,29 +2326,29 @@ public abstract class StoreIngestionTaskTest {
         BufferReplayPolicy.REWIND_FROM_EOP);
 
     runTest(new RandomPollStrategy(), Utils.setOf(PARTITION_FOO), () -> {}, () -> {
-      waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        // sync the offset when receiving EndOfPush
-        verify(mockStorageMetadataService).put(eq(topic), eq(PARTITION_FOO), eq(getOffsetRecord(fooOffset + 1, true)));
-        // sync the offset when receiving StartOfIncrementalPush and EndOfIncrementalPush
-        verify(mockStorageMetadataService)
-            .put(eq(topic), eq(PARTITION_FOO), eq(getOffsetRecord(fooNewOffset - 1, true)));
-        verify(mockStorageMetadataService)
-            .put(eq(topic), eq(PARTITION_FOO), eq(getOffsetRecord(fooNewOffset + 1, true)));
+        waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          // sync the offset when receiving EndOfPush
+          verify(mockStorageMetadataService).put(eq(topic), eq(PARTITION_FOO), eq(getOffsetRecord(fooOffset + 1, true)));
+          // sync the offset when receiving StartOfIncrementalPush and EndOfIncrementalPush
+          verify(mockStorageMetadataService)
+              .put(eq(topic), eq(PARTITION_FOO), eq(getOffsetRecord(fooNewOffset - 1, true)));
+          verify(mockStorageMetadataService)
+              .put(eq(topic), eq(PARTITION_FOO), eq(getOffsetRecord(fooNewOffset + 1, true)));
 
-        verify(mockLogNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
+          verify(mockLogNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
 
-        // since notifier reporting happens before offset update, it actually reports previous offsets
-        verify(mockLogNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooOffset);
-        verify(mockLogNotifier, atLeastOnce())
-            .endOfIncrementalPushReceived(topic, PARTITION_FOO, fooNewOffset, version);
-      });
-    },
-        Optional.of(hybridStoreConfig),
-        true,
-        Optional.empty(),
-        isActiveActiveReplicationEnabled,
-        1,
-        Collections.emptyMap());
+          // since notifier reporting happens before offset update, it actually reports previous offsets
+          verify(mockLogNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooOffset);
+          verify(mockLogNotifier, atLeastOnce())
+              .endOfIncrementalPushReceived(topic, PARTITION_FOO, fooNewOffset, version);
+        });
+      },
+      Optional.of(hybridStoreConfig),
+      true,
+      Optional.empty(),
+      isActiveActiveReplicationEnabled,
+      1,
+      Collections.emptyMap());
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
@@ -2783,7 +2792,7 @@ public abstract class StoreIngestionTaskTest {
         .getOffsetRecord();
     doReturn(5L).when(mockTopicManager).getPartitionLatestOffsetAndRetry(anyString(), anyInt(), anyInt());
     doReturn(150L).when(mockTopicManagerRemoteKafka).getPartitionLatestOffsetAndRetry(anyString(), anyInt(), anyInt());
-    doReturn(150L).when(aggKafkaConsumerService).getLatestOffsetFor(anyString(), anyString(), anyString(), anyInt());
+    doReturn(150L).when(aggKafkaConsumerService).getLatestOffsetFor(anyString(), anyString(), any());
     Assert.assertEquals(
         storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedRemoteLagging),
         isDaVinciClient);
@@ -2895,7 +2904,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(mockOffsetRecord).when(mockPcsMultipleSourceKafkaServers).getOffsetRecord();
     doReturn(5L).when(mockTopicManager).getPartitionLatestOffsetAndRetry(anyString(), anyInt(), anyInt());
     doReturn(150L).when(mockTopicManagerRemoteKafka).getPartitionLatestOffsetAndRetry(anyString(), anyInt(), anyInt());
-    doReturn(150L).when(aggKafkaConsumerService).getLatestOffsetFor(anyString(), anyString(), anyString(), anyInt());
+    doReturn(150L).when(aggKafkaConsumerService).getLatestOffsetFor(anyString(), anyString(), any());
     doReturn(0).when(mockPcsMultipleSourceKafkaServers).getPartition();
     doReturn(0).when(mockPcsMultipleSourceKafkaServers).getUserPartition();
     storeIngestionTaskUnderTest.setPartitionConsumptionState(0, mockPcsMultipleSourceKafkaServers);
@@ -3042,6 +3051,7 @@ public abstract class StoreIngestionTaskTest {
       doReturn(topicSwitchWrapper).when(mock).getTopicSwitch();
       OffsetRecord mockOR = mock(OffsetRecord.class);
       doReturn(rtTopic).when(mockOR).getLeaderTopic(any());
+      System.out.println(mockOR.getLeaderTopic(null));
       doReturn(1000L).when(mockOR).getUpstreamOffset(anyString());
       if (activeActive) {
         doReturn(1000L).when(mock).getLatestProcessedUpstreamRTOffsetWithNoDefault(anyString());
@@ -3049,9 +3059,12 @@ public abstract class StoreIngestionTaskTest {
         doReturn(1000L).when(mock).getLatestProcessedUpstreamRTOffset(anyString());
       }
       doReturn(mockOR).when(mock).getOffsetRecord();
+      System.out.println("inside mock" + mockOR.getLeaderTopic(null));
       return mock;
     };
     mockPcs = mockPcsSupplier.get();
+    System.out.println(rtTopic);
+    System.out.println(mockPcs.getOffsetRecord());
     // Test whether consumedUpstreamRTOffsetMap is updated when leader subscribes to RT after executing TS
     ingestionTask.leaderExecuteTopicSwitch(mockPcs, topicSwitch, newSourceTopic);
     verify(mockPcs, times(1)).updateLeaderConsumedUpstreamRTOffset(
@@ -3165,12 +3178,11 @@ public abstract class StoreIngestionTaskTest {
     VeniceException veniceException = new VeniceException("Wrapped interruptedException", new InterruptedException());
     runTest(Utils.setOf(PARTITION_FOO), () -> {
       doReturn(getOffsetRecord(1, true)).when(mockStorageMetadataService).getLastOffset(topic, PARTITION_FOO);
-      doThrow(veniceException).when(aggKafkaConsumerService).unsubscribeConsumerFor(eq(topic), anyString(), anyInt());
+      doThrow(veniceException).when(aggKafkaConsumerService).unsubscribeConsumerFor(eq(topic), any());
     }, () -> {
       verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).restarted(eq(topic), eq(PARTITION_FOO), anyLong());
       storeIngestionTaskUnderTest.close();
-      verify(aggKafkaConsumerService, timeout(TEST_TIMEOUT_MS))
-          .unsubscribeConsumerFor(eq(topic), anyString(), anyInt());
+      verify(aggKafkaConsumerService, timeout(TEST_TIMEOUT_MS)).unsubscribeConsumerFor(eq(topic), any());
     }, isActiveActiveReplicationEnabled);
     Assert.assertEquals(mockNotifierError.size(), 0);
   }

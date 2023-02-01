@@ -11,6 +11,9 @@ import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.throttle.EventThrottler;
@@ -34,6 +37,8 @@ public class KafkaConsumerServiceTest {
       new OptimizedKafkaValueSerializer(),
       new LandFillObjectPool<>(KafkaMessageEnvelope::new),
       new LandFillObjectPool<>(KafkaMessageEnvelope::new));
+
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @Test
   public void testTopicWiseGetConsumer() throws Exception {
@@ -82,10 +87,12 @@ public class KafkaConsumerServiceTest {
         null);
     consumerService.start();
 
-    KafkaConsumerWrapper assignedConsumerForTask1 =
-        consumerService.assignConsumerFor(topicForStoreName1, new TopicPartition(task1.getVersionTopic(), 0));
-    KafkaConsumerWrapper assignedConsumerForTask2 =
-        consumerService.assignConsumerFor(topicForStoreName2, new TopicPartition(task2.getVersionTopic(), 0));
+    PubSubConsumer assignedConsumerForTask1 = consumerService.assignConsumerFor(
+        topicForStoreName1,
+        pubSubTopicRepository.getPubSubTopicPartition(task1.getVersionTopic(), 0));
+    PubSubConsumer assignedConsumerForTask2 = consumerService.assignConsumerFor(
+        topicForStoreName2,
+        pubSubTopicRepository.getPubSubTopicPartition(task2.getVersionTopic(), 0));
     Assert.assertNotEquals(
         assignedConsumerForTask1,
         assignedConsumerForTask2,
@@ -98,18 +105,19 @@ public class KafkaConsumerServiceTest {
     Set<TopicPartition> consumer2AssignedPartitions = getTopicPartitionsSet(topicForStoreName2, 3);
 
     when(consumer2.getAssignment()).thenReturn(consumer2AssignedPartitions);
-    SharedKafkaConsumer sharedAssignedConsumerForTask1 = (SharedKafkaConsumer) assignedConsumerForTask1;
-    sharedAssignedConsumerForTask1.setCurrentAssignment(consumer1AssignedPartitions);
-    SharedKafkaConsumer sharedAssignedConsumerForTask2 = (SharedKafkaConsumer) assignedConsumerForTask2;
-    sharedAssignedConsumerForTask2.setCurrentAssignment(consumer2AssignedPartitions);
+    SharedPubSubConsumerImpl sharedAssignedConsumerForTask1 = (SharedPubSubConsumerImpl) assignedConsumerForTask1;
+    sharedAssignedConsumerForTask1.setCurrentAssignment(convertToPubSubTopicPartitions(consumer1AssignedPartitions));
+    SharedPubSubConsumerImpl sharedAssignedConsumerForTask2 = (SharedPubSubConsumerImpl) assignedConsumerForTask2;
+    sharedAssignedConsumerForTask2.setCurrentAssignment(convertToPubSubTopicPartitions(consumer2AssignedPartitions));
 
     String storeName3 = Utils.getUniqueString("test_consumer_service3");
     String topicForStoreName3 = Version.composeKafkaTopic(storeName3, 1);
     StoreIngestionTask task3 = mock(StoreIngestionTask.class);
     when(task3.getVersionTopic()).thenReturn(topicForStoreName3);
     when(task3.isHybridMode()).thenReturn(true);
-    KafkaConsumerWrapper assignedConsumerForTask3 =
-        consumerService.assignConsumerFor(topicForStoreName3, new TopicPartition(task3.getVersionTopic(), 0));
+    PubSubConsumer assignedConsumerForTask3 = consumerService.assignConsumerFor(
+        topicForStoreName3,
+        pubSubTopicRepository.getPubSubTopicPartition(task3.getVersionTopic(), 0));
     Assert.assertEquals(
         assignedConsumerForTask3,
         assignedConsumerForTask2,
@@ -123,6 +131,15 @@ public class KafkaConsumerServiceTest {
       topicPartitionsSet.add(new TopicPartition(topic, i));
     }
     return topicPartitionsSet;
+  }
+
+  private Set<PubSubTopicPartition> convertToPubSubTopicPartitions(Set<TopicPartition> topicPartitionsSet) {
+    Set<PubSubTopicPartition> pubSubTopicPartitionsSet = new HashSet<>();
+    for (TopicPartition topicPartition: topicPartitionsSet) {
+      pubSubTopicPartitionsSet
+          .add(pubSubTopicRepository.getPubSubTopicPartition(topicPartition.topic(), topicPartition.partition()));
+    }
+    return pubSubTopicPartitionsSet;
   }
 
   @Test
@@ -166,10 +183,13 @@ public class KafkaConsumerServiceTest {
     when(task1.getVersionTopic()).thenReturn(topicForStoreVersion1);
     when(task1.isHybridMode()).thenReturn(true);
 
-    KafkaConsumerWrapper assignedConsumerForV1 =
-        consumerService.assignConsumerFor(topicForStoreVersion1, new TopicPartition(task1.getVersionTopic(), 0));
+    SharedPubSubConsumerImpl assignedConsumerForV1 = consumerService.assignConsumerFor(
+        topicForStoreVersion1,
+        pubSubTopicRepository.getPubSubTopicPartition(task1.getVersionTopic(), 0));
     Assert.assertEquals(
-        consumerService.assignConsumerFor(topicForStoreVersion1, new TopicPartition(task1.getVersionTopic(), 0)),
+        consumerService.assignConsumerFor(
+            topicForStoreVersion1,
+            pubSubTopicRepository.getPubSubTopicPartition(task1.getVersionTopic(), 0)),
         assignedConsumerForV1,
         "The 'getConsumer' function should be idempotent");
 
@@ -178,8 +198,9 @@ public class KafkaConsumerServiceTest {
     when(task2.getVersionTopic()).thenReturn(topicForStoreVersion2);
     when(task2.isHybridMode()).thenReturn(true);
 
-    KafkaConsumerWrapper assignedConsumerForV2 =
-        consumerService.assignConsumerFor(topicForStoreVersion2, new TopicPartition(task2.getVersionTopic(), 0));
+    SharedPubSubConsumerImpl assignedConsumerForV2 = consumerService.assignConsumerFor(
+        topicForStoreVersion2,
+        pubSubTopicRepository.getPubSubTopicPartition(task2.getVersionTopic(), 0));
     Assert.assertNotEquals(
         assignedConsumerForV2,
         assignedConsumerForV1,
@@ -191,7 +212,9 @@ public class KafkaConsumerServiceTest {
     when(task3.isHybridMode()).thenReturn(true);
 
     try {
-      consumerService.assignConsumerFor(topicForStoreVersion3, new TopicPartition(task3.getVersionTopic(), 0));
+      consumerService.assignConsumerFor(
+          topicForStoreVersion3,
+          pubSubTopicRepository.getPubSubTopicPartition(task3.getVersionTopic(), 0));
       Assert.fail("An exception should be thrown since all 2 consumers should be occupied by other versions");
     } catch (VeniceException e) {
       // expected
@@ -247,18 +270,18 @@ public class KafkaConsumerServiceTest {
         null);
     consumerService.start();
 
-    SharedKafkaConsumer consumerForT1P0 =
-        consumerService.assignConsumerFor(topicForStoreName1, new TopicPartition(topicForStoreName1, 0));
-    SharedKafkaConsumer consumerForT1P1 =
-        consumerService.assignConsumerFor(topicForStoreName1, new TopicPartition(topicForStoreName1, 1));
-    SharedKafkaConsumer consumerForT1P2 =
-        consumerService.assignConsumerFor(topicForStoreName1, new TopicPartition(topicForStoreName1, 2));
-    SharedKafkaConsumer consumerForT1P3 =
-        consumerService.assignConsumerFor(topicForStoreName1, new TopicPartition(topicForStoreName1, 3));
-    SharedKafkaConsumer consumerForT2P0 =
-        consumerService.assignConsumerFor(topicForStoreName2, new TopicPartition(topicForStoreName2, 0));
-    SharedKafkaConsumer consumerForT2P1 =
-        consumerService.assignConsumerFor(topicForStoreName2, new TopicPartition(topicForStoreName2, 1));
+    PubSubConsumer consumerForT1P0 = consumerService
+        .assignConsumerFor(topicForStoreName1, pubSubTopicRepository.getPubSubTopicPartition(topicForStoreName1, 0));
+    PubSubConsumer consumerForT1P1 = consumerService
+        .assignConsumerFor(topicForStoreName1, pubSubTopicRepository.getPubSubTopicPartition(topicForStoreName1, 1));
+    PubSubConsumer consumerForT1P2 = consumerService
+        .assignConsumerFor(topicForStoreName1, pubSubTopicRepository.getPubSubTopicPartition(topicForStoreName1, 2));
+    PubSubConsumer consumerForT1P3 = consumerService
+        .assignConsumerFor(topicForStoreName1, pubSubTopicRepository.getPubSubTopicPartition(topicForStoreName1, 3));
+    PubSubConsumer consumerForT2P0 = consumerService
+        .assignConsumerFor(topicForStoreName2, pubSubTopicRepository.getPubSubTopicPartition(topicForStoreName2, 0));
+    PubSubConsumer consumerForT2P1 = consumerService
+        .assignConsumerFor(topicForStoreName2, pubSubTopicRepository.getPubSubTopicPartition(topicForStoreName2, 1));
     Assert.assertNotEquals(consumerForT1P0, consumerForT1P1);
     Assert.assertNotEquals(consumerForT2P0, consumerForT2P1);
     Assert.assertEquals(consumerForT1P0, consumerForT1P2);

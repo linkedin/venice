@@ -4,7 +4,7 @@ import static com.linkedin.davinci.kafka.consumer.StoreIngestionTask.REDUNDANT_L
 
 import com.linkedin.venice.exceptions.QuotaExceededException;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
+import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
@@ -28,7 +28,7 @@ public class KafkaClusterBasedRecordThrottler {
     this.kafkaUrlToThrottledRecords = new VeniceConcurrentHashMap<>();
   }
 
-  public ConsumerRecords<byte[], byte[]> poll(KafkaConsumerWrapper consumer, String kafkaUrl, long pollTimeoutMs) {
+  public ConsumerRecords<byte[], byte[]> poll(PubSubConsumer consumer, String kafkaUrl, long pollTimeoutMs) {
     ConsumerRecords<byte[], byte[]> consumerRecords = kafkaUrlToThrottledRecords.get(kafkaUrl);
     if (consumerRecords == null) {
       consumerRecords = consumer.poll(pollTimeoutMs);

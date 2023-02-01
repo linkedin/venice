@@ -746,7 +746,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     }
 
     final int partition = partitionConsumptionState.getPartition();
-    final String currentLeaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic();
+    final String currentLeaderTopic =
+        partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository).getName();
     final String newSourceTopicName = topicSwitch.sourceTopicName.toString();
     final PubSubTopicPartition sourceTopicPartition = partitionConsumptionState.getSourceTopicPartition(newSourceTopic);
     Map<String, Long> upstreamOffsetsByKafkaURLs = new HashMap<>(topicSwitch.sourceKafkaServers.size());
@@ -828,7 +829,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     }
 
     // unsubscribe the old source and subscribe to the new source
-    consumerUnSubscribe(currentLeaderTopic, partitionConsumptionState);
+    consumerUnSubscribe(pubSubTopicRepository.getTopic(currentLeaderTopic), partitionConsumptionState);
     waitForLastLeaderPersistFuture(
         partitionConsumptionState,
         String.format(
@@ -899,7 +900,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     if (isLeader(partitionConsumptionState) && !amplificationFactorAdapter.isLeaderSubPartition(partition)) {
       LOGGER.info("SubPartition: {} is demoted from LEADER to STANDBY.", partitionConsumptionState.getPartition());
       String currentLeaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic();
-      consumerUnSubscribe(currentLeaderTopic, partitionConsumptionState);
+      consumerUnSubscribe(pubSubTopicRepository.getTopic(currentLeaderTopic), partitionConsumptionState);
 
       waitForLastLeaderPersistFuture(
           partitionConsumptionState,
@@ -1152,7 +1153,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           // Consumer might not existed after the consumption state is created, but before attaching the corresponding
           // consumer.
           long offsetLagOptional =
-              getPartitionOffsetLag(kafkaSourceAddress, currentLeaderTopic.getName(), pcs.getUserPartition());
+              getPartitionOffsetLag(kafkaSourceAddress, currentLeaderTopic, pcs.getUserPartition());
           if (offsetLagOptional >= 0) {
             return offsetLagOptional;
           }

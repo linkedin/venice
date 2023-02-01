@@ -211,7 +211,7 @@ public class KafkaConsumptionTest {
     StorePartitionDataReceiver localDataReceiver = (StorePartitionDataReceiver) aggKafkaConsumerService
         .subscribeConsumerFor(localKafkaUrl, storeIngestionTask, pubSubTopicPartition, -1);
     Assert.assertTrue(
-        aggKafkaConsumerService.hasConsumerAssignedFor(localKafkaUrl, versionTopicName, versionTopicName, partition));
+        aggKafkaConsumerService.hasConsumerAssignedFor(localKafkaUrl, versionTopicName, pubSubTopicPartition));
 
     // Remote consumer subscription.
     consumerProperties = new Properties();
@@ -223,7 +223,7 @@ public class KafkaConsumptionTest {
     StorePartitionDataReceiver remoteDataReceiver = (StorePartitionDataReceiver) aggKafkaConsumerService
         .subscribeConsumerFor(remoteKafkaUrl, storeIngestionTask, pubSubTopicPartition, -1);
     Assert.assertTrue(
-        aggKafkaConsumerService.hasConsumerAssignedFor(remoteKafkaUrl, versionTopicName, versionTopicName, partition));
+        aggKafkaConsumerService.hasConsumerAssignedFor(remoteKafkaUrl, versionTopicName, pubSubTopicPartition));
 
     long timestamp = System.currentTimeMillis();
     int dataRecordsNum = 10;

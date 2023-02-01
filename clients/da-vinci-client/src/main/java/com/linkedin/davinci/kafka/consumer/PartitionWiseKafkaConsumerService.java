@@ -3,8 +3,9 @@ package com.linkedin.davinci.kafka.consumer;
 import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.Time;
@@ -32,7 +33,7 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
    * have same real-time topics, we should avoid same real-time topic partition from different version topics sharing
    * the same consumer from consumer pool.
    */
-  private final Map<TopicPartition, Set<KafkaConsumerWrapper>> rtTopicPartitionToConsumerMap =
+  private final Map<PubSubTopicPartition, Set<PubSubConsumer>> rtTopicPartitionToConsumerMap =
       new VeniceConcurrentHashMap<>();
 
   private final Logger logger;
@@ -75,22 +76,23 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
   }
 
   @Override
-  protected synchronized SharedKafkaConsumer pickConsumerForPartition(
+  protected synchronized SharedPubSubConsumerImpl pickConsumerForPartition(
       String versionTopic,
-      TopicPartition topicPartition) {
+      PubSubTopicPartition topicPartition) {
     // Basic case, round-robin search to find next consumer for this partition.
     boolean seekNewConsumer = true;
     int consumerIndex = -1;
     int consumersChecked = 0;
-    SharedKafkaConsumer consumer = null;
+    SharedPubSubConsumerImpl consumer = null;
 
     while (seekNewConsumer) {
 
       // Safeguard logic, avoid infinite loops for searching consumer.
       if (consumersChecked == consumerToConsumptionTask.size()) {
         throw new VeniceException(
-            "Can not find consumer for topic: " + topicPartition.topic() + " and partition: "
-                + topicPartition.partition() + " from the ingestion task belonging to version topic: " + versionTopic);
+            "Can not find consumer for topic: " + topicPartition.getPubSubTopic().getName() + " and partition: "
+                + topicPartition.getPartitionNumber() + " from the ingestion task belonging to version topic: "
+                + versionTopic);
       }
 
       consumer = consumerToConsumptionTask.getByIndex(shareConsumerIndex).getKey();
@@ -101,7 +103,7 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
       }
       seekNewConsumer = false;
 
-      if (Version.isRealTimeTopic(topicPartition.topic())) {
+      if (Version.isRealTimeTopic(topicPartition.getPubSubTopic().getName())) {
         /**
          * For Hybrid stores, all the store versions will consume the same RT topic with different offset.
          * But one consumer cannot consume from several offsets of one partition at the same time.
@@ -130,15 +132,17 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
     return consumer;
   }
 
-  private boolean alreadySubscribedRealtimeTopicPartition(SharedKafkaConsumer consumer, TopicPartition topicPartition) {
-    Set<KafkaConsumerWrapper> consumers = rtTopicPartitionToConsumerMap.get(topicPartition);
+  private boolean alreadySubscribedRealtimeTopicPartition(
+      SharedPubSubConsumerImpl consumer,
+      PubSubTopicPartition topicPartition) {
+    Set<PubSubConsumer> consumers = rtTopicPartitionToConsumerMap.get(topicPartition);
     return consumers != null && consumers.contains(consumer);
   }
 
   @Override
   void handleUnsubscription(SharedKafkaConsumer consumer, TopicPartition topicPartition) {
     if (Version.isRealTimeTopic(topicPartition.topic())) {
-      Set<KafkaConsumerWrapper> rtTopicConsumers = rtTopicPartitionToConsumerMap.get(topicPartition);
+      Set<PubSubConsumer> rtTopicConsumers = rtTopicPartitionToConsumerMap.get(topicPartition);
       if (rtTopicConsumers != null) {
         rtTopicConsumers.remove(consumer);
       }
