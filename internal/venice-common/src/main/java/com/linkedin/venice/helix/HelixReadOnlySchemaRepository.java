@@ -128,10 +128,29 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
     }
   }
 
-  private void mayRegisterAndPopulateMetadataSchema(Store store, SchemaData schemaData) {
+  private void maybeRegisterAndPopulateMetadataSchema(Store store, SchemaData schemaData) {
     if (store.isActiveActiveReplicationEnabled()) {
       String storeName = store.getName();
       accessor.subscribeReplicationMetadataSchemaCreationChange(storeName, replicationMetadataSchemaChildListener);
+      accessor.getAllReplicationMetadataSchemas(storeName).forEach(schemaData::addReplicationMetadataSchema);
+    }
+  }
+
+  private void maybeRegisterAndPopulatePartialUpdateSchema(Store store, SchemaData schemaData) {
+    if (store.isWriteComputationEnabled()) {
+      String storeName = store.getName();
+      accessor.subscribeDerivedSchemaCreationChange(storeName, derivedSchemaChildListener);
+      accessor.getAllDerivedSchemas(storeName).forEach(schemaData::addDerivedSchema);
+    }
+  }
+
+  private void forceUpdateSchemaData(Store store, SchemaData schemaData) {
+    String storeName = store.getName();
+    accessor.getAllValueSchemas(storeName).forEach(schemaData::addValueSchema);
+    if (store.isWriteComputationEnabled()) {
+      accessor.getAllDerivedSchemas(storeName).forEach(schemaData::addDerivedSchema);
+    }
+    if (store.isActiveActiveReplicationEnabled()) {
       accessor.getAllReplicationMetadataSchemas(storeName).forEach(schemaData::addReplicationMetadataSchema);
     }
   }
@@ -380,6 +399,15 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
         throw new VeniceNoStoreException(storeName);
       }
       Optional<Integer> supersetSchemaID = getSupersetSchemaID(storeName);
+      if (supersetSchemaID.isPresent()) {
+        if (schemaData.getValueSchema(supersetSchemaID.get()) == null) {
+          logger.info(
+              "Superset schema ID: {} for store: {} not in cache, will force refresh. ",
+              supersetSchemaID.get(),
+              storeName);
+          forceUpdateSchemaData(storeRepository.getStore(storeName), schemaData);
+        }
+      }
       return supersetSchemaID.map(schemaData::getValueSchema);
 
     } finally {
@@ -477,11 +505,8 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
 
       // Fetch derived schemas if they are existing
       Store store = storeRepository.getStoreOrThrow(storeName);
-      if (store.isWriteComputationEnabled()) {
-        accessor.subscribeDerivedSchemaCreationChange(storeName, derivedSchemaChildListener);
-        accessor.getAllDerivedSchemas(storeName).forEach(schemaData::addDerivedSchema);
-      }
-      mayRegisterAndPopulateMetadataSchema(store, schemaData);
+      maybeRegisterAndPopulatePartialUpdateSchema(store, schemaData);
+      maybeRegisterAndPopulateMetadataSchema(store, schemaData);
 
       return schemaData;
     });
@@ -571,11 +596,8 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
       schemaLock.readLock().unlock();
     }
 
-    if (store.isWriteComputationEnabled()) {
-      accessor.subscribeDerivedSchemaCreationChange(storeName, derivedSchemaChildListener);
-      accessor.getAllDerivedSchemas(storeName).forEach(schemaData::addDerivedSchema);
-    }
-    mayRegisterAndPopulateMetadataSchema(store, schemaData);
+    maybeRegisterAndPopulatePartialUpdateSchema(store, schemaData);
+    maybeRegisterAndPopulateMetadataSchema(store, schemaData);
   }
 
   private class KeySchemaChildListener extends SchemaChildListener {
@@ -664,10 +686,5 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
     }
 
     abstract void handleSchemaChanges(String storeName, List<String> currentChildren);
-  }
-
-  // For test purpose
-  protected ReadWriteLock getInternalReadWriteLock() {
-    return this.schemaLock;
   }
 }
