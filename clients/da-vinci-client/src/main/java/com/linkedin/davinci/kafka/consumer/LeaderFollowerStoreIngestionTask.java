@@ -2196,13 +2196,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       // fast short-circuit in normal cases.
       try {
         int partitionId = partitionConsumptionState.getPartition();
-        offerConsumerException(
+        setIngestionException(
+            partitionId,
             new VeniceException(
                 "Store version " + this.kafkaVersionTopic + " partition " + partitionId
                     + " is consuming from local version topic and producing back to local version topic"
                     + ", kafkaClusterId = " + kafkaClusterId + ", kafkaUrl = " + kafkaUrl + ", this.localKafkaServer = "
-                    + this.localKafkaServer),
-            partitionId);
+                    + this.localKafkaServer));
       } catch (VeniceException offerToQueueException) {
         setLastStoreIngestionException(offerToQueueException);
       }

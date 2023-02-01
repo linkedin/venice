@@ -190,7 +190,7 @@ class LeaderProducerCallback implements ChunkAwareCallback {
         // If EOP is not received yet, set the ingestion task exception so that ingestion will fail eventually.
         if (!endOfPushReceived) {
           try {
-            ingestionTask.offerProducerException(oe, sourceConsumerRecord.partition());
+            ingestionTask.setIngestionException(sourceConsumerRecord.partition(), oe);
           } catch (VeniceException offerToQueueException) {
             ingestionTask.setLastStoreIngestionException(offerToQueueException);
           }
