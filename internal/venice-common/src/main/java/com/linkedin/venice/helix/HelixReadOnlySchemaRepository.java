@@ -2,6 +2,7 @@ package com.linkedin.venice.helix;
 
 import static com.linkedin.venice.common.VeniceSystemStoreUtils.getZkStoreName;
 
+import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
@@ -44,7 +45,7 @@ import org.apache.logging.log4j.Logger;
  *
  */
 public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, StoreDataChangedListener {
-  private final Logger logger = LogManager.getLogger(HelixReadOnlySchemaRepository.class);
+  private static final Logger logger = LogManager.getLogger(HelixReadOnlySchemaRepository.class);
 
   public static final int VALUE_SCHEMA_STARTING_ID = 1;
 
@@ -100,10 +101,10 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
    *
    */
   private void fetchStoreSchemaIfNotInCache(String storeName) {
-    if (!storeRepository.hasStore(storeName)) {
+    if (!getStoreRepository().hasStore(storeName)) {
       throw new VeniceNoStoreException(storeName);
     }
-    if (!schemaMap.containsKey(getZkStoreName(storeName))) {
+    if (!getSchemaMap().containsKey(getZkStoreName(storeName))) {
       populateSchemaMap(storeName);
     }
   }
@@ -131,27 +132,27 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
   private void maybeRegisterAndPopulateMetadataSchema(Store store, SchemaData schemaData) {
     if (store.isActiveActiveReplicationEnabled()) {
       String storeName = store.getName();
-      accessor.subscribeReplicationMetadataSchemaCreationChange(storeName, replicationMetadataSchemaChildListener);
-      accessor.getAllReplicationMetadataSchemas(storeName).forEach(schemaData::addReplicationMetadataSchema);
+      getAccessor().subscribeReplicationMetadataSchemaCreationChange(storeName, replicationMetadataSchemaChildListener);
+      getAccessor().getAllReplicationMetadataSchemas(storeName).forEach(schemaData::addReplicationMetadataSchema);
     }
   }
 
   private void maybeRegisterAndPopulatePartialUpdateSchema(Store store, SchemaData schemaData) {
     if (store.isWriteComputationEnabled()) {
       String storeName = store.getName();
-      accessor.subscribeDerivedSchemaCreationChange(storeName, derivedSchemaChildListener);
-      accessor.getAllDerivedSchemas(storeName).forEach(schemaData::addDerivedSchema);
+      getAccessor().subscribeDerivedSchemaCreationChange(storeName, derivedSchemaChildListener);
+      getAccessor().getAllDerivedSchemas(storeName).forEach(schemaData::addDerivedSchema);
     }
   }
 
-  private void forceUpdateSchemaData(Store store, SchemaData schemaData) {
+  void forceRefreshSchemaData(Store store, SchemaData schemaData) {
     String storeName = store.getName();
-    accessor.getAllValueSchemas(storeName).forEach(schemaData::addValueSchema);
+    getAccessor().getAllValueSchemas(storeName).forEach(schemaData::addValueSchema);
     if (store.isWriteComputationEnabled()) {
-      accessor.getAllDerivedSchemas(storeName).forEach(schemaData::addDerivedSchema);
+      getAccessor().getAllDerivedSchemas(storeName).forEach(schemaData::addDerivedSchema);
     }
     if (store.isActiveActiveReplicationEnabled()) {
-      accessor.getAllReplicationMetadataSchemas(storeName).forEach(schemaData::addReplicationMetadataSchema);
+      getAccessor().getAllReplicationMetadataSchemas(storeName).forEach(schemaData::addReplicationMetadataSchema);
     }
   }
 
@@ -391,10 +392,10 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
 
   @Override
   public Optional<SchemaEntry> getSupersetSchema(String storeName) {
-    schemaLock.readLock().lock();
+    getSchemaLock().readLock().lock();
     try {
       fetchStoreSchemaIfNotInCache(storeName);
-      SchemaData schemaData = schemaMap.get(getZkStoreName(storeName));
+      SchemaData schemaData = getSchemaMap().get(getZkStoreName(storeName));
       if (schemaData == null) {
         throw new VeniceNoStoreException(storeName);
       }
@@ -402,21 +403,26 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
       if (supersetSchemaID.isPresent()) {
         if (schemaData.getValueSchema(supersetSchemaID.get()) == null) {
           logger.info(
-              "Superset schema ID: {} for store: {} not in cache, will force refresh. ",
+              "Superset schema ID: {} for store: {} not in cache, will force refresh schema data.",
               supersetSchemaID.get(),
               storeName);
-          forceUpdateSchemaData(storeRepository.getStore(storeName), schemaData);
+          forceRefreshSchemaData(getStoreRepository().getStore(storeName), schemaData);
+          if (schemaData.getValueSchema(supersetSchemaID.get()) == null) {
+            throw new InvalidVeniceSchemaException(
+                "Cannot find superset schema ID:" + supersetSchemaID.get() + " for store: " + storeName
+                    + " after force refresh.");
+          }
         }
       }
       return supersetSchemaID.map(schemaData::getValueSchema);
 
     } finally {
-      schemaLock.readLock().unlock();
+      getSchemaLock().readLock().unlock();
     }
   }
 
   private Optional<Integer> getSupersetSchemaID(String storeName) {
-    Store store = storeRepository.getStoreOrThrow(storeName);
+    Store store = getStoreRepository().getStoreOrThrow(storeName);
     final int supersetSchemaId = store.getLatestSuperSetValueSchemaId();
     return supersetSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID ? Optional.empty() : Optional.of(supersetSchemaId);
   }
@@ -686,5 +692,21 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
     }
 
     abstract void handleSchemaChanges(String storeName, List<String> currentChildren);
+  }
+
+  HelixSchemaAccessor getAccessor() {
+    return accessor;
+  }
+
+  ReadOnlyStoreRepository getStoreRepository() {
+    return storeRepository;
+  }
+
+  Map<String, SchemaData> getSchemaMap() {
+    return schemaMap;
+  }
+
+  ReadWriteLock getSchemaLock() {
+    return schemaLock;
   }
 }
