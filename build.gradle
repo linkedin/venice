@@ -380,7 +380,7 @@ subprojects {
       violationRules {
         rule {
           def threshold = project.ext.has('jacocoCoverageThreshold') ?
-              project.ext.jacocoCoverageThreshold : 0.33
+              project.ext.jacocoCoverageThreshold : 0.6
 
           limit {
             counter = 'BRANCH'
