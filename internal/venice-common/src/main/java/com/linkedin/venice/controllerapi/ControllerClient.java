@@ -155,9 +155,13 @@ public class ControllerClient implements Closeable {
 
   @Override
   public void close() {
-    if (ControllerClientFactory.release(this)) {
-      // Object is no longer used in other places. Safe to clean up resources
-    }
+    // Currently, we do not have any resources to clean up. If there is something to clean-up, we must check the return
+    // value of "ControllerClientFactory.release(this)" and if that is true, only then is it safe to clean up resources.
+    // if (ControllerClientFactory.release(this)) {
+    // // Object is no longer used in other places. Safe to clean up resources
+    // ...
+    // }
+    ControllerClientFactory.release(this);
   }
 
   protected String discoverLeaderController() {
