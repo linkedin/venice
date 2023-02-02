@@ -1,9 +1,9 @@
 package com.linkedin.venice.controllerapi;
 
 import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.r2.message.rest.RestResponse;
 import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.d2.D2ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.security.SSLFactory;
 import java.net.MalformedURLException;
@@ -23,6 +23,7 @@ public class D2ControllerClient extends ControllerClient {
   private final String d2ServiceName;
   private final D2Client d2Client;
   private final boolean externalD2Client;
+  private final String d2ZkHost;
   private final Optional<SSLFactory> sslFactory;
 
   public D2ControllerClient(
@@ -32,13 +33,9 @@ public class D2ControllerClient extends ControllerClient {
       Optional<SSLFactory> sslFactory) {
     super(clusterName, DUMMY_URL_WHEN_USING_D2_CLIENT, sslFactory);
     this.d2ServiceName = d2ServiceName;
-    this.d2Client = new D2ClientBuilder().setZkHosts(d2ZKHost)
-        .setSSLContext(sslFactory.isPresent() ? sslFactory.get().getSSLContext() : null)
-        .setIsSSLEnabled(sslFactory.isPresent())
-        .setSSLParameters(sslFactory.isPresent() ? sslFactory.get().getSSLParameters() : null)
-        .build();
-    D2ClientUtils.startClient(d2Client);
+    this.d2Client = D2ClientFactory.getD2Client(d2ZKHost, sslFactory);
     this.externalD2Client = false;
+    this.d2ZkHost = d2ZKHost;
     this.sslFactory = sslFactory;
   }
 
@@ -55,6 +52,7 @@ public class D2ControllerClient extends ControllerClient {
     this.d2ServiceName = d2ServiceName;
     this.d2Client = d2Client;
     this.externalD2Client = true;
+    this.d2ZkHost = null;
     this.sslFactory = sslFactory;
   }
 
@@ -80,9 +78,13 @@ public class D2ControllerClient extends ControllerClient {
      */
     if (sslFactory.isPresent()) {
       try {
+        if (controllerResponse.getSecureUrl() != null) {
+          return controllerResponse.getSecureUrl();
+        }
+
         URL responseUrl = new URL(controllerResponse.getUrl());
         if (responseUrl.getProtocol().equalsIgnoreCase("http")) {
-          URL secureControllerUrl = convertToSecureUrl(responseUrl, 1578);
+          URL secureControllerUrl = convertToSecureUrl(responseUrl);
           return secureControllerUrl.toString();
         }
       } catch (MalformedURLException e) {
@@ -117,23 +119,72 @@ public class D2ControllerClient extends ControllerClient {
         D2ServiceDiscoveryResponse.class);
   }
 
-  @Override
-  public D2ServiceDiscoveryResponse discoverCluster(String storeName) {
-    return discoverCluster(d2Client, d2ServiceName, storeName);
-  }
-
-  @Override
-  public void close() {
-    super.close();
-    if (!this.externalD2Client) {
-      D2ClientUtils.shutdownClient(d2Client);
+  public static D2ServiceDiscoveryResponse discoverCluster(
+      String d2ZkHost,
+      String d2ServiceName,
+      String storeName,
+      int retryAttempts) {
+    D2Client d2Client;
+    try {
+      d2Client = D2ClientFactory.getD2Client(d2ZkHost, Optional.empty());
+      return discoverCluster(d2Client, d2ServiceName, storeName, retryAttempts);
+    } finally {
+      D2ClientFactory.release(d2ZkHost);
     }
   }
 
   /**
-   * Convert a HTTP url to HTTPS url with specific port number;
-   * TODO: remove the below helper function after Controller ACL migration.
+   * Here, if discovery fails, we will throw a VeniceException.
    */
+  private static D2ServiceDiscoveryResponse discoverCluster(
+      D2Client d2Client,
+      String d2ServiceName,
+      String storeName,
+      int retryAttempts) {
+    try (D2ControllerClient client = new D2ControllerClient(d2ServiceName, "*", d2Client)) {
+      D2ServiceDiscoveryResponse discoResponse =
+          retryableRequest(client, retryAttempts, c -> discoverCluster(d2Client, d2ServiceName, storeName));
+      if (discoResponse.isError()) {
+        throw new VeniceException(discoResponse.getError());
+      }
+      return discoResponse;
+    }
+  }
+
+  @Override
+  public D2ServiceDiscoveryResponse discoverCluster(String storeName) {
+    return discoverCluster(d2Client, d2ServiceName, storeName, 1);
+  }
+
+  @Override
+  public void close() {
+    if (D2ControllerClientFactory.release(this)) {
+      // Object is no longer used in other places. Safe to clean up resources
+      super.close();
+      if (!externalD2Client) {
+        D2ClientFactory.release(d2ZkHost);
+      }
+    } else {
+      // Object is still in use at other places. Do not release resources right now.
+    }
+  }
+
+  /**
+   * Convert a HTTP url to HTTPS url with 1578 port number;
+   * TODO: remove the below helper functions after Controller ACL migration.
+   * @deprecated
+   */
+  @Deprecated
+  public static URL convertToSecureUrl(URL url) throws MalformedURLException {
+    return convertToSecureUrl(url, 1578);
+  }
+
+  /**
+   * Convert a HTTP url to HTTPS url with specific port number;
+   * TODO: remove the below helper functions after Controller ACL migration.
+   * @deprecated
+   */
+  @Deprecated
   public static URL convertToSecureUrl(URL url, int port) throws MalformedURLException {
     return new URL("https", url.getHost(), port, url.getFile());
   }

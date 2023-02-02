@@ -390,21 +390,19 @@ subprojects {
         }
       }
     }
-  }
 
-  diffCoverageReport {
-    afterEvaluate {
+    diffCoverageReport {
       diffSource.file = createDiffFile()
-    }
 
-    // Report locates at <module_name>/build/reports/jacoco/diffCoverage/html/index.html
-    reports {
-      html = true
-    }
+      // Report locates at <module_name>/build/reports/jacoco/diffCoverage/html/index.html
+      reports {
+        html = true
+      }
 
-    violationRules {
-      minBranches = 0.6
-      failOnViolation = true
+      violationRules {
+        minBranches = project.ext.has('diffCoverageThreshold') ? project.ext.diffCoverageThreshold : 0.6
+        failOnViolation = true
+      }
     }
   }
 

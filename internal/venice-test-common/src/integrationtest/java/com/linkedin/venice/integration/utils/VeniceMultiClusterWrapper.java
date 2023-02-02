@@ -278,4 +278,8 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       controllers.remove(controllerWrapper.getPort());
     }
   }
+
+  public String getRegionName() {
+    return coloName;
+  }
 }

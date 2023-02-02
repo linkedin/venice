@@ -833,9 +833,9 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void controllerClientCanEnableThrottling() {
-    controllerClient.enableThrotting(false);
+    controllerClient.enableThrottling(false);
     Assert.assertFalse(controllerClient.getRoutersClusterConfig().getConfig().isThrottlingEnabled());
-    controllerClient.enableThrotting(true);
+    controllerClient.enableThrottling(true);
     Assert.assertTrue(controllerClient.getRoutersClusterConfig().getConfig().isThrottlingEnabled());
 
   }

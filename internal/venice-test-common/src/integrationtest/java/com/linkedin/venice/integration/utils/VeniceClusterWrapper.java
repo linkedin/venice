@@ -13,7 +13,6 @@ import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_KB;
 import static com.linkedin.venice.utils.ByteUtils.BYTES_PER_MB;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestUtils.writeBatchData;
-import static com.linkedin.venice.utils.TestWriteUtils.defaultVPJProps;
 
 import com.github.luben.zstd.ZstdDictTrainer;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -39,6 +38,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.ForkedJavaProcess;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
@@ -527,11 +527,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
             .build());
     synchronized (this) {
       veniceControllerWrappers.put(veniceControllerWrapper.getPort(), veniceControllerWrapper);
-      setExternalControllerDiscoveryURL(
-          veniceControllerWrappers.values()
-              .stream()
-              .map(VeniceControllerWrapper::getControllerUrl)
-              .collect(Collectors.joining(",")));
+      setExternalControllerDiscoveryURL(getAllControllersURLs());
     }
     return veniceControllerWrapper;
   }
@@ -539,11 +535,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   public void addVeniceControllerWrapper(VeniceControllerWrapper veniceControllerWrapper) {
     synchronized (this) {
       veniceControllerWrappers.put(veniceControllerWrapper.getPort(), veniceControllerWrapper);
-      setExternalControllerDiscoveryURL(
-          veniceControllerWrappers.values()
-              .stream()
-              .map(VeniceControllerWrapper::getControllerUrl)
-              .collect(Collectors.joining(",")));
+      setExternalControllerDiscoveryURL(getAllControllersURLs());
     }
   }
 
@@ -745,7 +737,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
    */
   @Deprecated
   public final ControllerClient getControllerClient() {
-    return new ControllerClient(clusterName, getAllControllersURLs());
+    return ControllerClient.constructClusterControllerClient(clusterName, getAllControllersURLs());
   }
 
   public void useControllerClient(Consumer<ControllerClient> controllerClientConsumer) {
@@ -1040,7 +1032,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       }
 
       String inputDirPath = "file://" + inputDir.getAbsolutePath();
-      Properties props = defaultVPJProps(controllerUrl, inputDirPath, storeName);
+      Properties props = IntegrationTestPushUtils.defaultVPJProps(veniceClusterWrapper, inputDirPath, storeName);
       TestWriteUtils.runPushJob("Test Batch push job", props);
 
       propertyBuilder.put(FORKED_PROCESS_STORE_NAME, storeName);
@@ -1054,5 +1046,9 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       LOGGER.info("Exception stored into: {}", clusterInfoConfigPath);
       throw new VeniceException(e);
     }
+  }
+
+  public String getColoName() {
+    return coloName;
   }
 }
