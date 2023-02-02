@@ -36,7 +36,10 @@ import com.linkedin.venice.hadoop.heartbeat.PushJobHeartbeatSender;
 import com.linkedin.venice.hadoop.heartbeat.PushJobHeartbeatSenderFactory;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputFormat;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputFormatCombiner;
+import com.linkedin.venice.hadoop.input.kafka.KafkaInputKeyComparator;
+import com.linkedin.venice.hadoop.input.kafka.KafkaInputMRPartitioner;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputRecordReader;
+import com.linkedin.venice.hadoop.input.kafka.KafkaInputValueGroupingComparator;
 import com.linkedin.venice.hadoop.input.kafka.VeniceKafkaInputMapper;
 import com.linkedin.venice.hadoop.input.kafka.VeniceKafkaInputReducer;
 import com.linkedin.venice.hadoop.input.kafka.ttl.TTLResolutionPolicy;
@@ -2675,7 +2678,14 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   private void setupReducerConf(JobConf jobConf, PushJobSetting pushJobSetting, TopicInfo topicInfo) {
-    jobConf.setPartitionerClass(this.mapRedPartitionerClass);
+    if (pushJobSetting.isSourceKafka) {
+      jobConf.setOutputKeyComparatorClass(KafkaInputKeyComparator.class);
+      jobConf.setOutputValueGroupingComparator(KafkaInputValueGroupingComparator.class);
+      jobConf.setCombinerKeyGroupingComparator(KafkaInputValueGroupingComparator.class);
+      jobConf.setPartitionerClass(KafkaInputMRPartitioner.class);
+    } else {
+      jobConf.setPartitionerClass(this.mapRedPartitionerClass);
+    }
     jobConf.setReduceSpeculativeExecution(pushJobSetting.enableReducerSpeculativeExecution);
     jobConf.setNumReduceTasks(topicInfo.partitionCount * topicInfo.amplificationFactor);
     jobConf.setMapOutputKeyClass(BytesWritable.class);

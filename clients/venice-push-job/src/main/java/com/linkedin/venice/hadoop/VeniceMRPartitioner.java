@@ -17,7 +17,7 @@ import org.apache.hadoop.mapred.Partitioner;
  * the same Kafka topic partition.
  */
 public class VeniceMRPartitioner implements Partitioner<BytesWritable, BytesWritable> {
-  private VenicePartitioner venicePartitioner;
+  protected VenicePartitioner venicePartitioner;
 
   public static final int EMPTY_KEY_LENGTH = 0;
 
@@ -27,6 +27,10 @@ public class VeniceMRPartitioner implements Partitioner<BytesWritable, BytesWrit
       // Special case, used only to ensure that all reducers are instantiated, even if starved of actual data.
       return ByteUtils.readInt(value.getBytes(), 0);
     }
+    return getPartition(key, numPartitions);
+  }
+
+  protected int getPartition(BytesWritable key, int numPartitions) {
     return venicePartitioner.getPartitionId(key.getBytes(), 0, key.getLength(), numPartitions);
   }
 

@@ -16,11 +16,15 @@ public class OptimizedBinaryDecoderTest {
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testHappyPath(boolean buffered) throws IOException {
-    BinaryEncoder encoder = testHappyPath(null, buffered);
-    testHappyPath(encoder, buffered);
+    BinaryEncoder encoder = testHappyPath(null, buffered, false);
+    testHappyPath(encoder, buffered, false);
+    testHappyPath(encoder, buffered, true);
   }
 
-  private BinaryEncoder testHappyPath(BinaryEncoder reusedEncoder, boolean bufferedEncoder) throws IOException {
+  private BinaryEncoder testHappyPath(
+      BinaryEncoder reusedEncoder,
+      boolean bufferedEncoder,
+      boolean useByteBufferConstructor) throws IOException {
     int wholeArraySize = 100;
     int byteBufferSize = 50;
     byte[] bytes = new byte[byteBufferSize];
@@ -40,7 +44,12 @@ public class OptimizedBinaryDecoderTest {
     encoder.flush();
     byte[] wholeArray = byteArrayOutputStream.toByteArray();
 
-    BinaryDecoder decoder = FACTORY.createOptimizedBinaryDecoder(wholeArray, 0, wholeArray.length);
+    BinaryDecoder decoder;
+    if (useByteBufferConstructor) {
+      decoder = FACTORY.createOptimizedBinaryDecoder(ByteBuffer.wrap(wholeArray));
+    } else {
+      decoder = FACTORY.createOptimizedBinaryDecoder(wholeArray, 0, wholeArray.length);
+    }
     float deserializedFloat1 = decoder.readFloat();
     ByteBuffer deserializedByteBuffer = decoder.readBytes(null);
     float deserializedFloat2 = decoder.readFloat();
