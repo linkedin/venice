@@ -65,7 +65,7 @@ public class TestPushJobVersionCleanup {
         Optional.of(controllerProps),
         Optional.of(new VeniceProperties(serverProperties)),
         false);
-    childDatacenters = multiColoMultiClusterWrapper.getChildRegionList();
+    childDatacenters = multiColoMultiClusterWrapper.getChildRegions();
   }
 
   @AfterClass(alwaysRun = true)

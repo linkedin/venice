@@ -104,7 +104,7 @@ public class PartialUpdateTest {
         Optional.of(new Properties(controllerProps)),
         Optional.of(new VeniceProperties(serverProperties)),
         false);
-    this.childDatacenters = multiColoMultiClusterWrapper.getChildRegionList();
+    this.childDatacenters = multiColoMultiClusterWrapper.getChildRegions();
     List<VeniceControllerWrapper> parentControllers = multiColoMultiClusterWrapper.getParentControllers();
     if (parentControllers.size() != 1) {
       throw new IllegalStateException("Expect only one parent controller. Got: " + parentControllers.size());
@@ -199,7 +199,7 @@ public class PartialUpdateTest {
     ByteBuffer rmdKeyByteBuffer = ByteBuffer.wrap(
         ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(serializeStringKeyToByteArray(key)));
     String kafkaTopic = Version.composeKafkaTopic(storeName, 1);
-    for (VeniceServerWrapper serverWrapper: multiColoMultiClusterWrapper.getChildRegionList()
+    for (VeniceServerWrapper serverWrapper: multiColoMultiClusterWrapper.getChildRegions()
         .get(0)
         .getClusters()
         .get("venice-cluster0")

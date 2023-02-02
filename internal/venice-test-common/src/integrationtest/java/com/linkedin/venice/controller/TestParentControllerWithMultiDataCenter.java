@@ -70,7 +70,7 @@ public class TestParentControllerWithMultiDataCenter {
         Optional.of(controllerProps),
         Optional.empty());
 
-    childDatacenters = multiColoMultiClusterWrapper.getChildRegionList();
+    childDatacenters = multiColoMultiClusterWrapper.getChildRegions();
   }
 
   @AfterClass(alwaysRun = true)

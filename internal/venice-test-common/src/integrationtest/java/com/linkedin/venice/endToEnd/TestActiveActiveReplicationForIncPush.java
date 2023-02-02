@@ -91,7 +91,7 @@ public class TestActiveActiveReplicationForIncPush {
         Optional.of(controllerProps),
         Optional.of(new VeniceProperties(serverProperties)),
         false);
-    childDatacenters = multiColoMultiClusterWrapper.getChildRegionList();
+    childDatacenters = multiColoMultiClusterWrapper.getChildRegions();
     clusterNames = multiColoMultiClusterWrapper.getClusterNames();
     parentColoName = multiColoMultiClusterWrapper.getParentRegionName();
     dcNames = multiColoMultiClusterWrapper.getChildRegionNames().toArray(new String[0]);

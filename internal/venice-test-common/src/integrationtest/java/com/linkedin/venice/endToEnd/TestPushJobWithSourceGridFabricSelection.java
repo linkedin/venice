@@ -89,7 +89,7 @@ public class TestPushJobWithSourceGridFabricSelection {
         Optional.of(controllerProps),
         Optional.of(new VeniceProperties(serverProperties)),
         false);
-    childDatacenters = multiColoMultiClusterWrapper.getChildRegionList();
+    childDatacenters = multiColoMultiClusterWrapper.getChildRegions();
     parentControllerRegionName = multiColoMultiClusterWrapper.getParentRegionName() + ".parent";
     clusterNames = multiColoMultiClusterWrapper.getClusterNames();
     dcNames = multiColoMultiClusterWrapper.getChildRegionNames().toArray(new String[0]);

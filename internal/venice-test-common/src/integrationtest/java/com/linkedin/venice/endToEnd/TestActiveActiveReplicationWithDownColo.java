@@ -108,7 +108,7 @@ public class TestActiveActiveReplicationWithDownColo {
         Optional.of(controllerProps),
         Optional.of(new VeniceProperties(serverProperties)),
         false);
-    childDatacenters = multiColoMultiClusterWrapper.getChildRegionList();
+    childDatacenters = multiColoMultiClusterWrapper.getChildRegions();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
   }
 
@@ -133,8 +133,8 @@ public class TestActiveActiveReplicationWithDownColo {
     // These variable don't do anything other than to make it easy to find their values in the debugger so you can hook
     // up ZooInspector and figure which colo is assigned where
     int zkPort = multiColoMultiClusterWrapper.getZkServerWrapper().getPort();
-    int dc0Kafka = multiColoMultiClusterWrapper.getChildRegionList().get(0).getKafkaBrokerWrapper().getPort();
-    int dc1kafka = multiColoMultiClusterWrapper.getChildRegionList().get(1).getKafkaBrokerWrapper().getPort();
+    int dc0Kafka = multiColoMultiClusterWrapper.getChildRegions().get(0).getKafkaBrokerWrapper().getPort();
+    int dc1kafka = multiColoMultiClusterWrapper.getChildRegions().get(1).getKafkaBrokerWrapper().getPort();
 
     // Spotbug doesn't like unused variables. Given they are assigned for debugging purposes, print them out.
     LOGGER.info("zkPort: {}", zkPort);
@@ -261,10 +261,7 @@ public class TestActiveActiveReplicationWithDownColo {
     // should succeed in the OTHER colos and go live.
 
     // It's simple, we kill the kafka broker
-    multiColoMultiClusterWrapper.getChildRegionList()
-        .get(NUMBER_OF_CHILD_DATACENTERS - 1)
-        .getKafkaBrokerWrapper()
-        .close();
+    multiColoMultiClusterWrapper.getChildRegions().get(NUMBER_OF_CHILD_DATACENTERS - 1).getKafkaBrokerWrapper().close();
 
     // Execute a new push by writing some rows and sending an endOfPushMessage
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrls)) {

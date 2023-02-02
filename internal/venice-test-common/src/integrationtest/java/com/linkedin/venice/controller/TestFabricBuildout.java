@@ -68,7 +68,7 @@ public class TestFabricBuildout {
         Optional.of(new VeniceProperties(serverProperties)),
         false);
 
-    childDatacenters = multiColoMultiClusterWrapper.getChildRegionList();
+    childDatacenters = multiColoMultiClusterWrapper.getChildRegions();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
 
     clusterNames = multiColoMultiClusterWrapper.getClusterNames();

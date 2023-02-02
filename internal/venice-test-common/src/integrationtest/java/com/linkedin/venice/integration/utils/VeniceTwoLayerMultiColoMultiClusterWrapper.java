@@ -51,7 +51,7 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
   public static final String SERVICE_NAME = "VeniceTwoLayerMultiCluster";
   private final String parentRegionName;
   private final List<String> childRegionNames;
-  private final List<VeniceMultiClusterWrapper> childRegionList;
+  private final List<VeniceMultiClusterWrapper> childRegions;
   private final List<VeniceControllerWrapper> parentControllers;
   private final String[] clusterNames;
   private final ZkServerWrapper zkServerWrapper;
@@ -61,7 +61,7 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
       File dataDirectory,
       ZkServerWrapper zkServerWrapper,
       KafkaBrokerWrapper parentKafkaBrokerWrapper,
-      List<VeniceMultiClusterWrapper> childRegionList,
+      List<VeniceMultiClusterWrapper> childRegions,
       List<VeniceControllerWrapper> parentControllers,
       String parentRegionName,
       List<String> childRegionNames) {
@@ -69,10 +69,10 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
     this.zkServerWrapper = zkServerWrapper;
     this.parentKafkaBrokerWrapper = parentKafkaBrokerWrapper;
     this.parentControllers = parentControllers;
-    this.childRegionList = childRegionList;
+    this.childRegions = childRegions;
     this.parentRegionName = parentRegionName;
     this.childRegionNames = childRegionNames;
-    this.clusterNames = childRegionList.get(0).getClusterNames();
+    this.clusterNames = childRegions.get(0).getClusterNames();
   }
 
   static ServiceProvider<VeniceTwoLayerMultiColoMultiClusterWrapper> generateService(
@@ -350,7 +350,7 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
   @Override
   protected void internalStop() throws Exception {
     parentControllers.forEach(IOUtils::closeQuietly);
-    childRegionList.forEach(IOUtils::closeQuietly);
+    childRegions.forEach(IOUtils::closeQuietly);
     IOUtils.closeQuietly(parentKafkaBrokerWrapper);
     IOUtils.closeQuietly(zkServerWrapper);
   }
@@ -360,8 +360,8 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
     throw new UnsupportedOperationException("Cluster does not support to create new process.");
   }
 
-  public List<VeniceMultiClusterWrapper> getChildRegionList() {
-    return childRegionList;
+  public List<VeniceMultiClusterWrapper> getChildRegions() {
+    return childRegions;
   }
 
   public List<VeniceControllerWrapper> getParentControllers() {

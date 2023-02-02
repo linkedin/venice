@@ -60,7 +60,7 @@ public class AdminToolBackfillTest {
         Optional.empty(),
         Optional.empty(),
         false);
-    childDatacenters = multiColoMultiClusterWrapper.getChildRegionList();
+    childDatacenters = multiColoMultiClusterWrapper.getChildRegions();
     clusterNames = multiColoMultiClusterWrapper.getClusterNames();
   }
 

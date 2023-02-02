@@ -100,7 +100,7 @@ public class IntegrationTestPushUtils {
     String parentColoZkAddress = multiColoMultiClusterWrapper.getZkServerWrapper().getAddress();
     String parentColoName = multiColoMultiClusterWrapper.getParentRegionName();
 
-    Map<String, String> childColoNamesToZkAddress = multiColoMultiClusterWrapper.getChildRegionList()
+    Map<String, String> childColoNamesToZkAddress = multiColoMultiClusterWrapper.getChildRegions()
         .stream()
         .collect(
             Collectors.toMap(
