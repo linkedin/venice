@@ -207,7 +207,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     LOGGER.info("All ingestion components are initialized.");
 
     heartbeatCheckScheduler.scheduleAtFixedRate(this::checkHeartbeatTimeout, 0, 5, TimeUnit.SECONDS);
-    metricsCollectionScheduler.scheduleAtFixedRate(this::reportMetricsUpdateToMainProcess, 0, 10, TimeUnit.SECONDS);
+    metricsCollectionScheduler.scheduleAtFixedRate(this::reportMetricsUpdateToMainProcess, 0, 1, TimeUnit.MINUTES);
     // There is no async process in this function, so we are completely finished with the start-up process.
     repairService.start();
     return true;
