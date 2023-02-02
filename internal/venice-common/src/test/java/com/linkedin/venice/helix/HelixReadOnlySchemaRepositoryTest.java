@@ -113,6 +113,7 @@ public class HelixReadOnlySchemaRepositoryTest {
     Map<String, SchemaData> schemaDataMap = new VeniceConcurrentHashMap<>();
     schemaDataMap.put(storeName, new SchemaData(storeName));
     when(schemaRepository.getSupersetSchema(storeName)).thenCallRealMethod();
+    when(schemaRepository.isSupersetSchemaReadyToServe(any(), any(), anyInt())).thenCallRealMethod();
     doCallRealMethod().when(schemaRepository)
         .maybeForceRefreshSchemaDataForSupersetSchemaWithRetry(any(), any(), anyInt());
     when(schemaRepository.getSchemaMap()).thenReturn(schemaDataMap);

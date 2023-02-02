@@ -14,8 +14,11 @@ import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.time.Duration;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -146,50 +149,42 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
   }
 
   void maybeForceRefreshSchemaDataForSupersetSchemaWithRetry(Store store, SchemaData schemaData, int supersetSchemaId) {
-    final int maxRefreshAttempt = 3;
-    int refreshAttempt = 0;
-    while (true) {
-      boolean shouldRefresh = false;
-      if (schemaData.getValueSchema(supersetSchemaId) == null) {
-        shouldRefresh = true;
-        logger
-            .warn("Superset schema ID: {} for store: {} not found in schema cache.", supersetSchemaId, store.getName());
-      }
-      if (store.isWriteComputationEnabled()
-          && schemaData.getDerivedSchemas().stream().noneMatch(x -> (x.getValueSchemaID() == supersetSchemaId))) {
-        shouldRefresh = true;
-        logger.warn(
-            "Update schema of superset schema ID: {} for store: {} not found in schema cache.",
-            supersetSchemaId,
-            store.getName());
-      }
-      if (store.isActiveActiveReplicationEnabled() && schemaData.getReplicationMetadataSchemas()
-          .stream()
-          .noneMatch(x -> (x.getValueSchemaID() == supersetSchemaId))) {
-        shouldRefresh = true;
-        logger.warn(
-            "RMD schema of superset schema ID: {} for store: {} not found in schema cache.",
-            supersetSchemaId,
-            store.getName());
-      }
-      if (!shouldRefresh) {
-        return;
-      }
-
-      if (refreshAttempt < maxRefreshAttempt) {
-        logger.info(
-            "Force refresh schema date for store: {}, attempt {}/{}.",
-            store.getName(),
-            refreshAttempt,
-            maxRefreshAttempt);
-        forceRefreshSchemaData(store, schemaData);
-        refreshAttempt++;
-      } else {
-        throw new InvalidVeniceSchemaException(
-            "Unable to refresh superset schema id: " + supersetSchemaId + " for store: " + store.getName() + " after "
-                + maxRefreshAttempt + " attempts.");
-      }
+    if (isSupersetSchemaReadyToServe(store, schemaData, supersetSchemaId)) {
+      return;
     }
+    RetryUtils.executeWithMaxAttempt(() -> {
+      forceRefreshSchemaData(store, schemaData);
+      if (!isSupersetSchemaReadyToServe(store, schemaData, supersetSchemaId)) {
+        throw new InvalidVeniceSchemaException(
+            "Unable to refresh superset schema id: " + supersetSchemaId + " for store: " + store.getName());
+      }
+    }, 3, Duration.ofNanos(1), Collections.singletonList(InvalidVeniceSchemaException.class));
+
+  }
+
+  boolean isSupersetSchemaReadyToServe(Store store, SchemaData schemaData, int supersetSchemaId) {
+    if (schemaData.getValueSchema(supersetSchemaId) == null) {
+      logger.warn("Superset schema ID: {} for store: {} not found in schema cache.", supersetSchemaId, store.getName());
+      return false;
+    }
+    if (store.isWriteComputationEnabled()
+        && schemaData.getDerivedSchemas().stream().noneMatch(x -> (x.getValueSchemaID() == supersetSchemaId))) {
+      logger.warn(
+          "Update schema of superset schema ID: {} for store: {} not found in schema cache.",
+          supersetSchemaId,
+          store.getName());
+      return false;
+    }
+    if (store.isActiveActiveReplicationEnabled() && schemaData.getReplicationMetadataSchemas()
+        .stream()
+        .noneMatch(x -> (x.getValueSchemaID() == supersetSchemaId))) {
+      logger.warn(
+          "RMD schema of superset schema ID: {} for store: {} not found in schema cache.",
+          supersetSchemaId,
+          store.getName());
+      return false;
+    }
+    return true;
   }
 
   void forceRefreshSchemaData(Store store, SchemaData schemaData) {
