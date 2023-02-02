@@ -66,7 +66,6 @@ import java.io.FileNotFoundException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
@@ -100,6 +99,8 @@ import org.apache.logging.log4j.Logger;
  */
 public class IsolatedIngestionServer extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(IsolatedIngestionServer.class);
+  static final int METRIC_BATCH_COUNT_LIMIT = 1000;
+
   private final RedundantExceptionFilter redundantExceptionFilter =
       new RedundantExceptionFilter(RedundantExceptionFilter.DEFAULT_BITSET_SIZE, TimeUnit.MINUTES.toMillis(10));
   private final ServerBootstrap bootstrap;
@@ -530,8 +531,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
 
   void reportMetricsUpdateToMainProcess() {
     try {
-      IngestionMetricsReport report = new IngestionMetricsReport();
-      report.aggregatedMetrics = new HashMap<>();
+      Map<CharSequence, Double> updatedMetricMap = new VeniceConcurrentHashMap<>();
       if (getMetricsRepository() != null) {
         getMetricsRepository().metrics().forEach((name, metric) -> {
           if (metric != null) {
@@ -540,7 +540,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
               Double originalValue = getMetricsMap().get(name);
               Double newValue = metric.value();
               if (originalValue == null || !originalValue.equals(newValue)) {
-                report.aggregatedMetrics.put(name, newValue);
+                updatedMetricMap.put(name, newValue);
               }
               getMetricsMap().put(name, newValue);
             } catch (Exception e) {
@@ -552,7 +552,40 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
           }
         });
       }
-      getMetricClient().reportMetricUpdate(report);
+
+      // Due to Netty message size limit, we will need to split the metric report into small batches if single report is
+      // too large.
+      if (updatedMetricMap.size() <= METRIC_BATCH_COUNT_LIMIT) {
+        IngestionMetricsReport metricsReport = new IngestionMetricsReport();
+        metricsReport.setAggregatedMetrics(updatedMetricMap);
+        getMetricClient().reportMetricUpdate(metricsReport);
+      } else {
+        long startTimeInMs = System.currentTimeMillis();
+        int batchCount = 0;
+        int batchMetricCount = 0;
+        int totalCount = 0;
+        Map<CharSequence, Double> metricBatch = new VeniceConcurrentHashMap<>();
+        for (Map.Entry<CharSequence, Double> entry: updatedMetricMap.entrySet()) {
+          metricBatch.put(entry.getKey(), entry.getValue());
+          batchMetricCount++;
+          totalCount++;
+          if (batchMetricCount == METRIC_BATCH_COUNT_LIMIT || totalCount == updatedMetricMap.size()) {
+            IngestionMetricsReport metricsReportPart = new IngestionMetricsReport();
+            metricsReportPart.aggregatedMetrics = metricBatch;
+            getMetricClient().reportMetricUpdate(metricsReportPart);
+            batchMetricCount = 0;
+            batchCount++;
+            metricBatch = new VeniceConcurrentHashMap<>();
+          }
+        }
+        long endTimeInMs = System.currentTimeMillis();
+        LOGGER.info(
+            "Updated {} metrics with {} batches in {} ms.",
+            updatedMetricMap.size(),
+            batchCount,
+            endTimeInMs - startTimeInMs);
+      }
+
     } catch (Exception e) {
       LOGGER.warn("Encounter exception when fetching latest metrics and reporting back to main process", e);
     }
