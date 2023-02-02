@@ -574,16 +574,19 @@ idea.project.ipr {
 // See https://github.com/form-com/diff-coverage-gradle/issues/73
 ext.createDiffFile = { ->
   // Files that we don't plan to write unit tests for now. Will be worked in the future
-  // append this filter programmatically
-  //  def exclusionFilter = [
-  //      '\':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceHelixAdmin.java\'',
-  //      '\':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceParentHelixAdmin.java\''
-  //  ]
+  def exclusionFilter = [
+        ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceHelixAdmin.java',
+        ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceParentHelixAdmin.java'
+  ]
   def file = Files.createTempFile(URLEncoder.encode(project.name, 'UTF-8'), '.diff').toFile()
   def diffBase = "${git.getUpstreamRemote()}/main"
+  def command = [
+      'git', 'diff', diffBase, '--no-color', '--minimal', '--', '.'
+  ]
+  command.addAll(exclusionFilter)
   file.withOutputStream { out ->
     exec {
-      commandLine 'git', 'diff', diffBase, '--no-color', '--minimal', '--', '.', ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceHelixAdmin.java', ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceParentHelixAdmin.java'
+      commandLine command
       standardOutput = out
     }
   }
