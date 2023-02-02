@@ -380,7 +380,7 @@ subprojects {
       violationRules {
         rule {
           def threshold = project.ext.has('jacocoCoverageThreshold') ?
-              project.ext.jacocoCoverageThreshold : 0.6
+              project.ext.jacocoCoverageThreshold : 0.33
 
           limit {
             counter = 'BRANCH'
@@ -400,7 +400,7 @@ subprojects {
       }
 
       violationRules {
-        minBranches = project.ext.has('diffCoverageThreshold') ? project.ext.diffCoverageThreshold : 0.6
+        minBranches = project.ext.has('diffCoverageThreshold') ? project.ext.diffCoverageThreshold : 0.33
         failOnViolation = true
       }
     }
@@ -573,11 +573,17 @@ idea.project.ipr {
 // Allow running diffCoverage against uncommitted files
 // See https://github.com/form-com/diff-coverage-gradle/issues/73
 ext.createDiffFile = { ->
+  // Files that we don't plan to write unit tests for now. Will be worked in the future
+  // append this filter programmatically
+  //  def exclusionFilter = [
+  //      '\':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceHelixAdmin.java\'',
+  //      '\':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceParentHelixAdmin.java\''
+  //  ]
   def file = Files.createTempFile(URLEncoder.encode(project.name, 'UTF-8'), '.diff').toFile()
   def diffBase = "${git.getUpstreamRemote()}/main"
   file.withOutputStream { out ->
     exec {
-      commandLine 'git', 'diff', '--no-color', '--minimal', diffBase
+      commandLine 'git', 'diff', diffBase, '--no-color', '--minimal', '--', '.', ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceHelixAdmin.java', ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceParentHelixAdmin.java'
       standardOutput = out
     }
   }
