@@ -1,6 +1,7 @@
 package com.linkedin.venice.hadoop;
 
 import static com.linkedin.venice.hadoop.VenicePushJob.REPUSH_TTL_ENABLE;
+import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
@@ -19,9 +20,9 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.utils.TestWriteUtils;
 import java.util.Collections;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.function.Consumer;
+import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
@@ -36,12 +37,18 @@ public class TestVenicePushJobConfig {
   private static final String TEST_STORE = "test_store";
   private static final String TEST_CLUSTER = "test_cluster";
   private static final String TEST_SERVICE = "test_venice";
+  private static final int REPUSH_VERSION = 1;
+
+  private static final String TEST_PARENT_ZK_ADDRESS = "localhost:2180";
+  private static final String TEST_ZK_ADDRESS = "localhost:2181";
+  private static final String TEST_PARENT_CONTROLLER_D2_SERVICE = "ParentController";
+  private static final String TEST_CHILD_CONTROLLER_D2_SERVICE = "ChildController";
 
   @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Repush with TTL is only supported while using Kafka Input Format.*")
   public void testRepushTTLJobWithNonKafkaInput() {
     Properties repushProps = new Properties();
     repushProps.setProperty(REPUSH_TTL_ENABLE, "true");
-    VenicePushJob pushJob = getSpyVenicePushJob(Optional.of(repushProps), Optional.empty());
+    VenicePushJob pushJob = getSpyVenicePushJob(repushProps, null);
     pushJob.run();
   }
 
@@ -50,7 +57,7 @@ public class TestVenicePushJobConfig {
     Properties repushProps = getRepushReadyProps();
 
     ControllerClient client = getClient();
-    VenicePushJob pushJob = getSpyVenicePushJob(Optional.of(repushProps), Optional.of(client));
+    VenicePushJob pushJob = getSpyVenicePushJob(repushProps, client);
     pushJob.run();
   }
 
@@ -59,33 +66,101 @@ public class TestVenicePushJobConfig {
     Properties repushProps = getRepushReadyProps();
 
     ControllerClient client = getClient(storeInfo -> {
-      Version version = new VersionImpl(TEST_STORE, 0, TEST_PUSH);
+      Version version = new VersionImpl(TEST_STORE, REPUSH_VERSION, TEST_PUSH);
       storeInfo.setWriteComputationEnabled(true);
       storeInfo.setVersions(Collections.singletonList(version));
       storeInfo.setHybridStoreConfig(new HybridStoreConfigImpl(0, 0, 0, null, null));
     });
-    VenicePushJob pushJob = getSpyVenicePushJob(Optional.of(repushProps), Optional.of(client));
+    VenicePushJob pushJob = getSpyVenicePushJob(repushProps, client);
     pushJob.run();
+  }
+
+  @Test
+  public void testPushJobSettingWithD2Routing() {
+    ControllerClient client = getClient(storeInfo -> {
+      Version version = new VersionImpl(TEST_STORE, REPUSH_VERSION, TEST_PUSH);
+      storeInfo.setWriteComputationEnabled(true);
+      storeInfo.setVersions(Collections.singletonList(version));
+      storeInfo.setHybridStoreConfig(new HybridStoreConfigImpl(0, 0, 0, null, null));
+    });
+    VenicePushJob pushJob = getSpyVenicePushJobWithD2Routing(new Properties(), client);
+    VenicePushJob.PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
+    Assert.assertTrue(pushJobSetting.d2Routing);
+    Assert.assertEquals(pushJobSetting.controllerD2ServiceName, TEST_CHILD_CONTROLLER_D2_SERVICE);
+    Assert.assertEquals(pushJobSetting.childControllerRegionD2ZkHosts, TEST_ZK_ADDRESS);
+
+    VenicePushJob multiRegionPushJob = getSpyVenicePushJobWithMultiRegionD2Routing(new Properties(), client);
+    VenicePushJob.PushJobSetting multiRegionPushJobSetting = multiRegionPushJob.getPushJobSetting();
+    Assert.assertTrue(multiRegionPushJobSetting.d2Routing);
+    Assert.assertEquals(multiRegionPushJobSetting.controllerD2ServiceName, TEST_PARENT_CONTROLLER_D2_SERVICE);
+    Assert.assertEquals(multiRegionPushJobSetting.parentControllerRegionD2ZkHosts, TEST_PARENT_ZK_ADDRESS);
+  }
+
+  @Test
+  public void testPushJobSettingWithLivenessHeartbeat() {
+    Properties vpjProps = new Properties();
+    vpjProps.setProperty(HEARTBEAT_ENABLED_CONFIG.getConfigName(), "true");
+    ControllerClient client = getClient(storeInfo -> {
+      Version version = new VersionImpl(TEST_STORE, REPUSH_VERSION, TEST_PUSH);
+      storeInfo.setWriteComputationEnabled(true);
+      storeInfo.setVersions(Collections.singletonList(version));
+      storeInfo.setHybridStoreConfig(new HybridStoreConfigImpl(0, 0, 0, null, null));
+    });
+    VenicePushJob pushJob = getSpyVenicePushJob(vpjProps, client);
+    VenicePushJob.PushJobSetting pushJobSetting = pushJob.getPushJobSetting();
+    Assert.assertTrue(pushJobSetting.livenessHeartbeatEnabled);
   }
 
   private Properties getRepushReadyProps() {
     Properties repushProps = new Properties();
     repushProps.setProperty(REPUSH_TTL_ENABLE, "true");
     repushProps.setProperty(VenicePushJob.SOURCE_KAFKA, "true");
-    repushProps.setProperty(VenicePushJob.KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(TEST_STORE, 0));
+    repushProps.setProperty(VenicePushJob.KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(TEST_STORE, REPUSH_VERSION));
     repushProps.setProperty(VenicePushJob.KAFKA_INPUT_BROKER_URL, "localhost");
     repushProps.setProperty(VenicePushJob.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
     return repushProps;
   }
 
-  private VenicePushJob getSpyVenicePushJob(Optional<Properties> props, Optional<ControllerClient> client) {
+  private VenicePushJob getSpyVenicePushJob(Properties props, ControllerClient client) {
     Properties baseProps = TestWriteUtils.defaultVPJProps(TEST_URL, TEST_PATH, TEST_STORE);
+    return getSpyVenicePushJobInternal(baseProps, props, client);
+  }
+
+  private VenicePushJob getSpyVenicePushJobWithD2Routing(Properties props, ControllerClient client) {
+    Properties baseProps = TestWriteUtils.defaultVPJPropsWithD2Routing(
+        null,
+        null,
+        Collections.singletonMap("dc-0", TEST_ZK_ADDRESS),
+        null,
+        TEST_CHILD_CONTROLLER_D2_SERVICE,
+        TEST_PATH,
+        TEST_STORE);
+    return getSpyVenicePushJobInternal(baseProps, props, client);
+  }
+
+  private VenicePushJob getSpyVenicePushJobWithMultiRegionD2Routing(Properties props, ControllerClient client) {
+    Properties baseProps = TestWriteUtils.defaultVPJPropsWithD2Routing(
+        "dc-parent",
+        TEST_PARENT_ZK_ADDRESS,
+        Collections.singletonMap("dc-0", TEST_ZK_ADDRESS),
+        TEST_PARENT_CONTROLLER_D2_SERVICE,
+        TEST_CHILD_CONTROLLER_D2_SERVICE,
+        TEST_PATH,
+        TEST_STORE);
+    return getSpyVenicePushJobInternal(baseProps, props, client);
+  }
+
+  private VenicePushJob getSpyVenicePushJobInternal(
+      Properties baseVPJProps,
+      Properties props,
+      ControllerClient client) {
     // for mocked tests, only attempt once.
-    baseProps.put(VenicePushJob.CONTROLLER_REQUEST_RETRY_ATTEMPTS, 1);
-    props.ifPresent(baseProps::putAll);
-    ControllerClient mockClient = client.orElseGet(this::getClient);
-    VenicePushJob pushJob = spy(new VenicePushJob(TEST_PUSH, baseProps, mockClient, mockClient));
-    pushJob.setSystemKMEStoreControllerClient(mockClient);
+    baseVPJProps.put(VenicePushJob.CONTROLLER_REQUEST_RETRY_ATTEMPTS, 1);
+    baseVPJProps.putAll(props);
+    ControllerClient mockClient = client == null ? getClient() : client;
+    VenicePushJob pushJob = spy(new VenicePushJob(TEST_PUSH, baseVPJProps));
+    pushJob.setControllerClient(mockClient);
+    pushJob.setKmeSchemaSystemStoreControllerClient(mockClient);
     return pushJob;
   }
 
@@ -115,6 +190,7 @@ public class TestVenicePushJobConfig {
 
   private StoreInfo getStoreInfo(Consumer<StoreInfo> info) {
     StoreInfo storeInfo = new StoreInfo();
+    storeInfo.setCurrentVersion(REPUSH_VERSION);
     storeInfo.setIncrementalPushEnabled(false);
     storeInfo.setStorageQuotaInByte(1L);
     storeInfo.setSchemaAutoRegisterFromPushJobEnabled(false);
@@ -124,7 +200,7 @@ public class TestVenicePushJobConfig {
     storeInfo.setLeaderFollowerModelEnabled(false);
     storeInfo.setIncrementalPushEnabled(false);
 
-    Version version = new VersionImpl(TEST_STORE, 0, TEST_PUSH);
+    Version version = new VersionImpl(TEST_STORE, REPUSH_VERSION, TEST_PUSH);
     storeInfo.setVersions(Collections.singletonList(version));
     info.accept(storeInfo);
     return storeInfo;

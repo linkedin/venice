@@ -1141,7 +1141,7 @@ public class AdminTool {
   }
 
   private static void enableThrottling(boolean enable) {
-    ControllerResponse response = controllerClient.enableThrotting(enable);
+    ControllerResponse response = controllerClient.enableThrottling(enable);
     printSuccess(response);
   }
 

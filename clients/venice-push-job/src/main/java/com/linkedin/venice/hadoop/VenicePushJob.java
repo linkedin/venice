@@ -19,6 +19,7 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.D2ControllerClientFactory;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.RepushInfoResponse;
@@ -230,8 +231,8 @@ public class VenicePushJob implements AutoCloseable {
   public static final String REWIND_TIME_IN_SECONDS_OVERRIDE = "rewind.time.in.seconds.override";
 
   /**
-   * A time stamp specified to rewind to before replaying data.  This config is ignored if rewind.time.in.seconds.override
-   * is provided.  This config at time of push will be leveraged to fill in the rewind.time.in.seconds.override by taking
+   * A time stamp specified to rewind to before replaying data. This config is ignored if rewind.time.in.seconds.override
+   * is provided. This config at time of push will be leveraged to fill in the rewind.time.in.seconds.override by taking
    * System.currentTime - rewind.epoch.time.in.seconds.override and storing the result in rewind.time.in.seconds.override.
    * With this in mind, a push policy of REWIND_FROM_SOP should be used in order to get a behavior that makes sense to a user.
    * A timestamp that is in the future is not valid and will result in an exception.
@@ -240,26 +241,48 @@ public class VenicePushJob implements AutoCloseable {
 
   /**
    * This config is a boolean which suppresses submitting the end of push message after data has been sent and does
-   * not poll for the status of the job to complete.  Using this flag means that a user must manually mark the job success
+   * not poll for the status of the job to complete. Using this flag means that a user must manually mark the job success
    * or failed.
    */
   public static final String SUPPRESS_END_OF_PUSH_MESSAGE = "suppress.end.of.push.message";
 
+  /**
+   * This config is a boolean which waits for an external signal to trigger version swap after buffer replay is complete.
+   */
   public static final String DEFER_VERSION_SWAP = "defer.version.swap";
 
   /**
-   * Relates to the above argument.  An overridable amount of buffer to be applied to the epoch (as the rewind isn't
-   * perfectly instantaneous).  Defaults to 1 minute.
+   * This config specifies the prefix for d2 zk hosts config. Configs of type {@literal <prefix>.<regionName>} are
+   * expected to be defined.
+   */
+  public static final String D2_ZK_HOSTS_PREFIX = "d2.zk.hosts.";
+
+  /**
+   * This config specifies the region identifier where parent controller is running
+   */
+  public static final String PARENT_CONTROLLER_REGION_NAME = "parent.controller.colo.name";
+
+  /**
+   * Relates to the above argument. An overridable amount of buffer to be applied to the epoch (as the rewind isn't
+   * perfectly instantaneous). Defaults to 1 minute.
    */
   public static final String REWIND_EPOCH_TIME_BUFFER_IN_SECONDS_OVERRIDE =
       "rewind.epoch.time.buffer.in.seconds.override";
 
   /**
-   * In single-colo mode, this can be either a controller or router.
-   * In multi-colo mode, it must be a parent controller.
+   * This config specifies if Venice is deployed in a multi-region mode
+   */
+  public static final String MULTI_REGION = "multi.region";
+
+  /**
+   * In single-region mode, this must be a comma-separated list of child controller URLs or {@literal d2://<d2ServiceNameForChildController>}
+   * In multi-region mode, it must be a comma-separated list of parent controller URLs or {@literal d2://<d2ServiceNameForParentController>}
    */
   public static final String VENICE_DISCOVER_URL_PROP = "venice.discover.urls";
 
+  /**
+   * An identifier of the data center which is used to determine the Kafka URL and child controllers that push jobs communicate with
+   */
   public static final String SOURCE_GRID_FABRIC = "source.grid.fabric";
 
   public static final String ENABLE_WRITE_COMPUTE = "venice.write.compute.enable";
@@ -359,7 +382,6 @@ public class VenicePushJob implements AutoCloseable {
   // Immutable state
   protected final VeniceProperties props;
   private final String jobId;
-  private final String clusterName;
 
   // Lazy state
   private final Lazy<Properties> sslProperties;
@@ -368,8 +390,7 @@ public class VenicePushJob implements AutoCloseable {
 
   // Mutable state
   private ControllerClient controllerClient;
-  private ControllerClient systemKMEStoreControllerClient;
-  private ControllerClient clusterDiscoveryControllerClient;
+  private ControllerClient kmeSchemaSystemStoreControllerClient;
   private ControllerClient livenessHeartbeatStoreControllerClient;
   private RunningJob runningJob;
   // Job config for schema validation and Compression dictionary creation (if needed)
@@ -399,6 +420,7 @@ public class VenicePushJob implements AutoCloseable {
     String veniceControllerUrl;
     String veniceRouterUrl;
     String storeName;
+    String clusterName;
     String sourceGridFabric;
     int batchNumBytes;
     boolean enablePBNJ;
@@ -437,6 +459,13 @@ public class VenicePushJob implements AutoCloseable {
     long repushTTLInSeconds;
     // HDFS directory to cache RMD schemas
     String rmdSchemaDir;
+    String controllerD2ServiceName;
+    String parentControllerRegionD2ZkHosts;
+    String childControllerRegionD2ZkHosts;
+    boolean livenessHeartbeatEnabled;
+    String livenessHeartbeatStoreName;
+    boolean multiRegion;
+    boolean d2Routing;
   }
 
   protected PushJobSetting pushJobSetting;
@@ -479,7 +508,6 @@ public class VenicePushJob implements AutoCloseable {
   protected StoreSetting storeSetting;
   private InputStorageQuotaTracker inputStorageQuotaTracker;
   private PushJobHeartbeatSenderFactory pushJobHeartbeatSenderFactory;
-  private final boolean jobLivenessHeartbeatEnabled;
   private boolean pushJobStatusUploadDisabledHasBeenLogged = false;
 
   /**
@@ -507,14 +535,11 @@ public class VenicePushJob implements AutoCloseable {
     }
   }
 
-  // Visible for testing
-  public VenicePushJob(
-      String jobId,
-      Properties vanillaProps,
-      ControllerClient controllerClient,
-      ControllerClient clusterDiscoveryControllerClient) {
-    this.controllerClient = controllerClient;
-    this.clusterDiscoveryControllerClient = clusterDiscoveryControllerClient;
+  /**
+   * @param jobId  id of the job
+   * @param vanillaProps  Property bag for the job
+   */
+  public VenicePushJob(String jobId, Properties vanillaProps) {
     this.jobId = jobId;
     this.props = getVenicePropsFromVanillaProps(vanillaProps);
     if (isSslEnabled()) {
@@ -528,72 +553,17 @@ public class VenicePushJob implements AutoCloseable {
       }
     });
     LOGGER.info("Constructing {}: {}", VenicePushJob.class.getSimpleName(), props.toString(true));
-    String veniceControllerUrl = props.getString(VENICE_DISCOVER_URL_PROP);
-    initControllerClient(
-        props.getString(VENICE_STORE_NAME_PROP),
-        props.getString(VENICE_DISCOVER_URL_PROP),
-        VPJSSLUtils.createSSLFactory(
-            isSslEnabled(),
-            props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME),
-            this.sslProperties),
-        props.getInt(CONTROLLER_REQUEST_RETRY_ATTEMPTS, 1));
-    this.pushJobSetting = getPushJobSetting(veniceControllerUrl, props);
-    LOGGER.info("Going to use controller URL: {}  to discover cluster.", veniceControllerUrl);
-    this.clusterName = discoverCluster(props.getString(VENICE_STORE_NAME_PROP));
-    LOGGER
-        .info("The store {} is discovered in Venice cluster {}", props.getString(VENICE_STORE_NAME_PROP), clusterName);
+    this.pushJobSetting = getPushJobSetting(props);
+    LOGGER.info("Going to use controller URL: {}  to discover cluster.", pushJobSetting.veniceControllerUrl);
     // Optional configs:
     this.pushJobDetails = new PushJobDetails();
-    boolean jobLivenessHeartbeatEnabled;
-    if (props.getBoolean(HEARTBEAT_ENABLED_CONFIG.getConfigName(), false)) {
+    if (pushJobSetting.livenessHeartbeatEnabled) {
       LOGGER.info("Push job heartbeat is enabled.");
-      try {
-        this.pushJobHeartbeatSenderFactory = new DefaultPushJobHeartbeatSenderFactory();
-        this.livenessHeartbeatStoreControllerClient = createLivenessHeartbeatControllerClient(props);
-        jobLivenessHeartbeatEnabled = true;
-
-      } catch (Exception e) {
-        LOGGER.warn(
-            "Initializing the liveness heartbeat sender or its controller client failed. Hence the feature is disabled.",
-            e);
-        this.pushJobDetails.sendLivenessHeartbeatFailureDetails = e.getMessage();
-        this.pushJobHeartbeatSenderFactory = new NoOpPushJobHeartbeatSenderFactory();
-        this.livenessHeartbeatStoreControllerClient = null;
-        jobLivenessHeartbeatEnabled = false;
-      }
+      this.pushJobHeartbeatSenderFactory = new DefaultPushJobHeartbeatSenderFactory();
     } else {
       LOGGER.info("Push job heartbeat is NOT enabled.");
       this.pushJobHeartbeatSenderFactory = new NoOpPushJobHeartbeatSenderFactory();
-      this.livenessHeartbeatStoreControllerClient = null;
-      jobLivenessHeartbeatEnabled = false;
     }
-    this.jobLivenessHeartbeatEnabled = jobLivenessHeartbeatEnabled;
-  }
-
-  private ControllerClient createLivenessHeartbeatControllerClient(VeniceProperties properties) {
-    String heartbeatStoreName = properties.getString(HEARTBEAT_STORE_NAME_CONFIG.getConfigName()); // Required config
-                                                                                                   // value
-    Optional<SSLFactory> sslFactory = VPJSSLUtils.createSSLFactory(
-        isSslEnabled(),
-        properties.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME),
-        this.sslProperties);
-    String veniceControllerUrl = props.getString(VENICE_DISCOVER_URL_PROP);
-    String heartbeatStoreClusterName = discoverCluster(heartbeatStoreName);
-    ControllerClient heartbeatStoreControllerClient =
-        ControllerClient.constructClusterControllerClient(heartbeatStoreClusterName, veniceControllerUrl, sslFactory);
-    LOGGER.info(
-        "Created controller client for the liveness heartbeat store {} in {} cluster",
-        heartbeatStoreName,
-        heartbeatStoreClusterName);
-    return heartbeatStoreControllerClient;
-  }
-
-  /**
-   * @param jobId  id of the job
-   * @param vanillaProps  Property bag for the job
-   */
-  public VenicePushJob(String jobId, Properties vanillaProps) {
-    this(jobId, vanillaProps, null, null);
   }
 
   // Visible for testing
@@ -629,9 +599,9 @@ public class VenicePushJob implements AutoCloseable {
     return props.getBoolean(ENABLE_SSL, DEFAULT_SSL_ENABLED);
   }
 
-  private PushJobSetting getPushJobSetting(String veniceControllerUrl, VeniceProperties props) {
+  private PushJobSetting getPushJobSetting(VeniceProperties props) {
     PushJobSetting pushJobSettingToReturn = new PushJobSetting();
-    pushJobSettingToReturn.veniceControllerUrl = veniceControllerUrl;
+    pushJobSettingToReturn.veniceControllerUrl = props.getString(VENICE_DISCOVER_URL_PROP);
     pushJobSettingToReturn.enablePush = props.getBoolean(ENABLE_PUSH, true);
     if (props.containsKey(SOURCE_GRID_FABRIC)) {
       pushJobSettingToReturn.sourceGridFabric = props.getString(SOURCE_GRID_FABRIC);
@@ -666,6 +636,31 @@ public class VenicePushJob implements AutoCloseable {
       throw new VeniceException("Repush with TTL is only supported while using Kafka Input Format");
     }
 
+    final String D2_PREFIX = "d2://";
+    if (pushJobSettingToReturn.veniceControllerUrl.startsWith(D2_PREFIX)) {
+      pushJobSettingToReturn.d2Routing = true;
+      pushJobSettingToReturn.controllerD2ServiceName =
+          pushJobSettingToReturn.veniceControllerUrl.substring(D2_PREFIX.length());
+      pushJobSettingToReturn.multiRegion = props.getBoolean(MULTI_REGION);
+      if (pushJobSettingToReturn.multiRegion) {
+        String parentControllerRegionName = props.getString(PARENT_CONTROLLER_REGION_NAME);
+        pushJobSettingToReturn.parentControllerRegionD2ZkHosts =
+            props.getString(D2_ZK_HOSTS_PREFIX + parentControllerRegionName);
+      } else {
+        pushJobSettingToReturn.childControllerRegionD2ZkHosts =
+            props.getString(D2_ZK_HOSTS_PREFIX + pushJobSettingToReturn.sourceGridFabric);
+      }
+    } else {
+      pushJobSettingToReturn.d2Routing = false;
+      pushJobSettingToReturn.controllerD2ServiceName = null;
+      pushJobSettingToReturn.multiRegion = props.getBoolean(MULTI_REGION, false);
+      pushJobSettingToReturn.parentControllerRegionD2ZkHosts = null;
+      pushJobSettingToReturn.childControllerRegionD2ZkHosts = null;
+    }
+
+    pushJobSettingToReturn.livenessHeartbeatEnabled = props.getBoolean(HEARTBEAT_ENABLED_CONFIG.getConfigName(), false);
+    pushJobSettingToReturn.livenessHeartbeatStoreName =
+        props.getString(HEARTBEAT_STORE_NAME_CONFIG.getConfigName(), "");
     if (pushJobSettingToReturn.isSourceKafka) {
       /**
        * The topic could contain duplicate records since the topic could belong to a hybrid store
@@ -682,12 +677,8 @@ public class VenicePushJob implements AutoCloseable {
       if (pushJobSettingToReturn.enablePBNJ) {
         throw new VeniceException("PBNJ is not supported while using Kafka Input Format");
       }
-      pushJobSettingToReturn.kafkaInputTopic =
-          getSourceTopicNameForKafkaInput(props.getString(VENICE_STORE_NAME_PROP), props, pushJobSettingToReturn);
-      pushJobSettingToReturn.kafkaInputBrokerUrl = pushJobSettingToReturn.repushInfoResponse == null
-          ? props.getString(KAFKA_INPUT_BROKER_URL)
-          : pushJobSettingToReturn.repushInfoResponse.getRepushInfo().getKafkaBrokerUrl();
     }
+
     pushJobSettingToReturn.storeName = props.getString(VENICE_STORE_NAME_PROP);
     pushJobSettingToReturn.rewindTimeInSecondsOverride = props.getLong(REWIND_TIME_IN_SECONDS_OVERRIDE, NOT_SET);
 
@@ -761,18 +752,7 @@ public class VenicePushJob implements AutoCloseable {
    */
   private String getSourceTopicNameForKafkaInput(
       final String userProvidedStoreName,
-      final VeniceProperties properties,
-      final PushJobSetting pushJobSettingUnderConstruction) {
-    if (controllerClient == null) {
-      initControllerClient(
-          pushJobSettingUnderConstruction.storeName,
-          props.getString(VENICE_DISCOVER_URL_PROP),
-          VPJSSLUtils.createSSLFactory(
-              isSslEnabled(),
-              properties.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME),
-              this.sslProperties),
-          pushJobSettingUnderConstruction.controllerRetries);
-    }
+      final VeniceProperties properties) {
     final Optional<String> userProvidedTopicNameOptional =
         Optional.ofNullable(properties.getString(KAFKA_INPUT_TOPIC, () -> null));
 
@@ -781,21 +761,21 @@ public class VenicePushJob implements AutoCloseable {
       return getUserProvidedTopicName(
           userProvidedStoreName,
           userProvidedTopicNameOptional.get(),
-          pushJobSettingUnderConstruction.controllerRetries);
+          pushJobSetting.controllerRetries);
     }
     // If VPJ has fabric name available use that to find the child colo version otherwise
     // use the largest version among the child colo to use as KIF input topic.
     final Optional<String> userProvidedFabricNameOptional =
         Optional.ofNullable(properties.getString(KAFKA_INPUT_FABRIC, () -> null));
 
-    pushJobSettingUnderConstruction.repushInfoResponse = ControllerClient.retryableRequest(
+    pushJobSetting.repushInfoResponse = ControllerClient.retryableRequest(
         controllerClient,
-        pushJobSettingUnderConstruction.controllerRetries,
+        pushJobSetting.controllerRetries,
         c -> c.getRepushInfo(userProvidedStoreName, userProvidedFabricNameOptional));
-    if (pushJobSettingUnderConstruction.repushInfoResponse.isError()) {
+    if (pushJobSetting.repushInfoResponse.isError()) {
       throw new VeniceException("Could not get repush info for store " + userProvidedStoreName);
     }
-    int version = pushJobSettingUnderConstruction.repushInfoResponse.getRepushInfo().getVersion().getNumber();
+    int version = pushJobSetting.repushInfoResponse.getRepushInfo().getVersion().getNumber();
     return Version.composeKafkaTopic(userProvidedStoreName, version);
   }
 
@@ -860,11 +840,6 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   // Visible for testing
-  protected void setClusterDiscoveryControllerClient(ControllerClient clusterDiscoveryControllerClient) {
-    this.clusterDiscoveryControllerClient = clusterDiscoveryControllerClient;
-  }
-
-  // Visible for testing
   protected void setInputDataInfoProvider(InputDataInfoProvider inputDataInfoProvider) {
     this.inputDataInfoProvider = inputDataInfoProvider;
   }
@@ -890,23 +865,28 @@ public class VenicePushJob implements AutoCloseable {
   public void run() {
     PushJobHeartbeatSender pushJobHeartbeatSender = null;
     try {
+      Optional<SSLFactory> sslFactory = VPJSSLUtils.createSSLFactory(
+          isSslEnabled(),
+          props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME),
+          this.sslProperties);
+      initControllerClient(pushJobSetting.storeName, sslFactory);
+      pushJobSetting.clusterName = controllerClient.getClusterName();
+      LOGGER.info(
+          "The store {} is discovered in Venice cluster {}",
+          pushJobSetting.storeName,
+          pushJobSetting.clusterName);
+
+      if (pushJobSetting.isSourceKafka) {
+        initKIFRepushDetails();
+      }
+
       initPushJobDetails();
       jobStartTimeMs = System.currentTimeMillis();
       logGreeting();
-      final boolean sslEnabled = isSslEnabled();
-      Optional<SSLFactory> sslFactory = VPJSSLUtils.createSSLFactory(
-          sslEnabled,
-          props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME),
-          this.sslProperties);
-      initControllerClient(
-          pushJobSetting.storeName,
-          pushJobSetting.veniceControllerUrl,
-          sslFactory,
-          pushJobSetting.controllerRetries);
       sendPushJobDetailsToController();
       validateKafkaMessageEnvelopeSchema(pushJobSetting);
       validateRemoteHybridSettings(pushJobSetting);
-      pushJobHeartbeatSender = createPushJobHeartbeatSender(sslEnabled);
+      pushJobHeartbeatSender = createPushJobHeartbeatSender(isSslEnabled());
       inputDirectory = getInputURI(props);
       storeSetting = getSettingsFromController(controllerClient, pushJobSetting);
       inputStorageQuotaTracker = new InputStorageQuotaTracker(storeSetting.storeStorageQuota);
@@ -1033,13 +1013,7 @@ public class VenicePushJob implements AutoCloseable {
         pushJobHeartbeatSender.start(pushJobSetting.storeName, kafkaTopicInfo.version);
         sendPushJobDetailsToController();
         // Log Venice data push job related info
-        logPushJobProperties(
-            kafkaTopicInfo,
-            pushJobSetting,
-            pushJobSchemaInfo,
-            clusterName,
-            inputDirectory,
-            inputFileDataSize);
+        logPushJobProperties(kafkaTopicInfo, pushJobSetting, pushJobSchemaInfo, inputDirectory, inputFileDataSize);
 
         // Setup the hadoop job
         // If reducer phase is enabled, each reducer will sort all the messages inside one single
@@ -1492,8 +1466,8 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   // Visible for testing
-  void setSystemKMEStoreControllerClient(ControllerClient controllerClient) {
-    this.systemKMEStoreControllerClient = controllerClient;
+  void setKmeSchemaSystemStoreControllerClient(ControllerClient controllerClient) {
+    this.kmeSchemaSystemStoreControllerClient = controllerClient;
   }
 
   private void verifyCountersWithZeroValues() throws IOException {
@@ -1556,25 +1530,81 @@ public class VenicePushJob implements AutoCloseable {
    * @param sslFactory
    * @param retryAttempts
    */
-  private void initControllerClient(
-      String storeName,
-      String veniceControllerUrl,
-      Optional<SSLFactory> sslFactory,
-      int retryAttempts) {
+  private void initControllerClient(String storeName, Optional<SSLFactory> sslFactory) {
+    final String controllerD2ZkHost;
+    if (pushJobSetting.multiRegion) {
+      // In multi region mode, push jobs will communicate with parent controller
+      controllerD2ZkHost = pushJobSetting.parentControllerRegionD2ZkHosts;
+    } else {
+      // In single region mode, push jobs will communicate with child controller
+      controllerD2ZkHost = pushJobSetting.childControllerRegionD2ZkHosts;
+    }
+
     if (controllerClient == null) {
-      controllerClient = ControllerClient
-          .discoverAndConstructControllerClient(storeName, veniceControllerUrl, sslFactory, retryAttempts);
+      controllerClient = getControllerClient(
+          storeName,
+          pushJobSetting.d2Routing,
+          pushJobSetting.controllerD2ServiceName,
+          controllerD2ZkHost,
+          sslFactory,
+          pushJobSetting.controllerRetries);
     } else {
       LOGGER.info("Controller client has already been initialized");
     }
-    if (systemKMEStoreControllerClient == null) {
-      systemKMEStoreControllerClient = ControllerClient.discoverAndConstructControllerClient(
+
+    if (kmeSchemaSystemStoreControllerClient == null) {
+      kmeSchemaSystemStoreControllerClient = getControllerClient(
           AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName(),
-          veniceControllerUrl,
+          pushJobSetting.d2Routing,
+          pushJobSetting.controllerD2ServiceName,
+          controllerD2ZkHost,
+          sslFactory,
+          pushJobSetting.controllerRetries);
+    } else {
+      LOGGER.info("System store controller client has already been initialized");
+    }
+
+    if (pushJobSetting.livenessHeartbeatEnabled) {
+      String heartbeatStoreName = pushJobSetting.livenessHeartbeatStoreName;
+      this.livenessHeartbeatStoreControllerClient = getControllerClient(
+          heartbeatStoreName,
+          pushJobSetting.d2Routing,
+          pushJobSetting.controllerD2ServiceName,
+          controllerD2ZkHost,
+          sslFactory,
+          pushJobSetting.controllerRetries);
+    } else {
+      this.livenessHeartbeatStoreControllerClient = null;
+    }
+  }
+
+  protected void initKIFRepushDetails() {
+    pushJobSetting.kafkaInputTopic = getSourceTopicNameForKafkaInput(pushJobSetting.storeName, props);
+    pushJobSetting.kafkaInputBrokerUrl = pushJobSetting.repushInfoResponse == null
+        ? props.getString(KAFKA_INPUT_BROKER_URL)
+        : pushJobSetting.repushInfoResponse.getRepushInfo().getKafkaBrokerUrl();
+  }
+
+  private ControllerClient getControllerClient(
+      String storeName,
+      boolean useD2ControllerClient,
+      String controllerD2ServiceName,
+      String d2ZkHosts,
+      Optional<SSLFactory> sslFactory,
+      int retryAttempts) {
+    if (useD2ControllerClient) {
+      return D2ControllerClientFactory.discoverAndConstructControllerClient(
+          storeName,
+          controllerD2ServiceName,
+          d2ZkHosts,
           sslFactory,
           retryAttempts);
     } else {
-      LOGGER.info("System store controller client has already been initialized");
+      return ControllerClient.discoverAndConstructControllerClient(
+          storeName,
+          pushJobSetting.veniceControllerUrl,
+          sslFactory,
+          retryAttempts);
     }
   }
 
@@ -1636,7 +1666,7 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   private void initPushJobDetails() {
-    pushJobDetails.clusterName = this.clusterName;
+    pushJobDetails.clusterName = pushJobSetting.clusterName;
     pushJobDetails.overallStatus = new ArrayList<>();
     pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.STARTED.getValue()));
     pushJobDetails.pushId = "";
@@ -1650,8 +1680,9 @@ public class VenicePushJob implements AutoCloseable {
     pushJobDetails.totalCompressedValueBytes = -1;
     pushJobDetails.failureDetails = "";
     pushJobDetails.pushJobLatestCheckpoint = PushJobCheckpoints.INITIALIZE_PUSH_JOB.getValue();
-    pushJobDetails.pushJobConfigs =
-        Collections.singletonMap(HEARTBEAT_ENABLED_CONFIG.getConfigName(), String.valueOf(jobLivenessHeartbeatEnabled));
+    pushJobDetails.pushJobConfigs = Collections.singletonMap(
+        HEARTBEAT_ENABLED_CONFIG.getConfigName(),
+        String.valueOf(pushJobSetting.livenessHeartbeatEnabled));
   }
 
   private void updatePushJobDetailsWithCheckpoint(PushJobCheckpoints checkpoint) {
@@ -1689,7 +1720,8 @@ public class VenicePushJob implements AutoCloseable {
           pushJobConfigs.put(key, props.getString(key));
         }
         if (!pushJobConfigs.containsKey(HEARTBEAT_ENABLED_CONFIG.getConfigName())) {
-          pushJobConfigs.put(HEARTBEAT_ENABLED_CONFIG.getConfigName(), String.valueOf(jobLivenessHeartbeatEnabled));
+          pushJobConfigs
+              .put(HEARTBEAT_ENABLED_CONFIG.getConfigName(), String.valueOf(pushJobSetting.livenessHeartbeatEnabled));
         }
         pushJobDetails.pushJobConfigs = pushJobConfigs;
         // TODO find a way to get meaningful producer configs to populate the producerConfigs map here.
@@ -1862,7 +1894,7 @@ public class VenicePushJob implements AutoCloseable {
       PushJobSetting setting,
       PushJobSchemaInfo pushJobSchemaInfo) {
     Schema serverSchema = getKeySchemaFromController(controllerClient, setting.controllerRetries, setting.storeName);
-    Schema clientSchema = Schema.parse(pushJobSchemaInfo.getKeySchemaString());
+    Schema clientSchema = AvroCompatibilityHelper.parse(pushJobSchemaInfo.getKeySchemaString());
     String canonicalizedServerSchema = AvroCompatibilityHelper.toParsingForm(serverSchema);
     String canonicalizedClientSchema = AvroCompatibilityHelper.toParsingForm(clientSchema);
     if (!canonicalizedServerSchema.equals(canonicalizedClientSchema)) {
@@ -1893,7 +1925,7 @@ public class VenicePushJob implements AutoCloseable {
       if (!setting.validateRemoteReplayPolicy.equals(hybridStoreConfig.getBufferReplayPolicy())) {
         throw new VeniceException(
             String.format(
-                "Remote rewind policy is {} but push settings require a policy of {}.  "
+                "Remote rewind policy is {} but push settings require a policy of {}. "
                     + "Please adjust hybrid settings or push job configuration!",
                 hybridStoreConfig.getBufferReplayPolicy(),
                 setting.validateRemoteReplayPolicy));
@@ -1903,7 +1935,7 @@ public class VenicePushJob implements AutoCloseable {
 
   private void validateKafkaMessageEnvelopeSchema(PushJobSetting setting) {
     SchemaResponse response = ControllerClient.retryableRequest(
-        systemKMEStoreControllerClient,
+        kmeSchemaSystemStoreControllerClient,
         setting.controllerRetries,
         c -> c.getValueSchema(
             AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName(),
@@ -2151,7 +2183,7 @@ public class VenicePushJob implements AutoCloseable {
             Optional.of(partitioners),
             dictionary,
             Optional.ofNullable(setting.sourceGridFabric),
-            jobLivenessHeartbeatEnabled,
+            setting.livenessHeartbeatEnabled,
             setting.rewindTimeInSecondsOverride,
             setting.deferVersionSwap));
     if (versionCreationResponse.isError()) {
@@ -2306,7 +2338,7 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   /**
-   * High level, we want to poll the consumption job status until it errors or is complete.  This is more complicated
+   * High level, we want to poll the consumption job status until it errors or is complete. This is more complicated
    * because we might be dealing with multiple destination clusters and we might not be able to reach all of them. We
    * are using a semantic of "poll until all accessible datacenters report success".
    *
@@ -2815,24 +2847,16 @@ public class VenicePushJob implements AutoCloseable {
       TopicInfo topicInfo,
       PushJobSetting pushJobSetting,
       PushJobSchemaInfo pushJobSchemaInfo,
-      String clusterName,
       String inputDirectory,
       long inputFileDataSize) {
     LOGGER.info(
-        pushJobPropertiesToString(
-            topicInfo,
-            pushJobSetting,
-            pushJobSchemaInfo,
-            clusterName,
-            inputDirectory,
-            inputFileDataSize));
+        pushJobPropertiesToString(topicInfo, pushJobSetting, pushJobSchemaInfo, inputDirectory, inputFileDataSize));
   }
 
   private String pushJobPropertiesToString(
       TopicInfo topicInfo,
       PushJobSetting pushJobSetting,
       PushJobSchemaInfo pushJobSchemaInfo,
-      String clusterName,
       String inputDirectory,
       final long inputFileDataSize) {
     List<String> propKeyValuePairs = new ArrayList<>();
@@ -2843,7 +2867,7 @@ public class VenicePushJob implements AutoCloseable {
     propKeyValuePairs.add("Kafka Queue Bytes: " + pushJobSetting.batchNumBytes);
     propKeyValuePairs.add("Input Directory: " + inputDirectory);
     propKeyValuePairs.add("Venice Store Name: " + pushJobSetting.storeName);
-    propKeyValuePairs.add("Venice Cluster Name: " + clusterName);
+    propKeyValuePairs.add("Venice Cluster Name: " + pushJobSetting.clusterName);
     propKeyValuePairs.add("Venice URL: " + pushJobSetting.veniceControllerUrl);
     if (pushJobSchemaInfo != null) {
       propKeyValuePairs.add("File Schema: " + pushJobSchemaInfo.getFileSchemaString());
@@ -2953,19 +2977,6 @@ public class VenicePushJob implements AutoCloseable {
     return new Path(resolvedPath);
   }
 
-  private String discoverCluster(String storeName) {
-    LOGGER.info("Discover cluster for store: {}", storeName);
-    ControllerResponse clusterDiscoveryResponse = ControllerClient.retryableRequest(
-        clusterDiscoveryControllerClient == null ? controllerClient : clusterDiscoveryControllerClient,
-        pushJobSetting.controllerRetries,
-        c -> c.discoverCluster(storeName));
-    if (clusterDiscoveryResponse.isError()) {
-      throw new VeniceException("Failed to discover cluster, error :" + clusterDiscoveryResponse.getError());
-    } else {
-      return clusterDiscoveryResponse.getCluster();
-    }
-  }
-
   public String getKafkaTopic() {
     return kafkaTopicInfo.topic;
   }
@@ -3020,14 +3031,9 @@ public class VenicePushJob implements AutoCloseable {
 
   @Override
   public void close() {
-    closeClients();
-  }
-
-  private void closeClients() {
     closeVeniceWriter();
     Utils.closeQuietlyWithErrorLogged(controllerClient);
-    Utils.closeQuietlyWithErrorLogged(systemKMEStoreControllerClient);
-    Utils.closeQuietlyWithErrorLogged(clusterDiscoveryControllerClient);
+    Utils.closeQuietlyWithErrorLogged(kmeSchemaSystemStoreControllerClient);
     Utils.closeQuietlyWithErrorLogged(livenessHeartbeatStoreControllerClient);
   }
 
