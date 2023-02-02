@@ -1,6 +1,7 @@
 package com.linkedin.venice.helix;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
@@ -83,12 +84,14 @@ public class HelixReadOnlySchemaRepositoryTest {
     SchemaEntry schemaEntry = new SchemaEntry(1, VALUE_SCHEMA.toString());
     DerivedSchemaEntry derivedSchemaEntry = new DerivedSchemaEntry(1, 1, UPDATE_SCHEMA.toString());
     RmdSchemaEntry rmdSchemaEntry = new RmdSchemaEntry(1, 1, UPDATE_SCHEMA.toString());
+
     HelixSchemaAccessor schemaAccessor = mock(HelixSchemaAccessor.class);
     when(schemaRepository.getAccessor()).thenReturn(schemaAccessor);
     when(schemaAccessor.getAllValueSchemas(storeName)).thenReturn(Collections.singletonList(schemaEntry));
     when(schemaAccessor.getAllDerivedSchemas(storeName)).thenReturn(Collections.singletonList(derivedSchemaEntry));
     when(schemaAccessor.getAllReplicationMetadataSchemas(storeName))
         .thenReturn(Collections.singletonList(rmdSchemaEntry));
+
     schemaRepository.forceRefreshSchemaData(store, schemaData);
     Assert.assertEquals(schemaData.getValueSchema(1).getSchema(), VALUE_SCHEMA);
     when(store.isWriteComputationEnabled()).thenReturn(true);
@@ -104,12 +107,16 @@ public class HelixReadOnlySchemaRepositoryTest {
     when(storeRepository.hasStore(storeName)).thenReturn(true);
     when(schemaRepository.getStoreRepository()).thenReturn(storeRepository);
 
-    Map<String, SchemaData> schemaDataMap = new VeniceConcurrentHashMap<>();
-    schemaDataMap.put(storeName, new SchemaData(storeName));
     ReadWriteLock lock = new ReentrantReadWriteLock();
     when(schemaRepository.getSchemaLock()).thenReturn(lock);
+
+    Map<String, SchemaData> schemaDataMap = new VeniceConcurrentHashMap<>();
+    schemaDataMap.put(storeName, new SchemaData(storeName));
     when(schemaRepository.getSupersetSchema(storeName)).thenCallRealMethod();
+    doCallRealMethod().when(schemaRepository)
+        .maybeForceRefreshSchemaDataForSupersetSchemaWithRetry(any(), any(), anyInt());
     when(schemaRepository.getSchemaMap()).thenReturn(schemaDataMap);
+
     when(store.getLatestSuperSetValueSchemaId()).thenReturn(1);
     Assert.assertTrue(schemaRepository.getSupersetSchema(storeName).isPresent());
     Assert.assertEquals(schemaRepository.getSupersetSchema(storeName).get().getSchema(), VALUE_SCHEMA);

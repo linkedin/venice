@@ -145,6 +145,53 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
     }
   }
 
+  void maybeForceRefreshSchemaDataForSupersetSchemaWithRetry(Store store, SchemaData schemaData, int supersetSchemaId) {
+    final int maxRefreshAttempt = 3;
+    int refreshAttempt = 0;
+    while (true) {
+      boolean shouldRefresh = false;
+      if (schemaData.getValueSchema(supersetSchemaId) == null) {
+        shouldRefresh = true;
+        logger
+            .warn("Superset schema ID: {} for store: {} not found in schema cache.", supersetSchemaId, store.getName());
+      }
+      if (store.isWriteComputationEnabled()
+          && schemaData.getDerivedSchemas().stream().noneMatch(x -> (x.getValueSchemaID() == supersetSchemaId))) {
+        shouldRefresh = true;
+        logger.warn(
+            "Update schema of superset schema ID: {} for store: {} not found in schema cache.",
+            supersetSchemaId,
+            store.getName());
+      }
+      if (store.isActiveActiveReplicationEnabled() && schemaData.getReplicationMetadataSchemas()
+          .stream()
+          .noneMatch(x -> (x.getValueSchemaID() == supersetSchemaId))) {
+        shouldRefresh = true;
+        logger.warn(
+            "RMD schema of superset schema ID: {} for store: {} not found in schema cache.",
+            supersetSchemaId,
+            store.getName());
+      }
+      if (!shouldRefresh) {
+        return;
+      }
+
+      if (refreshAttempt < maxRefreshAttempt) {
+        logger.info(
+            "Force refresh schema date for store: {}, attempt {}/{}.",
+            store.getName(),
+            refreshAttempt,
+            maxRefreshAttempt);
+        forceRefreshSchemaData(store, schemaData);
+        refreshAttempt++;
+      } else {
+        throw new InvalidVeniceSchemaException(
+            "Unable to refresh superset schema id: " + supersetSchemaId + " for store: " + store.getName() + " after "
+                + maxRefreshAttempt + " attempts.");
+      }
+    }
+  }
+
   void forceRefreshSchemaData(Store store, SchemaData schemaData) {
     String storeName = store.getName();
     getAccessor().getAllValueSchemas(storeName).forEach(schemaData::addValueSchema);
@@ -399,22 +446,13 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
       if (schemaData == null) {
         throw new VeniceNoStoreException(storeName);
       }
-      Optional<Integer> supersetSchemaID = getSupersetSchemaID(storeName);
-      if (supersetSchemaID.isPresent()) {
-        if (schemaData.getValueSchema(supersetSchemaID.get()) == null) {
-          logger.info(
-              "Superset schema ID: {} for store: {} not in cache, will force refresh schema data.",
-              supersetSchemaID.get(),
-              storeName);
-          forceRefreshSchemaData(getStoreRepository().getStore(storeName), schemaData);
-          if (schemaData.getValueSchema(supersetSchemaID.get()) == null) {
-            throw new InvalidVeniceSchemaException(
-                "Cannot find superset schema ID:" + supersetSchemaID.get() + " for store: " + storeName
-                    + " after force refresh.");
-          }
-        }
-      }
-      return supersetSchemaID.map(schemaData::getValueSchema);
+      Optional<Integer> supersetSchemaIdOptional = getSupersetSchemaID(storeName);
+      supersetSchemaIdOptional.ifPresent(
+          supersetSchemaID -> maybeForceRefreshSchemaDataForSupersetSchemaWithRetry(
+              getStoreRepository().getStore(storeName),
+              schemaData,
+              supersetSchemaID));
+      return supersetSchemaIdOptional.map(schemaData::getValueSchema);
 
     } finally {
       getSchemaLock().readLock().unlock();
