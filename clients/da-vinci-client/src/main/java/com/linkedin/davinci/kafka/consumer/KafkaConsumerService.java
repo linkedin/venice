@@ -36,7 +36,6 @@ import java.util.function.Supplier;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.common.TopicPartition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -75,8 +74,8 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
   private final Logger LOGGER;
 
   protected KafkaConsumerServiceStats stats;
-  protected final IndexedMap<SharedPubSubConsumerImpl, ConsumptionTask> consumerToConsumptionTask;
-  protected final Map<String, Map<PubSubTopicPartition, SharedPubSubConsumerImpl>> versionTopicToTopicPartitionToConsumer =
+  protected final IndexedMap<SharedKafkaConsumer, ConsumptionTask> consumerToConsumptionTask;
+  protected final Map<String, Map<PubSubTopicPartition, SharedKafkaConsumer>> versionTopicToTopicPartitionToConsumer =
       new VeniceConcurrentHashMap<>();
 
   /**
@@ -117,12 +116,11 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
        * We need to assign a unique client id across all the storage nodes, otherwise, they will fail into the same throttling bucket.
        */
       consumerProperties.setProperty(ConsumerConfig.CLIENT_ID_CONFIG, getUniqueClientId(kafkaUrl, i));
-      SharedPubSubConsumerImpl pubSubConsumer = new SharedPubSubConsumerImpl(
-          new SharedKafkaConsumer(
-              consumerFactory.getConsumer(consumerProperties),
-              stats,
-              this::recordPartitionsPerConsumerSensor,
-              this::handleUnsubscription));
+      SharedKafkaConsumer pubSubConsumer = new SharedKafkaConsumer(
+          consumerFactory.getConsumer(consumerProperties),
+          stats,
+          this::recordPartitionsPerConsumerSensor,
+          this::handleUnsubscription);
 
       Supplier<ConsumerRecords<byte[], byte[]>> pollFunction = liveConfigBasedKafkaThrottlingEnabled
           ? () -> kafkaClusterBasedRecordThrottler.poll(pubSubConsumer, kafkaUrl, readCycleDelayMs)
@@ -155,17 +153,17 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
   }
 
   /** May be overridden to clean up state in sub-classes */
-  void handleUnsubscription(SharedKafkaConsumer consumer, TopicPartition topicPartition) {
+  void handleUnsubscription(SharedKafkaConsumer consumer, PubSubTopicPartition topicPartition) {
   }
 
   private String getUniqueClientId(String kafkaUrl, int suffix) {
     return Utils.getHostName() + "_" + kafkaUrl + "_" + suffix;
   }
 
-  public SharedPubSubConsumerImpl getConsumerAssignedToVersionTopicPartition(
+  public SharedKafkaConsumer getConsumerAssignedToVersionTopicPartition(
       String versionTopic,
       PubSubTopicPartition topicPartition) {
-    Map<PubSubTopicPartition, SharedPubSubConsumerImpl> map = versionTopicToTopicPartitionToConsumer.get(versionTopic);
+    Map<PubSubTopicPartition, SharedKafkaConsumer> map = versionTopicToTopicPartitionToConsumer.get(versionTopic);
     if (map == null) {
       return null;
     }
@@ -177,14 +175,14 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
    *
    * Must be idempotent and thus return previously a assigned consumer (for the same params) if any exists.
    */
-  public SharedPubSubConsumerImpl assignConsumerFor(String versionTopic, PubSubTopicPartition topicPartition) {
-    Map<PubSubTopicPartition, SharedPubSubConsumerImpl> topicPartitionToConsumerMap =
+  public SharedKafkaConsumer assignConsumerFor(String versionTopic, PubSubTopicPartition topicPartition) {
+    Map<PubSubTopicPartition, SharedKafkaConsumer> topicPartitionToConsumerMap =
         versionTopicToTopicPartitionToConsumer.computeIfAbsent(versionTopic, k -> new VeniceConcurrentHashMap<>());
     return topicPartitionToConsumerMap
         .computeIfAbsent(topicPartition, k -> pickConsumerForPartition(versionTopic, topicPartition));
   }
 
-  protected abstract SharedPubSubConsumerImpl pickConsumerForPartition(
+  protected abstract SharedKafkaConsumer pickConsumerForPartition(
       String versionTopic,
       PubSubTopicPartition topicPartition);
 
@@ -230,8 +228,6 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
     Map<PubSubConsumer, Set<PubSubTopicPartition>> consumerUnSubTopicPartitionSet = new HashMap<>();
     PubSubConsumer consumer;
     for (PubSubTopicPartition topicPartition: topicPartitionsToUnSub) {
-      TopicPartition kafkaTopicPartition =
-          new TopicPartition(topicPartition.getPubSubTopic().getName(), topicPartition.getPartitionNumber());
       consumer = getConsumerAssignedToVersionTopicPartition(versionTopic, topicPartition);
       if (consumer != null) {
         Set<PubSubTopicPartition> topicPartitionSet =
@@ -294,11 +290,11 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
       }
     }
 
-    consumerToConsumptionTask.keySet().forEach(SharedPubSubConsumerImpl::close);
+    consumerToConsumptionTask.keySet().forEach(SharedKafkaConsumer::close);
   }
 
   public boolean hasAnySubscriptionFor(String versionTopic) {
-    Map<PubSubTopicPartition, SharedPubSubConsumerImpl> subscriptions =
+    Map<PubSubTopicPartition, SharedKafkaConsumer> subscriptions =
         versionTopicToTopicPartitionToConsumer.get(versionTopic);
     if (subscriptions == null) {
       return false;
@@ -347,7 +343,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
       long lastReadOffset,
       ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> consumedDataReceiver) {
     String versionTopic = consumedDataReceiver.destinationIdentifier();
-    SharedPubSubConsumerImpl consumer = assignConsumerFor(versionTopic, topicPartition);
+    SharedKafkaConsumer consumer = assignConsumerFor(versionTopic, topicPartition);
 
     if (consumer == null) {
       // Defensive code. Shouldn't happen except in case of a regression.
@@ -395,7 +391,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
     int maxPartitionsPerConsumer = Integer.MIN_VALUE;
 
     int subscribedPartitionCount;
-    for (SharedPubSubConsumerImpl consumer: consumerToConsumptionTask.keySet()) {
+    for (SharedKafkaConsumer consumer: consumerToConsumptionTask.keySet()) {
       subscribedPartitionCount = consumer.getAssignmentSize();
       totalPartitions += subscribedPartitionCount;
       minPartitionsPerConsumer = Math.min(minPartitionsPerConsumer, subscribedPartitionCount);

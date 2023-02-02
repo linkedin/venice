@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
+import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumer;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.meta.Version;
@@ -42,10 +43,10 @@ public class KafkaConsumerServiceTest {
 
   @Test
   public void testTopicWiseGetConsumer() throws Exception {
-    SharedKafkaConsumer consumer1 = mock(SharedKafkaConsumer.class);
+    ApacheKafkaConsumer consumer1 = mock(ApacheKafkaConsumer.class);
     when(consumer1.hasAnySubscription()).thenReturn(true);
 
-    SharedKafkaConsumer consumer2 = mock(SharedKafkaConsumer.class);
+    ApacheKafkaConsumer consumer2 = mock(ApacheKafkaConsumer.class);
     when(consumer2.hasAnySubscription()).thenReturn(true);
 
     String storeName1 = Utils.getUniqueString("test_consumer_service1");
@@ -105,9 +106,9 @@ public class KafkaConsumerServiceTest {
     Set<TopicPartition> consumer2AssignedPartitions = getTopicPartitionsSet(topicForStoreName2, 3);
 
     when(consumer2.getAssignment()).thenReturn(consumer2AssignedPartitions);
-    SharedPubSubConsumerImpl sharedAssignedConsumerForTask1 = (SharedPubSubConsumerImpl) assignedConsumerForTask1;
+    SharedKafkaConsumer sharedAssignedConsumerForTask1 = (SharedKafkaConsumer) assignedConsumerForTask1;
     sharedAssignedConsumerForTask1.setCurrentAssignment(convertToPubSubTopicPartitions(consumer1AssignedPartitions));
-    SharedPubSubConsumerImpl sharedAssignedConsumerForTask2 = (SharedPubSubConsumerImpl) assignedConsumerForTask2;
+    SharedKafkaConsumer sharedAssignedConsumerForTask2 = (SharedKafkaConsumer) assignedConsumerForTask2;
     sharedAssignedConsumerForTask2.setCurrentAssignment(convertToPubSubTopicPartitions(consumer2AssignedPartitions));
 
     String storeName3 = Utils.getUniqueString("test_consumer_service3");
@@ -183,7 +184,7 @@ public class KafkaConsumerServiceTest {
     when(task1.getVersionTopic()).thenReturn(topicForStoreVersion1);
     when(task1.isHybridMode()).thenReturn(true);
 
-    SharedPubSubConsumerImpl assignedConsumerForV1 = consumerService.assignConsumerFor(
+    SharedKafkaConsumer assignedConsumerForV1 = consumerService.assignConsumerFor(
         topicForStoreVersion1,
         pubSubTopicRepository.getPubSubTopicPartition(task1.getVersionTopic(), 0));
     Assert.assertEquals(
@@ -198,7 +199,7 @@ public class KafkaConsumerServiceTest {
     when(task2.getVersionTopic()).thenReturn(topicForStoreVersion2);
     when(task2.isHybridMode()).thenReturn(true);
 
-    SharedPubSubConsumerImpl assignedConsumerForV2 = consumerService.assignConsumerFor(
+    SharedKafkaConsumer assignedConsumerForV2 = consumerService.assignConsumerFor(
         topicForStoreVersion2,
         pubSubTopicRepository.getPubSubTopicPartition(task2.getVersionTopic(), 0));
     Assert.assertNotEquals(
@@ -225,10 +226,10 @@ public class KafkaConsumerServiceTest {
 
   @Test
   public void testPartitionWiseGetConsumer() throws Exception {
-    SharedKafkaConsumer consumer1 = mock(SharedKafkaConsumer.class);
+    ApacheKafkaConsumer consumer1 = mock(ApacheKafkaConsumer.class);
     when(consumer1.hasAnySubscription()).thenReturn(true);
 
-    SharedKafkaConsumer consumer2 = mock(SharedKafkaConsumer.class);
+    ApacheKafkaConsumer consumer2 = mock(ApacheKafkaConsumer.class);
     when(consumer2.hasAnySubscription()).thenReturn(true);
 
     String storeName1 = Utils.getUniqueString("test_consumer_service1");

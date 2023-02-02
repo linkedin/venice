@@ -15,7 +15,6 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
-import org.apache.kafka.common.TopicPartition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -76,14 +75,14 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
   }
 
   @Override
-  protected synchronized SharedPubSubConsumerImpl pickConsumerForPartition(
+  protected synchronized SharedKafkaConsumer pickConsumerForPartition(
       String versionTopic,
       PubSubTopicPartition topicPartition) {
     // Basic case, round-robin search to find next consumer for this partition.
     boolean seekNewConsumer = true;
     int consumerIndex = -1;
     int consumersChecked = 0;
-    SharedPubSubConsumerImpl consumer = null;
+    SharedKafkaConsumer consumer = null;
 
     while (seekNewConsumer) {
 
@@ -133,16 +132,16 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
   }
 
   private boolean alreadySubscribedRealtimeTopicPartition(
-      SharedPubSubConsumerImpl consumer,
+      SharedKafkaConsumer consumer,
       PubSubTopicPartition topicPartition) {
     Set<PubSubConsumer> consumers = rtTopicPartitionToConsumerMap.get(topicPartition);
     return consumers != null && consumers.contains(consumer);
   }
 
   @Override
-  void handleUnsubscription(SharedKafkaConsumer consumer, TopicPartition topicPartition) {
-    if (Version.isRealTimeTopic(topicPartition.topic())) {
-      Set<PubSubConsumer> rtTopicConsumers = rtTopicPartitionToConsumerMap.get(topicPartition);
+  void handleUnsubscription(SharedKafkaConsumer consumer, PubSubTopicPartition pubSubTopicPartition) {
+    if (Version.isRealTimeTopic(pubSubTopicPartition.getPubSubTopic().getName())) {
+      Set<PubSubConsumer> rtTopicConsumers = rtTopicPartitionToConsumerMap.get(pubSubTopicPartition);
       if (rtTopicConsumers != null) {
         rtTopicConsumers.remove(consumer);
       }

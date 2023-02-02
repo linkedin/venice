@@ -150,7 +150,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     if (consumerService == null) {
       return false;
     }
-    SharedPubSubConsumerImpl consumer =
+    SharedKafkaConsumer consumer =
         consumerService.getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
     return consumer != null && consumer.hasSubscription(pubSubTopicPartition);
   }

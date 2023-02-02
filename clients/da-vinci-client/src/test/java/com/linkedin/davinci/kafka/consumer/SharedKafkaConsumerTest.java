@@ -11,6 +11,8 @@ import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -28,6 +30,8 @@ public class SharedKafkaConsumerTest {
   protected KafkaConsumerWrapper consumer;
   protected KafkaConsumerServiceStats consumerServiceStats;
 
+  protected PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+
   @BeforeMethod
   public void setUp() {
     consumer = mock(KafkaConsumerWrapper.class);
@@ -43,9 +47,11 @@ public class SharedKafkaConsumerTest {
 
     Set<TopicPartition> assignmentReturnedConsumer = new HashSet<>();
     TopicPartition nonExistentTopicPartition = new TopicPartition(nonExistingTopic1, 1);
+    PubSubTopicPartition nonExistentPubSubTopicPartition =
+        pubSubTopicRepository.getPubSubTopicPartition(nonExistingTopic1, 1);
     assignmentReturnedConsumer.add(nonExistentTopicPartition);
     when(consumer.getAssignment()).thenReturn(assignmentReturnedConsumer);
-    sharedConsumer.subscribe(nonExistingTopic1, nonExistentTopicPartition, -1);
+    sharedConsumer.subscribe(nonExistingTopic1, nonExistentPubSubTopicPartition, -1);
 
     Map<TopicPartition, List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> consumerRecordsReturnedByConsumer =
         new HashMap<>();
@@ -55,7 +61,7 @@ public class SharedKafkaConsumerTest {
     verify(consumer, times(1)).poll(1000);
 
     when(consumer.getAssignment()).thenReturn(Collections.emptySet()); // after unsubscription to
-    sharedConsumer.unSubscribe(nonExistingTopic1, 1);
+    sharedConsumer.unSubscribe(nonExistentPubSubTopicPartition);
 
     sharedConsumer.poll(1000);
     verify(consumer, times(1)).poll(1000);
