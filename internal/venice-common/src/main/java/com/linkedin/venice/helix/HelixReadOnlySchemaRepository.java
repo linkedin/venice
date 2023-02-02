@@ -158,7 +158,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
         throw new InvalidVeniceSchemaException(
             "Unable to refresh superset schema id: " + supersetSchemaId + " for store: " + store.getName());
       }
-    }, 3, Duration.ofNanos(1), Collections.singletonList(InvalidVeniceSchemaException.class));
+    }, 3, Duration.ofMillis(100), Collections.singletonList(InvalidVeniceSchemaException.class));
 
   }
 
