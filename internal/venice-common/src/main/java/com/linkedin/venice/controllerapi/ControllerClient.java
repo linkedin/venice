@@ -111,16 +111,6 @@ public class ControllerClient implements Closeable {
   private final VeniceJsonSerializer<Version> versionVeniceJsonSerializer = new VeniceJsonSerializer<>(Version.class);
   private String leaderControllerUrl;
   private final List<String> controllerDiscoveryUrls;
-  private boolean isShared = false; // Denote if the object is shared in multiple places and each can close it
-                                    // independently
-
-  protected void setShared(boolean isShared) {
-    this.isShared = isShared;
-  }
-
-  protected boolean getShared() {
-    return this.isShared;
-  }
 
   public ControllerClient(String clusterName, String discoveryUrls) {
     this(clusterName, discoveryUrls, Optional.empty());
@@ -165,9 +155,8 @@ public class ControllerClient implements Closeable {
 
   @Override
   public void close() {
-    if (getShared()) {
-      // Object is still in use at other places. Do not release resources right now.
-      ControllerClientFactory.release(this);
+    if (ControllerClientFactory.release(this)) {
+      // Object is no longer used in other places. Safe to clean up resources
     }
   }
 

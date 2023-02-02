@@ -30,13 +30,13 @@ public class D2ClientFactory {
       throw new VeniceUnsupportedOperationException("setD2Client in non-unit-test-mode");
     }
 
-    SHARED_OBJECT_FACTORY.getObject(d2ZkHost, () -> d2Client, d2Client1 -> {});
+    SHARED_OBJECT_FACTORY.get(d2ZkHost, () -> d2Client, d2Client1 -> {});
   }
 
   // Visible for testing
   // In unit tests, we do not spin up a Zk Server, so we test without starting the client.
   public static D2Client getD2Client(String d2ZkHost, Optional<SSLFactory> sslFactoryOptional) {
-    return SHARED_OBJECT_FACTORY.getObject(d2ZkHost, () -> {
+    return SHARED_OBJECT_FACTORY.get(d2ZkHost, () -> {
       D2Client d2Client = new D2ClientBuilder().setZkHosts(d2ZkHost)
           .setSSLContext(sslFactoryOptional.map(SSLFactory::getSSLContext).orElse(null))
           .setIsSSLEnabled(sslFactoryOptional.isPresent())

@@ -158,15 +158,14 @@ public class D2ControllerClient extends ControllerClient {
 
   @Override
   public void close() {
-    super.close();
-    if (getShared()) {
-      // Object is still in use at other places. Do not release resources right now.
-      D2ControllerClientFactory.release(this);
-    } else {
+    if (D2ControllerClientFactory.release(this)) {
       // Object is no longer used in other places. Safe to clean up resources
+      super.close();
       if (!externalD2Client) {
         D2ClientFactory.release(d2ZkHost);
       }
+    } else {
+      // Object is still in use at other places. Do not release resources right now.
     }
   }
 
