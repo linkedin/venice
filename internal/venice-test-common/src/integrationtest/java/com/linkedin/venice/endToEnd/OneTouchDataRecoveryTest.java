@@ -69,7 +69,7 @@ public class OneTouchDataRecoveryTest {
         Optional.of(new VeniceProperties(serverProperties)),
         false);
 
-    childDatacenters = multiColoMultiClusterWrapper.getClusters();
+    childDatacenters = multiColoMultiClusterWrapper.getChildRegionList();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
   }
 
