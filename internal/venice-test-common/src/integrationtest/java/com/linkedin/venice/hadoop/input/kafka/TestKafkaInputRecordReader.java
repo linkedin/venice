@@ -5,6 +5,7 @@ import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
 
 import com.linkedin.venice.hadoop.VenicePushJob;
+import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperKey;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.input.kafka.avro.MapperValueType;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
@@ -21,7 +22,6 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.IOException;
-import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.mapred.JobConf;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -86,10 +86,10 @@ public class TestKafkaInputRecordReader {
 
     KafkaInputRecordReader reader = new KafkaInputRecordReader(new KafkaInputSplit(topic, 0, 0, 102), conf, null);
     for (int i = 0; i < 100; ++i) {
-      BytesWritable key = new BytesWritable();
+      KafkaInputMapperKey key = new KafkaInputMapperKey();
       KafkaInputMapperValue value = new KafkaInputMapperValue();
       reader.next(key, value);
-      Assert.assertEquals(key.copyBytes(), (KAFKA_MESSAGE_KEY_PREFIX + i).getBytes());
+      Assert.assertEquals(key.key.array(), (KAFKA_MESSAGE_KEY_PREFIX + i).getBytes());
       Assert.assertEquals(value.offset, i + 1);
       Assert.assertEquals(value.schemaId, -1);
       Assert.assertEquals(value.valueType, MapperValueType.PUT);
@@ -106,10 +106,10 @@ public class TestKafkaInputRecordReader {
     conf.set(VenicePushJob.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP, ChunkedKeySuffix.SCHEMA$.toString());
     KafkaInputRecordReader reader = new KafkaInputRecordReader(new KafkaInputSplit(topic, 0, 0, 102), conf, null);
     for (int i = 0; i < 100; ++i) {
-      BytesWritable key = new BytesWritable();
+      KafkaInputMapperKey key = new KafkaInputMapperKey();
       KafkaInputMapperValue value = new KafkaInputMapperValue();
       reader.next(key, value);
-      Assert.assertEquals(key.copyBytes(), (KAFKA_MESSAGE_KEY_PREFIX + i).getBytes());
+      Assert.assertEquals(key.key.array(), (KAFKA_MESSAGE_KEY_PREFIX + i).getBytes());
       Assert.assertEquals(value.offset, i + 1);
       Assert.assertEquals(value.schemaId, -1);
       if (i <= 10) {
@@ -132,7 +132,7 @@ public class TestKafkaInputRecordReader {
     conf.set(VenicePushJob.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP, ChunkedKeySuffix.SCHEMA$.toString());
     KafkaInputRecordReader reader = new KafkaInputRecordReader(new KafkaInputSplit(topic, 0, 0, 102), conf, null);
     for (int i = 0; i < 100; ++i) {
-      BytesWritable key = new BytesWritable();
+      KafkaInputMapperKey key = new KafkaInputMapperKey();
       KafkaInputMapperValue value = new KafkaInputMapperValue();
       if (i == 21) {
         try {
@@ -145,7 +145,7 @@ public class TestKafkaInputRecordReader {
       } else {
         reader.next(key, value);
       }
-      Assert.assertEquals(key.copyBytes(), (KAFKA_MESSAGE_KEY_PREFIX + i).getBytes());
+      Assert.assertEquals(key.key.array(), (KAFKA_MESSAGE_KEY_PREFIX + i).getBytes());
       Assert.assertEquals(value.offset, i + 1);
       Assert.assertEquals(value.schemaId, -1);
       if (i <= 10) {

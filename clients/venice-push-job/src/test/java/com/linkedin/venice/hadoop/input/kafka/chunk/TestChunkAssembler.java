@@ -66,7 +66,6 @@ public class TestChunkAssembler {
         messageSequenceNumber,
         VALUE_SCHEMA_ID,
         0);
-    Collections.shuffle(values);
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
 
@@ -77,7 +76,7 @@ public class TestChunkAssembler {
   }
 
   // E.g. chunk_0, chunk_1, … chunk_N (no manifest)
-  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*No regular value nor chunk manifest.*")
+  @Test
   public void testNoCompleteLargeValueWithMissingManifest() {
     final int totalChunkCount = 10;
     final int eachCountSizeInBytes = 20;
@@ -97,8 +96,7 @@ public class TestChunkAssembler {
         messageSequenceNumber,
         VALUE_SCHEMA_ID,
         0);
-    values.remove(values.size() - 1); // Remove the last value which should be a manifest
-    Collections.shuffle(values);
+    values.remove(0); // Remove the first value which should be a manifest
 
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
@@ -124,9 +122,8 @@ public class TestChunkAssembler {
         messageSequenceNumber,
         VALUE_SCHEMA_ID,
         0);
-    int indexOfMissingChunk = ThreadLocalRandom.current().nextInt(values.size() - 1);
+    int indexOfMissingChunk = ThreadLocalRandom.current().nextInt(values.size() - 2) + 1;
     values.remove(indexOfMissingChunk); // Remove a chunk
-    Collections.shuffle(values);
     chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
   }
 
@@ -170,11 +167,10 @@ public class TestChunkAssembler {
         VALUE_SCHEMA_ID_2,
         totalChunkCount1 + 1);
 
-    values2.remove(values2.size() - 1); // Remove the manifest from the second sequence
+    values2.remove(0); // Remove the manifest from the second sequence
     List<BytesWritable> allValues = new ArrayList<>();
-    allValues.addAll(values1);
     allValues.addAll(values2);
-    Collections.shuffle(allValues);
+    allValues.addAll(values1);
 
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, allValues.iterator());
@@ -226,11 +222,11 @@ public class TestChunkAssembler {
         VALUE_SCHEMA_ID_2,
         totalChunkCount1);
 
-    int indexOfMissingChunk = ThreadLocalRandom.current().nextInt(values2.size() - 1);
+    int indexOfMissingChunk = ThreadLocalRandom.current().nextInt(values2.size() - 2) + 1;
     values2.remove(indexOfMissingChunk); // Remove a chunk from the second sequence
     List<BytesWritable> allValues = new ArrayList<>();
-    allValues.addAll(values1);
     allValues.addAll(values2);
+    allValues.addAll(values1);
     chunkAssembler.assembleAndGetValue(serializedKey, allValues.iterator());
   }
 
@@ -274,9 +270,8 @@ public class TestChunkAssembler {
         VALUE_SCHEMA_ID_2,
         totalChunkCount1);
     List<BytesWritable> allValues = new ArrayList<>();
-    allValues.addAll(values1);
     allValues.addAll(values2);
-    Collections.shuffle(allValues);
+    allValues.addAll(values1);
 
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, allValues.iterator());
@@ -337,9 +332,8 @@ public class TestChunkAssembler {
         VALUE_SCHEMA_ID_2,
         totalChunkCount1 + 1);
     List<BytesWritable> allValues = new ArrayList<>();
-    allValues.addAll(values1);
     allValues.addAll(values2);
-    Collections.shuffle(allValues);
+    allValues.addAll(values1);
 
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, allValues.iterator());
@@ -400,9 +394,8 @@ public class TestChunkAssembler {
         VALUE_SCHEMA_ID_2,
         totalChunkCount1 + 1);
     List<BytesWritable> allValues = new ArrayList<>();
-    allValues.addAll(values1);
     allValues.addAll(values2);
-    Collections.shuffle(allValues);
+    allValues.addAll(values1);
 
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, allValues.iterator());
@@ -433,8 +426,7 @@ public class TestChunkAssembler {
         VALUE_SCHEMA_ID,
         0);
     byte[] regularValueBytes = createChunkBytes(100, 23);
-    values.add(createRegularValue(regularValueBytes, VALUE_SCHEMA_ID_2, totalChunkCount + 1, MapperValueType.PUT));
-    Collections.shuffle(values);
+    values.add(0, createRegularValue(regularValueBytes, VALUE_SCHEMA_ID_2, totalChunkCount + 1, MapperValueType.PUT));
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
 
@@ -464,11 +456,10 @@ public class TestChunkAssembler {
         VALUE_SCHEMA_ID,
         0);
     // Randomly remove a value to simulate the incomplete large value
-    values.remove(ThreadLocalRandom.current().nextInt(values.size()));
+    values.remove(ThreadLocalRandom.current().nextInt(values.size() - 2) + 1);
 
     byte[] regularValueBytes = createChunkBytes(100, 23);
-    values.add(createRegularValue(regularValueBytes, VALUE_SCHEMA_ID_2, totalChunkCount + 1, MapperValueType.PUT));
-    Collections.shuffle(values);
+    values.add(0, createRegularValue(regularValueBytes, VALUE_SCHEMA_ID_2, totalChunkCount + 1, MapperValueType.PUT));
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
 
@@ -492,8 +483,8 @@ public class TestChunkAssembler {
     values.add(createRegularValue(value1Bytes, VALUE_SCHEMA_ID_2, value1Offset, MapperValueType.PUT));
     values.add(createRegularValue(value2Bytes, VALUE_SCHEMA_ID_2, value2Offset, MapperValueType.PUT));
     values.add(createRegularValue(value3Bytes, VALUE_SCHEMA_ID_2, value3Offset, MapperValueType.PUT)); // The third
-                                                                                                       // value wins
-    Collections.shuffle(values);
+
+    Collections.reverse(values); // value wins
 
     final byte[] serializedKey = createChunkBytes(0, 5);
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
@@ -518,8 +509,9 @@ public class TestChunkAssembler {
     values.add(createRegularValue(value1Bytes, VALUE_SCHEMA_ID_2, value1Offset, MapperValueType.PUT));
     values.add(createRegularValue(new byte[0], -1, value2Offset, MapperValueType.DELETE));
     values.add(createRegularValue(value3Bytes, VALUE_SCHEMA_ID_2, value3Offset, MapperValueType.PUT)); // The third
-                                                                                                       // value wins
-    Collections.shuffle(values);
+
+    // value wins
+    Collections.reverse(values);
 
     final byte[] serializedKey = createChunkBytes(0, 5);
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
@@ -551,8 +543,7 @@ public class TestChunkAssembler {
         VALUE_SCHEMA_ID,
         0);
     // "Delete value" at the end
-    values.add(createRegularValue(new byte[0], -1, totalChunkCount + 1, MapperValueType.DELETE));
-    Collections.shuffle(values);
+    values.add(0, createRegularValue(new byte[0], -1, totalChunkCount + 1, MapperValueType.DELETE));
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
     Assert.assertNull(assembledValue);
@@ -579,11 +570,10 @@ public class TestChunkAssembler {
         VALUE_SCHEMA_ID,
         0);
     // Randomly remove a value to simulate the incomplete large value
-    values.remove(ThreadLocalRandom.current().nextInt(values.size()));
+    values.remove(ThreadLocalRandom.current().nextInt(values.size() - 2) + 1);
 
     // "Delete value" at the end
-    values.add(createRegularValue(new byte[0], -1, totalChunkCount + 1, MapperValueType.DELETE));
-    Collections.shuffle(values);
+    values.add(0, createRegularValue(new byte[0], -1, totalChunkCount + 1, MapperValueType.DELETE));
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
 
@@ -603,7 +593,7 @@ public class TestChunkAssembler {
     values.add(createRegularValue(value1Bytes, VALUE_SCHEMA_ID_2, value1Offset, MapperValueType.PUT));
     values.add(createRegularValue(value2Bytes, VALUE_SCHEMA_ID_2, value2Offset, MapperValueType.PUT));
     values.add(createRegularValue(new byte[0], -1, value3Offset, MapperValueType.DELETE)); // The third value wins
-    Collections.shuffle(values);
+    Collections.reverse(values);
 
     final byte[] serializedKey = createChunkBytes(0, 5);
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
@@ -624,8 +614,6 @@ public class TestChunkAssembler {
 
     final byte[] serializedKey = createChunkBytes(0, 5);
     List<BytesWritable> values = new ArrayList<>(1 + totalChunkCount + 1);
-    byte[] regularValueBytes = createChunkBytes(100, 23);
-    values.add(createRegularValue(regularValueBytes, VALUE_SCHEMA_ID_2, 0, MapperValueType.PUT));
     values.addAll(
         createKafkaInputMapperValues(
             serializedKey,
@@ -638,8 +626,9 @@ public class TestChunkAssembler {
             1));
     // Randomly remove a value chunk to simulate the incomplete large value
     values.remove(ThreadLocalRandom.current().nextInt(values.size() - 2) + 1);
+    byte[] regularValueBytes = createChunkBytes(100, 23);
+    values.add(createRegularValue(regularValueBytes, VALUE_SCHEMA_ID_2, 0, MapperValueType.PUT));
 
-    Collections.shuffle(values);
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
 
@@ -660,8 +649,7 @@ public class TestChunkAssembler {
 
     final byte[] serializedKey = createChunkBytes(0, 5);
     List<BytesWritable> values = new ArrayList<>();
-    byte[] regularValueBytes = createChunkBytes(100, 23);
-    values.add(createRegularValue(regularValueBytes, VALUE_SCHEMA_ID_2, 0, MapperValueType.PUT));
+
     values.addAll(
         createKafkaInputMapperValues(
             serializedKey,
@@ -672,7 +660,8 @@ public class TestChunkAssembler {
             messageSequenceNumber,
             VALUE_SCHEMA_ID,
             1));
-    Collections.shuffle(values);
+    byte[] regularValueBytes = createChunkBytes(100, 23);
+    values.add(createRegularValue(regularValueBytes, VALUE_SCHEMA_ID_2, 0, MapperValueType.PUT));
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
 
@@ -693,7 +682,6 @@ public class TestChunkAssembler {
 
     final byte[] serializedKey = createChunkBytes(0, 5);
     List<BytesWritable> values = new ArrayList<>();
-    values.add(createRegularValue(new byte[0], -1, 0, MapperValueType.DELETE));
 
     values.addAll(
         createKafkaInputMapperValues(
@@ -705,7 +693,8 @@ public class TestChunkAssembler {
             messageSequenceNumber,
             VALUE_SCHEMA_ID,
             1));
-    Collections.shuffle(values);
+    values.add(createRegularValue(new byte[0], -1, 0, MapperValueType.DELETE));
+
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
 
@@ -726,7 +715,6 @@ public class TestChunkAssembler {
 
     final byte[] serializedKey = createChunkBytes(0, 5);
     List<BytesWritable> values = new ArrayList<>();
-    values.add(createRegularValue(new byte[0], -1, 0, MapperValueType.DELETE));
     values.addAll(
         createKafkaInputMapperValues(
             serializedKey,
@@ -739,8 +727,8 @@ public class TestChunkAssembler {
             1));
     // Randomly remove a chunk value to simulate the incomplete large value
     values.remove(ThreadLocalRandom.current().nextInt(values.size() - 2) + 1);
+    values.add(createRegularValue(new byte[0], -1, 0, MapperValueType.DELETE));
 
-    Collections.shuffle(values);
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
 
@@ -812,6 +800,9 @@ public class TestChunkAssembler {
     lastMapperValue.replicationMetadataVersionId = 1;
 
     values.add(serialize(lastMapperValue));
+
+    // The offset of the messages will be in descending order.
+    Collections.reverse(values);
     return values;
   }
 

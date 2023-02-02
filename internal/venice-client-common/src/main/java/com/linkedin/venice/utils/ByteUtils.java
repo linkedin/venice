@@ -207,6 +207,16 @@ public class ByteUtils {
     }
   }
 
+  public static byte[] copyByteArray(ByteBuffer byteBuffer) {
+    if (!byteBuffer.hasRemaining()) {
+      return new byte[0];
+    }
+    int size = byteBuffer.remaining();
+    byte[] ret = new byte[size];
+    System.arraycopy(byteBuffer.array(), byteBuffer.position(), ret, 0, size);
+    return ret;
+  }
+
   /**
    * Extract the data in the ByteBuffer into the destination array by copying "length" bytes from the source
    * buffer into the given array, starting at the current position of the source buffer and at the given offset in the

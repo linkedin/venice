@@ -13,6 +13,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
 import java.util.Iterator;
 import java.util.Optional;
+import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.OutputCollector;
@@ -88,26 +89,17 @@ public class KafkaInputFormatCombiner extends AbstractMapReduceTask
    * @return the value with the largest offset for the purpose of compaction
    */
   private Optional<BytesWritable> extractValueWithHighestOffset(Iterator<BytesWritable> valueIterator) {
-    BytesWritable lastBytesWritable = null;
-    KafkaInputMapperValue mapperValue = null;
-    boolean lastValueIsADelete = false;
-    long largestOffset = Long.MIN_VALUE;
-    while (valueIterator.hasNext()) {
-      BytesWritable bytesWritable = valueIterator.next();
-      mapperValue =
-          KAFKA_INPUT_MAPPER_VALUE_AVRO_SPECIFIC_DESERIALIZER.deserialize(mapperValue, bytesWritable.copyBytes());
-      if (mapperValue.offset > largestOffset) {
-        lastBytesWritable = bytesWritable;
-        lastValueIsADelete = mapperValue.valueType.equals(MapperValueType.DELETE);
-        largestOffset = mapperValue.offset;
-      }
-    }
-    if (largestOffset == Long.MIN_VALUE) {
+    if (!valueIterator.hasNext()) {
       throw new IllegalArgumentException("The valueIterator did not contain any value!");
     }
-    if (lastValueIsADelete) {
+    // Just check the first entry because of secondary sorting.
+    BytesWritable firstBytesWritable = valueIterator.next();
+    KafkaInputMapperValue mapperValue = KAFKA_INPUT_MAPPER_VALUE_AVRO_SPECIFIC_DESERIALIZER.deserialize(
+        OptimizedBinaryDecoderFactory.defaultFactory()
+            .createOptimizedBinaryDecoder(firstBytesWritable.getBytes(), 0, firstBytesWritable.getLength()));
+    if (mapperValue.valueType.equals(MapperValueType.DELETE)) {
       return Optional.empty();
     }
-    return Optional.of(lastBytesWritable);
+    return Optional.of(firstBytesWritable);
   }
 }
