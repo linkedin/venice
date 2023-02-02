@@ -62,6 +62,7 @@ import static com.linkedin.venice.Arg.OWNER;
 import static com.linkedin.venice.Arg.PARTITIONER_CLASS;
 import static com.linkedin.venice.Arg.PARTITIONER_PARAMS;
 import static com.linkedin.venice.Arg.PARTITION_COUNT;
+import static com.linkedin.venice.Arg.PARTITION_DETAIL_ENABLED;
 import static com.linkedin.venice.Arg.PRINCIPAL;
 import static com.linkedin.venice.Arg.PROGRESS_INTERVAL;
 import static com.linkedin.venice.Arg.PUSH_ID;
@@ -388,7 +389,7 @@ public enum Command {
   ),
   LIST_STORE_PUSH_INFO(
       "list-store-push-info", "List information about current pushes and push history for a specific store.",
-      new Arg[] { URL, CLUSTER, STORE }
+      new Arg[] { URL, CLUSTER, STORE }, new Arg[] { PARTITION_DETAIL_ENABLED }
   ),
   UPDATE_KAFKA_TOPIC_LOG_COMPACTION(
       "update-kafka-topic-log-compaction", "Update log compaction config of a topic through controllers",

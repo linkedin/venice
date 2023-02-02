@@ -830,9 +830,12 @@ public interface Admin extends AutoCloseable, Closeable {
    */
   int getLargestUsedVersionFromStoreGraveyard(String clusterName, String storeName);
 
-  Map<String, RegionPushDetails> listStorePushInfo(String clusterName, String storeName);
+  Map<String, RegionPushDetails> listStorePushInfo(
+      String clusterName,
+      String storeName,
+      boolean isPartitionDetailEnabled);
 
-  RegionPushDetails getRegionPushDetails(String clusterName, String storeName);
+  RegionPushDetails getRegionPushDetails(String clusterName, String storeName, boolean isPartitionDetailEnabled);
 
   Map<String, Long> getAdminTopicMetadata(String clusterName, Optional<String> storeName);
 
