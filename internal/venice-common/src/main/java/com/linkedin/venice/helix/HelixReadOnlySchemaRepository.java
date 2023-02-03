@@ -148,18 +148,23 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
     }
   }
 
-  void maybeForceRefreshSchemaDataForSupersetSchemaWithRetry(Store store, SchemaData schemaData, int supersetSchemaId) {
-    if (isSupersetSchemaReadyToServe(store, schemaData, supersetSchemaId)) {
-      return;
+  SchemaEntry forceRefreshSupersetSchemaWithRetry(String storeName) {
+    Store store = getStoreRepository().getStore(storeName);
+    int supersetSchemaId = store.getLatestSuperSetValueSchemaId();
+    getSchemaLock().writeLock().lock();
+    SchemaData schemaData = getSchemaMap().get(getZkStoreName(storeName));
+    try {
+      RetryUtils.executeWithMaxAttempt(() -> {
+        forceRefreshSchemaData(store, schemaData);
+        if (!isSupersetSchemaReadyToServe(store, schemaData, supersetSchemaId)) {
+          throw new InvalidVeniceSchemaException(
+              "Unable to refresh superset schema id: " + supersetSchemaId + " for store: " + store.getName());
+        }
+      }, 3, Duration.ofMillis(100), Collections.singletonList(InvalidVeniceSchemaException.class));
+      return schemaData.getValueSchema(supersetSchemaId);
+    } finally {
+      getSchemaLock().writeLock().unlock();
     }
-    RetryUtils.executeWithMaxAttempt(() -> {
-      forceRefreshSchemaData(store, schemaData);
-      if (!isSupersetSchemaReadyToServe(store, schemaData, supersetSchemaId)) {
-        throw new InvalidVeniceSchemaException(
-            "Unable to refresh superset schema id: " + supersetSchemaId + " for store: " + store.getName());
-      }
-    }, 3, Duration.ofMillis(100), Collections.singletonList(InvalidVeniceSchemaException.class));
-
   }
 
   boolean isSupersetSchemaReadyToServe(Store store, SchemaData schemaData, int supersetSchemaId) {
@@ -433,22 +438,31 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
   public Optional<SchemaEntry> getSupersetSchema(String storeName) {
     getSchemaLock().readLock().lock();
     SchemaData schemaData;
+    Optional<Integer> supersetSchemaIdOptional;
     try {
       fetchStoreSchemaIfNotInCache(storeName);
       schemaData = getSchemaMap().get(getZkStoreName(storeName));
       if (schemaData == null) {
         throw new VeniceNoStoreException(storeName);
       }
-      Optional<Integer> supersetSchemaIdOptional = getSupersetSchemaID(storeName);
-      supersetSchemaIdOptional.ifPresent(
-          supersetSchemaID -> maybeForceRefreshSchemaDataForSupersetSchemaWithRetry(
-              getStoreRepository().getStore(storeName),
-              schemaData,
-              supersetSchemaID));
-      return supersetSchemaIdOptional.map(schemaData::getValueSchema);
+      supersetSchemaIdOptional = getSupersetSchemaID(storeName);
+      if (!supersetSchemaIdOptional.isPresent()) {
+        return Optional.empty();
+      }
+      int supersetSchemaId = supersetSchemaIdOptional.get();
+      ;
+      if (isSupersetSchemaReadyToServe(
+          getStoreRepository().getStore(storeName),
+          schemaData,
+          supersetSchemaIdOptional.get())) {
+        return Optional.of(schemaData.getValueSchema(supersetSchemaId));
+      }
     } finally {
       getSchemaLock().readLock().unlock();
     }
+    // When superset schema exist, but corresponding schema is not ready, we will force refresh the schema and retrieve
+    // the update.
+    return Optional.of(forceRefreshSupersetSchemaWithRetry(storeName));
   }
 
   private Optional<Integer> getSupersetSchemaID(String storeName) {

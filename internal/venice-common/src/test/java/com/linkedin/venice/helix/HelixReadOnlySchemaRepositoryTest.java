@@ -113,8 +113,7 @@ public class HelixReadOnlySchemaRepositoryTest {
     schemaDataMap.put(storeName, new SchemaData(storeName));
     when(schemaRepository.getSupersetSchema(storeName)).thenCallRealMethod();
     when(schemaRepository.isSupersetSchemaReadyToServe(any(), any(), anyInt())).thenCallRealMethod();
-    doCallRealMethod().when(schemaRepository)
-        .maybeForceRefreshSchemaDataForSupersetSchemaWithRetry(any(), any(), anyInt());
+    doCallRealMethod().when(schemaRepository).forceRefreshSupersetSchemaWithRetry(anyString());
     when(schemaRepository.getSchemaMap()).thenReturn(schemaDataMap);
     verify(schemaRepository, times(3)).forceRefreshSchemaData(any(), any());
 
