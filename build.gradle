@@ -389,6 +389,10 @@ subprojects {
           }
         }
       }
+
+      afterEvaluate {
+        excludedClassFiles(classDirectories)
+      }
     }
 
     diffCoverageReport {
@@ -568,6 +572,30 @@ idea.project.ipr {
       }
     }
   }
+}
+
+private excludedClassFiles(classDirectories) {
+  // exclude classes generated from Avro
+  def generatedSources = [
+      '**/com/linkedin/venice/admin/protocol/response/*',
+      '**/com/linkedin/venice/compute/protocol/request/*',
+      '**/com/linkedin/venice/compute/protocol/response/*',
+      '**/com/linkedin/venice/compute/protocol/request/router/*',
+      '**/com/linkedin/venice/controller/kafka/protocol/admin/*',
+      '**/com/linkedin/venice/ingestion/protocol/*',
+      '**/com/linkedin/venice/kafka/protocol/*',
+      '**/com/linkedin/venice/storage/protocol/*',
+      '**/com/linkedin/venice/status/protocol/*',
+      '**/com/linkedin/venice/meta/systemstore/schemas/*',
+      '**/com/linkedin/venice/participant/protocol/*',
+      '**/com/linkedin/venice/pushstatus/*',
+      '**/com/linkedin/venice/hadoop/input/kafka/avro/*',
+      '**/com/linkedin/venice/read/protocol/response/*',
+      '**/com/linkedin/venice/read/protocol/request/*'
+  ]
+  classDirectories.setFrom(files(classDirectories.files.collect {
+    fileTree(dir: it, exclude: generatedSources)
+  }))
 }
 
 // Allow running diffCoverage against uncommitted files
