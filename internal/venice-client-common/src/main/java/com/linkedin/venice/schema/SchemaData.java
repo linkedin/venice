@@ -32,8 +32,8 @@ public final class SchemaData {
   private final Map<RmdVersionId, RmdSchemaEntry> rmdSchemaMap;
   private final Map<Schema, RmdVersionId> rmdSchemaRMap;
 
-  private final Set<Integer> updateSchemaExistenceMap;
-  private final Set<Integer> rmdSchemaExistenceMap;
+  private final Set<Integer> updateSchemaExistenceSet;
+  private final Set<Integer> rmdSchemaExistenceSet;
 
   public final static int UNKNOWN_SCHEMA_ID = 0;
   public final static int INVALID_VALUE_SCHEMA_ID = -1;
@@ -50,8 +50,8 @@ public final class SchemaData {
     rmdSchemaMap = new VeniceConcurrentHashMap<>();
     rmdSchemaRMap = new VeniceConcurrentHashMap<>();
 
-    updateSchemaExistenceMap = new HashSet<>();
-    rmdSchemaExistenceMap = new HashSet<>();
+    updateSchemaExistenceSet = new HashSet<>();
+    rmdSchemaExistenceSet = new HashSet<>();
   }
 
   public String getStoreName() {
@@ -98,7 +98,7 @@ public final class SchemaData {
         new Pair<>(derivedSchemaEntry.getValueSchemaID(), derivedSchemaEntry.getId());
     updateSchemaMap.put(derivedSchemaId, derivedSchemaEntry);
     updateSchemaRMap.put(derivedSchemaEntry, derivedSchemaId);
-    updateSchemaExistenceMap.add(derivedSchemaEntry.getValueSchemaID());
+    updateSchemaExistenceSet.add(derivedSchemaEntry.getValueSchemaID());
   }
 
   public int getMaxValueSchemaId() {
@@ -148,14 +148,14 @@ public final class SchemaData {
     RmdVersionId rmdVersionId = new RmdVersionId(rmdSchemaEntry.getValueSchemaID(), rmdSchemaEntry.getId());
     rmdSchemaMap.put(rmdVersionId, rmdSchemaEntry);
     rmdSchemaRMap.put(rmdSchemaEntry.getSchema(), rmdVersionId);
-    rmdSchemaExistenceMap.add(rmdSchemaEntry.getValueSchemaID());
+    rmdSchemaExistenceSet.add(rmdSchemaEntry.getValueSchemaID());
   }
 
   public boolean hasUpdateSchema(int valueSchemaId) {
-    return updateSchemaExistenceMap.contains(valueSchemaId);
+    return updateSchemaExistenceSet.contains(valueSchemaId);
   }
 
   public boolean hasRmdSchema(int valueSchemaId) {
-    return rmdSchemaExistenceMap.contains(valueSchemaId);
+    return rmdSchemaExistenceSet.contains(valueSchemaId);
   }
 }
