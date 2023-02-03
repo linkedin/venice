@@ -26,7 +26,6 @@ import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
-import java.util.concurrent.ExecutorService;
 import java.util.function.BooleanSupplier;
 
 
@@ -111,7 +110,6 @@ public class StoreIngestionTaskFactory {
     private VeniceServerConfig serverConfig;
     private DiskUsage diskUsage;
     private AggKafkaConsumerService aggKafkaConsumerService;
-    private ExecutorService cacheWarmingThreadPool;
     private long startReportingReadyToServeTimestamp;
     private InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
     private boolean isDaVinciClient;
@@ -310,14 +308,6 @@ public class StoreIngestionTaskFactory {
 
     public Builder setAggKafkaConsumerService(AggKafkaConsumerService aggKafkaConsumerService) {
       return set(() -> this.aggKafkaConsumerService = aggKafkaConsumerService);
-    }
-
-    public ExecutorService getCacheWarmingThreadPool() {
-      return cacheWarmingThreadPool;
-    }
-
-    public Builder setCacheWarmingThreadPool(ExecutorService cacheWarmingThreadPool) {
-      return set(() -> this.cacheWarmingThreadPool = cacheWarmingThreadPool);
     }
 
     public long getStartReportingReadyToServeTimestamp() {

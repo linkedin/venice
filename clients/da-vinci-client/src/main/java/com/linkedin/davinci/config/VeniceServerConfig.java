@@ -19,11 +19,7 @@ import static com.linkedin.venice.ConfigKeys.MAX_FUTURE_VERSION_LEADER_FOLLOWER_
 import static com.linkedin.venice.ConfigKeys.MAX_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER;
 import static com.linkedin.venice.ConfigKeys.OFFSET_LAG_DELTA_RELAX_FACTOR_FOR_FAST_ONLINE_TRANSITION_IN_RESTART;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS;
-import static com.linkedin.venice.ConfigKeys.SERVER_AUTO_COMPACTION_FOR_SAMZA_REPROCESSING_JOB_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_BLOCKING_QUEUE_TYPE;
-import static com.linkedin.venice.ConfigKeys.SERVER_CACHE_WARMING_BEFORE_READY_TO_SERVE_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SERVER_CACHE_WARMING_STORE_LIST;
-import static com.linkedin.venice.ConfigKeys.SERVER_CACHE_WARMING_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_FAST_AVRO_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_QUEUE_CAPACITY;
 import static com.linkedin.venice.ConfigKeys.SERVER_COMPUTE_THREAD_NUM;
@@ -311,9 +307,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final KafkaConsumerService.ConsumerAssignmentStrategy sharedConsumerAssignmentStrategy;
   private final int consumerPoolSizePerKafkaCluster;
   private final boolean leakedResourceCleanupEnabled;
-  private final boolean cacheWarmingBeforeReadyToServeEnabled;
-  private final Set<String> cacheWarmingStoreSet;
-  private final int cacheWarmingThreadPoolSize;
   private final long delayReadyToServeMS;
 
   private final IngestionMode ingestionMode;
@@ -330,7 +323,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final String systemSchemaClusterName;
 
   private final long sharedConsumerNonExistingTopicCleanupDelayMS;
-  private final boolean enableAutoCompactionForSamzaReprocessingJob;
   private final int offsetLagDeltaRelaxFactorForFastOnlineTransitionInRestart;
 
   private final boolean sharedKafkaProducerEnabled;
@@ -511,12 +503,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
               + consumerPoolSizePerKafkaCluster);
     }
     leakedResourceCleanupEnabled = serverProperties.getBoolean(SERVER_LEAKED_RESOURCE_CLEANUP_ENABLED, true);
-    cacheWarmingBeforeReadyToServeEnabled =
-        serverProperties.getBoolean(SERVER_CACHE_WARMING_BEFORE_READY_TO_SERVE_ENABLED, false);
-    List<String> cacheWarmingStoreList =
-        serverProperties.getList(SERVER_CACHE_WARMING_STORE_LIST, Collections.emptyList());
-    cacheWarmingStoreSet = new HashSet<>(cacheWarmingStoreList);
-    cacheWarmingThreadPoolSize = serverProperties.getInt(SERVER_CACHE_WARMING_THREAD_POOL_SIZE, 4);
     delayReadyToServeMS = serverProperties.getLong(SERVER_DELAY_REPORT_READY_TO_SERVE_MS, 0);
 
     ingestionMode =
@@ -540,8 +526,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     systemSchemaClusterName = serverProperties.getString(SYSTEM_SCHEMA_CLUSTER_NAME, "");
     sharedConsumerNonExistingTopicCleanupDelayMS = serverProperties
         .getLong(SERVER_SHARED_CONSUMER_NON_EXISTING_TOPIC_CLEANUP_DELAY_MS, TimeUnit.MINUTES.toMillis(10));
-    enableAutoCompactionForSamzaReprocessingJob =
-        serverProperties.getBoolean(SERVER_AUTO_COMPACTION_FOR_SAMZA_REPROCESSING_JOB_ENABLED, true);
     sharedKafkaProducerEnabled = serverProperties.getBoolean(SERVER_SHARED_KAFKA_PRODUCER_ENABLED, false);
     sharedProducerPoolSizePerKafkaCluster =
         serverProperties.getInt(SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER, 8);
@@ -841,18 +825,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return leakedResourceCleanupEnabled;
   }
 
-  public boolean isCacheWarmingBeforeReadyToServeEnabled() {
-    return cacheWarmingBeforeReadyToServeEnabled;
-  }
-
-  public boolean isCacheWarmingEnabledForStore(String storeName) {
-    return cacheWarmingStoreSet.contains(storeName);
-  }
-
-  public int getCacheWarmingThreadPoolSize() {
-    return cacheWarmingThreadPoolSize;
-  }
-
   public long getDelayReadyToServeMS() {
     return delayReadyToServeMS;
   }
@@ -895,10 +867,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public long getSharedConsumerNonExistingTopicCleanupDelayMS() {
     return sharedConsumerNonExistingTopicCleanupDelayMS;
-  }
-
-  public boolean isEnableAutoCompactionForSamzaReprocessingJob() {
-    return enableAutoCompactionForSamzaReprocessingJob;
   }
 
   public boolean isSharedKafkaProducerEnabled() {
