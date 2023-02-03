@@ -31,6 +31,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.OPERATION
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OWNER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITIONERS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION_COUNT;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION_DETAIL_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_OWNERS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PERSONA_QUOTA;
@@ -78,7 +79,6 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -87,7 +87,6 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
@@ -112,33 +111,6 @@ public class ControllerClient implements Closeable {
   private final VeniceJsonSerializer<Version> versionVeniceJsonSerializer = new VeniceJsonSerializer<>(Version.class);
   private String leaderControllerUrl;
   private final List<String> controllerDiscoveryUrls;
-
-  private static final Map<String, ControllerClient> clusterToClientMap = new VeniceConcurrentHashMap<>();
-
-  /**
-   * The key to find a cluster in clusterToClientMap is clusterName + url,
-   * where url is either a set of discoveryUrls or a D2 service name.
-   */
-
-  public static Map<String, ControllerClient> getClusterToClientMap() {
-    return Collections.unmodifiableMap(clusterToClientMap);
-  }
-
-  public static void addClusterToClientMapEntry(String clusterName, String url, ControllerClient value) {
-    clusterToClientMap.computeIfAbsent(clusterName + url, k -> value);
-  }
-
-  public static void deleteClusterToClientMapEntry(String clusterName, String url) {
-    clusterToClientMap.remove(clusterName + url);
-  }
-
-  public static ControllerClient getClusterToClientMapEntry(String clusterName, String url) {
-    return getClusterToClientMap().get(clusterName + url);
-  }
-
-  public static boolean clusterToClientMapContains(String clusterName, String url) {
-    return getClusterToClientMap().containsKey(clusterName + url);
-  }
 
   public ControllerClient(String clusterName, String discoveryUrls) {
     this(clusterName, discoveryUrls, Optional.empty());
@@ -167,12 +139,7 @@ public class ControllerClient implements Closeable {
       Optional<SSLFactory> sslFactory,
       int retryAttempts) {
     String clusterName = discoverCluster(discoveryUrls, storeName, sslFactory, retryAttempts).getCluster();
-    if (!clusterToClientMapContains(clusterName, discoveryUrls))
-      addClusterToClientMapEntry(
-          clusterName,
-          discoveryUrls,
-          new ControllerClient(clusterName, discoveryUrls, sslFactory));
-    return getClusterToClientMapEntry(clusterName, discoveryUrls);
+    return constructClusterControllerClient(clusterName, discoveryUrls, sslFactory);
   }
 
   public static ControllerClient constructClusterControllerClient(String clusterName, String discoveryUrls) {
@@ -183,18 +150,18 @@ public class ControllerClient implements Closeable {
       String clusterName,
       String discoveryUrls,
       Optional<SSLFactory> sslFactory) {
-    if (!clusterToClientMapContains(clusterName, discoveryUrls)) {
-      addClusterToClientMapEntry(
-          clusterName,
-          discoveryUrls,
-          new ControllerClient(clusterName, discoveryUrls, sslFactory));
-    }
-    return getClusterToClientMapEntry(clusterName, discoveryUrls);
+    return ControllerClientFactory.getControllerClient(clusterName, discoveryUrls, sslFactory);
   }
 
   @Override
   public void close() {
-    clusterToClientMap.clear();
+    // Currently, we do not have any resources to clean up. If there is something to clean-up, we must check the return
+    // value of "ControllerClientFactory.release(this)" and if that is true, only then is it safe to clean up resources.
+    // if (ControllerClientFactory.release(this)) {
+    // // Object is no longer used in other places. Safe to clean up resources
+    // ...
+    // }
+    ControllerClientFactory.release(this);
   }
 
   protected String discoverLeaderController() {
@@ -231,9 +198,9 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.STORE, params, StoreResponse.class, timeoutMs, 1, null);
   }
 
-  public RepushInfoResponse getRepushInfo(String storeName, Optional<String> fabircName) {
+  public RepushInfoResponse getRepushInfo(String storeName, Optional<String> fabricName) {
     QueryParams params = newParams().add(NAME, storeName);
-    fabircName.ifPresent(s -> params.add(FABRIC, s));
+    fabricName.ifPresent(s -> params.add(FABRIC, s));
     return request(ControllerRoute.GET_REPUSH_INFO, params, RepushInfoResponse.class);
   }
 
@@ -289,7 +256,7 @@ public class ControllerClient implements Closeable {
    * idempotent and will return the same topic.
    * @param storeName Name of the store being written to.
    * @param storeSize Estimated size of push in bytes, used to determine partitioning
-   * @param pushJobId Unique Id for this job
+   * @param pushJobId Unique identifier for this job
    * @param sendStartOfPush Whether controller should send START_OF_PUSH message to the newly created topic,
    *                        while adding a new version. This is currently used in Samza batch load, a.k.a. grandfather
    * @param sorted Whether the push is going to contain sorted data (in each partition) or not
@@ -384,8 +351,8 @@ public class ControllerClient implements Closeable {
    * @param pushJobId the push job id for the push
    * @param storeSize the size of the store (currently unused)
    * @param timeOut max amount of time this function should take before returning in MILLISECONDS.  Retries sent to the controller
-   *                have 2 second sleeps between them.  So a timeout should be chosen that is larger, and a multiple of
-   *                2 seconds preferablly.
+   *                have 2-second sleeps between them.  So a timeout should be chosen that is larger, and a multiple of
+   *                2 seconds preferably.
    * @return the response from the controller.  Either a successful one, or a failed one with more information.
    */
   public ControllerResponse sendEmptyPushAndWait(String storeName, String pushJobId, long storeSize, long timeOut) {
@@ -457,7 +424,7 @@ public class ControllerClient implements Closeable {
       }
     } finally {
       if (creationResponse == null || updateResponse == null) {
-        // If any step in this process failed (that is, the store was created in some inconsistent state, clean up.
+        // If any step in this process failed (that is, the store was created in some inconsistent state), clean up.
         if (!this.getStore(storeName).isError()) {
           this.disableAndDeleteStore(storeName);
         }
@@ -507,7 +474,7 @@ public class ControllerClient implements Closeable {
   }
 
   /**
-   * This commmand should be sent to src controller, not dest controler
+   * This command should be sent to src controller, not dest controller
    */
   public StoreMigrationResponse abortMigration(String storeName, String destClusterName) {
     QueryParams params = newParams().add(NAME, storeName).add(CLUSTER_DEST, destClusterName);
@@ -588,10 +555,10 @@ public class ControllerClient implements Closeable {
   /**
    * Useful for pieces of code which want to have a test mocking the result of the function that's passed in...
    */
-  public static <R extends ControllerResponse> R retryableRequest(
-      ControllerClient client,
+  public static <C extends ControllerClient, R extends ControllerResponse> R retryableRequest(
+      C client,
       int totalAttempts,
-      Function<ControllerClient, R> request) {
+      Function<C, R> request) {
     if (totalAttempts < 1) {
       throw new VeniceException(
           "Querying with retries requires at least one attempt, called with " + totalAttempts + " attempts");
@@ -871,13 +838,13 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.LAST_SUCCEED_EXECUTION_ID, newParams(), LastSucceedExecutionIdResponse.class);
   }
 
-  public ControllerResponse enableThrotting(boolean isThrottlingEnabled) {
+  public ControllerResponse enableThrottling(boolean isThrottlingEnabled) {
     QueryParams params = newParams().add(STATUS, isThrottlingEnabled);
     return request(ControllerRoute.ENABLE_THROTTLING, params, ControllerResponse.class);
   }
 
-  public ControllerResponse enableMaxCapacityProtection(boolean isMaxCapacityProtion) {
-    QueryParams params = newParams().add(STATUS, isMaxCapacityProtion);
+  public ControllerResponse enableMaxCapacityProtection(boolean isMaxCapacityProtection) {
+    QueryParams params = newParams().add(STATUS, isMaxCapacityProtection);
     return request(ControllerRoute.ENABLE_MAX_CAPACITY_PROTECTION, params, ControllerResponse.class);
   }
 
@@ -994,22 +961,14 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.GET_STORE_LARGEST_USED_VERSION, params, VersionResponse.class);
   }
 
-  public RegionPushDetailsResponse getRegionPushDetails(String storeName, String clusterName) {
-    QueryParams params = newParams().add(CLUSTER, clusterName).add(NAME, storeName);
+  public RegionPushDetailsResponse getRegionPushDetails(String storeName, boolean isPartitionDetailEnabled) {
+    QueryParams params = newParams().add(NAME, storeName).add(PARTITION_DETAIL_ENABLED, isPartitionDetailEnabled);
     return request(ControllerRoute.GET_REGION_PUSH_DETAILS, params, RegionPushDetailsResponse.class);
   }
 
-  public StoreHealthAuditResponse listStorePushInfo(String clusterName, String parentControllerUrl, String storeName) {
-    QueryParams params = newParams().add(CLUSTER, clusterName).add(NAME, storeName);
-    try (ControllerTransport transport = new ControllerTransport(sslFactory)) {
-      return transport
-          .request(parentControllerUrl, ControllerRoute.LIST_STORE_PUSH_INFO, params, StoreHealthAuditResponse.class);
-    } catch (Exception e) {
-      return makeErrorResponse(
-          "controllerapi:ControllerClient:listStorePushInfo - " + e.toString(),
-          e,
-          StoreHealthAuditResponse.class);
-    }
+  public StoreHealthAuditResponse listStorePushInfo(String storeName, boolean isPartitionDetailEnabled) {
+    QueryParams params = newParams().add(NAME, storeName).add(PARTITION_DETAIL_ENABLED, isPartitionDetailEnabled);
+    return request(ControllerRoute.LIST_STORE_PUSH_INFO, params, StoreHealthAuditResponse.class);
   }
 
   public static D2ServiceDiscoveryResponse discoverCluster(

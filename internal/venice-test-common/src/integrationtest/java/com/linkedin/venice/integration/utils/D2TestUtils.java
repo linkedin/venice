@@ -85,6 +85,7 @@ public class D2TestUtils {
           extraClusterServiceConfigurations,
           serviceVariants);
 
+      // populate zookeeper
       d2Config.configure();
     } catch (Exception e) {
       throw new VeniceException(e);

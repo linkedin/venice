@@ -52,4 +52,11 @@ public class StoreHealthAuditResponse extends ControllerResponse {
     versionToRegion.putIfAbsent(version, new ArrayList<>());
     versionToRegion.get(version).add(name);
   }
+
+  @Override
+  public String toString() {
+    return "StoreHealthAuditResponse{" + "regionsWithStaleData=" + regionsWithStaleData + ", regionToCurrentVersion="
+        + regionToCurrentVersion + ", regionPushDetails=" + regionPushDetails + ", versionToRegion=" + versionToRegion
+        + '}';
+  }
 }

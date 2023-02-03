@@ -17,6 +17,7 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.LeaderControllerResponse;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.utils.Utils;
 import java.util.Optional;
 import org.apache.http.HttpStatus;
@@ -40,7 +41,12 @@ public class ControllerRoutes extends AbstractRoute {
         AdminSparkServer.validateParams(request, LEADER_CONTROLLER.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
         responseObject.setCluster(cluster);
-        responseObject.setUrl(admin.getLeaderController(cluster).getUrl(isSslEnabled()));
+        Instance leaderController = admin.getLeaderController(cluster);
+        responseObject.setUrl(leaderController.getUrl(isSslEnabled()));
+        if (leaderController.getPort() != leaderController.getSslPort()) {
+          // Controller is SSL Enabled
+          responseObject.setSecureUrl(leaderController.getUrl(true));
+        }
       } catch (Throwable e) {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);

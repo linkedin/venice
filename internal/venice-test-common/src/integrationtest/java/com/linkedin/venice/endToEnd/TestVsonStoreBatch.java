@@ -7,7 +7,7 @@ import static com.linkedin.venice.hadoop.VenicePushJob.KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_KAFKA;
 import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_FIELD_PROP;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
-import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJPropsWithoutD2Routing;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestWriteUtils.writeComplexVsonFile;
 import static com.linkedin.venice.utils.TestWriteUtils.writeMultiLevelVsonFile;
@@ -267,9 +267,6 @@ public class TestVsonStoreBatch {
       Schema selectedValueSchema = VsonAvroSchemaAdapter.stripFromUnion(schemas.getSecond()).getField("name").schema();
       return new KeyAndValueSchemas(schemas.getFirst(), selectedValueSchema);
     }, properties -> {
-      /**
-       * Here will use {@link VENICE_DISCOVER_URL_PROP} instead.
-       */
       properties.setProperty(VenicePushJob.KEY_FIELD_PROP, "");
       properties.setProperty(VenicePushJob.VALUE_FIELD_PROP, "name");
     },
@@ -307,7 +304,7 @@ public class TestVsonStoreBatch {
 
     try {
       String inputDirPath = "file://" + inputDir.getAbsolutePath();
-      Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
+      Properties props = defaultVPJPropsWithoutD2Routing(veniceCluster, inputDirPath, storeName);
       extraProps.accept(props);
 
       if (!storeNameOptional.isPresent()) {

@@ -1141,7 +1141,7 @@ public class AdminTool {
   }
 
   private static void enableThrottling(boolean enable) {
-    ControllerResponse response = controllerClient.enableThrotting(enable);
+    ControllerResponse response = controllerClient.enableThrottling(enable);
     printSuccess(response);
   }
 
@@ -2270,11 +2270,12 @@ public class AdminTool {
   }
 
   private static void listStorePushInfo(CommandLine cmd) {
-    String urlParam = getRequiredArgument(cmd, Arg.URL);
-    String clusterParam = getRequiredArgument(cmd, Arg.CLUSTER);
     String storeParam = getRequiredArgument(cmd, Arg.STORE);
+    boolean isPartitionDetailEnabled = Optional.ofNullable(getOptionalArgument(cmd, Arg.PARTITION_DETAIL_ENABLED))
+        .map(Boolean::parseBoolean)
+        .orElse(false);
 
-    StoreHealthAuditResponse response = controllerClient.listStorePushInfo(clusterParam, urlParam, storeParam);
+    StoreHealthAuditResponse response = controllerClient.listStorePushInfo(storeParam, isPartitionDetailEnabled);
     printObject(response);
   }
 

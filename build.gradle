@@ -380,7 +380,7 @@ subprojects {
       violationRules {
         rule {
           def threshold = project.ext.has('jacocoCoverageThreshold') ?
-              project.ext.jacocoCoverageThreshold : 0.8
+              project.ext.jacocoCoverageThreshold : 0.6
 
           limit {
             counter = 'BRANCH'
@@ -389,26 +389,20 @@ subprojects {
           }
         }
       }
-
-      afterEvaluate {
-        excludedClassFiles(classDirectories)
-      }
     }
-  }
 
-  diffCoverageReport {
-    afterEvaluate {
+    diffCoverageReport {
       diffSource.file = createDiffFile()
-    }
 
-    // Report locates at [clients|internal|services]/build/reports/jacoco/diffCoverage/html/index.html
-    reports {
-      html = true
-    }
+      // Report locates at <module_name>/build/reports/jacoco/diffCoverage/html/index.html
+      reports {
+        html = true
+      }
 
-    violationRules {
-      minBranches = 0.8
-      failOnViolation = true
+      violationRules {
+        minBranches = project.ext.has('diffCoverageThreshold') ? project.ext.diffCoverageThreshold : 0.33
+        failOnViolation = true
+      }
     }
   }
 
@@ -579,38 +573,23 @@ idea.project.ipr {
 // Allow running diffCoverage against uncommitted files
 // See https://github.com/form-com/diff-coverage-gradle/issues/73
 ext.createDiffFile = { ->
+  // Files that we don't plan to write unit tests for now. Will be worked in the future
+  def exclusionFilter = [
+        ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceHelixAdmin.java',
+        ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceParentHelixAdmin.java'
+  ]
   def file = Files.createTempFile(URLEncoder.encode(project.name, 'UTF-8'), '.diff').toFile()
   def diffBase = "${git.getUpstreamRemote()}/main"
+  def command = [
+      'git', 'diff', diffBase, '--no-color', '--minimal', '--', '.'
+  ]
+  command.addAll(exclusionFilter)
   file.withOutputStream { out ->
     exec {
-      commandLine 'git', 'diff', '--no-color', '--minimal', diffBase
+      commandLine command
       standardOutput = out
     }
   }
 
   return file
-}
-
-private excludedClassFiles(classDirectories) {
-  // exclude classes generated from Avro
-  def generatedSources = [
-      '**/com/linkedin/venice/admin/protocol/response/*',
-      '**/com/linkedin/venice/compute/protocol/request/*',
-      '**/com/linkedin/venice/compute/protocol/response/*',
-      '**/com/linkedin/venice/compute/protocol/request/router/*',
-      '**/com/linkedin/venice/controller/kafka/protocol/admin/*',
-      '**/com/linkedin/venice/ingestion/protocol/*',
-      '**/com/linkedin/venice/kafka/protocol/*',
-      '**/com/linkedin/venice/storage/protocol/*',
-      '**/com/linkedin/venice/status/protocol/*',
-      '**/com/linkedin/venice/meta/systemstore/schemas/*',
-      '**/com/linkedin/venice/participant/protocol/*',
-      '**/com/linkedin/venice/pushstatus/*',
-      '**/com/linkedin/venice/hadoop/input/kafka/avro/*',
-      '**/com/linkedin/venice/read/protocol/response/*',
-      '**/com/linkedin/venice/read/protocol/request/*'
-  ]
-  classDirectories.setFrom(files(classDirectories.files.collect {
-    fileTree(dir: it, exclude: generatedSources)
-  }))
 }

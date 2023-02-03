@@ -108,6 +108,11 @@ public interface HelixAdminClient {
   void dropStorageInstance(String clusterName, String instanceName);
 
   /**
+   * Returns a list of disabled partitions in an instance.
+   */
+  Map<String, List<String>> getDisabledPartitionsMap(String clusterName, String instanceName);
+
+  /**
    * Reset a list of partitions in error state for an instance.
    * <p>
    * The partitions are assumed to be in error state and reset will bring them from error

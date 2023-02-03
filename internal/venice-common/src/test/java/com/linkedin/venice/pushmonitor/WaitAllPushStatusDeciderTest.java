@@ -84,40 +84,42 @@ public class WaitAllPushStatusDeciderTest extends TestPushStatusDecider {
     partitionStatus.updateReplicaStatus("instance0", COMPLETED);
     partitionStatus.updateReplicaStatus("instance1", COMPLETED);
     Assert.assertEquals(
-        statusDecider.getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap),
+        statusDecider.getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap, null),
         STARTED);
 
     // have enough replicas, but one of them hasn't finished yet
     partitionStatus.updateReplicaStatus("instance2", STARTED);
     Assert.assertEquals(
-        statusDecider.getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap),
+        statusDecider.getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap, null),
         STARTED);
 
     // all the replicas have finished
     partitionStatus.updateReplicaStatus("instance2", COMPLETED);
     Assert.assertEquals(
-        statusDecider.getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap),
+        statusDecider.getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap, null),
         COMPLETED);
 
     // one of the replicas failed
     partitionStatus.updateReplicaStatus("instance1", ERROR);
-    Assert
-        .assertEquals(statusDecider.getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap), ERROR);
+    Assert.assertEquals(
+        statusDecider.getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap, null),
+        ERROR);
 
     // a new replica joined but yet registered in external view
     partitionStatus.updateReplicaStatus("instance3", STARTED);
-    Assert
-        .assertEquals(statusDecider.getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap), ERROR);
+    Assert.assertEquals(
+        statusDecider.getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap, null),
+        ERROR);
 
     instanceToStateMap.put(new Instance("instance3", "host3", 1), HelixState.STANDBY_STATE);
     Assert.assertEquals(
-        statusDecider.getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap),
+        statusDecider.getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap, null),
         STARTED);
 
     // new replica has finished
     partitionStatus.updateReplicaStatus("instance3", COMPLETED);
     Assert.assertEquals(
-        statusDecider.getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap),
+        statusDecider.getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap, null),
         COMPLETED);
   }
 }

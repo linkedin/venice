@@ -73,7 +73,7 @@ public class TestMultiDataCenterAdminOperations {
         Optional.of(new VeniceProperties(serverProperties)),
         false);
 
-    childClusters = multiColoMultiClusterWrapper.getClusters();
+    childClusters = multiColoMultiClusterWrapper.getChildRegions();
     childControllers = childClusters.stream()
         .map(veniceClusterWrapper -> new ArrayList<>(veniceClusterWrapper.getControllers().values()))
         .collect(Collectors.toList());
@@ -105,8 +105,7 @@ public class TestMultiDataCenterAdminOperations {
   public void testHybridConfigPartitionerConfigConflict() {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = Utils.getUniqueString("store");
-    String parentControllerUrl =
-        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
+    String parentControllerUrl = multiColoMultiClusterWrapper.getControllerConnectString();
 
     // Create store first
     ControllerClient controllerClient = new ControllerClient(clusterName, parentControllerUrl);

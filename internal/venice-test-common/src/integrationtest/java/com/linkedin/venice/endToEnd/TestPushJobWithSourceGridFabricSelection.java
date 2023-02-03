@@ -22,13 +22,14 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.VeniceUserStoreType;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
@@ -36,8 +37,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -47,17 +46,15 @@ import org.testng.annotations.Test;
 
 
 public class TestPushJobWithSourceGridFabricSelection {
-  private static final int TEST_TIMEOUT_MS = 90_000; // 90 seconds
+  private static final int TEST_TIMEOUT_MS = 90 * Time.MS_PER_SECOND;
 
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
   private static final int NUMBER_OF_CLUSTERS = 1;
-  private static final String[] CLUSTER_NAMES =
-      IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new); // ["venice-cluster0",
-                                                                                                         // "venice-cluster1",
-                                                                                                         // ...];
+  private String[] clusterNames;
+  private String parentControllerRegionName;
+  private String[] dcNames;
 
   private List<VeniceMultiClusterWrapper> childDatacenters;
-  private List<VeniceControllerWrapper> parentControllers;
   private VeniceTwoLayerMultiColoMultiClusterWrapper multiColoMultiClusterWrapper;
 
   @DataProvider(name = "storeSize")
@@ -92,8 +89,10 @@ public class TestPushJobWithSourceGridFabricSelection {
         Optional.of(controllerProps),
         Optional.of(new VeniceProperties(serverProperties)),
         false);
-    childDatacenters = multiColoMultiClusterWrapper.getClusters();
-    parentControllers = multiColoMultiClusterWrapper.getParentControllers();
+    childDatacenters = multiColoMultiClusterWrapper.getChildRegions();
+    parentControllerRegionName = multiColoMultiClusterWrapper.getParentRegionName() + ".parent";
+    clusterNames = multiColoMultiClusterWrapper.getClusterNames();
+    dcNames = multiColoMultiClusterWrapper.getChildRegionNames().toArray(new String[0]);
   }
 
   @AfterClass(alwaysRun = true)
@@ -106,13 +105,12 @@ public class TestPushJobWithSourceGridFabricSelection {
    */
   @Test(timeOut = TEST_TIMEOUT_MS, dataProvider = "storeSize")
   public void testPushJobWithSourceGridFabricSelection(int recordCount, int partitionCount) throws Exception {
-    String clusterName = CLUSTER_NAMES[0];
+    String clusterName = clusterNames[0];
     File inputDir = getTempDataDirectory();
     Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, recordCount);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
-    String parentControllerUrls =
-        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
+    String parentControllerUrls = multiColoMultiClusterWrapper.getControllerConnectString();
 
     // Enable NR in all colos and A/A in parent colo and 1 child colo only. The NR source fabric cluster level config is
     // dc-0 by default.
@@ -123,20 +121,20 @@ public class TestPushJobWithSourceGridFabricSelection {
                   true,
                   VeniceUserStoreType.BATCH_ONLY.toString(),
                   Optional.empty(),
-                  Optional.of("dc-parent-0.parent,dc-0,dc-1"))
+                  Optional.of(String.join(",", parentControllerRegionName, dcNames[0], dcNames[1])))
               .isError());
       Assert.assertFalse(
           parentControllerClient
               .configureActiveActiveReplicationForCluster(
                   true,
                   VeniceUserStoreType.BATCH_ONLY.toString(),
-                  Optional.of("dc-parent-0.parent,dc-0"))
+                  Optional.of(String.join(",", parentControllerRegionName, dcNames[0])))
               .isError());
     }
 
-    Properties props = TestWriteUtils.defaultVPJProps(parentControllerUrls, inputDirPath, storeName);
+    Properties props = IntegrationTestPushUtils.defaultVPJProps(multiColoMultiClusterWrapper, inputDirPath, storeName);
     props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
-    props.put(SOURCE_GRID_FABRIC, "dc-1");
+    props.put(SOURCE_GRID_FABRIC, dcNames[1]);
 
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
@@ -147,7 +145,7 @@ public class TestPushJobWithSourceGridFabricSelection {
             .setPartitionCount(partitionCount)
             .setLeaderFollowerModel(true)
             .setNativeReplicationEnabled(true)
-            .setNativeReplicationSourceFabric("dc-0");
+            .setNativeReplicationSourceFabric(dcNames[0]);
 
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams).close();
 
@@ -167,7 +165,7 @@ public class TestPushJobWithSourceGridFabricSelection {
               .configureActiveActiveReplicationForCluster(
                   true,
                   VeniceUserStoreType.BATCH_ONLY.toString(),
-                  Optional.of("dc-parent-0.parent,dc-0,dc-1"))
+                  Optional.of(String.join(",", parentControllerRegionName, dcNames[0], dcNames[1])))
               .isError());
     }
 

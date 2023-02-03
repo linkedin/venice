@@ -13,6 +13,7 @@ import static org.mockito.Mockito.verify;
 import com.linkedin.venice.hadoop.AbstractTestVeniceMapper;
 import com.linkedin.venice.hadoop.AbstractVeniceFilter;
 import com.linkedin.venice.hadoop.FilterChain;
+import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperKey;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.input.kafka.avro.MapperValueType;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -30,6 +31,12 @@ import org.testng.annotations.Test;
 
 public class TestVeniceKafkaInputMapper extends AbstractTestVeniceMapper<VeniceKafkaInputMapper> {
   private static final BytesWritable BYTES_WRITABLE = new BytesWritable(new byte[0]);
+  private static final KafkaInputMapperKey EMPTY_KEY = new KafkaInputMapperKey();
+  static {
+    EMPTY_KEY.key = ByteBuffer.wrap("test_key".getBytes());
+    EMPTY_KEY.offset = 1;
+  }
+
   private static final String RMD = "rmd";
 
   @Override
@@ -82,7 +89,7 @@ public class TestVeniceKafkaInputMapper extends AbstractTestVeniceMapper<VeniceK
     ArgumentCaptor<BytesWritable> valueCaptor = ArgumentCaptor.forClass(BytesWritable.class);
     OutputCollector<BytesWritable, BytesWritable> collector = mock(OutputCollector.class);
 
-    mapper.map(BYTES_WRITABLE, generateKIFRecord(), collector, null);
+    mapper.map(EMPTY_KEY, generateKIFRecord(), collector, null);
 
     // Given there's no filter and all records are valid, collector should collect all key and value
     verify(collector, times(getNumberOfCollectorInvocationForFirstMapInvocation(numReducers, taskId)))
@@ -100,7 +107,7 @@ public class TestVeniceKafkaInputMapper extends AbstractTestVeniceMapper<VeniceK
     mapper.configureTask(any(), any());
     int validCount = 0, filteredCount = 0;
     for (int i = 0; i < 5; i++) {
-      if (mapper.process(BYTES_WRITABLE, generateKIFRecord(), BYTES_WRITABLE, BYTES_WRITABLE, null)) {
+      if (mapper.process(EMPTY_KEY, generateKIFRecord(), BYTES_WRITABLE, BYTES_WRITABLE, null)) {
         validCount++;
       } else {
         filteredCount++;

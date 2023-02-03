@@ -90,6 +90,7 @@ public abstract class TestRestartServerDuringIngestion {
     Properties properties = new Properties();
     properties.put(VenicePushJob.VENICE_DISCOVER_URL_PROP, veniceUrl);
     properties.put(VenicePushJob.VENICE_STORE_NAME_PROP, storeName);
+    properties.put(VenicePushJob.MULTI_REGION, false);
     IntegrationTestPushUtils.createStoreForJob(cluster, stringSchemaStr, stringSchemaStr, properties).close();
     IntegrationTestPushUtils.makeStoreLF(cluster, storeName);
     IntegrationTestPushUtils.makeStoreHybrid(cluster, storeName, 3600, 10);
@@ -235,6 +236,7 @@ public abstract class TestRestartServerDuringIngestion {
     Properties properties = new Properties();
     properties.put(VenicePushJob.VENICE_DISCOVER_URL_PROP, veniceUrl);
     properties.put(VenicePushJob.VENICE_STORE_NAME_PROP, storeName);
+    properties.put(VenicePushJob.MULTI_REGION, false);
     IntegrationTestPushUtils.createStoreForJob(cluster, stringSchemaStr, stringSchemaStr, properties).close();
 
     IntegrationTestPushUtils.makeStoreHybrid(cluster, storeName, 3600, 10);

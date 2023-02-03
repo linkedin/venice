@@ -87,6 +87,10 @@ public class Instance {
     return port;
   }
 
+  public int getSslPort() {
+    return sslPort;
+  }
+
   /***
    * Convenience method for getting a host and port based url.
    * Wraps IPv6 host strings in square brackets

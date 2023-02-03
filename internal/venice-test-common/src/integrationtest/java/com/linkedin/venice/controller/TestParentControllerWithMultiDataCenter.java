@@ -11,7 +11,6 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
 import com.linkedin.venice.meta.BufferReplayPolicy;
@@ -31,7 +30,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.testng.Assert;
@@ -50,7 +48,6 @@ public class TestParentControllerWithMultiDataCenter {
                                                                                                          // ...];
 
   private List<VeniceMultiClusterWrapper> childDatacenters;
-  private List<VeniceControllerWrapper> parentControllers;
   private VeniceTwoLayerMultiColoMultiClusterWrapper multiColoMultiClusterWrapper;
 
   private static final String BASIC_USER_SCHEMA_STRING_WITH_DEFAULT = "{" + "  \"namespace\" : \"example.avro\",  "
@@ -73,8 +70,7 @@ public class TestParentControllerWithMultiDataCenter {
         Optional.of(controllerProps),
         Optional.empty());
 
-    childDatacenters = multiColoMultiClusterWrapper.getClusters();
-    parentControllers = multiColoMultiClusterWrapper.getParentControllers();
+    childDatacenters = multiColoMultiClusterWrapper.getChildRegions();
   }
 
   @AfterClass(alwaysRun = true)
@@ -87,8 +83,7 @@ public class TestParentControllerWithMultiDataCenter {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = Utils.getUniqueString("store");
 
-    String parentControllerURLs =
-        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
+    String parentControllerURLs = multiColoMultiClusterWrapper.getControllerConnectString();
     try (ControllerClient parentControllerClient =
         ControllerClient.constructClusterControllerClient(clusterName, parentControllerURLs)) {
       /**
@@ -207,8 +202,7 @@ public class TestParentControllerWithMultiDataCenter {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = Utils.getUniqueString("store");
 
-    String parentControllerURLs =
-        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
+    String parentControllerURLs = multiColoMultiClusterWrapper.getControllerConnectString();
     try (ControllerClient parentControllerClient =
         ControllerClient.constructClusterControllerClient(clusterName, parentControllerURLs)) {
       /**
@@ -335,8 +329,7 @@ public class TestParentControllerWithMultiDataCenter {
     Schema rmdSchema2 = RmdSchemaGenerator.generateMetadataSchema(valueRecordSchemaStr2, 1);
     Schema rmdSchema3 = RmdSchemaGenerator.generateMetadataSchema(valueRecordSchemaStr3, 1);
 
-    String parentControllerURLs =
-        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
+    String parentControllerURLs = multiColoMultiClusterWrapper.getControllerConnectString();
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs)) {
       /**
        * Create a test store
@@ -432,8 +425,7 @@ public class TestParentControllerWithMultiDataCenter {
   public void testStoreRollbackToBackupVersion() {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = Utils.getUniqueString("testStoreRollbackToBackupVersion");
-    String parentControllerURLs =
-        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
+    String parentControllerURLs = multiColoMultiClusterWrapper.getControllerConnectString();
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
         ControllerClient dc0Client =
             new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());

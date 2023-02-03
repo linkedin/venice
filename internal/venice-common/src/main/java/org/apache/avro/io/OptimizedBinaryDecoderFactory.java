@@ -1,6 +1,7 @@
 package org.apache.avro.io;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import java.nio.ByteBuffer;
 
 
 public class OptimizedBinaryDecoderFactory {
@@ -16,8 +17,12 @@ public class OptimizedBinaryDecoderFactory {
     return DEFAULT_FACTORY;
   }
 
+  public OptimizedBinaryDecoder createOptimizedBinaryDecoder(ByteBuffer bb) {
+    return createOptimizedBinaryDecoder(bb.array(), bb.position(), bb.remaining());
+  }
+
   /**
-   * This function will create a optimized binary decoder.
+   * This function will create an optimized binary decoder.
    */
   public OptimizedBinaryDecoder createOptimizedBinaryDecoder(byte[] data, int offset, int length) {
     OptimizedBinaryDecoder threadLocalDecoder = localBinaryDecoder.get();

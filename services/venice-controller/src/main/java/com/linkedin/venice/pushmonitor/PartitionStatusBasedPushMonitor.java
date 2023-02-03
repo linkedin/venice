@@ -1,5 +1,6 @@
 package com.linkedin.venice.pushmonitor;
 
+import com.linkedin.venice.controller.HelixAdminClient;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.PartitionAssignment;
@@ -32,7 +33,8 @@ public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
       RealTimeTopicSwitcher realTimeTopicSwitcher,
       ClusterLockManager clusterLockManager,
       String aggregateRealTimeSourceKafkaUrl,
-      List<String> childDataCenterKafkaUrls) {
+      List<String> childDataCenterKafkaUrls,
+      HelixAdminClient helixAdminClient) {
     super(
         clusterName,
         offlinePushAccessor,
@@ -43,7 +45,8 @@ public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
         realTimeTopicSwitcher,
         clusterLockManager,
         aggregateRealTimeSourceKafkaUrl,
-        childDataCenterKafkaUrls);
+        childDataCenterKafkaUrls,
+        helixAdminClient);
   }
 
   @Override
@@ -68,7 +71,10 @@ public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
   private void updatePushStatusByPartitionStatus(
       OfflinePushStatus offlinePushStatus,
       PartitionAssignment partitionAssignment) {
-    Pair<ExecutionStatus, Optional<String>> status = checkPushStatus(offlinePushStatus, partitionAssignment);
+    Pair<ExecutionStatus, Optional<String>> status = checkPushStatus(
+        offlinePushStatus,
+        partitionAssignment,
+        getDisableReplicaCallback(partitionAssignment.getTopic()));
     if (status.getFirst().isTerminal()) {
       LOGGER.info(
           "Found a offline pushes could be terminated: {} status: {}",
@@ -84,9 +90,10 @@ public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
   @Override
   protected Pair<ExecutionStatus, Optional<String>> checkPushStatus(
       OfflinePushStatus pushStatus,
-      PartitionAssignment partitionAssignment) {
+      PartitionAssignment partitionAssignment,
+      DisableReplicaCallback callback) {
     return PushStatusDecider.getDecider(pushStatus.getStrategy())
-        .checkPushStatusAndDetailsByPartitionsStatus(pushStatus, partitionAssignment);
+        .checkPushStatusAndDetailsByPartitionsStatus(pushStatus, partitionAssignment, callback);
   }
 
   @Override

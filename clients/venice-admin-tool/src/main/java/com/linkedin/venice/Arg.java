@@ -229,6 +229,9 @@ public enum Arg {
       "storage-view-configs", "svc", true,
       "Config that describes views to be added for a store.  Input is a json map.  Example: {\"ExampleView\": {\"viewClassName\": \"com.linkedin.venice.views.ChangeCaptureView\",\"params\": {}}}"
   ),
+  PARTITION_DETAIL_ENABLED(
+      "partition-detail-enabled", "pde", true, "A flag to indicate whether to retrieve partition details"
+  ),
 
   START_DATE("start-date", "sd", true, "Start date in PST. Example: 2020-10-10 10:10:10"),
   END_DATE("end-date", "ed", true, "End date in PST. Example: 2020-10-10 10:10:10"),

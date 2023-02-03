@@ -54,6 +54,21 @@ The user may choose to specify the following configs:
   the `STRICT` mode in avro-util's [SchemaParseConfiguration](https://github.com/linkedin/avro-util/blob/master/helper/helper-common/src/main/java/com/linkedin/avroutil1/compatibility/SchemaParseConfiguration.java)). 
   If set to `false`, it becomes equivalent to avro-util's `LOOSE` mode. Default: `true`
 
+The push job also supports using D2 URLs for automated controller service discovery. To use this, the user or operator
+must specify the following configs:
+
+- `multi.region`: `true` if the Venice cluster is deployed in a multi-region mode; `false` otherwise
+- `venice.discover.urls`: The D2 URL of the Venice controller. It must be of the form `d2://<D2 service name of the controller>`
+- `d2.zk.hosts.<region name>`: The Zookeeper addresses where the components in the specified region are announcing themselves to D2
+- If `multi.region` is `true`:
+  - `venice.discover.urls` must use the D2 service name of the parent controller
+  - `parent.controller.region.name` must denote the name of the datacenter where the parent controller is deployed
+  - `d2.zk.hosts.<parent controller region>` is a mandatory config
+- If `multi.region` is `false`
+  - `venice.discover.urls` must use the D2 service name of the child controller
+  - `source.grid.fabric` must denote the name of the datacenter where Venice is deployed
+  - `d2.zk.hosts.<source grid fabric>` is a mandatory config
+
 The user or operator may want to specify the following security-related configs:
 
 - `venice.ssl.enable`. Default: `false`
