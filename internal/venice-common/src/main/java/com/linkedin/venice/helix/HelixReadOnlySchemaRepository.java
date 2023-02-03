@@ -167,17 +167,14 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
       logger.warn("Superset schema ID: {} for store: {} not found in schema cache.", supersetSchemaId, store.getName());
       return false;
     }
-    if (store.isWriteComputationEnabled()
-        && schemaData.getDerivedSchemas().stream().noneMatch(x -> (x.getValueSchemaID() == supersetSchemaId))) {
+    if (store.isWriteComputationEnabled() && !schemaData.hasUpdateSchema(supersetSchemaId)) {
       logger.warn(
           "Update schema of superset schema ID: {} for store: {} not found in schema cache.",
           supersetSchemaId,
           store.getName());
       return false;
     }
-    if (store.isActiveActiveReplicationEnabled() && schemaData.getReplicationMetadataSchemas()
-        .stream()
-        .noneMatch(x -> (x.getValueSchemaID() == supersetSchemaId))) {
+    if (store.isActiveActiveReplicationEnabled() && !schemaData.hasRmdSchema(supersetSchemaId)) {
       logger.warn(
           "RMD schema of superset schema ID: {} for store: {} not found in schema cache.",
           supersetSchemaId,
