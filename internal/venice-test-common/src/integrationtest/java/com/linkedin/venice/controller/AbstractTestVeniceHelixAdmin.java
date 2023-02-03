@@ -10,6 +10,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NA
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_PARTITION_SIZE;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.KAFKA_ZK_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS;
@@ -197,6 +198,7 @@ class AbstractTestVeniceHelixAdmin {
   Properties getControllerProperties(String clusterName) throws IOException {
     Properties properties = TestUtils.getPropertiesForControllerConfig();
     properties.put(KAFKA_ZK_ADDRESS, kafkaZkAddress);
+    properties.put(KAFKA_REPLICATION_FACTOR, 1);
     properties.put(ZOOKEEPER_ADDRESS, zkAddress);
     properties.put(CLUSTER_NAME, clusterName);
     properties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getAddress());
