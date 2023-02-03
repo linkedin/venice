@@ -185,13 +185,18 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
   }
 
   void forceRefreshSchemaData(Store store, SchemaData schemaData) {
-    String storeName = store.getName();
-    getAccessor().getAllValueSchemas(storeName).forEach(schemaData::addValueSchema);
-    if (store.isWriteComputationEnabled()) {
-      getAccessor().getAllDerivedSchemas(storeName).forEach(schemaData::addDerivedSchema);
-    }
-    if (store.isActiveActiveReplicationEnabled()) {
-      getAccessor().getAllReplicationMetadataSchemas(storeName).forEach(schemaData::addReplicationMetadataSchema);
+    getSchemaLock().writeLock().lock();
+    try {
+      String storeName = store.getName();
+      getAccessor().getAllValueSchemas(storeName).forEach(schemaData::addValueSchema);
+      if (store.isWriteComputationEnabled()) {
+        getAccessor().getAllDerivedSchemas(storeName).forEach(schemaData::addDerivedSchema);
+      }
+      if (store.isActiveActiveReplicationEnabled()) {
+        getAccessor().getAllReplicationMetadataSchemas(storeName).forEach(schemaData::addReplicationMetadataSchema);
+      }
+    } finally {
+      getSchemaLock().writeLock().unlock();
     }
   }
 
@@ -432,23 +437,23 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
   @Override
   public Optional<SchemaEntry> getSupersetSchema(String storeName) {
     getSchemaLock().readLock().lock();
+    SchemaData schemaData;
     try {
       fetchStoreSchemaIfNotInCache(storeName);
-      SchemaData schemaData = getSchemaMap().get(getZkStoreName(storeName));
+      schemaData = getSchemaMap().get(getZkStoreName(storeName));
       if (schemaData == null) {
         throw new VeniceNoStoreException(storeName);
       }
-      Optional<Integer> supersetSchemaIdOptional = getSupersetSchemaID(storeName);
-      supersetSchemaIdOptional.ifPresent(
-          supersetSchemaID -> maybeForceRefreshSchemaDataForSupersetSchemaWithRetry(
-              getStoreRepository().getStore(storeName),
-              schemaData,
-              supersetSchemaID));
-      return supersetSchemaIdOptional.map(schemaData::getValueSchema);
-
     } finally {
       getSchemaLock().readLock().unlock();
     }
+    Optional<Integer> supersetSchemaIdOptional = getSupersetSchemaID(storeName);
+    supersetSchemaIdOptional.ifPresent(
+        supersetSchemaID -> maybeForceRefreshSchemaDataForSupersetSchemaWithRetry(
+            getStoreRepository().getStore(storeName),
+            schemaData,
+            supersetSchemaID));
+    return supersetSchemaIdOptional.map(schemaData::getValueSchema);
   }
 
   private Optional<Integer> getSupersetSchemaID(String storeName) {

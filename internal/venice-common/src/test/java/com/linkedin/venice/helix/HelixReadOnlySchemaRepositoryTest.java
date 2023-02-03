@@ -74,6 +74,8 @@ public class HelixReadOnlySchemaRepositoryTest {
   public void testForceRefreshSchemaData() {
     HelixReadOnlySchemaRepository schemaRepository = mock(HelixReadOnlySchemaRepository.class);
     doCallRealMethod().when(schemaRepository).forceRefreshSchemaData(any(), any());
+    ReadWriteLock lock = new ReentrantReadWriteLock();
+    when(schemaRepository.getSchemaLock()).thenReturn(lock);
     Store store = mock(Store.class);
     String storeName = "testStore";
     when(store.getName()).thenReturn(storeName);
@@ -106,9 +108,6 @@ public class HelixReadOnlySchemaRepositoryTest {
     when(storeRepository.getStoreOrThrow(storeName)).thenReturn(store);
     when(storeRepository.hasStore(storeName)).thenReturn(true);
     when(schemaRepository.getStoreRepository()).thenReturn(storeRepository);
-
-    ReadWriteLock lock = new ReentrantReadWriteLock();
-    when(schemaRepository.getSchemaLock()).thenReturn(lock);
 
     Map<String, SchemaData> schemaDataMap = new VeniceConcurrentHashMap<>();
     schemaDataMap.put(storeName, new SchemaData(storeName));

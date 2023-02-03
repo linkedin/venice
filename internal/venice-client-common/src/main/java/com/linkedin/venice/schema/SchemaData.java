@@ -7,7 +7,9 @@ import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
 import org.apache.avro.Schema;
@@ -30,8 +32,8 @@ public final class SchemaData {
   private final Map<RmdVersionId, RmdSchemaEntry> rmdSchemaMap;
   private final Map<Schema, RmdVersionId> rmdSchemaRMap;
 
-  private final Map<Integer, Boolean> updateSchemaExistenceMap;
-  private final Map<Integer, Boolean> rmdSchemaExistenceMap;
+  private final Set<Integer> updateSchemaExistenceMap;
+  private final Set<Integer> rmdSchemaExistenceMap;
 
   public final static int UNKNOWN_SCHEMA_ID = 0;
   public final static int INVALID_VALUE_SCHEMA_ID = -1;
@@ -48,8 +50,8 @@ public final class SchemaData {
     rmdSchemaMap = new VeniceConcurrentHashMap<>();
     rmdSchemaRMap = new VeniceConcurrentHashMap<>();
 
-    updateSchemaExistenceMap = new VeniceConcurrentHashMap<>();
-    rmdSchemaExistenceMap = new VeniceConcurrentHashMap<>();
+    updateSchemaExistenceMap = new HashSet<>();
+    rmdSchemaExistenceMap = new HashSet<>();
   }
 
   public String getStoreName() {
@@ -96,7 +98,7 @@ public final class SchemaData {
         new Pair<>(derivedSchemaEntry.getValueSchemaID(), derivedSchemaEntry.getId());
     updateSchemaMap.put(derivedSchemaId, derivedSchemaEntry);
     updateSchemaRMap.put(derivedSchemaEntry, derivedSchemaId);
-    updateSchemaExistenceMap.put(derivedSchemaEntry.getValueSchemaID(), true);
+    updateSchemaExistenceMap.add(derivedSchemaEntry.getValueSchemaID());
   }
 
   public int getMaxValueSchemaId() {
@@ -146,14 +148,14 @@ public final class SchemaData {
     RmdVersionId rmdVersionId = new RmdVersionId(rmdSchemaEntry.getValueSchemaID(), rmdSchemaEntry.getId());
     rmdSchemaMap.put(rmdVersionId, rmdSchemaEntry);
     rmdSchemaRMap.put(rmdSchemaEntry.getSchema(), rmdVersionId);
-    rmdSchemaExistenceMap.put(rmdSchemaEntry.getValueSchemaID(), true);
+    rmdSchemaExistenceMap.add(rmdSchemaEntry.getValueSchemaID());
   }
 
   public boolean hasUpdateSchema(int valueSchemaId) {
-    return updateSchemaExistenceMap.containsKey(valueSchemaId);
+    return updateSchemaExistenceMap.contains(valueSchemaId);
   }
 
   public boolean hasRmdSchema(int valueSchemaId) {
-    return rmdSchemaExistenceMap.containsKey(valueSchemaId);
+    return rmdSchemaExistenceMap.contains(valueSchemaId);
   }
 }
