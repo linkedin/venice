@@ -1345,7 +1345,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     idleCounter = 0;
     maybeUnsubscribeCompletedPartitions(store);
-    recordDiskQuotaAllowedForStore(store);
+    recordQuotaMetrics(store);
 
     /**
      * While using the shared consumer, we still need to check hybrid quota here since the actual disk usage could change
@@ -1385,10 +1385,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  private void recordDiskQuotaAllowedForStore(Store store) {
+  private void recordQuotaMetrics(Store store) {
     if (emitMetrics.get()) {
       long currentQuota = store.getStorageQuotaInByte();
       hostLevelIngestionStats.recordDiskQuotaAllowed(currentQuota);
+      hostLevelIngestionStats.recordStorageQuotaUsed(storageUtilizationManager.getDiskQuotaUsage());
     }
   }
 
