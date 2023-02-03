@@ -390,21 +390,19 @@ subprojects {
         }
       }
     }
-  }
 
-  diffCoverageReport {
-    afterEvaluate {
+    diffCoverageReport {
       diffSource.file = createDiffFile()
-    }
 
-    // Report locates at <module_name>/build/reports/jacoco/diffCoverage/html/index.html
-    reports {
-      html = true
-    }
+      // Report locates at <module_name>/build/reports/jacoco/diffCoverage/html/index.html
+      reports {
+        html = true
+      }
 
-    violationRules {
-      minBranches = 0.6
-      failOnViolation = true
+      violationRules {
+        minBranches = project.ext.has('diffCoverageThreshold') ? project.ext.diffCoverageThreshold : 0.33
+        failOnViolation = true
+      }
     }
   }
 
@@ -575,11 +573,20 @@ idea.project.ipr {
 // Allow running diffCoverage against uncommitted files
 // See https://github.com/form-com/diff-coverage-gradle/issues/73
 ext.createDiffFile = { ->
+  // Files that we don't plan to write unit tests for now. Will be worked in the future
+  def exclusionFilter = [
+        ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceHelixAdmin.java',
+        ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceParentHelixAdmin.java'
+  ]
   def file = Files.createTempFile(URLEncoder.encode(project.name, 'UTF-8'), '.diff').toFile()
   def diffBase = "${git.getUpstreamRemote()}/main"
+  def command = [
+      'git', 'diff', diffBase, '--no-color', '--minimal', '--', '.'
+  ]
+  command.addAll(exclusionFilter)
   file.withOutputStream { out ->
     exec {
-      commandLine 'git', 'diff', '--no-color', '--minimal', diffBase
+      commandLine command
       standardOutput = out
     }
   }

@@ -55,7 +55,7 @@ public class TestWritePathComputation {
     try (VeniceTwoLayerMultiColoMultiClusterWrapper twoLayerMultiColoMultiClusterWrapper =
         ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(1, 1, 1, 1, 1, 0)) {
 
-      VeniceMultiClusterWrapper multiCluster = twoLayerMultiColoMultiClusterWrapper.getClusters().get(0);
+      VeniceMultiClusterWrapper multiCluster = twoLayerMultiColoMultiClusterWrapper.getChildRegions().get(0);
       VeniceControllerWrapper parentController = twoLayerMultiColoMultiClusterWrapper.getParentControllers().get(0);
       String clusterName = multiCluster.getClusterNames()[0];
       String storeName = "test-store0";

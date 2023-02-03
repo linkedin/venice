@@ -13,6 +13,7 @@ import static org.mockito.Mockito.spy;
 import com.linkedin.venice.hadoop.AbstractVeniceFilter;
 import com.linkedin.venice.hadoop.FilterChain;
 import com.linkedin.venice.hadoop.VeniceReducer;
+import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperKey;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.input.kafka.avro.MapperValueType;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
@@ -22,6 +23,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
 import org.apache.hadoop.io.BytesWritable;
@@ -52,8 +54,14 @@ public class TestVeniceKafkaInputReducer {
   @Test(dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testExtract(boolean isChunkingEnabled, boolean valueContainsRmdPayload) {
     byte[] keyBytes = "test_key".getBytes();
+    KafkaInputMapperKey mapperKey = new KafkaInputMapperKey();
+    mapperKey.key = ByteBuffer.wrap(keyBytes);
+    mapperKey.offset = 1;
+    RecordSerializer<KafkaInputMapperKey> keySerializer =
+        FastSerializerDeserializerFactory.getFastAvroGenericSerializer(KafkaInputMapperKey.SCHEMA$);
+    byte[] serializedMapperKey = keySerializer.serialize(mapperKey);
     BytesWritable keyWritable = new BytesWritable();
-    keyWritable.set(keyBytes, 0, keyBytes.length);
+    keyWritable.set(serializedMapperKey, 0, serializedMapperKey.length);
     VeniceKafkaInputReducer reducer = new VeniceKafkaInputReducer();
     reducer.setChunkingEnabled(isChunkingEnabled);
     /**
@@ -109,8 +117,14 @@ public class TestVeniceKafkaInputReducer {
     FilterChain<KafkaInputMapperValue> filterChain = new FilterChain<>(filter);
 
     byte[] keyBytes = "test_key".getBytes();
+    KafkaInputMapperKey mapperKey = new KafkaInputMapperKey();
+    mapperKey.key = ByteBuffer.wrap(keyBytes);
+    mapperKey.offset = 1;
+    RecordSerializer<KafkaInputMapperKey> keySerializer =
+        FastSerializerDeserializerFactory.getFastAvroGenericSerializer(KafkaInputMapperKey.SCHEMA$);
+    byte[] serializedMapperKey = keySerializer.serialize(mapperKey);
     BytesWritable keyWritable = new BytesWritable();
-    keyWritable.set(keyBytes, 0, keyBytes.length);
+    keyWritable.set(serializedMapperKey, 0, serializedMapperKey.length);
     VeniceKafkaInputReducer reducer = spy(new VeniceKafkaInputReducer());
     doReturn(filterChain).when(reducer).initFilterChain(any());
     reducer.configureTask(getTestProps(), getTestJobConf());
@@ -155,6 +169,7 @@ public class TestVeniceKafkaInputReducer {
       valueWritable.set(serializedValue, 0, serializedValue.length);
       values.add(valueWritable);
     }
+    Collections.reverse(values);
     return values;
   }
 

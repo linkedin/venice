@@ -6,6 +6,7 @@ import com.linkedin.venice.hadoop.AbstractVeniceRecordReader;
 import com.linkedin.venice.hadoop.FilterChain;
 import com.linkedin.venice.hadoop.MRJobCounterHelper;
 import com.linkedin.venice.hadoop.VenicePushJob;
+import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperKey;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.input.kafka.ttl.VeniceKafkaInputTTLFilter;
 import com.linkedin.venice.serializer.AvroSerializer;
@@ -21,12 +22,15 @@ import org.apache.hadoop.mapred.Reporter;
 /**
  * This class is designed specifically for {@link KafkaInputFormat}, and right now, it is doing simple pass-through.
  */
-public class VeniceKafkaInputMapper extends AbstractVeniceMapper<BytesWritable, KafkaInputMapperValue> {
+public class VeniceKafkaInputMapper extends AbstractVeniceMapper<KafkaInputMapperKey, KafkaInputMapperValue> {
+  private static final RecordSerializer KAFKA_INPUT_MAPPER_KEY_SERIALIZER =
+      FastSerializerDeserializerFactory.getFastAvroGenericSerializer(KafkaInputMapperKey.SCHEMA$);
   private static final RecordSerializer KAFKA_INPUT_MAPPER_VALUE_SERIALIZER =
       FastSerializerDeserializerFactory.getFastAvroGenericSerializer(KafkaInputMapperValue.SCHEMA$);
 
   @Override
-  protected AbstractVeniceRecordReader<BytesWritable, KafkaInputMapperValue> getRecordReader(VeniceProperties props) {
+  protected AbstractVeniceRecordReader<KafkaInputMapperKey, KafkaInputMapperValue> getRecordReader(
+      VeniceProperties props) {
     throw new UnsupportedOperationException();
   }
 
@@ -56,7 +60,7 @@ public class VeniceKafkaInputMapper extends AbstractVeniceMapper<BytesWritable, 
 
   @Override
   protected boolean process(
-      BytesWritable inputKey,
+      KafkaInputMapperKey inputKey,
       KafkaInputMapperValue inputValue,
       BytesWritable keyBW,
       BytesWritable valueBW,
@@ -65,7 +69,8 @@ public class VeniceKafkaInputMapper extends AbstractVeniceMapper<BytesWritable, 
       MRJobCounterHelper.incrRepushTtlFilterCount(reporter, 1L);
       return false;
     }
-    keyBW.set(inputKey);
+    byte[] serializedKey = KAFKA_INPUT_MAPPER_KEY_SERIALIZER.serialize(inputKey, AvroSerializer.REUSE.get());
+    keyBW.set(serializedKey, 0, serializedKey.length);
     byte[] serializedValue = KAFKA_INPUT_MAPPER_VALUE_SERIALIZER.serialize(inputValue, AvroSerializer.REUSE.get());
     valueBW.set(serializedValue, 0, serializedValue.length);
     return true;

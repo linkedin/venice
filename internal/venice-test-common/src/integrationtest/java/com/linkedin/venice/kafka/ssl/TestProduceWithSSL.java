@@ -53,6 +53,7 @@ public class TestProduceWithSSL {
 
   @BeforeClass
   public void setUp() {
+    Utils.thisIsLocalhost();
     VeniceClusterCreateOptions options =
         new VeniceClusterCreateOptions.Builder().sslToKafka(true).isKafkaOpenSSLEnabled(false).build();
     cluster = ServiceFactory.getVeniceCluster(options);
