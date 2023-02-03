@@ -5,11 +5,11 @@ import static java.lang.Thread.currentThread;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.IsolatedIngestionBackend;
-import com.linkedin.davinci.ingestion.IsolatedIngestionProcessStats;
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.IsolatedIngestionProcessHeartbeatStats;
+import com.linkedin.davinci.stats.IsolatedIngestionProcessStats;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Time;
@@ -49,10 +49,8 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   private final EventLoopGroup bossGroup;
   private final EventLoopGroup workerGroup;
   private final IsolatedIngestionBackend ingestionBackend;
-  private final ScheduledExecutorService metricsRequestScheduler = Executors.newScheduledThreadPool(1);
   private final ScheduledExecutorService heartbeatCheckScheduler = Executors.newScheduledThreadPool(1);
   private final ExecutorService longRunningTaskExecutor = Executors.newSingleThreadExecutor();
-  private final MainIngestionRequestClient metricsClient;
   private final MainIngestionRequestClient heartbeatClient;
   private final Map<String, MainTopicIngestionStatus> topicIngestionStatusMap = new VeniceConcurrentHashMap<>();
   private final List<VeniceNotifier> ingestionNotifierList = new ArrayList<>();
@@ -93,8 +91,6 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
         .childOption(ChannelOption.TCP_NODELAY, true);
 
     heartbeatClient = new MainIngestionRequestClient(configLoader);
-    metricsClient = new MainIngestionRequestClient(configLoader);
-
   }
 
   @Override
@@ -113,12 +109,9 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
 
   @Override
   public void stopInner() throws Exception {
-    shutdownScheduler(metricsRequestScheduler, "Metrics collection");
     shutdownScheduler(heartbeatCheckScheduler, "Heartbeat check");
     shutdownScheduler(longRunningTaskExecutor, "Long running task");
-
     heartbeatClient.close();
-    metricsClient.close();
 
     ChannelFuture shutdown = serverFuture.channel().closeFuture();
     workerGroup.shutdownGracefully();
@@ -226,7 +219,6 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
     }
     heartbeatStats = new IsolatedIngestionProcessHeartbeatStats(metricsRepository);
     isolatedIngestionProcessStats = new IsolatedIngestionProcessStats(metricsRepository);
-    metricsRequestScheduler.scheduleAtFixedRate(this::collectIngestionServiceMetrics, 0, 5, TimeUnit.SECONDS);
     heartbeatCheckScheduler.scheduleAtFixedRate(this::checkHeartbeatTimeout, 0, 10, TimeUnit.SECONDS);
   }
 
@@ -290,19 +282,6 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
     return count.get();
   }
 
-  private void collectIngestionServiceMetrics() {
-    long requestTimestamp = System.currentTimeMillis();
-    if (metricsClient.collectMetrics(isolatedIngestionProcessStats)) {
-      LOGGER.debug(
-          "Metric request completed in {} seconds.",
-          TimeUnit.MILLISECONDS.toSeconds(System.currentTimeMillis() - requestTimestamp));
-    } else {
-      LOGGER.warn(
-          "Unable to collect metrics from ingestion service after {} s.",
-          TimeUnit.MILLISECONDS.toSeconds(System.currentTimeMillis() - requestTimestamp));
-    }
-  }
-
   private void checkHeartbeatTimeout() {
     long requestTimestamp = System.currentTimeMillis();
     LOGGER.info(
@@ -349,5 +328,9 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
 
   Map<String, MainTopicIngestionStatus> getTopicIngestionStatusMap() {
     return topicIngestionStatusMap;
+  }
+
+  IsolatedIngestionProcessStats getIsolatedIngestionProcessStats() {
+    return isolatedIngestionProcessStats;
   }
 }

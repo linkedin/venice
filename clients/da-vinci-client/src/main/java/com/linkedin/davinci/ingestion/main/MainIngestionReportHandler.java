@@ -8,14 +8,13 @@ import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.readHt
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.notifier.VeniceNotifier;
+import com.linkedin.davinci.stats.IsolatedIngestionProcessStats;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionReportType;
-import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
-import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
-import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.ExceptionUtils;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -34,8 +33,6 @@ import org.apache.logging.log4j.Logger;
  */
 public class MainIngestionReportHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
   private static final Logger LOGGER = LogManager.getLogger(MainIngestionReportHandler.class);
-  private static final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
-      AvroProtocolDefinition.PARTITION_STATE.getSerializer();
   private final MainIngestionMonitorService mainIngestionMonitorService;
 
   public MainIngestionReportHandler(MainIngestionMonitorService mainIngestionMonitorService) {
@@ -50,8 +47,56 @@ public class MainIngestionReportHandler extends SimpleChannelInboundHandler<Full
 
   @Override
   public void channelRead0(ChannelHandlerContext ctx, FullHttpRequest msg) {
+    IngestionAction action = IsolatedIngestionUtils.getIngestionActionFromRequest(msg);
+    try {
+      switch (action) {
+        case METRIC:
+          IngestionMetricsReport metricsReport =
+              deserializeIngestionActionRequest(IngestionAction.METRIC, readHttpRequestContent(msg));
+          handleMetricsReport(metricsReport);
+          break;
+        case REPORT:
+          IngestionTaskReport ingestionReport =
+              deserializeIngestionActionRequest(IngestionAction.REPORT, readHttpRequestContent(msg));
+          handleIngestionReport(ingestionReport);
+          break;
+        default:
+          throw new UnsupportedOperationException("Unrecognized ingestion action: " + action);
+      }
+      ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.OK, getDummyContent()));
+    } catch (UnsupportedOperationException e) {
+      // Here we only handles the bad requests exception. Other errors are handled in exceptionCaught() method.
+      LOGGER.error("Caught unrecognized request action:", e);
+      ctx.writeAndFlush(
+          buildHttpResponse(
+              HttpResponseStatus.BAD_REQUEST,
+              ExceptionUtils.compactExceptionDescription(e, "channelRead0")));
+    }
+  }
+
+  @Override
+  public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
+    LOGGER.error("Encounter exception during ingestion task report handling.", cause);
+    ctx.writeAndFlush(
+        buildHttpResponse(
+            HttpResponseStatus.INTERNAL_SERVER_ERROR,
+            cause.getClass().getSimpleName() + "_"
+                + ExceptionUtils.compactExceptionDescription(cause, "exceptionCaught")));
+    ctx.close();
+  }
+
+  void handleMetricsReport(IngestionMetricsReport metricsReport) {
+    IsolatedIngestionProcessStats isolatedIngestionProcessStats =
+        mainIngestionMonitorService.getIsolatedIngestionProcessStats();
+    if (isolatedIngestionProcessStats != null) {
+      isolatedIngestionProcessStats.updateMetricMap(metricsReport.aggregatedMetrics);
+    } else {
+      LOGGER.warn("IsolatedIngestionProcessStats is not initialized yet, will skip metrics update.");
+    }
+  }
+
+  void handleIngestionReport(IngestionTaskReport report) {
     // Decode ingestion report from incoming http request content.
-    IngestionTaskReport report = deserializeIngestionActionRequest(IngestionAction.REPORT, readHttpRequestContent(msg));
     IngestionReportType reportType = IngestionReportType.valueOf(report.reportType);
     String topicName = report.topicName.toString();
     int partitionId = report.partitionId;
@@ -105,18 +150,6 @@ public class MainIngestionReportHandler extends SimpleChannelInboundHandler<Full
       default:
         LOGGER.warn("Received unsupported ingestion report: {} it will be ignored for now.", report);
     }
-    ctx.writeAndFlush(buildHttpResponse(HttpResponseStatus.OK, getDummyContent()));
-  }
-
-  @Override
-  public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-    LOGGER.error("Encounter exception during ingestion task report handling.", cause);
-    ctx.writeAndFlush(
-        buildHttpResponse(
-            HttpResponseStatus.INTERNAL_SERVER_ERROR,
-            cause.getClass().getSimpleName() + "_"
-                + ExceptionUtils.compactExceptionDescription(cause, "exceptionCaught")));
-    ctx.close();
   }
 
   private void notifierHelper(Consumer<VeniceNotifier> lambda) {

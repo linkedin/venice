@@ -4,18 +4,15 @@ import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.buildA
 import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.getDummyCommand;
 import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.saveForkedIngestionKafkaClusterMapConfig;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_HEARTBEAT_REQUEST_TIMEOUT_SECONDS;
-import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_METRIC_REQUEST_TIMEOUT_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_REQUEST_TIMEOUT_SECONDS;
 import static com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType.START_CONSUMPTION;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.HttpClientTransport;
-import com.linkedin.davinci.ingestion.IsolatedIngestionProcessStats;
 import com.linkedin.davinci.ingestion.isolated.IsolatedIngestionServer;
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
 import com.linkedin.venice.ingestion.protocol.IngestionStorageMetadata;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskCommand;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
@@ -26,7 +23,6 @@ import com.linkedin.venice.ingestion.protocol.enums.IngestionComponentType;
 import com.linkedin.venice.meta.IngestionMetadataUpdateType;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.ForkedJavaProcess;
-import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
 import java.util.ArrayList;
@@ -42,19 +38,14 @@ import org.apache.logging.log4j.Logger;
  */
 public class MainIngestionRequestClient implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(MainIngestionRequestClient.class);
-  private static final RedundantExceptionFilter REDUNDANT_EXCEPTION_FILTER =
-      RedundantExceptionFilter.getRedundantExceptionFilter();
 
   private static final int REQUEST_MAX_ATTEMPT = 10;
   private HttpClientTransport httpClientTransport;
   private final int heartbeatRequestTimeoutSeconds;
-  private final int metricRequestTimeoutSeconds;
 
   public MainIngestionRequestClient(VeniceConfigLoader configLoader) {
     heartbeatRequestTimeoutSeconds =
         configLoader.getCombinedProperties().getInt(SERVER_INGESTION_ISOLATION_HEARTBEAT_REQUEST_TIMEOUT_SECONDS, 5);
-    metricRequestTimeoutSeconds =
-        configLoader.getCombinedProperties().getInt(SERVER_INGESTION_ISOLATION_METRIC_REQUEST_TIMEOUT_SECONDS, 60);
     Optional<SSLFactory> sslFactory = IsolatedIngestionUtils.getSSLFactory(configLoader);
     int port = configLoader.getVeniceServerConfig().getIngestionServicePort();
     int requestTimeoutInSeconds =
@@ -234,21 +225,6 @@ public class MainIngestionRequestClient implements Closeable {
       httpClientTransport.sendRequest(IngestionAction.SHUTDOWN_COMPONENT, processShutdownCommand);
     } catch (Exception e) {
       LOGGER.warn("Encounter exception when shutting down component: " + ingestionComponentType.name());
-    }
-  }
-
-  public boolean collectMetrics(IsolatedIngestionProcessStats isolatedIngestionProcessStats) {
-    try {
-      IngestionMetricsReport metricsReport =
-          httpClientTransport.sendRequest(IngestionAction.METRIC, getDummyCommand(), metricRequestTimeoutSeconds);
-      isolatedIngestionProcessStats.updateMetricMap(metricsReport.aggregatedMetrics);
-      return true;
-    } catch (Exception e) {
-      // Don't spam the server logging.
-      if (!REDUNDANT_EXCEPTION_FILTER.isRedundantException(e.getMessage())) {
-        LOGGER.warn(e);
-      }
-      return false;
     }
   }
 
