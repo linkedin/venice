@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Function;
@@ -151,20 +152,22 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
   SchemaEntry forceRefreshSupersetSchemaWithRetry(String storeName) {
     Store store = getStoreRepository().getStore(storeName);
     int supersetSchemaId = store.getLatestSuperSetValueSchemaId();
-    getSchemaLock().writeLock().lock();
-    SchemaData schemaData = getSchemaMap().get(getZkStoreName(storeName));
-    try {
-      RetryUtils.executeWithMaxAttempt(() -> {
+    AtomicReference<SchemaEntry> supersetSchemaEntry = new AtomicReference<>();
+    RetryUtils.executeWithMaxAttempt(() -> {
+      try {
+        getSchemaLock().writeLock().lock();
+        SchemaData schemaData = getSchemaMap().get(getZkStoreName(storeName));
         forceRefreshSchemaData(store, schemaData);
         if (!isSupersetSchemaReadyToServe(store, schemaData, supersetSchemaId)) {
           throw new InvalidVeniceSchemaException(
               "Unable to refresh superset schema id: " + supersetSchemaId + " for store: " + store.getName());
         }
-      }, 3, Duration.ofMillis(100), Collections.singletonList(InvalidVeniceSchemaException.class));
-      return schemaData.getValueSchema(supersetSchemaId);
-    } finally {
-      getSchemaLock().writeLock().unlock();
-    }
+        supersetSchemaEntry.set(schemaData.getValueSchema(supersetSchemaId));
+      } finally {
+        getSchemaLock().writeLock().unlock();
+      }
+    }, 3, Duration.ofMillis(100), Collections.singletonList(InvalidVeniceSchemaException.class));
+    return supersetSchemaEntry.get();
   }
 
   boolean isSupersetSchemaReadyToServe(Store store, SchemaData schemaData, int supersetSchemaId) {
