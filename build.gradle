@@ -581,9 +581,10 @@ ext.createDiffFile = { ->
   def file = Files.createTempFile(URLEncoder.encode(project.name, 'UTF-8'), '.diff').toFile()
   def diffBase = "${git.getUpstreamRemote()}/main"
   def command = [
-      'git', 'diff', diffBase, '--no-color', '--minimal', '--', '.'
+      'git', 'diff', diffBase, '--no-color', '--minimal'
   ]
-  command.addAll(exclusionFilter)
+  // the git diff exclude requires git version 1.9 or above. Comment this out for now
+  // command.addAll(exclusionFilter)
   file.withOutputStream { out ->
     exec {
       commandLine command
