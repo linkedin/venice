@@ -96,7 +96,6 @@ import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import it.unimi.dsi.fastutil.ints.IntList;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import it.unimi.dsi.fastutil.ints.IntSet;
-import it.unimi.dsi.fastutil.ints.IntSets;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import java.io.Closeable;
 import java.io.IOException;
@@ -114,7 +113,6 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
 import java.util.Set;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutionException;
@@ -155,11 +153,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected static final long KILL_WAIT_TIME_MS = 5000L;
   private static final int MAX_KILL_CHECKING_ATTEMPTS = 10;
   private static final int SLOPPY_OFFSET_CATCHUP_THRESHOLD = 100;
-  private static final int EXCEPTION_BLOCKING_QUEUE_SIZE_IN_BYTE = 10000;
-  private static final int EXCEPTION_BLOCKING_QUEUE_NOTIFY_IN_BYTE = 1000;
-  private static final String EXCEPTION_GROUP_DRAINER = "drainer";
-  private static final String EXCEPTION_GROUP_PRODUCER = "producer";
-  private static final String EXCEPTION_GROUP_CONSUMER = "consumer";
 
   protected static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
       RedundantExceptionFilter.getRedundantExceptionFilter();
@@ -192,20 +185,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /** Per-partition consumption state map */
   protected final ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap;
   protected final AbstractStoreBufferService storeBufferService;
-  /** Persists partitions that encountered exceptions in other threads. i.e. consumer, producer and drainer */
-  private final IntSet errorPartitions = IntSets.synchronize(new IntOpenHashSet());
-
-  /** Persists the exceptions thrown by {@link StoreBufferService}. */
-  private final BlockingQueue<PartitionExceptionInfo> drainerExceptions =
-      new MemoryBoundBlockingQueue<>(EXCEPTION_BLOCKING_QUEUE_SIZE_IN_BYTE, EXCEPTION_BLOCKING_QUEUE_NOTIFY_IN_BYTE);
-  /** Persists the exception thrown by kafka producer callback for L/F mode */
-  private final BlockingQueue<PartitionExceptionInfo> producerExceptions =
-      new MemoryBoundBlockingQueue<>(EXCEPTION_BLOCKING_QUEUE_SIZE_IN_BYTE, EXCEPTION_BLOCKING_QUEUE_NOTIFY_IN_BYTE);
   /**
-   * Current it captures some exceptions that are thrown after consumption but before producing to local version topic.
+   * Persists partitions that encountered exceptions in other threads. i.e. consumer, producer and drainer.
+   *
+   * The exception for the corresponding partition will only been cleaned up when resetting the partition,
+   * or re-subscribing the partition.
    */
-  private final BlockingQueue<PartitionExceptionInfo> consumerExceptions =
-      new MemoryBoundBlockingQueue<>(EXCEPTION_BLOCKING_QUEUE_SIZE_IN_BYTE, EXCEPTION_BLOCKING_QUEUE_NOTIFY_IN_BYTE);
+  private final List<PartitionExceptionInfo> partitionIngestionExceptionList = new SparseConcurrentList<>();
+
   /** Persists the exception thrown by {@link KafkaConsumerService}. */
   private Exception lastConsumerException = null;
   /** Persists the last exception thrown by any asynchronous component that should terminate the entire ingestion task */
@@ -1280,44 +1267,34 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  private void drainExceptionQueue(BlockingQueue<PartitionExceptionInfo> exceptionQueue, String exceptionGroup) {
-    while (!exceptionQueue.isEmpty()) {
-      try {
-        PartitionExceptionInfo exceptionPartitionPair = exceptionQueue.take();
-        int exceptionPartition = exceptionPartitionPair.getPartitionId();
-        PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(exceptionPartition);
-        if (partitionConsumptionState == null) {
-          LOGGER.warn(
-              "Ignoring exception for partition {} for store version {} since this partition has been unsubscribed already.",
-              exceptionPartition,
-              kafkaVersionTopic,
-              exceptionPartitionPair.getException());
-          continue;
-        }
-
+  private void processIngestionException() {
+    partitionIngestionExceptionList.forEach(partitionExceptionInfo -> {
+      int exceptionPartition = partitionExceptionInfo.getPartitionId();
+      Exception partitionException = partitionExceptionInfo.getException();
+      PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(exceptionPartition);
+      if (partitionConsumptionState == null) {
+        LOGGER.warn(
+            "Ignoring exception for partition {} for store version {} since this partition has been unsubscribed already.",
+            exceptionPartition,
+            kafkaVersionTopic,
+            partitionException);
+      } else {
         if (!partitionConsumptionState.isCompletionReported()) {
-          reportError(
-              exceptionPartitionPair.getException().getMessage(),
-              exceptionPartition,
-              exceptionPartitionPair.getException());
-          if (partitionConsumptionStateMap.containsKey(exceptionPartition)) {
-            unSubscribePartition(kafkaVersionTopic, exceptionPartition);
-          }
+          reportError(partitionException.getMessage(), exceptionPartition, partitionException);
         } else {
           LOGGER.error(
               "Ignoring exception for partition {} for store version {} since this partition is already online. "
                   + "Please engage Venice DEV team immediately.",
               exceptionPartition,
               kafkaVersionTopic,
-              exceptionPartitionPair.getException());
+              partitionException);
         }
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-        throw new VeniceException(
-            "Interrupted while trying to drain exceptions from " + exceptionGroup + " exception queue for topic: "
-                + kafkaVersionTopic);
+        // Unsubscribe the partition to avoid more damages.
+        if (partitionConsumptionStateMap.containsKey(exceptionPartition)) {
+          unSubscribePartition(kafkaVersionTopic, exceptionPartition);
+        }
       }
-    }
+    });
   }
 
   protected void checkIngestionProgress(Store store) throws InterruptedException {
@@ -1333,14 +1310,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     /**
-     * Drainer and producer exceptions are granular enough for us to achieve partition level exception isolation. We
-     * drain the exception queues here and put partitions into error state accordingly without killing the ingestion task.
+     * We will unsubscribe all the errored partitions without killing the ingestion task.
      */
-    drainExceptionQueue(drainerExceptions, EXCEPTION_GROUP_DRAINER);
-    drainExceptionQueue(producerExceptions, EXCEPTION_GROUP_PRODUCER);
-    drainExceptionQueue(consumerExceptions, EXCEPTION_GROUP_CONSUMER);
-
-    errorPartitions.clear();
+    processIngestionException();
 
     /**
      * Check whether current consumer has any subscription or not since 'poll' function will throw
@@ -1524,11 +1496,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * controller doesn't think there is a problem with the replica since it's COMPLETED and ONLINE. Stale replicas is
      * better than dropping availability and that's why we do not put COMPLETED replicas to ERROR state immediately.
      */
-    for (PartitionConsumptionState pcs: partitionConsumptionStateMap.values()) {
-      if (pcs.isComplete()) {
+    partitionIngestionExceptionList.forEach(ep -> {
+      if (ep != null && ep.isReplicaCompleted()) {
         versionedIngestionStats.recordStalePartitionsWithoutIngestionTask(storeName, versionNumber);
       }
-    }
+    });
   }
 
   private void handleIngestionException(Exception e) {
@@ -1854,6 +1826,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       LeaderFollowerStateType leaderState) throws InterruptedException {
     switch (operation) {
       case SUBSCRIBE:
+        // Clear the error partition tracking
+        partitionIngestionExceptionList.set(partition, null);
         // Drain the buffered message by last subscription.
         storeBufferService.drainBufferedRecordsFromTopicPartition(topic, partition);
         subscribedCount++;
@@ -1862,7 +1836,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // First let's try to restore the state retrieved from the OffsetManager
         PartitionConsumptionState newPartitionConsumptionState =
             new PartitionConsumptionState(partition, amplificationFactor, offsetRecord, hybridStoreConfig.isPresent());
-
         newPartitionConsumptionState.setLeaderFollowerState(leaderState);
 
         partitionConsumptionStateMap.put(partition, newPartitionConsumptionState);
@@ -1989,6 +1962,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                   new OffsetRecord(partitionStateSerializer),
                   hybridStoreConfig.isPresent()));
           storageUtilizationManager.initPartition(partition);
+          // Reset the error partition tracking
+          partitionIngestionExceptionList.set(partition, null);
         } else {
           LOGGER.info(
               "{} No need to reset offset by Kafka consumer, since the consumer is not "
@@ -2147,8 +2122,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PartitionConsumptionState partitionConsumptionState) {
     int partitionId = record.partition();
     String msg;
-    if (errorPartitions.contains(partitionId)) {
-      msg = "Errors already exist in partition: " + record.partition() + " for resource: " + kafkaVersionTopic
+    if (partitionIngestionExceptionList.get(partitionId) != null) {
+      msg = "Errors already exist in partition: " + partitionId + " for resource: " + kafkaVersionTopic
           + ", skipping this record";
       if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
         LOGGER.info("{} that has offset {}", msg, record.offset());
@@ -2414,30 +2389,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     ps.getOffsetRecord().setOffsetLag(offsetLag);
   }
 
-  private void offerExceptionToQueue(
-      Exception e,
-      int partitionId,
-      BlockingQueue<PartitionExceptionInfo> exceptionQueue) {
-    try {
-      errorPartitions.add(partitionId);
-      exceptionQueue.put(new PartitionExceptionInfo(e, partitionId));
-    } catch (InterruptedException interruptedException) {
-      Thread.currentThread().interrupt();
-      throw new VeniceException(
-          "Interrupted while trying to offer exception to queue for partition id: " + partitionId);
+  void setIngestionException(int partitionId, Exception e) {
+    boolean replicaCompleted = false;
+    PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partitionId);
+    if (partitionConsumptionState != null && partitionConsumptionState.isCompletionReported()) {
+      replicaCompleted = true;
     }
-  }
-
-  public void offerDrainerException(Exception e, int partitionId) {
-    offerExceptionToQueue(e, partitionId, drainerExceptions);
-  }
-
-  public void offerProducerException(Exception e, int partitionId) {
-    offerExceptionToQueue(e, partitionId, producerExceptions);
-  }
-
-  public void offerConsumerException(Exception e, int partitionId) {
-    offerExceptionToQueue(e, partitionId, consumerExceptions);
+    partitionIngestionExceptionList.set(partitionId, new PartitionExceptionInfo(e, partitionId, replicaCompleted));
   }
 
   public void setLastConsumerException(Exception e) {
