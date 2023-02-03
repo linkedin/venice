@@ -167,10 +167,6 @@ public class TestMetadataOperationInMultiCluster {
             clusterName,
             multiClusterWrapper.getRandomController().getControllerUrl())) {
           Properties properties = propertiesMap.get(clusterName);
-          properties.setProperty(VenicePushJob.PBNJ_ENABLE, "true");
-          properties.setProperty(
-              VenicePushJob.PBNJ_ROUTER_URL_PROP,
-              multiClusterWrapper.getClusters().get(clusterName).getRandomRouterURL());
           runVPJ(properties, 1, controllerClient);
         }
       }

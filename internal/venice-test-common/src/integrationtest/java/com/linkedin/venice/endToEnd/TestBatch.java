@@ -49,16 +49,12 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.hadoop.PushJobSchemaInfo;
-import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
@@ -1261,58 +1257,6 @@ public abstract class TestBatch {
           }).get();
         },
         new UpdateStoreQueryParams().setBatchGetLimit(1000).setReadQuotaInCU(Integer.MAX_VALUE));
-  }
-
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testRunMRJobAndPBNJ() throws Exception {
-    Utils.thisIsLocalhost();
-
-    File inputDir = getTempDataDirectory();
-    Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
-    String inputDirPath = "file:" + inputDir.getAbsolutePath();
-    String storeName = Utils.getUniqueString("store");
-    Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
-    props.setProperty(VenicePushJob.PBNJ_ENABLE, "true");
-    props.setProperty(VenicePushJob.PBNJ_ROUTER_URL_PROP, veniceCluster.getRandomRouterURL());
-    createStoreForJob(veniceCluster.getClusterName(), recordSchema, props).close();
-
-    try (VenicePushJob job = new VenicePushJob("Test push job", props)) {
-      job.run();
-      // Verify job properties
-      Assert.assertEquals(job.getKafkaTopic(), Version.composeKafkaTopic(storeName, 1));
-      Assert.assertEquals(job.getInputDirectory(), inputDirPath);
-      String schema = "{\"type\":\"record\",\"name\":\"User\",\"namespace\":\"example.avro\",\"fields\":[{\"name\":\""
-          + DEFAULT_KEY_FIELD_PROP + "\",\"type\":\"string\"},{\"name\":\"" + DEFAULT_VALUE_FIELD_PROP
-          + "\",\"type\":\"string\"},{\"name\":\"age\",\"type\":\"int\"}]}";
-      PushJobSchemaInfo pushJobSchemaInfo = job.getVeniceSchemaInfo();
-      Assert.assertEquals(pushJobSchemaInfo.getFileSchemaString(), schema);
-      Assert.assertEquals(pushJobSchemaInfo.getKeySchemaString(), STRING_SCHEMA);
-      Assert.assertEquals(pushJobSchemaInfo.getValueSchemaString(), STRING_SCHEMA);
-
-      veniceCluster.refreshAllRouterMetaData();
-
-      // Verify the data in Venice Store
-      String routerUrl = veniceCluster.getRandomRouterURL();
-      try (AvroGenericStoreClient<String, Object> client = ClientFactory
-          .getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
-        for (int i = 1; i <= 100; ++i) {
-          String expected = "test_name_" + i;
-          String actual =
-              client.get(Integer.toString(i)).get().toString(); /* client.get().get() returns a Utf8 object */
-          Assert.assertEquals(actual, expected);
-        }
-
-        try (ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), routerUrl)) {
-          JobStatusQueryResponse jobStatus = controllerClient.queryJobStatus(job.getKafkaTopic());
-          Assert.assertFalse(jobStatus.isError(), "Error in getting JobStatusResponse: " + jobStatus.getError());
-          Assert.assertEquals(
-              jobStatus.getStatus(),
-              ExecutionStatus.COMPLETED.toString(),
-              "After job is complete, status should reflect that");
-          // We won't verify progress any more here since we decided to disable this feature
-        }
-      }
-    }
   }
 
   @Test(timeOut = TEST_TIMEOUT)
