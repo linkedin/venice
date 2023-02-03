@@ -552,6 +552,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
           }
         });
       }
+      metricClient.reportMetricUpdate(metricsReport);
     } catch (Exception e) {
       LOGGER.warn("Encounter exception when fetching latest metrics and reporting back to main process", e);
     }
