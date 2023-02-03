@@ -437,6 +437,10 @@ public enum Command {
   CLEANUP_INSTANCE_CUSTOMIZED_STATES(
       "cleanup-instance-customized-states", "Cleanup any lingering instance level customized states",
       new Arg[] { URL, CLUSTER }
+  ),
+  DATA_RECOVERY_EXECUTE(
+      "data-recovery-execute", "Trigger data recovery executor module", new Arg[] { URL, CLUSTER },
+      new Arg[] { FABRIC, STORE }
   );
 
   private final String commandName;

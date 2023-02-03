@@ -56,6 +56,8 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
+import com.linkedin.venice.datarecovery.Client;
+import com.linkedin.venice.datarecovery.StoreRepushCommand;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixSchemaAccessor;
@@ -496,6 +498,9 @@ public class AdminTool {
         case CLEANUP_INSTANCE_CUSTOMIZED_STATES:
           cleanupInstanceCustomizedStates(cmd);
           break;
+        case DATA_RECOVERY_EXECUTE:
+          dataRecoveryExecuting(cmd);
+          break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
           for (Command c: Command.values()) {
@@ -602,6 +607,25 @@ public class AdminTool {
     printObject(keySchema);
     MultiSchemaResponse valueSchemas = controllerClient.getAllValueSchema(store);
     printObject(valueSchemas);
+  }
+
+  private static void dataRecoveryExecuting(CommandLine cmd) {
+    String cluster = getRequiredArgument(cmd, Arg.CLUSTER);
+    String stores = getOptionalArgument(cmd, Arg.STORE);
+
+    String fabricGroup = getOptionalArgument(cmd, Arg.FABRIC_GROUP);
+    boolean isDebuggingEnabled = cmd.hasOption(Arg.DEBUG.toString());
+
+    StoreRepushCommand.Params cmdParams = new StoreRepushCommand.Params();
+    cmdParams.setDebug(isDebuggingEnabled);
+
+    if (fabricGroup != null) {
+      cmdParams.setFabricGroup(fabricGroup);
+    }
+
+    Client dataRecoveryClient = new Client(controllerClient);
+    Client.OperationLevel level = dataRecoveryClient.new OperationLevel(stores, cluster);
+    dataRecoveryClient.execute(level, cmdParams);
   }
 
   private static void createNewStore(CommandLine cmd) throws Exception {
