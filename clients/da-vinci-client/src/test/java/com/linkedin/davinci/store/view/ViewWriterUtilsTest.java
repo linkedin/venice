@@ -4,6 +4,7 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.views.ChangeCaptureView;
 import com.linkedin.venice.views.VeniceView;
@@ -14,7 +15,6 @@ import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import java.util.Collections;
 import java.util.concurrent.Future;
 import org.apache.avro.Schema;
-import org.apache.kafka.clients.producer.RecordMetadata;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -28,7 +28,7 @@ public class ViewWriterUtilsTest {
     Store mockStore = Mockito.mock(Store.class);
     VeniceProperties props = new VeniceProperties();
     Object2IntMap<String> urlMappingMap = new Object2IntOpenHashMap<>();
-    Future<RecordMetadata> mockFuture = Mockito.mock(Future.class);
+    Future<PubSubProduceResult> mockFuture = Mockito.mock(Future.class);
 
     VeniceWriter mockVeniceWriter = Mockito.mock(VeniceWriter.class);
     Mockito.when(mockVeniceWriter.put(Mockito.any(), Mockito.any(), Mockito.anyInt())).thenReturn(mockFuture);

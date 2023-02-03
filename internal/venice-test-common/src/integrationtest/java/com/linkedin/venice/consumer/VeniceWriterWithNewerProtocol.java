@@ -2,12 +2,11 @@ package com.linkedin.venice.consumer;
 
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.writer.KafkaProducerWrapper;
 import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
-import java.util.function.Supplier;
 import org.apache.avro.Schema;
 
 
@@ -15,9 +14,9 @@ class VeniceWriterWithNewerProtocol extends VeniceWriter<String, String, byte[]>
   protected VeniceWriterWithNewerProtocol(
       VeniceWriterOptions veniceWriterOptions,
       VeniceProperties props,
-      Supplier<KafkaProducerWrapper> producerWrapperSupplier,
+      PubSubProducerAdapter producerAdapter,
       Schema overrideProtocolSchema) {
-    super(veniceWriterOptions, props, producerWrapperSupplier, overrideProtocolSchema);
+    super(veniceWriterOptions, props, producerAdapter, overrideProtocolSchema);
   }
 
   @Override

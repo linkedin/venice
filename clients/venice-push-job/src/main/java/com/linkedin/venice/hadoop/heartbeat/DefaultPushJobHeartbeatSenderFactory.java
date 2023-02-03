@@ -19,6 +19,7 @@ import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Map;
@@ -143,10 +144,11 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
         versionCreationResponse.getPartitionerClass(),
         versionCreationResponse.getAmplificationFactor(),
         new VeniceProperties(partitionerProperties));
-    return new VeniceWriterFactory(veniceWriterProperties).createBasicVeniceWriter(
-        versionCreationResponse.getKafkaTopic(),
-        new SystemTime(),
-        venicePartitioner,
-        versionCreationResponse.getPartitions());
+
+    return new VeniceWriterFactory(veniceWriterProperties).createVeniceWriter(
+        new VeniceWriterOptions.Builder(versionCreationResponse.getKafkaTopic()).setTime(new SystemTime())
+            .setPartitioner(venicePartitioner)
+            .setPartitionCount(versionCreationResponse.getPartitions())
+            .build());
   }
 }

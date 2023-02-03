@@ -2,29 +2,29 @@ package com.linkedin.venice.unit.kafka.producer;
 
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.adapter.SimplePubSubProduceResultImpl;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
+import com.linkedin.venice.pubsub.api.PubSubProduceResult;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaMessage;
-import com.linkedin.venice.writer.KafkaProducerWrapper;
-import java.util.Collections;
-import java.util.Map;
+import it.unimi.dsi.fastutil.objects.Object2DoubleMap;
+import it.unimi.dsi.fastutil.objects.Object2DoubleMaps;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import org.apache.kafka.clients.producer.Callback;
-import org.apache.kafka.clients.producer.ProducerRecord;
-import org.apache.kafka.clients.producer.RecordMetadata;
-import org.apache.kafka.common.TopicPartition;
 
 
 /**
- * A {@link KafkaProducerWrapper} implementation which interacts with the
+ * A {@link PubSubProducerAdapter} implementation which interacts with the
  * {@link InMemoryKafkaBroker} in order to make unit tests more lightweight.
  */
-public class MockInMemoryProducer implements KafkaProducerWrapper {
+public class MockInMemoryProducerAdapter implements PubSubProducerAdapter {
   private final InMemoryKafkaBroker broker;
 
-  public MockInMemoryProducer(InMemoryKafkaBroker broker) {
+  public MockInMemoryProducerAdapter(InMemoryKafkaBroker broker) {
     this.broker = broker;
   }
 
@@ -34,17 +34,17 @@ public class MockInMemoryProducer implements KafkaProducerWrapper {
   }
 
   @Override
-  public Future<RecordMetadata> sendMessage(
+  public Future<PubSubProduceResult> sendMessage(
       String topic,
+      Integer partition,
       KafkaKey key,
       KafkaMessageEnvelope value,
-      int partition,
-      Callback callback) {
+      PubSubMessageHeaders headers,
+      PubSubProducerCallback callback) {
     long offset = broker.produce(topic, partition, new InMemoryKafkaMessage(key, value));
-    RecordMetadata recordMetadata =
-        new RecordMetadata(new TopicPartition(topic, partition), 0, offset, -1, -1L, -1, -1);
-    callback.onCompletion(recordMetadata, null);
-    return new Future<RecordMetadata>() {
+    PubSubProduceResult produceResult = new SimplePubSubProduceResultImpl(topic, partition, offset, -1);
+    callback.onCompletion(produceResult, null);
+    return new Future<PubSubProduceResult>() {
       @Override
       public boolean cancel(boolean mayInterruptIfRunning) {
         return false;
@@ -61,21 +61,16 @@ public class MockInMemoryProducer implements KafkaProducerWrapper {
       }
 
       @Override
-      public RecordMetadata get() throws InterruptedException, ExecutionException {
-        return recordMetadata;
+      public PubSubProduceResult get() throws InterruptedException, ExecutionException {
+        return produceResult;
       }
 
       @Override
-      public RecordMetadata get(long timeout, TimeUnit unit)
+      public PubSubProduceResult get(long timeout, TimeUnit unit)
           throws InterruptedException, ExecutionException, TimeoutException {
-        return recordMetadata;
+        return produceResult;
       }
     };
-  }
-
-  @Override
-  public Future<RecordMetadata> sendMessage(ProducerRecord<KafkaKey, KafkaMessageEnvelope> record, Callback callback) {
-    return sendMessage(record.topic(), record.key(), record.value(), record.partition(), callback);
   }
 
   @Override
@@ -89,7 +84,12 @@ public class MockInMemoryProducer implements KafkaProducerWrapper {
   }
 
   @Override
-  public Map<String, Double> getMeasurableProducerMetrics() {
-    return Collections.emptyMap();
+  public Object2DoubleMap<String> getMeasurableProducerMetrics() {
+    return Object2DoubleMaps.emptyMap();
+  }
+
+  @Override
+  public String getBrokerAddress() {
+    return broker.getKafkaBootstrapServer();
   }
 }

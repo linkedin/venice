@@ -13,6 +13,7 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Optional;
@@ -81,8 +82,11 @@ public class TestDictionaryUtils {
     byte[] dictionaryToSend = "TEST_DICT".getBytes();
     Properties props = getKafkaProperties();
 
-    try (VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter =
-        TestUtils.getVeniceWriterFactory(props).createVeniceWriter(topic, PARTITION_COUNT)) {
+    try (VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter = TestUtils.getVeniceWriterFactory(props)
+        .createVeniceWriter(
+            new VeniceWriterOptions.Builder(topic).setUseKafkaKeySerializer(true)
+                .setPartitionCount(PARTITION_COUNT)
+                .build())) {
       veniceWriter.broadcastStartOfPush(
           true,
           false,
@@ -101,8 +105,11 @@ public class TestDictionaryUtils {
     String topic = getTopic();
     Properties props = getKafkaProperties();
 
-    try (VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter =
-        TestUtils.getVeniceWriterFactory(props).createVeniceWriter(topic, PARTITION_COUNT)) {
+    try (VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter = TestUtils.getVeniceWriterFactory(props)
+        .createVeniceWriter(
+            new VeniceWriterOptions.Builder(topic).setUseKafkaKeySerializer(true)
+                .setPartitionCount(PARTITION_COUNT)
+                .build())) {
       veniceWriter.broadcastStartOfPush(true, false, CompressionStrategy.ZSTD_WITH_DICT, null);
       veniceWriter.broadcastEndOfPush(null);
     }
@@ -116,8 +123,11 @@ public class TestDictionaryUtils {
     String topic = getTopic();
     Properties props = getKafkaProperties();
 
-    try (VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter =
-        TestUtils.getVeniceWriterFactory(props).createVeniceWriter(topic, PARTITION_COUNT)) {
+    try (VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter = TestUtils.getVeniceWriterFactory(props)
+        .createVeniceWriter(
+            new VeniceWriterOptions.Builder(topic).setUseKafkaKeySerializer(true)
+                .setPartitionCount(PARTITION_COUNT)
+                .build())) {
       veniceWriter.put(new KafkaKey(MessageType.PUT, "blah".getBytes()), "blah".getBytes(), 1, null);
     }
 

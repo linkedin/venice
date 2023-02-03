@@ -2,26 +2,26 @@ package com.linkedin.venice.unit.kafka.producer;
 
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.writer.KafkaProducerWrapper;
-import java.util.Map;
+import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
+import com.linkedin.venice.pubsub.api.PubSubProduceResult;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
+import it.unimi.dsi.fastutil.objects.Object2DoubleMap;
 import java.util.concurrent.Future;
-import org.apache.kafka.clients.producer.Callback;
-import org.apache.kafka.clients.producer.ProducerRecord;
-import org.apache.kafka.clients.producer.RecordMetadata;
 
 
 /**
- * This {@link KafkaProducerWrapper} implementation allows tests to perform
+ * This {@link PubSubProducerAdapter} implementation allows tests to perform
  * arbitrary transformations on the messages that are about to be written to
  * Kafka.
  *
  * This can be used in unit tests to inject corrupt data.
  */
-public class TransformingProducer implements KafkaProducerWrapper {
-  private final KafkaProducerWrapper baseProducer;
+public class TransformingProducerAdapter implements PubSubProducerAdapter {
+  private final PubSubProducerAdapter baseProducer;
   private final SendMessageParametersTransformer transformer;
 
-  public TransformingProducer(KafkaProducerWrapper baseProducer, SendMessageParametersTransformer transformer) {
+  public TransformingProducerAdapter(PubSubProducerAdapter baseProducer, SendMessageParametersTransformer transformer) {
     this.baseProducer = baseProducer;
     this.transformer = transformer;
   }
@@ -32,19 +32,16 @@ public class TransformingProducer implements KafkaProducerWrapper {
   }
 
   @Override
-  public Future<RecordMetadata> sendMessage(
+  public Future<PubSubProduceResult> sendMessage(
       String topic,
+      Integer partition,
       KafkaKey key,
       KafkaMessageEnvelope value,
-      int partition,
-      Callback callback) {
+      PubSubMessageHeaders headers,
+      PubSubProducerCallback callback) {
     SendMessageParameters parameters = transformer.transform(topic, key, value, partition);
-    return baseProducer.sendMessage(parameters.topic, parameters.key, parameters.value, parameters.partition, callback);
-  }
-
-  @Override
-  public Future<RecordMetadata> sendMessage(ProducerRecord<KafkaKey, KafkaMessageEnvelope> record, Callback callback) {
-    return sendMessage(record.topic(), record.key(), record.value(), record.partition(), callback);
+    return baseProducer
+        .sendMessage(parameters.topic, parameters.partition, parameters.key, parameters.value, headers, callback);
   }
 
   @Override
@@ -58,8 +55,13 @@ public class TransformingProducer implements KafkaProducerWrapper {
   }
 
   @Override
-  public Map<String, Double> getMeasurableProducerMetrics() {
+  public Object2DoubleMap<String> getMeasurableProducerMetrics() {
     return baseProducer.getMeasurableProducerMetrics();
+  }
+
+  @Override
+  public String getBrokerAddress() {
+    return baseProducer.getBrokerAddress();
   }
 
   public static class SendMessageParameters {

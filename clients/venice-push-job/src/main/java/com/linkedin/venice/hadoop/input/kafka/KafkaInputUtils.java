@@ -32,7 +32,7 @@ public class KafkaInputUtils {
             veniceProperties.clipAndFilterNamespace(KafkaInputRecordReader.KIF_RECORD_READER_KAFKA_CONFIG_PREFIX)
                 .toProperties());
         // Copy the mandatory ssl configs
-        KafkaSSLUtils.validateAndCopyKafakaSSLConfig(veniceProperties, consumerFactoryProperties);
+        KafkaSSLUtils.validateAndCopyKafkaSSLConfig(veniceProperties, consumerFactoryProperties);
       } catch (IOException e) {
         throw new VeniceException("Could not get user credential for job:" + config.getJobName(), e);
       }
