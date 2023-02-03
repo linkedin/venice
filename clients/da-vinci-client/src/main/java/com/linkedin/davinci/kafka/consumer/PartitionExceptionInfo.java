@@ -1,16 +1,15 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import com.linkedin.venice.common.Measurable;
-
-
 /** Measurable wrapper for exception, partition id pair */
-class PartitionExceptionInfo implements Measurable {
+class PartitionExceptionInfo {
   private final Exception e;
   private final int partitionId;
+  private final boolean replicaCompleted;
 
-  public PartitionExceptionInfo(Exception e, int partitionId) {
+  public PartitionExceptionInfo(Exception e, int partitionId, boolean replicaCompleted) {
     this.e = e;
     this.partitionId = partitionId;
+    this.replicaCompleted = replicaCompleted;
   }
 
   public Exception getException() {
@@ -21,12 +20,7 @@ class PartitionExceptionInfo implements Measurable {
     return partitionId;
   }
 
-  @Override
-  public int getSize() {
-    int size = 4;
-    if (e != null && e.getMessage() != null) {
-      size += e.getMessage().length();
-    }
-    return size;
+  public boolean isReplicaCompleted() {
+    return replicaCompleted;
   }
 }

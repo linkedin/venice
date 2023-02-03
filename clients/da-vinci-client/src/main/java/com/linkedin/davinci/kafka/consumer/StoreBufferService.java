@@ -283,9 +283,9 @@ public class StoreBufferService extends AbstractStoreBufferService {
             Exception processConsumerRecordException = (Exception) e;
             if (ingestionTask != null) {
               try {
-                ingestionTask.offerDrainerException(processConsumerRecordException, consumerRecord.partition());
-              } catch (VeniceException offerToQueueException) {
-                ingestionTask.setLastStoreIngestionException(offerToQueueException);
+                ingestionTask.setIngestionException(consumerRecord.partition(), processConsumerRecordException);
+              } catch (VeniceException ingestionException) {
+                ingestionTask.setLastStoreIngestionException(ingestionException);
               }
               if (e instanceof VeniceChecksumException) {
                 ingestionTask.recordChecksumVerificationFailure();

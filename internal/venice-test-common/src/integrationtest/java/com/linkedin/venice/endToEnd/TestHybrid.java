@@ -373,6 +373,8 @@ public class TestHybrid {
           }
         });
 
+        // Run one more VPJ
+        runVPJ(vpjProperties, 2, controllerClient);
         // verify the topic compaction policy
         String topicForStoreVersion2 = Version.composeKafkaTopic(storeName, 2);
         Assert.assertTrue(

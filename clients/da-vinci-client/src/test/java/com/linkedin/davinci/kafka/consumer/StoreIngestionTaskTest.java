@@ -1434,6 +1434,7 @@ public abstract class StoreIngestionTaskTest {
 
       storeIngestionTaskUnderTest.resetPartitionConsumptionOffset(topic, PARTITION_FOO);
 
+      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS)).clearOffset(topic, PARTITION_FOO);
       verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS).times(2))
           .put(PARTITION_FOO, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
     }, isActiveActiveReplicationEnabled);
@@ -2277,6 +2278,13 @@ public abstract class StoreIngestionTaskTest {
     // Records order are: StartOfSeg, StartOfPush, data, EndOfPush, EndOfSeg, StartOfSeg, StartOfIncrementalPush
     // data, EndOfIncrementalPush
 
+    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(
+        100,
+        100,
+        HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
+        DataReplicationPolicy.NON_AGGREGATE,
+        BufferReplayPolicy.REWIND_FROM_EOP);
+
     runTest(new RandomPollStrategy(), Utils.setOf(PARTITION_FOO), () -> {}, () -> {
       waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         // sync the offset when receiving EndOfPush
@@ -2295,7 +2303,13 @@ public abstract class StoreIngestionTaskTest {
         verify(mockLogNotifier, atLeastOnce())
             .endOfIncrementalPushReceived(topic, PARTITION_FOO, fooNewOffset, version);
       });
-    }, Optional.empty(), true, Optional.empty(), isActiveActiveReplicationEnabled, 1, Collections.emptyMap());
+    },
+        Optional.of(hybridStoreConfig),
+        true,
+        Optional.empty(),
+        isActiveActiveReplicationEnabled,
+        1,
+        Collections.emptyMap());
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
@@ -2433,7 +2447,7 @@ public abstract class StoreIngestionTaskTest {
     }, isActiveActiveReplicationEnabled);
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT_MS * 5)
   public void testPartitionExceptionIsolation(boolean isActiveActiveReplicationEnabled) throws Exception {
     localVeniceWriter.broadcastStartOfPush(new HashMap<>());
     getOffset(localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
@@ -2454,6 +2468,10 @@ public abstract class StoreIngestionTaskTest {
       verify(mockLogNotifier, never()).error(eq(topic), eq(PARTITION_BAR), anyString(), any());
       assertTrue(storeIngestionTaskUnderTest.isRunning(), "The StoreIngestionTask should still be running");
     }, isActiveActiveReplicationEnabled);
+    for (int i = 0; i < 10000; ++i) {
+      storeIngestionTaskUnderTest
+          .setIngestionException(0, new VeniceException("new fake looooooooooooooooong exception"));
+    }
   }
 
   private static class TestVeniceWriter<K, V> extends VeniceWriter {

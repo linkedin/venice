@@ -63,7 +63,7 @@ public class StoreBufferServiceTest {
     bufferService.start();
     verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr1, null, kafkaUrl, 0L);
     verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr2, null, kafkaUrl, 0L);
-    verify(mockTask).offerDrainerException(e, partition1);
+    verify(mockTask).setIngestionException(partition1, e);
     bufferService.stop();
   }
 
@@ -179,7 +179,7 @@ public class StoreBufferServiceTest {
       // Verify map the cleared out
       Assert.assertTrue(bufferService.getTopicToTimeSpentMap(i).size() == 0);
     }
-    verify(mockTask).offerDrainerException(e, partition1);
+    verify(mockTask).setIngestionException(partition1, e);
     verify(mockTask).recordChecksumVerificationFailure();
     bufferService.stop();
   }
