@@ -10,6 +10,7 @@ import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.venice.client.change.capture.protocol.RecordChangeEvent;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.EndOfIncrementalPush;
 import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -56,10 +57,19 @@ public class ChangeCaptureViewWriterTest {
     highWaterMarks.put(LOR_1, 111L);
     highWaterMarks.put(LTX_1, 99L);
     highWaterMarks.put(LVA_1, 22222L);
-    PartitionConsumptionState mockPartitionConsumptionState = Mockito.mock(PartitionConsumptionState.class);
-    Mockito.when(mockPartitionConsumptionState.getLeaderFollowerState()).thenReturn(LeaderFollowerStateType.LEADER);
-    Mockito.when(mockPartitionConsumptionState.getLatestProcessedUpstreamRTOffsetMap()).thenReturn(highWaterMarks);
-    Mockito.when(mockPartitionConsumptionState.getPartition()).thenReturn(1);
+    PartitionConsumptionState mockLeaderPartitionConsumptionState = Mockito.mock(PartitionConsumptionState.class);
+    Mockito.when(mockLeaderPartitionConsumptionState.getLeaderFollowerState())
+        .thenReturn(LeaderFollowerStateType.LEADER);
+    Mockito.when(mockLeaderPartitionConsumptionState.getLatestProcessedUpstreamRTOffsetMap())
+        .thenReturn(highWaterMarks);
+    Mockito.when(mockLeaderPartitionConsumptionState.getPartition()).thenReturn(1);
+
+    PartitionConsumptionState mockFollowerPartitionConsumptionState = Mockito.mock(PartitionConsumptionState.class);
+    Mockito.when(mockFollowerPartitionConsumptionState.getLeaderFollowerState())
+        .thenReturn(LeaderFollowerStateType.STANDBY);
+    Mockito.when(mockFollowerPartitionConsumptionState.getLatestProcessedUpstreamRTOffsetMap())
+        .thenReturn(highWaterMarks);
+    Mockito.when(mockFollowerPartitionConsumptionState.getPartition()).thenReturn(1);
 
     VersionSwap versionSwapMessage = new VersionSwap();
     versionSwapMessage.oldServingVersionTopic = Version.composeKafkaTopic(STORE_NAME, 1);
@@ -91,7 +101,29 @@ public class ChangeCaptureViewWriterTest {
     ChangeCaptureViewWriter changeCaptureViewWriter =
         new ChangeCaptureViewWriter(mockVeniceConfigLoader, mockStore, SCHEMA, Collections.emptyMap());
     changeCaptureViewWriter.setVeniceWriter(mockVeniceWriter);
-    changeCaptureViewWriter.processControlMessage(controlMessage, 1, mockPartitionConsumptionState, 1);
+
+    // Verify that we never produce the version swap from a follower replica
+    changeCaptureViewWriter.processControlMessage(controlMessage, 1, mockFollowerPartitionConsumptionState, 1);
+    Mockito.verify(mockVeniceWriter, Mockito.never())
+        .sendControlMessage(Mockito.any(), Mockito.anyInt(), Mockito.anyMap(), Mockito.any(), Mockito.any());
+
+    // Verify that we never produce anything if it's not a VersionSwap Message
+    ControlMessage ignoredControlMessage = new ControlMessage();
+    ignoredControlMessage.controlMessageUnion = new EndOfIncrementalPush();
+    changeCaptureViewWriter.processControlMessage(ignoredControlMessage, 1, mockLeaderPartitionConsumptionState, 1);
+    Mockito.verify(mockVeniceWriter, Mockito.never())
+        .sendControlMessage(Mockito.any(), Mockito.anyInt(), Mockito.anyMap(), Mockito.any(), Mockito.any());
+
+    // Verify that we only transmit for the version that we're transiting FROM
+    VersionSwap ignoredVersionSwapMessage = new VersionSwap();
+    ignoredVersionSwapMessage.oldServingVersionTopic = Version.composeKafkaTopic(STORE_NAME, 2);
+    ignoredVersionSwapMessage.newServingVersionTopic = Version.composeKafkaTopic(STORE_NAME, 3);
+    ignoredControlMessage.controlMessageUnion = ignoredVersionSwapMessage;
+    changeCaptureViewWriter.processControlMessage(ignoredControlMessage, 1, mockLeaderPartitionConsumptionState, 1);
+    Mockito.verify(mockVeniceWriter, Mockito.never())
+        .sendControlMessage(Mockito.any(), Mockito.anyInt(), Mockito.anyMap(), Mockito.any(), Mockito.any());
+
+    changeCaptureViewWriter.processControlMessage(controlMessage, 1, mockLeaderPartitionConsumptionState, 1);
     ArgumentCaptor<ControlMessage> messageArgumentCaptor = ArgumentCaptor.forClass(ControlMessage.class);
 
     // Verify and capture input
