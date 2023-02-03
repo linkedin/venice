@@ -5,6 +5,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_REQUEST_
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.HttpClientTransport;
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
+import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionAction;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionReportType;
@@ -47,6 +48,14 @@ public class IsolatedIngestionRequestClient implements Closeable {
       httpClientTransport.sendRequest(IngestionAction.REPORT, report);
     } catch (Exception e) {
       LOGGER.warn("Failed to send report with exception for topic: {}, partition: {}", topicName, partitionId, e);
+    }
+  }
+
+  public void reportMetricUpdate(IngestionMetricsReport report) {
+    try {
+      httpClientTransport.sendRequest(IngestionAction.METRIC, report);
+    } catch (Exception e) {
+      LOGGER.warn("Failed to send metrics update with exception", e);
     }
   }
 
