@@ -57,8 +57,6 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
    */
   private final Map<String, SchemaData> schemaMap = new VeniceConcurrentHashMap<>();
 
-  private final Map<String, Integer> latestValidatedSupersetSchemaIdMap = new VeniceConcurrentHashMap<>();
-
   private final ZkClient zkClient;
   private final HelixSchemaAccessor accessor;
   private final CachedResourceZkStateListener zkStateListener;
@@ -152,7 +150,6 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
 
   void maybeForceRefreshSchemaDataForSupersetSchemaWithRetry(Store store, SchemaData schemaData, int supersetSchemaId) {
     if (isSupersetSchemaReadyToServe(store, schemaData, supersetSchemaId)) {
-      updateLatestValidatedSupersetSchemaId(store.getName(), supersetSchemaId);
       return;
     }
     RetryUtils.executeWithMaxAttempt(() -> {
@@ -160,10 +157,9 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
       if (!isSupersetSchemaReadyToServe(store, schemaData, supersetSchemaId)) {
         throw new InvalidVeniceSchemaException(
             "Unable to refresh superset schema id: " + supersetSchemaId + " for store: " + store.getName());
-      } else {
-        updateLatestValidatedSupersetSchemaId(store.getName(), supersetSchemaId);
       }
     }, 3, Duration.ofMillis(100), Collections.singletonList(InvalidVeniceSchemaException.class));
+
   }
 
   boolean isSupersetSchemaReadyToServe(Store store, SchemaData schemaData, int supersetSchemaId) {
@@ -192,18 +188,13 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
   }
 
   void forceRefreshSchemaData(Store store, SchemaData schemaData) {
-    getSchemaLock().writeLock().lock();
-    try {
-      String storeName = store.getName();
-      getAccessor().getAllValueSchemas(storeName).forEach(schemaData::addValueSchema);
-      if (store.isWriteComputationEnabled()) {
-        getAccessor().getAllDerivedSchemas(storeName).forEach(schemaData::addDerivedSchema);
-      }
-      if (store.isActiveActiveReplicationEnabled()) {
-        getAccessor().getAllReplicationMetadataSchemas(storeName).forEach(schemaData::addReplicationMetadataSchema);
-      }
-    } finally {
-      getSchemaLock().writeLock().unlock();
+    String storeName = store.getName();
+    getAccessor().getAllValueSchemas(storeName).forEach(schemaData::addValueSchema);
+    if (store.isWriteComputationEnabled()) {
+      getAccessor().getAllDerivedSchemas(storeName).forEach(schemaData::addDerivedSchema);
+    }
+    if (store.isActiveActiveReplicationEnabled()) {
+      getAccessor().getAllReplicationMetadataSchemas(storeName).forEach(schemaData::addReplicationMetadataSchema);
     }
   }
 
@@ -451,15 +442,11 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
         throw new VeniceNoStoreException(storeName);
       }
       Optional<Integer> supersetSchemaIdOptional = getSupersetSchemaID(storeName);
-      if (supersetSchemaIdOptional.isPresent()) {
-        if (!supersetSchemaIdOptional.get()
-            .equals(latestValidatedSupersetSchemaIdMap.getOrDefault(storeName, SchemaData.INVALID_VALUE_SCHEMA_ID))) {
-          maybeForceRefreshSchemaDataForSupersetSchemaWithRetry(
+      supersetSchemaIdOptional.ifPresent(
+          supersetSchemaID -> maybeForceRefreshSchemaDataForSupersetSchemaWithRetry(
               getStoreRepository().getStore(storeName),
               schemaData,
-              supersetSchemaIdOptional.get());
-        }
-      }
+              supersetSchemaID));
       return supersetSchemaIdOptional.map(schemaData::getValueSchema);
 
     } finally {
@@ -754,11 +741,5 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
 
   ReadWriteLock getSchemaLock() {
     return schemaLock;
-  }
-
-  void updateLatestValidatedSupersetSchemaId(String storeName, int supersetSchemaId) {
-    getSchemaLock().writeLock().lock();
-    latestValidatedSupersetSchemaIdMap.put(storeName, supersetSchemaId);
-    getSchemaLock().writeLock().unlock();
   }
 }
