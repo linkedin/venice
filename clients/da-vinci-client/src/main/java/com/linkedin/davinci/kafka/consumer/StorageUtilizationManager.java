@@ -369,25 +369,22 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
   }
 
   public double getDiskQuotaUsage() {
-    // Calculate disk quota on this server based on partitions #.
-    double serverDiskQuotaForStore = storeQuotaInBytes * 1.0D;
+    long quota = storeQuotaInBytes;
+    if (quota == Store.UNLIMITED_STORAGE_QUOTA) {
+      return -1.;
+    }
 
     // TODO: Remove this config when prod cluster metric is reported correctly.
-    if (isServerCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled && subPartitionCount > 0) {
-      serverDiskQuotaForStore *= (double) partitionConsumptionSizeMap.size() / subPartitionCount;
+    if (isServerCalculateQuotaUsageBasedOnPartitionsAssignmentEnabled) {
+      if (subPartitionCount == 0) {
+        return 0.;
+      }
+      quota *= partitionConsumptionSizeMap.size();
+      quota /= subPartitionCount;
     }
 
-    if (serverDiskQuotaForStore > 0) {
-      // Calculate total current disk usage for all partitions.
-      double storeDiskUsage = 0.0D;
-      for (StoragePartitionDiskUsage storagePartitionDiskUsage: partitionConsumptionSizeMap.values()) {
-        long partitionDiskUsage = storagePartitionDiskUsage.getUsage();
-        storeDiskUsage += partitionDiskUsage;
-      }
-      return storeDiskUsage / serverDiskQuotaForStore;
-    } else {
-      return 0;
-    }
+    long usage = partitionConsumptionSizeMap.values().stream().mapToLong(StoragePartitionDiskUsage::getUsage).sum();
+    return (double) usage / quota;
   }
 
   public void notifyFlushToDisk(PartitionConsumptionState pcs) {

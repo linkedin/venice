@@ -859,7 +859,6 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
   // Pass the dictionary and the training samples as well
   public String createStoreWithZstdDictionary(int keyCount) {
-
     return createStore(
         DEFAULT_KEY_SCHEMA,
         "\"string\"",
