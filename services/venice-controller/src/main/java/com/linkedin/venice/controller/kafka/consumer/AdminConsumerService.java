@@ -8,8 +8,8 @@ import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.KafkaClientFactory.MetricsParameters;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
@@ -205,7 +205,7 @@ public class AdminConsumerService extends AbstractVeniceService {
     }
   }
 
-  private KafkaConsumerWrapper createKafkaConsumer(String clusterName) {
+  private PubSubConsumer createKafkaConsumer(String clusterName) {
     Properties kafkaConsumerProperties = new Properties();
     /**
      * {@link ConsumerConfig.CLIENT_ID_CONFIG} can be used to identify different consumers while checking Kafka related metrics.

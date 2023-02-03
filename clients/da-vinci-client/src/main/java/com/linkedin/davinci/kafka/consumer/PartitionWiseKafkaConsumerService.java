@@ -4,6 +4,7 @@ import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
@@ -76,7 +77,7 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
 
   @Override
   protected synchronized SharedKafkaConsumer pickConsumerForPartition(
-      String versionTopic,
+      PubSubTopic versionTopic,
       PubSubTopicPartition topicPartition) {
     // Basic case, round-robin search to find next consumer for this partition.
     boolean seekNewConsumer = true;

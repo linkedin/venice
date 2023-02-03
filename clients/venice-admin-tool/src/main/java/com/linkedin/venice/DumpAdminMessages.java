@@ -6,10 +6,13 @@ import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumer;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
@@ -52,9 +55,13 @@ public class DumpAdminMessages {
       int messageCnt) {
     consumerProperties = getKafkaConsumerProperties(kafkaUrl, consumerProperties);
     String adminTopic = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
-    try (KafkaConsumerWrapper consumer = new ApacheKafkaConsumer(consumerProperties)) {
+    try (PubSubConsumer consumer = new ApacheKafkaConsumer(consumerProperties)) {
       // include the message with startingOffset
-      consumer.subscribe(adminTopic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, startingOffset - 1);
+      PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+      PubSubTopicPartition adminTopicPartition = new PubSubTopicPartitionImpl(
+          pubSubTopicRepository.getTopic(adminTopic),
+          AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+      consumer.subscribe(adminTopicPartition, startingOffset - 1);
       AdminOperationSerializer deserializer = new AdminOperationSerializer();
       List<AdminOperationInfo> adminOperations = new ArrayList<>();
       int curMsgCnt = 0;

@@ -6,6 +6,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.ExceptionUtils;
 import java.util.List;
@@ -79,7 +80,7 @@ public class StorePartitionDataReceiver
   }
 
   @Override
-  public String destinationIdentifier() {
+  public PubSubTopic destinationIdentifier() {
     return storeIngestionTask.getVersionTopic();
   }
 

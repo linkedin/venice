@@ -2,11 +2,12 @@ package com.linkedin.venice.pubsub.consumer;
 
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import java.io.Closeable;
 import java.util.Set;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 
 
-public interface PubSubConsumer {
+public interface PubSubConsumer extends AutoCloseable, Closeable {
   void subscribe(PubSubTopicPartition pubSubTopicPartition, long lastReadOffset);
 
   void unSubscribe(PubSubTopicPartition pubSubTopicPartition);

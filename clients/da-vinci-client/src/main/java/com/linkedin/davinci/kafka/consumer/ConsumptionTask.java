@@ -154,7 +154,6 @@ class ConsumptionTask implements Runnable {
               partitionRecords.add(pubSubMessage);
               payloadBytesConsumedInOnePoll += pubSubMessage.getPayloadSize();
             }
-            logger.info("Get records #: " + partitionRecords.size());
             consumedDataReceiver.write(partitionRecords);
           }
           stats.recordConsumerRecordsProducingToWriterBufferLatency(

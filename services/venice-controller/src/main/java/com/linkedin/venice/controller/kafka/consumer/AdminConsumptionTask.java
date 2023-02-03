@@ -14,7 +14,6 @@ import com.linkedin.venice.exceptions.validation.DataValidationException;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
 import com.linkedin.venice.exceptions.validation.MissingDataException;
 import com.linkedin.venice.kafka.TopicManager;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
@@ -28,6 +27,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LatencyUtils;
@@ -142,7 +142,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private final boolean remoteConsumptionEnabled;
 
   private boolean isSubscribed;
-  private final KafkaConsumerWrapper consumer;
+  private final PubSubConsumer consumer;
   private volatile long offsetToSkip = UNASSIGNED_VALUE;
   private volatile long offsetToSkipDIV = UNASSIGNED_VALUE;
   /**
@@ -239,7 +239,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
   public AdminConsumptionTask(
       String clusterName,
-      KafkaConsumerWrapper consumer,
+      PubSubConsumer consumer,
       boolean remoteConsumptionEnabled,
       Optional<String> remoteKafkaServerUrl,
       Optional<String> remoteKafkaZkAddress,
@@ -432,7 +432,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     stats.setAdminConsumptionCheckpointOffset(lastPersistedOffset);
     stats.registerAdminConsumptionCheckpointOffset();
     // Subscribe the admin topic
-    consumer.subscribe(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, lastOffset);
+    consumer.subscribe(new PubSubTopicPartitionImpl(pubSubTopic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID), lastOffset);
     isSubscribed = true;
     LOGGER.info(
         "Subscribed to topic name: {}, with offset: {} and execution id: {}. Remote consumption flag: {}",
@@ -444,7 +444,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
   private void unSubscribe() {
     if (isSubscribed) {
-      consumer.unSubscribe(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+      consumer.unSubscribe(new PubSubTopicPartitionImpl(pubSubTopic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID));
       storeAdminOperationsMapWithOffset.clear();
       problematicStores.clear();
       undelegatedRecords.clear();

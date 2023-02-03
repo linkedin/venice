@@ -4,6 +4,7 @@ import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.throttle.EventThrottler;
@@ -30,7 +31,7 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
    * In theory, One version topic should only be mapped to one ingestion task, and if this assumption is violated
    * in the future, we need to change the design of this service.
    */
-  private final Map<String, SharedKafkaConsumer> versionTopicToConsumerMap = new VeniceConcurrentHashMap<>();
+  private final Map<PubSubTopic, SharedKafkaConsumer> versionTopicToConsumerMap = new VeniceConcurrentHashMap<>();
   private final Map<SharedKafkaConsumer, Set<String>> consumerToStoresMap = new VeniceConcurrentHashMap<>();
   private final Logger LOGGER;
 
@@ -80,7 +81,7 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
    */
   @Override
   protected synchronized SharedKafkaConsumer pickConsumerForPartition(
-      String versionTopic,
+      PubSubTopic versionTopic,
       PubSubTopicPartition topicPartition) {
     // Check whether this version topic has been subscribed before or not.
     SharedKafkaConsumer chosenConsumer = versionTopicToConsumerMap.get(versionTopic);
@@ -150,8 +151,8 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
    * This function is used to check whether the passed {@param consumer} has already subscribed the topics
    * belonging to the same store, which owns the passed {@param versionTopic} or not.
    */
-  private boolean checkWhetherConsumerHasSubscribedSameStore(SharedKafkaConsumer consumer, String versionTopic) {
-    String storeName = Version.parseStoreFromKafkaTopicName(versionTopic);
+  private boolean checkWhetherConsumerHasSubscribedSameStore(SharedKafkaConsumer consumer, PubSubTopic versionTopic) {
+    String storeName = Version.parseStoreFromKafkaTopicName(versionTopic.getName());
     Set<String> stores = consumerToStoresMap.get(consumer);
     return stores != null && stores.contains(storeName);
   }
@@ -160,7 +161,7 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
    * Detach the messages processing belonging to the topics of the passed {@param ingestionTask}
    */
   @Override
-  public synchronized void unsubscribeAll(String versionTopic) {
+  public synchronized void unsubscribeAll(PubSubTopic versionTopic) {
     SharedKafkaConsumer sharedKafkaConsumer = versionTopicToConsumerMap.get(versionTopic);
     if (sharedKafkaConsumer == null) {
       LOGGER.warn("No assigned shared consumer found for this version topic: {}", versionTopic);
@@ -172,22 +173,22 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
 
   /**
    * This function will check a consumer is assigned topic or not. Since we may not have too many consumers and this
-   * function will be only called when {@link #pickConsumerForPartition(String, PubSubTopicPartition)} is called the first
+   * function will be only called when {@link #pickConsumerForPartition(PubSubTopic, PubSubTopicPartition)} is called the first
    * time.
    */
   private boolean isConsumerAssignedTopic(SharedKafkaConsumer consumer) {
     return consumerToStoresMap.containsKey(consumer);
   }
 
-  private void assignVersionTopicToConsumer(String versionTopic, SharedKafkaConsumer consumer) {
+  private void assignVersionTopicToConsumer(PubSubTopic versionTopic, SharedKafkaConsumer consumer) {
     versionTopicToConsumerMap.put(versionTopic, consumer);
     consumerToStoresMap.computeIfAbsent(consumer, k -> new HashSet<>())
-        .add(Version.parseStoreFromKafkaTopicName(versionTopic));
+        .add(Version.parseStoreFromKafkaTopicName(versionTopic.getName()));
   }
 
-  private void removeTopicFromConsumer(String versionTopic, SharedKafkaConsumer consumer) {
+  private void removeTopicFromConsumer(PubSubTopic versionTopic, SharedKafkaConsumer consumer) {
     versionTopicToConsumerMap.remove(versionTopic);
-    final String storeName = Version.parseStoreFromKafkaTopicName(versionTopic);
+    final String storeName = Version.parseStoreFromKafkaTopicName(versionTopic.getName());
     consumerToStoresMap.compute(consumer, (k, assignedStores) -> {
       if (assignedStores != null) {
         assignedStores.remove(storeName);

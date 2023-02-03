@@ -4,6 +4,10 @@ import com.linkedin.venice.annotation.NotThreadsafe;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubTopicImpl;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -27,7 +31,7 @@ import org.apache.logging.log4j.Logger;
  * backoff
  */
 @NotThreadsafe
-public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
+public class ApacheKafkaConsumer implements PubSubConsumer {
   private static final Logger LOGGER = LogManager.getLogger(ApacheKafkaConsumer.class);
 
   public static final String CONSUMER_POLL_RETRY_TIMES_CONFIG = "consumer.poll.retry.times";
@@ -83,9 +87,10 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
   }
 
   @Override
-  public void subscribe(String topic, int partition, long lastReadOffset) {
+  public void subscribe(PubSubTopicPartition pubSubTopicPartition, long lastReadOffset) {
+    String topic = pubSubTopicPartition.getPubSubTopic().getName();
+    int partition = pubSubTopicPartition.getPartitionNumber();
     TopicPartition topicPartition = new TopicPartition(topic, partition);
-
     Set<TopicPartition> topicPartitionSet = kafkaConsumer.assignment();
     if (!topicPartitionSet.contains(topicPartition)) {
       List<TopicPartition> topicPartitionList = new ArrayList<>(topicPartitionSet);
@@ -100,9 +105,10 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
   }
 
   @Override
-  public void unSubscribe(String topic, int partition) {
+  public void unSubscribe(PubSubTopicPartition pubSubTopicPartition) {
+    String topic = pubSubTopicPartition.getPubSubTopic().getName();
+    int partition = pubSubTopicPartition.getPartitionNumber();
     TopicPartition topicPartition = new TopicPartition(topic, partition);
-
     Set<TopicPartition> topicPartitionSet = kafkaConsumer.assignment();
     if (topicPartitionSet.contains(topicPartition)) {
       List<TopicPartition> topicPartitionList = new ArrayList<>(topicPartitionSet);
@@ -115,16 +121,18 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
   }
 
   @Override
-  public void batchUnsubscribe(Set<TopicPartition> topicPartitionSet) {
+  public void batchUnsubscribe(Set<PubSubTopicPartition> pubSubTopicPartitionSet) {
     Set<TopicPartition> newTopicPartitionAssignment = new HashSet<>(kafkaConsumer.assignment());
 
-    newTopicPartitionAssignment.removeAll(topicPartitionSet);
+    newTopicPartitionAssignment.removeAll(convertPubSubTopicPartitionSetToTopicPartitionSet(pubSubTopicPartitionSet));
     kafkaConsumer.assign(newTopicPartitionAssignment);
   }
 
   @Override
-  public void resetOffset(String topic, int partition) {
-    if (!hasSubscription(topic, partition)) {
+  public void resetOffset(PubSubTopicPartition pubSubTopicPartition) {
+    String topic = pubSubTopicPartition.getPubSubTopic().getName();
+    int partition = pubSubTopicPartition.getPartitionNumber();
+    if (!hasSubscription(pubSubTopicPartition)) {
       throw new UnsubscribedTopicPartitionException(topic, partition);
     }
     TopicPartition topicPartition = new TopicPartition(topic, partition);
@@ -177,7 +185,9 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
   }
 
   @Override
-  public boolean hasSubscription(String topic, int partition) {
+  public boolean hasSubscription(PubSubTopicPartition pubSubTopicPartition) {
+    String topic = pubSubTopicPartition.getPubSubTopic().getName();
+    int partition = pubSubTopicPartition.getPartitionNumber();
     TopicPartition tp = new TopicPartition(topic, partition);
     return kafkaConsumer.assignment().contains(tp);
   }
@@ -186,7 +196,9 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
    * If the partitions were not previously subscribed, this method is a no-op.
    */
   @Override
-  public void pause(String topic, int partition) {
+  public void pause(PubSubTopicPartition pubSubTopicPartition) {
+    String topic = pubSubTopicPartition.getPubSubTopic().getName();
+    int partition = pubSubTopicPartition.getPartitionNumber();
     TopicPartition tp = new TopicPartition(topic, partition);
     if (kafkaConsumer.assignment().contains(tp)) {
       kafkaConsumer.pause(Collections.singletonList(tp));
@@ -197,7 +209,9 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
    * If the partitions were not previously paused or if they were not subscribed at all, this method is a no-op.
    */
   @Override
-  public void resume(String topic, int partition) {
+  public void resume(PubSubTopicPartition pubSubTopicPartition) {
+    String topic = pubSubTopicPartition.getPubSubTopic().getName();
+    int partition = pubSubTopicPartition.getPartitionNumber();
     TopicPartition tp = new TopicPartition(topic, partition);
     if (kafkaConsumer.assignment().contains(tp)) {
       kafkaConsumer.resume(Collections.singletonList(tp));
@@ -205,8 +219,28 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
   }
 
   @Override
-  public Set<TopicPartition> getAssignment() {
-    return kafkaConsumer.assignment();
+  public Set<PubSubTopicPartition> getAssignment() {
+    return convertTopicPartitionSetToPubSubTopicPartitionSet(kafkaConsumer.assignment());
+  }
+
+  private Set<PubSubTopicPartition> convertTopicPartitionSetToPubSubTopicPartitionSet(
+      Set<TopicPartition> topicPartitionSet) {
+    Set<PubSubTopicPartition> pubSubTopicPartitionSet = new HashSet<>();
+    topicPartitionSet.forEach(
+        topicPartition -> pubSubTopicPartitionSet.add(
+            new PubSubTopicPartitionImpl(new PubSubTopicImpl(topicPartition.topic()), topicPartition.partition())));
+    return pubSubTopicPartitionSet;
+  }
+
+  private Set<TopicPartition> convertPubSubTopicPartitionSetToTopicPartitionSet(
+      Set<PubSubTopicPartition> pubSubTopicPartitionSet) {
+    Set<TopicPartition> topicPartitionSet = new HashSet<>();
+    pubSubTopicPartitionSet.forEach(
+        pubSubTopicPartition -> topicPartitionSet.add(
+            new TopicPartition(
+                pubSubTopicPartition.getPubSubTopic().getName(),
+                pubSubTopicPartition.getPartitionNumber())));
+    return topicPartitionSet;
   }
 
   @Override
@@ -222,14 +256,18 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
   }
 
   @Override
-  public long getOffsetLag(String topic, int partition) {
+  public long getOffsetLag(PubSubTopicPartition pubSubTopicPartition) {
+    String topic = pubSubTopicPartition.getPubSubTopic().getName();
+    int partition = pubSubTopicPartition.getPartitionNumber();
     return topicPartitionsOffsetsTracker.isPresent()
         ? topicPartitionsOffsetsTracker.get().getOffsetLag(topic, partition)
         : -1;
   }
 
   @Override
-  public long getLatestOffset(String topic, int partition) {
+  public long getLatestOffset(PubSubTopicPartition pubSubTopicPartition) {
+    String topic = pubSubTopicPartition.getPubSubTopic().getName();
+    int partition = pubSubTopicPartition.getPartitionNumber();
     return topicPartitionsOffsetsTracker.isPresent()
         ? topicPartitionsOffsetsTracker.get().getEndOffset(topic, partition)
         : -1;

@@ -8,11 +8,13 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -27,29 +29,27 @@ import org.testng.annotations.Test;
 
 
 public class SharedKafkaConsumerTest {
-  protected KafkaConsumerWrapper consumer;
+  protected PubSubConsumer consumer;
   protected KafkaConsumerServiceStats consumerServiceStats;
 
   protected PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @BeforeMethod
   public void setUp() {
-    consumer = mock(KafkaConsumerWrapper.class);
+    consumer = mock(PubSubConsumer.class);
     consumerServiceStats = mock(KafkaConsumerServiceStats.class);
   }
 
   @Test
   public void testSubscriptionEmptyPoll() {
-    String nonExistingTopic1 = "nonExistingTopic1_v3";
+    PubSubTopic nonExistingTopic1 = pubSubTopicRepository.getTopic("nonExistingTopic1_v3");
 
     SharedKafkaConsumer sharedConsumer =
         new SharedKafkaConsumer(consumer, consumerServiceStats, () -> {}, (c, tp) -> {});
 
-    Set<TopicPartition> assignmentReturnedConsumer = new HashSet<>();
-    TopicPartition nonExistentTopicPartition = new TopicPartition(nonExistingTopic1, 1);
-    PubSubTopicPartition nonExistentPubSubTopicPartition =
-        pubSubTopicRepository.getPubSubTopicPartition(nonExistingTopic1, 1);
-    assignmentReturnedConsumer.add(nonExistentTopicPartition);
+    Set<PubSubTopicPartition> assignmentReturnedConsumer = new HashSet<>();
+    PubSubTopicPartition nonExistentPubSubTopicPartition = new PubSubTopicPartitionImpl(nonExistingTopic1, 1);
+    assignmentReturnedConsumer.add(nonExistentPubSubTopicPartition);
     when(consumer.getAssignment()).thenReturn(assignmentReturnedConsumer);
     sharedConsumer.subscribe(nonExistingTopic1, nonExistentPubSubTopicPartition, -1);
 

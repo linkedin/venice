@@ -5,12 +5,15 @@ import com.linkedin.venice.client.store.QueryTool;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumer;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
@@ -114,17 +117,20 @@ public class TopicMessageFinder {
 
   /** For unit tests */
   static void consume(
-      KafkaConsumerWrapper c,
+      PubSubConsumer c,
       String topic,
       int assignedPartition,
       long startOffset,
       long endOffset,
       long progressInterval,
       byte[] serializedKey) {
-    try (KafkaConsumerWrapper consumer = c) {
+    try (PubSubConsumer consumer = c) {
+      PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
       long recordCnt = 0;
       long lastReportRecordCnt = 0;
-      consumer.subscribe(topic, assignedPartition, startOffset);
+      PubSubTopicPartition pubSubTopicPartition =
+          new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), assignedPartition);
+      consumer.subscribe(pubSubTopicPartition, startOffset);
       boolean done = false;
       KafkaKeySerializer keySerializer = new KafkaKeySerializer();
       KafkaValueSerializer valueSerializer = new OptimizedKafkaValueSerializer();

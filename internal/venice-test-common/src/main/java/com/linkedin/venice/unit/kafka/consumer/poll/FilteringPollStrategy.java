@@ -1,9 +1,9 @@
 package com.linkedin.venice.unit.kafka.consumer.poll;
 
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Pair;
 import java.util.Map;
 import java.util.Set;
-import org.apache.kafka.common.TopicPartition;
 
 
 /**
@@ -11,19 +11,19 @@ import org.apache.kafka.common.TopicPartition;
  */
 public class FilteringPollStrategy extends AbstractPollStrategy {
   private final AbstractPollStrategy basePollStrategy;
-  private final Set<Pair<TopicPartition, Long>> topicPartitionOffsetsToFilterOut;
+  private final Set<Pair<PubSubTopicPartition, Long>> topicPartitionOffsetsToFilterOut;
 
   public FilteringPollStrategy(
       AbstractPollStrategy basePollStrategy,
-      Set<Pair<TopicPartition, Long>> topicPartitionOffsetsToFilterOut) {
+      Set<Pair<PubSubTopicPartition, Long>> topicPartitionOffsetsToFilterOut) {
     super(basePollStrategy.keepPollingWhenEmpty);
     this.basePollStrategy = basePollStrategy;
     this.topicPartitionOffsetsToFilterOut = topicPartitionOffsetsToFilterOut;
   }
 
   @Override
-  protected Pair<TopicPartition, Long> getNextPoll(Map<TopicPartition, Long> offsets) {
-    Pair<TopicPartition, Long> nextPoll = basePollStrategy.getNextPoll(offsets);
+  protected Pair<PubSubTopicPartition, Long> getNextPoll(Map<PubSubTopicPartition, Long> offsets) {
+    Pair<PubSubTopicPartition, Long> nextPoll = basePollStrategy.getNextPoll(offsets);
     if (topicPartitionOffsetsToFilterOut.contains(nextPoll)) {
       incrementOffset(offsets, nextPoll.getFirst(), nextPoll.getSecond());
       return getNextPoll(offsets);

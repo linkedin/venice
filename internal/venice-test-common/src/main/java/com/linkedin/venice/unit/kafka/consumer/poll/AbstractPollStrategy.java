@@ -4,6 +4,7 @@ import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
@@ -41,11 +42,11 @@ public abstract class AbstractPollStrategy implements PollStrategy {
     this.maxMessagePerPoll = maxMessagePerPoll;
   }
 
-  protected abstract Pair<TopicPartition, Long> getNextPoll(Map<TopicPartition, Long> offsets);
+  protected abstract Pair<PubSubTopicPartition, Long> getNextPoll(Map<PubSubTopicPartition, Long> offsets);
 
   public synchronized ConsumerRecords<byte[], byte[]> poll(
       InMemoryKafkaBroker broker,
-      Map<TopicPartition, Long> offsets,
+      Map<PubSubTopicPartition, Long> offsets,
       long timeout) {
 
     Map<TopicPartition, List<ConsumerRecord<byte[], byte[]>>> records = new HashMap<>();
@@ -54,7 +55,7 @@ public abstract class AbstractPollStrategy implements PollStrategy {
     int numberOfRecords = 0;
 
     while (numberOfRecords < maxMessagePerPoll && System.currentTimeMillis() < startTime + timeout) {
-      Pair<TopicPartition, Long> nextPoll = getNextPoll(offsets);
+      Pair<PubSubTopicPartition, Long> nextPoll = getNextPoll(offsets);
       if (nextPoll == null) {
         if (keepPollingWhenEmpty) {
           continue;
@@ -62,11 +63,11 @@ public abstract class AbstractPollStrategy implements PollStrategy {
           break;
         }
       }
-
-      TopicPartition topicPartition = nextPoll.getFirst();
+      PubSubTopicPartition pubSubTopicPartition = nextPoll.getFirst();
       long offset = nextPoll.getSecond();
-      String topic = topicPartition.topic();
-      int partition = topicPartition.partition();
+      String topic = pubSubTopicPartition.getPubSubTopic().getName();
+      int partition = pubSubTopicPartition.getPartitionNumber();
+      TopicPartition topicPartition = new TopicPartition(topic, partition);
       /**
        * TODO: need to understand why "+ 1" here, since for {@link ArbitraryOrderingPollStrategy}, it always
        * returns the next message specified in the delivery order, which is causing confusion.
@@ -105,12 +106,12 @@ public abstract class AbstractPollStrategy implements PollStrategy {
           records.put(topicPartition, new ArrayList<>());
         }
         records.get(topicPartition).add(consumerRecord);
-        incrementOffset(offsets, topicPartition, offset);
+        incrementOffset(offsets, pubSubTopicPartition, offset);
         numberOfRecords++;
       } else if (keepPollingWhenEmpty) {
         continue;
       } else {
-        offsets.remove(topicPartition);
+        offsets.remove(pubSubTopicPartition);
         continue;
       }
     }
@@ -118,7 +119,10 @@ public abstract class AbstractPollStrategy implements PollStrategy {
     return new ConsumerRecords(records);
   }
 
-  protected void incrementOffset(Map<TopicPartition, Long> offsets, TopicPartition topicPartition, long offset) {
+  protected void incrementOffset(
+      Map<PubSubTopicPartition, Long> offsets,
+      PubSubTopicPartition topicPartition,
+      long offset) {
     offsets.put(topicPartition, offset + 1);
   }
 }

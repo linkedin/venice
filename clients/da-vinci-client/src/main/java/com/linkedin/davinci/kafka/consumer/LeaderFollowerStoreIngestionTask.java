@@ -234,7 +234,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      * different in some test cases which reuse the same VeniceWriter.
      */
     VeniceWriterOptions writerOptions =
-        new VeniceWriterOptions.Builder(getVersionTopic()).setPartitioner(venicePartitioner)
+        new VeniceWriterOptions.Builder(getVersionTopic().getName()).setPartitioner(venicePartitioner)
             .setChunkingEnabled(isChunked)
             .setRmdChunkingEnabled(version.isRmdChunkingEnabled())
             .setPartitionCount(Optional.of(storeVersionPartitionCount * amplificationFactor))
@@ -2497,20 +2497,20 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   @Override
   public void consumerUnSubscribeAllTopics(PartitionConsumptionState partitionConsumptionState) {
     String leaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic();
+    int partitionId = partitionConsumptionState.getPartition();
     if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER) && leaderTopic != null) {
       aggKafkaConsumerService.unsubscribeConsumerFor(
-          kafkaVersionTopic,
-          pubSubTopicRepository.getPubSubTopicPartition(leaderTopic, partitionConsumptionState.getPartition()));
+          versionTopic,
+          new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(leaderTopic), partitionId));
     } else {
-      aggKafkaConsumerService.unsubscribeConsumerFor(
-          kafkaVersionTopic,
-          pubSubTopicRepository.getPubSubTopicPartition(kafkaVersionTopic, partitionConsumptionState.getPartition()));
+      aggKafkaConsumerService
+          .unsubscribeConsumerFor(versionTopic, new PubSubTopicPartitionImpl(versionTopic, partitionId));
     }
 
     /**
      * Leader of the user partition should close all subPartitions it is producing to.
      */
-    veniceWriter.ifPresent(vw -> vw.closePartition(partitionConsumptionState.getPartition()));
+    veniceWriter.ifPresent(vw -> vw.closePartition(partitionId));
   }
 
   @Override

@@ -7,6 +7,7 @@ import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
@@ -144,7 +145,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
 
   public boolean hasConsumerAssignedFor(
       final String kafkaURL,
-      String versionTopic,
+      PubSubTopic versionTopic,
       PubSubTopicPartition pubSubTopicPartition) {
     KafkaConsumerService consumerService = getKafkaConsumerService(kafkaURL);
     if (consumerService == null) {
@@ -155,7 +156,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     return consumer != null && consumer.hasSubscription(pubSubTopicPartition);
   }
 
-  boolean hasConsumerAssignedFor(String versionTopic, PubSubTopicPartition pubSubTopicPartition) {
+  boolean hasConsumerAssignedFor(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
     for (String kafkaUrl: kafkaServerToConsumerServiceMap.keySet()) {
       if (hasConsumerAssignedFor(kafkaUrl, versionTopic, pubSubTopicPartition)) {
         return true;
@@ -164,7 +165,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     return false;
   }
 
-  boolean hasAnyConsumerAssignedForVersionTopic(String versionTopic) {
+  boolean hasAnyConsumerAssignedForVersionTopic(PubSubTopic versionTopic) {
     for (KafkaConsumerService consumerService: kafkaServerToConsumerServiceMap.values()) {
       if (consumerService.hasAnySubscriptionFor(versionTopic)) {
         return true;
@@ -173,7 +174,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     return false;
   }
 
-  void resetOffsetFor(String versionTopic, PubSubTopicPartition pubSubTopicPartition) {
+  void resetOffsetFor(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
     PubSubConsumer consumer;
     for (KafkaConsumerService consumerService: kafkaServerToConsumerServiceMap.values()) {
       consumer = consumerService.getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
@@ -183,20 +184,23 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     }
   }
 
-  void unsubscribeConsumerFor(final String kafkaURL, String versionTopic, PubSubTopicPartition pubSubTopicPartition) {
+  void unsubscribeConsumerFor(
+      final String kafkaURL,
+      PubSubTopic versionTopic,
+      PubSubTopicPartition pubSubTopicPartition) {
     KafkaConsumerService consumerService = getKafkaConsumerService(kafkaURL);
     if (consumerService != null) {
       consumerService.unSubscribe(versionTopic, pubSubTopicPartition);
     }
   }
 
-  public void unsubscribeConsumerFor(String versionTopic, PubSubTopicPartition pubSubTopicPartition) {
+  public void unsubscribeConsumerFor(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
     for (KafkaConsumerService consumerService: kafkaServerToConsumerServiceMap.values()) {
       consumerService.unSubscribe(versionTopic, pubSubTopicPartition);
     }
   }
 
-  void batchUnsubscribeConsumerFor(String versionTopic, Set<PubSubTopicPartition> topicPartitionSet) {
+  void batchUnsubscribeConsumerFor(PubSubTopic versionTopic, Set<PubSubTopicPartition> topicPartitionSet) {
     for (KafkaConsumerService consumerService: kafkaServerToConsumerServiceMap.values()) {
       consumerService.batchUnsubscribe(versionTopic, topicPartitionSet);
     }
@@ -207,7 +211,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       StoreIngestionTask storeIngestionTask,
       PubSubTopicPartition topicPartition,
       long lastOffset) {
-    String versionTopic = storeIngestionTask.getVersionTopic();
+    PubSubTopic versionTopic = storeIngestionTask.getVersionTopic();
     KafkaConsumerService consumerService = getKafkaConsumerService(kafkaURL);
     if (consumerService == null) {
       throw new VeniceException(
@@ -230,14 +234,17 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     return dataReceiver;
   }
 
-  public long getOffsetLagFor(final String kafkaURL, String versionTopic, PubSubTopicPartition pubSubTopicPartition) {
+  public long getOffsetLagFor(
+      final String kafkaURL,
+      PubSubTopic versionTopic,
+      PubSubTopicPartition pubSubTopicPartition) {
     KafkaConsumerService consumerService = getKafkaConsumerService(kafkaURL);
     return consumerService == null ? -1 : consumerService.getOffsetLagFor(versionTopic, pubSubTopicPartition);
   }
 
   public long getLatestOffsetFor(
       final String kafkaURL,
-      String versionTopic,
+      PubSubTopic versionTopic,
       PubSubTopicPartition pubSubTopicPartition) {
     KafkaConsumerService consumerService = getKafkaConsumerService(kafkaURL);
     return consumerService == null ? -1 : consumerService.getLatestOffsetFor(versionTopic, pubSubTopicPartition);
@@ -247,11 +254,11 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
    * This will be called when an ingestion task is killed. {@link AggKafkaConsumerService}
    * will try to stop all subscription associated with the given version topic.
    */
-  void unsubscribeAll(String versionTopic) {
+  void unsubscribeAll(PubSubTopic versionTopic) {
     kafkaServerToConsumerServiceMap.values().forEach(consumerService -> consumerService.unsubscribeAll(versionTopic));
   }
 
-  void pauseConsumerFor(String versionTopic, PubSubTopicPartition pubSubTopicPartition) {
+  void pauseConsumerFor(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
     PubSubConsumer consumer;
     for (KafkaConsumerService consumerService: kafkaServerToConsumerServiceMap.values()) {
       consumer = consumerService.getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
@@ -261,7 +268,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     }
   }
 
-  void resumeConsumerFor(String versionTopic, PubSubTopicPartition pubSubTopicPartition) {
+  void resumeConsumerFor(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
     PubSubConsumer consumer;
     for (KafkaConsumerService consumerService: kafkaServerToConsumerServiceMap.values()) {
       consumer = consumerService.getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
@@ -274,7 +281,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   /**
    * It returns all Kafka URLs of the consumers assigned for {@param versionTopic}.
    */
-  Set<String> getKafkaUrlsFor(String versionTopic) {
+  Set<String> getKafkaUrlsFor(PubSubTopic versionTopic) {
     Set<String> kafkaUrls = new HashSet<>(kafkaServerToConsumerServiceMap.size());
     for (Map.Entry<String, KafkaConsumerService> entry: kafkaServerToConsumerServiceMap.entrySet()) {
       if (entry.getValue().hasAnySubscriptionFor(versionTopic)) {

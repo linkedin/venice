@@ -21,6 +21,7 @@ import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
@@ -68,7 +69,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
   private static final int CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES = 12;
   private static final long EMPTY_POLL_SLEEP_TIME_MS = TimeUnit.SECONDS.toMillis(5);
 
-  private final KafkaConsumerWrapper consumer;
+  private final PubSubConsumer consumer;
   private final TopicPartition topicPartition;
   private final PubSubTopicPartition pubSubTopicPartition;
   private final long maxNumberOfRecords;
@@ -91,7 +92,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
   }
 
   /** For unit tests */
-  KafkaInputRecordReader(InputSplit split, JobConf job, Reporter reporter, KafkaConsumerWrapper consumer) {
+  KafkaInputRecordReader(InputSplit split, JobConf job, Reporter reporter, PubSubConsumer consumer) {
     if (!(split instanceof KafkaInputSplit)) {
       throw new VeniceException("InputSplit for RecordReader is not valid split type.");
     }
@@ -116,7 +117,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
      * Not accurate since the topic partition could be log compacted.
      */
     this.maxNumberOfRecords = endingOffset - startingOffset;
-    this.consumer.subscribe(topicPartition.topic(), topicPartition.partition(), currentOffset);
+    this.consumer.subscribe(pubSubTopicPartition, currentOffset);
     this.reporter = reporter;
     this.pubSubMessageDeserializer = new KafkaPubSubMessageDeserializer(
         new OptimizedKafkaValueSerializer(),

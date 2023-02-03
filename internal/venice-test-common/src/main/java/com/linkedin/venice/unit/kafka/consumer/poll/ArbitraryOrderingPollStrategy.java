@@ -1,9 +1,9 @@
 package com.linkedin.venice.unit.kafka.consumer.poll;
 
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Pair;
 import java.util.Map;
 import java.util.Queue;
-import org.apache.kafka.common.TopicPartition;
 
 
 /**
@@ -11,15 +11,15 @@ import org.apache.kafka.common.TopicPartition;
  * at construction time.
  */
 public class ArbitraryOrderingPollStrategy extends AbstractPollStrategy {
-  private final Queue<Pair<TopicPartition, Long>> pollDeliveryOrder;
+  private final Queue<Pair<PubSubTopicPartition, Long>> pollDeliveryOrder;
 
-  public ArbitraryOrderingPollStrategy(Queue<Pair<TopicPartition, Long>> pollDeliveryOrder) {
+  public ArbitraryOrderingPollStrategy(Queue<Pair<PubSubTopicPartition, Long>> pollDeliveryOrder) {
     super(false);
     this.pollDeliveryOrder = pollDeliveryOrder;
   }
 
   @Override
-  protected Pair<TopicPartition, Long> getNextPoll(Map<TopicPartition, Long> offsets) {
+  protected Pair<PubSubTopicPartition, Long> getNextPoll(Map<PubSubTopicPartition, Long> offsets) {
     if (offsets.isEmpty()) {
       // Not subscribed yet
       return null;

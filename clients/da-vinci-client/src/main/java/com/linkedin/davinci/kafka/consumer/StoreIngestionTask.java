@@ -1341,7 +1341,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       LOGGER.error("{} Error while resetting offset.", consumerTaskId, e);
     }
     // Unsubscribe any topic partitions related to this version topic from the shared consumer.
-    aggKafkaConsumerService.unsubscribeAll(kafkaVersionTopic);
+    aggKafkaConsumerService.unsubscribeAll(versionTopic);
     LOGGER.info("Detached Kafka consumer(s) for version topic: {}", kafkaVersionTopic);
     try {
       partitionConsumptionStateMap.values().parallelStream().forEach(PartitionConsumptionState::unsubscribe);
@@ -1760,12 +1760,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected long getPartitionOffsetLag(String kafkaSourceAddress, PubSubTopic topic, int partition) {
     return aggKafkaConsumerService
-        .getOffsetLagFor(kafkaSourceAddress, kafkaVersionTopic, new PubSubTopicPartitionImpl(topic, partition));
+        .getOffsetLagFor(kafkaSourceAddress, versionTopic, new PubSubTopicPartitionImpl(topic, partition));
   }
 
   protected long getPartitionLatestOffset(String kafkaSourceAddress, PubSubTopic topic, int partition) {
     return aggKafkaConsumerService
-        .getLatestOffsetFor(kafkaSourceAddress, kafkaVersionTopic, new PubSubTopicPartitionImpl(topic, partition));
+        .getLatestOffsetFor(kafkaSourceAddress, versionTopic, new PubSubTopicPartitionImpl(topic, partition));
   }
 
   protected abstract void checkLongRunningTaskState() throws InterruptedException;
@@ -2742,19 +2742,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   public boolean consumerHasAnySubscription() {
-    return aggKafkaConsumerService.hasAnyConsumerAssignedForVersionTopic(getVersionTopic());
+    return aggKafkaConsumerService.hasAnyConsumerAssignedForVersionTopic(versionTopic);
   }
 
   public boolean consumerHasSubscription(PubSubTopic topic, PartitionConsumptionState partitionConsumptionState) {
     int partitionId = partitionConsumptionState.getSourceTopicPartitionNumber(topic);
     return aggKafkaConsumerService
-        .hasConsumerAssignedFor(getVersionTopic(), new PubSubTopicPartitionImpl(topic, partitionId));
+        .hasConsumerAssignedFor(versionTopic, new PubSubTopicPartitionImpl(topic, partitionId));
   }
 
   public void consumerUnSubscribe(PubSubTopic topic, PartitionConsumptionState partitionConsumptionState) {
     Instant startTime = Instant.now();
     int partitionId = partitionConsumptionState.getPartition();
-    aggKafkaConsumerService.unsubscribeConsumerFor(getVersionTopic(), new PubSubTopicPartitionImpl(topic, partitionId));
+    aggKafkaConsumerService.unsubscribeConsumerFor(versionTopic, new PubSubTopicPartitionImpl(topic, partitionId));
     LOGGER.info(
         "Consumer unsubscribed topic {} partition {}. Took {} ms",
         topic,
@@ -2764,7 +2764,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public void consumerBatchUnsubscribe(Set<PubSubTopicPartition> topicPartitionSet) {
     Instant startTime = Instant.now();
-    aggKafkaConsumerService.batchUnsubscribeConsumerFor(getVersionTopic(), topicPartitionSet);
+    aggKafkaConsumerService.batchUnsubscribeConsumerFor(versionTopic, topicPartitionSet);
     LOGGER.info(
         "Consumer unsubscribed {} partitions. Took {} ms",
         topicPartitionSet.size(),
@@ -2783,18 +2783,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public void consumerResetOffset(PubSubTopic topic, PartitionConsumptionState partitionConsumptionState) {
     int partitionId = partitionConsumptionState.getSourceTopicPartitionNumber(topic);
-    aggKafkaConsumerService.resetOffsetFor(getVersionTopic(), new PubSubTopicPartitionImpl(topic, partitionId));
+    aggKafkaConsumerService.resetOffsetFor(versionTopic, new PubSubTopicPartitionImpl(topic, partitionId));
   }
 
   public void pauseConsumption(String topic, int partitionId) {
     aggKafkaConsumerService.pauseConsumerFor(
-        getVersionTopic(),
+        versionTopic,
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
   }
 
   public void resumeConsumption(String topic, int partitionId) {
     aggKafkaConsumerService.resumeConsumerFor(
-        getVersionTopic(),
+        versionTopic,
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
   }
 
@@ -3133,8 +3133,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return isRunning.get();
   }
 
-  public String getVersionTopic() {
-    return kafkaVersionTopic;
+  public PubSubTopic getVersionTopic() {
+    return versionTopic;
   }
 
   public boolean isMetricsEmissionEnabled() {

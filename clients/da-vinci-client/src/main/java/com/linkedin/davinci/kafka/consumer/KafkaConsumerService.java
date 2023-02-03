@@ -7,6 +7,7 @@ import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
@@ -75,7 +76,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
 
   protected KafkaConsumerServiceStats stats;
   protected final IndexedMap<SharedKafkaConsumer, ConsumptionTask> consumerToConsumptionTask;
-  protected final Map<String, Map<PubSubTopicPartition, SharedKafkaConsumer>> versionTopicToTopicPartitionToConsumer =
+  protected final Map<PubSubTopic, Map<PubSubTopicPartition, SharedKafkaConsumer>> versionTopicToTopicPartitionToConsumer =
       new VeniceConcurrentHashMap<>();
 
   /**
@@ -161,7 +162,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
   }
 
   public SharedKafkaConsumer getConsumerAssignedToVersionTopicPartition(
-      String versionTopic,
+      PubSubTopic versionTopic,
       PubSubTopicPartition topicPartition) {
     Map<PubSubTopicPartition, SharedKafkaConsumer> map = versionTopicToTopicPartitionToConsumer.get(versionTopic);
     if (map == null) {
@@ -175,7 +176,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
    *
    * Must be idempotent and thus return previously a assigned consumer (for the same params) if any exists.
    */
-  public SharedKafkaConsumer assignConsumerFor(String versionTopic, PubSubTopicPartition topicPartition) {
+  public SharedKafkaConsumer assignConsumerFor(PubSubTopic versionTopic, PubSubTopicPartition topicPartition) {
     Map<PubSubTopicPartition, SharedKafkaConsumer> topicPartitionToConsumerMap =
         versionTopicToTopicPartitionToConsumer.computeIfAbsent(versionTopic, k -> new VeniceConcurrentHashMap<>());
     return topicPartitionToConsumerMap
@@ -183,7 +184,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
   }
 
   protected abstract SharedKafkaConsumer pickConsumerForPartition(
-      String versionTopic,
+      PubSubTopic versionTopic,
       PubSubTopicPartition topicPartition);
 
   protected void removeTopicPartitionFromConsumptionTask(PubSubConsumer consumer, PubSubTopicPartition topicPartition) {
@@ -193,7 +194,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
   /**
    * Stop all subscription associated with the given version topic.
    */
-  public void unsubscribeAll(String versionTopic) {
+  public void unsubscribeAll(PubSubTopic versionTopic) {
     versionTopicToTopicPartitionToConsumer.compute(versionTopic, (k, topicPartitionToConsumerMap) -> {
       if (topicPartitionToConsumerMap != null) {
         topicPartitionToConsumerMap.forEach((topicPartition, sharedConsumer) -> {
@@ -208,7 +209,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
   /**
    * Stop specific subscription associated with the given version topic.
    */
-  void unSubscribe(String versionTopic, PubSubTopicPartition pubSubTopicPartition) {
+  void unSubscribe(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
     PubSubConsumer consumer = getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
     if (consumer != null) {
       consumer.unSubscribe(pubSubTopicPartition);
@@ -224,7 +225,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
     }
   }
 
-  void batchUnsubscribe(String versionTopic, Set<PubSubTopicPartition> topicPartitionsToUnSub) {
+  void batchUnsubscribe(PubSubTopic versionTopic, Set<PubSubTopicPartition> topicPartitionsToUnSub) {
     Map<PubSubConsumer, Set<PubSubTopicPartition>> consumerUnSubTopicPartitionSet = new HashMap<>();
     PubSubConsumer consumer;
     for (PubSubTopicPartition topicPartition: topicPartitionsToUnSub) {
@@ -293,7 +294,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
     consumerToConsumptionTask.keySet().forEach(SharedKafkaConsumer::close);
   }
 
-  public boolean hasAnySubscriptionFor(String versionTopic) {
+  public boolean hasAnySubscriptionFor(PubSubTopic versionTopic) {
     Map<PubSubTopicPartition, SharedKafkaConsumer> subscriptions =
         versionTopicToTopicPartitionToConsumer.get(versionTopic);
     if (subscriptions == null) {
@@ -342,7 +343,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
       PubSubTopicPartition topicPartition,
       long lastReadOffset,
       ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> consumedDataReceiver) {
-    String versionTopic = consumedDataReceiver.destinationIdentifier();
+    PubSubTopic versionTopic = consumedDataReceiver.destinationIdentifier();
     SharedKafkaConsumer consumer = assignConsumerFor(versionTopic, topicPartition);
 
     if (consumer == null) {
@@ -404,7 +405,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
     stats.recordMinPartitionsPerConsumer(minPartitionsPerConsumer);
   }
 
-  public long getOffsetLagFor(String versionTopic, PubSubTopicPartition pubSubTopicPartition) {
+  public long getOffsetLagFor(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
     return getSomeOffsetFor(
         versionTopic,
         pubSubTopicPartition,
@@ -413,7 +414,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
         stats::recordOffsetLagIsPresent);
   }
 
-  public long getLatestOffsetFor(String versionTopic, PubSubTopicPartition pubSubTopicPartition) {
+  public long getLatestOffsetFor(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
     return getSomeOffsetFor(
         versionTopic,
         pubSubTopicPartition,
@@ -423,7 +424,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
   }
 
   private long getSomeOffsetFor(
-      String versionTopic,
+      PubSubTopic versionTopic,
       PubSubTopicPartition pubSubTopicPartition,
       OffsetGetter offsetGetter,
       Runnable sensorIfAbsent,

@@ -1,12 +1,16 @@
 package com.linkedin.venice.utils;
 
 import com.linkedin.venice.kafka.consumer.KafkaConsumerFactoryImpl;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.StartOfPush;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import java.nio.ByteBuffer;
@@ -31,7 +35,7 @@ public class DictionaryUtils {
   public static ByteBuffer readDictionaryFromKafka(String topicName, VeniceProperties props) {
     KafkaConsumerFactoryImpl kafkaConsumerFactory = new KafkaConsumerFactoryImpl(props);
 
-    try (KafkaConsumerWrapper kafkaConsumer = kafkaConsumerFactory.getConsumer(getKafkaConsumerProps())) {
+    try (PubSubConsumer kafkaConsumer = kafkaConsumerFactory.getConsumer(getKafkaConsumerProps())) {
       return DictionaryUtils.readDictionaryFromKafka(topicName, kafkaConsumer);
     }
   }
@@ -42,9 +46,12 @@ public class DictionaryUtils {
    * @return The compression dictionary wrapped in a ByteBuffer, or null if no dictionary was present in the
    * Start Of Push message.
    */
-  public static ByteBuffer readDictionaryFromKafka(String topicName, KafkaConsumerWrapper kafkaConsumerWrapper) {
+  public static ByteBuffer readDictionaryFromKafka(String topicName, PubSubConsumer pubSubConsumer) {
     LOGGER.info("Consuming from topic: {} till StartOfPush", topicName);
-    kafkaConsumerWrapper.subscribe(topicName, 0, 0);
+    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+    PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(topicName);
+    PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(pubSubTopic, 0);
+    pubSubConsumer.subscribe(pubSubTopicPartition, 0);
     boolean startOfPushReceived = false;
     ByteBuffer compressionDictionary = null;
     KafkaKeySerializer keySerializer = new KafkaKeySerializer();
@@ -52,7 +59,7 @@ public class DictionaryUtils {
     KafkaKey kafkaKey;
     KafkaMessageEnvelope kafkaValue = null;
     while (!startOfPushReceived) {
-      ConsumerRecords<byte[], byte[]> records = kafkaConsumerWrapper.poll(10 * Time.MS_PER_SECOND);
+      ConsumerRecords<byte[], byte[]> records = pubSubConsumer.poll(10 * Time.MS_PER_SECOND);
       for (final ConsumerRecord<byte[], byte[]> record: records) {
         kafkaKey = keySerializer.deserialize(null, record.key());
         kafkaValue = valueSerializer.deserialize(record.value(), kafkaValue);

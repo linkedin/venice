@@ -4,8 +4,7 @@ import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
-import com.linkedin.venice.pubsub.PubSubTopicImpl;
-import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.utils.LatencyUtils;
@@ -28,16 +27,17 @@ import org.apache.logging.log4j.Logger;
  * This class is a synchronized version of {@link KafkaConsumerWrapper}.
  *
  * In addition to the existing API of {@link KafkaConsumerWrapper}, this class also adds specific functions used by
- * {@link KafkaConsumerService}, notably: {@link #subscribe(String, PubSubTopicPartition, long)} which keeps track of the
+ * {@link KafkaConsumerService}, notably: {@link #subscribe(PubSubTopic, PubSubTopicPartition, long)} which keeps track of the
  * mapping of which TopicPartition is used by which version-topic.
  *
  * It also provides some callbacks used by the {@link KafkaConsumerService} to react to certain changes, in a way that
  * minimizes bidirectional coupling as much as possible.
+ * TODO: Rename this class as SharedPubSubConsumer
  */
 class SharedKafkaConsumer implements PubSubConsumer {
   private static final Logger LOGGER = LogManager.getLogger(SharedKafkaConsumer.class);
 
-  protected final KafkaConsumerWrapper delegate;
+  protected final PubSubConsumer delegate;
 
   private final KafkaConsumerServiceStats stats;
 
@@ -63,7 +63,7 @@ class SharedKafkaConsumer implements PubSubConsumer {
    * regressions where we would end up using this consumer to subscribe to a given topic-partition on behalf
    * of multiple version-topics.
    */
-  private final VeniceConcurrentHashMap<PubSubTopicPartition, String> subscribedTopicPartitionToVersionTopic =
+  private final VeniceConcurrentHashMap<PubSubTopicPartition, PubSubTopic> subscribedTopicPartitionToVersionTopic =
       new VeniceConcurrentHashMap();
 
   /**
@@ -78,7 +78,7 @@ class SharedKafkaConsumer implements PubSubConsumer {
   private volatile long pollTimes = 0;
 
   public SharedKafkaConsumer(
-      KafkaConsumerWrapper delegate,
+      PubSubConsumer delegate,
       KafkaConsumerServiceStats stats,
       Runnable assignmentChangeListener,
       UnsubscriptionListener unsubscriptionListener) {
@@ -86,7 +86,7 @@ class SharedKafkaConsumer implements PubSubConsumer {
   }
 
   SharedKafkaConsumer(
-      KafkaConsumerWrapper delegate,
+      PubSubConsumer delegate,
       KafkaConsumerServiceStats stats,
       Runnable assignmentChangeListener,
       UnsubscriptionListener unsubscriptionListener,
@@ -107,21 +107,12 @@ class SharedKafkaConsumer implements PubSubConsumer {
     void call(SharedKafkaConsumer consumer, PubSubTopicPartition pubSubTopicPartition);
   }
 
-  protected synchronized void updateCurrentAssignment(Set<TopicPartition> newAssignment) {
+  protected synchronized void updateCurrentAssignment(Set<PubSubTopicPartition> newAssignment) {
     final long updateCurrentAssignmentStartTime = System.currentTimeMillis();
     currentAssignmentSize.set(newAssignment.size());
-    currentAssignment = Collections.unmodifiableSet(convertTopicPartitionSetToPubSubTopicPartitionSet(newAssignment));
+    currentAssignment = Collections.unmodifiableSet(newAssignment);
     assignmentChangeListener.run();
     stats.recordUpdateCurrentAssignmentLatency(LatencyUtils.getElapsedTimeInMs(updateCurrentAssignmentStartTime));
-  }
-
-  private Set<PubSubTopicPartition> convertTopicPartitionSetToPubSubTopicPartitionSet(
-      Set<TopicPartition> topicPartitionSet) {
-    Set<PubSubTopicPartition> pubSubTopicPartitionSet = new HashSet<>();
-    topicPartitionSet.forEach(
-        topicPartition -> pubSubTopicPartitionSet.add(
-            new PubSubTopicPartitionImpl(new PubSubTopicImpl(topicPartition.topic()), topicPartition.partition())));
-    return pubSubTopicPartitionSet;
   }
 
   @Override
@@ -131,15 +122,13 @@ class SharedKafkaConsumer implements PubSubConsumer {
   }
 
   synchronized void subscribe(
-      String versionTopic,
+      PubSubTopic versionTopic,
       PubSubTopicPartition topicPartitionToSubscribe,
       long lastReadOffset) {
     long delegateSubscribeStartTime = System.currentTimeMillis();
-    this.delegate.subscribe(
-        topicPartitionToSubscribe.getPubSubTopic().getName(),
-        topicPartitionToSubscribe.getPartitionNumber(),
-        lastReadOffset);
-    String previousVersionTopic = subscribedTopicPartitionToVersionTopic.put(topicPartitionToSubscribe, versionTopic);
+    this.delegate.subscribe(topicPartitionToSubscribe, lastReadOffset);
+    PubSubTopic previousVersionTopic =
+        subscribedTopicPartitionToVersionTopic.put(topicPartitionToSubscribe, versionTopic);
     if (previousVersionTopic != null && !previousVersionTopic.equals(versionTopic)) {
       throw new IllegalStateException(
           "A shared consumer cannot be used to subscribe to the same topic-partition by different VTs!"
@@ -158,10 +147,8 @@ class SharedKafkaConsumer implements PubSubConsumer {
    */
   @Override
   public synchronized void unSubscribe(PubSubTopicPartition pubSubTopicPartition) {
-    String topic = pubSubTopicPartition.getPubSubTopic().getName();
-    int partition = pubSubTopicPartition.getPartitionNumber();
     unSubscribeAction(() -> {
-      this.delegate.unSubscribe(topic, partition);
+      this.delegate.unSubscribe(pubSubTopicPartition);
       subscribedTopicPartitionToVersionTopic.remove(pubSubTopicPartition);
       unsubscriptionListener.call(this, pubSubTopicPartition);
       return 1;
@@ -177,7 +164,7 @@ class SharedKafkaConsumer implements PubSubConsumer {
                 pubSubTopicPartition.getPubSubTopic().getName(),
                 pubSubTopicPartition.getPartitionNumber())));
     unSubscribeAction(() -> {
-      this.delegate.batchUnsubscribe(topicPartitionSet);
+      this.delegate.batchUnsubscribe(pubSubTopicPartitionSet);
       for (PubSubTopicPartition topicPartition: pubSubTopicPartitionSet) {
         subscribedTopicPartitionToVersionTopic.remove(topicPartition);
         unsubscriptionListener.call(this, topicPartition);
@@ -232,9 +219,7 @@ class SharedKafkaConsumer implements PubSubConsumer {
   @Override
   public synchronized void resetOffset(PubSubTopicPartition pubSubTopicPartition)
       throws UnsubscribedTopicPartitionException {
-    String topic = pubSubTopicPartition.getPubSubTopic().getName();
-    int partition = pubSubTopicPartition.getPartitionNumber();
-    this.delegate.resetOffset(topic, partition);
+    this.delegate.resetOffset(pubSubTopicPartition);
   }
 
   @Override
@@ -285,16 +270,12 @@ class SharedKafkaConsumer implements PubSubConsumer {
 
   @Override
   public synchronized void pause(PubSubTopicPartition pubSubTopicPartition) {
-    String topic = pubSubTopicPartition.getPubSubTopic().getName();
-    int partition = pubSubTopicPartition.getPartitionNumber();
-    this.delegate.pause(topic, partition);
+    this.delegate.pause(pubSubTopicPartition);
   }
 
   @Override
   public synchronized void resume(PubSubTopicPartition pubSubTopicPartition) {
-    String topic = pubSubTopicPartition.getPubSubTopic().getName();
-    int partition = pubSubTopicPartition.getPartitionNumber();
-    this.delegate.resume(topic, partition);
+    this.delegate.resume(pubSubTopicPartition);
   }
 
   @Override
@@ -314,15 +295,11 @@ class SharedKafkaConsumer implements PubSubConsumer {
 
   @Override
   public long getOffsetLag(PubSubTopicPartition pubSubTopicPartition) {
-    String topic = pubSubTopicPartition.getPubSubTopic().getName();
-    int partition = pubSubTopicPartition.getPartitionNumber();
-    return delegate.getOffsetLag(topic, partition);
+    return delegate.getOffsetLag(pubSubTopicPartition);
   }
 
   @Override
   public long getLatestOffset(PubSubTopicPartition pubSubTopicPartition) {
-    String topic = pubSubTopicPartition.getPubSubTopic().getName();
-    int partition = pubSubTopicPartition.getPartitionNumber();
-    return delegate.getLatestOffset(topic, partition);
+    return delegate.getLatestOffset(pubSubTopicPartition);
   }
 }
