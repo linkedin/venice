@@ -30,6 +30,7 @@ public class IsolatedIngestionServerChannelInitializer extends ChannelInitialize
     sslFactory.ifPresent(
         sslFactory -> ch.pipeline().addLast(new SslInitializer(SslUtils.toAlpiniSSLFactory(sslFactory), false)));
     ch.pipeline().addLast(new HttpRequestDecoder());
+    // Set the maximum allowed request size to 100MB as the initial metric report size is fairly large.
     ch.pipeline().addLast(new HttpObjectAggregator(1024 * 1024 * 100));
     ch.pipeline().addLast(new HttpResponseEncoder());
     if (sslFactory.isPresent()) {

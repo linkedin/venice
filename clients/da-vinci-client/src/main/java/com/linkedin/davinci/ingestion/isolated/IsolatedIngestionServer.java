@@ -532,6 +532,11 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     try {
       IngestionMetricsReport metricsReport = new IngestionMetricsReport();
       metricsReport.aggregatedMetrics = new VeniceConcurrentHashMap<>();
+      /**
+       * TODO: This approach may lead to metric loss if we fail to deliver a report of metric updates due to timeout.
+       * But since server will continue to handle update even if client times out, it is considered ok for now. We should
+       * try to see if we can safeguard the metric delta delivery mechanism.
+       */
       if (getMetricsRepository() != null) {
         getMetricsRepository().metrics().forEach((name, metric) -> {
           if (metric != null) {
@@ -552,7 +557,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
           }
         });
       }
-      metricClient.reportMetricUpdate(metricsReport);
+      getMetricClient().reportMetricUpdate(metricsReport);
     } catch (Exception e) {
       LOGGER.warn("Encounter exception when fetching latest metrics and reporting back to main process", e);
     }
