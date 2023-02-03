@@ -1,6 +1,5 @@
 package com.linkedin.davinci.ingestion.isolated;
 
-import static com.linkedin.davinci.ingestion.isolated.IsolatedIngestionServer.METRIC_BATCH_COUNT_LIMIT;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -47,26 +46,5 @@ public class IsolatedIngestionServerTest {
     Assert.assertEquals(argumentCaptor.getAllValues().get(0).aggregatedMetrics.size(), 1);
     Assert.assertEquals(argumentCaptor.getAllValues().get(1).aggregatedMetrics.size(), 1);
     Assert.assertEquals(argumentCaptor.getAllValues().get(2).aggregatedMetrics.size(), 0);
-  }
-
-  @Test
-  public void testSendLargeMetricUpdate() {
-    IsolatedIngestionServer isolatedIngestionServer = mock(IsolatedIngestionServer.class);
-    MetricsRepository metricsRepository = new MetricsRepository();
-    for (int i = 0; i <= METRIC_BATCH_COUNT_LIMIT; i++) {
-      metricsRepository.addMetric("foo_" + i, (x, y) -> 1.0);
-    }
-    when(isolatedIngestionServer.getMetricsRepository()).thenReturn(metricsRepository);
-    IsolatedIngestionRequestClient metricClient = mock(IsolatedIngestionRequestClient.class);
-    when(isolatedIngestionServer.getMetricClient()).thenReturn(metricClient);
-
-    Map<String, Double> metricMap = new HashMap<>();
-    when(isolatedIngestionServer.getMetricsMap()).thenReturn(metricMap);
-    doCallRealMethod().when(isolatedIngestionServer).reportMetricsUpdateToMainProcess();
-    isolatedIngestionServer.reportMetricsUpdateToMainProcess();
-    ArgumentCaptor<IngestionMetricsReport> argumentCaptor = ArgumentCaptor.forClass(IngestionMetricsReport.class);
-    verify(metricClient, times(2)).reportMetricUpdate(argumentCaptor.capture());
-    Assert.assertEquals(argumentCaptor.getAllValues().get(0).aggregatedMetrics.size(), METRIC_BATCH_COUNT_LIMIT);
-    Assert.assertEquals(argumentCaptor.getAllValues().get(1).aggregatedMetrics.size(), 1);
   }
 }
