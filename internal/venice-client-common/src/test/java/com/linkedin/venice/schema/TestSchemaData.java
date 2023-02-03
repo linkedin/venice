@@ -1,10 +1,29 @@
 package com.linkedin.venice.schema;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
+import com.linkedin.venice.schema.rmd.RmdVersionId;
+import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
+import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
+import com.linkedin.venice.utils.Pair;
+import java.nio.charset.StandardCharsets;
+import java.util.Collections;
+import java.util.Objects;
+import org.apache.avro.Schema;
+import org.apache.commons.io.IOUtils;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
 public class TestSchemaData {
+  private static final Logger LOGGER = LogManager.getLogger(TestSchemaData.class);
+
+  private static final Schema VALUE_SCHEMA = AvroCompatibilityHelper.parse(loadFileAsString("testSchemaData.avsc"));
+  private static final Schema UPDATE_SCHEMA =
+      WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(VALUE_SCHEMA);
+
   @Test
   public void testAddKeySchema() {
     String keySchemaStr = "\"string\"";
@@ -31,5 +50,35 @@ public class TestSchemaData {
     Assert.assertEquals(schemaData.getSchemaID(new SchemaEntry(10, valueSchemaStr2)), 2);
     Assert.assertEquals(schemaData.getMaxValueSchemaId(), 2);
     Assert.assertEquals(new SchemaEntry(10, valueSchemaStr1), schemaData.getValueSchema(1));
+  }
+
+  @Test
+  public void testSchemaData() {
+    SchemaEntry valueSchema = new SchemaEntry(1, VALUE_SCHEMA.toString());
+    DerivedSchemaEntry derivedSchema = new DerivedSchemaEntry(1, 1, UPDATE_SCHEMA.toString());
+    RmdSchemaEntry rmdSchema = new RmdSchemaEntry(1, 1, UPDATE_SCHEMA.toString());
+    SchemaData schemaData = new SchemaData("testStore");
+
+    Assert.assertEquals(schemaData.getDerivedSchemaId(derivedSchema), new Pair<>(-1, -1));
+    Assert.assertEquals(schemaData.getReplicationMetadataVersionId(rmdSchema), new RmdVersionId(-1, -1));
+
+    schemaData.addValueSchema(valueSchema);
+    schemaData.addDerivedSchema(derivedSchema);
+    schemaData.addReplicationMetadataSchema(rmdSchema);
+    Assert.assertEquals(schemaData.getDerivedSchemas(), Collections.singletonList(derivedSchema));
+    Assert.assertEquals(schemaData.getReplicationMetadataSchemas(), Collections.singletonList(rmdSchema));
+    Assert.assertEquals(schemaData.getDerivedSchemaId(derivedSchema), new Pair<>(1, 1));
+    Assert.assertEquals(schemaData.getReplicationMetadataVersionId(rmdSchema), new RmdVersionId(1, 1));
+  }
+
+  private static String loadFileAsString(String fileName) {
+    try {
+      return IOUtils.toString(
+          Objects.requireNonNull(Thread.currentThread().getContextClassLoader().getResourceAsStream(fileName)),
+          StandardCharsets.UTF_8);
+    } catch (Exception e) {
+      LOGGER.error(e);
+      return null;
+    }
   }
 }
