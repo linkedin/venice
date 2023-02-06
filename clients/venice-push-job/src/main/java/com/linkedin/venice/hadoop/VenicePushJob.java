@@ -259,7 +259,7 @@ public class VenicePushJob implements AutoCloseable {
   /**
    * This config specifies the region identifier where parent controller is running
    */
-  public static final String PARENT_CONTROLLER_REGION_NAME = "parent.controller.colo.name";
+  public static final String PARENT_CONTROLLER_REGION_NAME = "parent.controller.region.name";
 
   /**
    * Relates to the above argument. An overridable amount of buffer to be applied to the epoch (as the rewind isn't
