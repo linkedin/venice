@@ -65,9 +65,9 @@ at 60% for branch coverage.
 ### Example commands
 ```Bash
 # Template
-./gradlew :<module name>:<submodule name>:jacocoTestCoverageVerification diffCoverage
+./gradlew :<module name>:<submodule name>:jacocoTestCoverageVerification diffCoverage --continue
 
-./gradlew :clients:venice-push-job:jacocoTestCoverageVerification diffCoverage 
+./gradlew :clients:venice-push-job:jacocoTestCoverageVerification diffCoverage --continue
 ```
 
 The report will be located at `<module name>/build/reports/jacoco/diffCoverage/html/index.html`.
