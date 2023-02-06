@@ -13,7 +13,6 @@ public class StoragePartitionConfig {
   private boolean deferredWrite;
   private boolean readOnly;
   private boolean writeOnlyConfig;
-  private boolean disableAutoCompaction;
 
   public StoragePartitionConfig(String storeName, int partitionId) {
     this.storeName = storeName;
@@ -21,7 +20,6 @@ public class StoragePartitionConfig {
     this.deferredWrite = false;
     this.readOnly = false;
     this.writeOnlyConfig = true;
-    this.disableAutoCompaction = false;
   }
 
   public String getStoreName() {
@@ -62,14 +60,6 @@ public class StoragePartitionConfig {
     }
   }
 
-  public boolean isDisableAutoCompaction() {
-    return disableAutoCompaction;
-  }
-
-  public void setDisableAutoCompaction(boolean disableAutoCompaction) {
-    this.disableAutoCompaction = disableAutoCompaction;
-  }
-
   @Override
   public boolean equals(Object o) {
     if (this == o) {
@@ -80,19 +70,17 @@ public class StoragePartitionConfig {
     }
     StoragePartitionConfig that = (StoragePartitionConfig) o;
     return partitionId == that.partitionId && deferredWrite == that.deferredWrite && readOnly == that.readOnly
-        && writeOnlyConfig == that.writeOnlyConfig && disableAutoCompaction == that.disableAutoCompaction
-        && storeName.equals(that.storeName);
+        && writeOnlyConfig == that.writeOnlyConfig && storeName.equals(that.storeName);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(storeName, partitionId, deferredWrite, readOnly, writeOnlyConfig, disableAutoCompaction);
+    return Objects.hash(storeName, partitionId, deferredWrite, readOnly, writeOnlyConfig);
   }
 
   @Override
   public String toString() {
     return "Store: " + storeName + ", partition id: " + partitionId + ", deferred-write: " + deferredWrite
-        + ", read-only: " + readOnly + ", write-only: " + writeOnlyConfig + ", disableAutoCompaction: "
-        + disableAutoCompaction;
+        + ", read-only: " + readOnly + ", write-only: " + writeOnlyConfig;
   }
 }

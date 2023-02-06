@@ -18,9 +18,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Supplier;
+import javax.annotation.concurrent.NotThreadSafe;
 import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -54,6 +54,7 @@ import org.rocksdb.WriteOptions;
  * If the ingestion is unsorted, this class is using the regular RocksDB interface to support update
  * operations.
  */
+@NotThreadSafe
 public class RocksDBStoragePartition extends AbstractStoragePartition {
   private static final Logger LOGGER = LogManager.getLogger(RocksDBStoragePartition.class);
   protected static final ReadOptions READ_OPTIONS_DEFAULT = new ReadOptions();
@@ -295,12 +296,6 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       options.setAllowMmapReads(true);
       options.useCappedPrefixExtractor(rocksDBServerConfig.getCappedPrefixExtractorLength());
     } else {
-      /**
-       * Auto compaction setting.
-       * For now, this optimization won't apply to the plaintable format.
-       */
-      options.setDisableAutoCompactions(storagePartitionConfig.isDisableAutoCompaction());
-
       // Cache index and bloom filter in block cache
       // and share the same cache across all the RocksDB databases
       BlockBasedTableConfig tableConfig = new BlockBasedTableConfig();
@@ -756,8 +751,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       return readOnly == partitionConfig.isReadOnly() && writeOnly == partitionConfig.isWriteOnlyConfig();
     }
     return deferredWrite == partitionConfig.isDeferredWrite() && readOnly == partitionConfig.isReadOnly()
-        && writeOnly == partitionConfig.isWriteOnlyConfig()
-        && options.disableAutoCompactions() == partitionConfig.isDisableAutoCompaction();
+        && writeOnly == partitionConfig.isWriteOnlyConfig();
   }
 
   /**
@@ -779,82 +773,5 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
 
   protected Options getOptions() {
     return options;
-  }
-
-  @Override
-  public void warmUp() {
-    RocksIterator iterator = null;
-    readCloseRWLock.readLock().lock();
-    try {
-      makeSureRocksDBIsStillOpen();
-      /**
-       * Since we don't care about the returned value in Java world, so partial result is fine.
-       */
-      byte[] value = new byte[1];
-      // Iterate the whole database
-      iterator = rocksDB.newIterator();
-      long entryCnt = 0;
-      iterator.seekToFirst();
-      while (iterator.isValid()) {
-        rocksDB.get(iterator.key(), value);
-        iterator.next();
-        if (++entryCnt % 100000 == 0) {
-          LOGGER.info("Scanned {} entries from database: {}, partition: {}", entryCnt, storeName, partitionId);
-        }
-      }
-      LOGGER.info(
-          "Scanned {} entries from database: {}, partition: {} during cache warmup",
-          entryCnt,
-          storeName,
-          partitionId);
-    } catch (RocksDBException e) {
-      throw new VeniceException("Encountered RocksDBException while warming up cache", e);
-    } finally {
-      readCloseRWLock.readLock().unlock();
-      if (iterator != null) {
-        iterator.close();
-      }
-    }
-  }
-
-  @Override
-  public synchronized CompletableFuture<Void> compactDB() {
-    makeSureRocksDBIsStillOpen();
-    if (!this.options.disableAutoCompactions()) {
-      // Auto compaction is on, so no need to do manual compaction.
-      return CompletableFuture.completedFuture(null);
-    }
-    CompletableFuture<Void> dbCompactFuture = new CompletableFuture<>();
-    /**
-     * Start an async db compact thread.
-     */
-    Thread dbCompactThread = new Thread(() -> {
-      try {
-        LOGGER.info("Start the manual compaction for database: {}, partition: {}", storeName, partitionId);
-        rocksDB.compactRange();
-        synchronized (this) {
-          /**
-           * Guard the critical section for closing/re-opening database.
-           */
-          rocksDB.close();
-          // Reopen the database with auto compaction on
-          this.options.setDisableAutoCompactions(false);
-          rocksDB =
-              rocksDBThrottler.open(options, fullPathForPartitionDB, columnFamilyDescriptors, columnFamilyHandleList);
-        }
-        dbCompactFuture.complete(null);
-        LOGGER.info(
-            "Manual compaction for database: {}, partition: {} is done, and the database was re-opened with auto compaction enabled",
-            storeName,
-            partitionId);
-      } catch (Exception e) {
-        LOGGER.error("Failed to compact database: {}, partition {}", storeName, partitionId, e);
-        dbCompactFuture.completeExceptionally(e);
-      }
-    });
-    dbCompactThread.setName("DB-Compact-thread-" + storeName + "_" + partitionId);
-    dbCompactThread.start();
-
-    return dbCompactFuture;
   }
 }
