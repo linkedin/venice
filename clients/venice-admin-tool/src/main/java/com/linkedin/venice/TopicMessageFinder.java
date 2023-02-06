@@ -105,10 +105,12 @@ public class TopicMessageFinder {
 
     consumerProps.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     consumerProps.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
+    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+    PubSubTopicPartition assignedPubSubTopicPartition =
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), assignedPartition);
     consume(
-        new ApacheKafkaConsumer(consumerProps),
-        topic,
-        assignedPartition,
+        new ApacheKafkaConsumer(consumerProps, pubSubTopicRepository),
+        assignedPubSubTopicPartition,
         startOffset,
         endOffset,
         progressInterval,
@@ -118,19 +120,15 @@ public class TopicMessageFinder {
   /** For unit tests */
   static void consume(
       PubSubConsumer c,
-      String topic,
-      int assignedPartition,
+      PubSubTopicPartition assignedPubSubTopicPartition,
       long startOffset,
       long endOffset,
       long progressInterval,
       byte[] serializedKey) {
     try (PubSubConsumer consumer = c) {
-      PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
       long recordCnt = 0;
       long lastReportRecordCnt = 0;
-      PubSubTopicPartition pubSubTopicPartition =
-          new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), assignedPartition);
-      consumer.subscribe(pubSubTopicPartition, startOffset);
+      consumer.subscribe(assignedPubSubTopicPartition, startOffset);
       boolean done = false;
       KafkaKeySerializer keySerializer = new KafkaKeySerializer();
       KafkaValueSerializer valueSerializer = new OptimizedKafkaValueSerializer();
@@ -155,10 +153,9 @@ public class TopicMessageFinder {
         recordCnt += records.count();
         if (recordCnt - lastReportRecordCnt >= progressInterval) {
           LOGGER.info(
-              "Consumed {} messages from topic: {}, partition: {}, and last consumed timestamp: {}",
+              "Consumed {} messages from topic partition: {}, and last consumed timestamp: {}",
               recordCnt,
-              topic,
-              assignedPartition,
+              assignedPubSubTopicPartition,
               new Date(lastRecordTimestamp));
           lastReportRecordCnt = recordCnt;
         }

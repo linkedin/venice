@@ -358,10 +358,7 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
     VeniceSpecificDatumReader<SPECIFIC_RECORD> specificDatumReader = protocolVersionToReader.get(protocolVersion);
     if (specificDatumReader == null) {
       specificDatumReader = cacheDatumReader(protocolVersion, providedProtocolSchema);
-<<<<<<< HEAD
       newSchemaEncountered.accept(protocolVersion, providedProtocolSchema);
-=======
->>>>>>> e22c95667 (Code added by Felix)
     }
     return deserialize(bytes, specificDatumReader, reuse);
   }

@@ -1,7 +1,6 @@
 package com.linkedin.venice.unit.kafka.consumer;
 
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
@@ -15,7 +14,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecords;
 
 
 /**
- * A {@link KafkaConsumerWrapper} implementation which reads messages from the {@link InMemoryKafkaBroker}.
+ * A {@link PubSubConsumer} implementation which reads messages from the {@link InMemoryKafkaBroker}.
  *
  * Used in unit tests as a lightweight alternative to a full-fledged integration test. Can be configured
  * with various {@link PollStrategy} implementations in order to tweak the consuming behavior.

@@ -34,9 +34,10 @@ public class DictionaryUtils {
 
   public static ByteBuffer readDictionaryFromKafka(String topicName, VeniceProperties props) {
     KafkaConsumerFactoryImpl kafkaConsumerFactory = new KafkaConsumerFactoryImpl(props);
-
-    try (PubSubConsumer kafkaConsumer = kafkaConsumerFactory.getConsumer(getKafkaConsumerProps())) {
-      return DictionaryUtils.readDictionaryFromKafka(topicName, kafkaConsumer);
+    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+    try (PubSubConsumer pubSubConsumer =
+        kafkaConsumerFactory.getConsumer(getKafkaConsumerProps(), pubSubTopicRepository)) {
+      return DictionaryUtils.readDictionaryFromKafka(topicName, pubSubConsumer, pubSubTopicRepository);
     }
   }
 
@@ -46,9 +47,11 @@ public class DictionaryUtils {
    * @return The compression dictionary wrapped in a ByteBuffer, or null if no dictionary was present in the
    * Start Of Push message.
    */
-  public static ByteBuffer readDictionaryFromKafka(String topicName, PubSubConsumer pubSubConsumer) {
+  public static ByteBuffer readDictionaryFromKafka(
+      String topicName,
+      PubSubConsumer pubSubConsumer,
+      PubSubTopicRepository pubSubTopicRepository) {
     LOGGER.info("Consuming from topic: {} till StartOfPush", topicName);
-    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(topicName);
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(pubSubTopic, 0);
     pubSubConsumer.subscribe(pubSubTopicPartition, 0);

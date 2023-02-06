@@ -1017,7 +1017,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        * We would like to throttle the ingestion by batches of ({@link PubSubMessage} returned by each poll.
        * The batch shouldn't be too big, otherwise, the {@link StoreBufferService#putConsumerRecord(PubSubMessage, StoreIngestionTask, LeaderProducedRecordContext, int, String, long)}
        * could be blocked when the buffer is full, and the throttling could be inaccurate.
-       * So every record returned from {@link KafkaConsumerWrapper#poll(long)} should be processed
+       * So every record returned from {@link com.linkedin.venice.pubsub.consumer.PubSubConsumer#poll(long)} should be processed
        * as fast as possible to avoid long-lasting objects in JVM to minimize the 'object copy' time
        * during GC.
        *
@@ -1724,10 +1724,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return;
     }
     // Proceed if persisted OffsetRecord exists and has meaningful content.
-    long endOffset = getKafkaTopicPartitionEndOffSet(
-        localKafkaServer,
-        pubSubTopicRepository.getTopic(kafkaVersionTopic),
-        pcs.getPartition());
+    long endOffset = getKafkaTopicPartitionEndOffSet(localKafkaServer, versionTopic, pcs.getPartition());
     if (endOffset != StatsErrorCode.LAG_MEASUREMENT_FAILURE.code && offset > endOffset) {
       // report offset rewind.
       LOGGER.warn(
@@ -2786,13 +2783,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     aggKafkaConsumerService.resetOffsetFor(versionTopic, new PubSubTopicPartitionImpl(topic, partitionId));
   }
 
-  public void pauseConsumption(String topic, int partitionId) {
+  private void pauseConsumption(String topic, int partitionId) {
     aggKafkaConsumerService.pauseConsumerFor(
         versionTopic,
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
   }
 
-  public void resumeConsumption(String topic, int partitionId) {
+  private void resumeConsumption(String topic, int partitionId) {
     aggKafkaConsumerService.resumeConsumerFor(
         versionTopic,
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));

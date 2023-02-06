@@ -1,0 +1,94 @@
+package com.linkedin.venice.kafka.consumer;
+
+import static org.mockito.Mockito.*;
+
+import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
+import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.utils.VeniceProperties;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.Properties;
+import java.util.Set;
+import org.apache.kafka.clients.CommonClientConfigs;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.serialization.ByteArrayDeserializer;
+import org.testng.Assert;
+import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.Test;
+
+
+public class KafkaConsumerFactoryImplTest {
+  private ApacheKafkaConsumer apacheKafkaConsumer;
+  private KafkaConsumer delegateKafkaConsumer;
+  private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+
+  @BeforeMethod
+  public void initConsumer() {
+    delegateKafkaConsumer = mock(KafkaConsumer.class);
+    Properties properties = new Properties();
+    properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
+    properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
+    properties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, "broker address");
+    apacheKafkaConsumer =
+        new ApacheKafkaConsumer(delegateKafkaConsumer, new VeniceProperties(properties), false, pubSubTopicRepository);
+
+  }
+
+  @Test
+  public void TestApacheKafkaConsumer() {
+    PubSubTopic testTopic = pubSubTopicRepository.getTopic("test_topic_v1");
+    PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(testTopic, 1);
+    TopicPartition topicPartition = new TopicPartition(testTopic.getName(), pubSubTopicPartition.getPartitionNumber());
+    Assert.assertThrows(
+        UnsubscribedTopicPartitionException.class,
+        () -> apacheKafkaConsumer.resetOffset(pubSubTopicPartition));
+
+    apacheKafkaConsumer.subscribe(pubSubTopicPartition, OffsetRecord.LOWEST_OFFSET);
+    verify(delegateKafkaConsumer).assign(Collections.singletonList(topicPartition));
+    verify(delegateKafkaConsumer).seekToBeginning(Collections.singletonList(topicPartition));
+    doReturn(Collections.singleton(topicPartition)).when(delegateKafkaConsumer).assignment();
+    Assert.assertTrue(apacheKafkaConsumer.hasAnySubscription());
+    apacheKafkaConsumer.resetOffset(pubSubTopicPartition);
+    verify(delegateKafkaConsumer, times(2)).seekToBeginning(Collections.singletonList(topicPartition));
+
+    apacheKafkaConsumer.unSubscribe(pubSubTopicPartition);
+    verify(delegateKafkaConsumer).assign(Collections.EMPTY_LIST);
+
+    int lastReadOffset = 0;
+    doReturn(Collections.EMPTY_SET).when(delegateKafkaConsumer).assignment();
+    Assert.assertFalse(apacheKafkaConsumer.hasAnySubscription());
+    apacheKafkaConsumer.subscribe(pubSubTopicPartition, lastReadOffset);
+    verify(delegateKafkaConsumer).seek(topicPartition, lastReadOffset + 1);
+
+    Set<PubSubTopicPartition> pubSubTopicPartitionsToUnSub = new HashSet<>();
+    Set<TopicPartition> topicPartitionsLeft = new HashSet<>();
+    Set<PubSubTopicPartition> allPubSubTopicPartitions = new HashSet<>();
+    Set<TopicPartition> allTopicPartitions = new HashSet<>();
+    PubSubTopic testTopicV2 = pubSubTopicRepository.getTopic("test_topic_v2");
+    for (int i = 0; i < 5; i++) {
+      PubSubTopicPartition pubSubTopicPartitionToSub = new PubSubTopicPartitionImpl(testTopic, i);
+      pubSubTopicPartitionsToUnSub.add(pubSubTopicPartitionToSub);
+      allTopicPartitions.add(new TopicPartition(testTopic.getName(), i));
+      allPubSubTopicPartitions.add(pubSubTopicPartitionToSub);
+    }
+    for (int i = 0; i < 3; i++) {
+      PubSubTopicPartition pubSubTopicPartitionToSub = new PubSubTopicPartitionImpl(testTopicV2, i);
+      TopicPartition topicPartitionLeft = new TopicPartition(testTopicV2.getName(), i);
+      topicPartitionsLeft.add(topicPartitionLeft);
+      allTopicPartitions.add(topicPartitionLeft);
+      allPubSubTopicPartitions.add(pubSubTopicPartitionToSub);
+    }
+    doReturn(allTopicPartitions).when(delegateKafkaConsumer).assignment();
+    Assert.assertTrue(apacheKafkaConsumer.hasSubscription(pubSubTopicPartition));
+    Assert.assertEquals(apacheKafkaConsumer.getAssignment(), allPubSubTopicPartitions);
+    apacheKafkaConsumer.batchUnsubscribe(pubSubTopicPartitionsToUnSub);
+    verify(delegateKafkaConsumer).assign(topicPartitionsLeft);
+  }
+
+}

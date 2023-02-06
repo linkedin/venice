@@ -9,8 +9,4 @@ public class UnsubscribedTopicPartitionException extends VeniceException {
         "Topic: " + pubSubTopicPartition.getPubSubTopic().getName() + ", partition: "
             + pubSubTopicPartition.getPartitionNumber() + " is not being subscribed");
   }
-
-  public UnsubscribedTopicPartitionException(String topic, int partition) {
-    super("Topic: " + topic + ", partition: " + partition + " is not being subscribed");
-  }
 }

@@ -7,6 +7,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.TopicPartition;
 
 
+// TODO: Delete this interface in the future.
 public interface KafkaConsumerWrapper extends AutoCloseable, Closeable {
   void subscribe(String topic, int partition, long lastReadOffset);
 

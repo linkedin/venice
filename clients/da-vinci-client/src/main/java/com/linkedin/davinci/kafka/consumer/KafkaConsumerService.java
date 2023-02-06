@@ -62,7 +62,7 @@ import org.apache.logging.log4j.Logger;
  *    the {@link #startConsumptionIntoDataReceiver(PubSubTopicPartition, long, ConsumedDataReceiver)} function allows the
  *    caller to start funneling consumed data into a receiver (i.e. into another task).
  * 3. Provide a single abstract function that must be overridden by subclasses in order to implement a consumption
- *    load balancing strategy: {@link #pickConsumerForPartition(String, PubSubTopicPartition)}
+ *    load balancing strategy: {@link #pickConsumerForPartition(PubSubTopic, PubSubTopicPartition)}
  *
  * @see AggKafkaConsumerService which wraps one instance of this class per Kafka cluster.
  */
@@ -118,7 +118,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
        */
       consumerProperties.setProperty(ConsumerConfig.CLIENT_ID_CONFIG, getUniqueClientId(kafkaUrl, i));
       SharedKafkaConsumer pubSubConsumer = new SharedKafkaConsumer(
-          consumerFactory.getConsumer(consumerProperties),
+          consumerFactory.getConsumer(consumerProperties, pubSubDeserializer.getPubSubTopicRepository()),
           stats,
           this::recordPartitionsPerConsumerSensor,
           this::handleUnsubscription);
@@ -237,7 +237,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
       }
     }
     /**
-     * Leverage {@link KafkaConsumerWrapper#batchUnsubscribe(Set)}.
+     * Leverage {@link PubSubConsumer#batchUnsubscribe(Set)}.
      */
     consumerUnSubTopicPartitionSet.forEach((c, tpSet) -> {
       c.batchUnsubscribe(tpSet);

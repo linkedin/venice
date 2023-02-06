@@ -104,8 +104,8 @@ public class ConsumerSubscriptionCleaner {
     }
     Set<String> nonExistingTopics = new HashSet<>();
     long currentTimestamp = time.getMilliseconds();
-    for (PubSubTopicPartition tp: currentAssignment) {
-      String topic = tp.getPubSubTopic().getName();
+    for (PubSubTopicPartition pubSubTopicPartition: currentAssignment) {
+      String topic = pubSubTopicPartition.getPubSubTopic().getName();
       boolean isExistingTopic = topicExistenceChecker.checkTopicExists(topic);
       if (!isExistingTopic) {
         nonExistingTopics.add(topic);
@@ -158,11 +158,11 @@ public class ConsumerSubscriptionCleaner {
 
     // Get the current subscription for this topic and unsubscribe them
     Set<PubSubTopicPartition> newAssignment = new HashSet<>();
-    for (PubSubTopicPartition topicPartition: currentAssignment) {
-      if (topicsToUnsubscribe.contains(topicPartition.getPubSubTopic().getName())) {
-        returnSetOfTopicPartitionsToUnsub.add(topicPartition);
+    for (PubSubTopicPartition pubSubTopicPartition: currentAssignment) {
+      if (topicsToUnsubscribe.contains(pubSubTopicPartition.getPubSubTopic().getName())) {
+        returnSetOfTopicPartitionsToUnsub.add(pubSubTopicPartition);
       } else {
-        newAssignment.add(topicPartition);
+        newAssignment.add(pubSubTopicPartition);
       }
     }
     if (newAssignment.size() != currentAssignment.size()) {

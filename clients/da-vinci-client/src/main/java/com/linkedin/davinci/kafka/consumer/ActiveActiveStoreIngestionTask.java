@@ -746,8 +746,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     }
 
     final int partition = partitionConsumptionState.getPartition();
-    final String currentLeaderTopic =
-        partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository).getName();
+    final PubSubTopic currentLeaderTopic =
+        partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
     final String newSourceTopicName = topicSwitch.sourceTopicName.toString();
     final PubSubTopicPartition sourceTopicPartition = partitionConsumptionState.getSourceTopicPartition(newSourceTopic);
     Map<String, Long> upstreamOffsetsByKafkaURLs = new HashMap<>(topicSwitch.sourceKafkaServers.size());
@@ -829,7 +829,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     }
 
     // unsubscribe the old source and subscribe to the new source
-    consumerUnSubscribe(pubSubTopicRepository.getTopic(currentLeaderTopic), partitionConsumptionState);
+    consumerUnSubscribe(currentLeaderTopic, partitionConsumptionState);
     waitForLastLeaderPersistFuture(
         partitionConsumptionState,
         String.format(
@@ -899,8 +899,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
      */
     if (isLeader(partitionConsumptionState) && !amplificationFactorAdapter.isLeaderSubPartition(partition)) {
       LOGGER.info("SubPartition: {} is demoted from LEADER to STANDBY.", partitionConsumptionState.getPartition());
-      String currentLeaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic();
-      consumerUnSubscribe(pubSubTopicRepository.getTopic(currentLeaderTopic), partitionConsumptionState);
+      PubSubTopic currentLeaderTopic =
+          partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
+      consumerUnSubscribe(currentLeaderTopic, partitionConsumptionState);
 
       waitForLastLeaderPersistFuture(
           partitionConsumptionState,

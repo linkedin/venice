@@ -11,12 +11,13 @@ import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperKey;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.input.kafka.avro.MapperValueType;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
@@ -40,6 +41,8 @@ public class KafkaInputRecordReaderTest {
   private static final String KAFKA_MESSAGE_KEY_PREFIX = "key_";
   private static final String KAFKA_MESSAGE_VALUE_PREFIX = "value_";
 
+  private static final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+
   @Test
   public void testNext() throws IOException {
     JobConf conf = new JobConf();
@@ -47,7 +50,7 @@ public class KafkaInputRecordReaderTest {
     conf.set(VenicePushJob.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP, ChunkedKeySuffix.SCHEMA$.toString());
     String topic = "1_v1";
     conf.set(KAFKA_INPUT_TOPIC, topic);
-    KafkaConsumerWrapper consumer = mock(KafkaConsumerWrapper.class);
+    PubSubConsumer consumer = mock(PubSubConsumer.class);
 
     int assignedPartition = 0;
     int numRecord = 100;
@@ -86,7 +89,8 @@ public class KafkaInputRecordReaderTest {
     when(consumer.poll(anyLong())).thenReturn(records, ConsumerRecords.empty());
 
     KafkaInputSplit split = new KafkaInputSplit(topic, 0, 0, 102);
-    try (KafkaInputRecordReader reader = new KafkaInputRecordReader(split, conf, null, consumer)) {
+    try (KafkaInputRecordReader reader =
+        new KafkaInputRecordReader(split, conf, null, consumer, pubSubTopicRepository)) {
       for (int i = 0; i < numRecord; ++i) {
         KafkaInputMapperKey key = new KafkaInputMapperKey();
         KafkaInputMapperValue value = new KafkaInputMapperValue();

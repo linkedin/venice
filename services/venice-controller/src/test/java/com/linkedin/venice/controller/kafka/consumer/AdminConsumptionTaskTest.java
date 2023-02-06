@@ -220,7 +220,8 @@ public class AdminConsumptionTaskTest {
     KafkaPubSubMessageDeserializer pubSubMessageDeserializer = new KafkaPubSubMessageDeserializer(
         new OptimizedKafkaValueSerializer(),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+        pubSubTopicRepository);
 
     return new AdminConsumptionTask(
         clusterName,
@@ -242,11 +243,10 @@ public class AdminConsumptionTaskTest {
   }
 
   private Pair<PubSubTopicPartition, Long> getTopicPartitionOffsetPair(RecordMetadata recordMetadata) {
-    return new Pair<>(
-        new PubSubTopicPartitionImpl(
-            pubSubTopicRepository.getTopic(recordMetadata.topic()),
-            recordMetadata.partition()),
-        recordMetadata.offset());
+    PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(
+        pubSubTopicRepository.getTopic(recordMetadata.topic()),
+        recordMetadata.partition());
+    return new Pair<>(pubSubTopicPartition, recordMetadata.offset());
   }
 
   private long getLastOffset(String clusterName) {

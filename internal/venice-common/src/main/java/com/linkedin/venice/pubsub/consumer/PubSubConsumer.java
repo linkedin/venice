@@ -18,6 +18,7 @@ public interface PubSubConsumer extends AutoCloseable, Closeable {
 
   void close();
 
+  // TODO: Get rid of ConsumerRecords from kafka world.
   ConsumerRecords<byte[], byte[]> poll(long timeoutMs);
 
   /**

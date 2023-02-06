@@ -183,7 +183,8 @@ public class KafkaConsumptionTest {
     KafkaPubSubMessageDeserializer pubSubDeserializer = new KafkaPubSubMessageDeserializer(
         new OptimizedKafkaValueSerializer(),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+        pubSubTopicRepository);
     AggKafkaConsumerService aggKafkaConsumerService = new AggKafkaConsumerService(
         kafkaClientFactory,
         veniceServerConfig,

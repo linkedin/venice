@@ -55,9 +55,9 @@ public class DumpAdminMessages {
       int messageCnt) {
     consumerProperties = getKafkaConsumerProperties(kafkaUrl, consumerProperties);
     String adminTopic = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
-    try (PubSubConsumer consumer = new ApacheKafkaConsumer(consumerProperties)) {
+    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+    try (PubSubConsumer consumer = new ApacheKafkaConsumer(consumerProperties, pubSubTopicRepository)) {
       // include the message with startingOffset
-      PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
       PubSubTopicPartition adminTopicPartition = new PubSubTopicPartitionImpl(
           pubSubTopicRepository.getTopic(adminTopic),
           AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);

@@ -9,7 +9,6 @@ import com.linkedin.venice.hadoop.input.kafka.avro.MapperValueType;
 import com.linkedin.venice.hadoop.input.kafka.chunk.ChunkKeyValueTransformer;
 import com.linkedin.venice.hadoop.input.kafka.chunk.ChunkKeyValueTransformerImpl;
 import com.linkedin.venice.hadoop.input.kafka.chunk.RawKeyBytesAndChunkedKeySuffix;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
@@ -69,6 +68,8 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
   private static final int CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES = 12;
   private static final long EMPTY_POLL_SLEEP_TIME_MS = TimeUnit.SECONDS.toMillis(5);
 
+  private static final PubSubTopicRepository PUB_SUB_TOPIC_REPOSITORY = new PubSubTopicRepository();
+
   private final PubSubConsumer consumer;
   private final TopicPartition topicPartition;
   private final PubSubTopicPartition pubSubTopicPartition;
@@ -88,19 +89,27 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
   private final Reporter reporter;
 
   public KafkaInputRecordReader(InputSplit split, JobConf job, Reporter reporter) {
-    this(split, job, reporter, KafkaInputUtils.getConsumerFactory(job).getConsumer(new Properties()));
+    this(
+        split,
+        job,
+        reporter,
+        KafkaInputUtils.getConsumerFactory(job).getConsumer(new Properties(), PUB_SUB_TOPIC_REPOSITORY),
+        PUB_SUB_TOPIC_REPOSITORY);
   }
 
   /** For unit tests */
-  KafkaInputRecordReader(InputSplit split, JobConf job, Reporter reporter, PubSubConsumer consumer) {
+  KafkaInputRecordReader(
+      InputSplit split,
+      JobConf job,
+      Reporter reporter,
+      PubSubConsumer consumer,
+      PubSubTopicRepository pubSubTopicRepository) {
     if (!(split instanceof KafkaInputSplit)) {
       throw new VeniceException("InputSplit for RecordReader is not valid split type.");
     }
-
     KafkaInputSplit inputSplit = (KafkaInputSplit) split;
     this.consumer = consumer;
     this.topicPartition = inputSplit.getTopicPartition();
-    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(topicPartition.topic());
     this.pubSubTopicPartition = new PubSubTopicPartitionImpl(pubSubTopic, topicPartition.partition());
     this.startingOffset = inputSplit.getStartingOffset();
@@ -122,7 +131,8 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
     this.pubSubMessageDeserializer = new KafkaPubSubMessageDeserializer(
         new OptimizedKafkaValueSerializer(),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+        pubSubTopicRepository);
     LOGGER.info(
         "KafkaInputRecordReader started for TopicPartition: {} starting offset: {} ending offset: {}",
         this.topicPartition,

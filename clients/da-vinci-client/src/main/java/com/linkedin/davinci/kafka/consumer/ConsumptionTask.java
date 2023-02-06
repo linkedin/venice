@@ -4,8 +4,8 @@ import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
 import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.pubsub.PubSubTopicImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
@@ -54,6 +54,7 @@ class ConsumptionTask implements Runnable {
   private final KafkaConsumerServiceStats stats;
   private final ConsumerSubscriptionCleaner cleaner;
   private final KafkaPubSubMessageDeserializer pubSubDeserializer;
+  private final PubSubTopicRepository pubSubTopicRepository;
 
   private volatile boolean running = true;
 
@@ -82,6 +83,7 @@ class ConsumptionTask implements Runnable {
     this.cleaner = cleaner;
     this.pubSubDeserializer = pubSubDeserializer;
     this.logger = LogManager.getLogger(getClass().getSimpleName() + "[ " + kafkaUrl + " - " + taskId + " ]");
+    this.pubSubTopicRepository = pubSubDeserializer.getPubSubTopicRepository();
   }
 
   @Override
@@ -133,18 +135,16 @@ class ConsumptionTask implements Runnable {
         if (!records.isEmpty()) {
           beforeProducingToWriteBufferTimestamp = System.currentTimeMillis();
           for (TopicPartition topicPartition: records.partitions()) {
-            consumedDataReceiver = dataReceiverMap.get(
-                new PubSubTopicPartitionImpl(new PubSubTopicImpl(topicPartition.topic()), topicPartition.partition()));
+            PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(
+                pubSubTopicRepository.getTopic(topicPartition.topic()),
+                topicPartition.partition());
+            consumedDataReceiver = dataReceiverMap.get(pubSubTopicPartition);
             if (consumedDataReceiver == null) {
               // defensive code
               logger.error(
                   "Couldn't find consumed data receiver for topic partition : {} after receiving records from `poll` request",
                   topicPartition);
-
-              topicPartitionsToUnsub.add(
-                  new PubSubTopicPartitionImpl(
-                      new PubSubTopicImpl(topicPartition.topic()),
-                      topicPartition.partition()));
+              topicPartitionsToUnsub.add(pubSubTopicPartition);
               continue;
             }
             partitionRecords.clear();
@@ -196,10 +196,10 @@ class ConsumptionTask implements Runnable {
   }
 
   void setDataReceiver(
-      PubSubTopicPartition topicPartition,
+      PubSubTopicPartition pubSubTopicPartition,
       ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> consumedDataReceiver) {
     ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> previousConsumedDataReceiver =
-        dataReceiverMap.put(topicPartition, consumedDataReceiver);
+        dataReceiverMap.put(pubSubTopicPartition, consumedDataReceiver);
     if (previousConsumedDataReceiver != null
         && !previousConsumedDataReceiver.destinationIdentifier().equals(consumedDataReceiver.destinationIdentifier())) {
       // Defensive coding. Should never happen except in case of a regression.

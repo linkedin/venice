@@ -68,7 +68,8 @@ public class TestAdminConsumerService {
     KafkaPubSubMessageDeserializer pubSubMessageDeserializer = new KafkaPubSubMessageDeserializer(
         new OptimizedKafkaValueSerializer(),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+        pubSubTopicRepository);
 
     try {
       adminConsumerService1 = new AdminConsumerService(

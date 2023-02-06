@@ -36,7 +36,7 @@ public class ApacheKafkaConsumerTest {
     properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     properties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafkaBroker.getAddress());
-    consumer = new ApacheKafkaConsumer(properties);
+    consumer = new ApacheKafkaConsumer(properties, pubSubTopicRepository);
   }
 
   @AfterMethod
@@ -62,7 +62,7 @@ public class ApacheKafkaConsumerTest {
     topicPartitions.add(existingTopicPartition2);
 
     consumer.batchUnsubscribe(topicPartitions);
-    assertConsumerHasSpecificNumberOfAssignmedPartitions(consumer, 1);
+    assertConsumerHasSpecificNumberOfAssignedPartitions(consumer, 1);
     topicPartitions.clear();
     topicPartitions.add(existingTopicPartition3);
     consumer.batchUnsubscribe(Collections.singleton(existingTopicPartition3));
@@ -86,18 +86,18 @@ public class ApacheKafkaConsumerTest {
     PubSubTopic topic = pubSubTopicRepository.getTopic("topic_v1");
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(topic, 1);
     consumer.subscribe(pubSubTopicPartition, 0);
-    assertConsumerHasSpecificNumberOfAssignmedPartitions(consumer, 1);
+    assertConsumerHasSpecificNumberOfAssignedPartitions(consumer, 1);
     consumer.pause(pubSubTopicPartition);
-    assertConsumerHasSpecificNumberOfAssignmedPartitions(consumer, 1);
+    assertConsumerHasSpecificNumberOfAssignedPartitions(consumer, 1);
     consumer.resume(pubSubTopicPartition);
-    assertConsumerHasSpecificNumberOfAssignmedPartitions(consumer, 1);
+    assertConsumerHasSpecificNumberOfAssignedPartitions(consumer, 1);
   }
 
   private void assertConsumerHasNoAssignment(ApacheKafkaConsumer c) {
     Assert.assertEquals(c.getAssignment().size(), 0, "Consumer should have no assignment!");
   }
 
-  private void assertConsumerHasSpecificNumberOfAssignmedPartitions(ApacheKafkaConsumer c, int expected) {
+  private void assertConsumerHasSpecificNumberOfAssignedPartitions(ApacheKafkaConsumer c, int expected) {
     Assert
         .assertEquals(c.getAssignment().size(), expected, "Consumer should have exactly " + expected + " assignments!");
   }

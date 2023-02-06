@@ -11,6 +11,8 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
@@ -29,6 +31,7 @@ public class TopicMessageFinderTest {
   @Test
   public void testTopicMessageFinder() {
     ApacheKafkaConsumer apacheKafkaConsumer = mock(ApacheKafkaConsumer.class);
+    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     String topic = "1_rt";
     int assignedPartition = 0;
     long startOffset = 0;
@@ -65,8 +68,7 @@ public class TopicMessageFinderTest {
 
     TopicMessageFinder.consume(
         apacheKafkaConsumer,
-        topic,
-        assignedPartition,
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), assignedPartition),
         startOffset,
         endOffset,
         progressInterval,

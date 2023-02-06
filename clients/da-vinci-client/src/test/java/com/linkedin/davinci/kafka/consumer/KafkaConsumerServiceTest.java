@@ -34,12 +34,12 @@ import org.testng.annotations.Test;
 
 
 public class KafkaConsumerServiceTest {
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
   private final KafkaPubSubMessageDeserializer pubSubDeserializer = new KafkaPubSubMessageDeserializer(
       new OptimizedKafkaValueSerializer(),
       new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-      new LandFillObjectPool<>(KafkaMessageEnvelope::new));
-
-  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+      new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+      pubSubTopicRepository);
 
   @Test
   public void testTopicWiseGetConsumer() throws Exception {
@@ -62,7 +62,7 @@ public class KafkaConsumerServiceTest {
     when(task2.isHybridMode()).thenReturn(true);
 
     KafkaClientFactory factory = mock(KafkaClientFactory.class);
-    when(factory.getConsumer(any())).thenReturn(consumer1, consumer2);
+    when(factory.getConsumer(any(), any())).thenReturn(consumer1, consumer2);
 
     Properties properties = new Properties();
     properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, "test_kafka_url");
@@ -143,7 +143,7 @@ public class KafkaConsumerServiceTest {
     when(consumer1.hasAnySubscription()).thenReturn(false);
 
     KafkaClientFactory factory = mock(KafkaClientFactory.class);
-    when(factory.getConsumer(any())).thenReturn(consumer1, consumer2);
+    when(factory.getConsumer(any(), any())).thenReturn(consumer1, consumer2);
 
     Properties properties = new Properties();
     properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, "test_kafka_url");
@@ -238,7 +238,7 @@ public class KafkaConsumerServiceTest {
     when(task2.isHybridMode()).thenReturn(true);
 
     KafkaClientFactory factory = mock(KafkaClientFactory.class);
-    when(factory.getConsumer(any())).thenReturn(consumer1, consumer2);
+    when(factory.getConsumer(any(), any())).thenReturn(consumer1, consumer2);
 
     Properties properties = new Properties();
     properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, "test_kafka_url");

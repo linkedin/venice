@@ -4,8 +4,8 @@ import com.linkedin.venice.annotation.NotThreadsafe;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.offsets.OffsetRecord;
-import com.linkedin.venice.pubsub.PubSubTopicImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -45,24 +45,35 @@ public class ApacheKafkaConsumer implements PubSubConsumer {
   private final int consumerPollRetryBackoffMs;
   private final Optional<TopicPartitionsOffsetsTracker> topicPartitionsOffsetsTracker;
 
-  public ApacheKafkaConsumer(Properties props) {
-    this(props, DEFAULT_PARTITIONS_OFFSETS_COLLECTION_ENABLE);
+  private final PubSubTopicRepository pubSubTopicRepository;
+
+  public ApacheKafkaConsumer(Properties props, PubSubTopicRepository pubSubTopicRepository) {
+    this(props, DEFAULT_PARTITIONS_OFFSETS_COLLECTION_ENABLE, pubSubTopicRepository);
   }
 
-  public ApacheKafkaConsumer(Properties props, boolean isKafkaConsumerOffsetCollectionEnabled) {
-    this(new KafkaConsumer<>(props), new VeniceProperties(props), isKafkaConsumerOffsetCollectionEnabled);
+  public ApacheKafkaConsumer(
+      Properties props,
+      boolean isKafkaConsumerOffsetCollectionEnabled,
+      PubSubTopicRepository pubSubTopicRepository) {
+    this(
+        new KafkaConsumer<>(props),
+        new VeniceProperties(props),
+        isKafkaConsumerOffsetCollectionEnabled,
+        pubSubTopicRepository);
   }
 
   public ApacheKafkaConsumer(
       Consumer<byte[], byte[]> consumer,
       VeniceProperties props,
-      boolean isKafkaConsumerOffsetCollectionEnabled) {
+      boolean isKafkaConsumerOffsetCollectionEnabled,
+      PubSubTopicRepository pubSubTopicRepository) {
     this.kafkaConsumer = consumer;
     this.consumerPollRetryTimes = props.getInt(CONSUMER_POLL_RETRY_TIMES_CONFIG, CONSUMER_POLL_RETRY_TIMES_DEFAULT);
     this.consumerPollRetryBackoffMs =
         props.getInt(CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG, CONSUMER_POLL_RETRY_BACKOFF_MS_DEFAULT);
     this.topicPartitionsOffsetsTracker =
         isKafkaConsumerOffsetCollectionEnabled ? Optional.of(new TopicPartitionsOffsetsTracker()) : Optional.empty();
+    this.pubSubTopicRepository = pubSubTopicRepository;
     LOGGER.info("Consumer poll retry times: {}", this.consumerPollRetryTimes);
     LOGGER.info("Consumer poll retry back off in ms: {}", this.consumerPollRetryBackoffMs);
     LOGGER.info("Consumer offset collection enabled: {}", isKafkaConsumerOffsetCollectionEnabled);
@@ -123,7 +134,6 @@ public class ApacheKafkaConsumer implements PubSubConsumer {
   @Override
   public void batchUnsubscribe(Set<PubSubTopicPartition> pubSubTopicPartitionSet) {
     Set<TopicPartition> newTopicPartitionAssignment = new HashSet<>(kafkaConsumer.assignment());
-
     newTopicPartitionAssignment.removeAll(convertPubSubTopicPartitionSetToTopicPartitionSet(pubSubTopicPartitionSet));
     kafkaConsumer.assign(newTopicPartitionAssignment);
   }
@@ -133,7 +143,7 @@ public class ApacheKafkaConsumer implements PubSubConsumer {
     String topic = pubSubTopicPartition.getPubSubTopic().getName();
     int partition = pubSubTopicPartition.getPartitionNumber();
     if (!hasSubscription(pubSubTopicPartition)) {
-      throw new UnsubscribedTopicPartitionException(topic, partition);
+      throw new UnsubscribedTopicPartitionException(pubSubTopicPartition);
     }
     TopicPartition topicPartition = new TopicPartition(topic, partition);
     kafkaConsumer.seekToBeginning(Collections.singletonList(topicPartition));
@@ -228,7 +238,9 @@ public class ApacheKafkaConsumer implements PubSubConsumer {
     Set<PubSubTopicPartition> pubSubTopicPartitionSet = new HashSet<>();
     topicPartitionSet.forEach(
         topicPartition -> pubSubTopicPartitionSet.add(
-            new PubSubTopicPartitionImpl(new PubSubTopicImpl(topicPartition.topic()), topicPartition.partition())));
+            new PubSubTopicPartitionImpl(
+                pubSubTopicRepository.getTopic(topicPartition.topic()),
+                topicPartition.partition())));
     return pubSubTopicPartitionSet;
   }
 

@@ -3,7 +3,6 @@ package com.linkedin.davinci.kafka.consumer;
 import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
@@ -24,15 +23,15 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * This class is a synchronized version of {@link KafkaConsumerWrapper}.
+ * This class is a synchronized version of {@link PubSubConsumer}.
  *
- * In addition to the existing API of {@link KafkaConsumerWrapper}, this class also adds specific functions used by
+ * In addition to the existing API of {@link PubSubConsumer}, this class also adds specific functions used by
  * {@link KafkaConsumerService}, notably: {@link #subscribe(PubSubTopic, PubSubTopicPartition, long)} which keeps track of the
  * mapping of which TopicPartition is used by which version-topic.
  *
  * It also provides some callbacks used by the {@link KafkaConsumerService} to react to certain changes, in a way that
  * minimizes bidirectional coupling as much as possible.
- * TODO: Rename this class as SharedPubSubConsumer
+ * TODO: Rename this class to SharedPubSubConsumer
  */
 class SharedKafkaConsumer implements PubSubConsumer {
   private static final Logger LOGGER = LogManager.getLogger(SharedKafkaConsumer.class);

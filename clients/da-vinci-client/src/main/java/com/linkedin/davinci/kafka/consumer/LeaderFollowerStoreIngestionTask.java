@@ -486,7 +486,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              * this replica can finally be promoted to leader.
              */
             // unsubscribe from previous topic/partition
-            consumerUnSubscribe(pubSubTopicRepository.getTopic(kafkaVersionTopic), partitionConsumptionState);
+            consumerUnSubscribe(versionTopic, partitionConsumptionState);
 
             LOGGER.info(
                 "{} start promoting to leader for partition {}, unsubscribed from current topic: {}",
@@ -663,10 +663,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   private boolean isLocalVersionTopicPartitionFullyConsumed(PartitionConsumptionState pcs) {
     long localVTOff = pcs.getLatestProcessedLocalVersionTopicOffset();
-    long localVTEndOffset = getKafkaTopicPartitionEndOffSet(
-        localKafkaServer,
-        pubSubTopicRepository.getTopic(kafkaVersionTopic),
-        pcs.getPartition());
+    long localVTEndOffset = getKafkaTopicPartitionEndOffSet(localKafkaServer, versionTopic, pcs.getPartition());
     if (localVTEndOffset == StatsErrorCode.LAG_MEASUREMENT_FAILURE.code) {
       return false;
     }
@@ -1066,8 +1063,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      */
     if (isLeader(partitionConsumptionState) && !amplificationFactorAdapter.isLeaderSubPartition(partition)) {
       LOGGER.info("SubPartition: {} is demoted from LEADER to STANDBY.", partitionConsumptionState.getPartition());
-      String currentLeaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic();
-      consumerUnSubscribe(pubSubTopicRepository.getTopic(currentLeaderTopic), partitionConsumptionState);
+      PubSubTopic currentLeaderTopic =
+          partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
+      consumerUnSubscribe(currentLeaderTopic, partitionConsumptionState);
       waitForLastLeaderPersistFuture(
           partitionConsumptionState,
           String.format(
@@ -2408,10 +2406,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         .mapToLong((pcs) -> {
           // Consumer might not existed after the consumption state is created, but before attaching the corresponding
           // consumer.
-          long offsetLagOptional = getPartitionOffsetLag(
-              localKafkaServer,
-              pubSubTopicRepository.getTopic(kafkaVersionTopic),
-              pcs.getPartition());
+          long offsetLagOptional = getPartitionOffsetLag(localKafkaServer, versionTopic, pcs.getPartition());
           if (offsetLagOptional >= 0) {
             return offsetLagOptional;
           }

@@ -236,7 +236,8 @@ public abstract class StoreIngestionTaskTest {
   private static final KafkaPubSubMessageDeserializer pubSubDeserializer = new KafkaPubSubMessageDeserializer(
       new OptimizedKafkaValueSerializer(),
       new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-      new LandFillObjectPool<>(KafkaMessageEnvelope::new));
+      new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+      pubSubTopicRepository);
 
   static {
     StoreIngestionTask.SCHEMA_POLLING_DELAY_MS = 100;
@@ -814,7 +815,7 @@ public abstract class StoreIngestionTaskTest {
         return inMemoryRemoteKafkaConsumer;
       }
       return inMemoryLocalKafkaConsumer;
-    }).when(mockFactory).getConsumer(any());
+    }).when(mockFactory).getConsumer(any(), any());
 
     mockWriterFactory = mock(VeniceWriterFactory.class);
     doReturn(null).when(mockWriterFactory).createVeniceWriter(any());
@@ -1073,11 +1074,10 @@ public abstract class StoreIngestionTaskTest {
   }
 
   private Pair<PubSubTopicPartition, Long> getTopicPartitionOffsetPair(RecordMetadata recordMetadata) {
-    return new Pair<>(
-        new PubSubTopicPartitionImpl(
-            pubSubTopicRepository.getTopic(recordMetadata.topic()),
-            recordMetadata.partition()),
-        recordMetadata.offset());
+    PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(
+        pubSubTopicRepository.getTopic(recordMetadata.topic()),
+        recordMetadata.partition());
+    return new Pair<>(pubSubTopicPartition, recordMetadata.offset());
   }
 
   private Pair<PubSubTopicPartition, Long> getTopicPartitionOffsetPair(String topic, int partition, long offset) {
@@ -1469,7 +1469,7 @@ public abstract class StoreIngestionTaskTest {
     localVeniceWriter.broadcastStartOfPush(new HashMap<>());
     localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
 
-    doThrow(new UnsubscribedTopicPartitionException(topic, PARTITION_FOO)).when(mockLocalKafkaConsumer)
+    doThrow(new UnsubscribedTopicPartitionException(fooTopicPartition)).when(mockLocalKafkaConsumer)
         .resetOffset(fooTopicPartition);
 
     runTest(Utils.setOf(PARTITION_FOO), () -> {

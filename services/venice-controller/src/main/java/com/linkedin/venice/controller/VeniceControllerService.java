@@ -106,7 +106,8 @@ public class VeniceControllerService extends AbstractVeniceService {
     KafkaPubSubMessageDeserializer pubSubMessageDeserializer = new KafkaPubSubMessageDeserializer(
         kafkaValueSerializer,
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+        new PubSubTopicRepository()); // TODO: Reuse PubSubTopicRepository we pass into this class if needed.
     for (String cluster: multiClusterConfigs.getClusters()) {
       AdminConsumerService adminConsumerService = new AdminConsumerService(
           cluster,
