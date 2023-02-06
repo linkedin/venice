@@ -483,13 +483,13 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   @Override
   public Pair<Integer, Integer> getDerivedSchemaId(String storeName, String derivedSchemaStr) {
     Schema derivedSchema = Schema.parse(derivedSchemaStr);
+    String derivedSchemaStrToFind = AvroCompatibilityHelper.toParsingForm(derivedSchema);
+
     for (DerivedSchemaEntry derivedSchemaEntry: getDerivedSchemaMap(storeName).values()
         .stream()
         .flatMap(List::stream)
         .collect(Collectors.toList())) {
-      String repoSchemaStr = AvroCompatibilityHelper.toParsingForm(derivedSchemaEntry.getSchema());
-      String derivedSchemaStrToFind = AvroCompatibilityHelper.toParsingForm(derivedSchema);
-      if (repoSchemaStr.equals(derivedSchemaStrToFind)) {
+      if (derivedSchemaStrToFind.equals(derivedSchemaEntry.getCanonicalSchemaStr())) {
         return new Pair<>(derivedSchemaEntry.getValueSchemaID(), derivedSchemaEntry.getId());
       }
     }

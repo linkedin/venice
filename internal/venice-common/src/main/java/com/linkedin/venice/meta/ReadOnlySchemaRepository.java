@@ -7,6 +7,7 @@ import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.utils.Pair;
 import java.util.Collection;
 import java.util.Optional;
+import org.apache.avro.Schema;
 
 
 public interface ReadOnlySchemaRepository extends VeniceResource {
@@ -62,6 +63,10 @@ public interface ReadOnlySchemaRepository extends VeniceResource {
    * second value is derived schema id
    */
   Pair<Integer, Integer> getDerivedSchemaId(String storeName, String derivedSchemaStr);
+
+  default Pair<Integer, Integer> getDerivedSchemaId(String storeName, Schema derivedSchema) {
+    return getDerivedSchemaId(storeName, derivedSchema.toString());
+  }
 
   DerivedSchemaEntry getDerivedSchema(String storeName, int valueSchemaId, int writeComputeSchemaId);
 

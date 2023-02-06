@@ -29,6 +29,7 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.apache.avro.Schema;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.helix.zookeeper.zkclient.IZkChildListener;
 import org.apache.logging.log4j.LogManager;
@@ -319,7 +320,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
   }
 
   @Override
-  public Pair<Integer, Integer> getDerivedSchemaId(String storeName, String derivedSchemaStr) {
+  public Pair<Integer, Integer> getDerivedSchemaId(String storeName, Schema derivedSchema) {
     schemaLock.readLock().lock();
     try {
       /**
@@ -334,7 +335,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
         throw new VeniceNoStoreException(storeName);
       }
       DerivedSchemaEntry derivedSchemaEntry =
-          new DerivedSchemaEntry(SchemaData.UNKNOWN_SCHEMA_ID, SchemaData.UNKNOWN_SCHEMA_ID, derivedSchemaStr);
+          new DerivedSchemaEntry(SchemaData.UNKNOWN_SCHEMA_ID, SchemaData.UNKNOWN_SCHEMA_ID, derivedSchema);
       return schemaData.getDerivedSchemaId(derivedSchemaEntry);
     } finally {
       schemaLock.readLock().unlock();
@@ -466,6 +467,11 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
     // When superset schema exist, but corresponding schema is not ready, we will force refresh the schema and retrieve
     // the update.
     return Optional.of(forceRefreshSupersetSchemaWithRetry(storeName));
+  }
+
+  @Override
+  public Pair<Integer, Integer> getDerivedSchemaId(String storeName, String derivedSchemaStr) {
+    return null;
   }
 
   private Optional<Integer> getSupersetSchemaID(String storeName) {
