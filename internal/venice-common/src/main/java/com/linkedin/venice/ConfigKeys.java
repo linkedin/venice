@@ -570,23 +570,6 @@ public class ConfigKeys {
   public static final String SERVER_LEAKED_RESOURCE_CLEANUP_ENABLED = "server.leaked.resource.cleanup.enabled";
 
   /**
-   * Whether Server will try to warm up cache before reporting ready-to-serve or not.
-   */
-  public static final String SERVER_CACHE_WARMING_BEFORE_READY_TO_SERVE_ENABLED =
-      "server.cache.warming.before.ready.to.serve.enabled";
-
-  /**
-   * Store list to enable cache warming, and it is comma separated list.
-   * TODO: once this has bee proved to be useful, we will need to store it as a store-level config.
-   */
-  public static final String SERVER_CACHE_WARMING_STORE_LIST = "server.cache.warming.store.list";
-
-  /**
-   * Cache warming thread pool, and this is used to try to not overwhelm the storage node by cache warming.
-   */
-  public static final String SERVER_CACHE_WARMING_THREAD_POOL_SIZE = "server.cache.warming.thread.pool.size";
-
-  /**
    * The delay serving of the newly started storage node.
    * The reason to have this config is that we noticed a high GC pause for some time because of connection warming or initializing the
    * internal components.
@@ -718,13 +701,6 @@ public class ConfigKeys {
    */
   public static final String SERVER_SHARED_CONSUMER_NON_EXISTING_TOPIC_CLEANUP_DELAY_MS =
       "server.shared.cosnumer.non.existing.topic.cleanup.delay.ms";
-
-  /**
-   * This config is used to control whether Storage Node should enable auto compaction for Samza Reprocessing Job or not.
-   * Default: true
-   */
-  public static final String SERVER_AUTO_COMPACTION_FOR_SAMZA_REPROCESSING_JOB_ENABLED =
-      "server.auto.compaction.for.samza.reprocessing.job.enabled";
 
   /**
    * This config will determine whether live update will be suppressed. When the feature is turned on, ingestion will stop
