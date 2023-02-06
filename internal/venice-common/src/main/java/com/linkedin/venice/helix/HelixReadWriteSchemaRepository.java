@@ -1,5 +1,6 @@
 package com.linkedin.venice.helix;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.exceptions.SchemaDuplicateException;
 import com.linkedin.venice.exceptions.SchemaIncompatibilityException;
@@ -486,7 +487,9 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
         .stream()
         .flatMap(List::stream)
         .collect(Collectors.toList())) {
-      if (derivedSchemaEntry.getSchema().equals(derivedSchema)) {
+      String repoSchemaStr = AvroCompatibilityHelper.toParsingForm(derivedSchemaEntry.getSchema());
+      String derivedSchemaStrToFind = AvroCompatibilityHelper.toParsingForm(derivedSchema);
+      if (repoSchemaStr.equals(derivedSchemaStrToFind)) {
         return new Pair<>(derivedSchemaEntry.getValueSchemaID(), derivedSchemaEntry.getId());
       }
     }
