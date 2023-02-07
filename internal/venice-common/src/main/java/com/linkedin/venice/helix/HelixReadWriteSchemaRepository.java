@@ -1,5 +1,6 @@
 package com.linkedin.venice.helix;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.exceptions.SchemaDuplicateException;
 import com.linkedin.venice.exceptions.SchemaIncompatibilityException;
@@ -24,7 +25,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.logging.log4j.LogManager;
@@ -73,8 +73,16 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   // Store repository to check store related info
   private final ReadWriteStoreRepository storeRepository;
 
-  private final String clusterName;
   private final Optional<MetaStoreWriter> metaStoreWriter;
+
+  public HelixReadWriteSchemaRepository(
+      ReadWriteStoreRepository storeRepository,
+      Optional<MetaStoreWriter> metaStoreWriter,
+      HelixSchemaAccessor accessor) {
+    this.storeRepository = storeRepository;
+    this.metaStoreWriter = metaStoreWriter;
+    this.accessor = accessor;
+  }
 
   public HelixReadWriteSchemaRepository(
       ReadWriteStoreRepository storeRepository,
@@ -84,7 +92,6 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
       Optional<MetaStoreWriter> metaStoreWriter) {
     this.storeRepository = storeRepository;
     this.accessor = new HelixSchemaAccessor(zkClient, adapter, clusterName);
-    this.clusterName = clusterName;
     this.metaStoreWriter = metaStoreWriter;
   }
 
@@ -481,12 +488,12 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
 
   @Override
   public Pair<Integer, Integer> getDerivedSchemaId(String storeName, String derivedSchemaStr) {
+    preCheckStoreCondition(storeName);
     Schema derivedSchema = Schema.parse(derivedSchemaStr);
-    for (DerivedSchemaEntry derivedSchemaEntry: getDerivedSchemaMap(storeName).values()
-        .stream()
-        .flatMap(List::stream)
-        .collect(Collectors.toList())) {
-      if (derivedSchemaEntry.getSchema().equals(derivedSchema)) {
+    String derivedSchemaStrToFind = AvroCompatibilityHelper.toParsingForm(derivedSchema);
+
+    for (DerivedSchemaEntry derivedSchemaEntry: accessor.getAllDerivedSchemas(storeName)) {
+      if (derivedSchemaStrToFind.equals(derivedSchemaEntry.getCanonicalSchemaStr())) {
         return new Pair<>(derivedSchemaEntry.getValueSchemaID(), derivedSchemaEntry.getId());
       }
     }
