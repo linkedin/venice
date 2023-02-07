@@ -121,6 +121,17 @@ public class TestSchemaEntry {
   }
 
   @Test
+  public void testCanonicalFormSchema() {
+    String schemaStr1 =
+        "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"company\",\"type\":\"string\"}]}";
+    String schemaStr2 =
+        "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\", \"avro.java.string\" : \"string\", \"doc\":\"name field\"},{\"name\":\"company\",\"type\":\"string\"}]}";
+    SchemaEntry entry1 = new SchemaEntry(1, schemaStr1);
+    SchemaEntry entry2 = new SchemaEntry(2, schemaStr2);
+    Assert.assertEquals(entry1.getCanonicalSchemaStr(), entry2.getCanonicalSchemaStr());
+  }
+
+  @Test
   public void testFullCompatibilityWithDifferentEnum() {
     String schemaStr1 = "{\n" + "           \"type\": \"record\",\n" + "           \"name\": \"KeyRecord\",\n"
         + "           \"fields\" : [\n"
