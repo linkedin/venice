@@ -358,7 +358,7 @@ public class MetaStoreWriter implements Closeable {
        * during cluster initialization.
        */
       Pair<Integer, Integer> derivedSchemaId = zkSharedSchemaRepository
-          .getDerivedSchemaId(VeniceSystemStoreType.META_STORE.getZkSharedStoreName(), derivedComputeSchema);
+          .getDerivedSchemaId(VeniceSystemStoreType.META_STORE.getZkSharedStoreName(), derivedComputeSchema.toString());
       if (derivedSchemaId.getFirst() == SchemaData.INVALID_VALUE_SCHEMA_ID) {
         throw new VeniceException(
             "The derived compute schema for meta system store hasn't been registered to Venice yet");
