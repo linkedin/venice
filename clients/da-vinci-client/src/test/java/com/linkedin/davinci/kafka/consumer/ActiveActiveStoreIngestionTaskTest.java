@@ -273,8 +273,7 @@ public class ActiveActiveStoreIngestionTaskTest {
     chunkedKeySuffix.chunkId.segmentNumber = metadata.segmentNumber;
     chunkedKeySuffix.chunkId.messageSequenceNumber = metadata.messageSequenceNumber;
     chunkedKeySuffix.chunkId.chunkIndex = 0;
-    ByteBuffer chunkedKeyWithSuffix1 =
-        ByteBuffer.wrap(keyWithChunkingSuffixSerializer.serializeChunkedKey(key2, chunkedKeySuffix));
+    ByteBuffer chunkedKeyWithSuffix1 = keyWithChunkingSuffixSerializer.serializeChunkedKey(key2, chunkedKeySuffix);
     ChunkedValueManifest chunkedValueManifest = new ChunkedValueManifest();
     chunkedValueManifest.schemaId = valueSchema;
     chunkedValueManifest.keysWithChunkIdSuffix = new ArrayList<>(1);
@@ -306,12 +305,10 @@ public class ActiveActiveStoreIngestionTaskTest {
     chunkedKeySuffix.chunkId.segmentNumber = metadata.segmentNumber;
     chunkedKeySuffix.chunkId.messageSequenceNumber = metadata.messageSequenceNumber;
     chunkedKeySuffix.chunkId.chunkIndex = 0;
-    chunkedKeyWithSuffix1 =
-        ByteBuffer.wrap(keyWithChunkingSuffixSerializer.serializeChunkedKey(key3, chunkedKeySuffix));
+    chunkedKeyWithSuffix1 = keyWithChunkingSuffixSerializer.serializeChunkedKey(key3, chunkedKeySuffix);
 
     chunkedKeySuffix.chunkId.chunkIndex = 1;
-    ByteBuffer chunkedKeyWithSuffix2 =
-        ByteBuffer.wrap(keyWithChunkingSuffixSerializer.serializeChunkedKey(key3, chunkedKeySuffix));
+    ByteBuffer chunkedKeyWithSuffix2 = keyWithChunkingSuffixSerializer.serializeChunkedKey(key3, chunkedKeySuffix);
 
     chunkedValueManifest = new ChunkedValueManifest();
     chunkedValueManifest.schemaId = valueSchema;

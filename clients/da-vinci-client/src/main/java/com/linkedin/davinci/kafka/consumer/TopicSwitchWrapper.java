@@ -8,6 +8,10 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 
+/**
+ * This class precomputes the conversion from Avro's {@link CharSequence} to String, and also hangs on to the
+ * correct instance of {@link PubSubTopic}, so that the lookup need not be performed in many locations.
+ */
 public class TopicSwitchWrapper {
   private final TopicSwitch topicSwitch;
   private final PubSubTopic newSourceTopic;

@@ -1,7 +1,6 @@
 package com.linkedin.venice.message;
 
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
-import com.linkedin.venice.storage.protocol.ChunkId;
 import com.linkedin.venice.utils.ByteUtils;
 import javax.annotation.Nonnull;
 
@@ -13,24 +12,14 @@ import javax.annotation.Nonnull;
 public class KafkaKey {
   private final byte keyHeaderByte;
   private final byte[] key; // TODO: Consider whether we may want to use a ByteBuffer here
-  private final ChunkId chunkId;
-
-  public KafkaKey(ChunkId chunkId, byte[] key) {
-    this(MessageType.PUT.getKeyHeaderByte(), key, chunkId);
-  }
 
   public KafkaKey(@Nonnull MessageType messageType, byte[] key) {
     this(messageType.getKeyHeaderByte(), key);
   }
 
   public KafkaKey(byte keyHeaderByte, byte[] key) {
-    this(keyHeaderByte, key, null);
-  }
-
-  public KafkaKey(byte keyHeaderByte, byte[] key, ChunkId chunkId) {
     this.keyHeaderByte = keyHeaderByte;
     this.key = key;
-    this.chunkId = chunkId;
   }
 
   /**
@@ -54,10 +43,6 @@ public class KafkaKey {
     return keyHeaderByte == MessageType.CONTROL_MESSAGE.getKeyHeaderByte();
   }
 
-  public boolean hasChunkId() {
-    return chunkId != null;
-  }
-
   /**
    * @return the content of the key (everything beyond the first byte)
    */
@@ -65,20 +50,14 @@ public class KafkaKey {
     return key;
   }
 
-  public ChunkId getChunkId() {
-    return chunkId;
-  }
-
   public int getKeyLength() {
     return key == null ? 0 : key.length;
   }
 
   public int getEstimatedObjectSizeOnHeap() {
-    int size = getKeyLength() + 36;
-    if (chunkId != null) {
-      size += 72;
-    }
-    return size;
+    // This constant is the estimated size of the enclosing object + the byte[]'s overhead.
+    // TODO: Find a library that would allow us to precisely measure this and store it in a static constant.
+    return getKeyLength() + 36;
   }
 
   public String toString() {

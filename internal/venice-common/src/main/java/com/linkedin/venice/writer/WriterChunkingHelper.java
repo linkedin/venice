@@ -72,8 +72,7 @@ public class WriterChunkingHelper {
     chunkedKeySuffix.chunkId = new ChunkId();
 
     subsequentKeyProvider = producerMetadata -> {
-      ByteBuffer keyWithSuffix =
-          ByteBuffer.wrap(keyWithChunkingSuffixSerializer.serializeChunkedKey(serializedKey, chunkedKeySuffix));
+      ByteBuffer keyWithSuffix = keyWithChunkingSuffixSerializer.serializeChunkedKey(serializedKey, chunkedKeySuffix);
       chunkedValueManifest.keysWithChunkIdSuffix.add(keyWithSuffix);
       return new KafkaKey(MessageType.PUT, keyWithSuffix.array());
     };

@@ -376,8 +376,7 @@ public class VeniceWriterTest {
     chunkedKeySuffix.chunkId.segmentNumber = producerMetadata.segmentNumber;
     chunkedKeySuffix.chunkId.messageSequenceNumber = producerMetadata.messageSequenceNumber;
 
-    ByteBuffer keyWithSuffix =
-        ByteBuffer.wrap(keyWithChunkingSuffixSerializer.serializeChunkedKey(serializedKey, chunkedKeySuffix));
+    ByteBuffer keyWithSuffix = keyWithChunkingSuffixSerializer.serializeChunkedKey(serializedKey, chunkedKeySuffix);
     chunkedValueManifest.keysWithChunkIdSuffix.add(keyWithSuffix);
     KafkaKey expectedKey1 = new KafkaKey(MessageType.PUT, keyWithSuffix.array());
     KafkaKey actualKey1 = producerRecordArgumentCaptor.getAllValues().get(1).key();
@@ -385,8 +384,7 @@ public class VeniceWriterTest {
 
     // Verify key of the 2nd value chunk.
     chunkedKeySuffix.chunkId.chunkIndex = 1;
-    keyWithSuffix =
-        ByteBuffer.wrap(keyWithChunkingSuffixSerializer.serializeChunkedKey(serializedKey, chunkedKeySuffix));
+    keyWithSuffix = keyWithChunkingSuffixSerializer.serializeChunkedKey(serializedKey, chunkedKeySuffix);
     chunkedValueManifest.keysWithChunkIdSuffix.add(keyWithSuffix);
     KafkaKey expectedKey2 = new KafkaKey(MessageType.PUT, keyWithSuffix.array());
     KafkaKey actualKey2 = producerRecordArgumentCaptor.getAllValues().get(2).key();
@@ -415,8 +413,7 @@ public class VeniceWriterTest {
     chunkedKeySuffix.chunkId.producerGUID = producerMetadata.producerGUID;
     chunkedKeySuffix.chunkId.segmentNumber = producerMetadata.segmentNumber;
     chunkedKeySuffix.chunkId.messageSequenceNumber = producerMetadata.messageSequenceNumber;
-    keyWithSuffix =
-        ByteBuffer.wrap(keyWithChunkingSuffixSerializer.serializeChunkedKey(serializedKey, chunkedKeySuffix));
+    keyWithSuffix = keyWithChunkingSuffixSerializer.serializeChunkedKey(serializedKey, chunkedKeySuffix);
     chunkedRmdManifest.keysWithChunkIdSuffix.add(keyWithSuffix);
     KafkaKey expectedKey3 = new KafkaKey(MessageType.PUT, keyWithSuffix.array());
     KafkaKey actualKey3 = producerRecordArgumentCaptor.getAllValues().get(3).key();
