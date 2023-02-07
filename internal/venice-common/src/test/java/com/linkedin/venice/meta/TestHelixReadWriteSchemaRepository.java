@@ -52,5 +52,7 @@ public class TestHelixReadWriteSchemaRepository {
     Mockito.doReturn(Arrays.asList(entry)).when(accessor).getAllDerivedSchemas(Mockito.eq(storeName));
     Pair<Integer, Integer> pair = helixReadWriteSchemaRepository.getDerivedSchemaId(storeName, schemaStr);
     Assert.assertEquals(pair.getSecond().intValue(), 1);
+    pair = helixReadWriteSchemaRepository.getDerivedSchemaId(storeName, schemaStr);
+    Assert.assertEquals(pair.getSecond().intValue(), 1);
   }
 }
