@@ -23,15 +23,12 @@ import org.apache.avro.generic.GenericRecord;
  * view implementations.
  */
 public abstract class VeniceViewWriter extends VeniceView {
-  protected final Schema keySchema;
-
   public VeniceViewWriter(
       VeniceConfigLoader props,
       Store store,
       Schema keySchema,
       Map<String, String> extraViewParameters) {
     super(props.getCombinedProperties().toProperties(), store, extraViewParameters);
-    this.keySchema = keySchema;
   }
 
   /**
