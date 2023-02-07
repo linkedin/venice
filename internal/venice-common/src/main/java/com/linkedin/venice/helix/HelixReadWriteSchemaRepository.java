@@ -25,7 +25,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.logging.log4j.LogManager;
@@ -69,7 +68,7 @@ import org.apache.logging.log4j.Logger;
 public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository {
   private static final Logger logger = LogManager.getLogger(HelixReadWriteSchemaRepository.class);
 
-  private final HelixSchemaAccessor accessor;
+  private HelixSchemaAccessor accessor;
 
   // Store repository to check store related info
   private final ReadWriteStoreRepository storeRepository;
@@ -482,13 +481,11 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
 
   @Override
   public Pair<Integer, Integer> getDerivedSchemaId(String storeName, String derivedSchemaStr) {
+    preCheckStoreCondition(storeName);
     Schema derivedSchema = Schema.parse(derivedSchemaStr);
     String derivedSchemaStrToFind = AvroCompatibilityHelper.toParsingForm(derivedSchema);
 
-    for (DerivedSchemaEntry derivedSchemaEntry: getDerivedSchemaMap(storeName).values()
-        .stream()
-        .flatMap(List::stream)
-        .collect(Collectors.toList())) {
+    for (DerivedSchemaEntry derivedSchemaEntry: accessor.getAllDerivedSchemas(storeName)) {
       if (derivedSchemaStrToFind.equals(derivedSchemaEntry.getCanonicalSchemaStr())) {
         return new Pair<>(derivedSchemaEntry.getValueSchemaID(), derivedSchemaEntry.getId());
       }
@@ -547,6 +544,10 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
     }
 
     return rmdSchemaEntry;
+  }
+
+  public void setAccessor(HelixSchemaAccessor accessor) {
+    this.accessor = accessor;
   }
 
   @Override
