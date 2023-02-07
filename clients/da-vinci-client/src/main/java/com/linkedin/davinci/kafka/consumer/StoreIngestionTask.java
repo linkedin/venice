@@ -1649,7 +1649,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             LOGGER.error(
                 "{} Kafka consumer should have subscribed to the partition already but it fails "
                     + "on resetting offset for: {}",
-                consumerTaskId);
+                consumerTaskId,
+                topicPartition);
           }
           partitionConsumptionStateMap.put(
               partition,
@@ -1663,7 +1664,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           partitionIngestionExceptionList.set(partition, null);
         } else {
           LOGGER.info(
-              "{} No need to reset offset by Kafka consumer, since the consumer is not " + "subscribing: {}",
+              "{} No need to reset offset by Kafka consumer, since the consumer is not subscribing: {}",
               consumerTaskId,
               topicPartition);
         }

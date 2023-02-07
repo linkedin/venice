@@ -790,7 +790,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
               // propagated up
               throw new VeniceException(
                   String.format(
-                      "Failed contacting broker and no repair service available!  Aborting topic switch processing for %s. Setting upstream start offset to %d",
+                      "Failed contacting broker (%s) and no repair service available!  Aborting topic switch processing for %s. Setting upstream start offset to %d",
                       sourceKafkaURL,
                       sourceTopicPartition.toString(),
                       upstreamStartOffset));
