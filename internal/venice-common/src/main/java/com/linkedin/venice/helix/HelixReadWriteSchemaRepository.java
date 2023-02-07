@@ -68,13 +68,21 @@ import org.apache.logging.log4j.Logger;
 public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository {
   private static final Logger logger = LogManager.getLogger(HelixReadWriteSchemaRepository.class);
 
-  private HelixSchemaAccessor accessor;
+  private final HelixSchemaAccessor accessor;
 
   // Store repository to check store related info
   private final ReadWriteStoreRepository storeRepository;
 
-  private final String clusterName;
   private final Optional<MetaStoreWriter> metaStoreWriter;
+
+  public HelixReadWriteSchemaRepository(
+      ReadWriteStoreRepository storeRepository,
+      Optional<MetaStoreWriter> metaStoreWriter,
+      HelixSchemaAccessor accessor) {
+    this.storeRepository = storeRepository;
+    this.metaStoreWriter = metaStoreWriter;
+    this.accessor = accessor;
+  }
 
   public HelixReadWriteSchemaRepository(
       ReadWriteStoreRepository storeRepository,
@@ -84,7 +92,6 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
       Optional<MetaStoreWriter> metaStoreWriter) {
     this.storeRepository = storeRepository;
     this.accessor = new HelixSchemaAccessor(zkClient, adapter, clusterName);
-    this.clusterName = clusterName;
     this.metaStoreWriter = metaStoreWriter;
   }
 
@@ -544,10 +551,6 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
     }
 
     return rmdSchemaEntry;
-  }
-
-  public void setAccessor(HelixSchemaAccessor accessor) {
-    this.accessor = accessor;
   }
 
   @Override

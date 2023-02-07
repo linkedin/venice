@@ -1,6 +1,5 @@
 package com.linkedin.venice.meta;
 
-import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
 import com.linkedin.venice.helix.HelixSchemaAccessor;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
@@ -12,7 +11,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.apache.avro.Schema;
-import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
@@ -23,20 +21,12 @@ public class TestHelixReadWriteSchemaRepository {
   private HelixReadWriteSchemaRepository helixReadWriteSchemaRepository;
   private final HelixSchemaAccessor accessor = Mockito.mock(HelixSchemaAccessor.class);
   private final ReadWriteStoreRepository storeRepository = Mockito.mock(ReadWriteStoreRepository.class);
-  private final ZkClient zkClient = Mockito.mock(ZkClient.class);
-  private final HelixAdapterSerializer adapter = Mockito.mock(HelixAdapterSerializer.class);
   private final MetaStoreWriter metaStoreWriter = Mockito.mock(MetaStoreWriter.class);
 
   @BeforeMethod
   void setUp() {
-    String clusterName = "testCluster";
-    this.helixReadWriteSchemaRepository = new HelixReadWriteSchemaRepository(
-        storeRepository,
-        zkClient,
-        adapter,
-        clusterName,
-        Optional.of(metaStoreWriter));
-    this.helixReadWriteSchemaRepository.setAccessor(accessor);
+    this.helixReadWriteSchemaRepository =
+        new HelixReadWriteSchemaRepository(storeRepository, Optional.of(metaStoreWriter), accessor);
   }
 
   @Test
@@ -44,6 +34,8 @@ public class TestHelixReadWriteSchemaRepository {
     String storeName = "test";
     String schemaStr =
         "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"company\",\"type\":\"string\"}]}";
+    String schemaStr1 =
+        "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"company1\",\"type\":\"string\"}]}";
     Schema schema = Schema.parse(schemaStr);
     Map<Integer, List<DerivedSchemaEntry>> derivedSchemaEntryMap = new HashMap<>();
     DerivedSchemaEntry entry = new DerivedSchemaEntry(1, 1, schema);
@@ -54,5 +46,7 @@ public class TestHelixReadWriteSchemaRepository {
     Assert.assertEquals(pair.getSecond().intValue(), 1);
     pair = helixReadWriteSchemaRepository.getDerivedSchemaId(storeName, schemaStr);
     Assert.assertEquals(pair.getSecond().intValue(), 1);
+    pair = helixReadWriteSchemaRepository.getDerivedSchemaId(storeName, schemaStr1);
+    Assert.assertEquals(pair.getSecond().intValue(), -1);
   }
 }
