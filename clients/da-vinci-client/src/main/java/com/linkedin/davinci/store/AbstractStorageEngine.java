@@ -414,17 +414,6 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     }
   }
 
-  public void warmUpStoragePartition(int partitionId) {
-    executeWithSafeGuard(partitionId, () -> {
-      if (!containsPartition(partitionId)) {
-        LOGGER.warn("Partition {}_{} doesn't exist.", storeName, partitionId);
-        return;
-      }
-      AbstractStoragePartition storagePartition = getPartitionOrThrow(partitionId);
-      storagePartition.warmUp();
-    });
-  }
-
   /**
    * Reopen the underlying database.
    */

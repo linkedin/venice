@@ -45,7 +45,6 @@ import com.linkedin.venice.hadoop.input.kafka.VeniceKafkaInputMapper;
 import com.linkedin.venice.hadoop.input.kafka.VeniceKafkaInputReducer;
 import com.linkedin.venice.hadoop.input.kafka.ttl.TTLResolutionPolicy;
 import com.linkedin.venice.hadoop.output.avro.ValidateSchemaAndBuildDictMapperOutput;
-import com.linkedin.venice.hadoop.pbnj.PostBulkLoadAnalysisMapper;
 import com.linkedin.venice.hadoop.schema.HDFSRmdSchemaSource;
 import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
@@ -260,7 +259,7 @@ public class VenicePushJob implements AutoCloseable {
   /**
    * This config specifies the region identifier where parent controller is running
    */
-  public static final String PARENT_CONTROLLER_REGION_NAME = "parent.controller.colo.name";
+  public static final String PARENT_CONTROLLER_REGION_NAME = "parent.controller.region.name";
 
   /**
    * Relates to the above argument. An overridable amount of buffer to be applied to the epoch (as the rewind isn't
@@ -299,13 +298,6 @@ public class VenicePushJob implements AutoCloseable {
   protected static final String HADOOP_PREFIX = "hadoop-conf.";
   protected static final String HADOOP_VALIDATE_SCHEMA_AND_BUILD_DICT_PREFIX = "hadoop-dict-build-conf.";
   public static final String SSL_PREFIX = "ssl";
-
-  // PBNJ-related configs are all optional
-  public static final String PBNJ_ENABLE = "pbnj.enable";
-  public static final String PBNJ_FAIL_FAST = "pbnj.fail.fast";
-  public static final String PBNJ_ASYNC = "pbnj.async";
-  public static final String PBNJ_ROUTER_URL_PROP = "pbnj.router.urls";
-  public static final String PBNJ_SAMPLING_RATIO_PROP = "pbnj.sampling.ratio";
 
   public static final String STORAGE_QUOTA_PROP = "storage.quota";
   public static final String STORAGE_ENGINE_OVERHEAD_RATIO = "storage_engine_overhead_ratio";
@@ -397,8 +389,6 @@ public class VenicePushJob implements AutoCloseable {
   protected JobConf validateSchemaAndBuildDictJobConf = new JobConf();
   // Job config for regular push job
   protected JobConf jobConf = new JobConf();
-  // Job config for pbnj
-  protected JobConf pbnjJobConf = new JobConf();
   protected InputDataInfoProvider inputDataInfoProvider;
   // Total input data size, which is used to talk to controller to decide whether we have enough quota or not
   private long inputFileDataSize;
@@ -418,15 +408,10 @@ public class VenicePushJob implements AutoCloseable {
   protected static class PushJobSetting {
     boolean enablePush;
     String veniceControllerUrl;
-    String veniceRouterUrl;
     String storeName;
     String clusterName;
     String sourceGridFabric;
     int batchNumBytes;
-    boolean enablePBNJ;
-    boolean pbnjFailFast;
-    boolean pbnjAsync;
-    double pbnjSamplingRatio;
     boolean isIncrementalPush;
     Optional<String> incrementalPushVersion = Optional.empty();
     boolean isDuplicateKeyAllowed;
@@ -607,10 +592,6 @@ public class VenicePushJob implements AutoCloseable {
       pushJobSettingToReturn.sourceGridFabric = props.getString(SOURCE_GRID_FABRIC);
     }
     pushJobSettingToReturn.batchNumBytes = props.getInt(BATCH_NUM_BYTES_PROP, DEFAULT_BATCH_BYTES_SIZE);
-    pushJobSettingToReturn.enablePBNJ = props.getBoolean(PBNJ_ENABLE, false);
-    pushJobSettingToReturn.pbnjFailFast = props.getBoolean(PBNJ_FAIL_FAST, false);
-    pushJobSettingToReturn.pbnjAsync = props.getBoolean(PBNJ_ASYNC, false);
-    pushJobSettingToReturn.pbnjSamplingRatio = props.getDouble(PBNJ_SAMPLING_RATIO_PROP, 1.0);
     pushJobSettingToReturn.isIncrementalPush = props.getBoolean(INCREMENTAL_PUSH, false);
     pushJobSettingToReturn.isDuplicateKeyAllowed = props.getBoolean(ALLOW_DUPLICATE_KEY, false);
     pushJobSettingToReturn.enablePushJobStatusUpload = props.getBoolean(PUSH_JOB_STATUS_UPLOAD_ENABLE, false);
@@ -674,9 +655,6 @@ public class VenicePushJob implements AutoCloseable {
       if (pushJobSettingToReturn.isSourceETL) {
         throw new VeniceException("Source ETL is not supported while using Kafka Input Format");
       }
-      if (pushJobSettingToReturn.enablePBNJ) {
-        throw new VeniceException("PBNJ is not supported while using Kafka Input Format");
-      }
     }
 
     pushJobSettingToReturn.storeName = props.getString(VENICE_STORE_NAME_PROP);
@@ -706,18 +684,6 @@ public class VenicePushJob implements AutoCloseable {
         // REWIND_FROM_SOP
         pushJobSettingToReturn.validateRemoteReplayPolicy = BufferReplayPolicy.REWIND_FROM_SOP;
       }
-    }
-
-    if (pushJobSettingToReturn.enablePBNJ) {
-      // If PBNJ is enabled, then the router URL config is mandatory
-      pushJobSettingToReturn.veniceRouterUrl = props.getString(PBNJ_ROUTER_URL_PROP);
-    } else {
-      pushJobSettingToReturn.veniceRouterUrl = null;
-    }
-
-    if (!pushJobSettingToReturn.enablePush && !pushJobSettingToReturn.enablePBNJ) {
-      throw new VeniceException(
-          "At least one of the following config properties must be true: " + ENABLE_PUSH + " or " + PBNJ_ENABLE);
     }
 
     pushJobSettingToReturn.extendedSchemaValidityCheckEnabled =
@@ -1094,20 +1060,6 @@ public class VenicePushJob implements AutoCloseable {
         updatePushJobDetailsWithConfigs();
         updatePushJobDetailsWithLivenessHeartbeatException(pushJobHeartbeatSender);
         sendPushJobDetailsToController();
-      }
-
-      if (pushJobSetting.enablePBNJ) {
-        LOGGER.info("Post-Bulkload Analysis Job is about to run.");
-        setupPBNJConf(
-            pbnjJobConf,
-            kafkaTopicInfo,
-            pushJobSetting,
-            pushJobSchemaInfo,
-            storeSetting,
-            props,
-            jobId,
-            inputDirectory);
-        runningJob = runJobWithConfig(pbnjJobConf);
       }
     } catch (Throwable e) {
       LOGGER.error("Failed to run job.", e);
@@ -2491,29 +2443,6 @@ public class VenicePushJob implements AutoCloseable {
     setupDefaultJobConf(jobConf, topicInfo, pushJobSetting, pushJobSchemaInfo, storeSetting, props, id);
     setupInputFormatConf(jobConf, pushJobSchemaInfo, inputDirectory);
     setupReducerConf(jobConf, pushJobSetting, topicInfo);
-  }
-
-  private void setupPBNJConf(
-      JobConf jobConf,
-      TopicInfo topicInfo,
-      PushJobSetting pushJobSetting,
-      PushJobSchemaInfo pushJobSchemaInfo,
-      StoreSetting storeSetting,
-      VeniceProperties props,
-      String id,
-      String inputDirectory) {
-    if (!pushJobSchemaInfo.isAvro()) {
-      throw new VeniceException("PBNJ only supports Avro input format");
-    }
-
-    setupMRConf(jobConf, topicInfo, pushJobSetting, pushJobSchemaInfo, storeSetting, props, id, inputDirectory);
-    jobConf.set(VENICE_STORE_NAME_PROP, pushJobSetting.storeName);
-    jobConf.set(PBNJ_ROUTER_URL_PROP, pushJobSetting.veniceRouterUrl);
-    jobConf.set(PBNJ_FAIL_FAST, Boolean.toString(pushJobSetting.pbnjFailFast));
-    jobConf.set(PBNJ_ASYNC, Boolean.toString(pushJobSetting.pbnjAsync));
-    jobConf.set(PBNJ_SAMPLING_RATIO_PROP, Double.toString(pushJobSetting.pbnjSamplingRatio));
-    jobConf.set(STORAGE_QUOTA_PROP, Long.toString(Store.UNLIMITED_STORAGE_QUOTA));
-    jobConf.setMapperClass(PostBulkLoadAnalysisMapper.class);
   }
 
   /**

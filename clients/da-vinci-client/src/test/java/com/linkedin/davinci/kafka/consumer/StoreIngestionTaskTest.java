@@ -8,9 +8,6 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_NAME;
 import static com.linkedin.venice.ConfigKeys.KAFKA_CLUSTER_MAP_KEY_URL;
 import static com.linkedin.venice.ConfigKeys.KAFKA_ZK_ADDRESS;
-import static com.linkedin.venice.ConfigKeys.SERVER_AUTO_COMPACTION_FOR_SAMZA_REPROCESSING_JOB_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SERVER_CACHE_WARMING_BEFORE_READY_TO_SERVE_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SERVER_CACHE_WARMING_STORE_LIST;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_LIVE_CONFIG_BASED_KAFKA_THROTTLING;
 import static com.linkedin.venice.ConfigKeys.SERVER_LOCAL_CONSUMER_CONFIG_PREFIX;
@@ -175,7 +172,6 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -886,7 +882,6 @@ public abstract class StoreIngestionTaskTest {
         .setServerConfig(veniceServerConfig)
         .setDiskUsage(diskUsage)
         .setAggKafkaConsumerService(aggKafkaConsumerService)
-        .setCacheWarmingThreadPool(Executors.newFixedThreadPool(1))
         .setCompressorFactory(new StorageEngineBackedCompressorFactory(mockStorageMetadataService))
         .setPartitionStateSerializer(partitionStateSerializer);
   }
@@ -1434,6 +1429,7 @@ public abstract class StoreIngestionTaskTest {
 
       storeIngestionTaskUnderTest.resetPartitionConsumptionOffset(topic, PARTITION_FOO);
 
+      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS)).clearOffset(topic, PARTITION_FOO);
       verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT_MS).times(2))
           .put(PARTITION_FOO, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
     }, isActiveActiveReplicationEnabled);
@@ -2277,6 +2273,13 @@ public abstract class StoreIngestionTaskTest {
     // Records order are: StartOfSeg, StartOfPush, data, EndOfPush, EndOfSeg, StartOfSeg, StartOfIncrementalPush
     // data, EndOfIncrementalPush
 
+    HybridStoreConfig hybridStoreConfig = new HybridStoreConfigImpl(
+        100,
+        100,
+        HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
+        DataReplicationPolicy.NON_AGGREGATE,
+        BufferReplayPolicy.REWIND_FROM_EOP);
+
     runTest(new RandomPollStrategy(), Utils.setOf(PARTITION_FOO), () -> {}, () -> {
       waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         // sync the offset when receiving EndOfPush
@@ -2295,48 +2298,13 @@ public abstract class StoreIngestionTaskTest {
         verify(mockLogNotifier, atLeastOnce())
             .endOfIncrementalPushReceived(topic, PARTITION_FOO, fooNewOffset, version);
       });
-    }, Optional.empty(), true, Optional.empty(), isActiveActiveReplicationEnabled, 1, Collections.emptyMap());
-  }
-
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testCacheWarming(boolean isActiveActiveReplicationEnabled) throws Exception {
-    setStoreVersionStateSupplier(true);
-    localVeniceWriter.broadcastStartOfPush(true, new HashMap<>());
-    long fooOffset = getOffset(localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
-    localVeniceWriter.broadcastEndOfPush(new HashMap<>());
-
-    Map<String, Object> extraServerProperties = new HashMap<>();
-    extraServerProperties.put(SERVER_CACHE_WARMING_STORE_LIST, storeNameWithoutVersionInfo);
-    extraServerProperties.put(SERVER_CACHE_WARMING_BEFORE_READY_TO_SERVE_ENABLED, true);
-
-    // Records order are: StartOfSeg, StartOfPush, data, EndOfPush, EndOfSeg
-    runTest(
-        new RandomPollStrategy(),
-        Utils.setOf(PARTITION_FOO),
-        () -> {},
-        () -> waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-          // sync the offset when receiving EndOfPush
-          verify(mockStorageMetadataService, timeout(TEST_TIMEOUT_MS).atLeastOnce())
-              .put(eq(topic), eq(PARTITION_FOO), eq(getOffsetRecord(fooOffset + 1, true)));
-
-          verify(mockLogNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
-          // since notifier reporting happens before offset update, it actually reports previous offsets
-          verify(mockLogNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooOffset);
-          // Since the completion report will be async, the completed offset could be `END_OF_PUSH` or `END_OF_SEGMENT`
-          // for batch push job.
-          verify(mockLogNotifier).completed(
-              eq(topic),
-              eq(PARTITION_FOO),
-              longThat(completionOffset -> (completionOffset == fooOffset + 1) || (completionOffset == fooOffset + 2)),
-              anyString());
-          verify(mockAbstractStorageEngine).warmUpStoragePartition(PARTITION_FOO);
-        }),
-        Optional.empty(),
-        false,
+    },
+        Optional.of(hybridStoreConfig),
+        true,
         Optional.empty(),
         isActiveActiveReplicationEnabled,
         1,
-        extraServerProperties);
+        Collections.emptyMap());
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
@@ -2375,52 +2343,6 @@ public abstract class StoreIngestionTaskTest {
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testDelayCompactionForSamzaReprocessingWorkload(boolean isActiveActiveReplicationEnabled)
-      throws Exception {
-    localVeniceWriter.broadcastStartOfPush(false, new HashMap<>());
-    long fooOffset = getOffset(localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
-    localVeniceWriter.broadcastEndOfPush(new HashMap<>());
-    // Continue to write some message after EOP
-    localVeniceWriter.put(putKeyFoo2, putValue, SCHEMA_ID);
-
-    mockStorageMetadataService = new InMemoryStorageMetadataService();
-    // To pass back the mock storage partition initialized in a lambda function
-    final CompletableFuture<AbstractStoragePartition> mockStoragePartitionWrapper = new CompletableFuture<>();
-
-    // Records order are: StartOfSeg, StartOfPush, data, EndOfPush, EndOfSeg
-    runTest(new RandomPollStrategy(), Utils.setOf(PARTITION_FOO), () -> {
-      mockAbstractStorageEngine.addStoragePartition(PARTITION_FOO);
-      AbstractStoragePartition mockPartition = mock(AbstractStoragePartition.class);
-      mockStoragePartitionWrapper.complete(mockPartition);
-      doReturn(mockPartition).when(mockAbstractStorageEngine).getPartitionOrThrow(PARTITION_FOO);
-      doReturn(CompletableFuture.completedFuture(null)).when(mockPartition).compactDB();
-    }, () -> waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      // Consumer should pause the consumption before EOP
-      verify(mockLocalKafkaConsumer).pause(topic, PARTITION_FOO);
-      verify(mockStoragePartitionWrapper.get()).compactDB();
-      // Consumer should resume the consumption right before EOP
-      verify(mockLocalKafkaConsumer).subscribe(eq(topic), eq(PARTITION_FOO), eq(fooOffset));
-
-      verify(mockLogNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
-      // since notifier reporting happens before offset update, it actually reports previous offsets
-      verify(mockLogNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooOffset);
-      // Since the completion report will be async, the completed offset could be `END_OF_PUSH` or `END_OF_SEGMENT` for
-      // batch push job.
-      verify(mockLogNotifier).completed(
-          eq(topic),
-          eq(PARTITION_FOO),
-          longThat(completionOffset -> (completionOffset == fooOffset + 1) || (completionOffset == fooOffset + 2)),
-          eq("STANDBY"));
-    }),
-        Optional.empty(),
-        false,
-        Optional.empty(),
-        isActiveActiveReplicationEnabled,
-        1,
-        Collections.singletonMap(SERVER_AUTO_COMPACTION_FOR_SAMZA_REPROCESSING_JOB_ENABLED, false));
-  }
-
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testReportErrorWithEmptyPcsMap(boolean isActiveActiveReplicationEnabled) throws Exception {
     localVeniceWriter.broadcastStartOfPush(new HashMap<>());
     localVeniceWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID);
@@ -2433,7 +2355,7 @@ public abstract class StoreIngestionTaskTest {
     }, isActiveActiveReplicationEnabled);
   }
 
-  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT_MS * 5)
   public void testPartitionExceptionIsolation(boolean isActiveActiveReplicationEnabled) throws Exception {
     localVeniceWriter.broadcastStartOfPush(new HashMap<>());
     getOffset(localVeniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
@@ -2454,6 +2376,10 @@ public abstract class StoreIngestionTaskTest {
       verify(mockLogNotifier, never()).error(eq(topic), eq(PARTITION_BAR), anyString(), any());
       assertTrue(storeIngestionTaskUnderTest.isRunning(), "The StoreIngestionTask should still be running");
     }, isActiveActiveReplicationEnabled);
+    for (int i = 0; i < 10000; ++i) {
+      storeIngestionTaskUnderTest
+          .setIngestionException(0, new VeniceException("new fake looooooooooooooooong exception"));
+    }
   }
 
   private static class TestVeniceWriter<K, V> extends VeniceWriter {
@@ -2473,7 +2399,6 @@ public abstract class StoreIngestionTaskTest {
     propertyBuilder.put(SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED, databaseChecksumVerificationEnabled);
     propertyBuilder.put(SERVER_LOCAL_CONSUMER_CONFIG_PREFIX, new VeniceProperties());
     propertyBuilder.put(SERVER_REMOTE_CONSUMER_CONFIG_PREFIX, new VeniceProperties());
-    propertyBuilder.put(SERVER_AUTO_COMPACTION_FOR_SAMZA_REPROCESSING_JOB_ENABLED, true);
     extraProperties.forEach(propertyBuilder::put);
 
     Map<String, Map<String, String>> kafkaClusterMap = new HashMap<>();

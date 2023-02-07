@@ -142,8 +142,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private final Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader;
 
-  private final ExecutorService cacheWarmingExecutorService;
-
   private final MetaStoreWriter metaStoreWriter;
 
   private final MetaSystemStoreReplicaStatusNotifier metaSystemStoreReplicaStatusNotifier;
@@ -435,14 +433,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     }
     aggKafkaConsumerService.createKafkaConsumerService(commonKafkaConsumerConfigs);
 
-    if (serverConfig.isCacheWarmingBeforeReadyToServeEnabled()) {
-      cacheWarmingExecutorService = Executors
-          .newFixedThreadPool(serverConfig.getCacheWarmingThreadPoolSize(), new DaemonThreadFactory("Cache_Warming"));
-    } else {
-      cacheWarmingExecutorService = null;
-    }
-    LOGGER.info("Cache warming is {}", serverConfig.isCacheWarmingBeforeReadyToServeEnabled() ? "enabled" : "disabled");
-
     /**
      * Use the same diskUsage instance for all ingestion tasks; so that all the ingestion tasks can update the same
      * remaining disk space state to provide a more accurate alert.
@@ -474,7 +464,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setServerConfig(serverConfig)
         .setDiskUsage(diskUsage)
         .setAggKafkaConsumerService(aggKafkaConsumerService)
-        .setCacheWarmingThreadPool(cacheWarmingExecutorService)
         .setStartReportingReadyToServeTimestamp(System.currentTimeMillis() + serverConfig.getDelayReadyToServeMS())
         .setPartitionStateSerializer(partitionStateSerializer)
         .setIsDaVinciClient(isDaVinciClient)
@@ -605,7 +594,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
      */
     topicNameToIngestionTaskMap.values().forEach(StoreIngestionTask::close);
     shutdownExecutorService(ingestionExecutorService, "ingestionExecutorService", false);
-    shutdownExecutorService(cacheWarmingExecutorService, "cacheWarmingExecutorService", true);
 
     Utils.closeQuietlyWithErrorLogged(aggKafkaConsumerService);
 

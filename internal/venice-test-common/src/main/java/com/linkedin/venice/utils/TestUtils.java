@@ -764,7 +764,6 @@ public class TestUtils {
         .setAggKafkaConsumerService(mock(AggKafkaConsumerService.class))
         .setServerConfig(mock(VeniceServerConfig.class))
         .setServerConfig(mockVeniceServerConfig)
-        .setCacheWarmingThreadPool(mock(ExecutorService.class))
         .setPartitionStateSerializer(mock(InternalAvroSpecificSerializer.class))
         .setIsDaVinciClient(false);
   }

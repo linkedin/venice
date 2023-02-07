@@ -48,4 +48,26 @@ public class AbstractVeniceStatsTest {
     Assert.assertFalse(exceptionReceived.get(), "Exception received while registering metrics");
     Assert.assertEquals(repository.metrics().size(), 1, "More than one metric was registered");
   }
+
+  @Test
+  public void testRegisterSensor() {
+    MetricsRepository metricsRepository = new MetricsRepository();
+    AbstractVeniceStats stats = new AbstractVeniceStats(metricsRepository, "myMetric");
+    stats.registerSensor("foo", new Gauge(() -> 1.0));
+    Assert.assertEquals(metricsRepository.metrics().size(), 1);
+    Assert.assertEquals(metricsRepository.getMetric(".myMetric--foo.Gauge").value(), 1.0);
+  }
+
+  @Test
+  public void testRegisterSensorAttributeGauge() {
+    MetricsRepository metricsRepository = new MetricsRepository();
+    AbstractVeniceStats stats = new AbstractVeniceStats(metricsRepository, "myMetric");
+    stats.registerSensorAttributeGauge("foo", "bar", new Gauge(() -> 1.0));
+    stats.registerSensorAttributeGauge("foo", "bar2", new Gauge(() -> 2.0));
+    // Duplicate registration will not count.
+    stats.registerSensorAttributeGauge("foo", "bar2", new Gauge(() -> 3.0));
+    Assert.assertEquals(metricsRepository.metrics().size(), 2);
+    Assert.assertEquals(metricsRepository.getMetric(".myMetric--foo.bar").value(), 1.0);
+    Assert.assertEquals(metricsRepository.getMetric(".myMetric--foo.bar2").value(), 2.0);
+  }
 }
