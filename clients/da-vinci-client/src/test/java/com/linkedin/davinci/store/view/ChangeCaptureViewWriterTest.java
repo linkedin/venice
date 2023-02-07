@@ -1,8 +1,13 @@
 package com.linkedin.davinci.store.view;
 
+<<<<<<< HEAD
 import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
+=======
+import static com.linkedin.venice.schema.rmd.RmdConstants.*;
+import static com.linkedin.venice.writer.VeniceWriter.*;
+>>>>>>> 7db413fa7 (Apply Zac change.)
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.config.VeniceConfigLoader;
