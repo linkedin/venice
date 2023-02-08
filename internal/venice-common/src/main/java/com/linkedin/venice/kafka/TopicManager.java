@@ -60,6 +60,7 @@ public class TopicManager implements Closeable {
   public static final int DEFAULT_KAFKA_OPERATION_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
   public static final long UNKNOWN_TOPIC_RETENTION = Long.MIN_VALUE;
   public static final int MAX_TOPIC_DELETE_RETRIES = 3;
+  public static final int DEFAULT_KAFKA_REPLICATION_FACTOR = 3;
 
   /**
    * Default setting is that no log compaction should happen for hybrid store version topics

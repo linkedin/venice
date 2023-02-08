@@ -218,8 +218,6 @@ public class ConfigKeys {
    *
    * Ignored if {@value KAFKA_REPLICATION_FACTOR} is present.
    */
-  @Deprecated
-  public static final String KAFKA_REPLICATION_FACTOR_LEGACY_SPELLING = "kafka.replica.factor";
   public static final String KAFKA_ZK_ADDRESS = "kafka.zk.address";
   public static final String DEFAULT_READ_STRATEGY = "default.read.strategy";
   public static final String DEFAULT_OFFLINE_PUSH_STRATEGY = "default.offline.push.strategy";
