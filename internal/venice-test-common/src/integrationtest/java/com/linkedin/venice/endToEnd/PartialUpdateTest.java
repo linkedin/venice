@@ -2,15 +2,22 @@ package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_VALUE_FIELD_PROP;
-import static com.linkedin.venice.utils.IntegrationTestPushUtils.*;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingDeleteRecord;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestWriteUtils.NESTED_SCHEMA_STRING;
 import static com.linkedin.venice.utils.TestWriteUtils.NESTED_SCHEMA_STRING_V2;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestWriteUtils.loadFileAsString;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithStringToRecordSchema;
-import static org.mockito.Mockito.*;
-import static org.testng.Assert.*;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTaskBackdoor;
@@ -73,7 +80,6 @@ import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.DatumWriter;
 import org.apache.avro.util.Utf8;
 import org.apache.samza.system.SystemProducer;
-import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -145,7 +151,7 @@ public class PartialUpdateTest {
               .setHybridOffsetLagThreshold(2L);
       ControllerResponse updateStoreResponse =
           parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams));
-      Assert.assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
+      assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
 
       VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test_push_id", 1000);
       assertEquals(response.getVersion(), 1);
@@ -155,9 +161,8 @@ public class PartialUpdateTest {
           parentControllerClient,
           30,
           TimeUnit.SECONDS);
-      Assert.assertTrue(parentControllerClient.getStore(storeName).getStore().isRmdChunkingEnabled());
-      Assert
-          .assertTrue(parentControllerClient.getStore(storeName).getStore().getVersion(1).get().isRmdChunkingEnabled());
+      assertTrue(parentControllerClient.getStore(storeName).getStore().isRmdChunkingEnabled());
+      assertTrue(parentControllerClient.getStore(storeName).getStore().getVersion(1).get().isRmdChunkingEnabled());
     }
 
     VeniceClusterWrapper veniceCluster = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
@@ -306,7 +311,7 @@ public class PartialUpdateTest {
               .setHybridOffsetLagThreshold(2L);
       ControllerResponse updateStoreResponse =
           parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams));
-      Assert.assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
+      assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
 
       VersionCreationResponse response = parentControllerClient.emptyPush(storeName, "test_push_id", 1000);
       assertEquals(response.getVersion(), 1);
@@ -424,11 +429,11 @@ public class PartialUpdateTest {
                 .setHybridRewindSeconds(10L)
                 .setHybridOffsetLagThreshold(2L));
 
-        Assert.assertFalse(response.isError());
+        assertFalse(response.isError());
 
         // Add a new value schema v2 to store
         SchemaResponse schemaResponse = controllerClient.addValueSchema(storeName, NESTED_SCHEMA_STRING_V2);
-        Assert.assertFalse(schemaResponse.isError());
+        assertFalse(schemaResponse.isError());
 
         // Add WC (Write Compute) schema associated to v2.
         // Note that Write Compute schema needs to be registered manually here because the integration test harness
@@ -438,7 +443,7 @@ public class PartialUpdateTest {
             .convertFromValueRecordSchema(AvroCompatibilityHelper.parse(NESTED_SCHEMA_STRING_V2));
         schemaResponse =
             controllerClient.addDerivedSchema(storeName, schemaResponse.getId(), writeComputeSchema.toString());
-        Assert.assertFalse(schemaResponse.isError());
+        assertFalse(schemaResponse.isError());
 
         // VPJ push
         String childControllerUrl = childDatacenters.get(0).getRandomController().getControllerUrl();
