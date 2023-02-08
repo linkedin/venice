@@ -30,7 +30,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.util.Utf8;
@@ -61,7 +60,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
         .getDerivedSchema(storeName, incomingValueSchemaId, incomingWriteComputeSchemaId);
     doReturn(new SchemaEntry(oldValueSchemaId, personSchemaV1)).when(readOnlySchemaRepository)
         .getValueSchema(storeName, oldValueSchemaId);
-    doReturn(Optional.of(new SchemaEntry(oldValueSchemaId, personSchemaV1))).when(readOnlySchemaRepository)
+    doReturn(new SchemaEntry(oldValueSchemaId, personSchemaV1)).when(readOnlySchemaRepository)
         .getSupersetSchema(storeName);
 
     // Update happens below
@@ -111,7 +110,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
         .getDerivedSchema(storeName, incomingValueSchemaId, incomingWriteComputeSchemaId);
     doReturn(new SchemaEntry(oldValueSchemaId, personSchemaV1)).when(readOnlySchemaRepository)
         .getValueSchema(storeName, oldValueSchemaId);
-    doReturn(Optional.of(new SchemaEntry(incomingValueSchemaId, personSchemaV2))).when(readOnlySchemaRepository)
+    doReturn(new SchemaEntry(incomingValueSchemaId, personSchemaV2)).when(readOnlySchemaRepository)
         .getSupersetSchema(storeName);
 
     // Update happens below
@@ -178,7 +177,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
         .getDerivedSchema(storeName, incomingValueSchemaId, incomingWriteComputeSchemaId);
     doReturn(new SchemaEntry(oldValueSchemaId, personSchemaV1)).when(readOnlySchemaRepository)
         .getValueSchema(storeName, oldValueSchemaId);
-    doReturn(Optional.of(new SchemaEntry(oldValueSchemaId, personSchemaV1))).when(readOnlySchemaRepository)
+    doReturn(new SchemaEntry(oldValueSchemaId, personSchemaV1)).when(readOnlySchemaRepository)
         .getSupersetSchema(storeName);
 
     // Update happens below
@@ -287,7 +286,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
         .getDerivedSchema(storeName, incomingValueSchemaId, incomingWriteComputeSchemaId);
     SchemaEntry schemaEntry = new SchemaEntry(oldValueSchemaId, personSchemaV1);
     doReturn(schemaEntry).when(readOnlySchemaRepository).getValueSchema(storeName, oldValueSchemaId);
-    doReturn(Optional.of(schemaEntry)).when(readOnlySchemaRepository).getSupersetSchema(storeName);
+    doReturn(schemaEntry).when(readOnlySchemaRepository).getSupersetSchema(storeName);
     // Update happens below
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
@@ -440,7 +439,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
         .getValueSchema(storeName, incomingValueSchemaId);
     doReturn(new SchemaEntry(supersetValueSchemaId, personSchemaV3)).when(readOnlySchemaRepository)
         .getValueSchema(storeName, supersetValueSchemaId);
-    doReturn(Optional.of(new SchemaEntry(supersetValueSchemaId, personSchemaV3))).when(readOnlySchemaRepository)
+    doReturn(new SchemaEntry(supersetValueSchemaId, personSchemaV3)).when(readOnlySchemaRepository)
         .getSupersetSchema(storeName);
     doReturn(new RmdSchemaEntry(oldValueSchemaId, RMD_VERSION_ID, personRmdSchemaV1)).when(readOnlySchemaRepository)
         .getReplicationMetadataSchema(storeName, oldValueSchemaId, RMD_VERSION_ID);
@@ -585,7 +584,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
         .getValueSchema(storeName, incomingValueSchemaId);
     doReturn(new SchemaEntry(supersetValueSchemaId, personSchemaV3)).when(readOnlySchemaRepository)
         .getValueSchema(storeName, supersetValueSchemaId);
-    doReturn(Optional.of(new SchemaEntry(supersetValueSchemaId, personSchemaV3))).when(readOnlySchemaRepository)
+    doReturn(new SchemaEntry(supersetValueSchemaId, personSchemaV3)).when(readOnlySchemaRepository)
         .getSupersetSchema(storeName);
     doReturn(new RmdSchemaEntry(oldValueSchemaId, RMD_VERSION_ID, personRmdSchemaV1)).when(readOnlySchemaRepository)
         .getReplicationMetadataSchema(storeName, oldValueSchemaId, RMD_VERSION_ID);
