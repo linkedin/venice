@@ -247,11 +247,14 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
 
   @Override
   public SchemaEntry getSupersetSchema(String storeName) {
-    Integer supersetSchemaID = getSupersetSchemaID(storeName);
+    int supersetSchemaID = getSupersetSchemaID(storeName);
+    if (supersetSchemaID == SchemaData.INVALID_VALUE_SCHEMA_ID) {
+      return null;
+    }
     return accessor.getValueSchema(storeName, String.valueOf(supersetSchemaID));
   }
 
-  private Integer getSupersetSchemaID(String storeName) {
+  private int getSupersetSchemaID(String storeName) {
     Store store = storeRepository.getStoreOrThrow(storeName);
     return store.getLatestSuperSetValueSchemaId();
   }

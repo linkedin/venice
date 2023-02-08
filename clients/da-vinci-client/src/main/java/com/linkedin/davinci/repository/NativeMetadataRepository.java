@@ -306,11 +306,11 @@ public abstract class NativeMetadataRepository
       throw new VeniceNoStoreException(storeName);
     }
 
-    Integer supersetSchemaID = getSupersetSchemaID(storeName);
+    int supersetSchemaID = getSupersetSchemaID(storeName);
     return schemaData.getValueSchema(supersetSchemaID);
   }
 
-  private Integer getSupersetSchemaID(String storeName) {
+  private int getSupersetSchemaID(String storeName) {
     Store store = getStoreOrThrow(storeName);
     return store.getLatestSuperSetValueSchemaId();
   }
