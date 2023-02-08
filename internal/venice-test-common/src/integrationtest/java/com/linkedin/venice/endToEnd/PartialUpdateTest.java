@@ -239,7 +239,7 @@ public class PartialUpdateTest {
       });
 
       // Send DELETE record that fully removes data.
-      sendStreamingDeleteRecord(veniceProducer, storeName, key, (long) (updateCount * 10));
+      sendStreamingDeleteRecord(veniceProducer, storeName, key, updateCount * 10L);
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
         GenericRecord valueRecord = readValue(storeReader, key);
         boolean nullRecord = (valueRecord == null);
