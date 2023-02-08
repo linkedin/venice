@@ -128,7 +128,7 @@ public class HelixReadOnlySchemaRepositoryTest {
     verify(schemaRepository, times(7)).forceRefreshSchemaData(any(), any());
 
     when(store.getLatestSuperSetValueSchemaId()).thenReturn(SchemaData.INVALID_VALUE_SCHEMA_ID);
-    Assert.assertFalse(schemaRepository.getSupersetSchema(storeName) == null);
+    Assert.assertNull(schemaRepository.getSupersetSchema(storeName));
   }
 
   private static String loadFileAsString(String fileName) {
