@@ -32,6 +32,10 @@ import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUs
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.client.consumer.ChangelogClientConfig;
+import com.linkedin.venice.client.consumer.VeniceChangeLogConsumerClientFactory;
+import com.linkedin.venice.client.consumer.VeniceChangeLogConsumerImpl;
+import com.linkedin.venice.client.consumer.VeniceChangelogConsumer;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -39,33 +43,46 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.helix.HelixAdapterSerializer;
+import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
+import com.linkedin.venice.helix.SubscriptionBasedStoreRepository;
+import com.linkedin.venice.helix.ZkClientFactory;
+import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
+import com.linkedin.venice.serialization.KafkaKeySerializer;
+import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.MockCircularTime;
+import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.view.TestView;
+import com.linkedin.venice.views.ChangeCaptureView;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -80,6 +97,9 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
+import org.apache.helix.zookeeper.impl.client.ZkClient;
+import org.apache.kafka.clients.CommonClientConfigs;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.samza.config.MapConfig;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -172,7 +192,6 @@ public class TestActiveActiveIngestion {
     MetricsRepository metricsRepository = new MetricsRepository();
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
     TestWriteUtils.runPushJob("Run push job", props);
-
     Map<String, String> samzaConfig = getSamzaConfig(storeName);
     VeniceSystemFactory factory = new VeniceSystemFactory();
     // Use a unique key for DELETE with RMD validation
@@ -286,7 +305,6 @@ public class TestActiveActiveIngestion {
       // run samza to stream put and delete
       runSamzaStreamJob(veniceProducer, storeName, mockTime, 10, 10, 20);
     }
-
     TestWriteUtils.runPushJob("Run repush job with TTL", props);
     TestUtils.waitForNonDeterministicAssertion(
         5,
@@ -323,7 +341,6 @@ public class TestActiveActiveIngestion {
         Assert.assertNull(client.get(Integer.toString(i)).get());
       }
     }
-
     // Verify version swap count matches with version count - 1 (since we don't transmit from version 0 to version 1)
     TestUtils.waitForNonDeterministicAssertion(
         5,
@@ -344,6 +361,154 @@ public class TestActiveActiveIngestion {
       MultiStoreTopicsResponse storeTopicsResponse = childControllerClient.getDeletableStoreTopics();
       Assert.assertFalse(storeTopicsResponse.isError());
       Assert.assertEquals(storeTopicsResponse.getTopics().size(), 0);
+    });
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testChangeLogConsumerClient() throws Exception {
+    TestMockTime testMockTime = new TestMockTime();
+    ZkServerWrapper localZkServer = multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper();
+    KafkaBrokerWrapper localKafka = ServiceFactory.getKafkaBroker(localZkServer, Optional.of(testMockTime));
+    Properties consumerProperties = new Properties();
+    String localKafkaUrl = localKafka.getAddress();
+    consumerProperties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, localKafkaUrl);
+    consumerProperties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class);
+    consumerProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, KafkaValueSerializer.class);
+    consumerProperties.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
+
+    ZkClient zkClient = ZkClientFactory.newZkClient(childDatacenters.get(0).getZkServerWrapper().getAddress());
+    HelixAdapterSerializer adapter = new HelixAdapterSerializer();
+    HelixReadOnlyStoreRepository storeRepo = new SubscriptionBasedStoreRepository(zkClient, adapter, clusterName);
+    storeRepo.refresh();
+
+    String parentControllerURLs =
+        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
+    ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
+    TestUtils.assertCommand(
+        parentControllerClient.configureActiveActiveReplicationForCluster(
+            true,
+            VeniceUserStoreType.BATCH_ONLY.toString(),
+            Optional.empty()));
+    // create a active-active enabled store and run batch push job
+    // batch job contains 100 records
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
+    String inputDirPath = "file:" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("store");
+    Properties props =
+        TestWriteUtils.defaultVPJProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
+    Map<String, String> viewConfig = new HashMap<>();
+    viewConfig.put(
+        "changeCaptureView",
+        "{\"viewClassName\" : \"" + ChangeCaptureView.class.getCanonicalName() + "\", \"viewParameters\" : {}}");
+
+    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
+        .setHybridRewindSeconds(360)
+        .setStoreViews(viewConfig)
+        .setHybridOffsetLagThreshold(8)
+        .setChunkingEnabled(false)
+        .setNativeReplicationEnabled(true)
+        .setPartitionCount(1);
+    MetricsRepository metricsRepository = new MetricsRepository();
+    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
+    TestWriteUtils.runPushJob("Run push job", props);
+
+    ChangelogClientConfig globalChangeLogClientConfig =
+        new ChangelogClientConfig().setViewClassName(ChangeCaptureView.class.getCanonicalName())
+            .setConsumerProperties(consumerProperties)
+            .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+            .setVeniceURL(multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper().getAddress())
+            .setZkAddressForStoreRepo(childDatacenters.get(0).getZkServerWrapper().getAddress());
+    VeniceChangeLogConsumerClientFactory veniceChangeLogConsumerClientFactory =
+        new VeniceChangeLogConsumerClientFactory(globalChangeLogClientConfig);
+    VeniceChangelogConsumer<String, Utf8> veniceChangeLogConsumer =
+        veniceChangeLogConsumerClientFactory.getChangeLogConsumer(storeName, clusterName);
+    Map<String, String> samzaConfig = getSamzaConfig(storeName);
+    VeniceSystemFactory factory = new VeniceSystemFactory();
+    // Use a unique key for DELETE with RMD validation
+    int deleteWithRmdKeyIndex = 1000;
+
+    try (
+        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
+      veniceProducer.start();
+      // Run Samza job to send PUT and DELETE requests.
+      runSamzaJobToGenerateChangeEvents(veniceProducer, storeName, null, 10, 0, 1);
+      // Produce a DELETE record with large timestamp
+      produceRecordWithLogicalTimestamp(veniceProducer, storeName, deleteWithRmdKeyIndex, 1000, true);
+    }
+
+    try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName)
+            .setVeniceURL(clusterWrapper.getRandomRouterURL())
+            .setMetricsRepository(metricsRepository))) {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        Assert.assertNull(client.get(Integer.toString(deleteWithRmdKeyIndex)).get());
+      });
+    }
+
+    veniceChangeLogConsumer.subscribeAll().get();
+    // run repush
+    props.setProperty(SOURCE_KAFKA, "true");
+    props.setProperty(KAFKA_INPUT_BROKER_URL, clusterWrapper.getKafka().getAddress());
+    props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+    // intentionally stop re-consuming from RT so stale records don't affect the testing results
+    props.put(REWIND_TIME_IN_SECONDS_OVERRIDE, 0);
+    TestWriteUtils.runPushJob("Run repush job", props);
+    ControllerClient controllerClient =
+        new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
+    TestUtils.waitForNonDeterministicAssertion(
+        5,
+        TimeUnit.SECONDS,
+        () -> Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 2));
+    clusterWrapper.refreshAllRouterMetaData();
+
+    // Validate repush from version 2
+    try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName)
+            .setVeniceURL(clusterWrapper.getRandomRouterURL())
+            .setMetricsRepository(metricsRepository))) {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        // test single get
+        for (int i = 1; i <= 10; i++) {
+          String key = Integer.toString(i);
+          Utf8 value = client.get(key).get();
+          Assert.assertNotNull(value);
+          Assert.assertEquals(value.toString(), "stream_" + i);
+        }
+        // test old data
+        for (int i = 20; i < 100; i++) {
+          String key = Integer.toString(i);
+          Utf8 value = client.get(key).get();
+          Assert.assertNotNull(value);
+          Assert.assertEquals(value.toString(), "test_name_" + i);
+        }
+      });
+    }
+
+    Map<String, VeniceChangeLogConsumerImpl.ChangeEvent<Utf8>> polledChangeEvents = new HashMap<>();
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      Collection<PubSubMessage> pubSubMessages = veniceChangeLogConsumer.poll(100);
+      for (PubSubMessage pubSubMessage: pubSubMessages) {
+        if (pubSubMessage.getTopicPartition()
+            .getPubSubTopic()
+            .getName()
+            .equals(Version.composeKafkaTopic(storeName, 1) + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX)) {
+          VeniceChangeLogConsumerImpl.ChangeEvent<Utf8> changeEvent =
+              (VeniceChangeLogConsumerImpl.ChangeEvent<Utf8>) pubSubMessage.getValue();
+          String key = pubSubMessage.getKey().toString();
+          polledChangeEvents.put(key, changeEvent);
+        }
+      }
+      Assert.assertTrue(polledChangeEvents.size() == 11);
+      for (int i = 1; i <= 10; i++) {
+        String key = Integer.toString(i);
+        VeniceChangeLogConsumerImpl.ChangeEvent<Utf8> changeEvent = polledChangeEvents.get(key);
+        Assert.assertNotNull(changeEvent);
+        Assert.assertEquals(changeEvent.getPreviousValue().toString(), "test_name_" + i);
+        Assert.assertEquals(changeEvent.getCurrentValue().toString(), "stream_" + i);
+      }
     });
   }
 
@@ -628,6 +793,32 @@ public class TestActiveActiveIngestion {
     }
     // Send DELETE requests.
     for (int i = startIdx + numPuts; i < startIdx + numPuts + numDels; i++) {
+      sendStreamingDeleteRecord(
+          veniceProducer,
+          storeName,
+          Integer.toString(i),
+          mockedTime == null ? null : mockedTime.getMilliseconds());
+    }
+  }
+
+  private void runSamzaJobToGenerateChangeEvents(
+      VeniceSystemProducer veniceProducer,
+      String storeName,
+      Time mockedTime,
+      int numPuts,
+      int numDels,
+      int startIdx) {
+    // Send PUT requests.
+    for (int i = startIdx; i < startIdx + numPuts; i++) {
+      sendStreamingRecord(
+          veniceProducer,
+          storeName,
+          Integer.toString(i),
+          "stream_" + i,
+          mockedTime == null ? null : mockedTime.getMilliseconds());
+    }
+    // Send DELETE requests.
+    for (int i = startIdx; i < startIdx + numDels; i++) {
       sendStreamingDeleteRecord(
           veniceProducer,
           storeName,
