@@ -7,6 +7,9 @@ import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DaemonThreadFactory;
@@ -27,12 +30,11 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Consumer;
+import java.util.function.IntConsumer;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.logging.log4j.LogManager;
@@ -93,6 +95,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
       final long sharedConsumerNonExistingTopicCleanupDelayMS,
       final TopicExistenceChecker topicExistenceChecker,
       final boolean liveConfigBasedKafkaThrottlingEnabled,
+      final KafkaPubSubMessageDeserializer pubSubDeserializer,
       final Time time,
       final KafkaConsumerServiceStats statsOverride) {
     this.kafkaUrl = consumerProperties.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
@@ -119,22 +122,11 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
           stats,
           this::recordPartitionsPerConsumerSensor,
           this::handleUnsubscription);
-      Supplier<ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> pollFunction = liveConfigBasedKafkaThrottlingEnabled
+      Supplier<ConsumerRecords<byte[], byte[]>> pollFunction = liveConfigBasedKafkaThrottlingEnabled
           ? () -> kafkaClusterBasedRecordThrottler.poll(newConsumer, kafkaUrl, readCycleDelayMs)
           : () -> newConsumer.poll(readCycleDelayMs);
-      final Consumer<ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> bandwidthThrottlerFunction = records -> {
-        if (bandwidthThrottler.getMaxRatePerSecond() > 0) {
-          // Bandwidth throttling requires doing an O(N) operation proportional to the number of records
-          // consumed, so we will do it only if it's enabled, and avoid it otherwise.
-          int totalBytes = 0;
-          for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record: records) {
-            totalBytes += record.serializedKeySize() + record.serializedValueSize();
-          }
-          bandwidthThrottler.maybeThrottle(totalBytes);
-        }
-      };
-      final Consumer<ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> recordsThrottlerFunction =
-          records -> recordsThrottler.maybeThrottle(records.count());
+      final IntConsumer bandwidthThrottlerFunction = totalBytes -> bandwidthThrottler.maybeThrottle(totalBytes);
+      final IntConsumer recordsThrottlerFunction = recordsCount -> recordsThrottler.maybeThrottle(recordsCount);
       final ConsumerSubscriptionCleaner cleaner = new ConsumerSubscriptionCleaner(
           sharedConsumerNonExistingTopicCleanupDelayMS,
           1000,
@@ -152,7 +144,8 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
           bandwidthThrottlerFunction,
           recordsThrottlerFunction,
           this.stats,
-          cleaner);
+          cleaner,
+          pubSubDeserializer);
       consumerToConsumptionTask.putByIndex(newConsumer, consumptionTask, i);
     }
 
@@ -230,15 +223,17 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
     }
   }
 
-  void batchUnsubscribe(String versionTopic, Set<TopicPartition> topicPartitionsToUnSub) {
+  void batchUnsubscribe(String versionTopic, Set<PubSubTopicPartition> topicPartitionsToUnSub) {
     Map<KafkaConsumerWrapper, Set<TopicPartition>> consumerUnSubTopicPartitionSet = new HashMap<>();
     KafkaConsumerWrapper consumer;
-    for (TopicPartition topicPartition: topicPartitionsToUnSub) {
-      consumer = getConsumerAssignedToVersionTopicPartition(versionTopic, topicPartition);
+    for (PubSubTopicPartition topicPartition: topicPartitionsToUnSub) {
+      TopicPartition kafkaTopicPartition =
+          new TopicPartition(topicPartition.getPubSubTopic().getName(), topicPartition.getPartitionNumber());
+      consumer = getConsumerAssignedToVersionTopicPartition(versionTopic, kafkaTopicPartition);
       if (consumer != null) {
         Set<TopicPartition> topicPartitionSet =
             consumerUnSubTopicPartitionSet.computeIfAbsent(consumer, k -> new HashSet<>());
-        topicPartitionSet.add(topicPartition);
+        topicPartitionSet.add(kafkaTopicPartition);
       }
     }
     /**
@@ -346,7 +341,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
   public void startConsumptionIntoDataReceiver(
       TopicPartition topicPartition,
       long lastReadOffset,
-      ConsumedDataReceiver<List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> consumedDataReceiver) {
+      ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> consumedDataReceiver) {
     String versionTopic = consumedDataReceiver.destinationIdentifier();
     SharedKafkaConsumer consumer = assignConsumerFor(versionTopic, topicPartition);
 
@@ -385,6 +380,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
         long sharedConsumerNonExistingTopicCleanupDelayMS,
         TopicExistenceChecker topicExistenceChecker,
         boolean liveConfigBasedKafkaThrottlingEnabled,
+        KafkaPubSubMessageDeserializer pubSubDeserializer,
         Time time,
         KafkaConsumerServiceStats stats);
   }

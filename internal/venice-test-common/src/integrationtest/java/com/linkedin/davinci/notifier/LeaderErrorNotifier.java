@@ -35,4 +35,8 @@ public class LeaderErrorNotifier extends PushMonitorNotifier {
       accessor.updateReplicaStatus(topic, partitionId, instanceId, COMPLETED, offset, "");
     }
   }
+
+  public boolean hasReportedError() {
+    return !doOne;
+  }
 }

@@ -23,8 +23,6 @@ public class DictionaryUtils {
 
   private static Properties getKafkaConsumerProps() {
     Properties props = new Properties();
-    props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class);
-    props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, KafkaValueSerializer.class);
     // Increase receive buffer to 1MB to check whether it can solve the metadata timing out issue
     props.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
     return props;
@@ -49,11 +47,15 @@ public class DictionaryUtils {
     kafkaConsumerWrapper.subscribe(topicName, 0, 0);
     boolean startOfPushReceived = false;
     ByteBuffer compressionDictionary = null;
+    KafkaKeySerializer keySerializer = new KafkaKeySerializer();
+    KafkaValueSerializer valueSerializer = new KafkaValueSerializer();
+    KafkaKey kafkaKey;
+    KafkaMessageEnvelope kafkaValue = null;
     while (!startOfPushReceived) {
-      ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records = kafkaConsumerWrapper.poll(10 * Time.MS_PER_SECOND);
-      for (final ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record: records) {
-        KafkaKey kafkaKey = record.key();
-        KafkaMessageEnvelope kafkaValue = record.value();
+      ConsumerRecords<byte[], byte[]> records = kafkaConsumerWrapper.poll(10 * Time.MS_PER_SECOND);
+      for (final ConsumerRecord<byte[], byte[]> record: records) {
+        kafkaKey = keySerializer.deserialize(null, record.key());
+        kafkaValue = valueSerializer.deserialize(record.value(), kafkaValue);
         if (kafkaKey.isControlMessage()) {
           ControlMessage controlMessage = (ControlMessage) kafkaValue.payloadUnion;
           ControlMessageType type = ControlMessageType.valueOf(controlMessage);

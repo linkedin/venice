@@ -59,14 +59,14 @@ public class ChunkedKeySuffixTest {
         chunkedKeySuffix.chunkId.segmentNumber = 0;
         chunkedKeySuffix.chunkId.messageSequenceNumber = 0;
         chunkedKeySuffix.chunkId.chunkIndex = chunk;
-        byte[] keyWithSuffix = keyWithChunkingSuffixSerializer.serializeChunkedKey(keyArray, chunkedKeySuffix);
+        byte[] keyWithSuffix = keyWithChunkingSuffixSerializer.serializeChunkedKey(keyArray, chunkedKeySuffix).array();
         keysWithSuffix.add(keyWithSuffix);
       }
       ChunkedKeySuffix chunkedKeySuffixForManifest = new ChunkedKeySuffix();
       chunkedKeySuffixForManifest.isChunk = false;
       chunkedKeySuffixForManifest.chunkId = null;
       byte[] keyWithSuffixForManifest =
-          keyWithChunkingSuffixSerializer.serializeChunkedKey(keyArray, chunkedKeySuffixForManifest);
+          keyWithChunkingSuffixSerializer.serializeChunkedKey(keyArray, chunkedKeySuffixForManifest).array();
       keysWithSuffix.add(keyWithSuffixForManifest);
     }
 

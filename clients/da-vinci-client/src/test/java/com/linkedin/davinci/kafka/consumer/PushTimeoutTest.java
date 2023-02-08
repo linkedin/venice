@@ -15,6 +15,8 @@ import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.utils.ExceptionCaptorNotifier;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -31,6 +33,8 @@ import org.testng.annotations.Test;
 
 
 public class PushTimeoutTest {
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+
   @Test
   public void testPushTimeoutForLeaderFollowerStores() {
     String storeName = Utils.getUniqueString("store");
@@ -48,7 +52,8 @@ public class PushTimeoutTest {
     StoreIngestionTaskFactory.Builder builder = TestUtils.getStoreIngestionTaskBuilder(storeName)
         .setLeaderFollowerNotifiersQueue(notifiers)
         .setServerConfig(mockVeniceServerConfig)
-        .setHostLevelIngestionStats(mockAggStoreIngestionStats);
+        .setHostLevelIngestionStats(mockAggStoreIngestionStats)
+        .setPubSubTopicRepository(pubSubTopicRepository);
 
     Store mockStore = builder.getMetadataRepo().getStoreOrThrow(storeName);
     Version version = mockStore.getVersion(versionNumber).get();
@@ -72,7 +77,9 @@ public class PushTimeoutTest {
         false,
         Optional.empty());
 
-    leaderFollowerStoreIngestionTask.subscribePartition(versionTopic, 0, Optional.empty());
+    leaderFollowerStoreIngestionTask.subscribePartition(
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(versionTopic), 0),
+        Optional.empty());
     leaderFollowerStoreIngestionTask.run();
 
     // Verify that push timeout happens
@@ -104,7 +111,8 @@ public class PushTimeoutTest {
         .setLeaderFollowerNotifiersQueue(notifiers)
         .setStorageMetadataService(mockStorageMetadataService)
         .setServerConfig(mockVeniceServerConfig)
-        .setHostLevelIngestionStats(mockAggStoreIngestionStats);
+        .setHostLevelIngestionStats(mockAggStoreIngestionStats)
+        .setPubSubTopicRepository(pubSubTopicRepository);
 
     Store mockStore = builder.getMetadataRepo().getStoreOrThrow(storeName);
     Version version = mockStore.getVersion(versionNumber).get();
@@ -143,7 +151,9 @@ public class PushTimeoutTest {
         false,
         Optional.empty());
 
-    leaderFollowerStoreIngestionTask.subscribePartition(versionTopic, 0, Optional.empty());
+    leaderFollowerStoreIngestionTask.subscribePartition(
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(versionTopic), 0),
+        Optional.empty());
     /**
      * Since the mock consumer would show 0 subscription, the ingestion task will close after a few iteration.
      */

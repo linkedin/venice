@@ -4,20 +4,16 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
-import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
-import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -31,7 +27,6 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.ApacheKafkaProducer;
 import com.linkedin.venice.writer.KafkaProducerWrapper;
-import com.linkedin.venice.writer.LeaderMetadataWrapper;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.ByteArrayOutputStream;
@@ -57,8 +52,9 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
-public class ConsumerIntegrationTest {
+public abstract class ConsumerIntegrationTest {
   private static final String TEST_KEY = "key1";
+  private static final String NEW_FIELD_NAME = "newField";
 
   /**
    * There could be cases where there exists an unreleased schema which conflicts with this new protocol version,
@@ -86,8 +82,9 @@ public class ConsumerIntegrationTest {
     Schema newFieldSchema =
         Schema.createUnion(Arrays.asList(Schema.create(Schema.Type.NULL), Schema.create(Schema.Type.INT)));
     protocolSchemaFields.add(
+        0,
         AvroCompatibilityHelper.newField(null)
-            .setName("newField")
+            .setName(NEW_FIELD_NAME)
             .setSchema(newFieldSchema)
             .setOrder(Schema.Field.Order.ASCENDING)
             .setDefault(null)
@@ -113,25 +110,10 @@ public class ConsumerIntegrationTest {
     controllerClient =
         ControllerClient.constructClusterControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs());
 
-    String systemStoreName = AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName();
-    TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
-      MultiSchemaResponse response = controllerClient.getAllValueSchema(systemStoreName);
-      Assert.assertFalse(response.isError());
-      Assert.assertEquals(
-          response.getSchemas().length,
-          AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getCurrentProtocolVersion());
-    });
+    extraBeforeClassSetUp(cluster, controllerClient);
+  }
 
-    /**
-     * By doing this, we emulate having started a new controller version which knows about the new protocol...
-     */
-    ((VeniceHelixAdmin) cluster.getRandomVeniceController().getVeniceAdmin()).addValueSchema(
-        cluster.getClusterName(),
-        systemStoreName,
-        NEW_PROTOCOL_SCHEMA.toString(),
-        NEW_PROTOCOL_VERSION,
-        DirectionalSchemaCompatibilityType.NONE,
-        false);
+  void extraBeforeClassSetUp(VeniceClusterWrapper cluster, ControllerClient controllerClient) {
   }
 
   @BeforeMethod
@@ -199,10 +181,16 @@ public class ConsumerIntegrationTest {
         .setPartitioner(partitioner)
         .build();
     try (VeniceWriter veniceWriterWithNewerProtocol =
-        new VeniceWriterWithNewerProtocol(veniceWriterOptions, props, producerWrapperSupplier)) {
+        getVeniceWriter(veniceWriterOptions, props, producerWrapperSupplier, NEW_PROTOCOL_SCHEMA)) {
       writeAndVerifyRecord(veniceWriterWithNewerProtocol, client, "value2");
     }
   }
+
+  abstract VeniceWriterWithNewerProtocol getVeniceWriter(
+      VeniceWriterOptions veniceWriterOptions,
+      VeniceProperties props,
+      Supplier<KafkaProducerWrapper> producerWrapperSupplier,
+      Schema overrideProtocolSchema);
 
   private void writeAndVerifyRecord(
       VeniceWriter<String, String, byte[]> veniceWriter,
@@ -226,57 +214,20 @@ public class ConsumerIntegrationTest {
     });
   }
 
-  private static class VeniceWriterWithNewerProtocol extends VeniceWriter<String, String, byte[]> {
-    protected VeniceWriterWithNewerProtocol(
-        VeniceWriterOptions veniceWriterOptions,
-        VeniceProperties props,
-        Supplier<KafkaProducerWrapper> producerWrapperSupplier) {
-      super(veniceWriterOptions, props, producerWrapperSupplier);
-    }
-
-    @Override
-    protected KafkaMessageEnvelope getKafkaMessageEnvelope(
-        MessageType messageType,
-        boolean isEndOfSegment,
-        int partition,
-        boolean incrementSequenceNumber,
-        LeaderMetadataWrapper leaderMetadataWrapper,
-        long logicalTs) {
-      KafkaMessageEnvelope normalKME =
-          super.getKafkaMessageEnvelope(messageType, isEndOfSegment, partition, true, leaderMetadataWrapper, logicalTs);
-
-      NewKafkaMessageEnvelopeWithExtraField newKME = new NewKafkaMessageEnvelopeWithExtraField();
-      for (int index = 0; index < newKME.newFieldIndex; index++) {
-        newKME.put(index, normalKME.get(index));
-      }
-      newKME.newField = 42;
-
-      return newKME;
-    }
-  }
-
   /**
    * A class which looks like a {@link KafkaMessageEnvelope} but which is more than that...
    *
-   * A bit tricky, but we need to do that in order to keep using specific records inside the {@link VeniceWriter}...
+   * A bit tricky, but we need to do these acrobatics in order to:
+   *
+   * 1. Keep using specific records inside the {@link VeniceWriter}
+   * 2. Translate the position of fields between old and new KMEs.
    */
   static class NewKafkaMessageEnvelopeWithExtraField extends KafkaMessageEnvelope {
     public static final org.apache.avro.Schema SCHEMA$ = NEW_PROTOCOL_SCHEMA;
-    private final int newFieldIndex;
+    private static final int newFieldIndex = getNewFieldIndex();
     public Integer newField;
 
     public NewKafkaMessageEnvelopeWithExtraField() {
-      super();
-      int index = 0;
-      while (true) {
-        try {
-          super.get(index);
-          index++;
-        } catch (org.apache.avro.AvroRuntimeException e) {
-          break;
-        }
-      }
-      this.newFieldIndex = index;
     }
 
     @Override
@@ -290,7 +241,12 @@ public class ConsumerIntegrationTest {
       if (newFieldIndex == field$) {
         return newField;
       } else {
-        return super.get(field$);
+        Schema.Field newField = getSchema().getFields().get(field$);
+        Schema.Field oldField = super.getSchema().getField(newField.name());
+        if (oldField == null) {
+          throw new IllegalStateException();
+        }
+        return super.get(oldField.pos());
       }
     }
 
@@ -301,8 +257,22 @@ public class ConsumerIntegrationTest {
       if (newFieldIndex == field$) {
         this.newField = (java.lang.Integer) value$;
       } else {
-        super.put(field$, value$);
+        Schema.Field newField = getSchema().getFields().get(field$);
+        Schema.Field oldField = super.getSchema().getField(newField.name());
+        if (oldField == null) {
+          throw new IllegalStateException();
+        }
+        super.put(oldField.pos(), value$);
       }
+    }
+
+    private static int getNewFieldIndex() {
+      for (Schema.Field field: SCHEMA$.getFields()) {
+        if (field.name().equals(NEW_FIELD_NAME)) {
+          return field.pos();
+        }
+      }
+      throw new IllegalStateException("Missing a field called '" + NEW_FIELD_NAME + "' in the schema!");
     }
   }
 
@@ -316,6 +286,11 @@ public class ConsumerIntegrationTest {
     @Override
     public byte[] serialize(String topic, KafkaMessageEnvelope object) {
       return serializeNewProtocol(object);
+    }
+
+    @Override
+    public Schema getCompiledProtocol() {
+      return NEW_PROTOCOL_SCHEMA;
     }
   }
 

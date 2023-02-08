@@ -203,6 +203,7 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.IOException;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
@@ -377,12 +378,12 @@ public class VeniceParentHelixAdmin implements Admin {
     Validate.notNull(writeComputeSchemaConverter);
     this.veniceHelixAdmin = veniceHelixAdmin;
     this.multiClusterConfigs = multiClusterConfigs;
-    this.waitingTimeForConsumptionMs = getMultiClusterConfigs().getParentControllerWaitingTimeForConsumptionMs();
-    this.batchJobHeartbeatEnabled = getMultiClusterConfigs().getBatchJobHeartbeatEnabled();
+    this.waitingTimeForConsumptionMs = this.multiClusterConfigs.getParentControllerWaitingTimeForConsumptionMs();
+    this.batchJobHeartbeatEnabled = this.multiClusterConfigs.getBatchJobHeartbeatEnabled();
     this.veniceWriterMap = new ConcurrentHashMap<>();
     this.adminTopicMetadataAccessor = new ZkAdminTopicMetadataAccessor(
-        this.getVeniceHelixAdmin().getZkClient(),
-        this.getVeniceHelixAdmin().getAdapterSerializer());
+        this.veniceHelixAdmin.getZkClient(),
+        this.veniceHelixAdmin.getAdapterSerializer());
     this.adminCommandExecutionTrackers = new HashMap<>();
     this.asyncSetupEnabledMap = new VeniceConcurrentHashMap<>();
     this.accessController = accessController;
@@ -391,7 +392,7 @@ public class VeniceParentHelixAdmin implements Admin {
         authorizerService.map(service -> Executors.newSingleThreadExecutor()).orElse(null);
     if (sslEnabled) {
       try {
-        String sslFactoryClassName = getMultiClusterConfigs().getSslFactoryClassName();
+        String sslFactoryClassName = this.multiClusterConfigs.getSslFactoryClassName();
         Properties sslProperties = sslConfig.get().getSslProperties();
         sslFactory = Optional.of(SslUtils.getSSLFactory(sslProperties, sslFactoryClassName));
       } catch (Exception e) {
@@ -399,28 +400,28 @@ public class VeniceParentHelixAdmin implements Admin {
         throw new VeniceException(e);
       }
     }
-    for (String cluster: getMultiClusterConfigs().getClusters()) {
-      VeniceControllerConfig config = getMultiClusterConfigs().getControllerConfig(cluster);
+    for (String cluster: this.multiClusterConfigs.getClusters()) {
+      VeniceControllerConfig config = this.multiClusterConfigs.getControllerConfig(cluster);
       adminCommandExecutionTrackers.put(
           cluster,
           new AdminCommandExecutionTracker(
               config.getClusterName(),
-              getVeniceHelixAdmin().getExecutionIdAccessor(),
-              getVeniceHelixAdmin().getControllerClientMap(config.getClusterName())));
+              this.veniceHelixAdmin.getExecutionIdAccessor(),
+              this.veniceHelixAdmin.getControllerClientMap(config.getClusterName())));
       perStoreAdminLocks.put(cluster, new ConcurrentHashMap<>());
       perClusterAdminLocks.put(cluster, new ReentrantLock());
     }
     this.pushStrategyZKAccessor = new MigrationPushStrategyZKAccessor(
-        getVeniceHelixAdmin().getZkClient(),
-        getVeniceHelixAdmin().getAdapterSerializer());
-    this.maxErroredTopicNumToKeep = getMultiClusterConfigs().getParentControllerMaxErroredTopicNumToKeep();
+        this.veniceHelixAdmin.getZkClient(),
+        this.veniceHelixAdmin.getAdapterSerializer());
+    this.maxErroredTopicNumToKeep = this.multiClusterConfigs.getParentControllerMaxErroredTopicNumToKeep();
     this.offlinePushAccessor = new ParentHelixOfflinePushAccessor(
-        getVeniceHelixAdmin().getZkClient(),
-        getVeniceHelixAdmin().getAdapterSerializer());
+        this.veniceHelixAdmin.getZkClient(),
+        this.veniceHelixAdmin.getAdapterSerializer());
     terminalStateTopicChecker = new TerminalStateTopicCheckerForParentController(
         this,
-        getVeniceHelixAdmin().getStoreConfigRepo(),
-        getMultiClusterConfigs().getTerminalStateTopicCheckerDelayMs());
+        this.veniceHelixAdmin.getStoreConfigRepo(),
+        this.multiClusterConfigs.getTerminalStateTopicCheckerDelayMs());
     topicCheckerExecutor.submit(terminalStateTopicChecker);
     systemStoreAclSynchronizationTask =
         authorizerService
@@ -428,7 +429,7 @@ public class VeniceParentHelixAdmin implements Admin {
                 service -> new SystemStoreAclSynchronizationTask(
                     service,
                     this,
-                    getMultiClusterConfigs().getSystemStoreAclSynchronizationDelayMs()))
+                    this.multiClusterConfigs.getSystemStoreAclSynchronizationDelayMs()))
             .orElse(null);
     if (systemStoreAclSynchronizationTask != null) {
       systemStoreAclSynchronizationExecutor.submit(systemStoreAclSynchronizationTask);
@@ -498,7 +499,11 @@ public class VeniceParentHelixAdmin implements Admin {
        * 2. Data out of order;
        * 3. Data duplication;
        */
-      return getVeniceWriterFactory().createBasicVeniceWriter(topicName, getTimer());
+      VeniceWriterOptions options = new VeniceWriterOptions.Builder(topicName).setTime(getTimer())
+          .setPartitionCount(Optional.of(AdminTopicUtils.PARTITION_NUM_FOR_ADMIN_TOPIC))
+          .build();
+
+      return getVeniceWriterFactory().createVeniceWriter(options);
     });
 
     if (!getMultiClusterConfigs().getPushJobStatusStoreClusterName().isEmpty()

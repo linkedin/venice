@@ -781,8 +781,7 @@ public class TestChunkAssembler {
       values.add(serialize(mapperValue));
       currStartingByteValue += eachCountSizeInBytes;
 
-      ByteBuffer keyWithSuffix =
-          ByteBuffer.wrap(keyWithChunkingSuffixSerializer.serializeChunkedKey(serializedKey, chunkedKeySuffix));
+      ByteBuffer keyWithSuffix = keyWithChunkingSuffixSerializer.serializeChunkedKey(serializedKey, chunkedKeySuffix);
       chunkedValueManifest.keysWithChunkIdSuffix.add(keyWithSuffix);
     }
 

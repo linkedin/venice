@@ -20,8 +20,5 @@ public interface WriteComputeHandler {
    *
    * @return updated value record.
    */
-  GenericRecord updateValueRecord(
-      Schema valueSchema,
-      Optional<GenericRecord> valueRecord,
-      GenericRecord writeComputeRecord);
+  GenericRecord updateValueRecord(Schema valueSchema, GenericRecord valueRecord, GenericRecord writeComputeRecord);
 }

@@ -18,6 +18,7 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.throttle.EventThrottler;
@@ -116,6 +117,7 @@ public class StoreIngestionTaskFactory {
     private RemoteIngestionRepairService remoteIngestionRepairService;
     private MetaStoreWriter metaStoreWriter;
     private StorageEngineBackedCompressorFactory compressorFactory;
+    private PubSubTopicRepository pubSubTopicRepository;
 
     private interface Setter {
       void apply();
@@ -341,6 +343,14 @@ public class StoreIngestionTaskFactory {
 
     public Builder setCompressorFactory(StorageEngineBackedCompressorFactory compressorFactory) {
       return set(() -> this.compressorFactory = compressorFactory);
+    }
+
+    public PubSubTopicRepository getPubSubTopicRepository() {
+      return pubSubTopicRepository;
+    }
+
+    public Builder setPubSubTopicRepository(PubSubTopicRepository pubSubTopicRepository) {
+      return set(() -> this.pubSubTopicRepository = pubSubTopicRepository);
     }
   }
 }

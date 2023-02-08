@@ -11,8 +11,6 @@ import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
-import com.linkedin.venice.serialization.KafkaKeySerializer;
-import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -20,7 +18,6 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.CommonClientConfigs;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -53,8 +50,6 @@ public class TestDictionaryUtils {
   private Properties getKafkaProperties() {
     Properties props = new Properties();
     props.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, manager.getKafkaBootstrapServers());
-    props.setProperty(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class.getName());
-    props.setProperty(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, KafkaValueSerializer.class.getName());
     props.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafka.getAddress());
     props.put(ConfigKeys.PARTITIONER_CLASS, DefaultVenicePartitioner.class.getName());
     return props;

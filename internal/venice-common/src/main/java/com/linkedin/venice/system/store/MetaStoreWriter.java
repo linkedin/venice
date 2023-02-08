@@ -25,11 +25,11 @@ import com.linkedin.venice.systemstore.schemas.StoreValueSchemas;
 import com.linkedin.venice.systemstore.schemas.storeReplicaStatusesMapOps;
 import com.linkedin.venice.systemstore.schemas.storeValueSchemaIdsWrittenPerStoreVersionListOps;
 import com.linkedin.venice.utils.Pair;
-import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Timer;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -383,15 +383,19 @@ public class MetaStoreWriter implements Closeable {
         throw new VeniceException("Realtime topic: " + rtTopic + " doesn't exist or some partitions are not online");
       }
 
-      return writerFactory.createVeniceWriter(
-          rtTopic,
-          new VeniceAvroKafkaSerializer(
-              AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema()),
-          new VeniceAvroKafkaSerializer(
-              AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema()),
-          new VeniceAvroKafkaSerializer(derivedComputeSchema),
-          Optional.empty(),
-          new SystemTime());
+      VeniceWriterOptions options = new VeniceWriterOptions.Builder(rtTopic)
+          .setKeySerializer(
+              new VeniceAvroKafkaSerializer(
+                  AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema()))
+          .setValueSerializer(
+              new VeniceAvroKafkaSerializer(
+                  AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema()))
+          .setWriteComputeSerializer(new VeniceAvroKafkaSerializer(derivedComputeSchema))
+          .setChunkingEnabled(false)
+          .setPartitionCount(Optional.of(1))
+          .build();
+
+      return writerFactory.createVeniceWriter(options);
     });
   }
 
