@@ -6,6 +6,7 @@ import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJ
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUserSchema;
+import static org.testng.Assert.*;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.helix.HelixParticipationService;
@@ -132,12 +133,18 @@ public class TestLeaderReplicaFailover {
         .getVeniceHelixAdmin()
         .getHelixVeniceClusterResources(clusterWrapper.getClusterName())
         .getRoutingDataRepository();
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      Instance leader = routingDataRepo.getLeaderInstance(topic, 0);
+      assertNotNull(leader);
+    });
     Instance leader = routingDataRepo.getLeaderInstance(topic, 0);
+    LeaderErrorNotifier leaderErrorNotifier = null;
     for (VeniceServerWrapper serverWrapper: clusterWrapper.getVeniceServers()) {
+      assertNotNull(serverWrapper);
       // Add error notifier which will report leader to be in ERROR instead of COMPLETE
       if (serverWrapper.getPort() == leader.getPort()) {
         HelixParticipationService participationService = serverWrapper.getVeniceServer().getHelixParticipationService();
-        LeaderErrorNotifier leaderErrorNotifier = new LeaderErrorNotifier(
+        leaderErrorNotifier = new LeaderErrorNotifier(
             participationService.getVeniceOfflinePushMonitorAccessor(),
             participationService.getStatusStoreWriter(),
             participationService.getHelixReadOnlyStoreRepository(),
@@ -145,6 +152,7 @@ public class TestLeaderReplicaFailover {
         participationService.replaceAndAddTestIngestionNotifier(leaderErrorNotifier);
       }
     }
+    assertNotNull(leaderErrorNotifier);
 
     try (VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterFactory.createBasicVeniceWriter(topic)) {
       veniceWriter.broadcastStartOfPush(true, Collections.emptyMap());
@@ -163,31 +171,40 @@ public class TestLeaderReplicaFailover {
     });
 
     // Verify the leader is disabled.
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      HelixAdmin admin = new ZKHelixAdmin(clusterWrapper.getZk().getAddress());
-      InstanceConfig instanceConfig = admin.getInstanceConfig(clusterName, leader.getNodeId());
-      Assert.assertEquals(instanceConfig.getDisabledPartitionsMap().size(), 1);
-    });
+    HelixAdmin admin = null;
+    try {
+      admin = new ZKHelixAdmin(clusterWrapper.getZk().getAddress());
+      final HelixAdmin finalAdmin = admin;
+      final LeaderErrorNotifier finalLeaderErrorNotifier = leaderErrorNotifier;
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        assertTrue(finalLeaderErrorNotifier.hasReportedError());
+        InstanceConfig instanceConfig = finalAdmin.getInstanceConfig(clusterName, leader.getNodeId());
+        Assert.assertEquals(instanceConfig.getDisabledPartitionsMap().size(), 1);
+      });
 
-    // Stop the server
-    clusterWrapper.stopVeniceServer(leader.getPort());
-    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
-      Assert.assertTrue(
-          clusterWrapper.getLeaderVeniceController().getVeniceAdmin().getReplicas(clusterName, topic).size() == 6);
-    });
+      // Stop the server
+      clusterWrapper.stopVeniceServer(leader.getPort());
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
+        Assert.assertTrue(
+            clusterWrapper.getLeaderVeniceController().getVeniceAdmin().getReplicas(clusterName, topic).size() == 6);
+      });
 
-    // Restart server, the disabled replica should be re-enabled.
-    clusterWrapper.restartVeniceServer(leader.getPort());
-    HelixBaseRoutingRepository finalRoutingDataRepo1 = routingDataRepo;
-    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
-      Instance newLeaderNode = finalRoutingDataRepo1.getLeaderInstance(topic, 0);
-      Assert.assertNotNull(newLeaderNode);
-      Assert.assertTrue(
-          clusterWrapper.getLeaderVeniceController().getVeniceAdmin().getReplicas(clusterName, topic).size() == 9);
-      HelixAdmin admin = new ZKHelixAdmin(clusterWrapper.getZk().getAddress());
-      InstanceConfig instanceConfig1 = admin.getInstanceConfig(clusterName, newLeaderNode.getNodeId());
-      Assert.assertEquals(instanceConfig1.getDisabledPartitionsMap().size(), 0);
-    });
+      // Restart server, the disabled replica should be re-enabled.
+      clusterWrapper.restartVeniceServer(leader.getPort());
+      HelixBaseRoutingRepository finalRoutingDataRepo1 = routingDataRepo;
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
+        Instance newLeaderNode = finalRoutingDataRepo1.getLeaderInstance(topic, 0);
+        Assert.assertNotNull(newLeaderNode);
+        Assert.assertTrue(
+            clusterWrapper.getLeaderVeniceController().getVeniceAdmin().getReplicas(clusterName, topic).size() == 9);
+        InstanceConfig instanceConfig1 = finalAdmin.getInstanceConfig(clusterName, newLeaderNode.getNodeId());
+        Assert.assertEquals(instanceConfig1.getDisabledPartitionsMap().size(), 0);
+      });
+    } finally {
+      if (admin != null) {
+        admin.close();
+      }
+    }
   }
 
   private Map<byte[], byte[]> generateData(int recordCnt, boolean sorted, int startId, AvroSerializer serializer) {
