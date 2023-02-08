@@ -3,8 +3,6 @@ package com.linkedin.venice.kafka.consumer;
 import com.linkedin.venice.annotation.NotThreadsafe;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.time.Duration;
@@ -38,7 +36,7 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
   private static final int CONSUMER_POLL_RETRY_TIMES_DEFAULT = 3;
   private static final int CONSUMER_POLL_RETRY_BACKOFF_MS_DEFAULT = 0;
 
-  private final Consumer<KafkaKey, KafkaMessageEnvelope> kafkaConsumer;
+  private final Consumer<byte[], byte[]> kafkaConsumer;
   private final int consumerPollRetryTimes;
   private final int consumerPollRetryBackoffMs;
   private final Optional<TopicPartitionsOffsetsTracker> topicPartitionsOffsetsTracker;
@@ -52,7 +50,7 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
   }
 
   public ApacheKafkaConsumer(
-      Consumer<KafkaKey, KafkaMessageEnvelope> consumer,
+      Consumer<byte[], byte[]> consumer,
       VeniceProperties props,
       boolean isKafkaConsumerOffsetCollectionEnabled) {
     this.kafkaConsumer = consumer;
@@ -134,12 +132,12 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
   }
 
   @Override
-  public ConsumerRecords<KafkaKey, KafkaMessageEnvelope> poll(long timeoutMs) {
+  public ConsumerRecords<byte[], byte[]> poll(long timeoutMs) {
     // The timeout is not respected when hitting UNKNOWN_TOPIC_OR_PARTITION and when the
     // fetcher.retrieveOffsetsByTimes call inside kafkaConsumer times out,
     // TODO: we may want to wrap this call in our own thread to enforce the timeout...
     int attemptCount = 1;
-    ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records = ConsumerRecords.empty();
+    ConsumerRecords<byte[], byte[]> records = ConsumerRecords.empty();
     while (attemptCount <= consumerPollRetryTimes && !Thread.currentThread().isInterrupted()) {
       try {
         records = kafkaConsumer.poll(Duration.ofMillis(timeoutMs));

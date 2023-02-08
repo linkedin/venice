@@ -7,6 +7,9 @@ import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.SystemTime;
@@ -19,7 +22,6 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import org.apache.kafka.clients.CommonClientConfigs;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -46,6 +48,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   private final Map<String, KafkaConsumerService> kafkaServerToConsumerServiceMap = new VeniceConcurrentHashMap<>();
   private final Map<String, String> kafkaClusterUrlToAliasMap;
   private final Object2IntMap<String> kafkaClusterUrlToIdMap;
+  private final KafkaPubSubMessageDeserializer pubSubDeserializer;
 
   public AggKafkaConsumerService(
       final KafkaClientFactory consumerFactory,
@@ -54,7 +57,8 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       final EventThrottler recordsThrottler,
       KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler,
       final MetricsRepository metricsRepository,
-      TopicExistenceChecker topicExistenceChecker) {
+      TopicExistenceChecker topicExistenceChecker,
+      KafkaPubSubMessageDeserializer pubSubDeserializer) {
     this.consumerFactory = consumerFactory;
     this.readCycleDelayMs = serverConfig.getKafkaReadCycleDelayMs();
     this.numOfConsumersPerKafkaCluster = serverConfig.getConsumerPoolSizePerKafkaCluster();
@@ -68,6 +72,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     this.sharedConsumerAssignmentStrategy = serverConfig.getSharedConsumerAssignmentStrategy();
     this.kafkaClusterUrlToAliasMap = serverConfig.getKafkaClusterUrlToAliasMap();
     this.kafkaClusterUrlToIdMap = serverConfig.getKafkaClusterUrlToIdMap();
+    this.pubSubDeserializer = pubSubDeserializer;
     LOGGER.info("Successfully initialized AggKafkaConsumerService");
   }
 
@@ -128,6 +133,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
             sharedConsumerNonExistingTopicCleanupDelayMS,
             topicExistenceChecker,
             liveConfigBasedKafkaThrottlingEnabled,
+            pubSubDeserializer,
             SystemTime.INSTANCE,
             null));
 
@@ -189,17 +195,16 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     }
   }
 
-  void batchUnsubscribeConsumerFor(String versionTopic, Set<TopicPartition> topicPartitionSet) {
+  void batchUnsubscribeConsumerFor(String versionTopic, Set<PubSubTopicPartition> topicPartitionSet) {
     for (KafkaConsumerService consumerService: kafkaServerToConsumerServiceMap.values()) {
       consumerService.batchUnsubscribe(versionTopic, topicPartitionSet);
     }
   }
 
-  public ConsumedDataReceiver<List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> subscribeConsumerFor(
+  public ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> subscribeConsumerFor(
       final String kafkaURL,
       StoreIngestionTask storeIngestionTask,
-      String topic,
-      int partition,
+      PubSubTopicPartition topicPartition,
       long lastOffset) {
     String versionTopic = storeIngestionTask.getVersionTopic();
     KafkaConsumerService consumerService = getKafkaConsumerService(kafkaURL);
@@ -208,15 +213,18 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
           "Kafka consumer service must exist for version topic: " + versionTopic + " in Kafka cluster: " + kafkaURL);
     }
 
-    TopicPartition topicPartition = new TopicPartition(topic, partition);
-    ConsumedDataReceiver<List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> dataReceiver =
+    ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> dataReceiver =
         new StorePartitionDataReceiver(
             storeIngestionTask,
             topicPartition,
             kafkaURL,
             kafkaClusterUrlToIdMap.getOrDefault(kafkaURL, -1));
 
-    consumerService.startConsumptionIntoDataReceiver(topicPartition, lastOffset, dataReceiver);
+    consumerService.startConsumptionIntoDataReceiver(
+        /** TODO: Refactor this to use {@link PubSubTopicPartition} as well */
+        new TopicPartition(topicPartition.getPubSubTopic().getName(), topicPartition.getPartitionNumber()),
+        lastOffset,
+        dataReceiver);
 
     return dataReceiver;
   }

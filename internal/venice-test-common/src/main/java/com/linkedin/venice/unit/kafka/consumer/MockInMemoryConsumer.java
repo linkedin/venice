@@ -86,7 +86,7 @@ public class MockInMemoryConsumer implements KafkaConsumerWrapper {
   }
 
   @Override
-  public synchronized ConsumerRecords poll(long timeout) {
+  public synchronized ConsumerRecords<byte[], byte[]> poll(long timeout) {
     if (delegate.poll(timeout) != null) {
       throw new IllegalArgumentException(
           "The MockInMemoryConsumer's delegate can only be used to verify calls, not to return arbitrary instances.");
@@ -101,7 +101,7 @@ public class MockInMemoryConsumer implements KafkaConsumerWrapper {
       }
     }
 
-    ConsumerRecords consumerRecords = pollStrategy.poll(broker, offsetsToPoll, timeout);
+    ConsumerRecords<byte[], byte[]> consumerRecords = pollStrategy.poll(broker, offsetsToPoll, timeout);
     for (Map.Entry<TopicPartition, Long> entry: offsetsToPoll.entrySet()) {
       TopicPartition topicPartition = entry.getKey();
       Long offsetToPoll = entry.getValue();

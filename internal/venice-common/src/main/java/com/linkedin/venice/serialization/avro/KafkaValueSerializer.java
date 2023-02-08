@@ -1,6 +1,8 @@
 package com.linkedin.venice.serialization.avro;
 
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import java.util.function.BiConsumer;
+import org.apache.avro.Schema;
 
 
 /**
@@ -15,5 +17,9 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 public class KafkaValueSerializer extends InternalAvroSpecificSerializer<KafkaMessageEnvelope> {
   public KafkaValueSerializer() {
     super(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE);
+  }
+
+  public KafkaValueSerializer(BiConsumer<Integer, Schema> newSchemaEncountered) {
+    super(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE, null, newSchemaEncountered);
   }
 }

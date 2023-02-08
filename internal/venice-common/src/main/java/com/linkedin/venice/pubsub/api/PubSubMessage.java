@@ -1,6 +1,6 @@
 package com.linkedin.venice.pubsub.api;
 
-public interface PubSubMessage<K, V, TOPIC_PARTITION extends PubSubTopicPartition, OFFSET> {
+public interface PubSubMessage<K, V, OFFSET> {
   /**
    * @return the key part of this message
    */
@@ -14,7 +14,7 @@ public interface PubSubMessage<K, V, TOPIC_PARTITION extends PubSubTopicPartitio
   /**
    * @return the topic-partition this message belongs to
    */
-  TOPIC_PARTITION getTopicPartition();
+  PubSubTopicPartition getTopicPartition();
 
   /**
    * @return the offset of this message in the underlying topic-partition
@@ -25,4 +25,9 @@ public interface PubSubMessage<K, V, TOPIC_PARTITION extends PubSubTopicPartitio
    * @return the timestamp at which the message was persisted in the pub sub system
    */
   long getPubSubMessageTime();
+
+  /**
+   * @return the size in bytes of the key + value.
+   */
+  int getPayloadSize();
 }

@@ -1,7 +1,5 @@
 package com.linkedin.venice.kafka.consumer;
 
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.time.Duration;
@@ -66,9 +64,7 @@ class TopicPartitionsOffsetsTracker {
    *
    * @param records consumed records
    */
-  void updateEndOffsets(
-      ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records,
-      Map<MetricName, ? extends Metric> metrics) {
+  void updateEndOffsets(ConsumerRecords<byte[], byte[]> records, Map<MetricName, ? extends Metric> metrics) {
     if (lastMetricsCollectedTime != null && LatencyUtils
         .getElapsedTimeInMs(lastMetricsCollectedTime.toEpochMilli()) < offsetsUpdateInterval.toMillis()) {
       return; // Not yet
@@ -76,8 +72,8 @@ class TopicPartitionsOffsetsTracker {
     lastMetricsCollectedTime = Instant.now();
 
     // Update current offset cache for all topics partition.
-    List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> listOfRecordsForOnePartition;
-    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> lastConsumerRecordOfPartition;
+    List<ConsumerRecord<byte[], byte[]>> listOfRecordsForOnePartition;
+    ConsumerRecord<byte[], byte[]> lastConsumerRecordOfPartition;
     for (TopicPartition tp: records.partitions()) {
       listOfRecordsForOnePartition = records.records(tp);
       lastConsumerRecordOfPartition = listOfRecordsForOnePartition.get(listOfRecordsForOnePartition.size() - 1);

@@ -54,6 +54,9 @@ public abstract class KafkaClientFactory {
   }
 
   public KafkaConsumerWrapper getConsumer(Properties props) {
+    props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
+    props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
+
     return new ApacheKafkaConsumer(
         getKafkaConsumer(props),
         new VeniceProperties(props),
@@ -75,6 +78,7 @@ public abstract class KafkaClientFactory {
     return getKafkaConsumer(props);
   }
 
+  @Deprecated
   public Consumer<KafkaKey, KafkaMessageEnvelope> getRecordKafkaConsumer() {
     Properties props = getConsumerProps();
     props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class);

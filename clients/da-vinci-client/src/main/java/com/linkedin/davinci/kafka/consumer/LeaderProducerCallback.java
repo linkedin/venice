@@ -7,6 +7,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
@@ -14,7 +15,6 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.writer.ChunkAwareCallback;
 import java.nio.ByteBuffer;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -28,7 +28,7 @@ class LeaderProducerCallback implements ChunkAwareCallback {
   protected static final ByteBuffer EMPTY_BYTE_BUFFER = ByteBuffer.allocate(0);
 
   protected final LeaderFollowerStoreIngestionTask ingestionTask;
-  private final ConsumerRecord<KafkaKey, KafkaMessageEnvelope> sourceConsumerRecord;
+  private final PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> sourceConsumerRecord;
   private final PartitionConsumptionState partitionConsumptionState;
   private final int subPartition;
   private final String kafkaUrl;
@@ -49,7 +49,7 @@ class LeaderProducerCallback implements ChunkAwareCallback {
 
   public LeaderProducerCallback(
       LeaderFollowerStoreIngestionTask ingestionTask,
-      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> sourceConsumerRecord,
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> sourceConsumerRecord,
       PartitionConsumptionState partitionConsumptionState,
       LeaderProducedRecordContext leaderProducedRecordContext,
       int subPartition,
@@ -69,9 +69,8 @@ class LeaderProducerCallback implements ChunkAwareCallback {
   public void onCompletion(RecordMetadata recordMetadata, Exception e) {
     if (e != null) {
       LOGGER.error(
-          "Leader failed to send out message to version topic when consuming {} partition {}",
-          sourceConsumerRecord.topic(),
-          sourceConsumerRecord.partition(),
+          "Leader failed to send out message to version topic when consuming {}",
+          sourceConsumerRecord.getTopicPartition(),
           e);
       ingestionTask.getVersionedDIVStats()
           .recordLeaderProducerFailure(ingestionTask.getStoreName(), ingestionTask.versionNumber);
@@ -183,14 +182,16 @@ class LeaderProducerCallback implements ChunkAwareCallback {
       } catch (Exception oe) {
         boolean endOfPushReceived = partitionConsumptionState.isEndOfPushReceived();
         LOGGER.error(
-            ingestionTask.consumerTaskId + " received exception in kafka callback thread; EOP received: "
-                + endOfPushReceived + " Topic: " + sourceConsumerRecord.topic() + " Partition: "
-                + sourceConsumerRecord.partition() + ", Offset: " + sourceConsumerRecord.offset() + " exception: ",
+            "{} received exception in kafka callback thread; EOP received: {}, {}, Offset: {}",
+            ingestionTask.consumerTaskId,
+            endOfPushReceived,
+            sourceConsumerRecord.getTopicPartition(),
+            sourceConsumerRecord.getOffset(),
             oe);
         // If EOP is not received yet, set the ingestion task exception so that ingestion will fail eventually.
         if (!endOfPushReceived) {
           try {
-            ingestionTask.setIngestionException(sourceConsumerRecord.partition(), oe);
+            ingestionTask.setIngestionException(sourceConsumerRecord.getTopicPartition().getPartitionNumber(), oe);
           } catch (VeniceException offerToQueueException) {
             ingestionTask.setLastStoreIngestionException(offerToQueueException);
           }

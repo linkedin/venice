@@ -9,6 +9,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.UserPartitionAwarePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
 import java.util.Collection;
@@ -81,13 +82,14 @@ public class PartitionUtils {
   }
 
   /**
-   * @param topic the consumed topic which the record is from
-   * @param partition the partition in the consumed topic
-   * @param amplificationFactor
+   * @param topicPartition the {@link PubSubTopicPartition} topic which the record is from
+   * @param amplificationFactor of the store-version
    * @return leaderSubPartition if is consuming from a Real-time topic, else return partition itself
    */
-  public static int getSubPartition(String topic, int partition, int amplificationFactor) {
-    return Version.isRealTimeTopic(topic) ? getLeaderSubPartition(partition, amplificationFactor) : partition;
+  public static int getSubPartition(PubSubTopicPartition topicPartition, int amplificationFactor) {
+    return topicPartition.getPubSubTopic().isRealTime()
+        ? getLeaderSubPartition(topicPartition.getPartitionNumber(), amplificationFactor)
+        : topicPartition.getPartitionNumber();
   }
 
   public static IntList getSubPartitions(int userPartition, int amplificationFactor) {

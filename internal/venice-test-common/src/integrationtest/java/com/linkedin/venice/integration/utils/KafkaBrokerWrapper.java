@@ -57,7 +57,7 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
       configMap.put(KafkaConfig.AutoCreateTopicsEnableProp(), false);
       configMap.put(KafkaConfig.DeleteTopicEnableProp(), true);
       configMap.put(KafkaConfig.LogMessageTimestampTypeProp(), "LogAppendTime");
-      configMap.put(KafkaConfig.LogMessageFormatVersionProp(), "0.10.1");
+      configMap.put(KafkaConfig.LogMessageFormatVersionProp(), "2.4");
 
       // The configs below aim to reduce the overhead of the Kafka process:
       configMap.put(KafkaConfig.OffsetsTopicPartitionsProp(), OFFSET_TOPIC_PARTITIONS);

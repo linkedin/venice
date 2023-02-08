@@ -64,7 +64,7 @@ public class BatchGetChunkingAdapter implements ChunkingAdapter<ByteBuffer, Mult
       boolean isChunked,
       ReadResponse response) {
     if (isChunked) {
-      key = ByteBuffer.wrap(ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(key));
+      key = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(key);
     }
     return ChunkingUtils.getFromStorage(BATCH_GET_CHUNKING_ADAPTER, store, partition, key, response);
   }

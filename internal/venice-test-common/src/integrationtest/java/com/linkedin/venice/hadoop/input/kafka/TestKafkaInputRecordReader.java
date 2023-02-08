@@ -50,13 +50,13 @@ public class TestKafkaInputRecordReader {
 
   @AfterClass
   public void cleanUp() throws IOException {
-    manager.close();
-    kafka.close();
-    zkServer.close();
+    Utils.closeQuietlyWithErrorLogged(manager);
+    Utils.closeQuietlyWithErrorLogged(kafka);
+    Utils.closeQuietlyWithErrorLogged(zkServer);
   }
 
   public String getTopic(int numRecord, Pair<Integer, Integer> updateRange, Pair<Integer, Integer> deleteRange) {
-    String topicName = Utils.getUniqueString("test_kafka_input_format");
+    String topicName = Utils.getUniqueString("test_kafka_input_format") + "_v1";
     manager.createTopic(topicName, 1, 1, true);
     VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(kafka.getAddress());
     try (VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterFactory.createBasicVeniceWriter(topicName)) {
@@ -84,16 +84,18 @@ public class TestKafkaInputRecordReader {
     String topic = getTopic(100, new Pair<>(-1, -1), new Pair<>(-1, -1));
     conf.set(KAFKA_INPUT_TOPIC, topic);
 
-    KafkaInputRecordReader reader = new KafkaInputRecordReader(new KafkaInputSplit(topic, 0, 0, 102), conf, null);
-    for (int i = 0; i < 100; ++i) {
-      KafkaInputMapperKey key = new KafkaInputMapperKey();
-      KafkaInputMapperValue value = new KafkaInputMapperValue();
-      reader.next(key, value);
-      Assert.assertEquals(key.key.array(), (KAFKA_MESSAGE_KEY_PREFIX + i).getBytes());
-      Assert.assertEquals(value.offset, i + 1);
-      Assert.assertEquals(value.schemaId, -1);
-      Assert.assertEquals(value.valueType, MapperValueType.PUT);
-      Assert.assertEquals(ByteUtils.extractByteArray(value.value), (KAFKA_MESSAGE_VALUE_PREFIX + i).getBytes());
+    try (
+        KafkaInputRecordReader reader = new KafkaInputRecordReader(new KafkaInputSplit(topic, 0, 0, 102), conf, null)) {
+      for (int i = 0; i < 100; ++i) {
+        KafkaInputMapperKey key = new KafkaInputMapperKey();
+        KafkaInputMapperValue value = new KafkaInputMapperValue();
+        reader.next(key, value);
+        Assert.assertEquals(key.key.array(), (KAFKA_MESSAGE_KEY_PREFIX + i).getBytes());
+        Assert.assertEquals(value.offset, i + 1);
+        Assert.assertEquals(value.schemaId, -1);
+        Assert.assertEquals(value.valueType, MapperValueType.PUT);
+        Assert.assertEquals(ByteUtils.extractByteArray(value.value), (KAFKA_MESSAGE_VALUE_PREFIX + i).getBytes());
+      }
     }
   }
 
@@ -104,21 +106,23 @@ public class TestKafkaInputRecordReader {
     String topic = getTopic(100, new Pair<>(-1, -1), new Pair<>(0, 10));
     conf.set(KAFKA_INPUT_TOPIC, topic);
     conf.set(VenicePushJob.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP, ChunkedKeySuffix.SCHEMA$.toString());
-    KafkaInputRecordReader reader = new KafkaInputRecordReader(new KafkaInputSplit(topic, 0, 0, 102), conf, null);
-    for (int i = 0; i < 100; ++i) {
-      KafkaInputMapperKey key = new KafkaInputMapperKey();
-      KafkaInputMapperValue value = new KafkaInputMapperValue();
-      reader.next(key, value);
-      Assert.assertEquals(key.key.array(), (KAFKA_MESSAGE_KEY_PREFIX + i).getBytes());
-      Assert.assertEquals(value.offset, i + 1);
-      Assert.assertEquals(value.schemaId, -1);
-      if (i <= 10) {
-        // DELETE
-        Assert.assertEquals(value.valueType, MapperValueType.DELETE);
-      } else {
-        // PUT
-        Assert.assertEquals(value.valueType, MapperValueType.PUT);
-        Assert.assertEquals(ByteUtils.extractByteArray(value.value), (KAFKA_MESSAGE_VALUE_PREFIX + i).getBytes());
+    try (
+        KafkaInputRecordReader reader = new KafkaInputRecordReader(new KafkaInputSplit(topic, 0, 0, 102), conf, null)) {
+      for (int i = 0; i < 100; ++i) {
+        KafkaInputMapperKey key = new KafkaInputMapperKey();
+        KafkaInputMapperValue value = new KafkaInputMapperValue();
+        reader.next(key, value);
+        Assert.assertEquals(key.key.array(), (KAFKA_MESSAGE_KEY_PREFIX + i).getBytes());
+        Assert.assertEquals(value.offset, i + 1);
+        Assert.assertEquals(value.schemaId, -1);
+        if (i <= 10) {
+          // DELETE
+          Assert.assertEquals(value.valueType, MapperValueType.DELETE);
+        } else {
+          // PUT
+          Assert.assertEquals(value.valueType, MapperValueType.PUT);
+          Assert.assertEquals(ByteUtils.extractByteArray(value.value), (KAFKA_MESSAGE_VALUE_PREFIX + i).getBytes());
+        }
       }
     }
   }
@@ -130,31 +134,33 @@ public class TestKafkaInputRecordReader {
     String topic = getTopic(100, new Pair<>(21, 30), new Pair<>(11, 20));
     conf.set(KAFKA_INPUT_TOPIC, topic);
     conf.set(VenicePushJob.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP, ChunkedKeySuffix.SCHEMA$.toString());
-    KafkaInputRecordReader reader = new KafkaInputRecordReader(new KafkaInputSplit(topic, 0, 0, 102), conf, null);
-    for (int i = 0; i < 100; ++i) {
-      KafkaInputMapperKey key = new KafkaInputMapperKey();
-      KafkaInputMapperValue value = new KafkaInputMapperValue();
-      if (i == 21) {
-        try {
+    try (
+        KafkaInputRecordReader reader = new KafkaInputRecordReader(new KafkaInputSplit(topic, 0, 0, 102), conf, null)) {
+      for (int i = 0; i < 100; ++i) {
+        KafkaInputMapperKey key = new KafkaInputMapperKey();
+        KafkaInputMapperValue value = new KafkaInputMapperValue();
+        if (i == 21) {
+          try {
+            reader.next(key, value);
+            Assert.fail("An IOException should be thrown here");
+          } catch (IOException e) {
+            Assert.assertTrue(e.getMessage().contains("Unexpected 'UPDATE' message"));
+          }
+          break;
+        } else {
           reader.next(key, value);
-          Assert.fail("An IOException should be thrown here");
-        } catch (IOException e) {
-          Assert.assertTrue(e.getMessage().contains("Unexpected 'UPDATE' message"));
         }
-        break;
-      } else {
-        reader.next(key, value);
-      }
-      Assert.assertEquals(key.key.array(), (KAFKA_MESSAGE_KEY_PREFIX + i).getBytes());
-      Assert.assertEquals(value.offset, i + 1);
-      Assert.assertEquals(value.schemaId, -1);
-      if (i <= 10) {
-        // PUT
-        Assert.assertEquals(value.valueType, MapperValueType.PUT);
-        Assert.assertEquals(ByteUtils.extractByteArray(value.value), (KAFKA_MESSAGE_VALUE_PREFIX + i).getBytes());
-      } else if (i <= 20) {
-        // DELETE
-        Assert.assertEquals(value.valueType, MapperValueType.DELETE);
+        Assert.assertEquals(key.key.array(), (KAFKA_MESSAGE_KEY_PREFIX + i).getBytes());
+        Assert.assertEquals(value.offset, i + 1);
+        Assert.assertEquals(value.schemaId, -1);
+        if (i <= 10) {
+          // PUT
+          Assert.assertEquals(value.valueType, MapperValueType.PUT);
+          Assert.assertEquals(ByteUtils.extractByteArray(value.value), (KAFKA_MESSAGE_VALUE_PREFIX + i).getBytes());
+        } else if (i <= 20) {
+          // DELETE
+          Assert.assertEquals(value.valueType, MapperValueType.DELETE);
+        }
       }
     }
   }

@@ -8,7 +8,12 @@ import com.linkedin.venice.common.Measurable;
 import com.linkedin.venice.exceptions.VeniceChecksumException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.Put;
+import com.linkedin.venice.kafka.protocol.Update;
+import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import java.util.ArrayList;
 import java.util.List;
@@ -22,7 +27,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.common.TopicPartition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -35,7 +39,7 @@ import org.apache.logging.log4j.Logger;
  * 1. {@link StoreBufferService} will be maintaining a fixed number (configurable) of {@link StoreBufferDrainer} pool;
  * 2. For each {@link StoreBufferDrainer}, there is a corresponding {@link BlockingQueue}, which will buffer {@link QueueNode};
  * 3. All the records belonging to the same topic+partition will be allocated to the same drainer thread, otherwise DIV will fail;
- * 4. The logic to assign topic+partition to drainer, please check {@link #getDrainerIndexForConsumerRecord(ConsumerRecord, int)};
+ * 4. The logic to assign topic+partition to drainer, please check {@link #getDrainerIndexForConsumerRecord(PubSubMessage, int)};
  * 5. There is still a thread executing {@link StoreIngestionTask} for each topic, which will handle admin actions, such
  * as subscribe, unsubscribe, kill and so on, and also poll consumer records from Kafka and put them into {@link #blockingQueueArr}
  * maintained by {@link StoreBufferService};
@@ -53,13 +57,13 @@ public class StoreBufferService extends AbstractStoreBufferService {
      * Considering the overhead of {@link ConsumerRecord} and its internal structures.
      */
     private static final int QUEUE_NODE_OVERHEAD_IN_BYTE = 256;
-    private final ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord;
+    private final PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord;
     private final StoreIngestionTask ingestionTask;
     private final String kafkaUrl;
     private final long beforeProcessingRecordTimestamp;
 
     public QueueNode(
-        ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
         StoreIngestionTask ingestionTask,
         String kafkaUrl,
         long beforeProcessingRecordTimestamp) {
@@ -69,7 +73,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
       this.beforeProcessingRecordTimestamp = beforeProcessingRecordTimestamp;
     }
 
-    public ConsumerRecord<KafkaKey, KafkaMessageEnvelope> getConsumerRecord() {
+    public PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> getConsumerRecord() {
       return this.consumerRecord;
     }
 
@@ -109,9 +113,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
         return false;
 
       QueueNode node = (QueueNode) o;
-      return this.consumerRecord.topic().equals(node.consumerRecord.topic())
-          && this.consumerRecord.partition() == node.consumerRecord.partition();
-
+      return this.consumerRecord.getTopicPartition().equals(node.consumerRecord.getTopicPartition());
     }
 
     @Override
@@ -121,10 +123,33 @@ public class StoreBufferService extends AbstractStoreBufferService {
 
     @Override
     public int getSize() {
-      // TODO:This should not be a big issue but ideally it should calculate the size from leaderProducedRecordContext
-      // if present.
-      return this.consumerRecord.serializedKeySize() + this.consumerRecord.serializedValueSize()
-          + this.consumerRecord.topic().length() + QUEUE_NODE_OVERHEAD_IN_BYTE;
+      // N.B.: This is just an estimate. TODO: Consider if it is really useful, and whether to get rid of it.
+      return this.consumerRecord.getKey().getEstimatedObjectSizeOnHeap()
+          + getEstimateOfMessageEnvelopeSizeOnHeap(this.consumerRecord.getValue()) + QUEUE_NODE_OVERHEAD_IN_BYTE;
+    }
+
+    private int getEstimateOfMessageEnvelopeSizeOnHeap(KafkaMessageEnvelope messageEnvelope) {
+      int kmeBaseOverhead = 100; // Super rough estimate. TODO: Measure with a more precise library and store statically
+      switch (MessageType.valueOf(messageEnvelope)) {
+        case PUT:
+          Put put = (Put) messageEnvelope.payloadUnion;
+          int size = put.putValue.capacity();
+          if (put.replicationMetadataPayload != null
+              /**
+               * N.B.: When using the {@link org.apache.avro.io.OptimizedBinaryDecoder}, the {@link put.putValue} and the
+               *       {@link put.replicationMetadataPayload} will be backed by the same underlying array. If that is the
+               *       case, then we don't want to account for the capacity twice.
+               */
+              && put.replicationMetadataPayload.array() != put.putValue.array()) {
+            size += put.replicationMetadataPayload.capacity();
+          }
+          return size + kmeBaseOverhead;
+        case UPDATE:
+          Update update = (Update) messageEnvelope.payloadUnion;
+          return update.updateValue.capacity() + kmeBaseOverhead;
+        default:
+          return kmeBaseOverhead;
+      }
     }
 
     @Override
@@ -137,7 +162,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
     private final CompletableFuture<Void> queuedRecordPersistedFuture;
 
     public FollowerQueueNode(
-        ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
         StoreIngestionTask ingestionTask,
         String kafkaUrl,
         long beforeProcessingRecordTimestamp,
@@ -166,7 +191,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
     private final LeaderProducedRecordContext leaderProducedRecordContext;
 
     public LeaderQueueNode(
-        ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
         StoreIngestionTask ingestionTask,
         String kafkaUrl,
         long beforeProcessingRecordTimestamp,
@@ -192,15 +217,15 @@ public class StoreBufferService extends AbstractStoreBufferService {
   }
 
   /**
-   * Worker thread, which will invoke {@link StoreIngestionTask#processConsumerRecord(ConsumerRecord, LeaderProducedRecordContext, String, long)} to process
-   * each {@link ConsumerRecord} buffered in {@link BlockingQueue}.
+   * Worker thread, which will invoke {@link StoreIngestionTask#processConsumerRecord(PubSubMessage, LeaderProducedRecordContext, String, long)}
+   * to process each {@link PubSubMessage} buffered in {@link BlockingQueue}.
    */
   private static class StoreBufferDrainer implements Runnable {
     private static final Logger LOGGER = LogManager.getLogger(StoreBufferDrainer.class);
     private final BlockingQueue<QueueNode> blockingQueue;
     private final AtomicBoolean isRunning = new AtomicBoolean(true);
     private final int drainerIndex;
-    private final ConcurrentMap<TopicPartition, Long> topicToTimeSpent = new ConcurrentHashMap<>();
+    private final ConcurrentMap<PubSubTopicPartition, Long> topicToTimeSpent = new ConcurrentHashMap<>();
 
     public StoreBufferDrainer(BlockingQueue<QueueNode> blockingQueue, int drainerIndex) {
       this.blockingQueue = blockingQueue;
@@ -215,7 +240,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
     public void run() {
       LOGGER.info("Starting StoreBufferDrainer Thread for drainer: {}....", drainerIndex);
       QueueNode node = null;
-      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord = null;
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord = null;
       LeaderProducedRecordContext leaderProducedRecordContext = null;
       StoreIngestionTask ingestionTask = null;
       CompletableFuture<Void> recordPersistedFuture = null;
@@ -251,9 +276,9 @@ public class StoreBufferService extends AbstractStoreBufferService {
             recordPersistedFuture.complete(null);
           }
 
-          TopicPartition topicPartition = new TopicPartition(consumerRecord.topic(), consumerRecord.partition());
-          topicToTimeSpent
-              .compute(topicPartition, (K, V) -> (V == null ? 0 : V) + System.currentTimeMillis() - startTime);
+          topicToTimeSpent.compute(
+              consumerRecord.getTopicPartition(),
+              (K, V) -> (V == null ? 0 : V) + System.currentTimeMillis() - startTime);
         } catch (Throwable e) {
           if (e instanceof InterruptedException) {
             LOGGER.error("Drainer {} received InterruptedException, will exit", drainerIndex);
@@ -283,7 +308,9 @@ public class StoreBufferService extends AbstractStoreBufferService {
             Exception processConsumerRecordException = (Exception) e;
             if (ingestionTask != null) {
               try {
-                ingestionTask.setIngestionException(consumerRecord.partition(), processConsumerRecordException);
+                ingestionTask.setIngestionException(
+                    consumerRecord.getTopicPartition().getPartitionNumber(),
+                    processConsumerRecordException);
               } catch (VeniceException ingestionException) {
                 ingestionTask.setLastStoreIngestionException(ingestionException);
               }
@@ -323,21 +350,20 @@ public class StoreBufferService extends AbstractStoreBufferService {
   }
 
   protected int getDrainerIndexForConsumerRecord(
-      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       int subPartition) {
-    String topic = consumerRecord.topic();
     /**
      * This will guarantee that 'topicHash' will be a positive integer, whose maximum value is
      * {@link Integer.MAX_VALUE} / 2 + 1, which could make sure 'topicHash + consumerRecord.partition()' should be
      * positive for most of time to guarantee even partition assignment.
      */
-    int topicHash = Math.abs(topic.hashCode() / 2);
+    int topicHash = Math.abs(consumerRecord.getTopicPartition().getPubSubTopic().hashCode() / 2);
     return Math.abs((topicHash + subPartition) % this.drainerNum);
   }
 
   @Override
   public void putConsumerRecord(
-      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       StoreIngestionTask ingestionTask,
       LeaderProducedRecordContext leaderProducedRecordContext,
       int subPartition,
@@ -362,7 +388,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
 
       // Setup the last queued record's future
       PartitionConsumptionState partitionConsumptionState =
-          ingestionTask.getPartitionConsumptionState(consumerRecord.partition());
+          ingestionTask.getPartitionConsumptionState(consumerRecord.getTopicPartition().getPartitionNumber());
       if (partitionConsumptionState != null) {
         partitionConsumptionState.setLastQueuedRecordPersistedFuture(recordFuture);
       }
@@ -381,27 +407,26 @@ public class StoreBufferService extends AbstractStoreBufferService {
    * This function is used to drain all the records for the specified topic + partition.
    * The reason is that we don't want overlap Kafka messages between two different subscriptions,
    * which could introduce complicate dependencies in {@link StoreIngestionTask}.
-   * @param topic
-   * @param partition
+   * @param topicPartition for which to drain buffer
    * @throws InterruptedException
    */
-  public void drainBufferedRecordsFromTopicPartition(String topic, int partition) throws InterruptedException {
+  public void drainBufferedRecordsFromTopicPartition(PubSubTopicPartition topicPartition) throws InterruptedException {
     int retryNum = 1000;
     int sleepIntervalInMS = 50;
-    internalDrainBufferedRecordsFromTopicPartition(topic, partition, retryNum, sleepIntervalInMS);
+    internalDrainBufferedRecordsFromTopicPartition(topicPartition, retryNum, sleepIntervalInMS);
   }
 
   protected void internalDrainBufferedRecordsFromTopicPartition(
-      String topic,
-      int partition,
+      PubSubTopicPartition topicPartition,
       int retryNum,
       int sleepIntervalInMS) throws InterruptedException {
-    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> fakeRecord = new ConsumerRecord<>(topic, partition, -1, null, null);
-    int workerIndex = getDrainerIndexForConsumerRecord(fakeRecord, partition);
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> fakeRecord = new FakePubSubMessage(topicPartition);
+    int workerIndex = getDrainerIndexForConsumerRecord(fakeRecord, topicPartition.getPartitionNumber());
     BlockingQueue<QueueNode> blockingQueue = blockingQueueArr.get(workerIndex);
     if (!drainerList.get(workerIndex).isRunning.get()) {
       throw new VeniceException(
-          "Drainer thread " + workerIndex + " has stopped running, cannot drain the topic " + topic);
+          "Drainer thread " + workerIndex + " has stopped running, cannot drain the topic "
+              + topicPartition.getPubSubTopic().getName());
     }
 
     QueueNode fakeNode = new QueueNode(fakeRecord, null, "dummyKafkaUrl", 0);
@@ -410,16 +435,16 @@ public class StoreBufferService extends AbstractStoreBufferService {
     while (cur++ < retryNum) {
       if (!blockingQueue.contains(fakeNode)) {
         LOGGER.info(
-            "The blocking queue of store writer thread: {} doesn't contain any record for topic: {} partition: {}",
+            "The blocking queue of store writer thread: {} doesn't contain any record for: {}",
             workerIndex,
-            topic,
-            partition);
+            topicPartition);
         return;
       }
       Thread.sleep(sleepIntervalInMS);
     }
     String errorMessage = "There are still some records left in the blocking queue of store writer thread: "
-        + workerIndex + " for topic: " + topic + " partition after retry for " + retryNum + " times";
+        + workerIndex + " for topic: " + topicPartition.getPubSubTopic().getName() + " partition after retry for "
+        + retryNum + " times";
     LOGGER.error(errorMessage);
     throw new VeniceException(errorMessage);
   }
@@ -494,7 +519,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
       if (slowDrainerExists) {
         MemoryBoundBlockingQueue<QueueNode> queue = blockingQueueArr.get(index);
         int count = queue.getMemoryUsage() > 0.8 * bufferCapacityPerDrainer ? 5 : 1;
-        List<Map.Entry<TopicPartition, Long>> slowestEntries = drainer.topicToTimeSpent.entrySet()
+        List<Map.Entry<PubSubTopicPartition, Long>> slowestEntries = drainer.topicToTimeSpent.entrySet()
             .stream()
             .sorted(comparing(Map.Entry::getValue, reverseOrder()))
             .limit(count)
@@ -502,12 +527,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
 
         int finalIndex = index;
         slowestEntries.forEach(
-            entry -> LOGGER.info(
-                "In drainer number {}, time spent on topic {}, partition {} : {} ms",
-                finalIndex,
-                entry.getKey().topic(),
-                entry.getKey().partition(),
-                entry.getValue()));
+            entry -> LOGGER
+                .info("In drainer number {}, time spent on {} : {} ms", finalIndex, entry.getKey(), entry.getValue()));
         LOGGER.info(
             "Drainer number {} hosting {} partitions, has memory usage of {}",
             index,
@@ -521,7 +542,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
   }
 
   /** Used for testing */
-  Map<TopicPartition, Long> getTopicToTimeSpentMap(int i) {
+  Map<PubSubTopicPartition, Long> getTopicToTimeSpentMap(int i) {
     return drainerList.get(i).topicToTimeSpent;
   }
 
@@ -532,5 +553,43 @@ public class StoreBufferService extends AbstractStoreBufferService {
       minUsage = Math.min(minUsage, queue.getMemoryUsage());
     }
     return minUsage;
+  }
+
+  private static class FakePubSubMessage implements PubSubMessage {
+    private final PubSubTopicPartition topicPartition;
+
+    FakePubSubMessage(PubSubTopicPartition topicPartition) {
+      this.topicPartition = topicPartition;
+    }
+
+    @Override
+    public Object getKey() {
+      return null;
+    }
+
+    @Override
+    public Object getValue() {
+      return null;
+    }
+
+    @Override
+    public PubSubTopicPartition getTopicPartition() {
+      return topicPartition;
+    }
+
+    @Override
+    public Object getOffset() {
+      return null;
+    }
+
+    @Override
+    public long getPubSubMessageTime() {
+      return 0;
+    }
+
+    @Override
+    public int getPayloadSize() {
+      return 0;
+    }
   }
 }

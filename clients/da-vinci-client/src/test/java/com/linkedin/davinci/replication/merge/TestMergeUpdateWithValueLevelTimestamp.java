@@ -72,7 +72,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
             storeName);
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
         Lazy.of(() -> null),
-        Optional.of(rmdWithValueSchemaId),
+        rmdWithValueSchemaId,
         writeComputeBytes,
         incomingValueSchemaId,
         incomingWriteComputeSchemaId,
@@ -122,7 +122,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
             storeName);
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
         Lazy.of(() -> null),
-        Optional.of(rmdWithValueSchemaId),
+        rmdWithValueSchemaId,
         writeComputeBytes,
         incomingValueSchemaId,
         incomingWriteComputeSchemaId,
@@ -189,7 +189,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
             storeName);
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
         Lazy.of(() -> oldValueBytes),
-        Optional.of(rmdWithValueSchemaId),
+        rmdWithValueSchemaId,
         writeComputeBytes,
         incomingValueSchemaId,
         incomingWriteComputeSchemaId,
@@ -231,8 +231,8 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
         Collections.emptyList());
 
     // Validate updated value.
-    Assert.assertTrue(mergeConflictResult.getNewValue().isPresent());
-    ByteBuffer updatedValueBytes = mergeConflictResult.getNewValue().get();
+    Assert.assertNotNull(mergeConflictResult.getNewValue());
+    ByteBuffer updatedValueBytes = mergeConflictResult.getNewValue();
     GenericRecord updatedValueRecord = MapOrderingPreservingSerDeFactory.getDeserializer(personSchemaV1, personSchemaV1)
         .deserialize(updatedValueBytes.array());
 
@@ -298,7 +298,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
     final int newColoID = 3;
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
         Lazy.of(() -> oldValueBytes),
-        Optional.of(rmdWithValueSchemaId),
+        rmdWithValueSchemaId,
         writeComputeBytes,
         incomingValueSchemaId,
         incomingWriteComputeSchemaId,
@@ -348,8 +348,8 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
         Collections.emptyList());
 
     // Validate updated value.
-    Assert.assertTrue(mergeConflictResult.getNewValue().isPresent());
-    ByteBuffer updatedValueBytes = mergeConflictResult.getNewValue().get();
+    Assert.assertNotNull(mergeConflictResult.getNewValue());
+    ByteBuffer updatedValueBytes = mergeConflictResult.getNewValue();
     // Use annotated value schema to deserialize record and the map field will be keyed in Java String type.
     Schema annotatedSchema = annotateStringMapInValueSchema(personSchemaV1);
     GenericRecord updatedValueRecord =
@@ -378,7 +378,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
 
     MergeConflictResult mergeConflictResult2 = mergeConflictResolver.update(
         Lazy.of(() -> updatedValueBytes),
-        Optional.of(rmdWithValueSchemaId),
+        rmdWithValueSchemaId,
         writeComputeBytes,
         incomingValueSchemaId,
         incomingWriteComputeSchemaId,
@@ -386,7 +386,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
         1,
         1,
         newColoID);
-    ByteBuffer updatedValueBytes2 = mergeConflictResult2.getNewValue().get();
+    ByteBuffer updatedValueBytes2 = mergeConflictResult2.getNewValue();
     updatedValueRecord = MapOrderingPreservingSerDeFactory.getDeserializer(annotatedSchema, annotatedSchema)
         .deserialize(updatedValueBytes2.array());
     updatedMapField = (Map<String, Object>) updatedValueRecord.get("stringMap");
@@ -460,7 +460,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
     final int newValueColoID = 3;
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
         Lazy.of(() -> oldValueBytes),
-        Optional.of(rmdWithValueSchemaId),
+        rmdWithValueSchemaId,
         writeComputeBytes,
         incomingValueSchemaId,
         incomingWriteComputeSchemaId,
@@ -524,8 +524,8 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
         Collections.emptyList());
 
     // Validate updated value.
-    Assert.assertTrue(mergeConflictResult.getNewValue().isPresent());
-    ByteBuffer updatedValueBytes = mergeConflictResult.getNewValue().get();
+    Assert.assertNotNull(mergeConflictResult.getNewValue());
+    ByteBuffer updatedValueBytes = mergeConflictResult.getNewValue();
     GenericRecord updatedValueRecord = MapOrderingPreservingSerDeFactory.getDeserializer(personSchemaV3, personSchemaV3)
         .deserialize(updatedValueBytes.array());
 
@@ -604,7 +604,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
     final int newValueColoID = 3;
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
         Lazy.of(() -> oldValueBytes),
-        Optional.of(rmdWithValueSchemaId),
+        rmdWithValueSchemaId,
         writeComputeBytes,
         incomingValueSchemaId,
         incomingWriteComputeSchemaId,
@@ -679,8 +679,8 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
     );
 
     // Validate updated value.
-    Assert.assertTrue(mergeConflictResult.getNewValue().isPresent());
-    ByteBuffer updatedValueBytes = mergeConflictResult.getNewValue().get();
+    Assert.assertNotNull(mergeConflictResult.getNewValue());
+    ByteBuffer updatedValueBytes = mergeConflictResult.getNewValue();
     GenericRecord updatedValueRecord = MapOrderingPreservingSerDeFactory.getDeserializer(personSchemaV3, personSchemaV3)
         .deserialize(updatedValueBytes.array());
 

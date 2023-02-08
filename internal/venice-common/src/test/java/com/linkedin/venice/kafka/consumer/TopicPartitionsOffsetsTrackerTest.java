@@ -3,8 +3,6 @@ package com.linkedin.venice.kafka.consumer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.message.KafkaKey;
 import java.time.Duration;
 import java.util.Collections;
 import java.util.HashMap;
@@ -59,23 +57,23 @@ public class TopicPartitionsOffsetsTrackerTest {
     TopicPartition firstTopicPartition = new TopicPartition(TOPIC_1, PARTITION_ID);
     TopicPartition secondTopicPartition = new TopicPartition(TOPIC_2, PARTITION_ID);
 
-    Map<TopicPartition, List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> recordsMap = new HashMap<>(2);
-    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> firsRecord = new ConsumerRecord<>(
+    Map<TopicPartition, List<ConsumerRecord<byte[], byte[]>>> recordsMap = new HashMap<>(2);
+    ConsumerRecord<byte[], byte[]> firstRecord = new ConsumerRecord<>(
         firstTopicPartition.topic(),
         firstTopicPartition.partition(),
         firstOffset,
-        mock(KafkaKey.class),
-        mock(KafkaMessageEnvelope.class));
-    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> secondRecord = new ConsumerRecord<>(
+        new byte[0],
+        new byte[0]);
+    ConsumerRecord<byte[], byte[]> secondRecord = new ConsumerRecord<>(
         secondTopicPartition.topic(),
         secondTopicPartition.partition(),
         secondOffset,
-        mock(KafkaKey.class),
-        mock(KafkaMessageEnvelope.class));
+        new byte[0],
+        new byte[0]);
 
-    recordsMap.put(firstTopicPartition, Collections.singletonList(firsRecord));
+    recordsMap.put(firstTopicPartition, Collections.singletonList(firstRecord));
     recordsMap.put(secondTopicPartition, Collections.singletonList(secondRecord));
-    ConsumerRecords<KafkaKey, KafkaMessageEnvelope> mockRecords = new ConsumerRecords<>(recordsMap);
+    ConsumerRecords<byte[], byte[]> mockRecords = new ConsumerRecords<>(recordsMap);
 
     Map<MetricName, Metric> mockMetrics = new HashMap<>();
     // Set up partition record lag for the first topic partition

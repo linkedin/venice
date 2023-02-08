@@ -1,6 +1,7 @@
 package com.linkedin.davinci.ingestion.consumption;
 
 import com.linkedin.venice.annotation.NotThreadsafe;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 
 
 /**
@@ -30,4 +31,6 @@ public interface ConsumedDataReceiver<MESSAGE> {
   String destinationIdentifier();
 
   void notifyOfTopicDeletion(String topicName);
+
+  PubSubTopicPartition getPubSubTopicPartition();
 }

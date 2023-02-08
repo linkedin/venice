@@ -3,7 +3,6 @@ package com.linkedin.venice.schema.writecompute;
 import com.linkedin.venice.schema.merge.MergeRecordHelper;
 import com.linkedin.venice.schema.merge.ValueAndRmd;
 import io.tehuti.utils.Utils;
-import java.util.Optional;
 import javax.annotation.concurrent.ThreadSafe;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -51,10 +50,7 @@ public class WriteComputeProcessor {
    * @param valueSchema the original value schema that write compute schema is derived from
    * @return write-compute updated record
    */
-  public GenericRecord updateRecord(
-      Schema valueSchema,
-      Optional<GenericRecord> currRecord,
-      GenericRecord writeComputeRecord) {
+  public GenericRecord updateRecord(Schema valueSchema, GenericRecord currRecord, GenericRecord writeComputeRecord) {
     return writeComputeHandlerV2
         .updateValueRecord(Utils.notNull(valueSchema), currRecord, Utils.notNull(writeComputeRecord));
   }

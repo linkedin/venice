@@ -1,8 +1,6 @@
 package com.linkedin.venice.kafka.consumer;
 
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.message.KafkaKey;
 import java.io.Closeable;
 import java.util.Set;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -20,7 +18,7 @@ public interface KafkaConsumerWrapper extends AutoCloseable, Closeable {
 
   void close();
 
-  ConsumerRecords<KafkaKey, KafkaMessageEnvelope> poll(long timeoutMs);
+  ConsumerRecords<byte[], byte[]> poll(long timeoutMs);
 
   /**
    * @return True if this consumer has subscribed any topic partition at all and vice versa.
