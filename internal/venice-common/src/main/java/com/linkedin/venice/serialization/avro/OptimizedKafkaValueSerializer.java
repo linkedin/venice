@@ -1,5 +1,7 @@
 package com.linkedin.venice.serialization.avro;
 
+import java.util.function.BiConsumer;
+import org.apache.avro.Schema;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 
@@ -10,6 +12,14 @@ import org.apache.avro.io.OptimizedBinaryDecoderFactory;
  */
 public class OptimizedKafkaValueSerializer extends KafkaValueSerializer {
   private static final OptimizedBinaryDecoderFactory DECODER_FACTORY = OptimizedBinaryDecoderFactory.defaultFactory();
+
+  public OptimizedKafkaValueSerializer() {
+    super();
+  }
+
+  public OptimizedKafkaValueSerializer(BiConsumer<Integer, Schema> newSchemaEncountered) {
+    super(newSchemaEncountered);
+  }
 
   @Override
   protected BinaryDecoder createBinaryDecoder(byte[] bytes, int offset, int length, BinaryDecoder reuse) {

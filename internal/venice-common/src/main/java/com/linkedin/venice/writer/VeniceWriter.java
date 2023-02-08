@@ -1111,12 +1111,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       }
 
       try {
-        ProducerRecord<KafkaKey, KafkaMessageEnvelope> kafkaRecord = new ProducerRecord<>(
-            topicName,
-            partition,
-            key,
-            kafkaValue,
-            key.isControlMessage() ? protocolSchemaHeaders : emptyHeaders);
+        ProducerRecord<KafkaKey, KafkaMessageEnvelope> kafkaRecord =
+            new ProducerRecord<>(topicName, partition, key, kafkaValue, getHeaders(kafkaValue.getProducerMetadata()));
         return producer.sendMessage(kafkaRecord, messageCallback);
       } catch (Exception e) {
         if (ExceptionUtils.recursiveClassEquals(e, TopicAuthorizationException.class)) {
@@ -1128,6 +1124,15 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         }
       }
     }
+  }
+
+  /**
+   * We only include the protocol schema headers on this writer's first message to each partition.
+   */
+  private RecordHeaders getHeaders(ProducerMetadata producerMetadata) {
+    return producerMetadata.getSegmentNumber() == 0 && producerMetadata.getMessageSequenceNumber() == 0
+        ? protocolSchemaHeaders
+        : emptyHeaders;
   }
 
   /**

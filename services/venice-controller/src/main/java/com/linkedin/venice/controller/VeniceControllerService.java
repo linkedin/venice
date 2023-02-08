@@ -91,7 +91,17 @@ public class VeniceControllerService extends AbstractVeniceService {
     // The admin consumer needs to use VeniceHelixAdmin to update Zookeeper directly
     consumerServicesByClusters = new HashMap<>(multiClusterConfigs.getClusters().size());
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
-    KafkaValueSerializer kafkaValueSerializer = new OptimizedKafkaValueSerializer();
+    /** N.B. The code below is copied from {@link com.linkedin.venice.controller.init.SystemSchemaInitializationRoutine */
+    // BiConsumer<Integer, Schema> newSchemaEncountered = (schemaId, schema) -> internalAdmin.addValueSchema(
+    // "?", // TODO: Figure out a clean way to retrieve the cluster name param
+    // AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName(),
+    // schema.toString(),
+    // schemaId,
+    // DirectionalSchemaCompatibilityType.NONE,
+    // false);
+    KafkaValueSerializer kafkaValueSerializer = new OptimizedKafkaValueSerializer(
+    // newSchemaEncountered // TODO: Wire in this hook once we figure out a clean way to do it
+    );
     kafkaMessageEnvelopeSchemaReader.ifPresent(kafkaValueSerializer::setSchemaReader);
     KafkaPubSubMessageDeserializer pubSubMessageDeserializer = new KafkaPubSubMessageDeserializer(
         kafkaValueSerializer,

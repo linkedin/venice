@@ -17,6 +17,7 @@ import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.function.BiConsumer;
 import org.apache.avro.Schema;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.BinaryEncoder;
@@ -100,11 +101,20 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
   /** Used to fetch unknown schemas, to ensure forward compatibility when the protocol gets upgraded. */
   private SchemaReader schemaReader = null;
 
+  private final BiConsumer<Integer, Schema> newSchemaEncountered;
+
   protected InternalAvroSpecificSerializer(AvroProtocolDefinition protocolDef) {
     this(protocolDef, null);
   }
 
   protected InternalAvroSpecificSerializer(AvroProtocolDefinition protocolDef, Integer payloadOffsetOverride) {
+    this(protocolDef, payloadOffsetOverride, (schemaId, schema) -> {});
+  }
+
+  protected InternalAvroSpecificSerializer(
+      AvroProtocolDefinition protocolDef,
+      Integer payloadOffsetOverride,
+      BiConsumer<Integer, Schema> newSchemaEncountered) {
     // Magic byte handling
     if (protocolDef.getMagicByte().isPresent()) {
       this.magicByte = protocolDef.getMagicByte().get();
@@ -159,6 +169,8 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
     protocolSchemaMap.forEach((protocolVersion, protocolSchema) -> cacheDatumReader(protocolVersion, protocolSchema));
 
     this.writer = new SpecificDatumWriter(protocolDef.schema);
+
+    this.newSchemaEncountered = newSchemaEncountered;
   }
 
   /**
@@ -347,6 +359,7 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
     VeniceSpecificDatumReader<SPECIFIC_RECORD> specificDatumReader = protocolVersionToReader.get(protocolVersion);
     if (specificDatumReader == null) {
       specificDatumReader = cacheDatumReader(protocolVersion, providedProtocolSchema);
+      newSchemaEncountered.accept(protocolVersion, providedProtocolSchema);
     }
     return deserialize(bytes, specificDatumReader, reuse);
   }
