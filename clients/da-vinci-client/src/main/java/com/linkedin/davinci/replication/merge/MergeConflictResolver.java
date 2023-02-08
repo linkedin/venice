@@ -509,7 +509,7 @@ public class MergeConflictResolver {
     } else {
       mergedValueBytes = Optional.of(serializeMergedValueRecord(oldValueSchema, mergedValueAndRmd.getValue()));
     }
-    return new MergeConflictResult(mergedValueBytes, oldValueSchemaID, true, mergedValueAndRmd.getRmd());
+    return new MergeConflictResult(mergedValueBytes, oldValueSchemaID, false, mergedValueAndRmd.getRmd());
   }
 
   public MergeConflictResult update(
