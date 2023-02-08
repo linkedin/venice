@@ -18,7 +18,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_MIG
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_TO_GO_ONLINE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COMPUTATION_ENABLED;
-import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyDouble;
@@ -57,17 +56,12 @@ import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.stats.AdminConsumptionStats;
-import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
-import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
-import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
-import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
-import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.SegmentStatus;
@@ -78,8 +72,11 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.InMemoryOffsetManager;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
 import com.linkedin.venice.unit.kafka.SimplePartitioner;
 import com.linkedin.venice.unit.kafka.consumer.MockInMemoryConsumer;
@@ -91,13 +88,13 @@ import com.linkedin.venice.unit.kafka.consumer.poll.PollStrategy;
 import com.linkedin.venice.unit.kafka.consumer.poll.RandomPollStrategy;
 import com.linkedin.venice.unit.kafka.producer.MockInMemoryProducer;
 import com.linkedin.venice.utils.DataProviderUtils;
-import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.IOException;
@@ -131,7 +128,7 @@ import org.testng.annotations.Test;
  * Slow test class, given fast priority
  */
 @Test(priority = -5)
-public class TestAdminConsumptionTask {
+public class AdminConsumptionTaskTest {
   private static final int TIMEOUT = 10000;
 
   private String clusterName;
@@ -205,16 +202,8 @@ public class TestAdminConsumptionTask {
   }
 
   private AdminConsumptionTask getAdminConsumptionTask(PollStrategy pollStrategy, boolean isParent) {
-    return getAdminConsumptionTask(pollStrategy, isParent, 10000);
-  }
-
-  private AdminConsumptionTask getAdminConsumptionTask(
-      PollStrategy pollStrategy,
-      boolean isParent,
-      long adminConsumptionCycleTimeoutMs) {
     AdminConsumptionStats stats = mock(AdminConsumptionStats.class);
-
-    return getAdminConsumptionTask(pollStrategy, isParent, stats, adminConsumptionCycleTimeoutMs);
+    return getAdminConsumptionTask(pollStrategy, isParent, stats, 10000);
   }
 
   private AdminConsumptionTask getAdminConsumptionTask(
@@ -224,6 +213,12 @@ public class TestAdminConsumptionTask {
       long adminConsumptionCycleTimeoutMs) {
     MockInMemoryConsumer inMemoryKafkaConsumer =
         new MockInMemoryConsumer(inMemoryKafkaBroker, pollStrategy, mockKafkaConsumer);
+
+    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+    KafkaPubSubMessageDeserializer pubSubMessageDeserializer = new KafkaPubSubMessageDeserializer(
+        new OptimizedKafkaValueSerializer(),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
 
     return new AdminConsumptionTask(
         clusterName,
@@ -239,7 +234,9 @@ public class TestAdminConsumptionTask {
         1,
         Optional.empty(),
         adminConsumptionCycleTimeoutMs,
-        1);
+        1,
+        pubSubTopicRepository,
+        pubSubMessageDeserializer);
   }
 
   private Pair<TopicPartition, Long> getTopicPartitionOffsetPair(RecordMetadata recordMetadata) {
@@ -458,50 +455,6 @@ public class TestAdminConsumptionTask {
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
-  }
-
-  /**
-   * This test is flaky on slower hardware, with a short timeout ):
-   */
-  @Test(timeOut = TIMEOUT * 6)
-  public void testSkipMessageEndToEnd() throws ExecutionException, InterruptedException, IOException {
-    try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
-        KafkaBrokerWrapper kafka = ServiceFactory.getKafkaBroker(zkServer);
-        TopicManager topicManager = new TopicManager(
-            DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
-            100,
-            0L,
-            IntegrationTestPushUtils.getVeniceConsumerFactory(kafka))) {
-      String adminTopic = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
-      topicManager.createTopic(adminTopic, 1, 1, true);
-      String storeName = "test-store";
-      try (
-          VeniceControllerWrapper controller =
-              ServiceFactory.getVeniceController(new VeniceControllerCreateOptions.Builder(clusterName, kafka).build());
-          VeniceWriter<byte[], byte[], byte[]> writer =
-              TestUtils.getVeniceWriterFactory(kafka.getAddress()).createBasicVeniceWriter(adminTopic)) {
-        byte[] message = getStoreCreationMessage(clusterName, storeName, owner, "invalid_key_schema", valueSchema, 1); // This
-                                                                                                                       // name
-                                                                                                                       // is
-                                                                                                                       // special
-        long badOffset = writer.put(new byte[0], message, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
-            .get()
-            .offset();
-
-        byte[] goodMessage = getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 2);
-        writer.put(new byte[0], goodMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-
-        Thread.sleep(5000); // Non deterministic, but whatever. This should never fail.
-        Assert.assertFalse(controller.getVeniceAdmin().hasStore(clusterName, storeName));
-
-        try (ControllerClient controllerClient = new ControllerClient(clusterName, controller.getControllerUrl())) {
-          controllerClient.skipAdminMessage(Long.toString(badOffset), false);
-        }
-        TestUtils.waitForNonDeterministicAssertion(TIMEOUT * 3, TimeUnit.MILLISECONDS, () -> {
-          Assert.assertTrue(controller.getVeniceAdmin().hasStore(clusterName, storeName));
-        });
-      }
-    }
   }
 
   @Test(timeOut = TIMEOUT)

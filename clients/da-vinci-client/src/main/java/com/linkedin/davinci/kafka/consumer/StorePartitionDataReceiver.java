@@ -5,18 +5,18 @@ import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.ExceptionUtils;
 import java.util.List;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.common.TopicPartition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
 public class StorePartitionDataReceiver
-    implements ConsumedDataReceiver<List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> {
+    implements ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> {
   private final StoreIngestionTask storeIngestionTask;
-  private final TopicPartition topicPartition;
+  private final PubSubTopicPartition topicPartition;
   private final String kafkaUrl;
   private final int kafkaClusterId;
   private final Logger LOGGER;
@@ -25,7 +25,7 @@ public class StorePartitionDataReceiver
 
   public StorePartitionDataReceiver(
       StoreIngestionTask storeIngestionTask,
-      TopicPartition topicPartition,
+      PubSubTopicPartition topicPartition,
       String kafkaUrl,
       int kafkaClusterId) {
     this.storeIngestionTask = Validate.notNull(storeIngestionTask);
@@ -37,7 +37,7 @@ public class StorePartitionDataReceiver
   }
 
   @Override
-  public void write(List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> consumedData) throws Exception {
+  public void write(List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> consumedData) throws Exception {
     receivedRecordsCount += consumedData.size();
     try {
       /**
@@ -86,6 +86,11 @@ public class StorePartitionDataReceiver
   @Override
   public void notifyOfTopicDeletion(String topicName) {
     storeIngestionTask.setLastConsumerException(new VeniceException("Topic " + topicName + " got deleted."));
+  }
+
+  @Override
+  public PubSubTopicPartition getPubSubTopicPartition() {
+    return topicPartition;
   }
 
   private void handleDataReceiverException(Exception e) throws Exception {

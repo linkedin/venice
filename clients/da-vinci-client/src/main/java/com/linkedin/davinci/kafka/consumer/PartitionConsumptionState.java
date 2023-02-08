@@ -4,11 +4,14 @@ import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.utils.ByteArrayKey;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.Put;
-import com.linkedin.venice.kafka.protocol.TopicSwitch;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
@@ -64,7 +67,7 @@ public class PartitionConsumptionState {
    * In-memory cache for the TopicSwitch in {@link com.linkedin.venice.kafka.protocol.state.StoreVersionState};
    * make sure to keep the in-memory state and StoreVersionState in sync.
    */
-  private TopicSwitch topicSwitch = null;
+  private TopicSwitchWrapper topicSwitch = null;
 
   /**
    * The following priorities are used to store the progress of processed records since it is not efficient to
@@ -357,11 +360,11 @@ public class PartitionConsumptionState {
   /**
    * Update the in-memory state for TopicSwitch whenever encounter a new TopicSwitch message or after a restart.
    */
-  public void setTopicSwitch(TopicSwitch topicSwitch) {
+  public void setTopicSwitch(TopicSwitchWrapper topicSwitch) {
     this.topicSwitch = topicSwitch;
   }
 
-  public TopicSwitch getTopicSwitch() {
+  public TopicSwitchWrapper getTopicSwitch() {
     return this.topicSwitch;
   }
 
@@ -475,12 +478,20 @@ public class PartitionConsumptionState {
     return removed;
   }
 
-  public int getSourceTopicPartition(String topic) {
-    if (Version.isRealTimeTopic(topic)) {
+  public int getSourceTopicPartitionNumber(PubSubTopic topic) {
+    if (topic.isRealTime()) {
       return getUserPartition();
     } else {
       return getPartition();
     }
+  }
+
+  public PubSubTopicPartition getSourceTopicPartition(PubSubTopic topic) {
+    /**
+     * TODO: Consider whether the {@link PubSubTopicPartition} instance might be cacheable.
+     * It might not be easily cacheable if we pass different topics as input param (which it seems we do).
+     */
+    return new PubSubTopicPartitionImpl(topic, getSourceTopicPartitionNumber(topic));
   }
 
   public int getTransientRecordMapSize() {
@@ -603,8 +614,9 @@ public class PartitionConsumptionState {
    * 2. if currently leader should consume from version topic, return either remote VT offset or local VT offset, depending
    *    on whether the remote consumption flag is on.
    */
-  public long getLeaderOffset(String kafkaURL) {
-    if (offsetRecord.getLeaderTopic() != null && !Version.isVersionTopic(offsetRecord.getLeaderTopic())) {
+  public long getLeaderOffset(String kafkaURL, PubSubTopicRepository pubSubTopicRepository) {
+    PubSubTopic leaderTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
+    if (leaderTopic != null && !leaderTopic.isVersionTopic()) {
       return getLatestProcessedUpstreamRTOffset(kafkaURL);
     } else {
       return consumeRemotely()

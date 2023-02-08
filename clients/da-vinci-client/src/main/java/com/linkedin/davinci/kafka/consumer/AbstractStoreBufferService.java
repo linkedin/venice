@@ -2,8 +2,9 @@ package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.service.AbstractVeniceService;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
 
 
 /**
@@ -11,7 +12,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
  */
 public abstract class AbstractStoreBufferService extends AbstractVeniceService {
   public abstract void putConsumerRecord(
-      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       StoreIngestionTask ingestionTask,
       LeaderProducedRecordContext leaderProducedRecordContext,
       int subPartition,
@@ -22,7 +23,8 @@ public abstract class AbstractStoreBufferService extends AbstractVeniceService {
    * This method will wait for all the messages to be processed (persisted to disk) that are already
    * queued up to drainer till now.
    */
-  public abstract void drainBufferedRecordsFromTopicPartition(String topic, int partition) throws InterruptedException;
+  public abstract void drainBufferedRecordsFromTopicPartition(PubSubTopicPartition topicPartition)
+      throws InterruptedException;
 
   public abstract int getDrainerCount();
 

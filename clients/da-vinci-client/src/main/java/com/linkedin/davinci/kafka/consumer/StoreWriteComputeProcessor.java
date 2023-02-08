@@ -12,7 +12,6 @@ import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
 import java.util.Map;
-import java.util.Optional;
 import javax.annotation.Nonnull;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -46,7 +45,7 @@ public class StoreWriteComputeProcessor {
   /**
    * Apply Update operation on the current value record.
    *
-   * @param currValue value record that is currently stored on this Venice server. It is {@link Optional#empty()} when there
+   * @param currValue value record that is currently stored on this Venice server. It is null when there
    *                  is currently no value stored on this Venice server.
    * @param writeComputeBytes serialized write-compute operation.
    * @param writerValueSchemaId ID of the writer value schema.
@@ -57,7 +56,7 @@ public class StoreWriteComputeProcessor {
    * @return Bytes of partially updated original value.
    */
   public byte[] applyWriteCompute(
-      Optional<GenericRecord> currValue,
+      GenericRecord currValue,
       int writerValueSchemaId,
       int readerValueSchemaId,
       ByteBuffer writeComputeBytes,

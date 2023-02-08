@@ -12,7 +12,6 @@ import com.linkedin.venice.schema.SchemaUtils;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -29,7 +28,7 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
   @Override
   public GenericRecord updateValueRecord(
       Schema valueSchema,
-      Optional<GenericRecord> currValue,
+      GenericRecord currValue,
       GenericRecord writeComputeRecord) {
     if (valueSchema.getType() != Schema.Type.RECORD) {
       throw new IllegalStateException("Expect a Record value schema. Got: " + valueSchema);
@@ -41,7 +40,7 @@ public class WriteComputeHandlerV1 implements WriteComputeHandler {
           "Write Compute only support partial update. Got unexpected Write Compute record: " + writeComputeRecord);
     }
 
-    final GenericRecord updatedValue = currValue.orElseGet(() -> SchemaUtils.createGenericRecord(valueSchema));
+    final GenericRecord updatedValue = currValue == null ? SchemaUtils.createGenericRecord(valueSchema) : currValue;
     for (Schema.Field valueField: valueSchema.getFields()) {
       final String valueFieldName = valueField.name();
       Object writeComputeFieldValue = writeComputeRecord.get(valueFieldName);

@@ -10,9 +10,7 @@ import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
-import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.serialization.KafkaKeySerializer;
-import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
+import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -25,6 +23,7 @@ import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 
 
 /**
@@ -61,15 +60,17 @@ public class DumpAdminMessages {
       int curMsgCnt = 0;
       DateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss z");
       dateFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
+      KafkaMessageEnvelope messageEnvelope = null;
+      OptimizedKafkaValueSerializer valueDeserializer = new OptimizedKafkaValueSerializer();
       while (curMsgCnt < messageCnt) {
         ConsumerRecords records = consumer.poll(1000); // 1 second
         if (records.isEmpty()) {
           break;
         }
-        Iterator<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> recordsIterator = records.iterator();
+        Iterator<ConsumerRecord<byte[], byte[]>> recordsIterator = records.iterator();
         while (recordsIterator.hasNext()) {
-          ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record = recordsIterator.next();
-          KafkaMessageEnvelope messageEnvelope = record.value();
+          ConsumerRecord<byte[], byte[]> record = recordsIterator.next();
+          messageEnvelope = valueDeserializer.deserialize(record.value(), messageEnvelope);
           // check message type
           MessageType messageType = MessageType.valueOf(messageEnvelope);
           if (messageType.equals(MessageType.PUT)) {
@@ -77,7 +78,7 @@ public class DumpAdminMessages {
               break;
             }
             Put put = (Put) messageEnvelope.payloadUnion;
-            AdminOperation adminMessage = deserializer.deserialize(put.putValue.array(), put.schemaId);
+            AdminOperation adminMessage = deserializer.deserialize(put.putValue, put.schemaId);
             AdminOperationInfo adminOperationInfo = new AdminOperationInfo();
             adminOperationInfo.offset = record.offset();
             adminOperationInfo.schemaId = put.schemaId;
@@ -125,13 +126,8 @@ public class DumpAdminMessages {
     kafkaConsumerProperties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafkaUrl);
     kafkaConsumerProperties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
     kafkaConsumerProperties.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
-    // This is a temporary fix for the issue described here
-    // https://stackoverflow.com/questions/37363119/kafka-producer-org-apache-kafka-common-serialization-stringserializer-could-no
-    // In our case "com.linkedin.venice.serialization.KafkaKeySerializer" class can not be found
-    // because class loader has no venice-common in class path. This can be only reproduced on JDK11
-    // Trying to avoid class loading via Kafka's ConfigDef class
-    kafkaConsumerProperties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class);
-    kafkaConsumerProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, KafkaValueSerializer.class);
+    kafkaConsumerProperties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
+    kafkaConsumerProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
 
     return kafkaConsumerProperties;
   }

@@ -9,15 +9,12 @@ import com.linkedin.venice.hadoop.ssl.UserCredentialsFactory;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerFactoryImpl;
-import com.linkedin.venice.serialization.KafkaKeySerializer;
-import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
 import java.util.Properties;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.kafka.clients.CommonClientConfigs;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
 
 
 public class KafkaInputUtils {
@@ -49,12 +46,5 @@ public class KafkaInputUtils {
         .setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, config.get(KAFKA_INPUT_BROKER_URL));
 
     return new KafkaConsumerFactoryImpl(new VeniceProperties(consumerFactoryProperties));
-  }
-
-  public static Properties getConsumerProperties() {
-    Properties clonedProperties = new Properties();
-    clonedProperties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class);
-    clonedProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, OptimizedKafkaValueSerializer.class);
-    return clonedProperties;
   }
 }

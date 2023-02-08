@@ -58,7 +58,7 @@ public class RealTimeTopicSwitcherRewindTest {
     when(topicReplicator.getVeniceWriterFactory()).thenReturn(veniceWriterFactory);
     when(topicReplicator.getTimer()).thenReturn(mockTime);
     when(topicManager.containsTopicAndAllPartitionsAreOnline(anyString())).thenReturn(true);
-    when(veniceWriterFactory.createBasicVeniceWriter(anyString(), any(Time.class))).thenReturn(veniceWriter);
+    when(veniceWriterFactory.<byte[], byte[], byte[]>createVeniceWriter(any())).thenReturn(veniceWriter);
 
     // Methods under test
     doCallRealMethod().when(topicReplicator).ensurePreconditions(anyString(), anyString(), any(), any());

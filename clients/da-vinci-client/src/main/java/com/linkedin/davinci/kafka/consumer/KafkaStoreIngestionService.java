@@ -37,6 +37,7 @@ import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.kafka.KafkaClientFactory.MetricsParameters;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumer;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.meta.ClusterInfoProvider;
 import com.linkedin.venice.meta.Instance;
@@ -49,9 +50,12 @@ import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.schema.SchemaReader;
-import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
@@ -69,6 +73,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ResourceAutoClosableLockManager;
+import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import com.linkedin.venice.writer.ApacheKafkaProducer;
 import com.linkedin.venice.writer.KafkaProducerWrapper;
 import com.linkedin.venice.writer.SharedKafkaProducerService;
@@ -172,6 +177,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final StorageEngineBackedCompressorFactory compressorFactory;
 
   private final ResourceAutoClosableLockManager<String> topicLockManager;
+
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   public KafkaStoreIngestionService(
       StorageEngineRepository storageEngineRepository,
@@ -407,6 +414,14 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
               + "may not be killed if admin helix messaging channel is disabled");
     }
 
+    // TODO: Wire configs into these params
+    KafkaValueSerializer kafkaValueSerializer = new OptimizedKafkaValueSerializer();
+    kafkaMessageEnvelopeSchemaReader.ifPresent(kafkaValueSerializer::setSchemaReader);
+    KafkaPubSubMessageDeserializer pubSubDeserializer = new KafkaPubSubMessageDeserializer(
+        kafkaValueSerializer,
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
+
     aggKafkaConsumerService = new AggKafkaConsumerService(
         veniceConsumerFactory,
         serverConfig,
@@ -414,7 +429,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         recordsThrottler,
         kafkaClusterBasedRecordThrottler,
         metricsRepository,
-        new MetadataRepoBasedTopicExistingCheckerImpl(this.getMetadataRepo()));
+        new MetadataRepoBasedTopicExistingCheckerImpl(this.getMetadataRepo()),
+        pubSubDeserializer);
     /**
      * After initializing a {@link AggKafkaConsumerService} service, it doesn't contain KafkaConsumerService yet until
      * a new Kafka cluster is registered; here we explicitly create KafkaConsumerService for the local Kafka cluster.
@@ -471,6 +487,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setMetaStoreWriter(metaStoreWriter)
         .setCompressorFactory(compressorFactory)
         .setVeniceViewWriterFactory(viewWriterFactory)
+        .setPubSubTopicRepository(pubSubTopicRepository)
         .build();
   }
 
@@ -666,7 +683,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       int maxVersionNumber = Math.max(maxVersionNumberFromMetadataRepo, maxVersionNumberFromTopicName);
       updateStatsEmission(topicNameToIngestionTaskMap, storeName, maxVersionNumber);
 
-      consumerTask.subscribePartition(topic, partitionId, leaderState);
+      consumerTask.subscribePartition(
+          new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId),
+          leaderState);
     }
     LOGGER.info("Started Consuming - Kafka Partition: {}-{}.", topic, partitionId);
   }
@@ -697,7 +716,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
       StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
       if (consumerTask != null && consumerTask.isRunning()) {
-        consumerTask.promoteToLeader(topic, partitionId, checker);
+        consumerTask
+            .promoteToLeader(new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId), checker);
       } else {
         LOGGER.warn("Ignoring standby to leader transition message for Topic {} Partition {}", topic, partitionId);
       }
@@ -714,7 +734,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
       StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
       if (consumerTask != null && consumerTask.isRunning()) {
-        consumerTask.demoteToStandby(topic, partitionId, checker);
+        consumerTask
+            .demoteToStandby(new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId), checker);
       } else {
         LOGGER.warn("Ignoring leader to standby transition message for Topic {} Partition {}", topic, partitionId);
       }
@@ -807,7 +828,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
       StoreIngestionTask ingestionTask = topicNameToIngestionTaskMap.get(topic);
       if (ingestionTask != null && ingestionTask.isRunning()) {
-        ingestionTask.unSubscribePartition(topic, partitionId);
+        ingestionTask
+            .unSubscribePartition(new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
       } else {
         LOGGER.warn("Ignoring stop consumption message for Topic {} Partition {}", topic, partitionId);
       }
@@ -998,14 +1020,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     kafkaConsumerProperties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
     // Venice is persisting offset in local offset db.
     kafkaConsumerProperties.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
-    // This is a temporary fix for the issue described here
-    // https://stackoverflow.com/questions/37363119/kafka-producer-org-apache-kafka-common-serialization-stringserializer-could-no
-    // In our case "com.linkedin.venice.serialization.KafkaKeySerializer" and
-    // "com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer" classes can not be found
-    // because class loader has no venice-common in class path. This can be only reproduced on JDK11
-    // Trying to avoid class loading via Kafka's ConfigDef class
-    kafkaConsumerProperties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class);
-    kafkaConsumerProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, OptimizedKafkaValueSerializer.class);
     kafkaConsumerProperties.setProperty(
         ConsumerConfig.FETCH_MIN_BYTES_CONFIG,
         String.valueOf(serverConfig.getKafkaFetchMinSizePerSecond()));
@@ -1028,10 +1042,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     kafkaConsumerProperties.setProperty(
         ApacheKafkaConsumer.CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG,
         String.valueOf(serverConfig.getKafkaPollRetryBackoffMs()));
-    if (kafkaMessageEnvelopeSchemaReader.isPresent()) {
-      kafkaConsumerProperties
-          .put(InternalAvroSpecificSerializer.VENICE_SCHEMA_READER_CONFIG, kafkaMessageEnvelopeSchemaReader.get());
-    }
 
     return kafkaConsumerProperties;
   }
@@ -1143,7 +1153,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     String topic = veniceStore.getStoreVersionName();
     StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
     if (consumerTask != null && consumerTask.isRunning()) {
-      consumerTask.resetPartitionConsumptionOffset(topic, partitionId);
+      consumerTask.resetPartitionConsumptionOffset(
+          new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
     }
     LOGGER.info("Offset reset to beginning - Kafka Partition: {}-{}.", topic, partitionId);
   }

@@ -7,6 +7,8 @@ import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.ByteArrayOutputStream;
@@ -36,6 +38,8 @@ public class OffsetRecord {
   private static final String PARTITION_STATE_STRING = "PartitionState";
   private final PartitionState partitionState;
   private final InternalAvroSpecificSerializer<PartitionState> serializer;
+
+  private PubSubTopic leaderPubSubTopic;
 
   public OffsetRecord(PartitionState partitionState, InternalAvroSpecificSerializer<PartitionState> serializer) {
     this.partitionState = partitionState;
@@ -166,8 +170,9 @@ public class OffsetRecord {
     return databaseInfo;
   }
 
-  public void setLeaderTopic(String leaderTopic) {
-    this.partitionState.leaderTopic = leaderTopic;
+  public void setLeaderTopic(PubSubTopic leaderTopic) {
+    this.partitionState.leaderTopic = leaderTopic.getName();
+    this.leaderPubSubTopic = leaderTopic;
   }
 
   public void setLeaderUpstreamOffset(String upstreamKafkaURL, long leaderOffset) {
@@ -186,6 +191,13 @@ public class OffsetRecord {
 
   public String getLeaderTopic() {
     return (partitionState.leaderTopic != null) ? partitionState.leaderTopic.toString() : null;
+  }
+
+  public PubSubTopic getLeaderTopic(PubSubTopicRepository pubSubTopicRepository) {
+    if (this.leaderPubSubTopic == null && this.partitionState.leaderTopic != null) {
+      this.leaderPubSubTopic = pubSubTopicRepository.getTopic(this.partitionState.leaderTopic.toString());
+    }
+    return this.leaderPubSubTopic;
   }
 
   /**

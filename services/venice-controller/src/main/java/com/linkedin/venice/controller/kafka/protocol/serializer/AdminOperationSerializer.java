@@ -7,6 +7,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.Utils;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.avro.Schema;
@@ -42,17 +43,18 @@ public class AdminOperationSerializer {
     }
   }
 
-  public AdminOperation deserialize(byte[] bytes, int writerSchemaId) {
+  public AdminOperation deserialize(ByteBuffer byteBuffer, int writerSchemaId) {
     if (!PROTOCOL_MAP.containsKey(writerSchemaId)) {
       throw new VeniceMessageException("Writer schema: " + writerSchemaId + " doesn't exist");
     }
     SpecificDatumReader<AdminOperation> reader =
         new SpecificDatumReader<>(PROTOCOL_MAP.get(writerSchemaId), AdminOperation.getClassSchema());
-    Decoder decoder = DECODER_FACTORY.createBinaryDecoder(bytes, null);
+    Decoder decoder = AvroCompatibilityHelper
+        .newBinaryDecoder(byteBuffer.array(), byteBuffer.position(), byteBuffer.remaining(), null);
     try {
       return reader.read(null, decoder);
     } catch (IOException e) {
-      throw new VeniceMessageException("Could not deserialize bytes back into AdminOperation object" + e);
+      throw new VeniceMessageException("Could not deserialize bytes back into AdminOperation object", e);
     }
   }
 

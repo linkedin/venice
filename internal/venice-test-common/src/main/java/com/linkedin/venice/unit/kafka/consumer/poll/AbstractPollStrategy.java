@@ -4,7 +4,8 @@ import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
-import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.serialization.KafkaKeySerializer;
+import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaMessage;
 import com.linkedin.venice.utils.ByteUtils;
@@ -28,6 +29,9 @@ public abstract class AbstractPollStrategy implements PollStrategy {
   private final int maxMessagePerPoll;
   protected final boolean keepPollingWhenEmpty;
 
+  private final KafkaValueSerializer valueSerializer = new KafkaValueSerializer();
+  private final KafkaKeySerializer keySerializer = new KafkaKeySerializer();
+
   public AbstractPollStrategy(boolean keepPollingWhenEmpty) {
     this(keepPollingWhenEmpty, DEFAULT_MAX_MESSAGES_PER_POLL);
   }
@@ -39,12 +43,12 @@ public abstract class AbstractPollStrategy implements PollStrategy {
 
   protected abstract Pair<TopicPartition, Long> getNextPoll(Map<TopicPartition, Long> offsets);
 
-  public synchronized ConsumerRecords poll(
+  public synchronized ConsumerRecords<byte[], byte[]> poll(
       InMemoryKafkaBroker broker,
       Map<TopicPartition, Long> offsets,
       long timeout) {
 
-    Map<TopicPartition, List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> records = new HashMap<>();
+    Map<TopicPartition, List<ConsumerRecord<byte[], byte[]>>> records = new HashMap<>();
 
     long startTime = System.currentTimeMillis();
     int numberOfRecords = 0;
@@ -86,7 +90,7 @@ public abstract class AbstractPollStrategy implements PollStrategy {
           }
         }
 
-        ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord = new ConsumerRecord<>(
+        ConsumerRecord<byte[], byte[]> consumerRecord = new ConsumerRecord<>(
             topic,
             partition,
             nextOffset,
@@ -95,8 +99,8 @@ public abstract class AbstractPollStrategy implements PollStrategy {
             -1, // checksum
             -1, // serializedKeySize
             -1, // serializedValueSize
-            message.get().key,
-            message.get().value);
+            keySerializer.serialize(null, message.get().key),
+            valueSerializer.serialize(null, message.get().value));
         if (!records.containsKey(topicPartition)) {
           records.put(topicPartition, new ArrayList<>());
         }

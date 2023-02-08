@@ -1,6 +1,10 @@
 package com.linkedin.venice.ingestion.control;
 
+import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
+import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR_RT_TOPICS;
 import static com.linkedin.venice.VeniceConstants.REWIND_TIME_DECIDED_BY_SERVER;
+import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_REPLICATION_FACTOR;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -40,6 +44,8 @@ public class RealTimeTopicSwitcher {
   private final String destKafkaBootstrapServers;
   private final VeniceWriterFactory veniceWriterFactory;
   private final Time timer;
+  private final Integer kafkaReplicationFactorForRTTopics;
+  private final Optional<Integer> minSyncReplicasForRTTopics;
 
   public RealTimeTopicSwitcher(
       TopicManager topicManager,
@@ -51,6 +57,10 @@ public class RealTimeTopicSwitcher {
     this.destKafkaBootstrapServers = veniceProperties.getBoolean(ConfigKeys.SSL_TO_KAFKA, false)
         ? veniceProperties.getString(ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS)
         : veniceProperties.getString(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS);
+    int kafkaReplicationFactor = veniceProperties.getInt(KAFKA_REPLICATION_FACTOR, DEFAULT_KAFKA_REPLICATION_FACTOR);
+    this.kafkaReplicationFactorForRTTopics =
+        veniceProperties.getInt(KAFKA_REPLICATION_FACTOR_RT_TOPICS, kafkaReplicationFactor);
+    this.minSyncReplicasForRTTopics = veniceProperties.getOptionalInt(KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS);
   }
 
   /**
@@ -137,14 +147,17 @@ public class RealTimeTopicSwitcher {
       } else {
         partitionCount = store.getPartitionCount();
       }
-      int replicationFactor = getTopicManager().getReplicationFactor(topicWhereToSendTheTopicSwitch);
+      int replicationFactor = Version.isRealTimeTopic(srcTopicName)
+          ? kafkaReplicationFactorForRTTopics
+          : getTopicManager().getReplicationFactor(topicWhereToSendTheTopicSwitch);
+      Optional<Integer> minISR = Version.isRealTimeTopic(srcTopicName) ? minSyncReplicasForRTTopics : Optional.empty();
       getTopicManager().createTopic(
           srcTopicName,
           partitionCount,
           replicationFactor,
           TopicManager.getExpectedRetentionTimeInMs(store, hybridStoreConfig.get()),
           false, // Note: do not enable RT compaction! Might make jobs in Online/Offline model stuck
-          Optional.empty(),
+          minISR,
           false);
     } else {
       /**

@@ -15,6 +15,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 import java.util.Optional;
 import org.apache.avro.SchemaParseException;
@@ -364,5 +365,31 @@ public class TestHelixReadWriteSchemaRepository {
     schemaRepo.addValueSchema(storeName, valueSchemaStr2);
     int schemaId = schemaRepo.getValueSchemaId(storeName, valueSchemaStr2);
     Assert.assertEquals(schemaId, 2, "getValueSchemaId did not get the correct schema which is an exact match");
+  }
+
+  @Test
+  public void testGetDerivedSchemaAvroString() {
+    String storeName = "test_store1";
+    String valueSchemaStr1 = "{" + "\"fields\": ["
+        + "   {\"default\": \"\", \"doc\": \"test field\", \"name\": \"testField1\", \"type\": \"string\"},"
+        + "   {\"default\": 0, \"doc\": \"test field two\", \"name\": \"testField2\", \"type\": \"float\"}" + "   ],"
+        + " \"name\": \"testObject\", \"type\": \"record\"" + "}";
+
+    String derivedSchemaStr = "{" + "\"fields\": ["
+        + "   {\"default\": \"\", \"doc\": \"test field\", \"name\": \"testField1\", \"type\": \"string\"},"
+        + "   {\"default\": -1, \"doc\": \"test field two\", \"name\": \"testField2\", \"type\": \"float\"}" + "   ],"
+        + " \"name\": \"testObject\", \"type\": \"record\"" + "}";
+    String derivedSchemaAvroStr = "{" + "\"fields\": ["
+        + "   {\"default\": \"\", \"doc\": \"test field\", \"name\": \"testField1\", \"type\": \"string\", \"avro.java.string\": \"string\"},"
+        + "   {\"default\": -1, \"doc\": \"test field two\", \"name\": \"testField2\", \"type\": \"float\"}" + "   ],"
+        + " \"name\": \"testObject\", \"type\": \"record\"" + "}";
+    createStore(storeName);
+    schemaRepo.addValueSchema(storeName, valueSchemaStr1);
+    schemaRepo.addDerivedSchema(storeName, derivedSchemaStr, 1);
+    Pair<Integer, Integer> schemaId = schemaRepo.getDerivedSchemaId(storeName, derivedSchemaAvroStr);
+    Assert.assertEquals(
+        schemaId.getSecond().intValue(),
+        1,
+        "getValueSchemaId did not get the correct schema which is an exact match");
   }
 }

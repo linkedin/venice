@@ -23,7 +23,6 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -71,7 +70,7 @@ public class MergeConflictResolver {
   /**
    * Perform conflict resolution when the incoming operation is a PUT operation.
    * @param oldValueBytesProvider A Lazy supplier of currently persisted value bytes.
-   * @param rmdWithValueSchemaIdOptional The replication metadata of the currently persisted value and the value schema ID.
+   * @param rmdWithValueSchemaID The replication metadata of the currently persisted value and the value schema ID (or null)
    * @param newValueBytes The value in the incoming record.
    * @param putOperationTimestamp The logical timestamp of the incoming record.
    * @param newValueSchemaID The schema id of the value in the incoming record.
@@ -86,14 +85,14 @@ public class MergeConflictResolver {
    */
   public MergeConflictResult put(
       Lazy<ByteBuffer> oldValueBytesProvider,
-      Optional<RmdWithValueSchemaId> rmdWithValueSchemaIdOptional,
+      RmdWithValueSchemaId rmdWithValueSchemaID,
       ByteBuffer newValueBytes,
       final long putOperationTimestamp,
       final int newValueSchemaID,
       final long newValueSourceOffset,
       final int newValueSourceBrokerID,
       final int newValueColoID) {
-    if (!rmdWithValueSchemaIdOptional.isPresent()) {
+    if (rmdWithValueSchemaID == null) {
       // TODO: Honor BatchConflictResolutionPolicy when replication metadata is null
       return putWithoutRmd(
           newValueBytes,
@@ -102,7 +101,6 @@ public class MergeConflictResolver {
           newValueSourceOffset,
           newValueSourceBrokerID);
     }
-    RmdWithValueSchemaId rmdWithValueSchemaID = rmdWithValueSchemaIdOptional.get();
     if (rmdWithValueSchemaID.getValueSchemaId() <= 0) {
       throw new VeniceException(
           "Invalid schema Id of old value found when replication metadata exists for store = " + storeName
@@ -162,7 +160,7 @@ public class MergeConflictResolver {
       return MergeConflictResult.getIgnoredResult();
     } else {
       return new MergeConflictResult(
-          Optional.ofNullable(mergedByteValueAndRmd.getValue()),
+          mergedByteValueAndRmd.getValue(),
           newValueSchemaID,
           true,
           mergedByteValueAndRmd.getRmd());
@@ -214,7 +212,7 @@ public class MergeConflictResolver {
         newValueSourceOffset,
         newValueSourceBrokerID);
     ByteBuffer mergedValueBytes = serializeMergedValueRecord(mergeResultValueSchema, mergedValueAndRmd.getValue());
-    return new MergeConflictResult(Optional.of(mergedValueBytes), newValueSchemaID, false, mergedValueAndRmd.getRmd());
+    return new MergeConflictResult(mergedValueBytes, newValueSchemaID, false, mergedValueAndRmd.getRmd());
   }
 
   /**
@@ -372,9 +370,9 @@ public class MergeConflictResolver {
     // A record which didn't come from an RT topic or has null metadata should have no offset vector.
     newRmd.put(
         REPLICATION_CHECKPOINT_VECTOR_FIELD,
-        MergeUtils.mergeOffsetVectors(Optional.empty(), newValueSourceOffset, newValueSourceBrokerID));
+        MergeUtils.mergeOffsetVectors(null, newValueSourceOffset, newValueSourceBrokerID));
 
-    return new MergeConflictResult(Optional.of(newValue), newValueSchemaID, true, newRmd);
+    return new MergeConflictResult(newValue, newValueSchemaID, true, newRmd);
   }
 
   /**
@@ -392,23 +390,23 @@ public class MergeConflictResolver {
    */
   public MergeConflictResult delete(
       Lazy<ByteBuffer> oldValueBytesProvider,
-      Optional<RmdWithValueSchemaId> rmdWithValueSchemaID,
+      RmdWithValueSchemaId rmdWithValueSchemaID,
       final long deleteOperationTimestamp,
       final long deleteOperationSourceOffset,
       final int deleteOperationSourceBrokerID,
       final int deleteOperationColoID) {
     // TODO: Honor BatchConflictResolutionPolicy when replication metadata is null
-    if (!rmdWithValueSchemaID.isPresent()) {
+    if (rmdWithValueSchemaID == null) {
       return deleteWithoutRmd(deleteOperationTimestamp, deleteOperationSourceOffset, deleteOperationSourceBrokerID);
     }
-    final int oldValueSchemaID = rmdWithValueSchemaID.get().getValueSchemaId();
+    final int oldValueSchemaID = rmdWithValueSchemaID.getValueSchemaId();
     if (oldValueSchemaID <= 0) {
       throw new VeniceException(
           "Invalid schema ID of old value found when replication metadata exists for store " + storeName
               + "; invalid value schema ID: " + oldValueSchemaID);
     }
 
-    final GenericRecord oldRmdRecord = rmdWithValueSchemaID.get().getRmdRecord();
+    final GenericRecord oldRmdRecord = rmdWithValueSchemaID.getRmdRecord();
     final Object oldTimestampObject = oldRmdRecord.get(TIMESTAMP_FIELD_NAME);
     final RmdTimestampType rmdTimestampType = RmdUtils.getRmdTimestampType(oldTimestampObject);
 
@@ -453,8 +451,8 @@ public class MergeConflictResolver {
     newRmd.put(TIMESTAMP_FIELD_NAME, deleteOperationTimestamp);
     newRmd.put(
         REPLICATION_CHECKPOINT_VECTOR_FIELD,
-        MergeUtils.mergeOffsetVectors(Optional.empty(), newValueSourceOffset, deleteOperationSourceBrokerID));
-    return new MergeConflictResult(Optional.empty(), valueSchemaID, false, newRmd);
+        MergeUtils.mergeOffsetVectors(null, newValueSourceOffset, deleteOperationSourceBrokerID));
+    return new MergeConflictResult(null, valueSchemaID, false, newRmd);
   }
 
   private MergeConflictResult mergeDeleteWithValueLevelTimestamp(
@@ -477,7 +475,7 @@ public class MergeConflictResolver {
     if (mergedValueAndRmd.isUpdateIgnored()) {
       return MergeConflictResult.getIgnoredResult();
     } else {
-      return new MergeConflictResult(Optional.empty(), valueSchemaID, false, oldRmdRecord);
+      return new MergeConflictResult(null, valueSchemaID, false, oldRmdRecord);
     }
   }
 
@@ -503,18 +501,15 @@ public class MergeConflictResolver {
         deleteOperationColoID,
         deleteOperationSourceOffset,
         deleteOperationSourceBrokerID);
-    final Optional<ByteBuffer> mergedValueBytes;
-    if (mergedValueAndRmd.getValue() == null) {
-      mergedValueBytes = Optional.empty();
-    } else {
-      mergedValueBytes = Optional.of(serializeMergedValueRecord(oldValueSchema, mergedValueAndRmd.getValue()));
-    }
-    return new MergeConflictResult(mergedValueBytes, oldValueSchemaID, true, mergedValueAndRmd.getRmd());
+    final ByteBuffer mergedValueBytes = mergedValueAndRmd.getValue() == null
+        ? null
+        : serializeMergedValueRecord(oldValueSchema, mergedValueAndRmd.getValue());
+    return new MergeConflictResult(mergedValueBytes, oldValueSchemaID, false, mergedValueAndRmd.getRmd());
   }
 
   public MergeConflictResult update(
       Lazy<ByteBuffer> oldValueBytesProvider,
-      Optional<RmdWithValueSchemaId> rmdWithValueSchemaIdOptional,
+      RmdWithValueSchemaId rmdWithValueSchemaId,
       ByteBuffer updateBytes,
       final int incomingValueSchemaId,
       final int incomingUpdateProtocolVersion,
@@ -532,13 +527,11 @@ public class MergeConflictResolver {
         supersetValueSchemaEntry.getId(),
         incomingUpdateProtocolVersion,
         updateBytes);
-    if (ignoreNewUpdate(updateOperationTimestamp, writeComputeRecord, rmdWithValueSchemaIdOptional)) {
+    if (ignoreNewUpdate(updateOperationTimestamp, writeComputeRecord, rmdWithValueSchemaId)) {
       return MergeConflictResult.getIgnoredResult();
     }
-    ValueAndRmd<GenericRecord> oldValueAndRmd = prepareValueAndRmdForUpdate(
-        Optional.ofNullable(oldValueBytesProvider.get()),
-        rmdWithValueSchemaIdOptional,
-        supersetValueSchemaEntry);
+    ValueAndRmd<GenericRecord> oldValueAndRmd =
+        prepareValueAndRmdForUpdate(oldValueBytesProvider.get(), rmdWithValueSchemaId, supersetValueSchemaEntry);
 
     int oldValueSchemaID = oldValueAndRmd.getValueSchemaID();
     if (oldValueSchemaID == -1) {
@@ -553,12 +546,9 @@ public class MergeConflictResolver {
         newValueColoID,
         newValueSourceOffset,
         newValueSourceBrokerID);
-    final Optional<ByteBuffer> updatedValueBytes;
-    if (updatedValueAndRmd.getValue() == null) {
-      updatedValueBytes = Optional.empty();
-    } else {
-      updatedValueBytes = Optional.of(serializeMergedValueRecord(oldValueSchema, updatedValueAndRmd.getValue()));
-    }
+    final ByteBuffer updatedValueBytes = updatedValueAndRmd.getValue() == null
+        ? null
+        : serializeMergedValueRecord(oldValueSchema, updatedValueAndRmd.getValue());
     return new MergeConflictResult(updatedValueBytes, oldValueSchemaID, false, updatedValueAndRmd.getRmd());
   }
 
@@ -573,14 +563,12 @@ public class MergeConflictResolver {
   }
 
   private ValueAndRmd<GenericRecord> prepareValueAndRmdForUpdate(
-      Optional<ByteBuffer> oldValueOptional,
-      Optional<RmdWithValueSchemaId> rmdWithValueSchemaIdOptional,
+      ByteBuffer oldValueBytes,
+      RmdWithValueSchemaId rmdWithValueSchemaId,
       SchemaEntry readerValueSchemaEntry) {
-    if (oldValueOptional.isPresent() && (!rmdWithValueSchemaIdOptional.isPresent())) {
+    if (oldValueBytes != null && rmdWithValueSchemaId == null) {
       throw new IllegalArgumentException("If old value bytes present, value schema ID must present too.");
     }
-    ByteBuffer oldValueBytes = oldValueOptional.orElse(null);
-    RmdWithValueSchemaId rmdWithValueSchemaId = rmdWithValueSchemaIdOptional.orElse(null);
     if (oldValueBytes == null && rmdWithValueSchemaId == null) {
       // Value and RMD both never existed
       GenericRecord newValue = SchemaUtils.createGenericRecord(readerValueSchemaEntry.getSchema());
@@ -673,8 +661,7 @@ public class MergeConflictResolver {
   private boolean ignoreNewUpdate(
       final long updateOperationTimestamp,
       GenericRecord writeComputeRecord,
-      Optional<RmdWithValueSchemaId> rmdWithValueSchemaIdOptional) {
-    RmdWithValueSchemaId rmdWithValueSchemaId = rmdWithValueSchemaIdOptional.orElse(null);
+      RmdWithValueSchemaId rmdWithValueSchemaId) {
     if (rmdWithValueSchemaId == null) {
       return false;
     }

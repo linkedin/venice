@@ -82,6 +82,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
+import java.nio.ByteBuffer;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -302,7 +303,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     Assert.assertEquals(keyBytes.length, 0);
 
-    AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+    AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
     Assert.assertEquals(adminMessage.operationType, AdminMessageType.STORE_CREATION.getValue());
 
     StoreCreation storeCreationMessage = (StoreCreation) adminMessage.payloadUnion;
@@ -378,7 +379,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       int schemaId = schemaCaptor.getValue();
       Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
       Assert.assertEquals(keyBytes.length, 0);
-      AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+      AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
       Assert.assertEquals(adminMessage.operationType, AdminMessageType.STORE_CREATION.getValue());
       StoreCreation storeCreationMessage = (StoreCreation) adminMessage.payloadUnion;
       Assert.assertEquals(storeCreationMessage.clusterName.toString(), cluster);
@@ -495,7 +496,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     Assert.assertEquals(keyBytes.length, 0);
 
-    AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+    AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
     Assert.assertEquals(adminMessage.operationType, AdminMessageType.VALUE_SCHEMA_CREATION.getValue());
 
     ValueSchemaCreation valueSchemaCreationMessage = (ValueSchemaCreation) adminMessage.payloadUnion;
@@ -532,7 +533,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
     verify(veniceWriter).put(any(), valueCaptor.capture(), schemaCaptor.capture());
 
-    AdminOperation adminMessage = adminOperationSerializer.deserialize(valueCaptor.getValue(), schemaCaptor.getValue());
+    AdminOperation adminMessage =
+        adminOperationSerializer.deserialize(ByteBuffer.wrap(valueCaptor.getValue()), schemaCaptor.getValue());
     DerivedSchemaCreation derivedSchemaCreation = (DerivedSchemaCreation) adminMessage.payloadUnion;
 
     Assert.assertEquals(derivedSchemaCreation.clusterName.toString(), clusterName);
@@ -570,7 +572,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     Assert.assertEquals(keyBytes.length, 0);
 
-    AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+    AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
     Assert.assertEquals(adminMessage.operationType, AdminMessageType.DISABLE_STORE_READ.getValue());
 
     DisableStoreRead disableStoreRead = (DisableStoreRead) adminMessage.payloadUnion;
@@ -606,7 +608,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     Assert.assertEquals(keyBytes.length, 0);
 
-    AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+    AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
     Assert.assertEquals(adminMessage.operationType, AdminMessageType.DISABLE_STORE_WRITE.getValue());
 
     PauseStore pauseStore = (PauseStore) adminMessage.payloadUnion;
@@ -662,7 +664,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     Assert.assertEquals(keyBytes.length, 0);
 
-    AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+    AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
     Assert.assertEquals(adminMessage.operationType, AdminMessageType.ENABLE_STORE_READ.getValue());
 
     EnableStoreRead enableStoreRead = (EnableStoreRead) adminMessage.payloadUnion;
@@ -698,7 +700,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     Assert.assertEquals(keyBytes.length, 0);
 
-    AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+    AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
     Assert.assertEquals(adminMessage.operationType, AdminMessageType.ENABLE_STORE_WRITE.getValue());
 
     ResumeStore resumeStore = (ResumeStore) adminMessage.payloadUnion;
@@ -739,7 +741,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     Assert.assertEquals(keyBytes.length, 0);
 
-    AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+    AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
     Assert.assertEquals(adminMessage.operationType, AdminMessageType.KILL_OFFLINE_PUSH_JOB.getValue());
 
     KillOfflinePushJob killJob = (KillOfflinePushJob) adminMessage.payloadUnion;
@@ -1766,7 +1768,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     Assert.assertEquals(keyBytes.length, 0);
 
-    AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+    AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
     Assert.assertEquals(adminMessage.operationType, AdminMessageType.UPDATE_STORE.getValue());
 
     UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
@@ -1796,7 +1798,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     verify(veniceWriter, times(2)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
     valueBytes = valueCaptor.getValue();
     schemaId = schemaCaptor.getValue();
-    adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+    adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
     updateStore = (UpdateStore) adminMessage.payloadUnion;
     Assert.assertEquals(updateStore.clusterName.toString(), clusterName);
     Assert.assertEquals(updateStore.storeName.toString(), storeName);
@@ -1830,7 +1832,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     verify(veniceWriter, times(3)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
     valueBytes = valueCaptor.getValue();
     schemaId = schemaCaptor.getValue();
-    adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+    adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
     updateStore = (UpdateStore) adminMessage.payloadUnion;
     Assert.assertEquals(updateStore.accessControlled, accessControlled);
 
@@ -1846,7 +1848,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     verify(veniceWriter, times(5)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
     valueBytes = valueCaptor.getValue();
     schemaId = schemaCaptor.getValue();
-    adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+    adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
     updateStore = (UpdateStore) adminMessage.payloadUnion;
     Assert.assertTrue(
         updateStore.nativeReplicationEnabled,
@@ -1891,7 +1893,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     verify(veniceWriter, times(1)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
     byte[] valueBytes = valueCaptor.getValue();
     int schemaId = schemaCaptor.getValue();
-    AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+    AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
     UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
     Assert.assertTrue(
         "dc1".equals(updateStore.nativeReplicationSourceFabric.toString()),
@@ -1981,7 +1983,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     Assert.assertEquals(keyBytes.length, 0);
 
-    AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+    AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
     Assert.assertEquals(adminMessage.operationType, AdminMessageType.DELETE_STORE.getValue());
 
     DeleteStore deleteStore = (DeleteStore) adminMessage.payloadUnion;
@@ -2451,7 +2453,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     Assert.assertEquals(keyBytes.length, 0);
 
-    AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+    AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
     Assert.assertEquals(adminMessage.operationType, AdminMessageType.UPDATE_STORE.getValue());
 
     UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;

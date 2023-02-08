@@ -1,11 +1,12 @@
-package com.linkedin.venice.pubsub.kafka;
+package com.linkedin.venice.pubsub;
 
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicType;
+import io.tehuti.utils.Utils;
 
 
-public class KafkaPubSubTopic implements PubSubTopic {
+public class PubSubTopicImpl implements PubSubTopic {
   private final String name;
   private final PubSubTopicType pubSubTopicType;
   private final String storeName;
@@ -16,8 +17,8 @@ public class KafkaPubSubTopic implements PubSubTopic {
    * instances can be gotten from, so that the internal state is computed just once, and then reused for the lifetime
    * of the topic.
    */
-  KafkaPubSubTopic(String name) {
-    this.name = name;
+  PubSubTopicImpl(String name) {
+    this.name = Utils.notNull(name);
     this.pubSubTopicType = PubSubTopicType.getPubSubTopicType(name);
     this.storeName = Version.parseStoreFromKafkaTopicName(name);
   }
@@ -34,5 +35,27 @@ public class KafkaPubSubTopic implements PubSubTopic {
   @Override
   public String getStoreName() {
     return storeName;
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) {
+      return true;
+    }
+    if (o == null || !(o instanceof PubSubTopic)) {
+      return false;
+    }
+    PubSubTopic that = (PubSubTopic) o;
+    return name.equals(that.getName());
+  }
+
+  @Override
+  public int hashCode() {
+    return name.hashCode();
+  }
+
+  @Override
+  public String toString() {
+    return this.name;
   }
 }

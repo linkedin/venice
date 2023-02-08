@@ -175,7 +175,7 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
       String storeName,
       VeniceCompressor compressor) {
     if (isChunked) {
-      key = ByteBuffer.wrap(ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(key));
+      key = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(key);
     }
     return ChunkingUtils.getFromStorage(
         this,

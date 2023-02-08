@@ -142,11 +142,15 @@ public class MainIngestionStorageMetadataService extends AbstractVeniceService i
 
   @Override
   public OffsetRecord getLastOffset(String topicName, int partitionId) throws VeniceException {
-    if (topicPartitionOffsetRecordMap.containsKey(topicName)) {
-      Map<Integer, OffsetRecord> partitionOffsetRecordMap = topicPartitionOffsetRecordMap.get(topicName);
-      return partitionOffsetRecordMap.getOrDefault(partitionId, new OffsetRecord(partitionStateSerializer));
+    Map<Integer, OffsetRecord> partitionOffsetRecordMap = topicPartitionOffsetRecordMap.get(topicName);
+    OffsetRecord offsetRecord = null;
+    if (partitionOffsetRecordMap != null) {
+      offsetRecord = partitionOffsetRecordMap.get(partitionId);
     }
-    return new OffsetRecord(partitionStateSerializer);
+    if (offsetRecord == null) {
+      return new OffsetRecord(partitionStateSerializer);
+    }
+    return offsetRecord;
   }
 
   /**
@@ -155,9 +159,8 @@ public class MainIngestionStorageMetadataService extends AbstractVeniceService i
   public void putOffsetRecord(String topicName, int partitionId, OffsetRecord record) {
     LOGGER.info("Updating OffsetRecord for {} {} {}", topicName, partitionId, record.getLocalVersionTopicOffset());
     Map<Integer, OffsetRecord> partitionOffsetRecordMap =
-        topicPartitionOffsetRecordMap.getOrDefault(topicName, new VeniceConcurrentHashMap<>());
+        topicPartitionOffsetRecordMap.computeIfAbsent(topicName, k -> new VeniceConcurrentHashMap<>());
     partitionOffsetRecordMap.put(partitionId, record);
-    topicPartitionOffsetRecordMap.put(topicName, partitionOffsetRecordMap);
   }
 
   /**
