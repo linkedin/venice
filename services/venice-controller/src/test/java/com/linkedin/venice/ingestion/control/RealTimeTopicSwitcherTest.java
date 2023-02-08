@@ -33,6 +33,8 @@ import org.testng.annotations.Test;
 
 
 public class RealTimeTopicSwitcherTest {
+  private static final int KAFKA_RF_FOR_RT_TOPICS = 6;
+  private static final int KAFKA_MIN_ISR_FOR_RT_TOPICS = 4;
   private RealTimeTopicSwitcher leaderStorageNodeReplicator;
   private TopicManager mockTopicManager;
   private VeniceWriterFactory mockVeniceWriterFactory;
@@ -44,6 +46,9 @@ public class RealTimeTopicSwitcherTest {
     mockVeniceWriterFactory = mock(VeniceWriterFactory.class);
     Properties properties = new Properties();
     properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, "dummy");
+    properties.put(ConfigKeys.KAFKA_REPLICATION_FACTOR, "3");
+    properties.put(ConfigKeys.KAFKA_REPLICATION_FACTOR_RT_TOPICS, Integer.toString(KAFKA_RF_FOR_RT_TOPICS));
+    properties.put(ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS, Integer.toString(KAFKA_MIN_ISR_FOR_RT_TOPICS));
     // filler bootstrap servers
     leaderStorageNodeReplicator =
         new RealTimeTopicSwitcher(mockTopicManager, mockVeniceWriterFactory, new VeniceProperties(properties));
@@ -115,5 +120,33 @@ public class RealTimeTopicSwitcherTest {
     List<CharSequence> expectedSourceClusters = new ArrayList<>();
     expectedSourceClusters.add(aggregateRealTimeSourceKafkaUrl);
     verify(mockVeniceWriter).broadcastTopicSwitch(eq(expectedSourceClusters), eq(srcTopic), anyLong(), any());
+  }
+
+  @Test
+  public void testEnsurePreconditions() {
+    String srcTopic = "testTopic_rt";
+    String destTopic = "testTopic_v1";
+    Store mockStore = mock(Store.class);
+    HybridStoreConfig mockHybridConfig = mock(HybridStoreConfig.class);
+
+    doReturn(true).when(mockStore).isHybrid();
+    doReturn(mockHybridConfig).when(mockStore).getHybridStoreConfig();
+    Version version = new VersionImpl(Version.parseStoreFromKafkaTopicName(destTopic), 1, "test-id");
+    doReturn(Optional.of(version)).when(mockStore).getVersion(Version.parseVersionFromKafkaTopicName(destTopic));
+    doReturn(3600L).when(mockHybridConfig).getRewindTimeInSeconds();
+    doReturn(REWIND_FROM_EOP).when(mockHybridConfig).getBufferReplayPolicy();
+    doReturn(false).when(mockTopicManager).containsTopicAndAllPartitionsAreOnline(srcTopic);
+    doReturn(true).when(mockTopicManager).containsTopicAndAllPartitionsAreOnline(destTopic);
+
+    leaderStorageNodeReplicator.ensurePreconditions(srcTopic, destTopic, mockStore, Optional.of(mockHybridConfig));
+
+    verify(mockTopicManager).createTopic(
+        eq(srcTopic),
+        anyInt(),
+        eq(KAFKA_RF_FOR_RT_TOPICS),
+        anyLong(),
+        eq(false),
+        eq(Optional.of(KAFKA_MIN_ISR_FOR_RT_TOPICS)),
+        eq(false));
   }
 }

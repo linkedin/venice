@@ -47,7 +47,6 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS_ADMIN_TO
 import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_LOG_COMPACTION_LAG_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
-import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR_LEGACY_SPELLING;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR_RT_TOPICS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.KAFKA_ZK_ADDRESS;
@@ -72,10 +71,10 @@ import static com.linkedin.venice.SSLConfig.DEFAULT_CONTROLLER_SSL_ENABLED;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_PER_ROUTER_READ_QUOTA;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS;
+import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_REPLICATION_FACTOR;
 
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.exceptions.ConfigurationException;
-import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
@@ -307,11 +306,7 @@ public class VeniceControllerClusterConfig {
     zkAddress = props.getString(ZOOKEEPER_ADDRESS);
     controllerName = props.getString(CONTROLLER_NAME);
     kafkaZkAddress = props.getString(KAFKA_ZK_ADDRESS);
-    try {
-      kafkaReplicationFactor = props.getInt(KAFKA_REPLICATION_FACTOR);
-    } catch (UndefinedPropertyException e) {
-      kafkaReplicationFactor = props.getInt(KAFKA_REPLICATION_FACTOR_LEGACY_SPELLING);
-    }
+    kafkaReplicationFactor = props.getInt(KAFKA_REPLICATION_FACTOR, DEFAULT_KAFKA_REPLICATION_FACTOR);
     kafkaReplicationFactorRTTopics = props.getInt(KAFKA_REPLICATION_FACTOR_RT_TOPICS, kafkaReplicationFactor);
     minInSyncReplicas = props.getOptionalInt(KAFKA_MIN_IN_SYNC_REPLICAS);
     minInSyncReplicasRealTimeTopics = props.getOptionalInt(KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS);
