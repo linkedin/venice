@@ -188,7 +188,7 @@ public class PartialUpdateTest {
         }
         updateBuilder.setEntriesToAddToMapField(mapFieldName, newEntries);
         GenericRecord partialUpdateRecord = updateBuilder.build();
-        sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord, (long) (i * 10 + 1));
+        sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord, i * 10L + 1);
       }
 
       // Verify the value record has been partially updated.
@@ -216,7 +216,7 @@ public class PartialUpdateTest {
       });
 
       // Send DELETE record that partially removes data.
-      sendStreamingDeleteRecord(veniceProducer, storeName, key, (long) ((updateCount - 1) * 10));
+      sendStreamingDeleteRecord(veniceProducer, storeName, key, (updateCount - 1) * 10L);
 
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS, TimeUnit.MILLISECONDS, true, () -> {
         GenericRecord valueRecord = readValue(storeReader, key);
