@@ -8,7 +8,6 @@ import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
-import java.util.Optional;
 
 
 /**
@@ -62,15 +61,14 @@ public class MapKeyStringAnnotatedStoreSchemaCache {
    * Retrieve the superset schema (if exists) and annotate its map fields.
    * The annotation will be done once for each superset schema as it will be cached for future usage.
    */
-  public Optional<SchemaEntry> getSupersetSchema() {
-    Optional<SchemaEntry> schemaEntryOptional = internalSchemaRepo.getSupersetSchema(storeName);
-    if (schemaEntryOptional.isPresent()) {
-      SchemaEntry schemaEntry = schemaEntryOptional.get();
+  public SchemaEntry getSupersetSchema() {
+    SchemaEntry schemaEntry = internalSchemaRepo.getSupersetSchema(storeName);
+    if (schemaEntry != null) {
       SchemaEntry annotatedSchemaEntry = valueSchemaEntryMapCache
           .computeIfAbsent(schemaEntry.getId(), k -> getAnnotatedStringMapValueSchemaEntry(schemaEntry));
-      return Optional.of(annotatedSchemaEntry);
+      return annotatedSchemaEntry;
     } else {
-      return schemaEntryOptional;
+      return null;
     }
   }
 

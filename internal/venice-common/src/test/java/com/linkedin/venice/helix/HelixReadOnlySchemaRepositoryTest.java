@@ -119,8 +119,8 @@ public class HelixReadOnlySchemaRepositoryTest {
 
     // A force refresh should update the schemas.
     when(store.getLatestSuperSetValueSchemaId()).thenReturn(1);
-    Assert.assertTrue(schemaRepository.getSupersetSchema(storeName).isPresent());
-    Assert.assertEquals(schemaRepository.getSupersetSchema(storeName).get().getSchema(), VALUE_SCHEMA);
+    Assert.assertTrue(schemaRepository.getSupersetSchema(storeName) != null);
+    Assert.assertEquals(schemaRepository.getSupersetSchema(storeName).getSchema(), VALUE_SCHEMA);
     verify(schemaRepository, times(4)).forceRefreshSchemaData(any(), any());
     // 3 times force refresh still won't get the schema, exception should be thrown.
     when(store.getLatestSuperSetValueSchemaId()).thenReturn(2);
@@ -128,7 +128,7 @@ public class HelixReadOnlySchemaRepositoryTest {
     verify(schemaRepository, times(7)).forceRefreshSchemaData(any(), any());
 
     when(store.getLatestSuperSetValueSchemaId()).thenReturn(SchemaData.INVALID_VALUE_SCHEMA_ID);
-    Assert.assertFalse(schemaRepository.getSupersetSchema(storeName).isPresent());
+    Assert.assertFalse(schemaRepository.getSupersetSchema(storeName) == null);
   }
 
   private static String loadFileAsString(String fileName) {
