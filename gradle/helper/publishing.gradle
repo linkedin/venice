@@ -1,19 +1,17 @@
 ext.publishing = [
-    configureArtifactPublishing: { currentProject, sourceJar, testJar ->
+    configureArtifactPublishing: { currentProject, testJar ->
       if (currentProject.version != project.DEFAULT_VERSION) {
         println "Will publish ${currentProject.path} at ${currentProject.group}:${currentProject.name}:${currentProject.version}"
 
         publishing {
           publications {
-            "${currentProject.name}"(MavenPublication) {
+            "${currentProject.name}" (MavenPublication) {
               groupId currentProject.group
               artifactId currentProject.name
               version currentProject.version
 
               from currentProject.components.java
-              artifact sourceJar
-              //  TODO: Enable after we have valid javadocs
-              // artifact javadocJar
+
               artifact testJar
 
               //we strive to meet https://central.sonatype.org/pages/requirements.html
