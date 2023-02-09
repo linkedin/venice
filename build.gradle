@@ -147,6 +147,12 @@ subprojects {
     }
   }
 
+  java {
+    withSourcesJar()
+    // TODO: Enable after we have valid javadocs
+    //withJavadocJar()
+  }
+
   configurations {
     implementation {
       // These are global exclusions that will apply to the entire project
@@ -427,25 +433,14 @@ subprojects {
     exclude('**/*.xml')
   }
 
-  // TODO: Enable after we have valid javadocs
-  // task javadocJar(type: Jar) {
-  //   from javadoc
-  //   classifier = 'javadoc'
-  // }
-
   task testJar(type: Jar) {
-    from sourceSets.test.allJava
-    classifier = 'tests'
-  }
-
-  task sourceJar(type: Jar) {
-    from sourceSets.main.allJava
-    classifier 'sources'
+    classifier 'tests'
+    from sourceSets.test.output
   }
 
   // Only publish artifacts for projects that are at the leaf level
   if (project.childProjects.isEmpty()) {
-    publishing.configureArtifactPublishing(project, sourceJar, testJar)
+    publishing.configureArtifactPublishing(project, testJar)
   }
 }
 
