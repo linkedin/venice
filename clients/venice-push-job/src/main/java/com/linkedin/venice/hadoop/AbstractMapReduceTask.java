@@ -27,6 +27,8 @@ public abstract class AbstractMapReduceTask {
   private int taskId = TASK_ID_NOT_SET;
   private boolean isChunkingEnabled;
 
+  private boolean isRmdChunkingEnabled;
+
   abstract protected void configureTask(VeniceProperties props, JobConf job);
 
   protected int getPartitionCount() {
@@ -45,6 +47,14 @@ public abstract class AbstractMapReduceTask {
     return isChunkingEnabled;
   }
 
+  protected void setRmdChunkingEnabled(boolean isRmdChunkingEnabled) {
+    this.isRmdChunkingEnabled = isRmdChunkingEnabled;
+  }
+
+  protected boolean isRmdChunkingEnabled() {
+    return isRmdChunkingEnabled;
+  }
+
   public final void configure(JobConf job) {
     Properties javaProps = HadoopUtils.getProps(job);
     String sslConfiguratorClassName = job.get(SSL_CONFIGURATOR_CLASS_CONFIG);
@@ -57,6 +67,7 @@ public abstract class AbstractMapReduceTask {
       }
     }
     VeniceProperties props = new VeniceProperties(javaProps);
+    setRmdChunkingEnabled(props.getBoolean(VeniceWriter.ENABLE_RMD_CHUNKING, false));
     setChunkingEnabled(props.getBoolean(VeniceWriter.ENABLE_CHUNKING));
     this.partitionCount = job.getNumReduceTasks();
     TaskAttemptID taskAttemptID = TaskAttemptID.forName(job.get(MAPRED_TASK_ID_PROP_NAME));

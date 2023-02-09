@@ -29,7 +29,7 @@ import org.testng.annotations.Test;
 public class TestChunkAssembler {
 
   // Since every invocation on this method should clear its internal state, all tests sharing one instance should work
-  private final ChunkAssembler chunkAssembler = new ChunkAssembler();
+  private final ChunkAssembler chunkAssembler = new ChunkAssembler(false);
 
   private static final int CHUNK_MANIFEST_SCHEMA_ID =
       AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
