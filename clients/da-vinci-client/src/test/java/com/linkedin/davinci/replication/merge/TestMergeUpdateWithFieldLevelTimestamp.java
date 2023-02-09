@@ -27,7 +27,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.util.Utf8;
@@ -67,7 +66,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         .getDerivedSchema(storeName, incomingValueSchemaId, incomingWriteComputeSchemaId);
     doReturn(new SchemaEntry(oldValueSchemaId, personSchemaV2)).when(readOnlySchemaRepository)
         .getValueSchema(storeName, oldValueSchemaId);
-    doReturn(Optional.of(new SchemaEntry(oldValueSchemaId, personSchemaV2))).when(readOnlySchemaRepository)
+    doReturn(new SchemaEntry(oldValueSchemaId, personSchemaV2)).when(readOnlySchemaRepository)
         .getSupersetSchema(storeName);
 
     // Update happens below
@@ -124,7 +123,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         .getDerivedSchema(storeName, incomingValueSchemaId, incomingWriteComputeSchemaId);
     doReturn(new SchemaEntry(oldValueSchemaId, personSchemaV2)).when(readOnlySchemaRepository)
         .getValueSchema(storeName, oldValueSchemaId);
-    doReturn(Optional.of(new SchemaEntry(oldValueSchemaId, personSchemaV2))).when(readOnlySchemaRepository)
+    doReturn(new SchemaEntry(oldValueSchemaId, personSchemaV2)).when(readOnlySchemaRepository)
         .getSupersetSchema(storeName);
 
     // Update happens below
@@ -250,7 +249,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
     doReturn(new SchemaEntry(oldValueSchemaId, personSchemaV1)).when(readOnlySchemaRepository)
         .getValueSchema(storeName, oldValueSchemaId);
 
-    doReturn(Optional.of(new SchemaEntry(oldValueSchemaId, personSchemaV1))).when(readOnlySchemaRepository)
+    doReturn(new SchemaEntry(oldValueSchemaId, personSchemaV1)).when(readOnlySchemaRepository)
         .getSupersetSchema(storeName);
 
     // Update happens below
