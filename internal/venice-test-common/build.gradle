@@ -18,7 +18,7 @@ configurations {
   }
   jmhImplementation.extendsFrom testImplementation
   integrationTestImplementation.extendsFrom testImplementation
-  integrationTestConf
+  integrationTestUtils
 }
 
 sourceSets {
@@ -81,7 +81,7 @@ dependencies {
   jmhAnnotationProcessor libraries.jmhGenerator
   jmhImplementation libraries.jmhCore
 
-  jmhImplementation project(path: ':internal:venice-test-common', configuration: 'integrationTestConf')
+  jmhImplementation project(path: ':internal:venice-test-common', configuration: 'integrationTestUtils')
 }
 
 task jmh(type: JavaExec, dependsOn: jmhClasses) {
@@ -268,16 +268,24 @@ idea {
   }
 }
 
-task integrationTestJar(type: Jar, dependsOn: integrationTestClasses) {
-  classifier = 'integrationTest'
+task integrationTestJar(type: Jar) {
+  classifier 'integrationTest'
   from sourceSets.integrationTest.output
 }
 
 artifacts {
-  integrationTestConf integrationTestJar
+  integrationTestUtils integrationTestJar
 }
 
 ext {
   jacocoCoverageThreshold = 0.00
   diffCoverageThreshold = 0.00
+}
+
+publishing {
+  publications {
+    "${project.name}" (MavenPublication) {
+      artifact integrationTestJar
+    }
+  }
 }
