@@ -286,12 +286,12 @@ public abstract class NativeMetadataRepository
     if (schemaData == null) {
       throw new VeniceNoStoreException(storeName);
     }
-    Integer supersetSchemaID = getSupersetSchemaID(storeName);
-    int latestValueSchemaId = supersetSchemaID;
+    int latestValueSchemaId = getSupersetSchemaID(storeName);
 
-    if (supersetSchemaID == SchemaData.INVALID_VALUE_SCHEMA_ID) {
+    if (latestValueSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID) {
       latestValueSchemaId = schemaData.getMaxValueSchemaId();
     }
+
     if (latestValueSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID) {
       throw new VeniceException(storeName + " doesn't have latest schema!");
     }
