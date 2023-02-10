@@ -15,6 +15,7 @@ import com.linkedin.davinci.store.blackhole.BlackHoleStorageEngineFactory;
 import com.linkedin.davinci.store.memory.InMemoryStorageEngineFactory;
 import com.linkedin.davinci.store.rocksdb.RocksDBStorageEngineFactory;
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -166,20 +167,22 @@ public class StorageService extends AbstractVeniceService {
          * Setup store-level persistence type based on current database setup.
          */
 
-        try {
-          String store = Version.parseStoreFromVersionTopic(storeName);
-          int versionNum = Version.parseVersionFromKafkaTopicName(storeName);
-          Optional<Version> version = storeRepository.getStoreOrThrow(store).getVersion(versionNum);
-          if (!version.isPresent()) {
-            LOGGER.error(
-                "Could not find the version {} for the following store {}: skip opening it.",
-                storeName,
-                versionNum);
+        if (!VeniceSystemStoreUtils.isSystemStore(storeName)) {
+          try {
+            String store = Version.parseStoreFromVersionTopic(storeName);
+            int versionNum = Version.parseVersionFromKafkaTopicName(storeName);
+            Optional<Version> version = storeRepository.getStoreOrThrow(store).getVersion(versionNum);
+            if (!version.isPresent()) {
+              LOGGER.error(
+                  "Could not find the version {} for the following store {}: skip opening it.",
+                  storeName,
+                  versionNum);
+              continue;
+            }
+          } catch (Exception e) {
+            LOGGER.error("Could not open the following store {}: skip opening it.", storeName);
             continue;
           }
-        } catch (VeniceNoStoreException e) {
-          LOGGER.error("Could not find the following store {}: skip opening it.", storeName);
-          continue;
         }
         VeniceStoreVersionConfig storeConfig = configLoader.getStoreConfig(storeName, pType);
         // Load the metadata & data restore settings from config loader.

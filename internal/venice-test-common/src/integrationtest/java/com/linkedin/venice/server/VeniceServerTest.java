@@ -66,10 +66,12 @@ public class VeniceServerTest {
 
       // Create a storage engine.
       String storeName = Utils.getUniqueString("testCheckBeforeJoinCluster");
+      cluster.getNewStore(storeName);
+      cluster.getNewVersion(storeName, 1000);
       server.getVeniceServer()
           .getStorageService()
           .openStoreForNewPartition(
-              server.getVeniceServer().getConfigLoader().getStoreConfig(storeName),
+              server.getVeniceServer().getConfigLoader().getStoreConfig(storeName + "_v1"),
               1,
               () -> null);
       Assert.assertEquals(

@@ -264,7 +264,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
     runTest(clientConfigBuilder, useDaVinciClientBasedMetadata, true, 2);
   }
 
-  // TODO This test fails for the first time and then succeeds when the entire fastclient
+  // TODO This test fails for the first time and then succeeds when the entire fast-client
   // testsuite is run, but runs successfully when this test is run alone. Need to debug.
   @Test
   public void testFastClientSingleGetLongTailRetry() throws Exception {
