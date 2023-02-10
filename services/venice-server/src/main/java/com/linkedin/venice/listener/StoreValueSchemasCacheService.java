@@ -16,7 +16,6 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
@@ -133,7 +132,7 @@ public class StoreValueSchemasCacheService extends AbstractVeniceService impleme
   }
 
   @Override
-  public Optional<SchemaEntry> getSupersetSchema(String storeName) {
+  public SchemaEntry getSupersetSchema(String storeName) {
     return schemaRepository.getSupersetSchema(storeName);
   }
 

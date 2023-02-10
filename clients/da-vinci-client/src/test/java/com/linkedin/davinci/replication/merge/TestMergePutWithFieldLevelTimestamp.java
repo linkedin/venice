@@ -14,7 +14,6 @@ import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -106,7 +105,7 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
     doReturn(new RmdSchemaEntry(5, RMD_VERSION_ID, rmdSchemaV5)).when(schemaRepository)
         .getReplicationMetadataSchema(storeName, 5, RMD_VERSION_ID);
 
-    doReturn(Optional.of(new SchemaEntry(5, userSchemaV5))).when(schemaRepository).getSupersetSchema(storeName);
+    doReturn(new SchemaEntry(5, userSchemaV5)).when(schemaRepository).getSupersetSchema(storeName);
     return schemaRepository;
   }
 

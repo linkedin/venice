@@ -182,7 +182,7 @@ public class DaVinciClientMetaStoreBasedRepository extends NativeMetadataReposit
   }
 
   @Override
-  public Optional<SchemaEntry> getSupersetSchema(String storeName) {
+  public SchemaEntry getSupersetSchema(String storeName) {
     if (VeniceSystemStoreType.getSystemStoreType(storeName) == VeniceSystemStoreType.META_STORE) {
       throw new VeniceException("Meta store does not have superset schema. Store name: " + storeName);
     } else {

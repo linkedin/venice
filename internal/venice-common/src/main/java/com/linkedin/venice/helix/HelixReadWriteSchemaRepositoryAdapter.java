@@ -9,7 +9,6 @@ import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.utils.Pair;
 import java.util.Collection;
-import java.util.Optional;
 
 
 /**
@@ -212,7 +211,7 @@ public class HelixReadWriteSchemaRepositoryAdapter implements ReadWriteSchemaRep
   }
 
   @Override
-  public Optional<SchemaEntry> getSupersetSchema(String storeName) {
+  public SchemaEntry getSupersetSchema(String storeName) {
     VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
     if (HelixReadOnlyStoreRepositoryAdapter.forwardToRegularRepository(systemStoreType)) {
       return readWriteRegularStoreSchemaRepository.getSupersetSchema(storeName);

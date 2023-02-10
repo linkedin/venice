@@ -9,24 +9,16 @@ import static java.lang.Thread.currentThread;
 import com.linkedin.venice.client.exceptions.ServiceDiscoveryException;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.common.VeniceSystemStoreType;
-import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.MissingKeyInStoreMetadataException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ClusterInfoProvider;
-import com.linkedin.venice.meta.PartitionerConfig;
-import com.linkedin.venice.meta.PartitionerConfigImpl;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStore;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
-import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.meta.VersionImpl;
-import com.linkedin.venice.meta.VersionStatus;
-import com.linkedin.venice.meta.systemstore.schemas.CurrentVersionStates;
-import com.linkedin.venice.meta.systemstore.schemas.StoreVersionState;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
@@ -36,7 +28,6 @@ import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreClusterConfig;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
-import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -46,7 +37,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.Executors;
@@ -296,9 +286,12 @@ public abstract class NativeMetadataRepository
     if (schemaData == null) {
       throw new VeniceNoStoreException(storeName);
     }
-    final int latestValueSchemaId;
-    Optional<Integer> supersetSchemaID = getSupersetSchemaID(storeName);
-    latestValueSchemaId = supersetSchemaID.orElseGet(schemaData::getMaxValueSchemaId);
+    int latestValueSchemaId = getSupersetSchemaID(storeName);
+
+    if (latestValueSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID) {
+      latestValueSchemaId = schemaData.getMaxValueSchemaId();
+    }
+
     if (latestValueSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID) {
       throw new VeniceException(storeName + " doesn't have latest schema!");
     }
@@ -306,21 +299,20 @@ public abstract class NativeMetadataRepository
   }
 
   @Override
-  public Optional<SchemaEntry> getSupersetSchema(String storeName) {
+  public SchemaEntry getSupersetSchema(String storeName) {
     fetchStoreSchemaIfNotInCache(storeName);
     SchemaData schemaData = schemaMap.get(storeName);
     if (schemaData == null) {
       throw new VeniceNoStoreException(storeName);
     }
 
-    Optional<Integer> supersetSchemaID = getSupersetSchemaID(storeName);
-    return supersetSchemaID.map(schemaData::getValueSchema);
+    int supersetSchemaID = getSupersetSchemaID(storeName);
+    return schemaData.getValueSchema(supersetSchemaID);
   }
 
-  private Optional<Integer> getSupersetSchemaID(String storeName) {
+  private int getSupersetSchemaID(String storeName) {
     Store store = getStoreOrThrow(storeName);
-    final int supersetSchemaId = store.getLatestSuperSetValueSchemaId();
-    return supersetSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID ? Optional.empty() : Optional.of(supersetSchemaId);
+    return store.getLatestSuperSetValueSchemaId();
   }
 
   @Override
@@ -456,38 +448,6 @@ public abstract class NativeMetadataRepository
       }
     }
     return schemaData;
-  }
-
-  // Helper functions to parse version data retrieved from metadata system store based implementations
-  protected List<Version> getVersionsFromCurrentVersionStates(
-      String storeName,
-      CurrentVersionStates currentVersionStates) {
-    List<Version> versionList = new ArrayList<>();
-    for (StoreVersionState storeVersionState: currentVersionStates.currentVersionStates) {
-      PartitionerConfig partitionerConfig = new PartitionerConfigImpl(
-          storeVersionState.partitionerConfig.partitionerClass.toString(),
-          CollectionUtils.getStringMapFromCharSequenceMap(storeVersionState.partitionerConfig.partitionerParams),
-          storeVersionState.partitionerConfig.amplificationFactor);
-
-      Version version = new VersionImpl(
-          storeName,
-          storeVersionState.versionNumber,
-          storeVersionState.creationTime,
-          storeVersionState.pushJobId.toString(),
-          storeVersionState.partitionCount,
-          partitionerConfig,
-          null);
-      version.setChunkingEnabled(storeVersionState.chunkingEnabled);
-      version.setCompressionStrategy(CompressionStrategy.valueOf(storeVersionState.compressionStrategy.toString()));
-      version.setLeaderFollowerModelEnabled(storeVersionState.leaderFollowerModelEnabled);
-      version.setPushType(Version.PushType.valueOf(storeVersionState.pushType.toString()));
-      version.setStatus(VersionStatus.valueOf(storeVersionState.status.toString()));
-      version.setBufferReplayEnabledForHybrid(storeVersionState.bufferReplayEnabledForHybrid);
-      version.setPushStreamSourceAddress(storeVersionState.pushStreamSourceAddress.toString());
-      version.setNativeReplicationEnabled(storeVersionState.nativeReplicationEnabled);
-      versionList.add(version);
-    }
-    return versionList;
   }
 
   protected Store putStore(Store newStore) {
