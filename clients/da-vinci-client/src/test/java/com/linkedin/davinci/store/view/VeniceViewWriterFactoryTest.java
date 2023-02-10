@@ -1,7 +1,5 @@
 package com.linkedin.davinci.store.view;
 
-import static org.testng.Assert.*;
-
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.config.VeniceServerConfig;

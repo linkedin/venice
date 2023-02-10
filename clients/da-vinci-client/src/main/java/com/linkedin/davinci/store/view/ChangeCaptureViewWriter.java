@@ -1,6 +1,6 @@
 package com.linkedin.davinci.store.view;
 
-import static com.linkedin.venice.writer.VeniceWriter.*;
+import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType;
