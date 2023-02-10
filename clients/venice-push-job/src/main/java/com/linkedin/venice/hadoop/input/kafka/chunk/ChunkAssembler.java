@@ -146,13 +146,12 @@ public class ChunkAssembler {
            */
           continue;
         }
-        // Collecting chunks
+        // Matching chunk information with value and RMD chunks.
         boolean isChunkMatched = false;
         if (isRmdChunkingEnabled && (rmdChunksFound != rmdChunkKeySuffixes.length)) {
           for (int i = 0; i < rmdChunkKeySuffixes.length; i++) {
             ByteBuffer byteBuffer = rmdChunkKeySuffixes[i];
-            if (byteBuffer.equals(reusedMapperValue.chunkedKeySuffix)
-                && (reusedMapperValue.replicationMetadataPayload.remaining() > 0)) {
+            if (byteBuffer.equals(reusedMapperValue.chunkedKeySuffix)) {
               byte[] rmdChunk = new byte[reusedMapperValue.replicationMetadataPayload.remaining()];
               totalRmdByteCount += rmdChunk.length;
               reusedMapperValue.replicationMetadataPayload.get(rmdChunk);
@@ -163,6 +162,7 @@ public class ChunkAssembler {
             }
           }
         }
+        // Bypass iterations on value chunk matching if it is matched with RMD chunk.
         if (!isChunkMatched) {
           for (int i = 0; i < valueChunkKeySuffixes.length; i++) {
             ByteBuffer byteBuffer = valueChunkKeySuffixes[i];
@@ -176,8 +176,7 @@ public class ChunkAssembler {
             }
           }
         }
-        if ((valueChunksFound == valueChunks.length)
-            && ((!isRmdChunkingEnabled) || (rmdChunksFound == rmdChunks.length))) {
+        if ((valueChunksFound == valueChunks.length) && (rmdChunksFound == rmdChunks.length)) {
           break;
         }
       } else {
