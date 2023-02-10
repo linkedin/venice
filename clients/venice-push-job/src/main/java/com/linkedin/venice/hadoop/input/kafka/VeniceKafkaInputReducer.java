@@ -76,7 +76,7 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
     super.setChunkingEnabled(isChunkingEnabled);
     if (isChunkingEnabled) {
       this.extractor = this::extractChunkedMessage;
-      this.chunkAssembler = new ChunkAssembler();
+      this.chunkAssembler = new ChunkAssembler(isRmdChunkingEnabled());
     } else {
       this.extractor = this::extractNonChunkedMessage;
       this.chunkAssembler = null;

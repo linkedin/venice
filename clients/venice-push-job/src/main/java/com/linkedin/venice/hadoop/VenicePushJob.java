@@ -470,6 +470,7 @@ public class VenicePushJob implements AutoCloseable {
     Map<String, String> partitionerParams;
     int amplificationFactor;
     boolean chunkingEnabled;
+    boolean rmdChunkingEnabled;
   }
 
   private TopicInfo kafkaTopicInfo;
@@ -480,6 +481,7 @@ public class VenicePushJob implements AutoCloseable {
 
   protected static class StoreSetting {
     boolean isChunkingEnabled;
+    boolean isRmdChunkingEnabled;
     long storeStorageQuota;
     boolean isSchemaAutoRegisterFromPushJobEnabled;
     CompressionStrategy compressionStrategy;
@@ -711,9 +713,6 @@ public class VenicePushJob implements AutoCloseable {
    *
    * @param userProvidedStoreName store name provided by user
    * @param properties properties
-   * @param pushJobSettingUnderConstruction some partially defined {@link PushJobSetting} which this function will
-   *                                        contribute to further setting up.
-   *                                        TODO: mutating input params is not the cleanest pattern, consider refactoring
    * @return Topic name
    */
   private String getSourceTopicNameForKafkaInput(
@@ -1480,7 +1479,6 @@ public class VenicePushJob implements AutoCloseable {
    *
    * @param storeName
    * @param sslFactory
-   * @param retryAttempts
    */
   private void initControllerClient(String storeName, Optional<SSLFactory> sslFactory) {
     final String controllerD2ZkHost;
@@ -2003,6 +2001,7 @@ public class VenicePushJob implements AutoCloseable {
     storeSetting.isSchemaAutoRegisterFromPushJobEnabled =
         storeResponse.getStore().isSchemaAutoRegisterFromPushJobEnabled();
     storeSetting.isChunkingEnabled = storeResponse.getStore().isChunkingEnabled();
+    storeSetting.isRmdChunkingEnabled = storeResponse.getStore().isRmdChunkingEnabled();
     storeSetting.compressionStrategy = storeResponse.getStore().getCompressionStrategy();
     storeSetting.isWriteComputeEnabled = storeResponse.getStore().isWriteComputationEnabled();
     storeSetting.isLeaderFollowerModelEnabled = storeResponse.getStore().isLeaderFollowerModelEnabled();
@@ -2052,9 +2051,6 @@ public class VenicePushJob implements AutoCloseable {
           throw new VeniceException(
               "Could not find version " + sourceVersionNumber + ", please provide input fabric to repush.");
         }
-      }
-      if (storeSetting.isWriteComputeEnabled && sourceVersion.get().isActiveActiveReplicationEnabled()) {
-        throw new VeniceException("KIF repush is not available for for write compute active/active store.");
       }
       storeSetting.sourceKafkaInputVersionInfo = sourceVersion.get();
       // Skip quota check
@@ -2162,11 +2158,12 @@ public class VenicePushJob implements AutoCloseable {
     kafkaTopicInfo.partitionerParams = versionCreationResponse.getPartitionerParams();
     kafkaTopicInfo.amplificationFactor = versionCreationResponse.getAmplificationFactor();
     kafkaTopicInfo.chunkingEnabled = storeSetting.isChunkingEnabled && !Version.isRealTimeTopic(kafkaTopicInfo.topic);
+    kafkaTopicInfo.rmdChunkingEnabled = kafkaTopicInfo.chunkingEnabled && storeSetting.isRmdChunkingEnabled;
 
     if (pushJobSetting.isSourceKafka) {
       /**
        * Check whether the new version setup is compatible with the source version, and we will check the following configs:
-       * 1. Chunking.
+       * 1. Chunking && RMD Chunking.
        * 2. Compression Strategy.
        * 3. Partition Count.
        * 4. Partitioner Config.
@@ -2209,6 +2206,14 @@ public class VenicePushJob implements AutoCloseable {
                 + sourceVersion.isChunkingEnabled() + ", new version: " + newVersion.getNumber() + " is using: "
                 + newVersion.isChunkingEnabled());
       }
+      if (sourceVersion.isRmdChunkingEnabled() && !newVersion.isRmdChunkingEnabled()) {
+        throw new VeniceException(
+            "RMD Chunking config mismatch between the source and the new version of store "
+                + storeResponse.getStore().getName() + ". Source version: " + sourceVersion.getNumber() + " is using: "
+                + sourceVersion.isRmdChunkingEnabled() + ", new version: " + newVersion.getNumber() + " is using: "
+                + newVersion.isRmdChunkingEnabled());
+      }
+
       if (sourceVersion.isActiveActiveReplicationEnabled() && newVersion.isActiveActiveReplicationEnabled()
           && sourceVersion.getRmdVersionId() != newVersion.getRmdVersionId()) {
         throw new VeniceException(
@@ -2506,6 +2511,7 @@ public class VenicePushJob implements AutoCloseable {
     }
     conf.setBoolean(ALLOW_DUPLICATE_KEY, pushJobSetting.isDuplicateKeyAllowed);
     conf.setBoolean(VeniceWriter.ENABLE_CHUNKING, kafkaTopicInfo.chunkingEnabled);
+    conf.setBoolean(VeniceWriter.ENABLE_RMD_CHUNKING, kafkaTopicInfo.rmdChunkingEnabled);
 
     conf.set(STORAGE_QUOTA_PROP, Long.toString(storeSetting.storeStorageQuota));
 

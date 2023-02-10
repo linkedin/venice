@@ -16,6 +16,7 @@ public class WriterChunkingHelperTest {
         valueBytes,
         true,
         1,
+        0,
         true,
         () -> "",
         maxSizeForUserPayloadPerMessageInBytes,

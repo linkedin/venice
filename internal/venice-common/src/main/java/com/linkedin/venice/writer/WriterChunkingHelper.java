@@ -41,6 +41,7 @@ public class WriterChunkingHelper {
       byte[] payload,
       boolean isValuePayload,
       int schemaId,
+      int chunkedKeySuffixStartingIndex,
       boolean isChunkAwareCallback,
       Supplier<String> sizeReport,
       int maxSizeForUserPayloadPerMessageInBytes,
@@ -110,7 +111,7 @@ public class WriterChunkingHelper {
         putPayload.putValue = EMPTY_BYTE_BUFFER;
         putPayload.replicationMetadataPayload = chunk;
       }
-      chunkedKeySuffix.chunkId.chunkIndex = chunkIndex;
+      chunkedKeySuffix.chunkId.chunkIndex = chunkIndex + chunkedKeySuffixStartingIndex;
       keyProvider = chunkIndex == 0 ? firstKeyProvider : subsequentKeyProvider;
 
       try {
