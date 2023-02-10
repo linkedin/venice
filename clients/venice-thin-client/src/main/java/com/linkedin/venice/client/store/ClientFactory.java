@@ -71,6 +71,10 @@ public class ClientFactory {
     }
   }
 
+  public static SchemaReader getSchemaReader(ClientConfig clientConfig) {
+    return getSchemaReader(clientConfig, null);
+  }
+
   public static SchemaReader getSchemaReader(ClientConfig clientConfig, ICProvider icProvider) {
     /**
      * N.B.: instead of returning a new {@link SchemaReader}, we could instead return
