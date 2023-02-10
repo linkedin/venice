@@ -10,6 +10,7 @@ import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
+import com.linkedin.davinci.store.view.VeniceViewWriterFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManagerRepository;
@@ -92,6 +93,8 @@ public class StoreIngestionTaskFactory {
     private volatile boolean built = false;
 
     private VeniceWriterFactory veniceWriterFactory;
+
+    private VeniceViewWriterFactory veniceViewWriterFactory;
     private KafkaClientFactory kafkaClientFactory;
     private StorageEngineRepository storageEngineRepository;
     private StorageMetadataService storageMetadataService;
@@ -140,8 +143,16 @@ public class StoreIngestionTaskFactory {
       return veniceWriterFactory;
     }
 
+    public VeniceViewWriterFactory getVeniceViewWriterFactory() {
+      return veniceViewWriterFactory;
+    }
+
     public Builder setVeniceWriterFactory(VeniceWriterFactory writerFactory) {
       return set(() -> this.veniceWriterFactory = writerFactory);
+    }
+
+    public Builder setVeniceViewWriterFactory(VeniceViewWriterFactory viewWriterFactory) {
+      return set(() -> this.veniceViewWriterFactory = viewWriterFactory);
     }
 
     public Builder setRemoteIngestionRepairService(RemoteIngestionRepairService repairService) {

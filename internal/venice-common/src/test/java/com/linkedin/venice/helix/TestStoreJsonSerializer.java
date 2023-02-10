@@ -10,10 +10,13 @@ import com.linkedin.venice.meta.SystemStoreAttributes;
 import com.linkedin.venice.meta.SystemStoreAttributesImpl;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.meta.ViewConfig;
+import com.linkedin.venice.meta.ViewConfigImpl;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.utils.TestUtils;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import org.testng.Assert;
@@ -36,6 +39,13 @@ public class TestStoreJsonSerializer {
         BufferReplayPolicy.REWIND_FROM_EOP);
     store.setHybridStoreConfig(hybridStoreConfig);
     store.setReadQuotaInCU(100);
+
+    Map<String, ViewConfig> viewConfigMap = new HashMap<>();
+    viewConfigMap.put(
+        "changeCapture",
+        new ViewConfigImpl("com.linkedin.venice.views.ChangeCaptureView", Collections.emptyMap()));
+    store.setViewConfigs(viewConfigMap);
+
     StoreJSONSerializer serializer = new StoreJSONSerializer();
     byte[] data = serializer.serialize(store, "");
     Store newStore = serializer.deserialize(data, "");

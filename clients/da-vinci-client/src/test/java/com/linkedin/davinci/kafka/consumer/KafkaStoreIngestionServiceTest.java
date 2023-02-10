@@ -36,6 +36,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ZKStore;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Pair;
@@ -49,6 +50,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.function.Function;
+import org.apache.avro.Schema;
 import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.mockito.Mockito;
 import org.testng.Assert;
@@ -318,6 +320,10 @@ public abstract class KafkaStoreIngestionServiceTest {
         ReadStrategy.ANY_OF_ONLINE,
         OfflinePushStrategy.WAIT_ALL_REPLICAS,
         1);
+
+    SchemaEntry mockSchemaEntry = Mockito.mock(SchemaEntry.class);
+    Mockito.when(mockSchemaEntry.getSchema()).thenReturn(Schema.create(Schema.Type.STRING));
+    Mockito.when(mockSchemaRepo.getKeySchema(topicName)).thenReturn(Mockito.mock(SchemaEntry.class));
 
     AbstractStorageEngine storageEngine1 = mock(AbstractStorageEngine.class);
     Mockito.when(mockStorageEngineRepository.getLocalStorageEngine(topicName)).thenReturn(storageEngine1);

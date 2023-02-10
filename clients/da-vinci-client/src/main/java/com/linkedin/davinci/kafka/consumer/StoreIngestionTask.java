@@ -1344,6 +1344,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       LOGGER.error("Error while closing venice writers", e);
     }
 
+    try {
+      closeVeniceViewWriters();
+    } catch (Exception e) {
+      LOGGER.error("Error while closing venice view writer", e);
+    }
+
     close();
     synchronized (this) {
       notifyAll();
@@ -1352,6 +1358,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected void closeVeniceWriters(boolean doFlush) {
+  }
+
+  protected void closeVeniceViewWriters() {
   }
 
   /**
@@ -2286,6 +2295,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     statusReportAdapter.reportEndOfIncrementalPushReceived(partitionConsumptionState, endVersion.toString());
   }
 
+  /**
+   *  This isn't really used for ingestion outside of A/A, so we NoOp here and rely on the actual implementation in
+   *  {@link ActiveActiveStoreIngestionTask}
+   */
+  protected void processVersionSwapMessage(
+      ControlMessage controlMessage,
+      int partition,
+      PartitionConsumptionState partitionConsumptionState) {
+    // NoOp
+  }
+
   protected void processTopicSwitch(
       ControlMessage controlMessage,
       int partition,
@@ -2346,6 +2366,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         break;
       case TOPIC_SWITCH:
         processTopicSwitch(controlMessage, partition, offset, partitionConsumptionState);
+        break;
+      case VERSION_SWAP:
+        processVersionSwapMessage(controlMessage, partition, partitionConsumptionState);
         break;
       default:
         throw new UnsupportedMessageTypeException(

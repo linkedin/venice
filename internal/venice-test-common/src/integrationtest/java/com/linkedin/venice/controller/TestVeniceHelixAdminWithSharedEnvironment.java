@@ -58,6 +58,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.views.ChangeCaptureView;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -1886,7 +1887,9 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     String storeName = Utils.getUniqueString("test_param_inheritance");
     veniceAdmin.createStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
     Map<String, String> viewConfig = new HashMap<>();
-    viewConfig.put("changeCapture", "\"viewClassName\" : \"com.linkedin.venice.views.ChangeCaptureView\"");
+    viewConfig.put(
+        "changeCapture",
+        "{\"viewClassName\" : \"" + ChangeCaptureView.class.getCanonicalName() + "\", \"viewParameters\" : {}}");
     veniceAdmin.updateStore(
         clusterName,
         storeName,
@@ -1909,5 +1912,11 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertTrue(store.getVersion(1).get().getViewConfigs().containsKey("changeCapture"));
     // Verify that version 2 does NOT have the config
     Assert.assertFalse(store.getVersion(2).get().getViewConfigs().containsKey("changeCapture"));
+
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setStoreViews(viewConfig));
+    veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
+    store = veniceAdmin.getStore(clusterName, storeName);
+    Assert.assertTrue(store.getVersion(3).get().getViewConfigs().containsKey("changeCapture"));
+
   }
 }

@@ -70,6 +70,15 @@ public class CollectionUtils {
     return new HashMap<>(stringStringMap);
   }
 
+  public static Map<String, CharSequence> getStringKeyCharSequenceValueMapFromStringMap(Map<String, String> stringMap) {
+    if (stringMap == null) {
+      return null;
+    }
+    Map<String, CharSequence> scMap = new HashMap<>();
+    scMap.putAll(stringMap);
+    return scMap;
+  }
+
   public static Map<String, String> getStringMapFromCharSequenceMap(Map<CharSequence, CharSequence> charSequenceMap) {
     if (charSequenceMap == null) {
       return null;

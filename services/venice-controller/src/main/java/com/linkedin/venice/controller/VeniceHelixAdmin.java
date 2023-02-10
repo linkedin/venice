@@ -1,5 +1,7 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_DERIVED_SCHEMA_ID;
 import static com.linkedin.venice.controller.UserSystemStoreLifeCycleHelper.AUTO_META_SYSTEM_STORE_PUSH_ID_PREFIX;
 import static com.linkedin.venice.controller.UserSystemStoreLifeCycleHelper.DEFAULT_META_SYSTEM_STORE_SIZE;
@@ -14,6 +16,10 @@ import static com.linkedin.venice.meta.VersionStatus.ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.PUSHED;
 import static com.linkedin.venice.meta.VersionStatus.STARTED;
 import static com.linkedin.venice.utils.AvroSchemaUtils.isValidAvroSchema;
+import static com.linkedin.venice.views.ViewUtils.ETERNAL_TOPIC_RETENTION_ENABLED;
+import static com.linkedin.venice.views.ViewUtils.LOG_COMPACTION_ENABLED;
+import static com.linkedin.venice.views.ViewUtils.SUB_PARTITION_COUNT;
+import static com.linkedin.venice.views.ViewUtils.USE_FAST_KAFKA_OPERATION_TIMEOUT;
 
 import com.linkedin.avroutil1.compatibility.AvroIncompatibleSchemaException;
 import com.linkedin.avroutil1.compatibility.RandomRecordGenerator;
@@ -129,6 +135,7 @@ import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.participant.protocol.KillPushJob;
 import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
@@ -177,8 +184,11 @@ import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
+import com.linkedin.venice.views.VeniceView;
+import com.linkedin.venice.views.ViewUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
@@ -743,7 +753,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public boolean isResourceStillAlive(String resourceName) {
-    if (!Version.isVersionTopicOrStreamReprocessingTopic(resourceName)) {
+    if (!Version.isATopicThatIsVersioned(resourceName)) {
       throw new VeniceException("Resource name: " + resourceName + " is invalid");
     }
     String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
@@ -1981,6 +1991,72 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
+  /**
+   * Create view resources.
+   *
+   * TODO: Today, this only creates Kafka topics for each view associated for the store version. We today only have kafka
+   * based views.  But eventually as views get more complex, we would need to augment this function.
+   *
+   * @param params default parameters for the resources to be created that may be overridden depending on the behavior
+   *               of each specific view associated to the store
+   * @param store the store to create these resources for
+   * @param version the store version to create these resources for
+   */
+  private void constructViewResources(Properties params, Store store, int version) {
+    Map<String, ViewConfig> viewConfigs = store.getViewConfigs();
+    if (viewConfigs == null || viewConfigs.isEmpty()) {
+      return;
+    }
+
+    // Construct Kafka topics
+    // TODO: Today we only have support for creating Kafka topics as a resource for a given view, but later we would
+    // like
+    // to add support for potentially other resource types (maybe helix RG's as an example?)
+    Map<String, VeniceProperties> topicNamesAndConfigs = new HashMap<>();
+    for (ViewConfig rawView: viewConfigs.values()) {
+      VeniceView adminView =
+          ViewUtils.getVeniceView(rawView.getViewClassName(), params, store, rawView.getViewParameters());
+      topicNamesAndConfigs.putAll(adminView.getTopicNamesAndConfigsForVersion(version));
+    }
+    TopicManager topicManager = getTopicManager();
+    for (Map.Entry<String, VeniceProperties> topicNameAndConfigs: topicNamesAndConfigs.entrySet()) {
+      String kafkaTopic = topicNameAndConfigs.getKey();
+      VeniceProperties kafkaTopicConfigs = topicNameAndConfigs.getValue();
+      topicManager.createTopic(
+          kafkaTopic,
+          kafkaTopicConfigs.getInt(SUB_PARTITION_COUNT),
+          kafkaTopicConfigs.getInt(KAFKA_REPLICATION_FACTOR),
+          kafkaTopicConfigs.getBoolean(ETERNAL_TOPIC_RETENTION_ENABLED),
+          kafkaTopicConfigs.getBoolean(LOG_COMPACTION_ENABLED),
+          kafkaTopicConfigs.getOptionalInt(KAFKA_MIN_IN_SYNC_REPLICAS),
+          kafkaTopicConfigs.getBoolean(USE_FAST_KAFKA_OPERATION_TIMEOUT));
+    }
+  }
+
+  private void cleanUpViewResources(Properties params, Store store, int version) {
+    Map<String, ViewConfig> viewConfigs = store.getViewConfigs();
+    if (viewConfigs == null || viewConfigs.isEmpty()) {
+      return;
+    }
+
+    // Deconstruct Kafka topics
+    // TODO: Today we only have support for Kafka topics as a resource for a given view, but later we would like
+    // to add support for potentially other resource types (maybe helix RG's as an example?)
+    Map<String, VeniceProperties> topicNamesAndConfigs = new HashMap<>();
+    for (ViewConfig rawView: viewConfigs.values()) {
+      VeniceView adminView =
+          ViewUtils.getVeniceView(rawView.getViewClassName(), params, store, rawView.getViewParameters());
+      topicNamesAndConfigs.putAll(adminView.getTopicNamesAndConfigsForVersion(version));
+    }
+    Set<String> versionTopicsToDelete = topicNamesAndConfigs.keySet()
+        .stream()
+        .filter(t -> VeniceView.parseVersionFromViewTopic(t) == version)
+        .collect(Collectors.toSet());
+    for (String topic: versionTopicsToDelete) {
+      truncateKafkaTopic(topic);
+    }
+  }
+
   private void createBatchTopics(
       Version version,
       PushType pushType,
@@ -2216,7 +2292,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
           version.setVersionSwapDeferred(versionSwapDeferred);
 
-          version.setViewConfig(store.getViewConfigs());
+          version.setViewConfigs(store.getViewConfigs());
+
+          Properties veniceViewProperties = new Properties();
+          veniceViewProperties.put(SUB_PARTITION_COUNT, subPartitionCount);
+          veniceViewProperties.put(USE_FAST_KAFKA_OPERATION_TIMEOUT, useFastKafkaOperationTimeout);
+          veniceViewProperties.putAll(clusterConfig.getProps().toProperties());
+          veniceViewProperties.put(LOG_COMPACTION_ENABLED, false);
+          veniceViewProperties.put(KAFKA_REPLICATION_FACTOR, clusterConfig.getKafkaReplicationFactor());
+          veniceViewProperties.put(ETERNAL_TOPIC_RETENTION_ENABLED, true);
+
+          constructViewResources(veniceViewProperties, store, version.getNumber());
 
           repository.updateStore(store);
           LOGGER.info("Add version: {} for store: {}", version.getNumber(), storeName);
@@ -2791,6 +2877,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           if (deletedVersion.get().getPushType().isStreamReprocessing()) {
             truncateKafkaTopic(Version.composeStreamReprocessingTopic(storeName, versionNumber));
           }
+          cleanUpViewResources(new Properties(), store, deletedVersion.get().getNumber());
         }
         if (store.isDaVinciPushStatusStoreEnabled() && pushStatusStoreDeleter.isPresent()) {
           pushStatusStoreDeleter.get()
@@ -3096,7 +3183,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Set<String> allTopics = getTopicManager().listTopics();
     Set<String> allTopicsRelatedToThisStore = allTopics.stream()
         /** Exclude RT buffer topics, admin topics and all other special topics */
-        .filter(t -> Version.isVersionTopicOrStreamReprocessingTopic(t))
+        .filter(t -> Version.isATopicThatIsVersioned(t))
         /** Keep only those topics pertaining to the store in question */
         .filter(t -> Version.parseStoreFromKafkaTopicName(t).equals(store.getName()))
         .collect(Collectors.toSet());
@@ -3139,7 +3226,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (truncateKafkaTopic(t, topicConfigs)) {
           ++numberOfNewTopicsMarkedForDelete;
         }
-        deleteHelixResource(clusterName, t);
+        if (!VeniceView.isViewTopic(t)) {
+          deleteHelixResource(clusterName, t);
+        }
       }
       LOGGER.info("Deleted {} old HelixResources for store: {}.", numberOfNewTopicsMarkedForDelete, store.getName());
       LOGGER.info(
@@ -3260,8 +3349,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               "Unable to update store:" + storeName + " current version since store writeability is false");
         }
       }
+      int previousVersion = store.getCurrentVersion();
       store.setCurrentVersion(versionNumber);
-
+      realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
       return store;
     });
   }
@@ -3280,7 +3370,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       if (backupVersion == Store.NON_EXISTING_VERSION) {
         throw new VeniceException("Backup version does not exist for store:" + storeName);
       }
+      int previousVersion = store.getCurrentVersion();
       store.setCurrentVersion(backupVersion);
+      realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, backupVersion);
       return store;
     });
   }
@@ -4317,7 +4409,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   static Map<String, StoreViewConfigRecord> mergeNewViewConfigsIntoOldConfigs(
       Store oldStore,
-      Map<String, String> viewParameters) {
+      Map<String, String> viewParameters) throws VeniceException {
     // TODO: This should do some kind of merge logic based on what kind of views are being set up.
     // since we only support one kind of view, we just overwrite the entire map. Merging logic should
     // be some heuristic based on the type of view. For example, we may want multiple different kinds

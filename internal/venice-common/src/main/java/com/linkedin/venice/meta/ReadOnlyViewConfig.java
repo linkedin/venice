@@ -18,12 +18,27 @@ public class ReadOnlyViewConfig implements ViewConfig {
   }
 
   @Override
-  public String getClassName() {
-    return delegate.getClassName();
+  public String getViewClassName() {
+    return delegate.getViewClassName();
   }
 
   @Override
-  public Map<String, String> getParams() {
-    return Collections.unmodifiableMap(this.delegate.getParams());
+  public Map<String, String> getViewParameters() {
+    return Collections.unmodifiableMap(this.delegate.getViewParameters());
+  }
+
+  @Override
+  public void setViewClassName(String className) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public void setViewParameters(Map<String, String> params) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public ViewConfig clone() {
+    return new ReadOnlyViewConfig(delegate);
   }
 }
