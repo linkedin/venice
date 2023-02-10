@@ -50,7 +50,14 @@ public class RouterBackedSchemaReader implements SchemaReader {
   private final ICProvider icProvider;
 
   RouterBackedSchemaReader(Supplier<AbstractAvroStoreClient> clientSupplier) throws VeniceClientException {
-    this(clientSupplier, Optional.empty(), Optional.empty(), null);
+    this(clientSupplier, Optional.empty(), Optional.empty());
+  }
+
+  public RouterBackedSchemaReader(
+      Supplier<AbstractAvroStoreClient> clientSupplier,
+      Optional<Schema> readerSchema,
+      Optional<Predicate<Schema>> preferredSchemaFilter) {
+    this(clientSupplier, readerSchema, preferredSchemaFilter, null);
   }
 
   public RouterBackedSchemaReader(
