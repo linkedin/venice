@@ -165,16 +165,10 @@ public class StorageService extends AbstractVeniceService {
         /**
          * Setup store-level persistence type based on current database setup.
          */
-        VeniceStoreVersionConfig storeConfig = configLoader.getStoreConfig(storeName, pType);
-        // Load the metadata & data restore settings from config loader.
-        storeConfig.setRestoreDataPartitions(restoreDataPartitions);
-        storeConfig.setRestoreMetadataPartition(restoreMetadataPartitions);
-        AbstractStorageEngine storageEngine;
 
         try {
           String store = Version.parseStoreFromVersionTopic(storeName);
           int versionNum = Version.parseVersionFromKafkaTopicName(storeName);
-
           Optional<Version> version = storeRepository.getStoreOrThrow(store).getVersion(versionNum);
           if (!version.isPresent()) {
             LOGGER.error(
@@ -183,6 +177,17 @@ public class StorageService extends AbstractVeniceService {
                 versionNum);
             continue;
           }
+        } catch (VeniceNoStoreException e) {
+          LOGGER.error("Could not find the following store {}: skip opening it.", storeName);
+          continue;
+        }
+        VeniceStoreVersionConfig storeConfig = configLoader.getStoreConfig(storeName, pType);
+        // Load the metadata & data restore settings from config loader.
+        storeConfig.setRestoreDataPartitions(restoreDataPartitions);
+        storeConfig.setRestoreMetadataPartition(restoreMetadataPartitions);
+        AbstractStorageEngine storageEngine;
+
+        try {
           storageEngine = openStore(storeConfig, () -> null);
         } catch (Exception e) {
           if (ExceptionUtils.recursiveClassEquals(e, RocksDBException.class)) {
