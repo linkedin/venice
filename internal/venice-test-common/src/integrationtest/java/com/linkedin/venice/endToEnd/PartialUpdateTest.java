@@ -2,6 +2,10 @@ package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_VALUE_FIELD_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_BROKER_URL;
+import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
+import static com.linkedin.venice.hadoop.VenicePushJob.REWIND_TIME_IN_SECONDS_OVERRIDE;
+import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_KAFKA;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingDeleteRecord;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
@@ -55,6 +59,7 @@ import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -80,6 +85,7 @@ import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.DatumWriter;
 import org.apache.avro.util.Utf8;
 import org.apache.samza.system.SystemProducer;
+import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -123,6 +129,14 @@ public class PartialUpdateTest {
     this.parentController = parentControllers.get(0);
   }
 
+  /**
+   * This integration test performs a few actions to test RMD chunking logic:
+   * (1) Send a bunch of large UPDATE messages to make sure eventually the key's value + RMD size greater than 1MB and
+   * thus trigger chunking / RMD chunking.
+   * (2) Run a KIF repush to make sure it handles RMD chunks correctly.
+   * (3) Send a DELETE message to partially delete some of the items in the map field.
+   * (4) Send a DELETE message to fully delete the record.
+   */
   @Test(timeOut = TEST_TIMEOUT_MS * 4)
   public void testReplicationMetadataChunkingE2E() throws IOException {
     final String storeName = Utils.getUniqueString("rmdChunking");
@@ -173,6 +187,7 @@ public class PartialUpdateTest {
     String listFieldName = "intArray";
     String mapFieldName = "stringMap";
 
+    // Insert large amount of Map entries to trigger RMD chunking.
     int updateCount = 30;
     int singleUpdateEntryCount = 10000;
     try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
@@ -215,6 +230,48 @@ public class PartialUpdateTest {
         assertEquals(activeElementsTimestamps.size(), updateCount * singleUpdateEntryCount);
       });
 
+      // Perform one time repush to make sure repush can handle RMD chunks data correctly.
+      Properties props =
+          IntegrationTestPushUtils.defaultVPJProps(multiColoMultiClusterWrapper, "dummyInputPath", storeName);
+      props.setProperty(SOURCE_KAFKA, "true");
+      props.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getKafka().getAddress());
+      props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+      // intentionally stop re-consuming from RT so stale records don't affect the testing results
+      props.put(REWIND_TIME_IN_SECONDS_OVERRIDE, 0);
+      TestWriteUtils.runPushJob("Run repush job", props);
+
+      ControllerClient controllerClient =
+          new ControllerClient("venice-cluster0", childDatacenters.get(0).getControllerConnectString());
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          () -> Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 2));
+      veniceCluster.refreshAllRouterMetaData();
+
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT_MS * 2, TimeUnit.MILLISECONDS, true, () -> {
+        try {
+          GenericRecord valueRecord = readValue(storeReader, key);
+          boolean nullRecord = (valueRecord == null);
+          assertFalse(nullRecord);
+          assertEquals(valueRecord.get(primitiveFieldName).toString(), "Tottenham"); // Updated field
+          Map<String, String> mapFieldResult = new HashMap<>();
+          ((Map<Utf8, Utf8>) valueRecord.get(mapFieldName))
+              .forEach((x, y) -> mapFieldResult.put(x.toString(), y.toString()));
+          assertEquals(mapFieldResult.size(), updateCount * singleUpdateEntryCount);
+        } catch (Exception e) {
+          throw new VeniceException(e);
+        }
+      });
+
+      // Validate RMD bytes after PUT requests.
+      kafkaTopic = Version.composeKafkaTopic(storeName, 2);
+      validateRmdData(rmdSerDe, kafkaTopic, key, rmdWithValueSchemaId -> {
+        GenericRecord timestampRecord = (GenericRecord) rmdWithValueSchemaId.getRmdRecord().get("timestamp");
+        GenericRecord stringMapTimestampRecord = (GenericRecord) timestampRecord.get("stringMap");
+        List<Long> activeElementsTimestamps = (List<Long>) stringMapTimestampRecord.get("activeElementsTimestamps");
+        assertEquals(activeElementsTimestamps.size(), updateCount * singleUpdateEntryCount);
+      });
+
       // Send DELETE record that partially removes data.
       sendStreamingDeleteRecord(veniceProducer, storeName, key, (updateCount - 1) * 10L);
 
@@ -250,9 +307,7 @@ public class PartialUpdateTest {
         assertEquals(timestampField, (long) updateCount * 10);
       });
     } finally {
-      if (veniceProducer != null) {
-        veniceProducer.stop();
-      }
+      veniceProducer.stop();
     }
   }
 

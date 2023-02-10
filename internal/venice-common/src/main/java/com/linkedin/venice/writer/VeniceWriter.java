@@ -1179,17 +1179,20 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         serializedValue,
         true,
         valueSchemaId,
+        0,
         callback instanceof ChunkAwareCallback,
         reportSizeGenerator,
         maxSizeForUserPayloadPerMessageInBytes,
         keyWithChunkingSuffixSerializer,
         sendMessageFunction);
+    int valueChunkCount = valueChunksAndManifest.getChunkedValueManifest().keysWithChunkIdSuffix.size();
     ChunkedPayloadAndManifest rmdChunksAndManifest = isRmdChunkingEnabled
         ? WriterChunkingHelper.chunkPayloadAndSend(
             serializedKey,
             putMetadata == null ? EMPTY_BYTE_ARRAY : ByteUtils.extractByteArray(putMetadata.getRmdPayload()),
             false,
             valueSchemaId,
+            valueChunkCount,
             callback instanceof ChunkAwareCallback,
             reportSizeGenerator,
             maxSizeForUserPayloadPerMessageInBytes,
