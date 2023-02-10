@@ -129,6 +129,14 @@ public class PartialUpdateTest {
     this.parentController = parentControllers.get(0);
   }
 
+  /**
+   * This integration test performs a few actions to test RMD chunking logic:
+   * (1) Send a bunch of large UPDATE messages to make sure eventually the key's value + RMD size greater than 1MB and
+   * thus trigger chunking / RMD chunking.
+   * (2) Run a KIF repush to make sure it handles RMD chunks correctly.
+   * (3) Send a DELETE message to partially delete some of the items in the map field.
+   * (4) Send a DELETE message to fully delete the record.
+   */
   @Test(timeOut = TEST_TIMEOUT_MS * 4)
   public void testReplicationMetadataChunkingE2E() throws IOException {
     final String storeName = Utils.getUniqueString("rmdChunking");
@@ -222,6 +230,7 @@ public class PartialUpdateTest {
         assertEquals(activeElementsTimestamps.size(), updateCount * singleUpdateEntryCount);
       });
 
+      // Perform one time repush to make sure repush can handle RMD chunks data correctly.
       Properties props =
           IntegrationTestPushUtils.defaultVPJProps(multiColoMultiClusterWrapper, "dummyInputPath", storeName);
       props.setProperty(SOURCE_KAFKA, "true");
@@ -298,9 +307,7 @@ public class PartialUpdateTest {
         assertEquals(timestampField, (long) updateCount * 10);
       });
     } finally {
-      if (veniceProducer != null) {
-        veniceProducer.stop();
-      }
+      veniceProducer.stop();
     }
   }
 
