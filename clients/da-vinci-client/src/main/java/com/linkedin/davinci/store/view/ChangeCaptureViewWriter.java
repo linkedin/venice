@@ -155,7 +155,9 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
   @Override
   public void close() {
     internalView.close();
-    veniceWriter.close();
+    if (veniceWriter != null) {
+      veniceWriter.close();
+    }
   }
 
   // package private, for testing only

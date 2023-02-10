@@ -1,7 +1,8 @@
 package com.linkedin.davinci.store.view;
 
-import static com.linkedin.venice.schema.rmd.RmdConstants.*;
-import static com.linkedin.venice.writer.VeniceWriter.*;
+import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD;
+import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
+import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_LEADER_METADATA_WRAPPER;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.config.VeniceConfigLoader;
@@ -251,7 +252,9 @@ public class ChangeCaptureViewWriterTest {
     Assert.assertNull(changeEvents.get(2).currentValue);
     Assert.assertEquals(changeEvents.get(2).previousValue.value, OLD_VALUE);
 
-    // test close
+    // Test close
+    changeCaptureViewWriter.close();
+    Mockito.verify(mockVeniceWriter).close();
   }
 
 }

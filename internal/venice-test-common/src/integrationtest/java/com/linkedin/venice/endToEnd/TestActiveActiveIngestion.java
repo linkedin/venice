@@ -166,7 +166,7 @@ public class TestActiveActiveIngestion {
 
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setLeaderFollowerModel(true)
         .setActiveActiveReplicationEnabled(true)
-        .setHybridRewindSeconds(360)
+        .setHybridRewindSeconds(500)
         .setStoreViews(viewConfig)
         .setHybridOffsetLagThreshold(8)
         .setChunkingEnabled(isChunkingEnabled)
