@@ -1045,17 +1045,27 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
+  // For testing purpose
+  List<PartitionExceptionInfo> getPartitionIngestionExceptionList() {
+    return this.partitionIngestionExceptionList;
+  }
+
   private void processIngestionException() {
     partitionIngestionExceptionList.forEach(partitionExceptionInfo -> {
       int exceptionPartition = partitionExceptionInfo.getPartitionId();
       Exception partitionException = partitionExceptionInfo.getException();
       PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(exceptionPartition);
-      if (partitionConsumptionState == null) {
+      if (partitionConsumptionState == null || !partitionConsumptionState.isSubscribed()) {
         LOGGER.warn(
             "Ignoring exception for partition {} for store version {} since this partition has been unsubscribed already.",
             exceptionPartition,
             kafkaVersionTopic,
             partitionException);
+        /**
+         * Since the partition is already unsubscribed, we will clear the exception to avoid excessive logging, and in theory,
+         * this shouldn't happen since {@link #processCommonConsumerAction} will clear the exception list during un-subscribing.
+          */
+        partitionIngestionExceptionList.set(exceptionPartition, null);
       } else {
         if (!partitionConsumptionState.isCompletionReported()) {
           reportError(partitionException.getMessage(), exceptionPartition, partitionException);
@@ -1591,7 +1601,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         storageUtilizationManager.initPartition(partition);
         break;
       case UNSUBSCRIBE:
-        LOGGER.info("{} UnSubscribed to: {}", consumerTaskId, topicPartition);
+        LOGGER.info("{} Unsubscribing to: {}", consumerTaskId, topicPartition);
         PartitionConsumptionState consumptionState = partitionConsumptionStateMap.get(partition);
         forceUnSubscribedCount--;
         subscribedCount--;
@@ -1632,6 +1642,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         partitionConsumptionStateMap.remove(partition);
         storageUtilizationManager.removePartition(partition);
         kafkaDataIntegrityValidator.clearPartition(partition);
+        // Reset the error partition tracking
+        PartitionExceptionInfo partitionExceptionInfo = partitionIngestionExceptionList.get(partition);
+        if (partitionExceptionInfo != null) {
+          partitionIngestionExceptionList.set(partition, null);
+          LOGGER.info(
+              "{} Unsubscribed to: {}, which has errored with exception",
+              consumerTaskId,
+              topicPartition,
+              partitionExceptionInfo.getException());
+        } else {
+          LOGGER.info("{} Unsubscribed to: {}", consumerTaskId, topicPartition);
+        }
 
         break;
       case RESET_OFFSET:

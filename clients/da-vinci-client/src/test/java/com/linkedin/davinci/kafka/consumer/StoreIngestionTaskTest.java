@@ -52,6 +52,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
@@ -2408,6 +2409,9 @@ public abstract class StoreIngestionTaskTest {
       verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS)).stopped(eq(topic), eq(PARTITION_FOO), anyLong());
       verify(mockLogNotifier, never()).error(eq(topic), eq(PARTITION_BAR), anyString(), any());
       assertTrue(storeIngestionTaskUnderTest.isRunning(), "The StoreIngestionTask should still be running");
+      assertNull(
+          storeIngestionTaskUnderTest.getPartitionIngestionExceptionList().get(PARTITION_FOO),
+          "Exception for the errored partition should be cleared after unsubscription");
     }, isActiveActiveReplicationEnabled);
     for (int i = 0; i < 10000; ++i) {
       storeIngestionTaskUnderTest
