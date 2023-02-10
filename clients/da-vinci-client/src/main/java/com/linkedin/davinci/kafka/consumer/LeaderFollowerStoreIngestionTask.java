@@ -2749,7 +2749,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       readerValueSchemaId = schemaRepository.getSupersetOrLatestValueSchema(storeName).getId();
       readerUpdateProtocolVersion = schemaRepository.getLatestDerivedSchema(storeName, readerValueSchemaId).getId();
     } else {
-      SchemaEntry supersetSchemaEntry = schemaRepository.getSupersetSchema(storeName).orElse(null);
+      SchemaEntry supersetSchemaEntry = schemaRepository.getSupersetSchema(storeName);
       if (supersetSchemaEntry == null) {
         throw new IllegalStateException("Cannot find superset schema for store: " + storeName);
       }

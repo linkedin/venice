@@ -517,7 +517,7 @@ public class MergeConflictResolver {
       final long newValueSourceOffset,
       final int newValueSourceBrokerID,
       final int newValueColoID) {
-    final SchemaEntry supersetValueSchemaEntry = storeSchemaCache.getSupersetSchema().orElse(null);
+    final SchemaEntry supersetValueSchemaEntry = storeSchemaCache.getSupersetSchema();
     if (supersetValueSchemaEntry == null) {
       throw new IllegalStateException("Expect to get superset value schema for store: " + storeName);
     }
