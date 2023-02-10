@@ -9,6 +9,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.time.Duration;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Properties;
@@ -23,10 +24,10 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
-public class KafkaConsumerFactoryImplTest {
+public class ApacheKafkaPubSubConsumerTest {
   private ApacheKafkaConsumer apacheKafkaConsumer;
-  private KafkaConsumer delegateKafkaConsumer;
-  private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  private KafkaConsumer<byte[], byte[]> delegateKafkaConsumer;
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @BeforeMethod
   public void initConsumer() {
@@ -37,7 +38,6 @@ public class KafkaConsumerFactoryImplTest {
     properties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, "broker address");
     apacheKafkaConsumer =
         new ApacheKafkaConsumer(delegateKafkaConsumer, new VeniceProperties(properties), false, pubSubTopicRepository);
-
   }
 
   @Test
@@ -49,23 +49,37 @@ public class KafkaConsumerFactoryImplTest {
         UnsubscribedTopicPartitionException.class,
         () -> apacheKafkaConsumer.resetOffset(pubSubTopicPartition));
 
+    // Test subscribe
     apacheKafkaConsumer.subscribe(pubSubTopicPartition, OffsetRecord.LOWEST_OFFSET);
     verify(delegateKafkaConsumer).assign(Collections.singletonList(topicPartition));
     verify(delegateKafkaConsumer).seekToBeginning(Collections.singletonList(topicPartition));
+
+    // Test assignment check.
     doReturn(Collections.singleton(topicPartition)).when(delegateKafkaConsumer).assignment();
     Assert.assertTrue(apacheKafkaConsumer.hasAnySubscription());
+
+    // Test pause and resume
+    apacheKafkaConsumer.pause(pubSubTopicPartition);
+    verify(delegateKafkaConsumer).pause(Collections.singletonList(topicPartition));
+    apacheKafkaConsumer.resume(pubSubTopicPartition);
+    verify(delegateKafkaConsumer).resume(Collections.singletonList(topicPartition));
+
+    // Test reset offset
     apacheKafkaConsumer.resetOffset(pubSubTopicPartition);
     verify(delegateKafkaConsumer, times(2)).seekToBeginning(Collections.singletonList(topicPartition));
 
+    // Test unsubscribe
     apacheKafkaConsumer.unSubscribe(pubSubTopicPartition);
     verify(delegateKafkaConsumer).assign(Collections.EMPTY_LIST);
 
+    // Test subscribe with not seek beginning.
     int lastReadOffset = 0;
     doReturn(Collections.EMPTY_SET).when(delegateKafkaConsumer).assignment();
     Assert.assertFalse(apacheKafkaConsumer.hasAnySubscription());
     apacheKafkaConsumer.subscribe(pubSubTopicPartition, lastReadOffset);
     verify(delegateKafkaConsumer).seek(topicPartition, lastReadOffset + 1);
 
+    // Test batch unsubscribe.
     Set<PubSubTopicPartition> pubSubTopicPartitionsToUnSub = new HashSet<>();
     Set<TopicPartition> topicPartitionsLeft = new HashSet<>();
     Set<PubSubTopicPartition> allPubSubTopicPartitions = new HashSet<>();
@@ -89,6 +103,10 @@ public class KafkaConsumerFactoryImplTest {
     Assert.assertEquals(apacheKafkaConsumer.getAssignment(), allPubSubTopicPartitions);
     apacheKafkaConsumer.batchUnsubscribe(pubSubTopicPartitionsToUnSub);
     verify(delegateKafkaConsumer).assign(topicPartitionsLeft);
+
+    // Test close
+    apacheKafkaConsumer.close();
+    verify(delegateKafkaConsumer).close(eq(Duration.ZERO));
   }
 
 }

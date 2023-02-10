@@ -571,7 +571,8 @@ ext.createDiffFile = { ->
   // Files that we don't plan to write unit tests for now. Will be worked in the future
   def exclusionFilter = [
         ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceHelixAdmin.java',
-        ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceParentHelixAdmin.java'
+        ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceParentHelixAdmin.java',
+        ':!internal/venice-test-common/*'
   ]
   def file = Files.createTempFile(URLEncoder.encode(project.name, 'UTF-8'), '.diff').toFile()
   def diffBase = "${git.getUpstreamRemote()}/main"

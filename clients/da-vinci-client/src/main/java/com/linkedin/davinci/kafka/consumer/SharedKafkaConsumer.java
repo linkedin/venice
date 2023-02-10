@@ -11,13 +11,11 @@ import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.IntSupplier;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.common.TopicPartition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -156,19 +154,13 @@ class SharedKafkaConsumer implements PubSubConsumer {
 
   @Override
   public synchronized void batchUnsubscribe(Set<PubSubTopicPartition> pubSubTopicPartitionSet) {
-    Set<TopicPartition> topicPartitionSet = new HashSet<>();
-    pubSubTopicPartitionSet.forEach(
-        pubSubTopicPartition -> topicPartitionSet.add(
-            new TopicPartition(
-                pubSubTopicPartition.getPubSubTopic().getName(),
-                pubSubTopicPartition.getPartitionNumber())));
     unSubscribeAction(() -> {
       this.delegate.batchUnsubscribe(pubSubTopicPartitionSet);
-      for (PubSubTopicPartition topicPartition: pubSubTopicPartitionSet) {
-        subscribedTopicPartitionToVersionTopic.remove(topicPartition);
-        unsubscriptionListener.call(this, topicPartition);
+      for (PubSubTopicPartition pubSubTopicPartition: pubSubTopicPartitionSet) {
+        subscribedTopicPartitionToVersionTopic.remove(pubSubTopicPartition);
+        unsubscriptionListener.call(this, pubSubTopicPartition);
       }
-      return topicPartitionSet.size();
+      return pubSubTopicPartitionSet.size();
     });
   }
 

@@ -184,16 +184,6 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     }
   }
 
-  void unsubscribeConsumerFor(
-      final String kafkaURL,
-      PubSubTopic versionTopic,
-      PubSubTopicPartition pubSubTopicPartition) {
-    KafkaConsumerService consumerService = getKafkaConsumerService(kafkaURL);
-    if (consumerService != null) {
-      consumerService.unSubscribe(versionTopic, pubSubTopicPartition);
-    }
-  }
-
   public void unsubscribeConsumerFor(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
     for (KafkaConsumerService consumerService: kafkaServerToConsumerServiceMap.values()) {
       consumerService.unSubscribe(versionTopic, pubSubTopicPartition);
@@ -209,7 +199,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   public ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> subscribeConsumerFor(
       final String kafkaURL,
       StoreIngestionTask storeIngestionTask,
-      PubSubTopicPartition topicPartition,
+      PubSubTopicPartition pubSubTopicPartition,
       long lastOffset) {
     PubSubTopic versionTopic = storeIngestionTask.getVersionTopic();
     KafkaConsumerService consumerService = getKafkaConsumerService(kafkaURL);
@@ -221,15 +211,11 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> dataReceiver =
         new StorePartitionDataReceiver(
             storeIngestionTask,
-            topicPartition,
+            pubSubTopicPartition,
             kafkaURL,
             kafkaClusterUrlToIdMap.getOrDefault(kafkaURL, -1));
 
-    consumerService.startConsumptionIntoDataReceiver(
-        /** TODO: Refactor this to use {@link PubSubTopicPartition} as well */
-        topicPartition,
-        lastOffset,
-        dataReceiver);
+    consumerService.startConsumptionIntoDataReceiver(pubSubTopicPartition, lastOffset, dataReceiver);
 
     return dataReceiver;
   }
