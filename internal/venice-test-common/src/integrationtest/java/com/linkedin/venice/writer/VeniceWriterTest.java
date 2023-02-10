@@ -413,6 +413,7 @@ public class VeniceWriterTest {
     chunkedKeySuffix.chunkId.producerGUID = producerMetadata.producerGUID;
     chunkedKeySuffix.chunkId.segmentNumber = producerMetadata.segmentNumber;
     chunkedKeySuffix.chunkId.messageSequenceNumber = producerMetadata.messageSequenceNumber;
+    chunkedKeySuffix.chunkId.chunkIndex = 2;
     keyWithSuffix = keyWithChunkingSuffixSerializer.serializeChunkedKey(serializedKey, chunkedKeySuffix);
     chunkedRmdManifest.keysWithChunkIdSuffix.add(keyWithSuffix);
     KafkaKey expectedKey3 = new KafkaKey(MessageType.PUT, keyWithSuffix.array());
