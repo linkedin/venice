@@ -172,6 +172,17 @@ public class StorageService extends AbstractVeniceService {
         AbstractStorageEngine storageEngine;
 
         try {
+          String store = Version.parseStoreFromVersionTopic(storeName);
+          int versionNum = Version.parseVersionFromKafkaTopicName(storeName);
+
+          Optional<Version> version = storeRepository.getStoreOrThrow(store).getVersion(versionNum);
+          if (!version.isPresent()) {
+            LOGGER.error(
+                "Could not find the version {} for the following store {}: skip opening it.",
+                storeName,
+                versionNum);
+            continue;
+          }
           storageEngine = openStore(storeConfig, () -> null);
         } catch (Exception e) {
           if (ExceptionUtils.recursiveClassEquals(e, RocksDBException.class)) {
