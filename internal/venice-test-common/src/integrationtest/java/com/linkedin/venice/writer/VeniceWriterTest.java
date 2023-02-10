@@ -371,6 +371,7 @@ public class VeniceWriterTest {
     ChunkedKeySuffix chunkedKeySuffix = new ChunkedKeySuffix();
     chunkedKeySuffix.isChunk = true;
     chunkedKeySuffix.chunkId = new ChunkId();
+    chunkedKeySuffix.chunkId.chunkIndex = 0;
     ProducerMetadata producerMetadata = actualValue1.producerMetadata;
     chunkedKeySuffix.chunkId.producerGUID = producerMetadata.producerGUID;
     chunkedKeySuffix.chunkId.segmentNumber = producerMetadata.segmentNumber;
@@ -413,6 +414,8 @@ public class VeniceWriterTest {
     chunkedKeySuffix.chunkId.producerGUID = producerMetadata.producerGUID;
     chunkedKeySuffix.chunkId.segmentNumber = producerMetadata.segmentNumber;
     chunkedKeySuffix.chunkId.messageSequenceNumber = producerMetadata.messageSequenceNumber;
+    // The chunkIndex of the first RMD should be the number of value chunks so that key space of value chunk and RMD
+    // chunk will not collide.
     chunkedKeySuffix.chunkId.chunkIndex = 2;
     keyWithSuffix = keyWithChunkingSuffixSerializer.serializeChunkedKey(serializedKey, chunkedKeySuffix);
     chunkedRmdManifest.keysWithChunkIdSuffix.add(keyWithSuffix);
