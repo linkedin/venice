@@ -147,26 +147,31 @@ public class ChunkAssembler {
           continue;
         }
         // Collecting chunks
-        for (int i = 0; i < valueChunkKeySuffixes.length; i++) {
-          ByteBuffer byteBuffer = valueChunkKeySuffixes[i];
-          if (byteBuffer.equals(reusedMapperValue.chunkedKeySuffix)) {
-            byte[] valueChunk = new byte[reusedMapperValue.value.remaining()];
-            totalValueByteCount += valueChunk.length;
-            reusedMapperValue.value.get(valueChunk);
-            valueChunks[i] = valueChunk;
-            valueChunksFound++;
-            break;
-          }
-        }
-        if (isRmdChunkingEnabled) {
+        boolean isChunkMatched = false;
+        if (isRmdChunkingEnabled && (rmdChunksFound != rmdChunkKeySuffixes.length)) {
           for (int i = 0; i < rmdChunkKeySuffixes.length; i++) {
             ByteBuffer byteBuffer = rmdChunkKeySuffixes[i];
-            if (byteBuffer.equals(reusedMapperValue.chunkedKeySuffix)) {
+            if (byteBuffer.equals(reusedMapperValue.chunkedKeySuffix)
+                && (reusedMapperValue.replicationMetadataPayload.remaining() > 0)) {
               byte[] rmdChunk = new byte[reusedMapperValue.replicationMetadataPayload.remaining()];
               totalRmdByteCount += rmdChunk.length;
               reusedMapperValue.replicationMetadataPayload.get(rmdChunk);
               rmdChunks[i] = rmdChunk;
               rmdChunksFound++;
+              isChunkMatched = true;
+              break;
+            }
+          }
+        }
+        if (!isChunkMatched) {
+          for (int i = 0; i < valueChunkKeySuffixes.length; i++) {
+            ByteBuffer byteBuffer = valueChunkKeySuffixes[i];
+            if (byteBuffer.equals(reusedMapperValue.chunkedKeySuffix)) {
+              byte[] valueChunk = new byte[reusedMapperValue.value.remaining()];
+              totalValueByteCount += valueChunk.length;
+              reusedMapperValue.value.get(valueChunk);
+              valueChunks[i] = valueChunk;
+              valueChunksFound++;
               break;
             }
           }
