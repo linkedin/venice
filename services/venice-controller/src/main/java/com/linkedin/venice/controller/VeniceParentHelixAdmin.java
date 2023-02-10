@@ -44,6 +44,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TI
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.RMD_CHUNKING_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_QUOTA_IN_BYTE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_MIGRATION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIEW;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_TO_GO_ONLINE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COMPUTATION_ENABLED;
@@ -201,6 +202,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
+import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
@@ -1154,14 +1156,14 @@ public class VeniceParentHelixAdmin implements Admin {
   * For the 1st case, it is expected to refuse the new data push,
   * and for the 2nd case, customer should reach out Venice team to fix this issue for now.
   **/
-  List<String> existingTopicsForStore(String storeName) {
+  List<String> existingVersionTopicsForStore(String storeName) {
     List<String> outputList = new ArrayList<>();
     TopicManager topicManager = getTopicManager();
     Set<String> topics = topicManager.listTopics();
     String storeNameForCurrentTopic;
     for (String topic: topics) {
       if (AdminTopicUtils.isAdminTopic(topic) || AdminTopicUtils.isKafkaInternalTopic(topic)
-          || Version.isRealTimeTopic(topic)) {
+          || Version.isRealTimeTopic(topic) || VeniceView.isViewTopic(topic)) {
         continue;
       }
       try {
@@ -1184,7 +1186,7 @@ public class VeniceParentHelixAdmin implements Admin {
    * @return the version topics in freshness order
    */
   List<String> getKafkaTopicsByAge(String storeName) {
-    List<String> existingTopics = existingTopicsForStore(storeName);
+    List<String> existingTopics = existingVersionTopicsForStore(storeName);
     if (!existingTopics.isEmpty()) {
       existingTopics.sort((t1, t2) -> {
         int v1 = Version.parseVersionFromKafkaTopicName(t1);
@@ -2287,6 +2289,7 @@ public class VeniceParentHelixAdmin implements Admin {
         Map<String, StoreViewConfigRecord> mergedViewSettings =
             VeniceHelixAdmin.mergeNewViewConfigsIntoOldConfigs(currStore, storeViewConfig.get());
         setStore.views = mergedViewSettings;
+        updatedConfigsList.add(STORE_VIEW);
       }
 
       // Only update fields that are set, other fields will be read from the original store's partitioner config.

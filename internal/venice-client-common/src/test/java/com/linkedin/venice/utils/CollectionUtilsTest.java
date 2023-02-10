@@ -6,8 +6,11 @@ import static org.apache.avro.Schema.createArray;
 import static org.testng.Assert.assertTrue;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.apache.avro.generic.GenericData;
+import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
@@ -72,6 +75,22 @@ public class CollectionUtilsTest {
         javaUtilArrayList3,
         javaUtilArrayList4,
         "We cannot compare java.util.ArrayList<Object> by content equality properly!");
+  }
+
+  @Test
+  public void testGetStringKeyCharSequenceValueMapFromStringMap() {
+    // Assert null argument
+    Assert.assertNull(CollectionUtils.getStringKeyCharSequenceValueMapFromStringMap(null));
+
+    Map<String, String> stringMap = new HashMap<>();
+    stringMap.put("key1", "value1");
+    stringMap.put("key2", "value2");
+
+    Map<String, CharSequence> stringCharSequenceMap =
+        CollectionUtils.getStringKeyCharSequenceValueMapFromStringMap(stringMap);
+    Assert.assertEquals(stringMap.size(), stringCharSequenceMap.size());
+    Assert.assertEquals(stringMap.get("key1"), stringCharSequenceMap.get("key1").toString());
+    Assert.assertEquals(stringMap.get("key2"), stringCharSequenceMap.get("key2").toString());
   }
 
   private void populateIntegerList(List<Integer> list) {

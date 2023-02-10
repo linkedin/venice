@@ -12,6 +12,7 @@ import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ZKStore;
 import java.io.IOException;
 import java.util.Map;
@@ -28,6 +29,7 @@ public class StoreJSONSerializer extends VeniceJsonSerializer<Store> {
     addMixin(HybridStoreConfig.class, HybridStoreConfigSerializerMixin.class);
     addMixin(ETLStoreConfig.class, ETLStoreConfigSerializerMixin.class);
     addMixin(PartitionerConfig.class, PartitionerConfigSerializerMixin.class);
+    addMixin(ViewConfig.class, ViewConfigSerializerMixin.class);
   }
 
   private void addMixin(Class veniceClass, Class serializerClass) {
@@ -85,6 +87,14 @@ public class StoreJSONSerializer extends VeniceJsonSerializer<Store> {
         @JsonProperty("etledUserProxyAccount") String etledUserProxyAccount,
         @JsonProperty("regularVersionETLEnabled") boolean regularVersionETLEnabled,
         @JsonProperty("futureVersionETLEnabled") boolean futureVersionETLEnabled) {
+    }
+  }
+
+  public static class ViewConfigSerializerMixin {
+    @JsonCreator
+    public ViewConfigSerializerMixin(
+        @JsonProperty("viewClassName") String viewClassName,
+        @JsonProperty("viewParameters") Map<String, String> viewParameters) {
     }
   }
 

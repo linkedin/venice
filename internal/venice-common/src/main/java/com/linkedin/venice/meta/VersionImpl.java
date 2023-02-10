@@ -304,7 +304,7 @@ public class VersionImpl implements Version {
     }
   }
 
-  @JsonProperty("views")
+  @JsonProperty("viewConfigs")
   @Override
   public Map<String, ViewConfig> getViewConfigs() {
 
@@ -313,15 +313,17 @@ public class VersionImpl implements Version {
         .collect(Collectors.toMap(Map.Entry::getKey, e -> new ViewConfigImpl(e.getValue())));
   }
 
-  @JsonProperty("views")
+  @JsonProperty("viewConfigs")
   @Override
-  public void setViewConfig(Map<String, ViewConfig> viewConfigList) {
+  public void setViewConfigs(Map<String, ViewConfig> viewConfigList) {
     this.storeVersion.views = viewConfigList.entrySet()
         .stream()
         .collect(
             Collectors.toMap(
                 Map.Entry::getKey,
-                e -> new StoreViewConfig(e.getValue().getClassName(), e.getValue().dataModel().getViewParameters())));
+                e -> new StoreViewConfig(
+                    e.getValue().getViewClassName(),
+                    e.getValue().dataModel().getViewParameters())));
   }
 
   @Override
@@ -447,7 +449,7 @@ public class VersionImpl implements Version {
     clonedVersion.setActiveActiveReplicationEnabled(isActiveActiveReplicationEnabled());
     clonedVersion.setRmdVersionId(getRmdVersionId());
     clonedVersion.setVersionSwapDeferred(isVersionSwapDeferred());
-    clonedVersion.setViewConfig(getViewConfigs());
+    clonedVersion.setViewConfigs(getViewConfigs());
     return clonedVersion;
   }
 
