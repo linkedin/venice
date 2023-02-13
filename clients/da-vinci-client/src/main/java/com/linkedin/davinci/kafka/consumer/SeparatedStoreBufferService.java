@@ -34,11 +34,13 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
         new StoreBufferService(
             serverConfig.getDrainerPoolSizeSortedInput(),
             serverConfig.getStoreWriterBufferMemoryCapacity(),
-            serverConfig.getStoreWriterBufferNotifyDelta()),
+            serverConfig.getStoreWriterBufferNotifyDelta(),
+            serverConfig.isStoreWriterBufferAfterLeaderLogicEnabled()),
         new StoreBufferService(
             serverConfig.getDrainerPoolSizeUnsortedInput(),
             serverConfig.getStoreWriterBufferMemoryCapacity(),
-            serverConfig.getStoreWriterBufferNotifyDelta()));
+            serverConfig.getStoreWriterBufferNotifyDelta(),
+            serverConfig.isStoreWriterBufferAfterLeaderLogicEnabled()));
     LOGGER.info(
         "Created separated store buffer service with {} sorted drainers and {} unsorted drainers queues with capacity of {}",
         sortedPoolSize,

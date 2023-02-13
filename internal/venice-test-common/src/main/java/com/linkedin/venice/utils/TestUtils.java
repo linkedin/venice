@@ -646,36 +646,23 @@ public class TestUtils {
     });
   }
 
-  public static void verifySystemStoreInAllRegions(
-      String regularStoreName,
-      VeniceSystemStoreType systemStoreType,
-      List<ControllerClient> controllerClientList) {
-    String systemStoreName = systemStoreType.getSystemStoreName(regularStoreName);
-    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
-      for (ControllerClient client: controllerClientList) {
-        StoreResponse response = client.getStore(systemStoreName);
-        Assert.assertFalse(response.isError());
-        Assert.assertTrue(response.getStore().getCurrentVersion() > 0);
-      }
-    });
-  }
-
   public static void verifyDCConfigNativeAndActiveRepl(
-      ControllerClient controllerClient,
       String storeName,
       boolean enabledNR,
-      boolean enabledAA) {
-    TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, true, () -> {
-      StoreResponse storeResponse = controllerClient.getStore(storeName);
-      Assert.assertFalse(storeResponse.isError());
-      Assert.assertEquals(
-          storeResponse.getStore().isNativeReplicationEnabled(),
-          enabledNR,
-          "The native replication config does not match.");
-      Assert.assertEquals(
-          storeResponse.getStore().isActiveActiveReplicationEnabled(),
-          enabledAA,
-          "The active active replication config does not match.");
+      boolean enabledAA,
+      ControllerClient... controllerClients) {
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+      for (ControllerClient controllerClient: controllerClients) {
+        StoreResponse storeResponse = assertCommand(controllerClient.getStore(storeName));
+        Assert.assertEquals(
+            storeResponse.getStore().isNativeReplicationEnabled(),
+            enabledNR,
+            "The native replication config does not match.");
+        Assert.assertEquals(
+            storeResponse.getStore().isActiveActiveReplicationEnabled(),
+            enabledAA,
+            "The active active replication config does not match.");
+      }
     });
   }
 
