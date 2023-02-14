@@ -118,7 +118,9 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
             .setR2Client(r2Client)
             .setSpeculativeQueryEnabled(true)
             .setDualReadEnabled(false)
-            .setMaxAllowedKeyCntInBatchGetReq(recordCnt + 1); // +1 for nonExistingKey
+            .setMaxAllowedKeyCntInBatchGetReq(recordCnt + 1) // +1 for nonExistingKey
+            // TODO: this needs to be revisited to see how much this should be set. Current default is 50.
+            .setRoutingPendingRequestCounterInstanceBlockThreshold(recordCnt + 1);
 
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
         getGenericFastClient(clientConfigBuilder, new MetricsRepository(), true);
@@ -147,7 +149,9 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
             .setR2Client(r2Client)
             .setSpeculativeQueryEnabled(true)
             .setDualReadEnabled(false)
-            .setMaxAllowedKeyCntInBatchGetReq(recordCnt);
+            .setMaxAllowedKeyCntInBatchGetReq(recordCnt)
+            // TODO: this needs to be revisited to see how much this should be set. Current default is 50.
+            .setRoutingPendingRequestCounterInstanceBlockThreshold(recordCnt);
 
     AvroSpecificStoreClient<String, TestValueSchema> specificFastClient =
         getSpecificFastClient(clientConfigBuilder, new MetricsRepository(), true, TestValueSchema.class);
