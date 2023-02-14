@@ -27,10 +27,6 @@ public class PartitionStatus implements Comparable<PartitionStatus> {
     return partitionId;
   }
 
-  public Map<String, ReplicaStatus> getReplicaStatusMap() {
-    return replicaStatusMap;
-  }
-
   public void updateReplicaStatus(String instanceId, ExecutionStatus newStatus) {
     updateReplicaStatus(instanceId, newStatus, "");
   }
