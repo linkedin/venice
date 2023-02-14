@@ -110,19 +110,13 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
       long startTimeInNS,
       FastClientStats clientStats) {
 
+    /**
+     * In case of failures we still attempt to increment the metrics leading up to it.
+     */
     return innerFuture.handle((value, throwable) -> {
       double latency = LatencyUtils.getLatencyInMS(startTimeInNS);
-      if (throwable != null) {
-        clientStats.recordUnhealthyRequest();
-        clientStats.recordUnhealthyLatency(latency);
-        if (throwable instanceof VeniceClientException) {
-          throw (VeniceClientException) throwable;
-        } else {
-          throw new VeniceClientException(throwable);
-        }
-      }
 
-      if (latency > TIMEOUT_IN_SECOND * Time.MS_PER_SECOND) {
+      if (throwable != null || (latency > TIMEOUT_IN_SECOND * Time.MS_PER_SECOND)) {
         clientStats.recordUnhealthyRequest();
         clientStats.recordUnhealthyLatency(latency);
       } else {
@@ -174,6 +168,14 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
           clientStats.recordRetryRequestKeyCount(batchGetRequestContext.numberOfKeysSentInRetryRequest);
           clientStats
               .recordRetryRequestSuccessKeyCount(batchGetRequestContext.numberOfKeysCompletedInRetryRequest.get());
+        }
+      }
+
+      if (throwable != null) {
+        if (throwable instanceof VeniceClientException) {
+          throw (VeniceClientException) throwable;
+        } else {
+          throw new VeniceClientException(throwable);
         }
       }
 
