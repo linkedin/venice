@@ -10,6 +10,7 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -64,14 +65,19 @@ public class VeniceChangeLogConsumerImpl<K, V> implements VeniceChangelogConsume
     this.viewClassName = clientConfig.getViewClassName();
     if (viewClassName.equals(ChangeCaptureView.class.getCanonicalName())) {
       this.currentTopic =
-          store.getVersion(currentVersion).get().kafkaTopicName() + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX;
+          Version.composeKafkaTopic(storeName, currentVersion) + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX;
     } else {
-      this.currentTopic = store.getVersion(currentVersion).get().kafkaTopicName();
+      this.currentTopic = Version.composeKafkaTopic(storeName, currentVersion);
     }
     this.schemaReader = clientConfig.getSchemaReader();
     this.subscribedPartitions = new HashSet<>();
     Schema keySchema = schemaReader.getKeySchema();
     this.keyDeserializer = FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(keySchema, keySchema);
+  }
+
+  // for test purpose
+  void setConsumer(Consumer<KafkaKey, KafkaMessageEnvelope> consumer) {
+    this.kafkaConsumer = consumer;
   }
 
   @Override
