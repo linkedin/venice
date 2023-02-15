@@ -49,6 +49,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.metadata.response.MetadataResponseRecord;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -1084,6 +1085,13 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       LOGGER.warn(msg);
       response.setMessage(msg);
     }
+    return response;
+  }
+
+  @Override
+  public MetadataResponseRecord getMetadata(String storeName) {
+    MetadataResponseRecord response = new MetadataResponseRecord();
+    // TODO: set all the fields for the response
     return response;
   }
 

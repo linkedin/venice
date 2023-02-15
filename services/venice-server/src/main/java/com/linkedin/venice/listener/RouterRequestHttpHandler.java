@@ -6,6 +6,7 @@ import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
 import com.linkedin.venice.listener.request.DictionaryFetchRequest;
 import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.HealthCheckRequest;
+import com.linkedin.venice.listener.request.MetadataFetchRequest;
 import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
 import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
@@ -115,6 +116,11 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
           AdminRequest adminRequest = AdminRequest.parseAdminHttpRequest(req);
           statsHandler.setStoreName(adminRequest.getStoreName());
           ctx.fireChannelRead(adminRequest);
+          break;
+        case METADATA:
+          MetadataFetchRequest metadataFetchRequest = MetadataFetchRequest.parseGetHttpRequest(req);
+          statsHandler.setStoreName(metadataFetchRequest.getStoreName());
+          ctx.fireChannelRead(metadataFetchRequest);
           break;
         default:
           throw new VeniceException("Unrecognized query action");

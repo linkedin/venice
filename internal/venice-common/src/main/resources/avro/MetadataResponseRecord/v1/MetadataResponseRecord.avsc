@@ -1,16 +1,16 @@
 {
   "type": "record",
   "name": "MetadataResponseRecord",
-  "namespace": "com.linkedin.venice._",
+  "namespace": "com.linkedin.venice.metadata.response",
   "doc": "This record will store version properties, key & value schemas, and routing information",
   "fields": [
     {
       "name": "version_metadata",
-      "doc": "The current version number and version properties",
+      "doc": "The current version number and other version properties",
       "type": [
         "null",
         {
-          "name": "Versions",
+          "name": "VersionProperties",
           "type": "record",
           "fields": [
             {
@@ -30,7 +30,7 @@
               "name": "compression_strategy",
               "doc": "The current version's compression strategy",
               "type": {
-                "name": "compression_enum",
+                "name": "CompressionStrategy",
                 "type": "enum",
                 "symbols": [
                   "NO_OP",

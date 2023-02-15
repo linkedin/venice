@@ -31,6 +31,7 @@ import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
 import com.linkedin.venice.listener.request.DictionaryFetchRequest;
 import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.HealthCheckRequest;
+import com.linkedin.venice.listener.request.MetadataFetchRequest;
 import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
 import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.listener.response.BinaryResponse;
@@ -44,6 +45,7 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.metadata.response.MetadataResponseRecord;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
@@ -310,6 +312,9 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
       context.writeAndFlush(response);
     } else if (message instanceof AdminRequest) {
       AdminResponse response = handleServerAdminRequest((AdminRequest) message);
+      context.writeAndFlush(response);
+    } else if (message instanceof MetadataFetchRequest) {
+      MetadataResponseRecord response = handleMetadataFetchRequest((MetadataFetchRequest) message);
       context.writeAndFlush(response);
     } else {
       context.writeAndFlush(
@@ -625,6 +630,11 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     ByteBuffer dictionary = metadataRetriever.getStoreVersionCompressionDictionary(topic);
 
     return new BinaryResponse(dictionary);
+  }
+
+  private MetadataResponseRecord handleMetadataFetchRequest(MetadataFetchRequest request) {
+    String storeName = request.getStoreName();
+    return metadataRetriever.getMetadata(storeName);
   }
 
   private void clearFieldsInReusedRecord(GenericRecord record, Schema schema) {
