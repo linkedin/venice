@@ -4,6 +4,7 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.listener.response.AdminResponse;
+import com.linkedin.davinci.listener.response.MetadataResponse;
 import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.davinci.storage.DiskHealthCheckService;
 import com.linkedin.davinci.storage.MetadataRetriever;
@@ -45,7 +46,6 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.metadata.response.MetadataResponseRecord;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
@@ -314,7 +314,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
       AdminResponse response = handleServerAdminRequest((AdminRequest) message);
       context.writeAndFlush(response);
     } else if (message instanceof MetadataFetchRequest) {
-      MetadataResponseRecord response = handleMetadataFetchRequest((MetadataFetchRequest) message);
+      MetadataResponse response = handleMetadataFetchRequest((MetadataFetchRequest) message);
       context.writeAndFlush(response);
     } else {
       context.writeAndFlush(
@@ -632,7 +632,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     return new BinaryResponse(dictionary);
   }
 
-  private MetadataResponseRecord handleMetadataFetchRequest(MetadataFetchRequest request) {
+  private MetadataResponse handleMetadataFetchRequest(MetadataFetchRequest request) {
     String storeName = request.getStoreName();
     return metadataRetriever.getMetadata(storeName);
   }

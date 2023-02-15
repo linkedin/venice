@@ -1,7 +1,7 @@
 package com.linkedin.davinci.storage;
 
 import com.linkedin.davinci.listener.response.AdminResponse;
-import com.linkedin.venice.metadata.response.MetadataResponseRecord;
+import com.linkedin.davinci.listener.response.MetadataResponse;
 import com.linkedin.venice.utils.ComplementSet;
 import java.nio.ByteBuffer;
 
@@ -11,5 +11,5 @@ public interface MetadataRetriever {
 
   AdminResponse getConsumptionSnapshots(String topicName, ComplementSet<Integer> partitions);
 
-  MetadataResponseRecord getMetadata(String storeName);
+  MetadataResponse getMetadata(String storeName);
 }

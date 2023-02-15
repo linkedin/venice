@@ -14,6 +14,7 @@ import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.davinci.listener.response.AdminResponse;
+import com.linkedin.davinci.listener.response.MetadataResponse;
 import com.linkedin.davinci.storage.DiskHealthCheckService;
 import com.linkedin.davinci.storage.MetadataRetriever;
 import com.linkedin.davinci.storage.StorageEngineRepository;
@@ -24,6 +25,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.request.AdminRequest;
 import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.HealthCheckRequest;
+import com.linkedin.venice.listener.request.MetadataFetchRequest;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.listener.response.StorageResponseObject;
 import com.linkedin.venice.meta.QueryAction;
@@ -31,6 +33,8 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.ServerAdminAction;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.metadata.response.CompressionStrategy;
+import com.linkedin.venice.metadata.response.VersionProperties;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.TestUtils;
@@ -43,6 +47,7 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -358,6 +363,78 @@ public class StorageReadRequestsHandlerTest {
       Assert.assertEquals(
           obj.getResponseSchemaIdHeader(),
           AvroProtocolDefinition.SERVER_ADMIN_RESPONSE_V1.getCurrentProtocolVersion());
+    } finally {
+      TestUtils.shutdownExecutor(threadPoolExecutor);
+    }
+  }
+
+  @Test
+  public static void testMetadataFetchRequestsPassInStorageExecutionHandler() throws Exception {
+    String storeName = "test_store_name";
+    String keySchema = "test_key_schema";
+    List<CharSequence> valueSchemas = Collections.singletonList("test_value_schemas");
+    List<Object> outputArray = new ArrayList<Object>();
+
+    // [0]""/[1]"action"/[2]"store"
+    String uri = "/" + QueryAction.ADMIN.toString().toLowerCase() + "/" + storeName;
+    HttpRequest httpRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri);
+    MetadataFetchRequest testRequest = MetadataFetchRequest.parseGetHttpRequest(httpRequest);
+
+    // Mock the MetadataResponse from ingestion task
+    MetadataResponse expectedMetadataResponse = new MetadataResponse();
+    VersionProperties versionProperties =
+        new VersionProperties(123, Collections.singletonList(456), CompressionStrategy.GZIP, true);
+    expectedMetadataResponse.setVersionMetadata(versionProperties);
+    expectedMetadataResponse.setKeySchema(keySchema);
+    expectedMetadataResponse.setValueSchemas(valueSchemas);
+
+    MetadataRetriever mockMetadataRetriever = mock(MetadataRetriever.class);
+    doReturn(expectedMetadataResponse).when(mockMetadataRetriever).getMetadata(eq(storeName));
+
+    /**
+     * Capture the output written by {@link StorageReadRequestsHandler}
+     */
+    ChannelHandlerContext mockCtx = mock(ChannelHandlerContext.class);
+    doReturn(new UnpooledByteBufAllocator(true)).when(mockCtx).alloc();
+    when(mockCtx.writeAndFlush(any())).then(i -> {
+      outputArray.add(i.getArguments()[0]);
+      return null;
+    });
+
+    ThreadPoolExecutor threadPoolExecutor =
+        new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>(2));
+    try {
+      VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+      RocksDBServerConfig dbServerConfig = mock(RocksDBServerConfig.class);
+      doReturn(dbServerConfig).when(serverConfig).getRocksDBServerConfig();
+
+      // Actual test
+      StorageReadRequestsHandler testHandler = new StorageReadRequestsHandler(
+          threadPoolExecutor,
+          threadPoolExecutor,
+          mock(StorageEngineRepository.class),
+          mock(ReadOnlyStoreRepository.class),
+          mock(ReadOnlySchemaRepository.class),
+          mockMetadataRetriever,
+          null,
+          false,
+          false,
+          10,
+          serverConfig,
+          mock(StorageEngineBackedCompressorFactory.class),
+          Optional.empty());
+      testHandler.channelRead(mockCtx, testRequest);
+
+      waitUntilStorageExecutionHandlerRespond(outputArray);
+
+      Assert.assertEquals(outputArray.size(), 1);
+      Assert.assertTrue(outputArray.get(0) instanceof MetadataResponse);
+      MetadataResponse obj = (MetadataResponse) outputArray.get(0);
+
+      // Verification
+      Assert.assertEquals(obj.getResponseRecord().getVersionMetadata(), versionProperties);
+      Assert.assertEquals(obj.getResponseRecord().getKeySchema(), keySchema);
+      Assert.assertEquals(obj.getResponseRecord().getValueSchemas(), valueSchemas);
     } finally {
       TestUtils.shutdownExecutor(threadPoolExecutor);
     }
