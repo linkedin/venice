@@ -1,0 +1,114 @@
+{
+  "type": "record",
+  "name": "MetadataResponseRecord",
+  "namespace": "com.linkedin.venice._",
+  "doc": "This record will store version properties, key & value schemas, and routing information",
+  "fields": [
+    {
+      "name": "version_metadata",
+      "doc": "The current version number and version properties",
+      "type": [
+        "null",
+        {
+          "name": "Versions",
+          "type": "record",
+          "fields": [
+            {
+              "name": "current_version",
+              "doc": "Current version number",
+              "type": "int"
+            },
+            {
+              "name": "versions",
+              "doc": "List of all version numbers",
+              "type": {
+                "type": "array",
+                "items": "int"
+              }
+            },
+            {
+              "name": "compression_strategy",
+              "doc": "The current version's compression strategy",
+              "type": {
+                "name": "compression_enum",
+                "type": "enum",
+                "symbols": [
+                  "NO_OP",
+                  "GZIP",
+                  "ZSTD",
+                  "ZSTD_WITH_DICT"
+                ]
+              }
+            },
+            {
+              "name": "compression_enabled",
+              "doc": "Flag for indicating if compression is enabled",
+              "type": "boolean"
+            }
+          ]
+        }
+      ],
+      "default": null
+    },
+    {
+      "name": "key_schema",
+      "doc": "Key schema",
+      "type": [
+        "null",
+        "string"
+      ],
+      "default": null
+    },
+    {
+      "name": "value_schemas",
+      "doc": "Value schemas",
+      "type": [
+        "null",
+        {
+          "type": "array",
+          "items": "string"
+        }
+      ],
+      "default": null
+    },
+    {
+      "name": "store_config",
+      "doc": "Store configuration",
+      "type": [
+        "null",
+        {
+          "type": "map",
+          "values": "string"
+        }
+      ],
+      "default": null
+    },
+    {
+      "name": "routing_info",
+      "doc": "Routing table information, maps partition IDs to a list of replicas",
+      "type": [
+        "null",
+        {
+          "type": "map",
+          "values": {
+            "type": "array",
+            "items": "string"
+          }
+        }
+      ],
+      "default": null
+    },
+    {
+      "name": "helix_group_info",
+      "doc": "Helix group information, maps replicas to their respective groups",
+      "type": [
+        "null",
+        {
+          "type": "map",
+          "values": "string"
+        }
+      ],
+      "default": null
+    }
+  ]
+}
