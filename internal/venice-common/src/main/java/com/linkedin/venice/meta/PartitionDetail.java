@@ -6,7 +6,6 @@ import com.linkedin.venice.pushmonitor.StatusSnapshot;
 import com.linkedin.venice.utils.Pair;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import org.apache.commons.lang.StringUtils;
 
 
@@ -38,9 +37,9 @@ public class PartitionDetail {
   }
 
   void addReplicaDetails(final PartitionStatus pStatus) {
-    for (Map.Entry<String, ReplicaStatus> entry: pStatus.getReplicaStatusMap().entrySet()) {
-      String instanceId = entry.getKey();
-      Pair<StatusSnapshot, StatusSnapshot> status = entry.getValue().findStartedAndCompletedStatus();
+    for (ReplicaStatus replicaStatus: pStatus.getReplicaStatuses()) {
+      String instanceId = replicaStatus.getInstanceId();
+      Pair<StatusSnapshot, StatusSnapshot> status = replicaStatus.findStartedAndCompletedStatus();
       String startedTime = (status == null) ? StringUtils.EMPTY : status.getFirst().getTime();
       String completedTime = (status == null) ? StringUtils.EMPTY : status.getSecond().getTime();
       replicaDetails.add(new ReplicaDetail(instanceId, startedTime, completedTime));
