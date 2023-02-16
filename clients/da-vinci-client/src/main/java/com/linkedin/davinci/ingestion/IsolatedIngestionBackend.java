@@ -291,6 +291,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       LOGGER.info("Sending command {} of topic: {}, partition: {} to fork process.", command, topicName, partition);
       try {
         if (command.equals(START_CONSUMPTION)) {
+          // Start consumption should set up resource ingestion status for tracking purpose.
           getMainIngestionMonitorService().setVersionPartitionToIsolatedIngestion(topicName, partition);
         }
         if (remoteCommandSupplier.get()) {
@@ -298,6 +299,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
         }
       } catch (Exception e) {
         if (command.equals(START_CONSUMPTION)) {
+          // Failure in start consumption request should reset the resource ingestion status.
           LOGGER.warn("Clean up ingestion status for topic: {}, partition: {}.", topicName, partition);
           getMainIngestionMonitorService().cleanupTopicPartitionState(topicName, partition);
         }
