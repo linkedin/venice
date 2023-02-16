@@ -329,6 +329,16 @@ public class VeniceServer {
         new RemoteIngestionRepairService(serverConfig.getRemoteIngestionRepairSleepInterval());
     services.add(remoteIngestionRepairService);
 
+    // HelixParticipationService below creates a Helix manager and connects asynchronously below. The listener service
+    // needs a routing data repository that relies on a connected helix manager. So we pass the listener service a
+    // future that will be completed with a routing data repository once the manager connects.
+    CompletableFuture<SafeHelixManager> managerFuture = new CompletableFuture<>();
+    CompletableFuture<RoutingDataRepository> routingRepositoryFuture = managerFuture.thenApply(manager -> {
+      RoutingDataRepository routingData = new HelixExternalViewRepository(manager);
+      routingData.refresh();
+      return routingData;
+    });
+
     // create and add KafkaSimpleConsumerService
     this.kafkaStoreIngestionService = new KafkaStoreIngestionService(
         storageService.getStorageEngineRepository(),
@@ -337,6 +347,7 @@ public class VeniceServer {
         new StaticClusterInfoProvider(Collections.singleton(clusterConfig.getClusterName())),
         metadataRepo,
         schemaRepo,
+        Optional.of(routingRepositoryFuture),
         liveClusterConfigRepo,
         metricsRepository,
         kafkaMessageEnvelopeSchemaReader,
@@ -360,17 +371,6 @@ public class VeniceServer {
     services.add(diskHealthCheckService);
     // create stats for disk health check service
     new DiskHealthStats(metricsRepository, diskHealthCheckService, "disk_health_check_service");
-
-    // HelixParticipationService below creates a Helix manager and connects asynchronously below. The listener service
-    // needs a routing data repository that relies on a connected helix manager. So we pass the listener service a
-    // future
-    // that will be completed with a routing data repository once the manager connects.
-    CompletableFuture<SafeHelixManager> managerFuture = new CompletableFuture<>();
-    CompletableFuture<RoutingDataRepository> routingRepositoryFuture = managerFuture.thenApply(manager -> {
-      RoutingDataRepository routingData = new HelixExternalViewRepository(manager);
-      routingData.refresh();
-      return routingData;
-    });
 
     final Optional<ResourceReadUsageTracker> resourceReadUsageTracker;
     if (serverConfig.isOptimizeDatabaseForBackupVersionEnabled()) {

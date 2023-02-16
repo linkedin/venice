@@ -37,11 +37,11 @@ public class MetadataResponse {
     responseRecord.setStoreConfig(storeConfig);
   }
 
-  public void setRoutingInfo(Map<CharSequence, List<CharSequence>> routingInfo) {
+  public void setRoutingInfo(Map<CharSequence, Map<CharSequence, List<CharSequence>>> routingInfo) {
     responseRecord.setRoutingInfo(routingInfo);
   }
 
-  public void setHelixGroupInfo(Map<CharSequence, CharSequence> helixGroupInfo) {
+  public void setHelixGroupInfo(Map<CharSequence, Integer> helixGroupInfo) {
     responseRecord.setHelixGroupInfo(helixGroupInfo);
   }
 

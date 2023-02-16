@@ -6,7 +6,7 @@
   "fields": [
     {
       "name": "version_metadata",
-      "doc": "The current version number and other version properties",
+      "doc": "The current version number and other version properties such as the compression strategy",
       "type": [
         "null",
         {
@@ -85,14 +85,17 @@
     },
     {
       "name": "routing_info",
-      "doc": "Routing table information, maps partition IDs to a list of replicas",
+      "doc": "Routing table information, maps resource to partition ID to a list of replicas",
       "type": [
         "null",
         {
           "type": "map",
           "values": {
-            "type": "array",
-            "items": "string"
+            "type": "map",
+            "values": {
+              "type": "array",
+              "items": "string"
+            }
           }
         }
       ],
@@ -105,7 +108,7 @@
         "null",
         {
           "type": "map",
-          "values": "string"
+          "values": "int"
         }
       ],
       "default": null

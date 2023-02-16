@@ -42,9 +42,11 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.meta.ClusterInfoProvider;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.ReadOnlyLiveClusterConfigRepository;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.ServerAdminAction;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
@@ -95,6 +97,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
@@ -129,7 +132,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final StorageMetadataService storageMetadataService;
 
   private final ReadOnlyStoreRepository metadataRepo;
+
   private final ReadOnlySchemaRepository schemaRepo;
+
+  private RoutingDataRepository routingRepository;
 
   private final AggHostLevelIngestionStats hostLevelIngestionStats;
 
@@ -192,6 +198,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       ClusterInfoProvider clusterInfoProvider,
       ReadOnlyStoreRepository metadataRepo,
       ReadOnlySchemaRepository schemaRepo,
+      Optional<CompletableFuture<RoutingDataRepository>> routingRepositoryFuture,
       ReadOnlyLiveClusterConfigRepository liveClusterConfigRepository,
       MetricsRepository metricsRepository,
       Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader,
@@ -215,6 +222,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     this.compressorFactory = compressorFactory;
     // Each topic that has any partition ingested by this class has its own lock.
     this.topicLockManager = new ResourceAutoClosableLockManager<>(ReentrantLock::new);
+
+    if (routingRepositoryFuture.isPresent()) {
+      routingRepositoryFuture.get().thenApply(routing -> this.routingRepository = routing);
+    }
 
     VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
     ServerKafkaClientFactory veniceConsumerFactory = new ServerKafkaClientFactory(
@@ -1113,10 +1124,26 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       valueSchemas.add(schemaEntry.getSchema().toString());
     }
 
+    Map<CharSequence, Map<CharSequence, List<CharSequence>>> routingInfo = new HashMap<>();
+    for (String resource: routingRepository.getResourceAssignment().getAssignedResources()) {
+      for (Partition partition: routingRepository.getPartitionAssignments(resource).getAllPartitions()) {
+        List<CharSequence> instances = new ArrayList<>();
+        for (Instance instance: partition.getInstanceToStateMap().keySet()) {
+          instances.add(instance.toString());
+        }
+
+        if (!routingInfo.containsKey(resource)) {
+          routingInfo.put(resource, new HashMap<CharSequence, List<CharSequence>>());
+        }
+        routingInfo.get(resource).put(String.valueOf(partition.getId()), instances);
+      }
+    }
+
     MetadataResponse response = new MetadataResponse();
     response.setVersionMetadata(versionProperties);
     response.setKeySchema(keySchema);
     response.setValueSchemas(valueSchemas);
+    response.setRoutingInfo(routingInfo);
 
     return response;
   }
