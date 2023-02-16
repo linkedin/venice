@@ -206,6 +206,7 @@ public class DaVinciBackend implements Closeable {
           schemaRepository,
           null,
           null,
+          null,
           metricsRepository,
           Optional.of(kafkaMessageEnvelopeSchemaReader),
           Optional.empty(),

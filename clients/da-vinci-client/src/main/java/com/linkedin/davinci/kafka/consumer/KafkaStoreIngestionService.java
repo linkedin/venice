@@ -34,6 +34,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.helix.HelixInstanceConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.kafka.KafkaClientFactory.MetricsParameters;
 import com.linkedin.venice.kafka.TopicManagerRepository;
@@ -137,6 +138,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private RoutingDataRepository routingRepository;
 
+  private HelixInstanceConfigRepository helixInstanceConfigRepository;
+
   private final AggHostLevelIngestionStats hostLevelIngestionStats;
 
   private final AggVersionedIngestionStats versionedIngestionStats;
@@ -199,6 +202,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       ReadOnlyStoreRepository metadataRepo,
       ReadOnlySchemaRepository schemaRepo,
       CompletableFuture<RoutingDataRepository> routingRepositoryFuture,
+      CompletableFuture<HelixInstanceConfigRepository> helixInstanceFuture,
       ReadOnlyLiveClusterConfigRepository liveClusterConfigRepository,
       MetricsRepository metricsRepository,
       Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader,
@@ -224,6 +228,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     this.topicLockManager = new ResourceAutoClosableLockManager<>(ReentrantLock::new);
 
     routingRepositoryFuture.thenApply(routing -> this.routingRepository = routing);
+    helixInstanceFuture.thenApply(helix -> this.helixInstanceConfigRepository = helix);
 
     VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
     ServerKafkaClientFactory veniceConsumerFactory = new ServerKafkaClientFactory(
@@ -1137,11 +1142,15 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       }
     }
 
+    Map<CharSequence, Integer> helixGroupInfo = new HashMap<>();
+    helixGroupInfo.putAll(helixInstanceConfigRepository.getInstanceGroupIdMapping());
+
     MetadataResponse response = new MetadataResponse();
     response.setVersionMetadata(versionProperties);
     response.setKeySchema(keySchema);
     response.setValueSchemas(valueSchemas);
     response.setRoutingInfo(routingInfo);
+    response.setHelixGroupInfo(helixGroupInfo);
 
     return response;
   }

@@ -700,6 +700,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         storeRepository,
         schemaRepository,
         null,
+        null,
         liveConfigRepository,
         metricsRepository,
         Optional.of(kafkaMessageEnvelopeSchemaReader),

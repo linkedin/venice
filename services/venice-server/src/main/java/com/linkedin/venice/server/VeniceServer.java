@@ -29,6 +29,7 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.AllowlistAccessor;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
+import com.linkedin.venice.helix.HelixInstanceConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.ZkAllowlistAccessor;
@@ -339,6 +340,12 @@ public class VeniceServer {
       return routingData;
     });
 
+    CompletableFuture<HelixInstanceConfigRepository> helixInstanceFuture = managerFuture.thenApply(manager -> {
+      HelixInstanceConfigRepository helixData = new HelixInstanceConfigRepository(manager, true);
+      helixData.refresh();
+      return helixData;
+    });
+
     // create and add KafkaSimpleConsumerService
     this.kafkaStoreIngestionService = new KafkaStoreIngestionService(
         storageService.getStorageEngineRepository(),
@@ -348,6 +355,7 @@ public class VeniceServer {
         metadataRepo,
         schemaRepo,
         routingRepositoryFuture,
+        helixInstanceFuture,
         liveClusterConfigRepo,
         metricsRepository,
         kafkaMessageEnvelopeSchemaReader,
