@@ -516,16 +516,6 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
-  public IncrementalPushPolicy getIncrementalPushPolicy() {
-    return IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME;
-  }
-
-  @Override
-  public void setIncrementalPushPolicy(IncrementalPushPolicy incrementalPushPolicy) {
-    throwUnsupportedOperationException("setIncrementalPushPolicy");
-  }
-
-  @Override
   public long getLatestVersionPromoteToCurrentTimestamp() {
     SystemStoreAttributes systemStoreAttributes = fetchAndBackfillSystemStoreAttributes(true);
     return systemStoreAttributes.getLatestVersionPromoteToCurrentTimestamp();
