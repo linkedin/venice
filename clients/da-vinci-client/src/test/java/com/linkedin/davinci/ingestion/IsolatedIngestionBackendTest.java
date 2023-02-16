@@ -13,6 +13,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.davinci.ingestion.main.MainIngestionMonitorService;
+import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import org.testng.Assert;
@@ -24,11 +25,16 @@ public class IsolatedIngestionBackendTest {
   public void testBackendCanDirectCommandCorrectly() {
     try (MainIngestionMonitorService monitorService = mock(MainIngestionMonitorService.class);
         IsolatedIngestionBackend backend = mock(IsolatedIngestionBackend.class)) {
-      when(backend.getMainIngestionMonitorService()).thenReturn(monitorService);
-      doCallRealMethod().when(backend).executeCommandWithRetry(anyString(), anyInt(), any(), any(), any());
-
       String topic = "testTopic";
       int partition = 0;
+
+      when(backend.getMainIngestionMonitorService()).thenReturn(monitorService);
+      KafkaStoreIngestionService storeIngestionService = mock(KafkaStoreIngestionService.class);
+      when(storeIngestionService.isPartitionConsuming(topic, partition)).thenReturn(true);
+      when(backend.getStoreIngestionService()).thenReturn(storeIngestionService);
+
+      doCallRealMethod().when(backend).executeCommandWithRetry(anyString(), anyInt(), any(), any(), any());
+
       AtomicInteger executionFlag = new AtomicInteger();
       Supplier<Boolean> remoteProcessSupplier = () -> {
         executionFlag.set(1);
@@ -59,7 +65,13 @@ public class IsolatedIngestionBackendTest {
       executionFlag.set(0);
       backend.executeCommandWithRetry(topic, partition, START_CONSUMPTION, remoteProcessSupplier, localCommandRunnable);
       Assert.assertEquals(executionFlag.get(), 1);
-    }
 
+      // Resource metadata in-sync: Expect resource in forked process but found in main process. It should eventually
+      // execute command locally.
+      when(monitorService.getTopicPartitionIngestionStatus(topic, partition)).thenReturn(ISOLATED);
+      executionFlag.set(0);
+      backend.executeCommandWithRetry(topic, partition, START_CONSUMPTION, () -> false, localCommandRunnable);
+      Assert.assertEquals(executionFlag.get(), -1);
+    }
   }
 }
