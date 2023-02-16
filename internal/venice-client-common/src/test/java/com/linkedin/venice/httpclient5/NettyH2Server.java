@@ -1,7 +1,6 @@
 package com.linkedin.venice.httpclient5;
 
 import com.linkedin.alpini.netty4.ssl.SslInitializer;
-import com.linkedin.venice.integration.utils.H2SSLUtils;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.SslUtils;
 import io.netty.bootstrap.ServerBootstrap;
@@ -54,7 +53,7 @@ public class NettyH2Server {
     this.bossGroup = new NioEventLoopGroup(1);
     this.workerGroup = new NioEventLoopGroup(4);
     this.bootstrap = new ServerBootstrap();
-    SSLFactory sslFactory = H2SSLUtils.getLocalHttp2SslFactory();
+    SSLFactory sslFactory = SslUtils.getVeniceLocalSslFactory();
     bootstrap.group(bossGroup, workerGroup)
         .channel(NioServerSocketChannel.class)
         .childHandler(new HttpChannelInitializer(sslFactory))
