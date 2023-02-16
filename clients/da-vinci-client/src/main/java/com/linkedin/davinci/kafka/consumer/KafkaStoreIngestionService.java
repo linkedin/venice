@@ -50,10 +50,13 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.metadata.response.CompressionStrategy;
+import com.linkedin.venice.metadata.response.VersionProperties;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
@@ -126,6 +129,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final StorageMetadataService storageMetadataService;
 
   private final ReadOnlyStoreRepository metadataRepo;
+  private final ReadOnlySchemaRepository schemaRepo;
 
   private final AggHostLevelIngestionStats hostLevelIngestionStats;
 
@@ -203,6 +207,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     this.cacheBackend = cacheBackend;
     this.storageMetadataService = storageMetadataService;
     this.metadataRepo = metadataRepo;
+    this.schemaRepo = schemaRepo;
     this.topicNameToIngestionTaskMap = new ConcurrentSkipListMap<>();
     this.veniceConfigLoader = veniceConfigLoader;
     this.isIsolatedIngestion = isIsolatedIngestion;
@@ -1090,8 +1095,29 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   @Override
   public MetadataResponse getMetadata(String storeName) {
+    Store store = metadataRepo.getStoreOrThrow(storeName);
+
+    List<Integer> versions = new ArrayList<>();
+    for (Version version: store.getVersions()) {
+      versions.add(version.getNumber());
+    }
+    VersionProperties versionProperties = new VersionProperties(
+        store.getCurrentVersion(),
+        versions,
+        CompressionStrategy.valueOf(store.getCompressionStrategy().toString()),
+        true);
+
+    String keySchema = schemaRepo.getKeySchema(storeName).getSchema().toString();
+    List<CharSequence> valueSchemas = new ArrayList<>();
+    for (SchemaEntry schemaEntry: schemaRepo.getValueSchemas(storeName)) {
+      valueSchemas.add(schemaEntry.getSchema().toString());
+    }
+
     MetadataResponse response = new MetadataResponse();
-    // TODO: set all the fields for the response
+    response.setVersionMetadata(versionProperties);
+    response.setKeySchema(keySchema);
+    response.setValueSchemas(valueSchemas);
+
     return response;
   }
 
