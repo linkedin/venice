@@ -93,10 +93,12 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       int partition,
       Optional<LeaderFollowerStateType> leaderState) {
     String topicName = storeConfig.getStoreVersionName();
-    executeCommandWithRetry(topicName, partition, START_CONSUMPTION, () -> {
-      mainIngestionMonitorService.setVersionPartitionToIsolatedIngestion(storeConfig.getStoreVersionName(), partition);
-      return mainIngestionRequestClient.startConsumption(storeConfig.getStoreVersionName(), partition);
-    }, () -> super.startConsumption(storeConfig, partition, leaderState));
+    executeCommandWithRetry(
+        topicName,
+        partition,
+        START_CONSUMPTION,
+        () -> mainIngestionRequestClient.startConsumption(storeConfig.getStoreVersionName(), partition),
+        () -> super.startConsumption(storeConfig, partition, leaderState));
   }
 
   @Override
@@ -287,8 +289,19 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
         return;
       }
       LOGGER.info("Sending command {} of topic: {}, partition: {} to fork process.", command, topicName, partition);
-      if (remoteCommandSupplier.get()) {
-        return;
+      try {
+        if (command.equals(START_CONSUMPTION)) {
+          getMainIngestionMonitorService().setVersionPartitionToIsolatedIngestion(topicName, partition);
+        }
+        if (remoteCommandSupplier.get()) {
+          return;
+        }
+      } catch (Exception e) {
+        if (command.equals(START_CONSUMPTION)) {
+          LOGGER.warn("Clean up ingestion status for topic: {}, partition: {}.", topicName, partition);
+          getMainIngestionMonitorService().cleanupTopicPartitionState(topicName, partition);
+        }
+        throw e;
       }
       /**
        * The idea of this check below is to add resiliency to isolated ingestion metadata management.
