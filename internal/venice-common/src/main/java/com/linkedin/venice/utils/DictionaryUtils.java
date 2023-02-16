@@ -35,8 +35,7 @@ public class DictionaryUtils {
   public static ByteBuffer readDictionaryFromKafka(String topicName, VeniceProperties props) {
     KafkaConsumerFactoryImpl kafkaConsumerFactory = new KafkaConsumerFactoryImpl(props);
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
-    try (PubSubConsumer pubSubConsumer =
-        kafkaConsumerFactory.getConsumer(getKafkaConsumerProps(), pubSubTopicRepository)) {
+    try (PubSubConsumer pubSubConsumer = kafkaConsumerFactory.getConsumer(getKafkaConsumerProps())) {
       return DictionaryUtils.readDictionaryFromKafka(topicName, pubSubConsumer, pubSubTopicRepository);
     }
   }

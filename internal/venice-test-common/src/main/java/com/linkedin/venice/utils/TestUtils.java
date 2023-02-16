@@ -688,7 +688,7 @@ public class TestUtils {
     doReturn(mockVeniceProperties).when(mockVeniceServerConfig).getKafkaConsumerConfigsForLocalConsumption();
     KafkaClientFactory mockKafkaClientFactory = mock(KafkaClientFactory.class);
     PubSubConsumer pubSubConsumer = mock(PubSubConsumer.class);
-    doReturn(pubSubConsumer).when(mockKafkaClientFactory).getConsumer(any(), any());
+    doReturn(pubSubConsumer).when(mockKafkaClientFactory).getConsumer(any());
 
     StorageEngineRepository mockStorageEngineRepository = mock(StorageEngineRepository.class);
     doReturn(mock(AbstractStorageEngine.class)).when(mockStorageEngineRepository).getLocalStorageEngine(anyString());

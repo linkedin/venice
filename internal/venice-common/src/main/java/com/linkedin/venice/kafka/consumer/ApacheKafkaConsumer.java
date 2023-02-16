@@ -4,8 +4,6 @@ import com.linkedin.venice.annotation.NotThreadsafe;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.offsets.OffsetRecord;
-import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
-import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -45,35 +43,27 @@ public class ApacheKafkaConsumer implements PubSubConsumer {
   private final int consumerPollRetryBackoffMs;
   private final Optional<TopicPartitionsOffsetsTracker> topicPartitionsOffsetsTracker;
 
-  private final PubSubTopicRepository pubSubTopicRepository;
+  private final Set<PubSubTopicPartition> assignments;
 
-  public ApacheKafkaConsumer(Properties props, PubSubTopicRepository pubSubTopicRepository) {
-    this(props, DEFAULT_PARTITIONS_OFFSETS_COLLECTION_ENABLE, pubSubTopicRepository);
+  public ApacheKafkaConsumer(Properties props) {
+    this(props, DEFAULT_PARTITIONS_OFFSETS_COLLECTION_ENABLE);
   }
 
-  public ApacheKafkaConsumer(
-      Properties props,
-      boolean isKafkaConsumerOffsetCollectionEnabled,
-      PubSubTopicRepository pubSubTopicRepository) {
-    this(
-        new KafkaConsumer<>(props),
-        new VeniceProperties(props),
-        isKafkaConsumerOffsetCollectionEnabled,
-        pubSubTopicRepository);
+  public ApacheKafkaConsumer(Properties props, boolean isKafkaConsumerOffsetCollectionEnabled) {
+    this(new KafkaConsumer<>(props), new VeniceProperties(props), isKafkaConsumerOffsetCollectionEnabled);
   }
 
   public ApacheKafkaConsumer(
       Consumer<byte[], byte[]> consumer,
       VeniceProperties props,
-      boolean isKafkaConsumerOffsetCollectionEnabled,
-      PubSubTopicRepository pubSubTopicRepository) {
+      boolean isKafkaConsumerOffsetCollectionEnabled) {
     this.kafkaConsumer = consumer;
     this.consumerPollRetryTimes = props.getInt(CONSUMER_POLL_RETRY_TIMES_CONFIG, CONSUMER_POLL_RETRY_TIMES_DEFAULT);
     this.consumerPollRetryBackoffMs =
         props.getInt(CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG, CONSUMER_POLL_RETRY_BACKOFF_MS_DEFAULT);
     this.topicPartitionsOffsetsTracker =
         isKafkaConsumerOffsetCollectionEnabled ? Optional.of(new TopicPartitionsOffsetsTracker()) : Optional.empty();
-    this.pubSubTopicRepository = pubSubTopicRepository;
+    this.assignments = new HashSet<>();
     LOGGER.info("Consumer poll retry times: {}", this.consumerPollRetryTimes);
     LOGGER.info("Consumer poll retry back off in ms: {}", this.consumerPollRetryBackoffMs);
     LOGGER.info("Consumer offset collection enabled: {}", isKafkaConsumerOffsetCollectionEnabled);
@@ -108,6 +98,7 @@ public class ApacheKafkaConsumer implements PubSubConsumer {
       topicPartitionList.add(topicPartition);
       kafkaConsumer.assign(topicPartitionList);
       seekNextOffset(topicPartition, lastReadOffset);
+      assignments.add(pubSubTopicPartition);
       LOGGER.info("Subscribed to Topic: {} Partition: {} Offset: {}", topic, partition, lastReadOffset);
     } else {
       LOGGER
@@ -126,6 +117,7 @@ public class ApacheKafkaConsumer implements PubSubConsumer {
       if (topicPartitionList.remove(topicPartition)) {
         kafkaConsumer.assign(topicPartitionList);
       }
+      assignments.remove(pubSubTopicPartition);
     }
     topicPartitionsOffsetsTracker
         .ifPresent(partitionsOffsetsTracker -> partitionsOffsetsTracker.removeTrackedOffsets(topicPartition));
@@ -136,6 +128,7 @@ public class ApacheKafkaConsumer implements PubSubConsumer {
     Set<TopicPartition> newTopicPartitionAssignment = new HashSet<>(kafkaConsumer.assignment());
     newTopicPartitionAssignment.removeAll(convertPubSubTopicPartitionSetToTopicPartitionSet(pubSubTopicPartitionSet));
     kafkaConsumer.assign(newTopicPartitionAssignment);
+    assignments.removeAll(pubSubTopicPartitionSet);
   }
 
   @Override
@@ -230,18 +223,7 @@ public class ApacheKafkaConsumer implements PubSubConsumer {
 
   @Override
   public Set<PubSubTopicPartition> getAssignment() {
-    return convertTopicPartitionSetToPubSubTopicPartitionSet(kafkaConsumer.assignment());
-  }
-
-  private Set<PubSubTopicPartition> convertTopicPartitionSetToPubSubTopicPartitionSet(
-      Set<TopicPartition> topicPartitionSet) {
-    Set<PubSubTopicPartition> pubSubTopicPartitionSet = new HashSet<>();
-    topicPartitionSet.forEach(
-        topicPartition -> pubSubTopicPartitionSet.add(
-            new PubSubTopicPartitionImpl(
-                pubSubTopicRepository.getTopic(topicPartition.topic()),
-                topicPartition.partition())));
-    return pubSubTopicPartitionSet;
+    return assignments;
   }
 
   private Set<TopicPartition> convertPubSubTopicPartitionSetToTopicPartitionSet(

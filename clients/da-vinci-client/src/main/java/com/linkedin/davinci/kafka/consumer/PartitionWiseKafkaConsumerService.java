@@ -3,7 +3,6 @@ package com.linkedin.davinci.kafka.consumer;
 import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
@@ -103,7 +102,7 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
       }
       seekNewConsumer = false;
 
-      if (Version.isRealTimeTopic(topicPartition.getPubSubTopic().getName())) {
+      if (topicPartition.getPubSubTopic().isRealTime()) {
         /**
          * For Hybrid stores, all the store versions will consume the same RT topic with different offset.
          * But one consumer cannot consume from several offsets of one partition at the same time.
@@ -141,7 +140,7 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
 
   @Override
   void handleUnsubscription(SharedKafkaConsumer consumer, PubSubTopicPartition pubSubTopicPartition) {
-    if (Version.isRealTimeTopic(pubSubTopicPartition.getPubSubTopic().getName())) {
+    if (pubSubTopicPartition.getPubSubTopic().isRealTime()) {
       Set<PubSubConsumer> rtTopicConsumers = rtTopicPartitionToConsumerMap.get(pubSubTopicPartition);
       if (rtTopicConsumers != null) {
         rtTopicConsumers.remove(consumer);

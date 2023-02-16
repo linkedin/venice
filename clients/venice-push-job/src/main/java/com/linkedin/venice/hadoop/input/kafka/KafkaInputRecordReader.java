@@ -93,7 +93,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
         split,
         job,
         reporter,
-        KafkaInputUtils.getConsumerFactory(job).getConsumer(new Properties(), PUB_SUB_TOPIC_REPOSITORY),
+        KafkaInputUtils.getConsumerFactory(job).getConsumer(new Properties()),
         PUB_SUB_TOPIC_REPOSITORY);
   }
 

@@ -815,7 +815,7 @@ public abstract class StoreIngestionTaskTest {
         return inMemoryRemoteKafkaConsumer;
       }
       return inMemoryLocalKafkaConsumer;
-    }).when(mockFactory).getConsumer(any(), any());
+    }).when(mockFactory).getConsumer(any());
 
     mockWriterFactory = mock(VeniceWriterFactory.class);
     doReturn(null).when(mockWriterFactory).createVeniceWriter(any());

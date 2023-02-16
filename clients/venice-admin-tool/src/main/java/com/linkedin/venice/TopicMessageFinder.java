@@ -109,7 +109,7 @@ public class TopicMessageFinder {
     PubSubTopicPartition assignedPubSubTopicPartition =
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), assignedPartition);
     consume(
-        new ApacheKafkaConsumer(consumerProps, pubSubTopicRepository),
+        new ApacheKafkaConsumer(consumerProps),
         assignedPubSubTopicPartition,
         startOffset,
         endOffset,

@@ -36,7 +36,7 @@ public class ApacheKafkaConsumerTest {
     properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     properties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafkaBroker.getAddress());
-    consumer = new ApacheKafkaConsumer(properties, pubSubTopicRepository);
+    consumer = new ApacheKafkaConsumer(properties);
   }
 
   @AfterMethod

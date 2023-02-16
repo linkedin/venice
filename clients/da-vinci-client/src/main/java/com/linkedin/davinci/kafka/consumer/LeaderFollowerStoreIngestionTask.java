@@ -494,7 +494,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 partition,
                 kafkaVersionTopic);
             OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
-            if (offsetRecord.getLeaderTopic() == null) {
+            if (offsetRecord.getLeaderTopic(pubSubTopicRepository) == null) {
               /**
                * If this follower has processed a TS, the leader topic field should have been set. So, it must have been
                * consuming from version topic. Now it is becoming the leader. So the VT becomes its leader topic.
@@ -718,7 +718,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         LOGGER.info(
             "{} enabled remote consumption from topic {} partition {}",
             consumerTaskId,
-            offsetRecord.getLeaderTopic(),
+            offsetRecord.getLeaderTopic(pubSubTopicRepository),
             partition);
       }
     }
@@ -2263,28 +2263,25 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         .filter(BATCH_REPLICATION_LAG_FILTER)
         // the lag is (latest VT offset in remote kafka - latest VT offset in local kafka)
         .mapToLong((pcs) -> {
-          String currentLeaderTopic = pcs.getOffsetRecord().getLeaderTopic();
-          if (currentLeaderTopic == null || currentLeaderTopic.isEmpty()) {
-            currentLeaderTopic = kafkaVersionTopic;
+          PubSubTopic currentLeaderTopic = pcs.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
+          if (currentLeaderTopic == null) {
+            currentLeaderTopic = versionTopic;
           }
 
           String sourceKafkaURL = getSourceKafkaUrlForOffsetLagMeasurement(pcs);
           // Consumer might not existed after the consumption state is created, but before attaching the corresponding
           // consumer.
-          long offsetLagOptional = getPartitionOffsetLag(
-              sourceKafkaURL,
-              pubSubTopicRepository.getTopic(currentLeaderTopic),
-              pcs.getUserPartition());
+          long offsetLagOptional = getPartitionOffsetLag(sourceKafkaURL, currentLeaderTopic, pcs.getUserPartition());
           if (offsetLagOptional >= 0) {
             return offsetLagOptional;
           }
           // Fall back to use the old way
           return (cachedKafkaMetadataGetter.getOffset(
               getTopicManager(nativeReplicationSourceVersionTopicKafkaURL),
-              currentLeaderTopic,
+              currentLeaderTopic.getName(),
               pcs.getPartition()) - 1)
               - (cachedKafkaMetadataGetter
-                  .getOffset(getTopicManager(localKafkaServer), currentLeaderTopic, pcs.getPartition()) - 1);
+                  .getOffset(getTopicManager(localKafkaServer), currentLeaderTopic.getName(), pcs.getPartition()) - 1);
         })
         .sum();
 
@@ -2491,12 +2488,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   @Override
   public void consumerUnSubscribeAllTopics(PartitionConsumptionState partitionConsumptionState) {
-    String leaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic();
+    PubSubTopic leaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
     int partitionId = partitionConsumptionState.getPartition();
     if (partitionConsumptionState.getLeaderFollowerState().equals(LEADER) && leaderTopic != null) {
-      aggKafkaConsumerService.unsubscribeConsumerFor(
-          versionTopic,
-          new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(leaderTopic), partitionId));
+      aggKafkaConsumerService
+          .unsubscribeConsumerFor(versionTopic, new PubSubTopicPartitionImpl(leaderTopic, partitionId));
     } else {
       aggKafkaConsumerService
           .unsubscribeConsumerFor(versionTopic, new PubSubTopicPartitionImpl(versionTopic, partitionId));
@@ -2566,7 +2562,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             String.format(
                 "Failed to compress value in venice writer! Aborting write! partition: %d, leader topic: %s, compressor: %s",
                 partition,
-                partitionConsumptionState.getOffsetRecord().getLeaderTopic(),
+                partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository),
                 compressor.getClass().getName()),
             e);
       }

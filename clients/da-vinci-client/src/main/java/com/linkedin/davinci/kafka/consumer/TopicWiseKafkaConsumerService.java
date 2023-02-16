@@ -3,7 +3,6 @@ package com.linkedin.davinci.kafka.consumer;
 import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
@@ -152,7 +151,7 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
    * belonging to the same store, which owns the passed {@param versionTopic} or not.
    */
   private boolean checkWhetherConsumerHasSubscribedSameStore(SharedKafkaConsumer consumer, PubSubTopic versionTopic) {
-    String storeName = Version.parseStoreFromKafkaTopicName(versionTopic.getName());
+    String storeName = versionTopic.getStoreName();
     Set<String> stores = consumerToStoresMap.get(consumer);
     return stores != null && stores.contains(storeName);
   }
@@ -182,13 +181,12 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
 
   private void assignVersionTopicToConsumer(PubSubTopic versionTopic, SharedKafkaConsumer consumer) {
     versionTopicToConsumerMap.put(versionTopic, consumer);
-    consumerToStoresMap.computeIfAbsent(consumer, k -> new HashSet<>())
-        .add(Version.parseStoreFromKafkaTopicName(versionTopic.getName()));
+    consumerToStoresMap.computeIfAbsent(consumer, k -> new HashSet<>()).add(versionTopic.getStoreName());
   }
 
   private void removeTopicFromConsumer(PubSubTopic versionTopic, SharedKafkaConsumer consumer) {
     versionTopicToConsumerMap.remove(versionTopic);
-    final String storeName = Version.parseStoreFromKafkaTopicName(versionTopic.getName());
+    final String storeName = versionTopic.getStoreName();
     consumerToStoresMap.compute(consumer, (k, assignedStores) -> {
       if (assignedStores != null) {
         assignedStores.remove(storeName);

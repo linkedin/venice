@@ -62,7 +62,7 @@ public class KafkaConsumerServiceTest {
     when(task2.isHybridMode()).thenReturn(true);
 
     KafkaClientFactory factory = mock(KafkaClientFactory.class);
-    when(factory.getConsumer(any(), any())).thenReturn(consumer1, consumer2);
+    when(factory.getConsumer(any())).thenReturn(consumer1, consumer2);
 
     Properties properties = new Properties();
     properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, "test_kafka_url");
@@ -143,7 +143,7 @@ public class KafkaConsumerServiceTest {
     when(consumer1.hasAnySubscription()).thenReturn(false);
 
     KafkaClientFactory factory = mock(KafkaClientFactory.class);
-    when(factory.getConsumer(any(), any())).thenReturn(consumer1, consumer2);
+    when(factory.getConsumer(any())).thenReturn(consumer1, consumer2);
 
     Properties properties = new Properties();
     properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, "test_kafka_url");
@@ -215,7 +215,7 @@ public class KafkaConsumerServiceTest {
   }
 
   @Test
-  public void testPartitionWiseGetConsumer() throws Exception {
+  public void testPartitionWiseGetConsumer() {
     ApacheKafkaConsumer consumer1 = mock(ApacheKafkaConsumer.class);
     when(consumer1.hasAnySubscription()).thenReturn(true);
 
@@ -238,7 +238,7 @@ public class KafkaConsumerServiceTest {
     when(task2.isHybridMode()).thenReturn(true);
 
     KafkaClientFactory factory = mock(KafkaClientFactory.class);
-    when(factory.getConsumer(any(), any())).thenReturn(consumer1, consumer2);
+    when(factory.getConsumer(any())).thenReturn(consumer1, consumer2);
 
     Properties properties = new Properties();
     properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, "test_kafka_url");

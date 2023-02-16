@@ -36,8 +36,7 @@ public class ApacheKafkaPubSubConsumerTest {
     properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     properties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, "broker address");
-    apacheKafkaConsumer =
-        new ApacheKafkaConsumer(delegateKafkaConsumer, new VeniceProperties(properties), false, pubSubTopicRepository);
+    apacheKafkaConsumer = new ApacheKafkaConsumer(delegateKafkaConsumer, new VeniceProperties(properties), false);
   }
 
   @Test
