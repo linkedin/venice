@@ -44,7 +44,6 @@ import com.linkedin.venice.controller.helix.SharedHelixReadOnlyZKSharedSystemSto
 import com.linkedin.venice.controller.init.ClusterLeaderInitializationManager;
 import com.linkedin.venice.controller.init.ClusterLeaderInitializationRoutine;
 import com.linkedin.venice.controller.init.InternalRTStoreInitializationRoutine;
-import com.linkedin.venice.controller.init.LatestVersionPromoteToCurrentTimestampCorrectionRoutine;
 import com.linkedin.venice.controller.init.SystemSchemaInitializationRoutine;
 import com.linkedin.venice.controller.kafka.StoreStatusDecider;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
@@ -560,9 +559,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
               Optional.of(daVinciPushStatusSystemStoreUpdate),
               true));
     }
-
-    // TODO: Remove this latest version promote to current timestamp update logic in the future.
-    initRoutines.add(new LatestVersionPromoteToCurrentTimestampCorrectionRoutine(this));
 
     // Participant stores are not read or written in parent colo. Parent controller skips participant store
     // initialization.
