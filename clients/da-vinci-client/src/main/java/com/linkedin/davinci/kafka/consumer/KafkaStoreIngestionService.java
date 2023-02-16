@@ -198,7 +198,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       ClusterInfoProvider clusterInfoProvider,
       ReadOnlyStoreRepository metadataRepo,
       ReadOnlySchemaRepository schemaRepo,
-      Optional<CompletableFuture<RoutingDataRepository>> routingRepositoryFuture,
+      CompletableFuture<RoutingDataRepository> routingRepositoryFuture,
       ReadOnlyLiveClusterConfigRepository liveClusterConfigRepository,
       MetricsRepository metricsRepository,
       Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader,
@@ -223,9 +223,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     // Each topic that has any partition ingested by this class has its own lock.
     this.topicLockManager = new ResourceAutoClosableLockManager<>(ReentrantLock::new);
 
-    if (routingRepositoryFuture.isPresent()) {
-      routingRepositoryFuture.get().thenApply(routing -> this.routingRepository = routing);
-    }
+    routingRepositoryFuture.thenApply(routing -> this.routingRepository = routing);
 
     VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
     ServerKafkaClientFactory veniceConsumerFactory = new ServerKafkaClientFactory(

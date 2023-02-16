@@ -347,7 +347,7 @@ public class VeniceServer {
         new StaticClusterInfoProvider(Collections.singleton(clusterConfig.getClusterName())),
         metadataRepo,
         schemaRepo,
-        Optional.of(routingRepositoryFuture),
+        routingRepositoryFuture,
         liveClusterConfigRepo,
         metricsRepository,
         kafkaMessageEnvelopeSchemaReader,
