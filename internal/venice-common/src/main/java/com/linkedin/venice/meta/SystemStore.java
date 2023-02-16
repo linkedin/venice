@@ -126,6 +126,7 @@ public class SystemStore extends AbstractStore {
 
   @Override
   public void setCurrentVersion(int currentVersion) {
+    setLatestVersionPromoteToCurrentTimestamp(System.currentTimeMillis());
     setCurrentVersionWithoutCheck(currentVersion);
   }
 
