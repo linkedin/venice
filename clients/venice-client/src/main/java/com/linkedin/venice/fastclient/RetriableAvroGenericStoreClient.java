@@ -89,13 +89,13 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
   protected CompletableFuture<V> get(GetRequestContext requestContext, K key) throws VeniceClientException {
     final CompletableFuture<V> originalRequestFuture = super.get(requestContext, key);
     if (!longTailRetryEnabledForSingleGet) {
-      // if this class is used only for retry of batchGet, no need to retry here as this is singleGet
+      // if longTailRetry is not enabled for single get, simply return the original future
       return originalRequestFuture;
     }
 
     if (timeoutProcessor == null) {
       /**
-       * Reuse the {@link TimeoutProcessor} from {@link com.linkedin.venice.fastclient.meta.InstanceHealthMonitor} to
+       * Reuse the {@link TimeoutProcessor} from {@link InstanceHealthMonitor} to
        * reduce the thread usage.
        */
       timeoutProcessor = requestContext.instanceHealthMonitor.getTimeoutProcessor();
@@ -168,7 +168,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
       Set<K> keys,
       StreamingCallback<K, V> callback) throws VeniceClientException {
     if (!longTailRetryEnabledForBatchGet) {
-      // if this class is used only for retry of singleGet, no need to retry here as this is batchGet
+      // if longTailRetry is not enabled for batch get, simply return
       super.streamingBatchGet(requestContext, keys, callback);
       return;
     }
@@ -176,51 +176,51 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
      1. the original requests calls onCompletion with no exception
      2. the retry request calls onCompletion with no exception
      3. all the keys have already been completed */
-    CompletableFuture<Void> finalRequestCompletion = new CompletableFuture<>();
+    CompletableFuture<Void> finalRequestCompletionFuture = new CompletableFuture<>();
     /** Save the exception from onCompletion of original or retry request. The final request would return exception only
        if both the original and retry request return an exception. */
     AtomicReference<Exception> savedException = new AtomicReference<>();
     /** Track all keys with a future. We remove the key when we receive value from either the original or the retry
      callback. Removal is thread safe, so we will do it only once. We can then complete the future for that key */
-    VeniceConcurrentHashMap<K, CompletableFuture<V>> pendingKeys = new VeniceConcurrentHashMap<>();
+    VeniceConcurrentHashMap<K, CompletableFuture<V>> pendingKeysFuture = new VeniceConcurrentHashMap<>();
     for (K key: keys) {
       CompletableFuture<V> originalCompletion = new CompletableFuture<V>();
       originalCompletion.whenComplete((value, throwable) -> {
         callback.onRecordReceived(key, value);
       });
-      pendingKeys.put(key, originalCompletion);
+      pendingKeysFuture.put(key, originalCompletion);
     }
 
     super.streamingBatchGet(
         requestContext,
         keys,
         getStreamingCallback(
-            finalRequestCompletion,
+            finalRequestCompletionFuture,
             savedException,
-            pendingKeys,
+            pendingKeysFuture,
             requestContext.numberOfKeysCompletedInOriginalRequest));
 
     if (timeoutProcessor == null) {
-      /** Reuse the {@link TimeoutProcessor} from {@link com.linkedin.venice.fastclient.meta.InstanceHealthMonitor} to
+      /** Reuse the {@link TimeoutProcessor} from {@link InstanceHealthMonitor} to
       reduce  thread usage */
       timeoutProcessor = requestContext.instanceHealthMonitor.getTimeoutProcessor();
     }
 
     Runnable retryTask = () -> { // Look at the remaining keys and setup completion
-      if (!pendingKeys.isEmpty()) {
+      if (!pendingKeysFuture.isEmpty()) {
         requestContext.longTailRetryTriggered = true;
-        requestContext.numberOfKeysSentInRetryRequest = pendingKeys.size();
-        LOGGER.debug("Retrying {} incomplete keys ", pendingKeys.size());
+        requestContext.numberOfKeysSentInRetryRequest = pendingKeysFuture.size();
+        LOGGER.debug("Retrying {} incomplete keys ", pendingKeysFuture.size());
         // Prepare the retry context and track excluded routes on a per partition basis
         BatchGetRequestContext<K, V> retryContext = new BatchGetRequestContext<>();
         retryContext.setRoutesForPartitionMapping(requestContext.getRoutesForPartitionMapping());
         super.streamingBatchGet(
             retryContext,
-            Collections.unmodifiableSet(pendingKeys.keySet()),
+            Collections.unmodifiableSet(pendingKeysFuture.keySet()),
             getStreamingCallback(
-                finalRequestCompletion,
+                finalRequestCompletionFuture,
                 savedException,
-                pendingKeys,
+                pendingKeysFuture,
                 requestContext.numberOfKeysCompletedInRetryRequest));
       } else {
         /** If there are no keys pending at this point , the onCompletion callback of the original
@@ -232,7 +232,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
     TimeoutProcessor.TimeoutFuture scheduledRetryTask =
         timeoutProcessor.schedule(retryTask, longTailRetryThresholdForBatchGetInMicroseconds, TimeUnit.MICROSECONDS);
 
-    finalRequestCompletion.whenComplete((ignore, finalException) -> {
+    finalRequestCompletionFuture.whenComplete((ignore, finalException) -> {
       if (!scheduledRetryTask.isDone()) {
         scheduledRetryTask.cancel();
       }
@@ -245,42 +245,42 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
   }
 
   private StreamingCallback<K, V> getStreamingCallback(
-      CompletableFuture<Void> finalRequestCompletion,
+      CompletableFuture<Void> finalRequestCompletionFuture,
       AtomicReference<Exception> savedException,
-      VeniceConcurrentHashMap<K, CompletableFuture<V>> pendingKeys,
+      VeniceConcurrentHashMap<K, CompletableFuture<V>> pendingKeysFuture,
       AtomicInteger successfulKeysCounter) {
     return new StreamingCallback<K, V>() {
       @Override
       public void onRecordReceived(K key, V value) {
         // Remove the key and if successful , mark it as complete
-        CompletableFuture<V> removed = pendingKeys.remove(key);
+        CompletableFuture<V> removed = pendingKeysFuture.remove(key);
         if (removed != null) {
           removed.complete(value);
           successfulKeysCounter.incrementAndGet();
         }
-        if (pendingKeys.isEmpty() && !finalRequestCompletion.isDone()) { // No more pending keys so complete the
-                                                                         // finalRequest
-          finalRequestCompletion.complete(null);
+        if (pendingKeysFuture.isEmpty() && !finalRequestCompletionFuture.isDone()) {
+          // No more pending keys, so complete the finalRequest
+          finalRequestCompletionFuture.complete(null);
         }
       }
 
       @Override
       public void onCompletion(Optional<Exception> exception) {
         /* If the finalRequest is already complete. Ignore this.
-        Otherwise check exception. If there is an exception, we still cannot complete the final request because other
+        Otherwise, check exception. If there is an exception, we still cannot complete the final request because other
         routes might still be pending. We just save the exception and move on.
         If there is no exception then we are surely done because this request was for all original keys.
          */
-        if (!finalRequestCompletion.isDone()) {
+        if (!finalRequestCompletionFuture.isDone()) {
           if (!exception.isPresent()) {
-            finalRequestCompletion.complete(null);
+            finalRequestCompletionFuture.complete(null);
           } else {
-            // If we are able to set a exception , that means the other request did not have exception and we continue.
+            // If we are able to set an exception, that means the other request did not have exception, so we continue.
             if (!savedException.compareAndSet(null, exception.get())) {
               /* We are not able to set the exception , means there is already a saved exception.
                Since there was a saved exception and this request has also returned exception we can conclude that
                the parent request can be marked with exception. We select the original exception. */
-              finalRequestCompletion.completeExceptionally(exception.get());
+              finalRequestCompletionFuture.completeExceptionally(exception.get());
             }
           }
         }

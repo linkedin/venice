@@ -71,6 +71,7 @@ import org.testng.internal.collections.Ints;
  */
 public class TestClientSimulator implements Client {
   private static final Logger LOGGER = LogManager.getLogger(TestClientSimulator.class);
+  public static final String UNIT_TEST_STORE_NAME = "unittest";
 
   // List of events to simulate by time tick
   TreeMap<Integer, List<Event>> timeToEvents = new TreeMap<>();
@@ -78,6 +79,10 @@ public class TestClientSimulator implements Client {
   ConcurrentHashMap<Integer, RequestInfo> requestIdToRequestInfos = new ConcurrentHashMap<>();
 
   ConcurrentHashMap<String, Deque<ExpectedRequestEvent>> routeToExpectedRequestEvents = new ConcurrentHashMap<>();
+
+  public ClientConfig getClientConfig() {
+    return clientConfig;
+  }
 
   ClientConfig clientConfig;
 
@@ -500,7 +505,7 @@ public class TestClientSimulator implements Client {
     // Test generic store client
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<Object, Object, SpecificRecord>();
-    clientConfigBuilder.setStoreName("unittest");
+    clientConfigBuilder.setStoreName(UNIT_TEST_STORE_NAME);
     clientConfigBuilder.setR2Client(this);
     clientConfigBuilder.setMetricsRepository(new MetricsRepository());
     clientConfigBuilder.setSpeculativeQueryEnabled(speculativeQueryEnabled);
