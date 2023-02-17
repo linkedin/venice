@@ -91,7 +91,7 @@ public interface StoreIngestionService extends MetadataRetriever {
   /**
    * Check whether the specified partition is still being consumed
    */
-  boolean isPartitionConsuming(VeniceStoreVersionConfig veniceStore, int partitionId);
+  boolean isPartitionConsuming(String topic, int partitionId);
 
   /**
    * Get topic names that are currently maintained by the ingestion service with corresponding version status not in an

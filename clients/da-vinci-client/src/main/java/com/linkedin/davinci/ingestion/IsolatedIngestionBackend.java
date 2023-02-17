@@ -93,10 +93,12 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       int partition,
       Optional<LeaderFollowerStateType> leaderState) {
     String topicName = storeConfig.getStoreVersionName();
-    executeCommandWithRetry(topicName, partition, START_CONSUMPTION, () -> {
-      mainIngestionMonitorService.setVersionPartitionToIsolatedIngestion(storeConfig.getStoreVersionName(), partition);
-      return mainIngestionRequestClient.startConsumption(storeConfig.getStoreVersionName(), partition);
-    }, () -> super.startConsumption(storeConfig, partition, leaderState));
+    executeCommandWithRetry(
+        topicName,
+        partition,
+        START_CONSUMPTION,
+        () -> mainIngestionRequestClient.startConsumption(storeConfig.getStoreVersionName(), partition),
+        () -> super.startConsumption(storeConfig, partition, leaderState));
   }
 
   @Override
@@ -287,7 +289,37 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
         return;
       }
       LOGGER.info("Sending command {} of topic: {}, partition: {} to fork process.", command, topicName, partition);
-      if (remoteCommandSupplier.get()) {
+      try {
+        if (command.equals(START_CONSUMPTION)) {
+          // Start consumption should set up resource ingestion status for tracking purpose.
+          getMainIngestionMonitorService().setVersionPartitionToIsolatedIngestion(topicName, partition);
+        }
+        if (remoteCommandSupplier.get()) {
+          return;
+        }
+      } catch (Exception e) {
+        if (command.equals(START_CONSUMPTION)) {
+          // Failure in start consumption request should reset the resource ingestion status.
+          LOGGER.warn("Clean up ingestion status for topic: {}, partition: {}.", topicName, partition);
+          getMainIngestionMonitorService().cleanupTopicPartitionState(topicName, partition);
+        }
+        throw e;
+      }
+      /**
+       * The idea of this check below is to add resiliency to isolated ingestion metadata management.
+       * Although in most of the case the resource ingestion status managed by main / forked process should be in sync,
+       * but in event of regression or unexpected error metadata could be out of sync.
+       * This extra check covers the case where resource is maintained locally but main process think it is in forked
+       * process and thus keeps failing. If the check indicates that resource is managed locally, it will execute the
+       * command locally and break the loop, thus the request won't be stuck forever.
+       */
+      if (command.equals(STOP_CONSUMPTION) && getStoreIngestionService().isPartitionConsuming(topicName, partition)) {
+        LOGGER.warn(
+            "Expect topic: {}, partition: {} in forked process but found in main process, will execute command {} locally.",
+            topicName,
+            partition,
+            command);
+        localCommandRunnable.run();
         return;
       }
       LOGGER.info(
