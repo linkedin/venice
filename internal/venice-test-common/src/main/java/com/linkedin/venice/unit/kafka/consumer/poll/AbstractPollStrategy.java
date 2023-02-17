@@ -4,9 +4,11 @@ import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
+import com.linkedin.venice.pubsub.PubSubMessages;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.serialization.KafkaKeySerializer;
-import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaMessage;
 import com.linkedin.venice.utils.ByteUtils;
@@ -16,10 +18,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.common.TopicPartition;
-import org.apache.kafka.common.record.TimestampType;
 
 
 /**
@@ -29,9 +27,6 @@ public abstract class AbstractPollStrategy implements PollStrategy {
   private static final int DEFAULT_MAX_MESSAGES_PER_POLL = 3; // We can make this configurable later on if need be...
   private final int maxMessagePerPoll;
   protected final boolean keepPollingWhenEmpty;
-
-  private final KafkaValueSerializer valueSerializer = new KafkaValueSerializer();
-  private final KafkaKeySerializer keySerializer = new KafkaKeySerializer();
 
   public AbstractPollStrategy(boolean keepPollingWhenEmpty) {
     this(keepPollingWhenEmpty, DEFAULT_MAX_MESSAGES_PER_POLL);
@@ -44,12 +39,12 @@ public abstract class AbstractPollStrategy implements PollStrategy {
 
   protected abstract Pair<PubSubTopicPartition, Long> getNextPoll(Map<PubSubTopicPartition, Long> offsets);
 
-  public synchronized ConsumerRecords<byte[], byte[]> poll(
+  public synchronized PubSubMessages<KafkaKey, KafkaMessageEnvelope, Long> poll(
       InMemoryKafkaBroker broker,
       Map<PubSubTopicPartition, Long> offsets,
       long timeout) {
 
-    Map<TopicPartition, List<ConsumerRecord<byte[], byte[]>>> records = new HashMap<>();
+    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> records = new HashMap<>();
 
     long startTime = System.currentTimeMillis();
     int numberOfRecords = 0;
@@ -67,7 +62,6 @@ public abstract class AbstractPollStrategy implements PollStrategy {
       long offset = nextPoll.getSecond();
       String topic = pubSubTopicPartition.getPubSubTopic().getName();
       int partition = pubSubTopicPartition.getPartitionNumber();
-      TopicPartition topicPartition = new TopicPartition(topic, partition);
       /**
        * TODO: need to understand why "+ 1" here, since for {@link ArbitraryOrderingPollStrategy}, it always
        * returns the next message specified in the delivery order, which is causing confusion.
@@ -91,21 +85,17 @@ public abstract class AbstractPollStrategy implements PollStrategy {
           }
         }
 
-        ConsumerRecord<byte[], byte[]> consumerRecord = new ConsumerRecord<>(
-            topic,
-            partition,
+        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord = new ImmutablePubSubMessage<>(
+            message.get().key,
+            message.get().value,
+            pubSubTopicPartition,
             nextOffset,
             System.currentTimeMillis(),
-            TimestampType.NO_TIMESTAMP_TYPE,
-            -1, // checksum
-            -1, // serializedKeySize
-            -1, // serializedValueSize
-            keySerializer.serialize(null, message.get().key),
-            valueSerializer.serialize(null, message.get().value));
-        if (!records.containsKey(topicPartition)) {
-          records.put(topicPartition, new ArrayList<>());
+            -1);
+        if (!records.containsKey(pubSubTopicPartition)) {
+          records.put(pubSubTopicPartition, new ArrayList<>());
         }
-        records.get(topicPartition).add(consumerRecord);
+        records.get(pubSubTopicPartition).add(consumerRecord);
         incrementOffset(offsets, pubSubTopicPartition, offset);
         numberOfRecords++;
       } else if (keepPollingWhenEmpty) {
@@ -116,7 +106,7 @@ public abstract class AbstractPollStrategy implements PollStrategy {
       }
     }
 
-    return new ConsumerRecords(records);
+    return new PubSubMessages<>(records);
   }
 
   protected void incrementOffset(

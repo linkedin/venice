@@ -420,8 +420,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     KafkaPubSubMessageDeserializer pubSubDeserializer = new KafkaPubSubMessageDeserializer(
         kafkaValueSerializer,
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-        this.pubSubTopicRepository);
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
 
     aggKafkaConsumerService = new AggKafkaConsumerService(
         veniceConsumerFactory,

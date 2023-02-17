@@ -1,7 +1,10 @@
 package com.linkedin.venice.unit.kafka.consumer;
 
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubMessages;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
@@ -10,7 +13,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
 
 
 /**
@@ -84,7 +86,7 @@ public class MockInMemoryConsumer implements PubSubConsumer {
   }
 
   @Override
-  public synchronized ConsumerRecords<byte[], byte[]> poll(long timeout) {
+  public synchronized PubSubMessages<KafkaKey, KafkaMessageEnvelope, Long> poll(long timeout) {
     if (delegate.poll(timeout) != null) {
       throw new IllegalArgumentException(
           "The MockInMemoryConsumer's delegate can only be used to verify calls, not to return arbitrary instances.");
@@ -99,7 +101,8 @@ public class MockInMemoryConsumer implements PubSubConsumer {
       }
     }
 
-    ConsumerRecords<byte[], byte[]> consumerRecords = pollStrategy.poll(broker, offsetsToPoll, timeout);
+    PubSubMessages<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessages =
+        pollStrategy.poll(broker, offsetsToPoll, timeout);
     for (Map.Entry<PubSubTopicPartition, Long> entry: offsetsToPoll.entrySet()) {
       PubSubTopicPartition topicPartition = entry.getKey();
       Long offsetToPoll = entry.getValue();
@@ -107,7 +110,7 @@ public class MockInMemoryConsumer implements PubSubConsumer {
         offsets.put(topicPartition, offsetToPoll);
       }
     }
-    return consumerRecords;
+    return pubSubMessages;
   }
 
   @Override

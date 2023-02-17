@@ -4,23 +4,18 @@ import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
 import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
-import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.PubSubMessages;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.IntConsumer;
 import java.util.function.Supplier;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -48,13 +43,11 @@ class ConsumptionTask implements Runnable {
   private final Map<PubSubTopicPartition, ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>>> dataReceiverMap =
       new VeniceConcurrentHashMap<>();
   private final long readCycleDelayMs;
-  private final Supplier<ConsumerRecords<byte[], byte[]>> pollFunction;
+  private final Supplier<PubSubMessages<KafkaKey, KafkaMessageEnvelope, Long>> pollFunction;
   private final IntConsumer bandwidthThrottler;
   private final IntConsumer recordsThrottler;
   private final KafkaConsumerServiceStats stats;
   private final ConsumerSubscriptionCleaner cleaner;
-  private final KafkaPubSubMessageDeserializer pubSubDeserializer;
-  private final PubSubTopicRepository pubSubTopicRepository;
 
   private volatile boolean running = true;
 
@@ -68,12 +61,11 @@ class ConsumptionTask implements Runnable {
       final String kafkaUrl,
       final int taskId,
       final long readCycleDelayMs,
-      final Supplier<ConsumerRecords<byte[], byte[]>> pollFunction,
+      final Supplier<PubSubMessages<KafkaKey, KafkaMessageEnvelope, Long>> pollFunction,
       final IntConsumer bandwidthThrottler,
       final IntConsumer recordsThrottler,
       final KafkaConsumerServiceStats stats,
-      final ConsumerSubscriptionCleaner cleaner,
-      final KafkaPubSubMessageDeserializer pubSubDeserializer) {
+      final ConsumerSubscriptionCleaner cleaner) {
     this.taskId = taskId;
     this.readCycleDelayMs = readCycleDelayMs;
     this.pollFunction = pollFunction;
@@ -81,9 +73,7 @@ class ConsumptionTask implements Runnable {
     this.recordsThrottler = recordsThrottler;
     this.stats = stats;
     this.cleaner = cleaner;
-    this.pubSubDeserializer = pubSubDeserializer;
     this.logger = LogManager.getLogger(getClass().getSimpleName() + "[ " + kafkaUrl + " - " + taskId + " ]");
-    this.pubSubTopicRepository = pubSubDeserializer.getPubSubTopicRepository();
   }
 
   @Override
@@ -92,13 +82,12 @@ class ConsumptionTask implements Runnable {
 
     // Pre-allocate some variables to clobber in the loop
     long beforePollingTimeStamp;
-    ConsumerRecords<byte[], byte[]> records;
+    PubSubMessages<KafkaKey, KafkaMessageEnvelope, Long> polledPubSubMessages;
     long beforeProducingToWriteBufferTimestamp;
     ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> consumedDataReceiver;
-    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> partitionRecords = new ArrayList<>();
     Set<PubSubTopicPartition> topicPartitionsToUnsub = new HashSet<>();
     int payloadBytesConsumedInOnePoll;
-    PubSubMessage pubSubMessage;
+    int polledPubSubMessagesCount = 0;
     while (running) {
       try {
         if (addSomeDelay) {
@@ -127,39 +116,34 @@ class ConsumptionTask implements Runnable {
          * JavaDoc, about how this class could become the sole entry point for all consumer-related interactions,
          * and thus be capable of operating on a non-threadsafe consumer.
          */
-        records = pollFunction.get();
+        polledPubSubMessages = pollFunction.get();
+        polledPubSubMessagesCount = polledPubSubMessages.count();
         lastSuccessfulPollTimestamp = System.currentTimeMillis();
         stats.recordPollRequestLatency(lastSuccessfulPollTimestamp - beforePollingTimeStamp);
-        stats.recordPollResultNum(records.count());
+        stats.recordPollResultNum(polledPubSubMessagesCount);
         payloadBytesConsumedInOnePoll = 0;
-        if (!records.isEmpty()) {
+        if (!polledPubSubMessages.isEmpty()) {
           beforeProducingToWriteBufferTimestamp = System.currentTimeMillis();
-          for (TopicPartition topicPartition: records.partitions()) {
-            PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(
-                pubSubTopicRepository.getTopic(topicPartition.topic()),
-                topicPartition.partition());
+          for (PubSubTopicPartition pubSubTopicPartition: polledPubSubMessages.pubSubTopicPartitions()) {
             consumedDataReceiver = dataReceiverMap.get(pubSubTopicPartition);
             if (consumedDataReceiver == null) {
               // defensive code
               logger.error(
                   "Couldn't find consumed data receiver for topic partition : {} after receiving records from `poll` request",
-                  topicPartition);
+                  pubSubTopicPartition);
               topicPartitionsToUnsub.add(pubSubTopicPartition);
               continue;
             }
-            partitionRecords.clear();
-            for (ConsumerRecord<byte[], byte[]> consumerRecord: records.records(topicPartition)) {
-              pubSubMessage =
-                  pubSubDeserializer.deserialize(consumerRecord, consumedDataReceiver.getPubSubTopicPartition());
-              partitionRecords.add(pubSubMessage);
+            for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage: polledPubSubMessages
+                .messages(pubSubTopicPartition)) {
               payloadBytesConsumedInOnePoll += pubSubMessage.getPayloadSize();
             }
-            consumedDataReceiver.write(partitionRecords);
+            consumedDataReceiver.write(polledPubSubMessages.messages(pubSubTopicPartition));
           }
           stats.recordConsumerRecordsProducingToWriterBufferLatency(
               LatencyUtils.getElapsedTimeInMs(beforeProducingToWriteBufferTimestamp));
           bandwidthThrottler.accept(payloadBytesConsumedInOnePoll);
-          recordsThrottler.accept(records.count());
+          recordsThrottler.accept(polledPubSubMessagesCount);
           cleaner.unsubscribe(topicPartitionsToUnsub);
           stats.recordDetectedNoRunningIngestionTopicPartitionNum(topicPartitionsToUnsub.size());
         } else {

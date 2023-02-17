@@ -236,8 +236,7 @@ public abstract class StoreIngestionTaskTest {
   private static final KafkaPubSubMessageDeserializer pubSubDeserializer = new KafkaPubSubMessageDeserializer(
       new OptimizedKafkaValueSerializer(),
       new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-      new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-      pubSubTopicRepository);
+      new LandFillObjectPool<>(KafkaMessageEnvelope::new));
 
   static {
     StoreIngestionTask.SCHEMA_POLLING_DELAY_MS = 100;
@@ -815,7 +814,7 @@ public abstract class StoreIngestionTaskTest {
         return inMemoryRemoteKafkaConsumer;
       }
       return inMemoryLocalKafkaConsumer;
-    }).when(mockFactory).getConsumer(any());
+    }).when(mockFactory).getConsumer(any(), any());
 
     mockWriterFactory = mock(VeniceWriterFactory.class);
     doReturn(null).when(mockWriterFactory).createVeniceWriter(any());

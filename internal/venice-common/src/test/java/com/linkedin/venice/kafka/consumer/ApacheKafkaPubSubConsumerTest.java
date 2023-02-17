@@ -8,6 +8,7 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.time.Duration;
 import java.util.Collections;
@@ -36,7 +37,12 @@ public class ApacheKafkaPubSubConsumerTest {
     properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     properties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, "broker address");
-    apacheKafkaConsumer = new ApacheKafkaConsumer(delegateKafkaConsumer, new VeniceProperties(properties), false);
+    KafkaPubSubMessageDeserializer kafkaPubSubMessageDeserializer = mock(KafkaPubSubMessageDeserializer.class);
+    apacheKafkaConsumer = new ApacheKafkaConsumer(
+        delegateKafkaConsumer,
+        new VeniceProperties(properties),
+        false,
+        kafkaPubSubMessageDeserializer);
   }
 
   @Test
@@ -89,13 +95,15 @@ public class ApacheKafkaPubSubConsumerTest {
       pubSubTopicPartitionsToUnSub.add(pubSubTopicPartitionToSub);
       allTopicPartitions.add(new TopicPartition(testTopic.getName(), i));
       allPubSubTopicPartitions.add(pubSubTopicPartitionToSub);
+      apacheKafkaConsumer.subscribe(pubSubTopicPartitionToSub, -1);
     }
     for (int i = 0; i < 3; i++) {
-      PubSubTopicPartition pubSubTopicPartitionToSub = new PubSubTopicPartitionImpl(testTopicV2, i);
+      PubSubTopicPartition pubSubTopicPartitionToUnSub = new PubSubTopicPartitionImpl(testTopicV2, i);
       TopicPartition topicPartitionLeft = new TopicPartition(testTopicV2.getName(), i);
       topicPartitionsLeft.add(topicPartitionLeft);
       allTopicPartitions.add(topicPartitionLeft);
-      allPubSubTopicPartitions.add(pubSubTopicPartitionToSub);
+      allPubSubTopicPartitions.add(pubSubTopicPartitionToUnSub);
+      apacheKafkaConsumer.subscribe(pubSubTopicPartitionToUnSub, -1);
     }
     doReturn(allTopicPartitions).when(delegateKafkaConsumer).assignment();
     Assert.assertTrue(apacheKafkaConsumer.hasSubscription(pubSubTopicPartition));

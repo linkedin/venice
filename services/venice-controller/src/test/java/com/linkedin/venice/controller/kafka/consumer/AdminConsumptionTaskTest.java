@@ -220,8 +220,7 @@ public class AdminConsumptionTaskTest {
     KafkaPubSubMessageDeserializer pubSubMessageDeserializer = new KafkaPubSubMessageDeserializer(
         new OptimizedKafkaValueSerializer(),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-        pubSubTopicRepository);
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
 
     return new AdminConsumptionTask(
         clusterName,

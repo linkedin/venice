@@ -4,11 +4,13 @@ import static com.linkedin.davinci.kafka.consumer.StoreIngestionTask.REDUNDANT_L
 
 import com.linkedin.venice.exceptions.QuotaExceededException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.PubSubMessages;
 import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -21,19 +23,22 @@ public class KafkaClusterBasedRecordThrottler {
   // Kafka URL to records throttler
   private final Map<String, EventThrottler> kafkaUrlToRecordsThrottler;
   // Kafka URL to throttled records
-  protected Map<String, ConsumerRecords<byte[], byte[]>> kafkaUrlToThrottledRecords;
+  protected Map<String, PubSubMessages<KafkaKey, KafkaMessageEnvelope, Long>> kafkaUrlToThrottledRecords;
 
   public KafkaClusterBasedRecordThrottler(Map<String, EventThrottler> kafkaUrlToRecordsThrottler) {
     this.kafkaUrlToRecordsThrottler = kafkaUrlToRecordsThrottler;
     this.kafkaUrlToThrottledRecords = new VeniceConcurrentHashMap<>();
   }
 
-  public ConsumerRecords<byte[], byte[]> poll(PubSubConsumer consumer, String kafkaUrl, long pollTimeoutMs) {
-    ConsumerRecords<byte[], byte[]> consumerRecords = kafkaUrlToThrottledRecords.get(kafkaUrl);
+  public PubSubMessages<KafkaKey, KafkaMessageEnvelope, Long> poll(
+      PubSubConsumer consumer,
+      String kafkaUrl,
+      long pollTimeoutMs) {
+    PubSubMessages<KafkaKey, KafkaMessageEnvelope, Long> consumerRecords = kafkaUrlToThrottledRecords.get(kafkaUrl);
     if (consumerRecords == null) {
       consumerRecords = consumer.poll(pollTimeoutMs);
       if (consumerRecords == null) {
-        consumerRecords = ConsumerRecords.empty();
+        consumerRecords = PubSubMessages.empty();
       }
     }
 
@@ -62,7 +67,7 @@ public class KafkaClusterBasedRecordThrottler {
         }
 
         // Return early so we don't ingest these records
-        return ConsumerRecords.empty();
+        return PubSubMessages.empty();
       }
     }
 

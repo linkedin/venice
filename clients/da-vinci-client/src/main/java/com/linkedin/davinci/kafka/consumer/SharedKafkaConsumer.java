@@ -3,6 +3,9 @@ package com.linkedin.davinci.kafka.consumer;
 import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.PubSubMessages;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
@@ -15,7 +18,6 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.IntSupplier;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -220,7 +222,7 @@ class SharedKafkaConsumer implements PubSubConsumer {
   }
 
   @Override
-  public synchronized ConsumerRecords<byte[], byte[]> poll(long timeoutMs) {
+  public synchronized PubSubMessages<KafkaKey, KafkaMessageEnvelope, Long> poll(long timeoutMs) {
     /**
      * Always invoke this method no matter whether the consumer have subscription or not. Therefore we could notify any
      * waiter who might be waiting for a invocation of poll to happen even if the consumer does not have subscription
@@ -240,7 +242,7 @@ class SharedKafkaConsumer implements PubSubConsumer {
         // TODO: removing this sleep inside the poll with synchronization, this sleep should be added by the logic
         // calling this poll method.
         Thread.sleep(timeoutMs);
-        return ConsumerRecords.empty();
+        return PubSubMessages.empty();
       }
     } catch (InterruptedException e) {
       throw new VeniceException("Shared Consumer poll sleep got interrupted", e);

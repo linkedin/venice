@@ -6,6 +6,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.PubSubMessages;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -36,7 +37,6 @@ import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -118,14 +118,15 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
        */
       consumerProperties.setProperty(ConsumerConfig.CLIENT_ID_CONFIG, getUniqueClientId(kafkaUrl, i));
       SharedKafkaConsumer pubSubConsumer = new SharedKafkaConsumer(
-          consumerFactory.getConsumer(consumerProperties),
+          consumerFactory.getConsumer(consumerProperties, pubSubDeserializer),
           stats,
           this::recordPartitionsPerConsumerSensor,
           this::handleUnsubscription);
 
-      Supplier<ConsumerRecords<byte[], byte[]>> pollFunction = liveConfigBasedKafkaThrottlingEnabled
-          ? () -> kafkaClusterBasedRecordThrottler.poll(pubSubConsumer, kafkaUrl, readCycleDelayMs)
-          : () -> pubSubConsumer.poll(readCycleDelayMs);
+      Supplier<PubSubMessages<KafkaKey, KafkaMessageEnvelope, Long>> pollFunction =
+          liveConfigBasedKafkaThrottlingEnabled
+              ? () -> kafkaClusterBasedRecordThrottler.poll(pubSubConsumer, kafkaUrl, readCycleDelayMs)
+              : () -> pubSubConsumer.poll(readCycleDelayMs);
       final IntConsumer bandwidthThrottlerFunction = totalBytes -> bandwidthThrottler.maybeThrottle(totalBytes);
       final IntConsumer recordsThrottlerFunction = recordsCount -> recordsThrottler.maybeThrottle(recordsCount);
       final ConsumerSubscriptionCleaner cleaner = new ConsumerSubscriptionCleaner(
@@ -145,8 +146,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
           bandwidthThrottlerFunction,
           recordsThrottlerFunction,
           this.stats,
-          cleaner,
-          pubSubDeserializer);
+          cleaner);
       consumerToConsumptionTask.putByIndex(pubSubConsumer, consumptionTask, i);
     }
 

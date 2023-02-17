@@ -1,10 +1,12 @@
 package com.linkedin.venice.pubsub.consumer;
 
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.PubSubMessages;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import java.io.Closeable;
 import java.util.Set;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
 
 
 public interface PubSubConsumer extends AutoCloseable, Closeable {
@@ -19,7 +21,7 @@ public interface PubSubConsumer extends AutoCloseable, Closeable {
   void close();
 
   // TODO: Get rid of ConsumerRecords from kafka world.
-  ConsumerRecords<byte[], byte[]> poll(long timeoutMs);
+  PubSubMessages<KafkaKey, KafkaMessageEnvelope, Long> poll(long timeoutMs);
 
   /**
    * @return True if this consumer has subscribed any pub sub topic partition at all and vice versa.

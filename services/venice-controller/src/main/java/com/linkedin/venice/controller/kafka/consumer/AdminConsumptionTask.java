@@ -22,6 +22,7 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubMessages;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -55,7 +56,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -338,19 +338,17 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           }
           subscribe();
         }
-        Iterator<ConsumerRecord<byte[], byte[]>> recordsIterator;
+        Iterator<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> recordsIterator;
         // Only poll the kafka channel if there are no more undelegated records due to exceptions.
         if (undelegatedRecords.isEmpty()) {
-          ConsumerRecords records = consumer.poll(READ_CYCLE_DELAY_MS);
-          if (records == null || records.isEmpty()) {
-            LOGGER.debug("Received null or no records");
+          PubSubMessages<KafkaKey, KafkaMessageEnvelope, Long> messages = consumer.poll(READ_CYCLE_DELAY_MS);
+          if (messages == null || messages.isEmpty()) {
+            LOGGER.debug("Received null or no messages");
           } else {
-            LOGGER.info("Consumed {} admin messages from kafka. Will queue them up for processing", records.count());
-            recordsIterator = records.iterator();
+            LOGGER.info("Consumed {} admin messages from kafka. Will queue them up for processing", messages.count());
+            recordsIterator = messages.iterator();
             while (recordsIterator.hasNext()) {
-              ConsumerRecord<byte[], byte[]> consumerRecord = recordsIterator.next();
-              PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> newRecord = pubSubMessageDeserializer
-                  .deserialize(consumerRecord, new PubSubTopicPartitionImpl(pubSubTopic, consumerRecord.partition()));
+              PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> newRecord = recordsIterator.next();
               lastConsumedOffset = newRecord.getOffset();
               undelegatedRecords.add(newRecord);
             }

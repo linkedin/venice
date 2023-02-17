@@ -10,6 +10,7 @@ import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumer;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
+import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
@@ -54,14 +55,15 @@ public abstract class KafkaClientFactory {
     return metricsParameters;
   }
 
-  public PubSubConsumer getConsumer(Properties props) {
+  public PubSubConsumer getConsumer(Properties props, KafkaPubSubMessageDeserializer kafkaPubSubMessageDeserializer) {
     props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     Properties propertiesWithSSL = setupSSL(props);
     return new ApacheKafkaConsumer(
         getKafkaConsumer(propertiesWithSSL),
         new VeniceProperties(props),
-        isKafkaConsumerOffsetCollectionEnabled());
+        isKafkaConsumerOffsetCollectionEnabled(),
+        kafkaPubSubMessageDeserializer);
   }
 
   public Consumer<byte[], byte[]> getRawBytesKafkaConsumer() {

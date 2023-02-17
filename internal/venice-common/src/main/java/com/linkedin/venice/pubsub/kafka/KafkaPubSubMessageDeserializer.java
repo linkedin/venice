@@ -5,7 +5,6 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
-import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -30,17 +29,13 @@ public class KafkaPubSubMessageDeserializer implements
   private final ObjectPool<KafkaMessageEnvelope> putEnvelopePool;
   private final ObjectPool<KafkaMessageEnvelope> updateEnvelopePool;
 
-  private final PubSubTopicRepository pubSubTopicRepository;
-
   public KafkaPubSubMessageDeserializer(
       KafkaValueSerializer valueSerializer,
       ObjectPool<KafkaMessageEnvelope> putEnvelopePool,
-      ObjectPool<KafkaMessageEnvelope> updateEnvelopePool,
-      PubSubTopicRepository pubSubTopicRepository) {
+      ObjectPool<KafkaMessageEnvelope> updateEnvelopePool) {
     this.valueSerializer = valueSerializer;
     this.putEnvelopePool = putEnvelopePool;
     this.updateEnvelopePool = updateEnvelopePool;
-    this.pubSubTopicRepository = pubSubTopicRepository;
   }
 
   @Override
@@ -90,9 +85,5 @@ public class KafkaPubSubMessageDeserializer implements
       default:
         throw new IllegalStateException("Illegal key header byte: " + keyHeaderByte);
     }
-  }
-
-  public PubSubTopicRepository getPubSubTopicRepository() {
-    return pubSubTopicRepository;
   }
 }

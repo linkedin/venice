@@ -16,11 +16,13 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
+import com.linkedin.venice.pubsub.PubSubMessages;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
-import com.linkedin.venice.serialization.KafkaKeySerializer;
-import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
-import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.utils.ByteUtils;
 import java.io.IOException;
@@ -30,9 +32,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.apache.hadoop.mapred.JobConf;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.common.TopicPartition;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -54,16 +53,14 @@ public class KafkaInputRecordReaderTest {
 
     int assignedPartition = 0;
     int numRecord = 100;
-    List<ConsumerRecord<byte[], byte[]>> consumerRecordList = new ArrayList<>();
-
+    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> consumerRecordList = new ArrayList<>();
+    PubSubTopicPartition pubSubTopicPartition =
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), assignedPartition);
     for (int i = 0; i < numRecord; ++i) {
       byte[] keyBytes = (KAFKA_MESSAGE_KEY_PREFIX + i).getBytes();
       byte[] valueBytes = (KAFKA_MESSAGE_VALUE_PREFIX + i).getBytes();
 
-      KafkaKeySerializer keySerializer = new KafkaKeySerializer();
       KafkaKey kafkaKey = new KafkaKey(PUT, keyBytes);
-      byte[] serializedKafkaKey = keySerializer.serialize(topic, kafkaKey);
-      KafkaValueSerializer valueSerializer = new OptimizedKafkaValueSerializer();
       KafkaMessageEnvelope messageEnvelope = new KafkaMessageEnvelope();
       messageEnvelope.producerMetadata = new ProducerMetadata();
       messageEnvelope.producerMetadata.messageTimestamp = 0;
@@ -75,18 +72,13 @@ public class KafkaInputRecordReaderTest {
       put.putValue = ByteBuffer.wrap(valueBytes);
       put.replicationMetadataPayload = ByteBuffer.allocate(0);
       messageEnvelope.payloadUnion = put;
-      byte[] serializedMessageEnvelope = valueSerializer.serialize(topic, messageEnvelope);
-
-      ConsumerRecord<byte[], byte[]> consumerRecord =
-          new ConsumerRecord<>(topic, assignedPartition, i, serializedKafkaKey, serializedMessageEnvelope);
-
-      consumerRecordList.add(consumerRecord);
+      consumerRecordList.add(new ImmutablePubSubMessage<>(kafkaKey, messageEnvelope, pubSubTopicPartition, i, -1, -1));
     }
 
-    Map<TopicPartition, List<ConsumerRecord<byte[], byte[]>>> recordsMap = new HashMap<>();
-    recordsMap.put(new TopicPartition(topic, assignedPartition), consumerRecordList);
-    ConsumerRecords<byte[], byte[]> records = new ConsumerRecords<>(recordsMap);
-    when(consumer.poll(anyLong())).thenReturn(records, ConsumerRecords.empty());
+    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> recordsMap = new HashMap<>();
+    recordsMap.put(pubSubTopicPartition, consumerRecordList);
+    PubSubMessages<KafkaKey, KafkaMessageEnvelope, Long> messages = new PubSubMessages<>(recordsMap);
+    when(consumer.poll(anyLong())).thenReturn(messages, PubSubMessages.empty());
 
     KafkaInputSplit split = new KafkaInputSplit(topic, 0, 0, 102);
     try (KafkaInputRecordReader reader =

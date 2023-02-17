@@ -218,6 +218,6 @@ public class AdminConsumerService extends AbstractVeniceService {
      */
     kafkaConsumerProperties.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
 
-    return consumerFactory.getConsumer(kafkaConsumerProperties);
+    return consumerFactory.getConsumer(kafkaConsumerProperties, pubSubMessageDeserializer);
   }
 }

@@ -5,6 +5,9 @@ import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.PubSubMessages;
 import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
@@ -17,7 +20,6 @@ import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.kafka.clients.CommonClientConfigs;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -61,7 +63,7 @@ public class KafkaClusterBasedRecordThrottlerTest {
     KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler =
         new KafkaClusterBasedRecordThrottler(kafkaUrlToRecordsThrottler);
 
-    ConsumerRecords<byte[], byte[]> consumerRecords = mock(ConsumerRecords.class);
+    PubSubMessages consumerRecords = mock(PubSubMessages.class);
     doReturn(10).when(consumerRecords).count();
 
     PubSubConsumer localConsumer = mock(PubSubConsumer.class);
@@ -72,35 +74,35 @@ public class KafkaClusterBasedRecordThrottlerTest {
     doReturn(consumerRecords).when(remoteConsumer).poll(anyLong());
 
     // Verify can ingest at least some record from local and remote Kafka
-    ConsumerRecords<byte[], byte[]> localConsumerRecords = kafkaClusterBasedRecordThrottler
+    PubSubMessages<KafkaKey, KafkaMessageEnvelope, Long> localPubSubMessages = kafkaClusterBasedRecordThrottler
         .poll(localConsumer, inMemoryLocalKafkaBroker.getKafkaBootstrapServer(), 1 * Time.MS_PER_SECOND);
-    ConsumerRecords<byte[], byte[]> remoteConsumerRecords = kafkaClusterBasedRecordThrottler
+    PubSubMessages<KafkaKey, KafkaMessageEnvelope, Long> remotePubSubMessages = kafkaClusterBasedRecordThrottler
         .poll(remoteConsumer, inMemoryRemoteKafkaBroker.getKafkaBootstrapServer(), 1 * Time.MS_PER_SECOND);
-    Assert.assertSame(localConsumerRecords, consumerRecords);
-    Assert.assertSame(remoteConsumerRecords, consumerRecords);
+    Assert.assertSame(localPubSubMessages, consumerRecords);
+    Assert.assertSame(remotePubSubMessages, consumerRecords);
 
     // Pause remote kafka consumption
     remoteKafkaQuota.set(0);
 
     // Verify does not ingest from remote Kafka
-    localConsumerRecords = kafkaClusterBasedRecordThrottler
+    localPubSubMessages = kafkaClusterBasedRecordThrottler
         .poll(localConsumer, inMemoryLocalKafkaBroker.getKafkaBootstrapServer(), 1 * Time.MS_PER_SECOND);
-    remoteConsumerRecords = kafkaClusterBasedRecordThrottler
+    remotePubSubMessages = kafkaClusterBasedRecordThrottler
         .poll(remoteConsumer, inMemoryRemoteKafkaBroker.getKafkaBootstrapServer(), 1 * Time.MS_PER_SECOND);
-    Assert.assertSame(localConsumerRecords, consumerRecords);
-    Assert.assertNotSame(remoteConsumerRecords, consumerRecords);
-    Assert.assertTrue(remoteConsumerRecords.isEmpty());
+    Assert.assertSame(localPubSubMessages, consumerRecords);
+    Assert.assertNotSame(remotePubSubMessages, consumerRecords);
+    Assert.assertTrue(remotePubSubMessages.isEmpty());
 
     // Resume remote Kafka consumption
     remoteKafkaQuota.set(10);
     testTime.sleep(timeWindowMS); // sleep so throttling window is reset and we don't run into race conditions
 
     // Verify resumes ingestion from remote Kafka
-    localConsumerRecords = kafkaClusterBasedRecordThrottler
+    localPubSubMessages = kafkaClusterBasedRecordThrottler
         .poll(localConsumer, inMemoryLocalKafkaBroker.getKafkaBootstrapServer(), 1 * Time.MS_PER_SECOND);
-    remoteConsumerRecords = kafkaClusterBasedRecordThrottler
+    remotePubSubMessages = kafkaClusterBasedRecordThrottler
         .poll(remoteConsumer, inMemoryRemoteKafkaBroker.getKafkaBootstrapServer(), 1 * Time.MS_PER_SECOND);
-    Assert.assertSame(localConsumerRecords, consumerRecords);
-    Assert.assertSame(remoteConsumerRecords, consumerRecords);
+    Assert.assertSame(localPubSubMessages, consumerRecords);
+    Assert.assertSame(remotePubSubMessages, consumerRecords);
   }
 }

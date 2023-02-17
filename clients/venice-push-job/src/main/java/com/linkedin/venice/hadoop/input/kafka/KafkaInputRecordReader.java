@@ -14,10 +14,10 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.PubSubMessages;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
-import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
@@ -36,8 +36,6 @@ import org.apache.hadoop.mapred.InputSplit;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.RecordReader;
 import org.apache.hadoop.mapred.Reporter;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -83,8 +81,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
   /**
    * Iterator pointing to the current messages fetched from the Kafka topic partition.
    */
-  private Iterator<ConsumerRecord<byte[], byte[]>> recordIterator;
-  private final PubSubMessageDeserializer pubSubMessageDeserializer;
+  private Iterator<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> recordIterator;
 
   private final Reporter reporter;
 
@@ -93,7 +90,13 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
         split,
         job,
         reporter,
-        KafkaInputUtils.getConsumerFactory(job).getConsumer(new Properties()),
+        KafkaInputUtils.getConsumerFactory(job)
+            .getConsumer(
+                new Properties(),
+                new KafkaPubSubMessageDeserializer(
+                    new OptimizedKafkaValueSerializer(),
+                    new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+                    new LandFillObjectPool<>(KafkaMessageEnvelope::new))),
         PUB_SUB_TOPIC_REPOSITORY);
   }
 
@@ -128,11 +131,6 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
     this.maxNumberOfRecords = endingOffset - startingOffset;
     this.consumer.subscribe(pubSubTopicPartition, currentOffset);
     this.reporter = reporter;
-    this.pubSubMessageDeserializer = new KafkaPubSubMessageDeserializer(
-        new OptimizedKafkaValueSerializer(),
-        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-        pubSubTopicRepository);
     LOGGER.info(
         "KafkaInputRecordReader started for TopicPartition: {} starting offset: {} ending offset: {}",
         this.topicPartition,
@@ -145,7 +143,6 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
    */
   @Override
   public boolean next(KafkaInputMapperKey key, KafkaInputMapperValue value) throws IOException {
-    ConsumerRecord<byte[], byte[]> record;
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage;
     while (hasPendingData()) {
       try {
@@ -155,10 +152,9 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
             "Got interrupted while loading records from topic partition: " + topicPartition + " with current offset: "
                 + currentOffset);
       }
-      record = recordIterator.hasNext() ? recordIterator.next() : null;
-      if (record != null) {
-        pubSubMessage = pubSubMessageDeserializer.deserialize(record, pubSubTopicPartition);
-        currentOffset = record.offset();
+      pubSubMessage = recordIterator.hasNext() ? recordIterator.next() : null;
+      if (pubSubMessage != null) {
+        currentOffset = pubSubMessage.getOffset();
 
         KafkaKey kafkaKey = pubSubMessage.getKey();
         KafkaMessageEnvelope kafkaMessageEnvelope = pubSubMessage.getValue();
@@ -170,7 +166,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
 
         MessageType messageType = MessageType.valueOf(kafkaMessageEnvelope);
 
-        key.offset = record.offset();
+        key.offset = pubSubMessage.getOffset();
         if (isChunkingEnabled) {
           RawKeyBytesAndChunkedKeySuffix rawKeyAndChunkedKeySuffix =
               splitCompositeKey(kafkaKey.getKey(), messageType, getSchemaIdFromValue(kafkaMessageEnvelope));
@@ -180,7 +176,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
         } else {
           key.key = ByteBuffer.wrap(kafkaKey.getKey(), 0, kafkaKey.getKeyLength());
         }
-        value.offset = record.offset();
+        value.offset = pubSubMessage.getOffset();
         switch (messageType) {
           case PUT:
             Put put = (Put) kafkaMessageEnvelope.payloadUnion;
@@ -201,7 +197,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
           default:
             throw new IOException(
                 "Unexpected '" + messageType + "' message from Kafka topic partition: " + topicPartition
-                    + " with offset: " + record.offset());
+                    + " with offset: " + pubSubMessage.getOffset());
         }
         MRJobCounterHelper.incrTotalPutOrDeleteRecordCount(reporter, 1);
         long recordCount = MRJobCounterHelper.getTotalPutOrDeleteRecordsCount(reporter);
@@ -294,16 +290,16 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
    */
   private void loadRecords() throws InterruptedException {
     if ((recordIterator == null) || !recordIterator.hasNext()) {
-      ConsumerRecords<byte[], byte[]> records = null;
+      PubSubMessages<KafkaKey, KafkaMessageEnvelope, Long> messages = null;
       int retry = 0;
       while (retry++ < CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES) {
-        records = consumer.poll(CONSUMER_POLL_TIMEOUT);
-        if (!records.isEmpty()) {
+        messages = consumer.poll(CONSUMER_POLL_TIMEOUT);
+        if (!messages.isEmpty()) {
           break;
         }
         Thread.sleep(EMPTY_POLL_SLEEP_TIME_MS);
       }
-      if (records.isEmpty()) {
+      if (messages.isEmpty()) {
         StringBuilder sb = new StringBuilder();
         sb.append("Consumer#poll still returns empty result after retrying ")
             .append(CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES)
@@ -315,7 +311,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
         throw new VeniceException(sb.toString());
       }
 
-      recordIterator = records.iterator();
+      recordIterator = messages.iterator();
     }
   }
 }

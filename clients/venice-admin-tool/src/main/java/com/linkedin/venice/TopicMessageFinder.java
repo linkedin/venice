@@ -10,16 +10,18 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.pubsub.PubSubMessages;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
-import com.linkedin.venice.serialization.KafkaKeySerializer;
+import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
-import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
+import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
@@ -27,8 +29,6 @@ import java.util.Map;
 import java.util.Properties;
 import org.apache.avro.Schema;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.common.TopicPartition;
@@ -108,8 +108,13 @@ public class TopicMessageFinder {
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     PubSubTopicPartition assignedPubSubTopicPartition =
         new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), assignedPartition);
+
+    KafkaPubSubMessageDeserializer kafkaPubSubMessageDeserializer = new KafkaPubSubMessageDeserializer(
+        new OptimizedKafkaValueSerializer(),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
     consume(
-        new ApacheKafkaConsumer(consumerProps),
+        new ApacheKafkaConsumer(consumerProps, kafkaPubSubMessageDeserializer),
         assignedPubSubTopicPartition,
         startOffset,
         endOffset,
@@ -130,25 +135,23 @@ public class TopicMessageFinder {
       long lastReportRecordCnt = 0;
       consumer.subscribe(assignedPubSubTopicPartition, startOffset);
       boolean done = false;
-      KafkaKeySerializer keySerializer = new KafkaKeySerializer();
-      KafkaValueSerializer valueSerializer = new OptimizedKafkaValueSerializer();
       while (!done) {
-        ConsumerRecords<byte[], byte[]> records = consumer.poll(10000);
+        PubSubMessages<KafkaKey, KafkaMessageEnvelope, Long> records = consumer.poll(10000);
         if (records.isEmpty()) {
           break;
         }
         long lastRecordTimestamp = 0;
-        for (ConsumerRecord<byte[], byte[]> record: records) {
-          if (record.offset() >= endOffset) {
+        for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record: records) {
+          if (record.getOffset() >= endOffset) {
             done = true;
             break;
           }
-          KafkaKey kafkaKey = keySerializer.deserialize(null, record.key());
+          KafkaKey kafkaKey = record.getKey();
           if (Arrays.equals(kafkaKey.getKey(), serializedKey)) {
-            KafkaMessageEnvelope value = valueSerializer.deserialize(null, record.value());
-            LOGGER.info("Offset: {}, Value: {}", record.offset(), value.toString());
+            KafkaMessageEnvelope value = record.getValue();
+            LOGGER.info("Offset: {}, Value: {}", record.getOffset(), value.toString());
           }
-          lastRecordTimestamp = record.timestamp();
+          lastRecordTimestamp = record.getPubSubMessageTime();
         }
         recordCnt += records.count();
         if (recordCnt - lastReportRecordCnt >= progressInterval) {
