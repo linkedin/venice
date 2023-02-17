@@ -313,7 +313,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
        * process and thus keeps failing. If the check indicates that resource is managed locally, it will execute the
        * command locally and break the loop, thus the request won't be stuck forever.
        */
-      if (getStoreIngestionService().isPartitionConsuming(topicName, partition)) {
+      if (command.equals(STOP_CONSUMPTION) && getStoreIngestionService().isPartitionConsuming(topicName, partition)) {
         LOGGER.warn(
             "Expect topic: {}, partition: {} in forked process but found in main process, will execute command {} locally.",
             topicName,
