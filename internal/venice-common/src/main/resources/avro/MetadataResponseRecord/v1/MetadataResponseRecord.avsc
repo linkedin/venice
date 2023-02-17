@@ -5,7 +5,7 @@
   "doc": "This record will store version properties, key & value schemas, and routing information",
   "fields": [
     {
-      "name": "version_metadata",
+      "name": "versionMetadata",
       "doc": "The current version number and other version properties such as the compression strategy",
       "type": [
         "null",
@@ -14,7 +14,7 @@
           "type": "record",
           "fields": [
             {
-              "name": "current_version",
+              "name": "currentVersion",
               "doc": "Current version number",
               "type": "int"
             },
@@ -27,23 +27,12 @@
               }
             },
             {
-              "name": "compression_strategy",
-              "doc": "The current version's compression strategy",
+              "name": "compressionStrategy",
+              "doc": "The current version's compression strategy. 0 -> NO_OP, 1 -> GZIP, 2 -> ZSTD, 3 -> ZSTD_WITH_DICT",
               "type": {
                 "name": "CompressionStrategy",
-                "type": "enum",
-                "symbols": [
-                  "NO_OP",
-                  "GZIP",
-                  "ZSTD",
-                  "ZSTD_WITH_DICT"
-                ]
+                "type": "int"
               }
-            },
-            {
-              "name": "compression_enabled",
-              "doc": "Flag for indicating if compression is enabled",
-              "type": "boolean"
             }
           ]
         }
@@ -51,7 +40,7 @@
       "default": null
     },
     {
-      "name": "key_schema",
+      "name": "keySchema",
       "doc": "Key schema",
       "type": [
         "null",
@@ -60,7 +49,7 @@
       "default": null
     },
     {
-      "name": "value_schemas",
+      "name": "valueSchemas",
       "doc": "Value schemas",
       "type": [
         "null",
@@ -72,19 +61,7 @@
       "default": null
     },
     {
-      "name": "store_config",
-      "doc": "Store configuration",
-      "type": [
-        "null",
-        {
-          "type": "map",
-          "values": "string"
-        }
-      ],
-      "default": null
-    },
-    {
-      "name": "routing_info",
+      "name": "routingInfo",
       "doc": "Routing table information, maps resource to partition ID to a list of replicas",
       "type": [
         "null",
@@ -102,7 +79,7 @@
       "default": null
     },
     {
-      "name": "helix_group_info",
+      "name": "helixGroupInfo",
       "doc": "Helix group information, maps replicas to their respective groups",
       "type": [
         "null",

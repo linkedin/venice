@@ -33,10 +33,6 @@ public class MetadataResponse {
     responseRecord.setValueSchemas(valueSchemas);
   }
 
-  public void setStoreConfig(Map<CharSequence, CharSequence> storeConfig) {
-    responseRecord.setStoreConfig(storeConfig);
-  }
-
   public void setRoutingInfo(Map<CharSequence, Map<CharSequence, List<CharSequence>>> routingInfo) {
     responseRecord.setRoutingInfo(routingInfo);
   }

@@ -53,7 +53,6 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
-import com.linkedin.venice.metadata.response.CompressionStrategy;
 import com.linkedin.venice.metadata.response.VersionProperties;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
@@ -1115,11 +1114,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     for (Version version: store.getVersions()) {
       versions.add(version.getNumber());
     }
-    VersionProperties versionProperties = new VersionProperties(
-        store.getCurrentVersion(),
-        versions,
-        CompressionStrategy.valueOf(store.getCompressionStrategy().toString()),
-        true);
+    VersionProperties versionProperties =
+        new VersionProperties(store.getCurrentVersion(), versions, store.getCompressionStrategy().getValue());
 
     String keySchema = schemaRepo.getKeySchema(storeName).getSchema().toString();
     List<CharSequence> valueSchemas = new ArrayList<>();

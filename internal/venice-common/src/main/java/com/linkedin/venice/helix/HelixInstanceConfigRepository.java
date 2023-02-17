@@ -32,8 +32,7 @@ public class HelixInstanceConfigRepository implements VeniceResource, InstanceCo
   private final PropertyKey.Builder keyBuilder;
   private final String virtualGroupFieldName;
 
-  private Map<String, Integer> instanceGroupIdMapping = new VeniceConcurrentHashMap<>();
-  private Map<String, Integer> unmodifiableInstanceGroupIdMapping = Collections.emptyMap();
+  private Map<String, Integer> instanceGroupIdMapping = Collections.emptyMap();
   private int groupCount = 1;
   /**
    * This field is used to record the unknown instance call in {@link #getInstanceGroupId}.
@@ -92,7 +91,7 @@ public class HelixInstanceConfigRepository implements VeniceResource, InstanceCo
   }
 
   public Map<String, Integer> getInstanceGroupIdMapping() {
-    return unmodifiableInstanceGroupIdMapping;
+    return instanceGroupIdMapping;
   }
 
   public int getGroupCount() {
@@ -126,8 +125,7 @@ public class HelixInstanceConfigRepository implements VeniceResource, InstanceCo
         newInstanceGroupIdMapping.put(instanceConfig.getId(), currentGroupId);
       }
     }
-    instanceGroupIdMapping = newInstanceGroupIdMapping;
-    unmodifiableInstanceGroupIdMapping = Collections.unmodifiableMap(newInstanceGroupIdMapping);
+    instanceGroupIdMapping = Collections.unmodifiableMap(newInstanceGroupIdMapping);
     groupCount = groupIdCnt.get();
     LOGGER.info("New instance group id mapping: {}.", instanceGroupIdMapping);
     LOGGER.info("The total number of groups: {}.", groupCount);
