@@ -294,9 +294,9 @@ public class IsolatedIngestionUtils {
    * releaseTargetPortBinding aims to release the target port by killing lingering ingestion process bound to
    * the port, which is created from previous deployment and was not killed due to unexpected failures.
    */
-  public static void releaseTargetPortBinding(int port) {
+  public static void releaseTargetPortBinding(String ingestionProcessName, int port) {
     LOGGER.info("Releasing isolated ingestion process binding on target port: {}", port);
-    Optional<Integer> lingeringIngestionProcessPid = getLingeringIngestionProcessId(port);
+    Optional<Integer> lingeringIngestionProcessPid = getLingeringIngestionProcessId(ingestionProcessName, port);
     if (lingeringIngestionProcessPid.isPresent()) {
       int pid = lingeringIngestionProcessPid.get();
       LOGGER.info("Found lingering ingestion process ID: {}", pid);
@@ -305,7 +305,7 @@ public class IsolatedIngestionUtils {
       while (hasLingeringProcess) {
         try {
           Thread.sleep(SHELL_COMMAND_WAIT_TIME);
-          lingeringIngestionProcessPid = getLingeringIngestionProcessId(port);
+          lingeringIngestionProcessPid = getLingeringIngestionProcessId(ingestionProcessName, port);
           if (!lingeringIngestionProcessPid.isPresent() || lingeringIngestionProcessPid.get() != pid) {
             LOGGER.info("Lingering ingestion process on pid {} is killed.", pid);
             hasLingeringProcess = false;
@@ -322,12 +322,16 @@ public class IsolatedIngestionUtils {
     }
   }
 
+  public static void releaseTargetPortBinding(int port) {
+    releaseTargetPortBinding(IsolatedIngestionServer.class.getName(), port);
+  }
+
   /**
    * This method returns lingering forked ingestion process PID if it exists.
    * Since the lsof command will return all processes associated with the port number(including main process), we will
    * need to iterate all PIDs and filter out ingestion process by name.
    */
-  public static Optional<Integer> getLingeringIngestionProcessId(int port) {
+  public static Optional<Integer> getLingeringIngestionProcessId(String ingestionProcessName, int port) {
     Optional<Integer> isolatedIngestionProcessPid = Optional.empty();
     String cmd = "lsof -t -i :" + port;
     String processIds = executeShellCommand("/usr/sbin/" + cmd);
@@ -341,7 +345,7 @@ public class IsolatedIngestionUtils {
           int pid = Integer.parseInt(processId);
           String fullProcessName = executeShellCommand("ps -p " + pid + " -o command");
           LOGGER.info("Target port: {} is associated to process: {} with pid: {}", port, fullProcessName, pid);
-          if (fullProcessName.contains(IsolatedIngestionServer.class.getName())) {
+          if (fullProcessName.contains(ingestionProcessName)) {
             isolatedIngestionProcessPid = Optional.of(pid);
           }
         }
