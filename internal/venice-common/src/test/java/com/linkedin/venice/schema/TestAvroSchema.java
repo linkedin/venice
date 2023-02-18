@@ -71,7 +71,7 @@ public class TestAvroSchema {
     AvroSpecificDeserializer<PartitionState> specificDeserializer =
         new AvroSpecificDeserializer<>(ps.getSchema(), PartitionState.class);
     PartitionState specificDeserializedObject = specificDeserializer.deserialize(serializedBytes);
-    Assert.assertTrue(specificDeserializedObject.upstreamOffsetMap instanceof Map);
+    Assert.assertTrue(specificDeserializedObject.upstreamOffsetMap != null);
     for (Map.Entry<String, Long> entry: specificDeserializedObject.upstreamOffsetMap.entrySet()) {
       Assert.assertTrue(
           entry.getKey() instanceof String,
@@ -144,7 +144,7 @@ public class TestAvroSchema {
     byte[] bytes = serializer.serialize(record);
     NamespaceTest readRecord;
     try {
-      readRecord = deserializer.deserialize(bytes);
+      deserializer.deserialize(bytes);
       Assert.fail("Deserialization was suppose to fail");
     } catch (VeniceException e) {
       System.out.println(e.getCause());

@@ -18,9 +18,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Supplier;
+import javax.annotation.concurrent.NotThreadSafe;
 import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -54,11 +54,11 @@ import org.rocksdb.WriteOptions;
  * If the ingestion is unsorted, this class is using the regular RocksDB interface to support update
  * operations.
  */
+@NotThreadSafe
 public class RocksDBStoragePartition extends AbstractStoragePartition {
   private static final Logger LOGGER = LogManager.getLogger(RocksDBStoragePartition.class);
-  protected static final ReadOptions READ_OPTIONS_TO_SKIP_CACHE = new ReadOptions().setFillCache(false);
   protected static final ReadOptions READ_OPTIONS_DEFAULT = new ReadOptions();
-  protected static final byte[] REPLICATION_METADATA_COLUMN_FAMILY = "timestamp_metadata".getBytes();
+  static final byte[] REPLICATION_METADATA_COLUMN_FAMILY = "timestamp_metadata".getBytes();
 
   private static final FlushOptions WAIT_FOR_FLUSH_OPTIONS = new FlushOptions().setWaitForFlush(true);
 
@@ -296,12 +296,6 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       options.setAllowMmapReads(true);
       options.useCappedPrefixExtractor(rocksDBServerConfig.getCappedPrefixExtractorLength());
     } else {
-      /**
-       * Auto compaction setting.
-       * For now, this optimization won't apply to the plaintable format.
-       */
-      options.setDisableAutoCompactions(storagePartitionConfig.isDisableAutoCompaction());
-
       // Cache index and bloom filter in block cache
       // and share the same cache across all the RocksDB databases
       BlockBasedTableConfig tableConfig = new BlockBasedTableConfig();
@@ -315,7 +309,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       // https://github.com/facebook/rocksdb/wiki/Block-Cache#lru-cache
 
       tableConfig.setBlockCacheCompressedSize(rocksDBServerConfig.getRocksDBBlockCacheCompressedSizeInBytes());
-      tableConfig.setFormatVersion(2); // Latest version
+      tableConfig.setFormatVersion(rocksDBServerConfig.getBlockBaseFormatVersion());
       options.setTableFormatConfig(tableConfig);
     }
 
@@ -419,16 +413,12 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
     throw new UnsupportedOperationException("Method not implemented!!");
   }
 
-  private static ReadOptions getReadOptions(boolean skipCache) {
-    return skipCache ? READ_OPTIONS_TO_SKIP_CACHE : READ_OPTIONS_DEFAULT;
-  }
-
   @Override
-  public byte[] get(byte[] key, boolean skipCache) {
+  public byte[] get(byte[] key) {
     readCloseRWLock.readLock().lock();
     try {
       makeSureRocksDBIsStillOpen();
-      return rocksDB.get(getReadOptions(skipCache), key);
+      return rocksDB.get(key);
     } catch (RocksDBException e) {
       throw new VeniceException("Failed to get value from store: " + storeName + ", partition id: " + partitionId, e);
     } finally {
@@ -437,11 +427,11 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   }
 
   @Override
-  public ByteBuffer get(byte[] key, ByteBuffer valueToBePopulated, boolean skipCache) {
+  public ByteBuffer get(byte[] key, ByteBuffer valueToBePopulated) {
     readCloseRWLock.readLock().lock();
     try {
       makeSureRocksDBIsStillOpen();
-      int size = rocksDB.get(getReadOptions(skipCache), key, valueToBePopulated.array());
+      int size = rocksDB.get(key, valueToBePopulated.array());
       if (size == RocksDB.NOT_FOUND) {
         return null;
       } else if (size > valueToBePopulated.capacity()) {
@@ -450,7 +440,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
             size,
             valueToBePopulated.capacity());
         valueToBePopulated = ByteBuffer.allocate(size);
-        size = rocksDB.get(getReadOptions(skipCache), key, valueToBePopulated.array());
+        size = rocksDB.get(key, valueToBePopulated.array());
       }
       valueToBePopulated.position(0);
       valueToBePopulated.limit(size);
@@ -463,16 +453,16 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
   }
 
   @Override
-  public <K, V> V get(K key, boolean skipCache) {
+  public <K, V> V get(K key) {
     throw new UnsupportedOperationException("Method not implemented!!");
   }
 
   @Override
-  public byte[] get(ByteBuffer keyBuffer, boolean skipCache) {
+  public byte[] get(ByteBuffer keyBuffer) {
     readCloseRWLock.readLock().lock();
     try {
       makeSureRocksDBIsStillOpen();
-      return rocksDB.get(getReadOptions(skipCache), keyBuffer.array(), keyBuffer.position(), keyBuffer.remaining());
+      return rocksDB.get(keyBuffer.array(), keyBuffer.position(), keyBuffer.remaining());
     } catch (RocksDBException e) {
       throw new VeniceException("Failed to get value from store: " + storeName + ", partition id: " + partitionId, e);
     } finally {
@@ -761,8 +751,7 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
       return readOnly == partitionConfig.isReadOnly() && writeOnly == partitionConfig.isWriteOnlyConfig();
     }
     return deferredWrite == partitionConfig.isDeferredWrite() && readOnly == partitionConfig.isReadOnly()
-        && writeOnly == partitionConfig.isWriteOnlyConfig()
-        && options.disableAutoCompactions() == partitionConfig.isDisableAutoCompaction();
+        && writeOnly == partitionConfig.isWriteOnlyConfig();
   }
 
   /**
@@ -784,82 +773,5 @@ public class RocksDBStoragePartition extends AbstractStoragePartition {
 
   protected Options getOptions() {
     return options;
-  }
-
-  @Override
-  public void warmUp() {
-    RocksIterator iterator = null;
-    readCloseRWLock.readLock().lock();
-    try {
-      makeSureRocksDBIsStillOpen();
-      /**
-       * Since we don't care about the returned value in Java world, so partial result is fine.
-       */
-      byte[] value = new byte[1];
-      // Iterate the whole database
-      iterator = rocksDB.newIterator();
-      long entryCnt = 0;
-      iterator.seekToFirst();
-      while (iterator.isValid()) {
-        rocksDB.get(iterator.key(), value);
-        iterator.next();
-        if (++entryCnt % 100000 == 0) {
-          LOGGER.info("Scanned {} entries from database: {}, partition: {}", entryCnt, storeName, partitionId);
-        }
-      }
-      LOGGER.info(
-          "Scanned {} entries from database: {}, partition: {} during cache warmup",
-          entryCnt,
-          storeName,
-          partitionId);
-    } catch (RocksDBException e) {
-      throw new VeniceException("Encountered RocksDBException while warming up cache", e);
-    } finally {
-      readCloseRWLock.readLock().unlock();
-      if (iterator != null) {
-        iterator.close();
-      }
-    }
-  }
-
-  @Override
-  public synchronized CompletableFuture<Void> compactDB() {
-    makeSureRocksDBIsStillOpen();
-    if (!this.options.disableAutoCompactions()) {
-      // Auto compaction is on, so no need to do manual compaction.
-      return CompletableFuture.completedFuture(null);
-    }
-    CompletableFuture<Void> dbCompactFuture = new CompletableFuture<>();
-    /**
-     * Start an async db compact thread.
-     */
-    Thread dbCompactThread = new Thread(() -> {
-      try {
-        LOGGER.info("Start the manual compaction for database: {}, partition: {}", storeName, partitionId);
-        rocksDB.compactRange();
-        synchronized (this) {
-          /**
-           * Guard the critical section for closing/re-opening database.
-           */
-          rocksDB.close();
-          // Reopen the database with auto compaction on
-          this.options.setDisableAutoCompactions(false);
-          rocksDB =
-              rocksDBThrottler.open(options, fullPathForPartitionDB, columnFamilyDescriptors, columnFamilyHandleList);
-        }
-        dbCompactFuture.complete(null);
-        LOGGER.info(
-            "Manual compaction for database: {}, partition: {} is done, and the database was re-opened with auto compaction enabled",
-            storeName,
-            partitionId);
-      } catch (Exception e) {
-        LOGGER.error("Failed to compact database: {}, partition {}", storeName, partitionId, e);
-        dbCompactFuture.completeExceptionally(e);
-      }
-    });
-    dbCompactThread.setName("DB-Compact-thread-" + storeName + "_" + partitionId);
-    dbCompactThread.start();
-
-    return dbCompactFuture;
   }
 }

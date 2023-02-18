@@ -9,14 +9,11 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
 public class AbstractVeniceStatsTest {
-  private AtomicInteger counter = new AtomicInteger();
-
   static class StatsTestImpl extends AbstractVeniceStats {
     public StatsTestImpl(MetricsRepository metricsRepository, String name) {
       super(metricsRepository, name);
@@ -50,5 +47,27 @@ public class AbstractVeniceStatsTest {
     executorService.awaitTermination(10, TimeUnit.SECONDS);
     Assert.assertFalse(exceptionReceived.get(), "Exception received while registering metrics");
     Assert.assertEquals(repository.metrics().size(), 1, "More than one metric was registered");
+  }
+
+  @Test
+  public void testRegisterSensor() {
+    MetricsRepository metricsRepository = new MetricsRepository();
+    AbstractVeniceStats stats = new AbstractVeniceStats(metricsRepository, "myMetric");
+    stats.registerSensor("foo", new Gauge(() -> 1.0));
+    Assert.assertEquals(metricsRepository.metrics().size(), 1);
+    Assert.assertEquals(metricsRepository.getMetric(".myMetric--foo.Gauge").value(), 1.0);
+  }
+
+  @Test
+  public void testRegisterSensorAttributeGauge() {
+    MetricsRepository metricsRepository = new MetricsRepository();
+    AbstractVeniceStats stats = new AbstractVeniceStats(metricsRepository, "myMetric");
+    stats.registerSensorAttributeGauge("foo", "bar", new Gauge(() -> 1.0));
+    stats.registerSensorAttributeGauge("foo", "bar2", new Gauge(() -> 2.0));
+    // Duplicate registration will not count.
+    stats.registerSensorAttributeGauge("foo", "bar2", new Gauge(() -> 3.0));
+    Assert.assertEquals(metricsRepository.metrics().size(), 2);
+    Assert.assertEquals(metricsRepository.getMetric(".myMetric--foo.bar").value(), 1.0);
+    Assert.assertEquals(metricsRepository.getMetric(".myMetric--foo.bar2").value(), 2.0);
   }
 }

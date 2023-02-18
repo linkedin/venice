@@ -1,3 +1,10 @@
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.Paths
+import java.nio.file.StandardCopyOption
+import java.nio.file.StandardOpenOption
+
+
 configurations {
   all {
     resolutionStrategy {
@@ -11,6 +18,7 @@ configurations {
   }
   jmhImplementation.extendsFrom testImplementation
   integrationTestImplementation.extendsFrom testImplementation
+  integrationTestUtils
 }
 
 sourceSets {
@@ -32,6 +40,7 @@ dependencies {
   }
 
   implementation project(':clients:da-vinci-client')
+  implementation project(':clients:venice-client')
   implementation project(':clients:venice-push-job')
   implementation project(':internal:venice-common')
   implementation project(':services:venice-controller')
@@ -48,6 +57,7 @@ dependencies {
   implementation libraries.avroUtilFastserde
   implementation libraries.commonsCli
   implementation libraries.conscrypt
+  implementation libraries.fastUtil
   implementation libraries.hadoopCommon
   implementation libraries.helix
   implementation libraries.httpAsyncClient
@@ -70,19 +80,178 @@ dependencies {
 
   jmhAnnotationProcessor libraries.jmhGenerator
   jmhImplementation libraries.jmhCore
+
+  jmhImplementation project(path: ':internal:venice-test-common', configuration: 'integrationTestUtils')
 }
 
 task jmh(type: JavaExec, dependsOn: jmhClasses) {
   main = 'org.openjdk.jmh.Main'
+
+  // In order to run just one test from the command line, specify it here, and run ./gradlew internal:venice-test-common:jmh
+  // main = 'com.linkedin.venice.benchmark.ZstdDecompressionBenchmark'
+
   classpath = sourceSets.jmh.runtimeClasspath
 }
 
-task integrationTest(type: Test) {
+def integrationTestConfigs = {
   mustRunAfter test
   classpath = sourceSets.integrationTest.runtimeClasspath
   testClassesDirs = sourceSets.integrationTest.output.classesDirs
   forkEvery = Integer.parseInt(project.properties.get('integrationTest.forkEvery', "$forkEvery"))
   maxParallelForks = Integer.parseInt(project.properties.get('integrationTest.maxParallelForks', "$maxParallelForks"))
+}
+
+def integrationTestBuckets = [
+  "A": [
+      "com.linkedin.davinci.*",
+      "com.linkedin.venice.endToEnd.DaVinciClient*"],
+  "B": [
+      "com.linkedin.venice.endToEnd.DaVinciCluster*",
+      "com.linkedin.venice.endToEnd.DaVinciCompute*",
+      "com.linkedin.venice.endToEnd.DaVinciLive*"],
+  "C": [
+      "com.linkedin.venice.endToEnd.ActiveActive*"],
+  "D": [
+      "com.linkedin.venice.endToEnd.TestActiveActive*"],
+  "E": [
+      "com.linkedin.venice.helix.*",
+      "com.linkedin.venice.helixrebalance.*"],
+  "F": [
+      "com.linkedin.venice.server.*",
+      "com.linkedin.venice.storagenode.*",
+      "com.linkedin.venice.restart.*"],
+  "G": [
+      "com.linkedin.venice.router.*"],
+  "H": [
+      "com.linkedin.venice.fastclient.BatchGet*",
+      "com.linkedin.venice.fastclient.schema.*",
+      "com.linkedin.venice.fastclient.meta.*"],
+  "I": [
+      "com.linkedin.venice.fastclient.AvroStore*"],
+  "J": [
+      "com.linkedin.venice.hadoop.*",
+      "com.linkedin.venice.endToEnd.TestVson*",
+      "com.linkedin.venice.endToEnd.Push*"],
+  "K": [
+      "com.linkedin.venice.endToEnd.TestPushJob*"],
+  "L": [
+      "com.linkedin.venice.endToEnd.TestBatch*"],
+  "M": [
+      "com.linkedin.venice.kafka.*",
+      "com.linkedin.venice.samza.*",
+      "com.linkedin.venice.writer.*",
+      "com.linkedin.venice.endToEnd.PartialUpdateTest",
+      "com.linkedin.venice.endToEnd.TestWritePathComputation",
+      "com.linkedin.venice.endToEnd.WriteComputeWithActiveActiveReplicationTest"],
+  "N": [
+      "com.linkedin.venice.endToEnd.StoragePersona*",
+      "com.linkedin.venice.endToEnd.TestStoreUpdateStoragePersona",
+      "com.linkedin.venice.persona.*"],
+  "O": [
+      "com.linkedin.venice.endToEnd.TestHybrid*"],
+  "P": [
+      "com.linkedin.venice.controller.server.*",
+      "com.linkedin.venice.controller.kafka.consumer.*",
+      "com.linkedin.venice.controller.migration.*",
+      "com.linkedin.venice.controller.AdminTool*",
+      "com.linkedin.venice.controller.VeniceParentHelixAdminTest"],
+  "Q": [
+      "com.linkedin.venice.controller.Test*"]
+]
+
+integrationTestBuckets.each { name, patterns ->
+  task "integrationTest${name}" (type: Test) {
+    filter {
+      patterns.each { pattern ->
+        includeTestsMatching pattern
+      }
+    }
+    configure integrationTestConfigs
+  }
+}
+
+task integrationTestZ(type: Test) {
+  filter {
+    integrationTestBuckets.each { name, patterns ->
+      patterns.each { pattern ->
+        excludeTestsMatching pattern
+      }
+    }
+  }
+  configure integrationTestConfigs
+}
+
+task generateGHCI() {
+  def targetDir = rootDir.getPath() + "/.github/rawWorkflows/"
+  def targetFile = new File(targetDir, "gh-ci.yml")
+  def targetFilePath = Paths.get(targetFile.getPath())
+
+  def paramFile = new File(targetDir, "gh-ci-parameterized-flow.txt")
+  def paramFilePath = Paths.get(paramFile.getPath())
+  def paramFileContent = new String(Files.readAllBytes(paramFilePath));
+
+  targetFile.delete()
+  targetFile.createNewFile()
+
+  append(targetFilePath, "# Auto-generated file. Do not edit manually!\n#\n")
+  append(targetFilePath, "# To alter these flows, edit:\n#\n#     internal/venice-test-common/build.gradle\n#\n")
+  append(targetFilePath, "# To regenerate, run:\n#\n#     ./gradlew generateGHCI\n\n")
+
+  append(targetFilePath, "name: VeniceCI\n\n")
+  append(targetFilePath, "on: [push, pull_request]\n\n")
+  append(targetFilePath, "jobs:\n")
+
+  def jobs = []
+
+  def common = "--continue --no-daemon "
+  def staticAnalysisFlowGradleArgs = common + "-Pspotallbugs clean check -x spotlessCheck -x test -x integrationTest -x jacocoTestCoverageVerification"
+
+  def staticAnalysis = "StaticAnalysis"
+  appendToGHCI(paramFileContent, targetFilePath, staticAnalysis, 20, staticAnalysisFlowGradleArgs)
+  jobs << staticAnalysis
+  def unitTestsAndCodeCoverage = "UnitTestsAndCodeCoverage"
+  appendToGHCI(paramFileContent, targetFilePath, unitTestsAndCodeCoverage, 60, "jacocoTestCoverageVerification diffCoverage --continue")
+  jobs << unitTestsAndCodeCoverage
+
+  def integTestGradleArgs = common + "-DforkEvery=1 -DmaxParallelForks=1 integrationTest"
+  integrationTestBuckets.each { name, patterns ->
+    def flowName = "IntegrationTests" + name
+    jobs << flowName
+    appendToGHCI(paramFileContent, targetFilePath, flowName, 120, integTestGradleArgs + name)
+  }
+  def otherTest = "IntegrationTestsZ"
+  appendToGHCI(paramFileContent, targetFilePath, otherTest, 120, integTestGradleArgs + "Z")
+  jobs << otherTest
+
+  // define a job that depends others to manage the status check
+  appendToGHCI(paramFileContent, targetFilePath, "DummyStep", 120, "clean", jobs)
+
+  def finalDestinationPath = Paths.get(rootDir.getPath() + "/.github/workflows/gh-ci.yml")
+  Files.move(targetFilePath, finalDestinationPath, StandardCopyOption.REPLACE_EXISTING)
+}
+
+def appendToGHCI(String paramFileContent, Path targetFilePath, String flowName, int timeOut, String gradleArguments, ArrayList dependency=null) {
+  String postProcessing = paramFileContent
+      .replace("\$FlowName", flowName)
+      .replace("\$TimeOut", Integer.toString(timeOut))
+      .replace("\$GradleArguments", gradleArguments)
+
+  if (dependency == null) {
+    postProcessing = postProcessing.replace("    needs: \$Dependency\n", "")
+  } else {
+    postProcessing = postProcessing.replace("\$Dependency", dependency.toString())
+  }
+
+  append(targetFilePath, postProcessing)
+  append(targetFilePath, "\n")
+}
+
+def append(Path targetFilePath, String content) {
+  Files.write(targetFilePath, content.getBytes(), StandardOpenOption.APPEND)
+}
+
+task integrationTest(type: Test) {
+  configure integrationTestConfigs
 }
 check.dependsOn(integrationTest)
 
@@ -96,5 +265,27 @@ idea {
     testSourceDirs += project.sourceSets.integrationTest.java.srcDirs
     testResourceDirs += project.sourceSets.integrationTest.resources.srcDirs
     // testSourceDirs += project.sourceSets.jmh.java.srcDirs // broken, somehow, gotta debug...
+  }
+}
+
+task integrationTestJar(type: Jar) {
+  classifier 'integrationTest'
+  from sourceSets.integrationTest.output
+}
+
+artifacts {
+  integrationTestUtils integrationTestJar
+}
+
+ext {
+  jacocoCoverageThreshold = 0.00
+  diffCoverageThreshold = 0.00
+}
+
+publishing {
+  publications {
+    "${project.name}" (MavenPublication) {
+      artifact integrationTestJar
+    }
   }
 }

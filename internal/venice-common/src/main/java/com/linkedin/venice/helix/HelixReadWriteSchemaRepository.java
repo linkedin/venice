@@ -1,5 +1,6 @@
 package com.linkedin.venice.helix;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.exceptions.SchemaDuplicateException;
 import com.linkedin.venice.exceptions.SchemaIncompatibilityException;
@@ -24,7 +25,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.logging.log4j.LogManager;
@@ -73,8 +73,16 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   // Store repository to check store related info
   private final ReadWriteStoreRepository storeRepository;
 
-  private final String clusterName;
   private final Optional<MetaStoreWriter> metaStoreWriter;
+
+  public HelixReadWriteSchemaRepository(
+      ReadWriteStoreRepository storeRepository,
+      Optional<MetaStoreWriter> metaStoreWriter,
+      HelixSchemaAccessor accessor) {
+    this.storeRepository = storeRepository;
+    this.metaStoreWriter = metaStoreWriter;
+    this.accessor = accessor;
+  }
 
   public HelixReadWriteSchemaRepository(
       ReadWriteStoreRepository storeRepository,
@@ -84,7 +92,6 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
       Optional<MetaStoreWriter> metaStoreWriter) {
     this.storeRepository = storeRepository;
     this.accessor = new HelixSchemaAccessor(zkClient, adapter, clusterName);
-    this.clusterName = clusterName;
     this.metaStoreWriter = metaStoreWriter;
   }
 
@@ -222,9 +229,9 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
 
   @Override
   public SchemaEntry getSupersetOrLatestValueSchema(String storeName) {
-    Optional<SchemaEntry> supersetSchema = getSupersetSchema(storeName);
-    if (supersetSchema.isPresent()) {
-      return supersetSchema.get();
+    SchemaEntry supersetSchema = getSupersetSchema(storeName);
+    if (supersetSchema != null) {
+      return supersetSchema;
     }
     int maxValueSchemaId = -1;
     SchemaEntry latestSchema = null;
@@ -239,15 +246,17 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   }
 
   @Override
-  public Optional<SchemaEntry> getSupersetSchema(String storeName) {
-    Optional<Integer> supersetSchemaID = getSupersetSchemaID(storeName);
-    return supersetSchemaID.map(schemaID -> accessor.getValueSchema(storeName, String.valueOf(schemaID)));
+  public SchemaEntry getSupersetSchema(String storeName) {
+    int supersetSchemaID = getSupersetSchemaID(storeName);
+    if (supersetSchemaID == SchemaData.INVALID_VALUE_SCHEMA_ID) {
+      return null;
+    }
+    return accessor.getValueSchema(storeName, String.valueOf(supersetSchemaID));
   }
 
-  private Optional<Integer> getSupersetSchemaID(String storeName) {
+  private int getSupersetSchemaID(String storeName) {
     Store store = storeRepository.getStoreOrThrow(storeName);
-    final int supersetSchemaId = store.getLatestSuperSetValueSchemaId();
-    return supersetSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID ? Optional.empty() : Optional.of(supersetSchemaId);
+    return store.getLatestSuperSetValueSchemaId();
   }
 
   @Override
@@ -481,12 +490,12 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
 
   @Override
   public Pair<Integer, Integer> getDerivedSchemaId(String storeName, String derivedSchemaStr) {
+    preCheckStoreCondition(storeName);
     Schema derivedSchema = Schema.parse(derivedSchemaStr);
-    for (DerivedSchemaEntry derivedSchemaEntry: getDerivedSchemaMap(storeName).values()
-        .stream()
-        .flatMap(List::stream)
-        .collect(Collectors.toList())) {
-      if (derivedSchemaEntry.getSchema().equals(derivedSchema)) {
+    String derivedSchemaStrToFind = AvroCompatibilityHelper.toParsingForm(derivedSchema);
+
+    for (DerivedSchemaEntry derivedSchemaEntry: accessor.getAllDerivedSchemas(storeName)) {
+      if (derivedSchemaStrToFind.equals(derivedSchemaEntry.getCanonicalSchemaStr())) {
         return new Pair<>(derivedSchemaEntry.getValueSchemaID(), derivedSchemaEntry.getId());
       }
     }

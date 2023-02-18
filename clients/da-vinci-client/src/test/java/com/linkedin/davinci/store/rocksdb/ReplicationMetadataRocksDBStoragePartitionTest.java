@@ -50,10 +50,10 @@ import org.testng.annotations.Test;
 public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStorageEngineTest {
   private static final int PARTITION_ID = 0;
 
-  private final String storeName = Utils.getUniqueString("rocksdb_store_test");
+  private static final String storeName = Utils.getUniqueString("rocksdb_store_test");
   private final ReadOnlyStoreRepository mockReadOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
-  private final int versionNumber = 0;
-  private final String topicName = Version.composeKafkaTopic(storeName, versionNumber);
+  private static final int versionNumber = 0;
+  private static final String topicName = Version.composeKafkaTopic(storeName, versionNumber);
 
   private static final String DATA_BASE_DIR = Utils.getUniqueTempPath();
   private static final String KEY_PREFIX = "key_";
@@ -199,7 +199,7 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
 
     for (Map.Entry<String, Pair<String, String>> entry: inputRecords.entrySet()) {
       byte[] key = entry.getKey().getBytes();
-      byte[] value = storagePartition.get(key, false);
+      byte[] value = storagePartition.get(key);
       Assert.assertEquals(value, entry.getValue().getFirst().getBytes());
       byte[] metadata = storagePartition.getReplicationMetadata(key);
       ByteBuffer replicationMetadataWithValueSchema = ByteBuffer.wrap(metadata);
@@ -218,7 +218,7 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
 
       storagePartition.deleteWithReplicationMetadata(key, updatedReplicationMetadataWitValueSchemaIdBytes);
 
-      byte[] value = storagePartition.get(key, false);
+      byte[] value = storagePartition.get(key);
       Assert.assertNull(value);
 
       byte[] metadata = storagePartition.getReplicationMetadata(key);
@@ -245,7 +245,7 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
 
     for (Map.Entry<String, Pair<String, String>> entry: inputRecordsBatch.entrySet()) {
       byte[] key = entry.getKey().getBytes();
-      byte[] value = storagePartition.get(key, false);
+      byte[] value = storagePartition.get(key);
       Assert.assertEquals(value, entry.getValue().getFirst().getBytes());
       Assert.assertNull(storagePartition.getReplicationMetadata(key));
     }
@@ -259,7 +259,7 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
 
       storagePartition.deleteWithReplicationMetadata(key, updatedReplicationMetadataWitValueSchemaIdBytes);
 
-      byte[] value = storagePartition.get(key, false);
+      byte[] value = storagePartition.get(key);
       Assert.assertNull(value);
 
       byte[] metadata = storagePartition.getReplicationMetadata(key);
@@ -351,7 +351,7 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
         if (sorted) {
           Assert.assertEquals(
               checkpointingInfo.get(RocksDBSstFileWriter.ROCKSDB_LAST_FINISHED_SST_FILE_NO),
-              Integer.valueOf(currentFileNo++).toString());
+              Integer.toString(currentFileNo++));
         } else {
           Assert.assertTrue(
               checkpointingInfo.isEmpty(),
@@ -419,7 +419,7 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
     // Verify all the key/value pairs
     for (Map.Entry<String, Pair<String, String>> entry: inputRecords.entrySet()) {
       byte[] bytes = entry.getValue().getFirst() == null ? null : entry.getValue().getFirst().getBytes();
-      Assert.assertEquals(storagePartition.get(entry.getKey().getBytes(), false), bytes);
+      Assert.assertEquals(storagePartition.get(entry.getKey().getBytes()), bytes);
       if (sorted) {
         Assert.assertEquals(
             storagePartition.getReplicationMetadata(entry.getKey().getBytes()),
@@ -443,9 +443,9 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
         rocksDBServerConfig);
     // Test deletion
     String toBeDeletedKey = KEY_PREFIX + 10;
-    Assert.assertNotNull(storagePartition.get(toBeDeletedKey.getBytes(), false));
+    Assert.assertNotNull(storagePartition.get(toBeDeletedKey.getBytes()));
     storagePartition.delete(toBeDeletedKey.getBytes());
-    Assert.assertNull(storagePartition.get(toBeDeletedKey.getBytes(), false));
+    Assert.assertNull(storagePartition.get(toBeDeletedKey.getBytes()));
 
     Options storeOptions = storagePartition.getOptions();
     Assert.assertEquals(storeOptions.level0FileNumCompactionTrigger(), 40);

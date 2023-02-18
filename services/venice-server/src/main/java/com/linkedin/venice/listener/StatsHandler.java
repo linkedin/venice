@@ -7,6 +7,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AggServerHttpRequestStats;
+import com.linkedin.venice.stats.ServerHttpRequestStats;
 import com.linkedin.venice.utils.LatencyUtils;
 import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelFuture;
@@ -15,8 +16,7 @@ import io.netty.channel.ChannelPromise;
 import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpServerCodec;
-import java.util.List;
-import java.util.Optional;
+import it.unimi.dsi.fastutil.ints.IntList;
 
 
 public class StatsHandler extends ChannelDuplexHandler {
@@ -38,8 +38,8 @@ public class StatsHandler extends ChannelDuplexHandler {
   private int countOperatorCount = 0;
   private boolean isRequestTerminatedEarly = false;
 
-  private Optional<List<Integer>> optionalKeySizeList = Optional.empty();
-  private Optional<List<Integer>> optionalValueSizeList = Optional.empty();
+  private IntList keySizeList;
+  private IntList valueSizeList;
 
   private final AggServerHttpRequestStats singleGetStats;
   private final AggServerHttpRequestStats multiGetStats;
@@ -179,12 +179,12 @@ public class StatsHandler extends ChannelDuplexHandler {
     this.multiChunkLargeValueCount = multiChunkLargeValueCount;
   }
 
-  public void setOptionalKeySizeList(Optional<List<Integer>> optionalKeySizeList) {
-    this.optionalKeySizeList = optionalKeySizeList;
+  public void setKeySizeList(IntList keySizeList) {
+    this.keySizeList = keySizeList;
   }
 
-  public void setOptionalValueSizeList(Optional<List<Integer>> optionalValueSizeList) {
-    this.optionalValueSizeList = optionalValueSizeList;
+  public void setValueSizeList(IntList valueSizeList) {
+    this.valueSizeList = valueSizeList;
   }
 
   public StatsHandler(
@@ -224,9 +224,6 @@ public class StatsHandler extends ChannelDuplexHandler {
       cosineSimilarityCount = 0;
       hadamardProductCount = 0;
       isRequestTerminatedEarly = false;
-
-      optionalKeySizeList = Optional.empty();
-      optionalValueSizeList = Optional.empty();
 
       /**
        * For a single 'channelRead' invocation, Netty will guarantee all the following 'channelRead' functions
@@ -271,31 +268,26 @@ public class StatsHandler extends ChannelDuplexHandler {
        * multiple times for a single request
        */
       if (!statCallbackExecuted) {
-        recordBasicMetrics();
-
-        optionalKeySizeList.ifPresent(
-            keySizeList -> keySizeList.forEach(keySize -> currentStats.recordKeySizeInByte(storeName, keySize)));
-        optionalValueSizeList.ifPresent(
-            valueSizeList -> valueSizeList
-                .forEach(valueSize -> currentStats.recordValueSizeInByte(storeName, valueSize)));
+        ServerHttpRequestStats serverHttpRequestStats = currentStats.getStoreStats(storeName);
+        recordBasicMetrics(serverHttpRequestStats);
 
         double elapsedTime = LatencyUtils.getLatencyInMS(startTimeInNS);
         // if ResponseStatus is either OK or NOT_FOUND and the channel write is succeed,
         // records a successRequest in stats. Otherwise, records a errorRequest in stats;
         if (result.isSuccess() && (responseStatus.equals(OK) || responseStatus.equals(NOT_FOUND))) {
-          successRequest(elapsedTime);
+          successRequest(serverHttpRequestStats, elapsedTime);
         } else {
-          errorRequest(elapsedTime);
+          errorRequest(serverHttpRequestStats, elapsedTime);
         }
         statCallbackExecuted = true;
       }
     });
   }
 
-  private void recordBasicMetrics() {
+  private void recordBasicMetrics(ServerHttpRequestStats serverHttpRequestStats) {
     if (storeName != null) {
       if (databaseLookupLatency >= 0) {
-        currentStats.recordDatabaseLookupLatency(storeName, databaseLookupLatency, isAssembledMultiChunkLargeValue());
+        serverHttpRequestStats.recordDatabaseLookupLatency(databaseLookupLatency, isAssembledMultiChunkLargeValue());
       }
       if (storageExecutionSubmissionWaitTime >= 0) {
         currentStats.recordStorageExecutionHandlerSubmissionWaitTime(storageExecutionSubmissionWaitTime);
@@ -305,80 +297,88 @@ public class StatsHandler extends ChannelDuplexHandler {
       }
       if (multiChunkLargeValueCount > 0) {
         // We only record this metric for requests where large values occurred
-        currentStats.recordMultiChunkLargeValueCount(storeName, multiChunkLargeValueCount);
+        serverHttpRequestStats.recordMultiChunkLargeValueCount(multiChunkLargeValueCount);
       }
       if (requestKeyCount > 0) {
-        currentStats.recordRequestKeyCount(storeName, requestKeyCount);
+        serverHttpRequestStats.recordRequestKeyCount(requestKeyCount);
       }
       if (successRequestKeyCount > 0) {
-        currentStats.recordSuccessRequestKeyCount(storeName, successRequestKeyCount);
+        serverHttpRequestStats.recordSuccessRequestKeyCount(successRequestKeyCount);
       }
       if (requestSizeInBytes > 0) {
-        currentStats.recordRequestSizeInBytes(storeName, requestSizeInBytes);
+        serverHttpRequestStats.recordRequestSizeInBytes(requestSizeInBytes);
       }
       if (firstPartLatency > 0) {
-        currentStats.recordRequestFirstPartLatency(storeName, firstPartLatency);
+        serverHttpRequestStats.recordRequestFirstPartLatency(firstPartLatency);
       }
       if (partsInvokeDelayLatency > 0) {
-        currentStats.recordRequestPartsInvokeDelayLatency(storeName, partsInvokeDelayLatency);
+        serverHttpRequestStats.recordRequestPartsInvokeDelayLatency(partsInvokeDelayLatency);
       }
       if (secondPartLatency > 0) {
-        currentStats.recordRequestSecondPartLatency(storeName, secondPartLatency);
+        serverHttpRequestStats.recordRequestSecondPartLatency(secondPartLatency);
       }
       if (requestPartCount > 0) {
-        currentStats.recordRequestPartCount(storeName, requestPartCount);
+        serverHttpRequestStats.recordRequestPartCount(requestPartCount);
       }
       if (readComputeLatency >= 0) {
-        currentStats.recordReadComputeLatency(storeName, readComputeLatency, isAssembledMultiChunkLargeValue());
+        serverHttpRequestStats.recordReadComputeLatency(readComputeLatency, isAssembledMultiChunkLargeValue());
       }
       if (readComputeDeserializationLatency >= 0) {
-        currentStats.recordReadComputeDeserializationLatency(
-            storeName,
+        serverHttpRequestStats.recordReadComputeDeserializationLatency(
             readComputeDeserializationLatency,
             isAssembledMultiChunkLargeValue());
       }
       if (readComputeSerializationLatency >= 0) {
-        currentStats.recordReadComputeSerializationLatency(
-            storeName,
-            readComputeSerializationLatency,
-            isAssembledMultiChunkLargeValue());
+        serverHttpRequestStats
+            .recordReadComputeSerializationLatency(readComputeSerializationLatency, isAssembledMultiChunkLargeValue());
       }
       if (dotProductCount > 0) {
-        currentStats.recordDotProductCount(storeName, dotProductCount);
+        serverHttpRequestStats.recordDotProductCount(dotProductCount);
       }
       if (cosineSimilarityCount > 0) {
-        currentStats.recordCosineSimilarityCount(storeName, cosineSimilarityCount);
+        serverHttpRequestStats.recordCosineSimilarityCount(cosineSimilarityCount);
       }
       if (hadamardProductCount > 0) {
-        currentStats.recordHadamardProductCount(storeName, hadamardProductCount);
+        serverHttpRequestStats.recordHadamardProduct(hadamardProductCount);
       }
       if (countOperatorCount > 0) {
-        currentStats.recordCountOperatorCount(storeName, countOperatorCount);
+        serverHttpRequestStats.recordCountOperator(countOperatorCount);
       }
       if (isRequestTerminatedEarly) {
-        currentStats.recordEarlyTerminatedEarlyRequest(storeName);
+        serverHttpRequestStats.recordEarlyTerminatedEarlyRequest();
+      }
+      if (keySizeList != null) {
+        for (int i = 0; i < keySizeList.size(); i++) {
+          serverHttpRequestStats.recordKeySizeInByte(keySizeList.getInt(i));
+        }
+      }
+      if (valueSizeList != null) {
+        for (int i = 0; i < valueSizeList.size(); i++) {
+          if (valueSizeList.getInt(i) != -1)
+            serverHttpRequestStats.recordValueSizeInByte(valueSizeList.getInt(i));
+        }
       }
     }
   }
 
   // This method does not have to be synchronised since operations in Tehuti are already synchronised.
   // Please re-consider the race condition if new logic is added.
-  private void successRequest(double elapsedTime) {
+  private void successRequest(ServerHttpRequestStats stats, double elapsedTime) {
     if (storeName != null) {
-      currentStats.recordSuccessRequest(storeName);
-      currentStats.recordSuccessRequestLatency(storeName, elapsedTime);
+      stats.recordSuccessRequest();
+      stats.recordSuccessRequestLatency(elapsedTime);
     } else {
       throw new VeniceException("store name could not be null if request succeeded");
     }
   }
 
-  private void errorRequest(double elapsedTime) {
+  private void errorRequest(ServerHttpRequestStats stats, double elapsedTime) {
     if (storeName == null) {
       currentStats.recordErrorRequest();
       currentStats.recordErrorRequestLatency(elapsedTime);
     } else {
-      currentStats.recordErrorRequest(storeName);
-      currentStats.recordErrorRequestLatency(storeName, elapsedTime);
+      stats.recordErrorRequest();
+      stats.recordErrorRequestLatency(elapsedTime);
     }
   }
 }

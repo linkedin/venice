@@ -13,6 +13,7 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.locks.ReadWriteLock;
 import java.util.function.Supplier;
 
 
@@ -177,12 +178,12 @@ public class DeepCopyStorageEngine extends AbstractStorageEngine<AbstractStorage
   }
 
   @Override
-  public long getStoreSizeInBytes() {
-    return this.delegate.getStoreSizeInBytes();
+  public ReadWriteLock getRWLockForPartitionOrThrow(int partitionId) {
+    return this.delegate.getRWLockForPartitionOrThrow(partitionId);
   }
 
   @Override
-  public void warmUpStoragePartition(int partition) {
-    this.delegate.warmUpStoragePartition(partition);
+  public long getStoreSizeInBytes() {
+    return this.delegate.getStoreSizeInBytes();
   }
 }

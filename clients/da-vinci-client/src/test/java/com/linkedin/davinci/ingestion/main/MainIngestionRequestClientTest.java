@@ -2,12 +2,15 @@ package com.linkedin.davinci.ingestion.main;
 
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.ingestion.HttpClientTransport;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
-import java.util.Optional;
+import com.linkedin.venice.utils.VeniceProperties;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -18,7 +21,14 @@ public class MainIngestionRequestClientTest {
 
   @Test(timeOut = TIMEOUT_IN_MILLIS)
   public void testIngestionCommand() {
-    try (MainIngestionRequestClient client = new MainIngestionRequestClient(Optional.empty(), 12345)) {
+
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    when(serverConfig.getIngestionServicePort()).thenReturn(12345);
+    VeniceConfigLoader configLoader = mock(VeniceConfigLoader.class);
+    when(configLoader.getVeniceServerConfig()).thenReturn(serverConfig);
+    VeniceProperties combinedProperties = mock(VeniceProperties.class);
+    when(configLoader.getCombinedProperties()).thenReturn(combinedProperties);
+    try (MainIngestionRequestClient client = new MainIngestionRequestClient(configLoader)) {
       HttpClientTransport mockedClientTransport = Mockito.mock(HttpClientTransport.class);
       IngestionTaskReport taskReport = new IngestionTaskReport();
       taskReport.setMessage("TEST MSG");

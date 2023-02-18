@@ -155,6 +155,7 @@ public abstract class AbstractStore implements Store {
       version.setLeaderFollowerModelEnabled(isLeaderFollowerModelEnabled());
 
       version.setChunkingEnabled(isChunkingEnabled());
+      version.setRmdChunkingEnabled(isRmdChunkingEnabled());
 
       PartitionerConfig partitionerConfig = getPartitionerConfig();
       if (partitionerConfig != null) {
@@ -162,9 +163,6 @@ public abstract class AbstractStore implements Store {
       }
 
       version.setNativeReplicationEnabled(isNativeReplicationEnabled());
-
-      // TODO(sumane): Kept for interop with venice-server and should be removed in inc push cleanup phase-II
-      version.setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME);
 
       version.setReplicationFactor(getReplicationFactor());
 
@@ -182,7 +180,7 @@ public abstract class AbstractStore implements Store {
       version.setUseVersionLevelHybridConfig(true);
 
       version.setActiveActiveReplicationEnabled(isActiveActiveReplicationEnabled());
-      version.setViewConfig(getViewConfigs());
+      version.setViewConfigs(getViewConfigs());
     }
 
     storeVersionsSupplier.getForUpdate().add(index, version.dataModel());

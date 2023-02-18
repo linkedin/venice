@@ -212,6 +212,10 @@ public interface Store {
 
   void setChunkingEnabled(boolean chunkingEnabled);
 
+  boolean isRmdChunkingEnabled();
+
+  void setRmdChunkingEnabled(boolean rmdChunkingEnabled);
+
   int getBatchGetLimit();
 
   void setBatchGetLimit(int batchGetLimit);
@@ -287,12 +291,6 @@ public interface Store {
   boolean isStoreMetaSystemStoreEnabled();
 
   void setStoreMetaSystemStoreEnabled(boolean storeMetaSystemStoreEnabled);
-
-  @Deprecated
-  IncrementalPushPolicy getIncrementalPushPolicy();
-
-  @Deprecated
-  void setIncrementalPushPolicy(IncrementalPushPolicy incrementalPushPolicy);
 
   long getLatestVersionPromoteToCurrentTimestamp();
 

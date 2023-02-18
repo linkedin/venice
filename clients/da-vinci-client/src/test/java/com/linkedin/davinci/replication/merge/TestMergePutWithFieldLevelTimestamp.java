@@ -14,7 +14,6 @@ import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -44,7 +43,7 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
 
     MergeConflictResult mergeResult = mergeConflictResolver.put(
         Lazy.of(() -> null),
-        Optional.of(new RmdWithValueSchemaId(oldValueSchemaID, RMD_VERSION_ID, rmdRecord)),
+        new RmdWithValueSchemaId(oldValueSchemaID, RMD_VERSION_ID, rmdRecord),
         null,
         9L,
         1, // Same as the old value schema ID.
@@ -106,7 +105,7 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
     doReturn(new RmdSchemaEntry(5, RMD_VERSION_ID, rmdSchemaV5)).when(schemaRepository)
         .getReplicationMetadataSchema(storeName, 5, RMD_VERSION_ID);
 
-    doReturn(Optional.of(new SchemaEntry(5, userSchemaV5))).when(schemaRepository).getSupersetSchema(storeName);
+    doReturn(new SchemaEntry(5, userSchemaV5)).when(schemaRepository).getSupersetSchema(storeName);
     return schemaRepository;
   }
 
@@ -138,7 +137,7 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
 
     MergeConflictResult result = mergeConflictResolver.put(
         Lazy.of(() -> oldValueBytes),
-        Optional.of(oldRmdWithValueSchemaID),
+        oldRmdWithValueSchemaID,
         newValueBytes,
         15L,
         3, // same as the old value schema ID.
@@ -152,9 +151,9 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
     Assert.assertEquals(updatedPerFieldTimestampRecord.get("id"), 15L); // Updated
     Assert.assertEquals(updatedPerFieldTimestampRecord.get("name"), 20L); // Not updated
 
-    Optional<ByteBuffer> newValueOptional = result.getNewValue();
-    Assert.assertTrue(newValueOptional.isPresent());
-    newValueRecord = getDeserializer(userSchemaV3, userSchemaV3).deserialize(newValueOptional.get());
+    ByteBuffer newValueOptional = result.getNewValue();
+    Assert.assertNotNull(newValueOptional);
+    newValueRecord = getDeserializer(userSchemaV3, userSchemaV3).deserialize(newValueOptional);
     Assert.assertEquals(newValueRecord.get("id").toString(), "456"); // Updated
     Assert.assertEquals(newValueRecord.get("name").toString(), "James"); // Not updated
   }
@@ -189,7 +188,7 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
 
     MergeConflictResult result = mergeConflictResolver.put(
         Lazy.of(() -> oldValueBytes),
-        Optional.of(oldRmdWithValueSchemaID),
+        oldRmdWithValueSchemaID,
         newValueBytes,
         15L,
         4, // new value schema ID is different from the old value schema ID.
@@ -204,9 +203,9 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
     Assert.assertEquals(updatedPerFieldTimestampRecord.get("name"), 20L); // Not updated
     Assert.assertEquals(updatedPerFieldTimestampRecord.get("weight"), 15L); // Not updated and it is a new field.
 
-    Optional<ByteBuffer> newValueOptional = result.getNewValue();
-    Assert.assertTrue(newValueOptional.isPresent());
-    newValueRecord = getDeserializer(userSchemaV5, userSchemaV5).deserialize(newValueOptional.get());
+    ByteBuffer newValueOptional = result.getNewValue();
+    Assert.assertNotNull(newValueOptional);
+    newValueRecord = getDeserializer(userSchemaV5, userSchemaV5).deserialize(newValueOptional);
     Assert.assertEquals(newValueRecord.get("id").toString(), "123"); // Not updated
     Assert.assertEquals(newValueRecord.get("name").toString(), "James"); // Not updated
     Assert.assertEquals(newValueRecord.get("weight").toString(), "250.0"); // Updated and it is a new field.
@@ -241,7 +240,7 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
 
     MergeConflictResult result = mergeConflictResolver.put(
         Lazy.of(() -> oldValueBytes),
-        Optional.of(oldRmdWithValueSchemaID),
+        oldRmdWithValueSchemaID,
         newValueBytes,
         15L,
         5, // new value schema ID is different from the old value schema ID.
@@ -256,9 +255,9 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
     Assert.assertEquals(updatedPerFieldTimestampRecord.get("name"), 20L); // Not updated
     Assert.assertEquals(updatedPerFieldTimestampRecord.get("weight"), 15L); // Not updated and it is a new field.
 
-    Optional<ByteBuffer> newValueOptional = result.getNewValue();
-    Assert.assertTrue(newValueOptional.isPresent());
-    newValueRecord = getDeserializer(userSchemaV5, userSchemaV5).deserialize(newValueOptional.get());
+    ByteBuffer newValueOptional = result.getNewValue();
+    Assert.assertNotNull(newValueOptional);
+    newValueRecord = getDeserializer(userSchemaV5, userSchemaV5).deserialize(newValueOptional);
     Assert.assertEquals(newValueRecord.get("id").toString(), "456"); // Not updated
     Assert.assertEquals(newValueRecord.get("name").toString(), "James"); // Not updated
     Assert.assertEquals(newValueRecord.get("weight").toString(), "250.0"); // Updated and it is a new field.
@@ -294,7 +293,7 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
 
     MergeConflictResult result = mergeConflictResolver.put(
         Lazy.of(() -> oldValueBytes),
-        Optional.of(oldRmdWithValueSchemaID),
+        oldRmdWithValueSchemaID,
         newValueBytes,
         25L,
         4, // new value schema ID is different from the old value schema ID.
@@ -309,9 +308,9 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
     Assert.assertEquals(updatedPerFieldTimestampRecord.get("name"), 25L); // Updated
     Assert.assertEquals(updatedPerFieldTimestampRecord.get("weight"), 30L); // Not updated
 
-    Optional<ByteBuffer> newValueOptional = result.getNewValue();
-    Assert.assertTrue(newValueOptional.isPresent());
-    newValueRecord = getDeserializer(userSchemaV5, userSchemaV5).deserialize(newValueOptional.get());
+    ByteBuffer newValueOptional = result.getNewValue();
+    Assert.assertNotNull(newValueOptional);
+    newValueRecord = getDeserializer(userSchemaV5, userSchemaV5).deserialize(newValueOptional);
     Assert.assertEquals(newValueRecord.get("id").toString(), "123"); // Not updated
     Assert.assertEquals(newValueRecord.get("name").toString(), "Lebron"); // Updated
     Assert.assertEquals(newValueRecord.get("weight").toString(), "250.1"); // Updated and it is a new field.

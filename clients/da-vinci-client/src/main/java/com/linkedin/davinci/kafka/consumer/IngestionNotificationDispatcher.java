@@ -131,7 +131,11 @@ class IngestionNotificationDispatcher {
    */
   void reportCompleted(PartitionConsumptionState pcs, boolean forceCompletion) {
     report(pcs, ExecutionStatus.COMPLETED, notifier -> {
-      notifier.completed(topic, pcs.getUserPartition(), pcs.getLatestProcessedLocalVersionTopicOffset());
+      notifier.completed(
+          topic,
+          pcs.getUserPartition(),
+          pcs.getLatestProcessedLocalVersionTopicOffset(),
+          pcs.getLeaderFollowerState().toString());
       pcs.releaseLatch();
       pcs.completionReported();
     }, () -> {

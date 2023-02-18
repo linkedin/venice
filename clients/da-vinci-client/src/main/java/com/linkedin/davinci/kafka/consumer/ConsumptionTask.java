@@ -4,14 +4,17 @@ import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
 import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Consumer;
+import java.util.function.IntConsumer;
 import java.util.function.Supplier;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -39,14 +42,15 @@ import org.apache.logging.log4j.Logger;
 class ConsumptionTask implements Runnable {
   private final Logger logger;
   private final int taskId;
-  private final Map<TopicPartition, ConsumedDataReceiver<List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>>> dataReceiverMap =
+  private final Map<TopicPartition, ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>>> dataReceiverMap =
       new VeniceConcurrentHashMap<>();
   private final long readCycleDelayMs;
-  private final Supplier<ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> pollFunction;
-  private final Consumer<ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> bandwidthThrottler;
-  private final Consumer<ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> recordsThrottler;
+  private final Supplier<ConsumerRecords<byte[], byte[]>> pollFunction;
+  private final IntConsumer bandwidthThrottler;
+  private final IntConsumer recordsThrottler;
   private final KafkaConsumerServiceStats stats;
   private final ConsumerSubscriptionCleaner cleaner;
+  private final KafkaPubSubMessageDeserializer pubSubDeserializer;
 
   private volatile boolean running = true;
 
@@ -60,11 +64,12 @@ class ConsumptionTask implements Runnable {
       final String kafkaUrl,
       final int taskId,
       final long readCycleDelayMs,
-      final Supplier<ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> pollFunction,
-      final Consumer<ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> bandwidthThrottler,
-      final Consumer<ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> recordsThrottler,
+      final Supplier<ConsumerRecords<byte[], byte[]>> pollFunction,
+      final IntConsumer bandwidthThrottler,
+      final IntConsumer recordsThrottler,
       final KafkaConsumerServiceStats stats,
-      final ConsumerSubscriptionCleaner cleaner) {
+      final ConsumerSubscriptionCleaner cleaner,
+      final KafkaPubSubMessageDeserializer pubSubDeserializer) {
     this.taskId = taskId;
     this.readCycleDelayMs = readCycleDelayMs;
     this.pollFunction = pollFunction;
@@ -72,6 +77,7 @@ class ConsumptionTask implements Runnable {
     this.recordsThrottler = recordsThrottler;
     this.stats = stats;
     this.cleaner = cleaner;
+    this.pubSubDeserializer = pubSubDeserializer;
     this.logger = LogManager.getLogger(getClass().getSimpleName() + "[ " + kafkaUrl + " - " + taskId + " ]");
   }
 
@@ -81,11 +87,13 @@ class ConsumptionTask implements Runnable {
 
     // Pre-allocate some variables to clobber in the loop
     long beforePollingTimeStamp;
-    ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records;
+    ConsumerRecords<byte[], byte[]> records;
     long beforeProducingToWriteBufferTimestamp;
-    ConsumedDataReceiver<List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> consumedDataReceiver;
-    List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> partitionRecords;
+    ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> consumedDataReceiver;
+    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> partitionRecords = new ArrayList<>();
     Set<TopicPartition> topicPartitionsToUnsub = new HashSet<>();
+    int payloadBytesConsumedInOnePoll;
+    PubSubMessage pubSubMessage;
     while (running) {
       try {
         if (addSomeDelay) {
@@ -101,7 +109,7 @@ class ConsumptionTask implements Runnable {
         beforePollingTimeStamp = System.currentTimeMillis();
         topicPartitionsToUnsub = cleaner.getTopicPartitionsToUnsubscribe(topicPartitionsToUnsub); // N.B. cheap call
         for (TopicPartition topicPartitionToUnSub: topicPartitionsToUnsub) {
-          ConsumedDataReceiver<List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> dataReceiver =
+          ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> dataReceiver =
               dataReceiverMap.remove(topicPartitionToUnSub);
           if (dataReceiver != null) {
             dataReceiver.notifyOfTopicDeletion(topicPartitionToUnSub.topic());
@@ -118,6 +126,7 @@ class ConsumptionTask implements Runnable {
         lastSuccessfulPollTimestamp = System.currentTimeMillis();
         stats.recordPollRequestLatency(lastSuccessfulPollTimestamp - beforePollingTimeStamp);
         stats.recordPollResultNum(records.count());
+        payloadBytesConsumedInOnePoll = 0;
         if (!records.isEmpty()) {
           beforeProducingToWriteBufferTimestamp = System.currentTimeMillis();
           for (TopicPartition topicPartition: records.partitions()) {
@@ -130,13 +139,19 @@ class ConsumptionTask implements Runnable {
               topicPartitionsToUnsub.add(topicPartition);
               continue;
             }
-            partitionRecords = records.records(topicPartition);
+            partitionRecords.clear();
+            for (ConsumerRecord<byte[], byte[]> consumerRecord: records.records(topicPartition)) {
+              pubSubMessage =
+                  pubSubDeserializer.deserialize(consumerRecord, consumedDataReceiver.getPubSubTopicPartition());
+              partitionRecords.add(pubSubMessage);
+              payloadBytesConsumedInOnePoll += pubSubMessage.getPayloadSize();
+            }
             consumedDataReceiver.write(partitionRecords);
           }
           stats.recordConsumerRecordsProducingToWriterBufferLatency(
               LatencyUtils.getElapsedTimeInMs(beforeProducingToWriteBufferTimestamp));
-          bandwidthThrottler.accept(records);
-          recordsThrottler.accept(records);
+          bandwidthThrottler.accept(payloadBytesConsumedInOnePoll);
+          recordsThrottler.accept(records.count());
           cleaner.unsubscribe(topicPartitionsToUnsub);
           stats.recordDetectedNoRunningIngestionTopicPartitionNum(topicPartitionsToUnsub.size());
         } else {
@@ -160,7 +175,7 @@ class ConsumptionTask implements Runnable {
   void stop() {
     running = false;
     synchronized (this) {
-      notify();
+      notifyAll();
     }
   }
 
@@ -174,8 +189,8 @@ class ConsumptionTask implements Runnable {
 
   void setDataReceiver(
       TopicPartition topicPartition,
-      ConsumedDataReceiver<List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> consumedDataReceiver) {
-    ConsumedDataReceiver<List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> previousConsumedDataReceiver =
+      ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> consumedDataReceiver) {
+    ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> previousConsumedDataReceiver =
         dataReceiverMap.put(topicPartition, consumedDataReceiver);
     if (previousConsumedDataReceiver != null
         && !previousConsumedDataReceiver.destinationIdentifier().equals(consumedDataReceiver.destinationIdentifier())) {
@@ -186,7 +201,7 @@ class ConsumptionTask implements Runnable {
               + ", New: " + consumedDataReceiver);
     }
     synchronized (this) {
-      notify();
+      notifyAll();
     }
   }
 

@@ -50,7 +50,7 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
     loadAllStats();
   }
 
-  public synchronized void loadAllStats() {
+  public final synchronized void loadAllStats() {
     metadataRepository.getAllStores().forEach(store -> {
       addStore(store.getName());
       updateStatsVersionInfo(store.getName(), store.getVersions(), store.getCurrentVersion());

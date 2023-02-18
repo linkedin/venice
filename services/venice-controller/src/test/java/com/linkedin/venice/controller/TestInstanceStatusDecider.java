@@ -248,14 +248,6 @@ public class TestInstanceStatusDecider {
     return partitionAssignment;
   }
 
-  private void prepareStoreAndVersion(String storeName, int version, VersionStatus status) {
-    Store store = TestUtils.createTestStore(storeName, "t", 0);
-    Version version1 = new VersionImpl(storeName, version);
-    version1.setStatus(status);
-    store.addVersion(version1);
-    doReturn(store).when(readWriteStoreRepository).getStore(storeName);
-  }
-
   private void prepareStoreAndVersion(
       String storeName,
       int version,

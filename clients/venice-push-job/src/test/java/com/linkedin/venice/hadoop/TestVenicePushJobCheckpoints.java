@@ -1,6 +1,9 @@
 package com.linkedin.venice.hadoop;
 
 import static com.linkedin.venice.hadoop.VenicePushJob.COMPRESSION_METRIC_COLLECTION_ENABLED;
+import static com.linkedin.venice.hadoop.VenicePushJob.D2_ZK_HOSTS_PREFIX;
+import static com.linkedin.venice.hadoop.VenicePushJob.MULTI_REGION;
+import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_GRID_FABRIC;
 import static com.linkedin.venice.hadoop.VenicePushJob.USE_MAPPER_TO_BUILD_DICTIONARY;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
@@ -48,6 +51,7 @@ public class TestVenicePushJobCheckpoints {
   private static final int PARTITION_COUNT = 10;
   private static final int NUMBER_OF_FILES_TO_READ_AND_BUILD_DICT_COUNT = 1; // DUMMY Number of files for
                                                                              // ValidateSchemaAndBuildDictMapper
+  private static final String TEST_CLUSTER_NAME = "some-cluster";
   private static final String SCHEMA_STR = "{" + "  \"namespace\" : \"example.avro\",  " + "  \"type\": \"record\",   "
       + "  \"name\": \"User\",     " + "  \"fields\": [           "
       + "       { \"name\": \"id\", \"type\": \"string\" },  "
@@ -467,36 +471,44 @@ public class TestVenicePushJobCheckpoints {
     if (extraProps != null) {
       extraProps.accept(props);
     }
-    VenicePushJob venicePushJob =
-        new VenicePushJob("job-id", props, createControllerClientMock(), createClusterDiscoverControllerClient());
+    ControllerClient controllerClient = mock(ControllerClient.class);
+    configureControllerClientMock(controllerClient);
+    configureClusterDiscoverControllerClient(controllerClient);
+    try (VenicePushJob venicePushJob = new VenicePushJob("job-id", props)) {
+      venicePushJob.setControllerClient(controllerClient);
+      venicePushJob.setKmeSchemaSystemStoreControllerClient(controllerClient);
+      venicePushJob.setJobClientWrapper(jobClientWrapper);
+      venicePushJob.setInputDataInfoProvider(inputDataInfoProvider);
+      venicePushJob.setVeniceWriter(createVeniceWriterMock());
+      SentPushJobDetailsTrackerImpl pushJobDetailsTracker = new SentPushJobDetailsTrackerImpl();
+      venicePushJob.setSentPushJobDetailsTracker(pushJobDetailsTracker);
 
-    venicePushJob.setSystemKMEStoreControllerClient(createControllerClientMock());
-    venicePushJob.setJobClientWrapper(jobClientWrapper);
-    venicePushJob.setClusterDiscoveryControllerClient(createClusterDiscoveryControllerClientMock());
-    venicePushJob.setInputDataInfoProvider(inputDataInfoProvider);
-    venicePushJob.setVeniceWriter(createVeniceWriterMock());
-    SentPushJobDetailsTrackerImpl pushJobDetailsTracker = new SentPushJobDetailsTrackerImpl();
-    venicePushJob.setSentPushJobDetailsTracker(pushJobDetailsTracker);
+      try {
+        venicePushJob.run();
+      } finally {
+        List<Integer> actualReportedCheckpointValues =
+            new ArrayList<>(pushJobDetailsTracker.getRecordedPushJobDetails().size());
 
-    try {
-      venicePushJob.run();
-    } finally {
-      List<Integer> actualReportedCheckpointValues =
-          new ArrayList<>(pushJobDetailsTracker.getRecordedPushJobDetails().size());
+        for (PushJobDetails pushJobDetails: pushJobDetailsTracker.getRecordedPushJobDetails()) {
+          actualReportedCheckpointValues.add(pushJobDetails.pushJobLatestCheckpoint);
+        }
+        List<Integer> expectedCheckpointValues = expectedReportedCheckpoints.stream()
+            .map(VenicePushJob.PushJobCheckpoints::getValue)
+            .collect(Collectors.toList());
 
-      for (PushJobDetails pushJobDetails: pushJobDetailsTracker.getRecordedPushJobDetails()) {
-        actualReportedCheckpointValues.add(pushJobDetails.pushJobLatestCheckpoint);
+        Assert.assertEquals(actualReportedCheckpointValues, expectedCheckpointValues);
       }
-      List<Integer> expectedCheckpointValues = expectedReportedCheckpoints.stream()
-          .map(VenicePushJob.PushJobCheckpoints::getValue)
-          .collect(Collectors.toList());
-
-      Assert.assertEquals(actualReportedCheckpointValues, expectedCheckpointValues);
     }
   }
 
   private Properties getVPJProps() {
     Properties props = new Properties();
+    props.setProperty(MULTI_REGION, "false");
+
+    String childRegion = "child_region";
+    props.setProperty(SOURCE_GRID_FABRIC, childRegion);
+    props.setProperty(D2_ZK_HOSTS_PREFIX + childRegion, "child.zk.com:1234");
+
     props.put(VenicePushJob.VENICE_DISCOVER_URL_PROP, "venice-urls");
     props.put(VenicePushJob.VENICE_STORE_NAME_PROP, "store-name");
     props.put(VenicePushJob.INPUT_PATH_PROP, "input-path");
@@ -534,14 +546,6 @@ public class TestVenicePushJobCheckpoints {
     return inputDataInfoProvider;
   }
 
-  private ControllerClient createClusterDiscoveryControllerClientMock() {
-    ControllerClient controllerClient = mock(ControllerClient.class);
-    D2ServiceDiscoveryResponse controllerResponse = mock(D2ServiceDiscoveryResponse.class);
-    when(controllerResponse.getCluster()).thenReturn("mock-cluster-name");
-    when(controllerClient.discoverCluster(anyString())).thenReturn(controllerResponse);
-    return controllerClient;
-  }
-
   private JobStatusQueryResponse createJobStatusQueryResponseMock() {
     JobStatusQueryResponse jobStatusQueryResponse = mock(JobStatusQueryResponse.class);
     when(jobStatusQueryResponse.isError()).thenReturn(false);
@@ -552,11 +556,11 @@ public class TestVenicePushJobCheckpoints {
     return jobStatusQueryResponse;
   }
 
-  private ControllerClient createControllerClientMock() {
-    ControllerClient controllerClient = mock(ControllerClient.class);
+  private void configureControllerClientMock(ControllerClient controllerClient) {
     StoreResponse storeResponse = mock(StoreResponse.class);
-    StoreInfo storeInfo = mock(StoreInfo.class);
+    when(controllerClient.getClusterName()).thenReturn(TEST_CLUSTER_NAME);
 
+    StoreInfo storeInfo = mock(StoreInfo.class);
     when(controllerClient.getValueSchema(anyString(), anyInt())).thenReturn(mock(SchemaResponse.class));
 
     StorageEngineOverheadRatioResponse storageEngineOverheadRatioResponse =
@@ -603,16 +607,13 @@ public class TestVenicePushJobCheckpoints {
     ControllerResponse controllerResponse = mock(ControllerResponse.class);
     when(controllerResponse.isError()).thenReturn(false);
     when(controllerClient.sendPushJobDetails(anyString(), anyInt(), any(byte[].class))).thenReturn(controllerResponse);
-    return controllerClient;
   }
 
-  private ControllerClient createClusterDiscoverControllerClient() {
-    ControllerClient controllerClient = mock(ControllerClient.class);
+  private void configureClusterDiscoverControllerClient(ControllerClient controllerClient) {
     D2ServiceDiscoveryResponse clusterDiscoveryResponse = mock(D2ServiceDiscoveryResponse.class);
     when(clusterDiscoveryResponse.isError()).thenReturn(false);
-    when(clusterDiscoveryResponse.getCluster()).thenReturn("some-cluster");
+    when(clusterDiscoveryResponse.getCluster()).thenReturn(TEST_CLUSTER_NAME);
     when(controllerClient.discoverCluster(anyString())).thenReturn(clusterDiscoveryResponse);
-    return controllerClient;
   }
 
   private VersionCreationResponse createVersionCreationResponse() {

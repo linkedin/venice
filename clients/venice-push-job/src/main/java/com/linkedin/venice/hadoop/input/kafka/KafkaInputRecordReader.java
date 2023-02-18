@@ -3,26 +3,35 @@ package com.linkedin.venice.hadoop.input.kafka;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.MRJobCounterHelper;
 import com.linkedin.venice.hadoop.VenicePushJob;
+import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperKey;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.input.kafka.avro.MapperValueType;
 import com.linkedin.venice.hadoop.input.kafka.chunk.ChunkKeyValueTransformer;
 import com.linkedin.venice.hadoop.input.kafka.chunk.ChunkKeyValueTransformerImpl;
 import com.linkedin.venice.hadoop.input.kafka.chunk.RawKeyBytesAndChunkedKeySuffix;
-import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
+import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Iterator;
+import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
-import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.mapred.InputSplit;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.RecordReader;
@@ -46,7 +55,7 @@ import org.apache.logging.log4j.Logger;
  * 3. Offset.
  * 4. Value type, which could be 'PUT' or 'DELETE'.
  */
-public class KafkaInputRecordReader implements RecordReader<BytesWritable, KafkaInputMapperValue> {
+public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey, KafkaInputMapperValue>, AutoCloseable {
   public static final String KIF_RECORD_READER_KAFKA_CONFIG_PREFIX = "kif.record.reader.kafka.";
 
   private static final ByteBuffer EMPTY_BYTE_BUFFER = ByteBuffer.wrap(new byte[0]);
@@ -61,6 +70,7 @@ public class KafkaInputRecordReader implements RecordReader<BytesWritable, Kafka
 
   private final KafkaConsumerWrapper consumer;
   private final TopicPartition topicPartition;
+  private final PubSubTopicPartition pubSubTopicPartition;
   private final long maxNumberOfRecords;
   private final long startingOffset;
   private long currentOffset;
@@ -71,19 +81,27 @@ public class KafkaInputRecordReader implements RecordReader<BytesWritable, Kafka
   /**
    * Iterator pointing to the current messages fetched from the Kafka topic partition.
    */
-  private Iterator<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> recordIterator;
+  private Iterator<ConsumerRecord<byte[], byte[]>> recordIterator;
+  private final PubSubMessageDeserializer pubSubMessageDeserializer;
 
   private final Reporter reporter;
 
   public KafkaInputRecordReader(InputSplit split, JobConf job, Reporter reporter) {
+    this(split, job, reporter, KafkaInputUtils.getConsumerFactory(job).getConsumer(new Properties()));
+  }
+
+  /** For unit tests */
+  KafkaInputRecordReader(InputSplit split, JobConf job, Reporter reporter, KafkaConsumerWrapper consumer) {
     if (!(split instanceof KafkaInputSplit)) {
       throw new VeniceException("InputSplit for RecordReader is not valid split type.");
     }
 
     KafkaInputSplit inputSplit = (KafkaInputSplit) split;
-    KafkaClientFactory kafkaClientFactory = KafkaInputUtils.getConsumerFactory(job);
-    this.consumer = kafkaClientFactory.getConsumer(KafkaInputUtils.getConsumerProperties());
+    this.consumer = consumer;
     this.topicPartition = inputSplit.getTopicPartition();
+    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+    PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(topicPartition.topic());
+    this.pubSubTopicPartition = new PubSubTopicPartitionImpl(pubSubTopic, topicPartition.partition());
     this.startingOffset = inputSplit.getStartingOffset();
     this.currentOffset = inputSplit.getStartingOffset() - 1;
     this.endingOffset = inputSplit.getEndingOffset();
@@ -100,6 +118,10 @@ public class KafkaInputRecordReader implements RecordReader<BytesWritable, Kafka
     this.maxNumberOfRecords = endingOffset - startingOffset;
     this.consumer.subscribe(topicPartition.topic(), topicPartition.partition(), currentOffset);
     this.reporter = reporter;
+    this.pubSubMessageDeserializer = new KafkaPubSubMessageDeserializer(
+        new OptimizedKafkaValueSerializer(),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
     LOGGER.info(
         "KafkaInputRecordReader started for TopicPartition: {} starting offset: {} ending offset: {}",
         this.topicPartition,
@@ -111,7 +133,9 @@ public class KafkaInputRecordReader implements RecordReader<BytesWritable, Kafka
    * This function will skip all the Control Messages right now.
    */
   @Override
-  public boolean next(BytesWritable key, KafkaInputMapperValue value) throws IOException {
+  public boolean next(KafkaInputMapperKey key, KafkaInputMapperValue value) throws IOException {
+    ConsumerRecord<byte[], byte[]> record;
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage;
     while (hasPendingData()) {
       try {
         loadRecords();
@@ -120,12 +144,13 @@ public class KafkaInputRecordReader implements RecordReader<BytesWritable, Kafka
             "Got interrupted while loading records from topic partition: " + topicPartition + " with current offset: "
                 + currentOffset);
       }
-      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record = recordIterator.hasNext() ? recordIterator.next() : null;
+      record = recordIterator.hasNext() ? recordIterator.next() : null;
       if (record != null) {
+        pubSubMessage = pubSubMessageDeserializer.deserialize(record, pubSubTopicPartition);
         currentOffset = record.offset();
 
-        KafkaKey kafkaKey = record.key();
-        KafkaMessageEnvelope kafkaMessageEnvelope = record.value();
+        KafkaKey kafkaKey = pubSubMessage.getKey();
+        KafkaMessageEnvelope kafkaMessageEnvelope = pubSubMessage.getValue();
 
         if (kafkaKey.isControlMessage()) {
           // Skip all the control messages
@@ -134,15 +159,15 @@ public class KafkaInputRecordReader implements RecordReader<BytesWritable, Kafka
 
         MessageType messageType = MessageType.valueOf(kafkaMessageEnvelope);
 
+        key.offset = record.offset();
         if (isChunkingEnabled) {
           RawKeyBytesAndChunkedKeySuffix rawKeyAndChunkedKeySuffix =
               splitCompositeKey(kafkaKey.getKey(), messageType, getSchemaIdFromValue(kafkaMessageEnvelope));
-          ByteBuffer keyBytes = rawKeyAndChunkedKeySuffix.getRawKeyBytes();
-          key.set(keyBytes.array(), keyBytes.position(), keyBytes.remaining());
-          value.chunkedKeySuffix = rawKeyAndChunkedKeySuffix.getChunkedKeySuffixBytes();
+          key.key = rawKeyAndChunkedKeySuffix.getRawKeyBytes();
 
+          value.chunkedKeySuffix = rawKeyAndChunkedKeySuffix.getChunkedKeySuffixBytes();
         } else {
-          key.set(kafkaKey.getKey(), 0, kafkaKey.getKeyLength());
+          key.key = ByteBuffer.wrap(kafkaKey.getKey(), 0, kafkaKey.getKeyLength());
         }
         value.offset = record.offset();
         switch (messageType) {
@@ -220,8 +245,8 @@ public class KafkaInputRecordReader implements RecordReader<BytesWritable, Kafka
   }
 
   @Override
-  public BytesWritable createKey() {
-    return new BytesWritable();
+  public KafkaInputMapperKey createKey() {
+    return new KafkaInputMapperKey();
   }
 
   @Override
@@ -258,7 +283,7 @@ public class KafkaInputRecordReader implements RecordReader<BytesWritable, Kafka
    */
   private void loadRecords() throws InterruptedException {
     if ((recordIterator == null) || !recordIterator.hasNext()) {
-      ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records = null;
+      ConsumerRecords<byte[], byte[]> records = null;
       int retry = 0;
       while (retry++ < CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES) {
         records = consumer.poll(CONSUMER_POLL_TIMEOUT);

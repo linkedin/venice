@@ -71,6 +71,18 @@ public class RouterKey implements Comparable<RouterKey> {
     return hashCode;
   }
 
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) {
+      return true;
+    }
+    if (o == null || getClass() != o.getClass()) {
+      return false;
+    }
+    RouterKey other = (RouterKey) o;
+    return this.keyBuffer.equals(other.keyBuffer);
+  }
+
   public void setPartitionId(int partitionId) {
     if (UNKNOWN_PARTITION_ID != this.partitionId) {
       throw new VeniceException("Partition id has been assigned: " + this.partitionId + ", and it is immutable after");

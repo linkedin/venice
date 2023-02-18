@@ -27,7 +27,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.util.Utf8;
@@ -67,7 +66,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         .getDerivedSchema(storeName, incomingValueSchemaId, incomingWriteComputeSchemaId);
     doReturn(new SchemaEntry(oldValueSchemaId, personSchemaV2)).when(readOnlySchemaRepository)
         .getValueSchema(storeName, oldValueSchemaId);
-    doReturn(Optional.of(new SchemaEntry(oldValueSchemaId, personSchemaV2))).when(readOnlySchemaRepository)
+    doReturn(new SchemaEntry(oldValueSchemaId, personSchemaV2)).when(readOnlySchemaRepository)
         .getSupersetSchema(storeName);
 
     // Update happens below
@@ -75,11 +74,10 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         .createMergeConflictResolver(
             readOnlySchemaRepository,
             new RmdSerDe(readOnlySchemaRepository, storeName, RMD_VERSION_ID),
-            storeName,
-            true);
+            storeName);
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
         Lazy.of(() -> null),
-        Optional.of(rmdWithValueSchemaId),
+        rmdWithValueSchemaId,
         writeComputeBytes,
         incomingValueSchemaId,
         incomingWriteComputeSchemaId,
@@ -125,7 +123,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         .getDerivedSchema(storeName, incomingValueSchemaId, incomingWriteComputeSchemaId);
     doReturn(new SchemaEntry(oldValueSchemaId, personSchemaV2)).when(readOnlySchemaRepository)
         .getValueSchema(storeName, oldValueSchemaId);
-    doReturn(Optional.of(new SchemaEntry(oldValueSchemaId, personSchemaV2))).when(readOnlySchemaRepository)
+    doReturn(new SchemaEntry(oldValueSchemaId, personSchemaV2)).when(readOnlySchemaRepository)
         .getSupersetSchema(storeName);
 
     // Update happens below
@@ -133,8 +131,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         .createMergeConflictResolver(
             readOnlySchemaRepository,
             new RmdSerDe(readOnlySchemaRepository, storeName, RMD_VERSION_ID),
-            storeName,
-            true);
+            storeName);
 
     GenericRecord updateFieldPartialUpdateRecord1 = SchemaUtils.createGenericRecord(writeComputeSchema);
     updateFieldPartialUpdateRecord1.put("age", 66);
@@ -144,7 +141,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         MapOrderingPreservingSerDeFactory.getSerializer(writeComputeSchema).serialize(updateFieldPartialUpdateRecord1));
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
         Lazy.of(() -> oldValueBytes),
-        Optional.of(rmdWithValueSchemaId),
+        rmdWithValueSchemaId,
         writeComputeBytes1,
         incomingValueSchemaId,
         incomingWriteComputeSchemaId,
@@ -158,10 +155,10 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
     ByteBuffer writeComputeBytes2 = ByteBuffer.wrap(
         MapOrderingPreservingSerDeFactory.getSerializer(writeComputeSchema).serialize(updateFieldPartialUpdateRecord2));
 
-    ByteBuffer updatedValueBytes = mergeConflictResult.getNewValue().get();
+    ByteBuffer updatedValueBytes = mergeConflictResult.getNewValue();
     mergeConflictResult = mergeConflictResolver.update(
         Lazy.of(() -> updatedValueBytes),
-        Optional.of(rmdWithValueSchemaId),
+        rmdWithValueSchemaId,
         writeComputeBytes2,
         incomingValueSchemaId,
         incomingWriteComputeSchemaId,
@@ -192,9 +189,9 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         Collections.emptyList());
 
     Assert.assertFalse(mergeConflictResult.isUpdateIgnored());
-    Optional<ByteBuffer> newValueOptional = mergeConflictResult.getNewValue();
-    Assert.assertTrue(newValueOptional.isPresent());
-    GenericRecord newValueRecord = getDeserializer(personSchemaV2, personSchemaV2).deserialize(newValueOptional.get());
+    ByteBuffer newValueOptional = mergeConflictResult.getNewValue();
+    Assert.assertNotNull(newValueOptional);
+    GenericRecord newValueRecord = getDeserializer(personSchemaV2, personSchemaV2).deserialize(newValueOptional);
     Assert.assertEquals(newValueRecord.get("age").toString(), "66");
     Assert.assertEquals(newValueRecord.get("name").toString(), "Venice");
     Assert.assertEquals(newValueRecord.get("intArray"), Arrays.asList(10, 20, 30, 40));
@@ -252,7 +249,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
     doReturn(new SchemaEntry(oldValueSchemaId, personSchemaV1)).when(readOnlySchemaRepository)
         .getValueSchema(storeName, oldValueSchemaId);
 
-    doReturn(Optional.of(new SchemaEntry(oldValueSchemaId, personSchemaV1))).when(readOnlySchemaRepository)
+    doReturn(new SchemaEntry(oldValueSchemaId, personSchemaV1)).when(readOnlySchemaRepository)
         .getSupersetSchema(storeName);
 
     // Update happens below
@@ -260,13 +257,12 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         .createMergeConflictResolver(
             readOnlySchemaRepository,
             new RmdSerDe(readOnlySchemaRepository, storeName, RMD_VERSION_ID),
-            storeName,
-            true);
+            storeName);
 
     final int newColoID = 3;
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
         Lazy.of(() -> oldValueBytes),
-        Optional.of(rmdWithValueSchemaId),
+        rmdWithValueSchemaId,
         writeComputeBytes,
         incomingValueSchemaId,
         incomingWriteComputeSchemaId,
@@ -315,8 +311,8 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         Collections.emptyList());
 
     // Validate updated value.
-    Assert.assertTrue(mergeConflictResult.getNewValue().isPresent());
-    ByteBuffer updatedValueBytes = mergeConflictResult.getNewValue().get();
+    Assert.assertNotNull(mergeConflictResult.getNewValue());
+    ByteBuffer updatedValueBytes = mergeConflictResult.getNewValue();
     GenericRecord updatedValueRecord = MapOrderingPreservingSerDeFactory.getDeserializer(personSchemaV1, personSchemaV1)
         .deserialize(updatedValueBytes.array());
 

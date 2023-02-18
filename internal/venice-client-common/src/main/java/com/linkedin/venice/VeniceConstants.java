@@ -20,37 +20,30 @@ public class VeniceConstants {
   public static final int DEFAULT_PER_ROUTER_READ_QUOTA = 20_000_000;
 
   /**
-   * DEPRECATED!
-   * legacy compute request V1 would expect "double" as result while
-   * any other version of compute request would expect ["float", "null"]
-   */
-  public static int COMPUTE_REQUEST_VERSION_V1 = 1;
-
-  /**
    * Compute request version 2.
    */
-  public static int COMPUTE_REQUEST_VERSION_V2 = 2;
+  public static final int COMPUTE_REQUEST_VERSION_V2 = 2;
 
   /**
    * V3 contains all V2 operator + new Count operator
    */
-  public static int COMPUTE_REQUEST_VERSION_V3 = 3;
+  public static final int COMPUTE_REQUEST_VERSION_V3 = 3;
 
   /**
    * V4 contains all V3 operators + executeWithFilter
    */
-  public static int COMPUTE_REQUEST_VERSION_V4 = 4;
+  public static final int COMPUTE_REQUEST_VERSION_V4 = 4;
 
   /**
    * The default SSL factory class name; this class is mostly used in test cases; products that uses Venice lib
    * should override the SSL factory class.
    */
-  public static String DEFAULT_SSL_FACTORY_CLASS_NAME = "com.linkedin.venice.security.DefaultSSLFactory";
+  public static final String DEFAULT_SSL_FACTORY_CLASS_NAME = "com.linkedin.venice.security.DefaultSSLFactory";
 
   /**
    * In a {@link HttpServletRequest}, we can get the client certificate by retrieving the following attribute.
    */
-  public static String CONTROLLER_SSL_CERTIFICATE_ATTRIBUTE_NAME = "javax.servlet.request.X509Certificate";
+  public static final String CONTROLLER_SSL_CERTIFICATE_ATTRIBUTE_NAME = "javax.servlet.request.X509Certificate";
 
   /**
    * Beginning of router request path; it would used by router and client modules

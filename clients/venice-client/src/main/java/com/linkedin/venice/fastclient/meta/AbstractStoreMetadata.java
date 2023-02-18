@@ -61,8 +61,11 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
   }
 
   @Override
-  public CompletableFuture<HttpStatus> sendRequestToInstance(String instance, int version, int partitionId) {
-    return instanceHealthMonitor.sendRequestToInstance(instance);
+  public CompletableFuture<HttpStatus> trackHealthBasedOnRequestToInstance(
+      String instance,
+      int version,
+      int partitionId) {
+    return instanceHealthMonitor.trackHealthBasedOnRequestToInstance(instance);
   }
 
   @Override

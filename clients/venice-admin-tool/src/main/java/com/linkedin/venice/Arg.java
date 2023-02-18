@@ -9,6 +9,7 @@ import com.linkedin.venice.migration.MigrationPushStrategy;
 public enum Arg {
   ACCESS_CONTROL("access-control", "acl", true, "Enable/disable store-level access control"),
   URL("url", "u", true, "Venice url, eg. http://localhost:1689  This can be a router or a controller"),
+  VENICE_ZOOKEEPER_URL("venice-zookeeper-url", "vzu", true, "Venice Zookeeper url, eg. localhost:2622"),
   CLUSTER("cluster", "c", true, "Name of Venice cluster"),
   CLUSTER_SRC("cluster-src", "cs", true, "Store migration original Venice cluster name"),
   CLUSTER_DEST("cluster-dest", "cd", true, "Store migration destination Venice cluster name"),
@@ -20,6 +21,7 @@ public enum Arg {
   KEY_SCHEMA("key-schema-file", "ks", true, "Path to text file with key schema"),
   VALUE_SCHEMA_ID("value-schema-id", "vid", true, "value schema id"),
   VALUE_SCHEMA("value-schema-file", "vs", true, "Path to text file with value schema"),
+  ZK_SSL_CONFIG_FILE("zk-ssl-config-file", "zscf", true, "Path to text file with ZK SSL configs"),
   DERIVED_SCHEMA_ID("derived-schema-id", "did", true, "derived schema id"),
   DERIVED_SCHEMA("derived-schema-file", "ds", true, "Path to text file with derived schema"),
   OWNER("owner", "o", true, "Owner email for new store creation"),
@@ -79,6 +81,10 @@ public enum Arg {
   ),
   CHUNKING_ENABLED(
       "chunking-enabled", "ce", true, "Enable/Disable value chunking, mostly for large value store support"
+  ),
+  RMD_CHUNKING_ENABLED(
+      "rmd-chunking-enabled", "rce", true,
+      "Enable/Disable replication metadata chunking, mostly for Active/Active replication enabled store with partial update requirement support"
   ),
   INCREMENTAL_PUSH_ENABLED(
       "incremental-push-enabled", "ipe", true, "a flag to see if the store supports incremental push or not"
@@ -221,7 +227,10 @@ public enum Arg {
   DISABLE_LOG("disable-log", "dl", false, "Disable logs from internal classes. Only print command output on console"),
   STORE_VIEW_CONFIGS(
       "storage-view-configs", "svc", true,
-      "Config that describes views to be added for a store.  Input is a json map.  Example: {\"ExampleView\": {\"viewType\": \"CHANGE_CAPTURE\",\"params\": {}}}"
+      "Config that describes views to be added for a store.  Input is a json map.  Example: {\"ExampleView\": {\"viewClassName\": \"com.linkedin.venice.views.ChangeCaptureView\",\"params\": {}}}"
+  ),
+  PARTITION_DETAIL_ENABLED(
+      "partition-detail-enabled", "pde", true, "A flag to indicate whether to retrieve partition details"
   ),
 
   START_DATE("start-date", "sd", true, "Start date in PST. Example: 2020-10-10 10:10:10"),

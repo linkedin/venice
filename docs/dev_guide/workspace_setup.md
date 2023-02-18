@@ -50,8 +50,20 @@ with various values and find ones that work for you.
 # Run all checks, including ones that are in review/incubating stage, and do not fail the build
 ./gradlew spotbugs -Pspotallbugs -Pspotbugs.ignoreFailures
  
+# Run jacoco code coverage check, which will also generate jacoco report
+./gradlew jacocoTestCoverageVerification
+
+# Run jacoco code coverage check along with jacoco report and diff coverage check
+./gradlew jacocoTestCoverageVerification diffCoverage --continue
+ 
 # Run enabled checks only for main code and in da-vinci-client subproject
-./gradlew da-vinci-client:spotbugsMain
+./gradlew :clients:da-vinci-client:spotbugsMain
+
+ # Run jacoco code coverage check for a specific module along with jacoco report
+./gradlew :clients:da-vinci-client:jacocoTestCoverageVerification
+
+# Run jacoco code coverage check for a specific module along with jacoco report and diff coverage check
+./gradlew :clients:da-vinci-client:jacocoTestCoverageVerification diffCoverage
 
 # Run a specific test in any module
 $ ./gradlew :sub-module:testType --tests "fully.qualified.name.of.the.test"

@@ -35,7 +35,7 @@ public abstract class AbstractStoreTest {
 
   protected byte[] doGet(int partitionId, byte[] key) throws VeniceException {
     byte[] result;
-    result = testStore.get(partitionId, key, false);
+    result = testStore.get(partitionId, key);
     return result;
   }
 
@@ -162,8 +162,8 @@ public abstract class AbstractStoreTest {
 
   private List<ByteArray> initializeByteArrayList(int listSize, String prefix) {
     List<ByteArray> byteArrayList = new ArrayList<>();
-    for (Integer i = 1; i <= listSize; i++) {
-      byteArrayList.add(new ByteArray((prefix + i.toString()).getBytes()));
+    for (int i = 1; i <= listSize; i++) {
+      byteArrayList.add(new ByteArray((prefix + i).getBytes()));
     }
     return byteArrayList;
   }
@@ -340,6 +340,7 @@ public abstract class AbstractStoreTest {
       }
     } catch (Exception e) {
       // This is expected.
+      Assert.assertEquals(e.getClass(), VeniceException.class);
     }
   }
 }

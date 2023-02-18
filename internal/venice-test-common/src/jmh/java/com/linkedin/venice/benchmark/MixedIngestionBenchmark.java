@@ -84,7 +84,6 @@ public class MixedIngestionBenchmark {
   public void ingestionBenchMark() throws Exception {
     String storeName = Utils.getUniqueString("new_store");
     int dataSize = 1000000;
-    int partitionCount = dataSize / partitionSize;
     cluster.getNewStore(storeName);
     VersionCreationResponse response = cluster.getNewVersion(storeName, dataSize);
 

@@ -62,6 +62,7 @@ import static com.linkedin.venice.Arg.OWNER;
 import static com.linkedin.venice.Arg.PARTITIONER_CLASS;
 import static com.linkedin.venice.Arg.PARTITIONER_PARAMS;
 import static com.linkedin.venice.Arg.PARTITION_COUNT;
+import static com.linkedin.venice.Arg.PARTITION_DETAIL_ENABLED;
 import static com.linkedin.venice.Arg.PRINCIPAL;
 import static com.linkedin.venice.Arg.PROGRESS_INTERVAL;
 import static com.linkedin.venice.Arg.PUSH_ID;
@@ -74,6 +75,7 @@ import static com.linkedin.venice.Arg.REGULAR_VERSION_ETL_ENABLED;
 import static com.linkedin.venice.Arg.REPLICATE_ALL_CONFIGS;
 import static com.linkedin.venice.Arg.REPLICATION_FACTOR;
 import static com.linkedin.venice.Arg.RETRY;
+import static com.linkedin.venice.Arg.RMD_CHUNKING_ENABLED;
 import static com.linkedin.venice.Arg.SERVER_KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND;
 import static com.linkedin.venice.Arg.SKIP_DIV;
 import static com.linkedin.venice.Arg.SOURCE_FABRIC;
@@ -91,11 +93,13 @@ import static com.linkedin.venice.Arg.URL;
 import static com.linkedin.venice.Arg.VALUE_SCHEMA;
 import static com.linkedin.venice.Arg.VALUE_SCHEMA_ID;
 import static com.linkedin.venice.Arg.VENICE_CLIENT_SSL_CONFIG_FILE;
+import static com.linkedin.venice.Arg.VENICE_ZOOKEEPER_URL;
 import static com.linkedin.venice.Arg.VERSION;
 import static com.linkedin.venice.Arg.VOLDEMORT_STORE;
 import static com.linkedin.venice.Arg.VSON_STORE;
 import static com.linkedin.venice.Arg.WRITEABILITY;
 import static com.linkedin.venice.Arg.WRITE_COMPUTATION_ENABLED;
+import static com.linkedin.venice.Arg.ZK_SSL_CONFIG_FILE;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.Arrays;
@@ -148,7 +152,10 @@ public enum Command {
       new Arg[] { URL, CLUSTER, SYSTEM_STORE_TYPE }
   ), SET_VERSION("set-version", "Set the version that will be served", new Arg[] { URL, CLUSTER, STORE, VERSION }),
   ADD_SCHEMA("add-schema", "", new Arg[] { URL, CLUSTER, STORE, VALUE_SCHEMA }),
-  ADD_DERIVED_SCHEMA("add-derived-schema", "", new Arg[] { URL, CLUSTER, STORE, VALUE_SCHEMA_ID, DERIVED_SCHEMA }),
+  ADD_SCHEMA_TO_ZK(
+      "add-schema-to-zk", "",
+      new Arg[] { VENICE_ZOOKEEPER_URL, CLUSTER, STORE, VALUE_SCHEMA, VALUE_SCHEMA_ID, ZK_SSL_CONFIG_FILE }
+  ), ADD_DERIVED_SCHEMA("add-derived-schema", "", new Arg[] { URL, CLUSTER, STORE, VALUE_SCHEMA_ID, DERIVED_SCHEMA }),
   REMOVE_DERIVED_SCHEMA(
       "remove-derived-schema", "remove derived schema for a given store by the value and derived schema Ids",
       new Arg[] { URL, CLUSTER, STORE, VALUE_SCHEMA_ID, DERIVED_SCHEMA_ID }
@@ -196,7 +203,7 @@ public enum Command {
           AMPLIFICATION_FACTOR, READABILITY, WRITEABILITY, STORAGE_QUOTA, HYBRID_STORE_OVERHEAD_BYPASS, READ_QUOTA,
           HYBRID_REWIND_SECONDS, HYBRID_OFFSET_LAG, HYBRID_TIME_LAG, HYBRID_DATA_REPLICATION_POLICY,
           HYBRID_BUFFER_REPLAY_POLICY, ACCESS_CONTROL, COMPRESSION_STRATEGY, CLIENT_DECOMPRESSION_ENABLED,
-          CHUNKING_ENABLED, BATCH_GET_LIMIT, NUM_VERSIONS_TO_PRESERVE, WRITE_COMPUTATION_ENABLED,
+          CHUNKING_ENABLED, RMD_CHUNKING_ENABLED, BATCH_GET_LIMIT, NUM_VERSIONS_TO_PRESERVE, WRITE_COMPUTATION_ENABLED,
           READ_COMPUTATION_ENABLED, LEADER_FOLLOWER_MODEL_ENABLED, BACKUP_STRATEGY,
           AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED, INCREMENTAL_PUSH_ENABLED, BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOUR,
           HYBRID_STORE_DISK_QUOTA_ENABLED, REGULAR_VERSION_ETL_ENABLED, FUTURE_VERSION_ETL_ENABLED,
@@ -382,7 +389,7 @@ public enum Command {
   ),
   LIST_STORE_PUSH_INFO(
       "list-store-push-info", "List information about current pushes and push history for a specific store.",
-      new Arg[] { URL, CLUSTER, STORE }
+      new Arg[] { URL, CLUSTER, STORE }, new Arg[] { PARTITION_DETAIL_ENABLED }
   ),
   UPDATE_KAFKA_TOPIC_LOG_COMPACTION(
       "update-kafka-topic-log-compaction", "Update log compaction config of a topic through controllers",
@@ -487,7 +494,7 @@ public enum Command {
     return sj.toString();
   }
 
-  public static Comparator<Command> commandComparator = new Comparator<Command>() {
+  public static final Comparator<Command> commandComparator = new Comparator<Command>() {
     public int compare(Command c1, Command c2) {
       return c1.commandName.compareTo(c2.commandName);
     }

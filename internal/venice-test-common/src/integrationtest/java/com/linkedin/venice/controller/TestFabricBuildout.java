@@ -20,16 +20,14 @@ import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
 import com.linkedin.venice.meta.StoreInfo;
-import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -41,10 +39,8 @@ public class TestFabricBuildout {
 
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
   private static final int NUMBER_OF_CLUSTERS = 1;
-  private static final String[] CLUSTER_NAMES =
-      IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new); // ["venice-cluster0",
-                                                                                                         // "venice-cluster1",
-                                                                                                         // ...];
+  private String[] clusterNames;
+  private String[] dcNames;
 
   private List<VeniceMultiClusterWrapper> childDatacenters;
   private List<VeniceControllerWrapper> parentControllers;
@@ -72,8 +68,11 @@ public class TestFabricBuildout {
         Optional.of(new VeniceProperties(serverProperties)),
         false);
 
-    childDatacenters = multiColoMultiClusterWrapper.getClusters();
+    childDatacenters = multiColoMultiClusterWrapper.getChildRegions();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
+
+    clusterNames = multiColoMultiClusterWrapper.getClusterNames();
+    dcNames = multiColoMultiClusterWrapper.getChildRegionNames().toArray(new String[0]);
   }
 
   @AfterClass(alwaysRun = true)
@@ -83,12 +82,11 @@ public class TestFabricBuildout {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testStoresMetadataCopyOver() {
-    String clusterName = CLUSTER_NAMES[0];
+    String clusterName = clusterNames[0];
     String storeName = Utils.getUniqueString("store");
 
     // Test the admin channel
-    String parentControllerUrls =
-        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
+    String parentControllerUrls = multiColoMultiClusterWrapper.getControllerConnectString();
 
     try (
         ControllerClient parentControllerClient =
@@ -98,21 +96,21 @@ public class TestFabricBuildout {
       // Create a test store only in dc0 colo
       NewStoreResponse newStoreResponse = dc0Client.retryableRequest(
           3,
-          c -> c.createNewStore(storeName, "", "\"string\"", TestPushUtils.USER_SCHEMA_STRING_SIMPLE_WITH_DEFAULT));
+          c -> c.createNewStore(storeName, "", "\"string\"", TestWriteUtils.USER_SCHEMA_STRING_SIMPLE_WITH_DEFAULT));
       Assert.assertFalse(
           newStoreResponse.isError(),
           "The NewStoreResponse returned an error: " + newStoreResponse.getError());
       // Enable read compute to test superset schema registration.
       Assert.assertFalse(
           dc0Client.updateStore(storeName, new UpdateStoreQueryParams().setReadComputationEnabled(true)).isError());
-      Assert.assertFalse(dc0Client.addValueSchema(storeName, TestPushUtils.USER_SCHEMA_STRING_WITH_DEFAULT).isError());
+      Assert.assertFalse(dc0Client.addValueSchema(storeName, TestWriteUtils.USER_SCHEMA_STRING_WITH_DEFAULT).isError());
       checkStoreConfig(dc0Client, storeName);
       // Mimic source fabric store-level execution id
       Assert.assertFalse(
           dc0Client.updateAdminTopicMetadata(2L, Optional.of(storeName), Optional.empty(), Optional.empty()).isError());
 
       // Call metadata copy over to copy dc0's store configs to dc1
-      parentControllerClient.copyOverStoreMetadata("dc-0", "dc-1", storeName);
+      parentControllerClient.copyOverStoreMetadata(dcNames[0], dcNames[1], storeName);
       ControllerClient dc1Client = ControllerClient
           .constructClusterControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString());
       checkStoreConfig(dc1Client, storeName);
@@ -124,7 +122,7 @@ public class TestFabricBuildout {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testStartFabricBuildout() throws Exception {
-    String clusterName = CLUSTER_NAMES[0];
+    String clusterName = clusterNames[0];
     try (
         ControllerClient childControllerClient0 =
             new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
@@ -154,7 +152,7 @@ public class TestFabricBuildout {
       checkStoreConfigAndCurrentVersion(childControllerClient1, testStoreName1, 1);
 
       String[] args = { "--start-fabric-buildout", "--url", parentControllers.get(0).getControllerUrl(), "--cluster",
-          clusterName, "--source-fabric", "dc-0", "--dest-fabric", "dc-1" };
+          clusterName, "--source-fabric", dcNames[0], "--dest-fabric", dcNames[1] };
       AdminTool.main(args);
 
       checkStoreConfigAndCurrentVersion(childControllerClient1, testStoreName1, 1);
@@ -164,9 +162,8 @@ public class TestFabricBuildout {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testCompareStore() {
-    String clusterName = CLUSTER_NAMES[0];
-    String parentControllerUrls =
-        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
+    String clusterName = clusterNames[0];
+    String parentControllerUrls = multiColoMultiClusterWrapper.getControllerConnectString();
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrls);
         ControllerClient childControllerClient0 =
             new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
@@ -174,11 +171,11 @@ public class TestFabricBuildout {
             new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString())) {
       String testStoreName = Utils.getUniqueString("test-store");
       NewStoreResponse newStoreResponse = childControllerClient0
-          .createNewStore(testStoreName, "test", "\"string\"", TestPushUtils.NESTED_SCHEMA_STRING);
+          .createNewStore(testStoreName, "test", "\"string\"", TestWriteUtils.NESTED_SCHEMA_STRING);
       Assert.assertFalse(newStoreResponse.isError());
       checkStoreConfig(childControllerClient0, testStoreName);
       newStoreResponse = childControllerClient1
-          .createNewStore(testStoreName, "test", "\"string\"", TestPushUtils.NESTED_SCHEMA_STRING);
+          .createNewStore(testStoreName, "test", "\"string\"", TestWriteUtils.NESTED_SCHEMA_STRING);
       Assert.assertFalse(newStoreResponse.isError());
       checkStoreConfig(childControllerClient1, testStoreName);
 
@@ -187,10 +184,10 @@ public class TestFabricBuildout {
           childControllerClient0.emptyPush(testStoreName, Utils.getUniqueString("empty-push-1"), 1L);
       Assert.assertFalse(versionCreationResponse.isError());
       SchemaResponse schemaResponse =
-          childControllerClient0.addValueSchema(testStoreName, TestPushUtils.NESTED_SCHEMA_STRING_V2);
+          childControllerClient0.addValueSchema(testStoreName, TestWriteUtils.NESTED_SCHEMA_STRING_V2);
       Assert.assertFalse(schemaResponse.isError());
 
-      StoreComparisonResponse response = parentControllerClient.compareStore(testStoreName, "dc-0", "dc-1");
+      StoreComparisonResponse response = parentControllerClient.compareStore(testStoreName, dcNames[0], dcNames[1]);
       // Make sure the diffs are discovered.
       Assert.assertFalse(response.getPropertyDiff().isEmpty());
       Assert.assertFalse(response.getSchemaDiff().isEmpty());

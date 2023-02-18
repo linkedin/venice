@@ -6,4 +6,9 @@ dependencies {
   implementation libraries.conscrypt
   testImplementation project (':clients:venice-thin-client')
   testImplementation project (':internal:venice-test-common').sourceSets.integrationTest.output
+  testImplementation libraries.fastUtil
+}
+
+ext {
+  jacocoCoverageThreshold = 0.00
 }

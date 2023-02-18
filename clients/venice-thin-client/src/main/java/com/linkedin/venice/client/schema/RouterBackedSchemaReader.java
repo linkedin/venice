@@ -11,6 +11,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.SchemaReader;
+import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.RetryUtils;
@@ -39,13 +40,14 @@ public class RouterBackedSchemaReader implements SchemaReader {
   private static final Logger LOGGER = LogManager.getLogger(RouterBackedSchemaReader.class);
   private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
   private final Optional<Schema> readerSchema;
-  private Schema keySchema;
+  private volatile Schema keySchema;
   private final Map<Integer, Schema> valueSchemaMap = new VeniceConcurrentHashMap<>();
   private final Map<Schema, Integer> valueSchemaMapR = new VeniceConcurrentHashMap<>();
   private final AtomicReference<SchemaEntry> latestValueSchemaEntry = new AtomicReference<>();
   private final String storeName;
   private final AbstractAvroStoreClient storeClient;
   private final Predicate<Schema> preferredSchemaFilter;
+  private final ICProvider icProvider;
 
   RouterBackedSchemaReader(Supplier<AbstractAvroStoreClient> clientSupplier) throws VeniceClientException {
     this(clientSupplier, Optional.empty(), Optional.empty());
@@ -55,11 +57,20 @@ public class RouterBackedSchemaReader implements SchemaReader {
       Supplier<AbstractAvroStoreClient> clientSupplier,
       Optional<Schema> readerSchema,
       Optional<Predicate<Schema>> preferredSchemaFilter) {
+    this(clientSupplier, readerSchema, preferredSchemaFilter, null);
+  }
+
+  public RouterBackedSchemaReader(
+      Supplier<AbstractAvroStoreClient> clientSupplier,
+      Optional<Schema> readerSchema,
+      Optional<Predicate<Schema>> preferredSchemaFilter,
+      ICProvider icProvider) {
     this.storeClient = clientSupplier.get();
     this.storeName = this.storeClient.getStoreName();
     this.readerSchema = readerSchema;
     this.preferredSchemaFilter = preferredSchemaFilter.orElse(schema -> true);
     readerSchema.ifPresent(AvroSchemaUtils::validateAvroSchemaStr);
+    this.icProvider = icProvider;
   }
 
   @Override
@@ -158,8 +169,15 @@ public class RouterBackedSchemaReader implements SchemaReader {
   private SchemaEntry fetchSingleSchema(String requestPath, boolean isValueSchema) throws VeniceClientException {
     SchemaEntry schemaEntry = null;
     try {
+      CompletableFuture<byte[]> responseFuture;
+      if (icProvider != null) {
+        responseFuture = icProvider.call(this.getClass().getCanonicalName(), () -> storeClient.getRaw(requestPath));
+      } else {
+        responseFuture = (CompletableFuture<byte[]>) storeClient.getRaw(requestPath);
+      }
+
       byte[] response = RetryUtils.executeWithMaxAttempt(
-          () -> ((CompletableFuture<byte[]>) storeClient.getRaw(requestPath)).get(),
+          () -> (responseFuture.get()),
           3,
           Duration.ofNanos(1),
           Arrays.asList(ExecutionException.class));
@@ -167,6 +185,7 @@ public class RouterBackedSchemaReader implements SchemaReader {
         LOGGER.warn("Requested schema doesn't exist for request path: {}", requestPath);
         return null;
       }
+
       SchemaResponse schemaResponse = OBJECT_MAPPER.readValue(response, SchemaResponse.class);
       if (!schemaResponse.isError()) {
         Schema writerSchema = isValueSchema

@@ -49,7 +49,6 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
     /** TODO: Consider making these default settings part of {@link VeniceWriter} or {@link KafkaProducerWrapper} */
     Properties properties = getKafkaPropertiesFromVeniceProps(props);
 
-    // TODO : For sending control message, this is not required. Move this higher in the stack.
     validateClassProp(
         properties,
         strictConfigs,

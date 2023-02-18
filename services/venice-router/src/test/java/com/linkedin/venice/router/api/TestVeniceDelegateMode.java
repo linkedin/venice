@@ -545,7 +545,6 @@ public class TestVeniceDelegateMode {
     Instance instance2 = new Instance("host2_123", "host2", 123);
     Instance instance3 = new Instance("host3_123", "host3", 123);
     Instance instance4 = new Instance("host4_123", "host4", 123);
-    Instance instance5 = new Instance("host5_123", "host5", 123);
     List<Instance> instanceListForP1 = new ArrayList<>();
     instanceListForP1.add(instance1);
     instanceListForP1.add(instance2);
@@ -561,9 +560,7 @@ public class TestVeniceDelegateMode {
     List<Instance> instanceListForP5 = new ArrayList<>();
     instanceListForP5.add(instance2);
     instanceListForP5.add(instance4);
-    List<Instance> instanceListForP6 = new ArrayList<>();
-    instanceListForP6.add(instance5);
-    instanceListForP6.add(instance3);
+
     Map<String, List<Instance>> partitionInstanceMap = new HashMap<>();
     partitionInstanceMap.put(p1, instanceListForP1);
     partitionInstanceMap.put(p2, instanceListForP2);

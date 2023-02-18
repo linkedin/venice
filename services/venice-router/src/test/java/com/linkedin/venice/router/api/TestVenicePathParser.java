@@ -92,7 +92,6 @@ public class TestVenicePathParser {
                 requestType,
                 mock(ReadOnlyStoreRepository.class),
                 true)));
-    doReturn(10).when(MOCK_ROUTER_CONFIG).getRouterMultiGetDecompressionThreads();
   }
 
   @AfterClass

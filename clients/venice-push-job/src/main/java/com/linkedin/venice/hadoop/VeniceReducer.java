@@ -32,6 +32,7 @@ import com.linkedin.venice.writer.DeleteMetadata;
 import com.linkedin.venice.writer.PutMetadata;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.io.IOException;
@@ -388,18 +389,21 @@ public class VeniceReducer extends AbstractMapReduceTask
     }
     writerProps.put(ConfigKeys.PUSH_JOB_MAP_REDUCE_JOB_ID, mapReduceJobId.getId());
     VeniceWriterFactory veniceWriterFactoryFactory = new VeniceWriterFactory(writerProps);
-    boolean chunkingEnabled = props.getBoolean(VeniceWriter.ENABLE_CHUNKING);
+    boolean chunkingEnabled = props.getBoolean(VeniceWriter.ENABLE_CHUNKING, false);
+    boolean rmdChunkingEnabled = props.getBoolean(VeniceWriter.ENABLE_RMD_CHUNKING, false);
     VenicePartitioner partitioner = PartitionUtils.getVenicePartitioner(props);
-    return veniceWriterFactoryFactory.createVeniceWriter(
-        props.getString(TOPIC_PROP),
-        new DefaultSerializer(),
-        new DefaultSerializer(),
-        new DefaultSerializer(),
-        Optional.of(chunkingEnabled),
-        SystemTime.INSTANCE,
-        partitioner,
-        Optional.empty(),
-        Optional.empty());
+
+    VeniceWriterOptions options =
+        new VeniceWriterOptions.Builder(props.getString(TOPIC_PROP)).setKeySerializer(new DefaultSerializer())
+            .setValueSerializer(new DefaultSerializer())
+            .setWriteComputeSerializer(new DefaultSerializer())
+            .setChunkingEnabled(chunkingEnabled)
+            .setRmdChunkingEnabled(rmdChunkingEnabled)
+            .setTime(SystemTime.INSTANCE)
+            .setPartitioner(partitioner)
+            .setPartitionCount(Optional.empty())
+            .build();
+    return veniceWriterFactoryFactory.createVeniceWriter(options);
   }
 
   private void telemetry() {
@@ -588,7 +592,7 @@ public class VeniceReducer extends AbstractMapReduceTask
         LOGGER.error("Exception thrown in send message callback. ", e);
         sendException = e;
       } else {
-        long messageCount = messageCompleted.incrementAndGet();
+        messageCompleted.incrementAndGet();
         int partition = recordMetadata.partition();
         partitionSet.add(partition);
         if (partition != getTaskId()) {

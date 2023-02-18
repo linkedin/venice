@@ -7,7 +7,6 @@ import com.linkedin.venice.meta.DataRecoveryVersionConfigImpl;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
-import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.PartitionerConfigImpl;
 import com.linkedin.venice.meta.Version;
@@ -36,8 +35,6 @@ public class VersionJsonSerializerTest {
     version.setIncrementalPushEnabled(true);
     version.setUseVersionLevelHybridConfig(true);
     version.setUseVersionLevelIncrementalPushEnabled(true);
-    // during deser we hardcode the policy; hence need to update it here to make assertion work
-    version.setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME);
 
     byte[] data = versionVeniceJsonSerializer.serialize(version, "");
     Version newVersion = versionVeniceJsonSerializer.deserialize(data, "");

@@ -1,8 +1,6 @@
 package com.linkedin.venice.utils;
 
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.*;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -39,6 +37,8 @@ public class MapTest {
   @DataProvider
   Object[][] notEmptyMapImplementations() {
     class NotEmptyHashMap<K, V> extends HashMap<K, V> {
+      private static final long serialVersionUID = 1L;
+
       @Override
       public int size() {
         return super.size() + 1;
@@ -51,6 +51,8 @@ public class MapTest {
     }
 
     class NotEmptyLinkedHashMap<K, V> extends LinkedHashMap<K, V> {
+      private static final long serialVersionUID = 1L;
+
       @Override
       public int size() {
         return super.size() + 1;
@@ -103,6 +105,17 @@ public class MapTest {
     public int hashCode() {
       return 0;
     } // Returning same hashcode so that all keys landup to same bucket
+
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) {
+        return true;
+      }
+      if (o == null || getClass() != o.getClass()) {
+        return false;
+      }
+      return ((KeyWithSameHashCode) o).i == i;
+    }
 
     @Override
     public int compareTo(KeyWithSameHashCode x) {

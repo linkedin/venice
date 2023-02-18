@@ -44,7 +44,7 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
     this.longTailRetryEnabledForSingleGet = clientConfig.isLongTailRetryEnabledForSingleGet();
     this.longTailRetryEnabledForBatchGet = clientConfig.isLongTailRetryEnabledForBatchGet();
     this.longTailRetryThresholdForSingleGetInMicroseconds =
-        clientConfig.getLongTailRetryThresholdForSingletGetInMicroSeconds();
+        clientConfig.getLongTailRetryThresholdForSingleGetInMicroSeconds();
     this.longTailRetryThresholdForBatchGetInMicroseconds =
         clientConfig.getLongTailRetryThresholdForBatchGetInMicroSeconds();
   }
@@ -82,7 +82,11 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
 
   /**
    * TODO:
-   * 1. Limit the retry volume.
+   * Limit the retry volume: Even though retry for a single request is being scheduled at max twice (once
+   * via scheduler (LONG_TAIL_RETRY) and once instant (ERROR_RETRY) if originalRequestFuture fails), but there
+   * is no way to control the total allowed retry per node. It would be good to design some mechanism to make
+   * it configurable, such as retry at most the slowest 5% of traffic, otherwise, too many retry requests
+   * could cause cascading failure.
    */
   @Override
   protected CompletableFuture<V> get(GetRequestContext requestContext, K key) throws VeniceClientException {
@@ -137,11 +141,13 @@ public class RetriableAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCl
     });
 
     CompletableFuture.allOf(originalRequestFuture, retryFuture).whenComplete((value, throwable) -> {
+      /**
+       * If any of the futures completes with a successful result, {@link finalFuture} should
+       * have been completed with the successful result, so don't have to do anything else here.
+       */
       if (originalRequestFuture.isCompletedExceptionally() && retryFuture.isCompletedExceptionally()) {
         /**
-         * If any of the futures completes with a successful result, {@link finalFuture} should be completed
-         * with the successful result, and the following statement will have no effect.
-         * If non of the futures completes with a successful result, {@link finalFuture} must haven't completed
+         * If none of the futures completes with a successful result, {@link finalFuture} must haven't completed
          * yet, so {@link finalFuture} will be completed with an exception thrown by either future.
          */
         finalFuture.completeExceptionally(throwable);

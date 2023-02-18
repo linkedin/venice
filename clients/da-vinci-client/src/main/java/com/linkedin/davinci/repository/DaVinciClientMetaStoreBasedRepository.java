@@ -99,7 +99,7 @@ public class DaVinciClientMetaStoreBasedRepository extends NativeMetadataReposit
     ClientConfig clonedClientConfig = ClientConfig.cloneConfig(clientConfig)
         .setStoreName(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getSystemStoreName())
         .setSpecificValueClass(StoreMetaValue.class);
-    metaStoreSchemaReader = ClientFactory.getSchemaReader(clonedClientConfig);
+    metaStoreSchemaReader = ClientFactory.getSchemaReader(clonedClientConfig, null);
     registerStoreDataChangedListener(metaSystemStoreChangeListener);
   }
 
@@ -182,7 +182,7 @@ public class DaVinciClientMetaStoreBasedRepository extends NativeMetadataReposit
   }
 
   @Override
-  public Optional<SchemaEntry> getSupersetSchema(String storeName) {
+  public SchemaEntry getSupersetSchema(String storeName) {
     if (VeniceSystemStoreType.getSystemStoreType(storeName) == VeniceSystemStoreType.META_STORE) {
       throw new VeniceException("Meta store does not have superset schema. Store name: " + storeName);
     } else {

@@ -22,32 +22,38 @@ public class KeyWithChunkingSuffixSerializer {
     this.serializedNonChunkKeySuffix = chunkedKeySuffixSerializer.serialize(IGNORED_TOPIC_NAME, NON_CHUNK_KEY_SUFFIX);
   }
 
-  public byte[] serializeChunkedKey(byte[] key, ChunkedKeySuffix chunkedKeySuffix) {
+  /**
+   * @return an exactly-sized {@link ByteBuffer} containing the key appended by the suffix
+   */
+  public ByteBuffer serializeChunkedKey(byte[] key, ChunkedKeySuffix chunkedKeySuffix) {
     byte[] encodedChunkedKeySuffix = chunkedKeySuffixSerializer.serialize(IGNORED_TOPIC_NAME, chunkedKeySuffix);
     return serialize(key, encodedChunkedKeySuffix);
+  }
+
+  /**
+   * @return an exactly-sized {@link ByteBuffer} containing the key appended by the standard suffix for non-chunked keys
+   */
+  public ByteBuffer serializeNonChunkedKeyAsByteBuffer(byte[] key) {
+    return serialize(key, serializedNonChunkKeySuffix);
   }
 
   public byte[] serializeNonChunkedKey(byte[] key) {
-    return serialize(key, serializedNonChunkKeySuffix);
+    return serializeNonChunkedKeyAsByteBuffer(key).array();
   }
 
-  public byte[] serialize(byte[] key, byte[] encodedChunkedKeySuffix) {
+  private ByteBuffer serialize(byte[] key, byte[] encodedChunkedKeySuffix) {
     ByteBuffer target = ByteBuffer.allocate(key.length + encodedChunkedKeySuffix.length);
     target.put(key);
     target.put(encodedChunkedKeySuffix);
-    return target.array();
+    target.position(0);
+    return target;
   }
 
-  public byte[] serializeChunkedKey(ByteBuffer key, ChunkedKeySuffix chunkedKeySuffix) {
-    byte[] encodedChunkedKeySuffix = chunkedKeySuffixSerializer.serialize(IGNORED_TOPIC_NAME, chunkedKeySuffix);
-    return serialize(key, encodedChunkedKeySuffix);
-  }
-
-  public byte[] serializeNonChunkedKey(ByteBuffer key) {
+  public ByteBuffer serializeNonChunkedKey(ByteBuffer key) {
     return serialize(key, serializedNonChunkKeySuffix);
   }
 
-  private byte[] serialize(ByteBuffer key, byte[] encodedChunkedKeySuffix) {
+  private ByteBuffer serialize(ByteBuffer key, byte[] encodedChunkedKeySuffix) {
     /**
      * Here will always allocate a new {@link ByteBuffer} to accommodate} the combination of key and chunked
      * key suffix since we don't know whether reusing the original {@link ByteBuffer} will cause any side effect
@@ -60,6 +66,7 @@ public class KeyWithChunkingSuffixSerializer {
     target.put(key);
     key.reset();
     target.put(encodedChunkedKeySuffix);
-    return target.array();
+    target.position(0);
+    return target;
   }
 }

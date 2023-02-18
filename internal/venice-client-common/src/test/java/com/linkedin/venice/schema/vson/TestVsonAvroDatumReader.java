@@ -33,7 +33,6 @@ public class TestVsonAvroDatumReader {
     testReader("\"string\"", () -> "123");
 
     String byteSchema = "\"bytes\"";
-    Schema avroSchema = VsonAvroSchemaAdapter.parse(byteSchema);
     byte[] randomBytes = new byte[10];
     ThreadLocalRandom.current().nextBytes(randomBytes);
     testReader(

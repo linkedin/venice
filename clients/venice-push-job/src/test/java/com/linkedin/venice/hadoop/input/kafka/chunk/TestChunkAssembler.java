@@ -27,10 +27,8 @@ import org.testng.annotations.Test;
 
 
 public class TestChunkAssembler {
-
-  // Since every invocation on this method should clear its internal state, all tests sharing one instance should work
-  private final ChunkAssembler chunkAssembler = new ChunkAssembler();
-
+  private final ChunkAssembler chunkAssembler = new ChunkAssembler(false);
+  private final ChunkAssembler rmdChunkingEnabledChunkAssembler = new ChunkAssembler(true);
   private static final int CHUNK_MANIFEST_SCHEMA_ID =
       AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
   private static final int CHUNK_VALUE_SCHEMA_ID = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
@@ -52,21 +50,20 @@ public class TestChunkAssembler {
     final int eachCountSizeInBytes = 20;
     final int segmentNumber = 12;
     final int messageSequenceNumber = 34;
-    final int currStartingByteValue = 0;
     final ChunkedValueManifest chunkedValueManifest = new ChunkedValueManifest();
     chunkedValueManifest.keysWithChunkIdSuffix = new ArrayList<>(totalChunkCount);
-
     final byte[] serializedKey = createChunkBytes(0, 5);
+
+    ChunkInfo valueChunkInfo = new ChunkInfo(totalChunkCount, eachCountSizeInBytes);
+
     List<BytesWritable> values = createKafkaInputMapperValues(
         serializedKey,
-        totalChunkCount,
-        currStartingByteValue,
-        eachCountSizeInBytes,
+        valueChunkInfo,
+        null,
         segmentNumber,
         messageSequenceNumber,
         VALUE_SCHEMA_ID,
         0);
-    Collections.shuffle(values);
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
 
@@ -76,29 +73,54 @@ public class TestChunkAssembler {
     Assert.assertEquals(assembledValue.getReplicationMetadataVersionId(), 1);
   }
 
+  // E.g. value_chunk_0, value_chunk_1, ..., value_chunk_N, rmd_chunk_0, rmd_chunk1, ..., rmd_chunk_M, chunk_manifest
+  @Test
+  public void testAssembleOneCompleteLargeValueWithRmdChunking() {
+    final int segmentNumber = 12;
+    final int messageSequenceNumber = 34;
+    ChunkInfo valueChunkInfo = new ChunkInfo(10, 20);
+    ChunkInfo rmdChunkInfo = new ChunkInfo(20, 10);
+    final byte[] serializedKey = createChunkBytes(0, 5);
+    List<BytesWritable> values = createKafkaInputMapperValues(
+        serializedKey,
+        valueChunkInfo,
+        rmdChunkInfo,
+        segmentNumber,
+        messageSequenceNumber,
+        VALUE_SCHEMA_ID,
+        0);
+    ChunkAssembler.ValueBytesAndSchemaId assembledValue =
+        rmdChunkingEnabledChunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
+
+    Assert.assertNotNull(assembledValue);
+    Assert.assertEquals(assembledValue.getSchemaID(), VALUE_SCHEMA_ID);
+    Assert.assertEquals(
+        assembledValue.getBytes(),
+        createChunkBytes(0, valueChunkInfo.totalChunkCount * valueChunkInfo.eachCountSizeInBytes));
+    Assert.assertEquals(assembledValue.getReplicationMetadataVersionId(), 1);
+  }
+
   // E.g. chunk_0, chunk_1, … chunk_N (no manifest)
-  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*No regular value nor chunk manifest.*")
+  @Test
   public void testNoCompleteLargeValueWithMissingManifest() {
     final int totalChunkCount = 10;
     final int eachCountSizeInBytes = 20;
     final int segmentNumber = 12;
     final int messageSequenceNumber = 34;
-    final int currStartingByteValue = 0;
     final ChunkedValueManifest chunkedValueManifest = new ChunkedValueManifest();
     chunkedValueManifest.keysWithChunkIdSuffix = new ArrayList<>(totalChunkCount);
+    ChunkInfo valueChunkInfo = new ChunkInfo(totalChunkCount, eachCountSizeInBytes);
 
     final byte[] serializedKey = createChunkBytes(0, 5);
     List<BytesWritable> values = createKafkaInputMapperValues(
         serializedKey,
-        totalChunkCount,
-        currStartingByteValue,
-        eachCountSizeInBytes,
+        valueChunkInfo,
+        null,
         segmentNumber,
         messageSequenceNumber,
         VALUE_SCHEMA_ID,
         0);
-    values.remove(values.size() - 1); // Remove the last value which should be a manifest
-    Collections.shuffle(values);
+    values.remove(0); // Remove the first value which should be a manifest
 
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
@@ -112,21 +134,19 @@ public class TestChunkAssembler {
     final int eachCountSizeInBytes = 20;
     final int segmentNumber = 12;
     final int messageSequenceNumber = 34;
-    final int currStartingByteValue = 0;
+    ChunkInfo valueChunkInfo = new ChunkInfo(totalChunkCount, eachCountSizeInBytes);
 
     final byte[] serializedKey = createChunkBytes(0, 5);
     List<BytesWritable> values = createKafkaInputMapperValues(
         serializedKey,
-        totalChunkCount,
-        currStartingByteValue,
-        eachCountSizeInBytes,
+        valueChunkInfo,
+        null,
         segmentNumber,
         messageSequenceNumber,
         VALUE_SCHEMA_ID,
         0);
-    int indexOfMissingChunk = ThreadLocalRandom.current().nextInt(values.size() - 1);
+    int indexOfMissingChunk = ThreadLocalRandom.current().nextInt(values.size() - 2) + 1;
     values.remove(indexOfMissingChunk); // Remove a chunk
-    Collections.shuffle(values);
     chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
   }
 
@@ -140,7 +160,6 @@ public class TestChunkAssembler {
     final int totalChunkCount2 = 20;
     final int eachCountSizeInBytes2 = 15;
 
-    final int currStartingByteValue = 0;
     final ChunkId chunkId1 = new ChunkId();
     chunkId1.segmentNumber = 12;
     chunkId1.messageSequenceNumber = 34;
@@ -148,33 +167,31 @@ public class TestChunkAssembler {
     final ChunkId chunkId2 = new ChunkId();
     chunkId2.segmentNumber = 22;
     chunkId2.messageSequenceNumber = 54;
+    ChunkInfo valueChunkInfo1 = new ChunkInfo(totalChunkCount1, eachCountSizeInBytes1);
 
     final byte[] serializedKey = createChunkBytes(0, 5);
     List<BytesWritable> values1 = createKafkaInputMapperValues(
         serializedKey,
-        totalChunkCount1,
-        currStartingByteValue,
-        eachCountSizeInBytes1,
+        valueChunkInfo1,
+        null,
         chunkId1.segmentNumber,
         chunkId1.messageSequenceNumber,
         VALUE_SCHEMA_ID,
         0);
-
+    ChunkInfo valueChunkInfo2 = new ChunkInfo(totalChunkCount2, eachCountSizeInBytes2);
     List<BytesWritable> values2 = createKafkaInputMapperValues(
         serializedKey,
-        totalChunkCount2,
-        currStartingByteValue,
-        eachCountSizeInBytes2,
+        valueChunkInfo2,
+        null,
         chunkId2.segmentNumber,
         chunkId2.messageSequenceNumber,
         VALUE_SCHEMA_ID_2,
         totalChunkCount1 + 1);
 
-    values2.remove(values2.size() - 1); // Remove the manifest from the second sequence
+    values2.remove(0); // Remove the manifest from the second sequence
     List<BytesWritable> allValues = new ArrayList<>();
-    allValues.addAll(values1);
     allValues.addAll(values2);
-    Collections.shuffle(allValues);
+    allValues.addAll(values1);
 
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, allValues.iterator());
@@ -196,7 +213,6 @@ public class TestChunkAssembler {
     final int totalChunkCount2 = 20;
     final int eachCountSizeInBytes2 = 15;
 
-    final int currStartingByteValue = 0;
     final ChunkId chunkId1 = new ChunkId();
     chunkId1.segmentNumber = 12;
     chunkId1.messageSequenceNumber = 34;
@@ -204,13 +220,14 @@ public class TestChunkAssembler {
     final ChunkId chunkId2 = new ChunkId();
     chunkId2.segmentNumber = 22;
     chunkId2.messageSequenceNumber = 54;
+    ChunkInfo valueChunkInfo1 = new ChunkInfo(totalChunkCount1, eachCountSizeInBytes1);
+    ChunkInfo valueChunkInfo2 = new ChunkInfo(totalChunkCount2, eachCountSizeInBytes2);
 
     final byte[] serializedKey = createChunkBytes(0, 5);
     List<BytesWritable> values1 = createKafkaInputMapperValues(
         serializedKey,
-        totalChunkCount1,
-        currStartingByteValue,
-        eachCountSizeInBytes1,
+        valueChunkInfo1,
+        null,
         chunkId1.segmentNumber,
         chunkId1.messageSequenceNumber,
         VALUE_SCHEMA_ID,
@@ -218,19 +235,18 @@ public class TestChunkAssembler {
 
     List<BytesWritable> values2 = createKafkaInputMapperValues(
         serializedKey,
-        totalChunkCount2,
-        currStartingByteValue,
-        eachCountSizeInBytes2,
+        valueChunkInfo2,
+        null,
         chunkId2.segmentNumber,
         chunkId2.messageSequenceNumber,
         VALUE_SCHEMA_ID_2,
         totalChunkCount1);
 
-    int indexOfMissingChunk = ThreadLocalRandom.current().nextInt(values2.size() - 1);
+    int indexOfMissingChunk = ThreadLocalRandom.current().nextInt(values2.size() - 2) + 1;
     values2.remove(indexOfMissingChunk); // Remove a chunk from the second sequence
     List<BytesWritable> allValues = new ArrayList<>();
-    allValues.addAll(values1);
     allValues.addAll(values2);
+    allValues.addAll(values1);
     chunkAssembler.assembleAndGetValue(serializedKey, allValues.iterator());
   }
 
@@ -244,7 +260,6 @@ public class TestChunkAssembler {
     final int totalChunkCount2 = 20;
     final int eachCountSizeInBytes2 = 15;
 
-    final int currStartingByteValue = 0;
     final ChunkId chunkId1 = new ChunkId();
     chunkId1.segmentNumber = 12;
     chunkId1.messageSequenceNumber = 34;
@@ -252,13 +267,14 @@ public class TestChunkAssembler {
     final ChunkId chunkId2 = new ChunkId();
     chunkId2.segmentNumber = 22;
     chunkId2.messageSequenceNumber = 54; // Fresher large value
+    ChunkInfo valueChunkInfo1 = new ChunkInfo(totalChunkCount1, eachCountSizeInBytes1);
+    ChunkInfo valueChunkInfo2 = new ChunkInfo(totalChunkCount2, eachCountSizeInBytes2);
 
     final byte[] serializedKey = createChunkBytes(0, 5);
     List<BytesWritable> values1 = createKafkaInputMapperValues(
         serializedKey,
-        totalChunkCount1,
-        currStartingByteValue,
-        eachCountSizeInBytes1,
+        valueChunkInfo1,
+        null,
         chunkId1.segmentNumber,
         chunkId1.messageSequenceNumber,
         VALUE_SCHEMA_ID,
@@ -266,17 +282,15 @@ public class TestChunkAssembler {
 
     List<BytesWritable> values2 = createKafkaInputMapperValues(
         serializedKey,
-        totalChunkCount2,
-        currStartingByteValue,
-        eachCountSizeInBytes2,
+        valueChunkInfo2,
+        null,
         chunkId2.segmentNumber,
         chunkId2.messageSequenceNumber,
         VALUE_SCHEMA_ID_2,
         totalChunkCount1);
     List<BytesWritable> allValues = new ArrayList<>();
-    allValues.addAll(values1);
     allValues.addAll(values2);
-    Collections.shuffle(allValues);
+    allValues.addAll(values1);
 
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, allValues.iterator());
@@ -295,7 +309,6 @@ public class TestChunkAssembler {
     final int totalChunkCount2 = 20;
     final int eachCountSizeInBytes2 = 15;
 
-    final int currStartingByteValue = 0;
     final ChunkId chunkId1 = new ChunkId();
     chunkId1.segmentNumber = 12;
     chunkId1.messageSequenceNumber = 34;
@@ -303,13 +316,14 @@ public class TestChunkAssembler {
     final ChunkId chunkId2 = new ChunkId();
     chunkId2.segmentNumber = 22;
     chunkId2.messageSequenceNumber = 54; // Fresher large value
+    ChunkInfo valueChunkInfo1 = new ChunkInfo(totalChunkCount1, eachCountSizeInBytes1);
+    ChunkInfo valueChunkInfo2 = new ChunkInfo(totalChunkCount2, eachCountSizeInBytes2);
 
     final byte[] serializedKey = createChunkBytes(0, 5);
     List<BytesWritable> values1 = createKafkaInputMapperValues(
         serializedKey,
-        totalChunkCount1,
-        currStartingByteValue,
-        eachCountSizeInBytes1,
+        valueChunkInfo1,
+        null,
         chunkId1.segmentNumber,
         chunkId1.messageSequenceNumber,
         VALUE_SCHEMA_ID,
@@ -329,17 +343,15 @@ public class TestChunkAssembler {
 
     List<BytesWritable> values2 = createKafkaInputMapperValues(
         serializedKey,
-        totalChunkCount2,
-        currStartingByteValue,
-        eachCountSizeInBytes2,
+        valueChunkInfo2,
+        null,
         chunkId2.segmentNumber,
         chunkId2.messageSequenceNumber,
         VALUE_SCHEMA_ID_2,
         totalChunkCount1 + 1);
     List<BytesWritable> allValues = new ArrayList<>();
-    allValues.addAll(values1);
     allValues.addAll(values2);
-    Collections.shuffle(allValues);
+    allValues.addAll(values1);
 
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, allValues.iterator());
@@ -359,7 +371,6 @@ public class TestChunkAssembler {
     final int totalChunkCount2 = 20;
     final int eachCountSizeInBytes2 = 15;
 
-    final int currStartingByteValue = 0;
     final ChunkId chunkId1 = new ChunkId();
     chunkId1.segmentNumber = 12;
     chunkId1.messageSequenceNumber = 34;
@@ -367,13 +378,14 @@ public class TestChunkAssembler {
     final ChunkId chunkId2 = new ChunkId();
     chunkId2.segmentNumber = 22;
     chunkId2.messageSequenceNumber = 54; // Fresher large value
+    ChunkInfo valueChunkInfo1 = new ChunkInfo(totalChunkCount1, eachCountSizeInBytes1);
+    ChunkInfo valueChunkInfo2 = new ChunkInfo(totalChunkCount2, eachCountSizeInBytes2);
 
     final byte[] serializedKey = createChunkBytes(0, 5);
     List<BytesWritable> values1 = createKafkaInputMapperValues(
         serializedKey,
-        totalChunkCount1,
-        currStartingByteValue,
-        eachCountSizeInBytes1,
+        valueChunkInfo1,
+        null,
         chunkId1.segmentNumber,
         chunkId1.messageSequenceNumber,
         VALUE_SCHEMA_ID,
@@ -392,17 +404,15 @@ public class TestChunkAssembler {
 
     List<BytesWritable> values2 = createKafkaInputMapperValues(
         serializedKey,
-        totalChunkCount2,
-        currStartingByteValue,
-        eachCountSizeInBytes2,
+        valueChunkInfo2,
+        null,
         chunkId2.segmentNumber,
         chunkId2.messageSequenceNumber,
         VALUE_SCHEMA_ID_2,
         totalChunkCount1 + 1);
     List<BytesWritable> allValues = new ArrayList<>();
-    allValues.addAll(values1);
     allValues.addAll(values2);
-    Collections.shuffle(allValues);
+    allValues.addAll(values1);
 
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, allValues.iterator());
@@ -418,23 +428,21 @@ public class TestChunkAssembler {
     final int eachCountSizeInBytes = 20;
     final int segmentNumber = 12;
     final int messageSequenceNumber = 34;
-    final int currStartingByteValue = 0;
     final ChunkedValueManifest chunkedValueManifest = new ChunkedValueManifest();
     chunkedValueManifest.keysWithChunkIdSuffix = new ArrayList<>(totalChunkCount);
+    ChunkInfo valueChunkInfo = new ChunkInfo(totalChunkCount, eachCountSizeInBytes);
 
     final byte[] serializedKey = createChunkBytes(0, 5);
     List<BytesWritable> values = createKafkaInputMapperValues(
         serializedKey,
-        totalChunkCount,
-        currStartingByteValue,
-        eachCountSizeInBytes,
+        valueChunkInfo,
+        null,
         segmentNumber,
         messageSequenceNumber,
         VALUE_SCHEMA_ID,
         0);
     byte[] regularValueBytes = createChunkBytes(100, 23);
-    values.add(createRegularValue(regularValueBytes, VALUE_SCHEMA_ID_2, totalChunkCount + 1, MapperValueType.PUT));
-    Collections.shuffle(values);
+    values.add(0, createRegularValue(regularValueBytes, VALUE_SCHEMA_ID_2, totalChunkCount + 1, MapperValueType.PUT));
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
 
@@ -449,26 +457,24 @@ public class TestChunkAssembler {
     final int eachCountSizeInBytes = 20;
     final int segmentNumber = 12;
     final int messageSequenceNumber = 34;
-    final int currStartingByteValue = 0;
     final ChunkedValueManifest chunkedValueManifest = new ChunkedValueManifest();
     chunkedValueManifest.keysWithChunkIdSuffix = new ArrayList<>(totalChunkCount);
+    ChunkInfo valueChunkInfo = new ChunkInfo(totalChunkCount, eachCountSizeInBytes);
 
     final byte[] serializedKey = createChunkBytes(0, 5);
     List<BytesWritable> values = createKafkaInputMapperValues(
         serializedKey,
-        totalChunkCount,
-        currStartingByteValue,
-        eachCountSizeInBytes,
+        valueChunkInfo,
+        null,
         segmentNumber,
         messageSequenceNumber,
         VALUE_SCHEMA_ID,
         0);
     // Randomly remove a value to simulate the incomplete large value
-    values.remove(ThreadLocalRandom.current().nextInt(values.size()));
+    values.remove(ThreadLocalRandom.current().nextInt(values.size() - 2) + 1);
 
     byte[] regularValueBytes = createChunkBytes(100, 23);
-    values.add(createRegularValue(regularValueBytes, VALUE_SCHEMA_ID_2, totalChunkCount + 1, MapperValueType.PUT));
-    Collections.shuffle(values);
+    values.add(0, createRegularValue(regularValueBytes, VALUE_SCHEMA_ID_2, totalChunkCount + 1, MapperValueType.PUT));
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
 
@@ -492,8 +498,8 @@ public class TestChunkAssembler {
     values.add(createRegularValue(value1Bytes, VALUE_SCHEMA_ID_2, value1Offset, MapperValueType.PUT));
     values.add(createRegularValue(value2Bytes, VALUE_SCHEMA_ID_2, value2Offset, MapperValueType.PUT));
     values.add(createRegularValue(value3Bytes, VALUE_SCHEMA_ID_2, value3Offset, MapperValueType.PUT)); // The third
-                                                                                                       // value wins
-    Collections.shuffle(values);
+
+    Collections.reverse(values); // value wins
 
     final byte[] serializedKey = createChunkBytes(0, 5);
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
@@ -518,8 +524,9 @@ public class TestChunkAssembler {
     values.add(createRegularValue(value1Bytes, VALUE_SCHEMA_ID_2, value1Offset, MapperValueType.PUT));
     values.add(createRegularValue(new byte[0], -1, value2Offset, MapperValueType.DELETE));
     values.add(createRegularValue(value3Bytes, VALUE_SCHEMA_ID_2, value3Offset, MapperValueType.PUT)); // The third
-                                                                                                       // value wins
-    Collections.shuffle(values);
+
+    // value wins
+    Collections.reverse(values);
 
     final byte[] serializedKey = createChunkBytes(0, 5);
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
@@ -536,23 +543,21 @@ public class TestChunkAssembler {
     final int eachCountSizeInBytes = 20;
     final int segmentNumber = 12;
     final int messageSequenceNumber = 34;
-    final int currStartingByteValue = 0;
     final ChunkedValueManifest chunkedValueManifest = new ChunkedValueManifest();
     chunkedValueManifest.keysWithChunkIdSuffix = new ArrayList<>(totalChunkCount);
+    ChunkInfo valueChunkInfo = new ChunkInfo(totalChunkCount, eachCountSizeInBytes);
 
     final byte[] serializedKey = createChunkBytes(0, 5);
     List<BytesWritable> values = createKafkaInputMapperValues(
         serializedKey,
-        totalChunkCount,
-        currStartingByteValue,
-        eachCountSizeInBytes,
+        valueChunkInfo,
+        null,
         segmentNumber,
         messageSequenceNumber,
         VALUE_SCHEMA_ID,
         0);
     // "Delete value" at the end
-    values.add(createRegularValue(new byte[0], -1, totalChunkCount + 1, MapperValueType.DELETE));
-    Collections.shuffle(values);
+    values.add(0, createRegularValue(new byte[0], -1, totalChunkCount + 1, MapperValueType.DELETE));
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
     Assert.assertNull(assembledValue);
@@ -564,26 +569,24 @@ public class TestChunkAssembler {
     final int eachCountSizeInBytes = 20;
     final int segmentNumber = 12;
     final int messageSequenceNumber = 34;
-    final int currStartingByteValue = 0;
     final ChunkedValueManifest chunkedValueManifest = new ChunkedValueManifest();
     chunkedValueManifest.keysWithChunkIdSuffix = new ArrayList<>(totalChunkCount);
+    ChunkInfo valueChunkInfo = new ChunkInfo(totalChunkCount, eachCountSizeInBytes);
 
     final byte[] serializedKey = createChunkBytes(0, 5);
     List<BytesWritable> values = createKafkaInputMapperValues(
         serializedKey,
-        totalChunkCount,
-        currStartingByteValue,
-        eachCountSizeInBytes,
+        valueChunkInfo,
+        null,
         segmentNumber,
         messageSequenceNumber,
         VALUE_SCHEMA_ID,
         0);
     // Randomly remove a value to simulate the incomplete large value
-    values.remove(ThreadLocalRandom.current().nextInt(values.size()));
+    values.remove(ThreadLocalRandom.current().nextInt(values.size() - 2) + 1);
 
     // "Delete value" at the end
-    values.add(createRegularValue(new byte[0], -1, totalChunkCount + 1, MapperValueType.DELETE));
-    Collections.shuffle(values);
+    values.add(0, createRegularValue(new byte[0], -1, totalChunkCount + 1, MapperValueType.DELETE));
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
 
@@ -603,7 +606,7 @@ public class TestChunkAssembler {
     values.add(createRegularValue(value1Bytes, VALUE_SCHEMA_ID_2, value1Offset, MapperValueType.PUT));
     values.add(createRegularValue(value2Bytes, VALUE_SCHEMA_ID_2, value2Offset, MapperValueType.PUT));
     values.add(createRegularValue(new byte[0], -1, value3Offset, MapperValueType.DELETE)); // The third value wins
-    Collections.shuffle(values);
+    Collections.reverse(values);
 
     final byte[] serializedKey = createChunkBytes(0, 5);
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
@@ -618,28 +621,26 @@ public class TestChunkAssembler {
     final int eachCountSizeInBytes = 20;
     final int segmentNumber = 12;
     final int messageSequenceNumber = 34;
-    final int currStartingByteValue = 0;
     final ChunkedValueManifest chunkedValueManifest = new ChunkedValueManifest();
     chunkedValueManifest.keysWithChunkIdSuffix = new ArrayList<>(totalChunkCount);
+    ChunkInfo valueChunkInfo = new ChunkInfo(totalChunkCount, eachCountSizeInBytes);
 
     final byte[] serializedKey = createChunkBytes(0, 5);
     List<BytesWritable> values = new ArrayList<>(1 + totalChunkCount + 1);
-    byte[] regularValueBytes = createChunkBytes(100, 23);
-    values.add(createRegularValue(regularValueBytes, VALUE_SCHEMA_ID_2, 0, MapperValueType.PUT));
     values.addAll(
         createKafkaInputMapperValues(
             serializedKey,
-            totalChunkCount,
-            currStartingByteValue,
-            eachCountSizeInBytes,
+            valueChunkInfo,
+            null,
             segmentNumber,
             messageSequenceNumber,
             VALUE_SCHEMA_ID,
             1));
     // Randomly remove a value chunk to simulate the incomplete large value
     values.remove(ThreadLocalRandom.current().nextInt(values.size() - 2) + 1);
+    byte[] regularValueBytes = createChunkBytes(100, 23);
+    values.add(createRegularValue(regularValueBytes, VALUE_SCHEMA_ID_2, 0, MapperValueType.PUT));
 
-    Collections.shuffle(values);
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
 
@@ -654,25 +655,24 @@ public class TestChunkAssembler {
     final int eachCountSizeInBytes = 20;
     final int segmentNumber = 12;
     final int messageSequenceNumber = 34;
-    final int currStartingByteValue = 0;
     final ChunkedValueManifest chunkedValueManifest = new ChunkedValueManifest();
     chunkedValueManifest.keysWithChunkIdSuffix = new ArrayList<>(totalChunkCount);
+    ChunkInfo valueChunkInfo = new ChunkInfo(totalChunkCount, eachCountSizeInBytes);
 
     final byte[] serializedKey = createChunkBytes(0, 5);
     List<BytesWritable> values = new ArrayList<>();
-    byte[] regularValueBytes = createChunkBytes(100, 23);
-    values.add(createRegularValue(regularValueBytes, VALUE_SCHEMA_ID_2, 0, MapperValueType.PUT));
+
     values.addAll(
         createKafkaInputMapperValues(
             serializedKey,
-            totalChunkCount,
-            currStartingByteValue,
-            eachCountSizeInBytes,
+            valueChunkInfo,
+            null,
             segmentNumber,
             messageSequenceNumber,
             VALUE_SCHEMA_ID,
             1));
-    Collections.shuffle(values);
+    byte[] regularValueBytes = createChunkBytes(100, 23);
+    values.add(createRegularValue(regularValueBytes, VALUE_SCHEMA_ID_2, 0, MapperValueType.PUT));
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
 
@@ -687,25 +687,24 @@ public class TestChunkAssembler {
     final int eachCountSizeInBytes = 20;
     final int segmentNumber = 12;
     final int messageSequenceNumber = 34;
-    final int currStartingByteValue = 0;
     final ChunkedValueManifest chunkedValueManifest = new ChunkedValueManifest();
     chunkedValueManifest.keysWithChunkIdSuffix = new ArrayList<>(totalChunkCount);
+    ChunkInfo valueChunkInfo = new ChunkInfo(totalChunkCount, eachCountSizeInBytes);
 
     final byte[] serializedKey = createChunkBytes(0, 5);
     List<BytesWritable> values = new ArrayList<>();
-    values.add(createRegularValue(new byte[0], -1, 0, MapperValueType.DELETE));
 
     values.addAll(
         createKafkaInputMapperValues(
             serializedKey,
-            totalChunkCount,
-            currStartingByteValue,
-            eachCountSizeInBytes,
+            valueChunkInfo,
+            null,
             segmentNumber,
             messageSequenceNumber,
             VALUE_SCHEMA_ID,
             1));
-    Collections.shuffle(values);
+    values.add(createRegularValue(new byte[0], -1, 0, MapperValueType.DELETE));
+
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
 
@@ -720,27 +719,25 @@ public class TestChunkAssembler {
     final int eachCountSizeInBytes = 20;
     final int segmentNumber = 12;
     final int messageSequenceNumber = 34;
-    final int currStartingByteValue = 0;
     final ChunkedValueManifest chunkedValueManifest = new ChunkedValueManifest();
     chunkedValueManifest.keysWithChunkIdSuffix = new ArrayList<>(totalChunkCount);
+    ChunkInfo valueChunkInfo = new ChunkInfo(totalChunkCount, eachCountSizeInBytes);
 
     final byte[] serializedKey = createChunkBytes(0, 5);
     List<BytesWritable> values = new ArrayList<>();
-    values.add(createRegularValue(new byte[0], -1, 0, MapperValueType.DELETE));
     values.addAll(
         createKafkaInputMapperValues(
             serializedKey,
-            totalChunkCount,
-            currStartingByteValue,
-            eachCountSizeInBytes,
+            valueChunkInfo,
+            null,
             segmentNumber,
             messageSequenceNumber,
             VALUE_SCHEMA_ID,
             1));
     // Randomly remove a chunk value to simulate the incomplete large value
     values.remove(ThreadLocalRandom.current().nextInt(values.size() - 2) + 1);
+    values.add(createRegularValue(new byte[0], -1, 0, MapperValueType.DELETE));
 
-    Collections.shuffle(values);
     ChunkAssembler.ValueBytesAndSchemaId assembledValue =
         chunkAssembler.assembleAndGetValue(serializedKey, values.iterator());
 
@@ -765,42 +762,72 @@ public class TestChunkAssembler {
    */
   private List<BytesWritable> createKafkaInputMapperValues(
       byte[] serializedKey,
-      int totalChunkCount,
-      int currStartingByteValue,
-      int eachCountSizeInBytes,
+      ChunkInfo valueChunkInfo,
+      ChunkInfo rmdChunkInfo,
       int segmentNumber,
-      int messageSequenceNumber,
+      int sequenceNumber,
       int valueSchemaID,
       int startOffset) {
-    List<BytesWritable> values = new ArrayList<>(totalChunkCount + 1);
+
+    List<BytesWritable> values = rmdChunkInfo == null
+        ? new ArrayList<>(valueChunkInfo.totalChunkCount + 1)
+        : new ArrayList<>(valueChunkInfo.totalChunkCount + rmdChunkInfo.totalChunkCount + 1);
     KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer = new KeyWithChunkingSuffixSerializer();
     final ChunkedValueManifest chunkedValueManifest = new ChunkedValueManifest();
-    chunkedValueManifest.keysWithChunkIdSuffix = new ArrayList<>(totalChunkCount);
+    chunkedValueManifest.keysWithChunkIdSuffix = new ArrayList<>(valueChunkInfo.totalChunkCount);
+    ChunkedValueManifest chunkedRmdManifest = null;
     int currOffset = startOffset;
-
-    for (int i = 0; i < totalChunkCount; i++) {
-      byte[] chunkBytes = createChunkBytes(currStartingByteValue, eachCountSizeInBytes);
+    int currStartingByteValue = 0;
+    for (int i = 0; i < valueChunkInfo.totalChunkCount; i++) {
+      byte[] chunkBytes = createChunkBytes(currStartingByteValue, valueChunkInfo.eachCountSizeInBytes);
       KafkaInputMapperValue mapperValue = new KafkaInputMapperValue();
       mapperValue.valueType = MapperValueType.PUT;
       mapperValue.offset = currOffset;
       currOffset++;
       mapperValue.schemaId = CHUNK_VALUE_SCHEMA_ID;
       mapperValue.value = ByteBuffer.wrap(chunkBytes);
-      ChunkedKeySuffix chunkedKeySuffix = createChunkedKeySuffix(segmentNumber, messageSequenceNumber, i);
+      ChunkedKeySuffix chunkedKeySuffix = createChunkedKeySuffix(segmentNumber, sequenceNumber, i);
       mapperValue.chunkedKeySuffix = ByteBuffer.wrap(CHUNKED_KEY_SUFFIX_SERIALIZER.serialize("", chunkedKeySuffix));
       mapperValue.replicationMetadataPayload = ByteBuffer.wrap(new byte[0]);
 
       values.add(serialize(mapperValue));
-      currStartingByteValue += eachCountSizeInBytes;
+      currStartingByteValue += valueChunkInfo.eachCountSizeInBytes;
 
-      ByteBuffer keyWithSuffix =
-          ByteBuffer.wrap(keyWithChunkingSuffixSerializer.serializeChunkedKey(serializedKey, chunkedKeySuffix));
+      ByteBuffer keyWithSuffix = keyWithChunkingSuffixSerializer.serializeChunkedKey(serializedKey, chunkedKeySuffix);
       chunkedValueManifest.keysWithChunkIdSuffix.add(keyWithSuffix);
+    }
+
+    if (rmdChunkInfo != null) {
+      chunkedRmdManifest = new ChunkedValueManifest();
+      chunkedRmdManifest.keysWithChunkIdSuffix = new ArrayList<>(rmdChunkInfo.totalChunkCount);
+      currStartingByteValue = 0;
+      for (int i = 0; i < rmdChunkInfo.totalChunkCount; i++) {
+        byte[] chunkBytes = createChunkBytes(currStartingByteValue, rmdChunkInfo.eachCountSizeInBytes);
+        KafkaInputMapperValue mapperValue = new KafkaInputMapperValue();
+        mapperValue.valueType = MapperValueType.PUT;
+        mapperValue.offset = currOffset;
+        currOffset++;
+        mapperValue.schemaId = CHUNK_VALUE_SCHEMA_ID;
+        mapperValue.value = ByteBuffer.wrap(new byte[0]);
+        ChunkedKeySuffix chunkedKeySuffix = createChunkedKeySuffix(segmentNumber, sequenceNumber, i);
+        mapperValue.chunkedKeySuffix = ByteBuffer.wrap(CHUNKED_KEY_SUFFIX_SERIALIZER.serialize("", chunkedKeySuffix));
+        mapperValue.replicationMetadataPayload = ByteBuffer.wrap(chunkBytes);
+
+        values.add(serialize(mapperValue));
+        currStartingByteValue += rmdChunkInfo.eachCountSizeInBytes;
+
+        ByteBuffer keyWithSuffix = keyWithChunkingSuffixSerializer.serializeChunkedKey(serializedKey, chunkedKeySuffix);
+        chunkedRmdManifest.keysWithChunkIdSuffix.add(keyWithSuffix);
+      }
     }
 
     // Add the manifest
     chunkedValueManifest.schemaId = valueSchemaID;
-    chunkedValueManifest.size = totalChunkCount * eachCountSizeInBytes;
+    chunkedValueManifest.size = valueChunkInfo.totalChunkCount * valueChunkInfo.eachCountSizeInBytes;
+    if (rmdChunkInfo != null) {
+      chunkedRmdManifest.schemaId = valueSchemaID;
+      chunkedRmdManifest.size = rmdChunkInfo.totalChunkCount * rmdChunkInfo.eachCountSizeInBytes;
+    }
     KafkaInputMapperValue lastMapperValue = new KafkaInputMapperValue();
     lastMapperValue.valueType = MapperValueType.PUT;
     lastMapperValue.offset = currOffset;
@@ -808,10 +835,14 @@ public class TestChunkAssembler {
     lastMapperValue.value = ByteBuffer.wrap(CHUNKED_VALUE_MANIFEST_SERIALIZER.serialize("", chunkedValueManifest));
     lastMapperValue.chunkedKeySuffix = ByteBuffer
         .wrap(CHUNKED_KEY_SUFFIX_SERIALIZER.serialize("", KeyWithChunkingSuffixSerializer.NON_CHUNK_KEY_SUFFIX));
-    lastMapperValue.replicationMetadataPayload = ByteBuffer.wrap(new byte[0]);
+    lastMapperValue.replicationMetadataPayload = (rmdChunkInfo == null)
+        ? ByteBuffer.wrap(new byte[0])
+        : ByteBuffer.wrap(CHUNKED_VALUE_MANIFEST_SERIALIZER.serialize("", chunkedRmdManifest));
     lastMapperValue.replicationMetadataVersionId = 1;
 
     values.add(serialize(lastMapperValue));
+    // The offset of the messages will be in descending order.
+    Collections.reverse(values);
     return values;
   }
 
@@ -821,5 +852,15 @@ public class TestChunkAssembler {
 
   private BytesWritable serialize(KafkaInputMapperValue value) {
     return new BytesWritable(KAFKA_INPUT_MAPPER_VALUE_AVRO_SPECIFIC_SERIALIZER.serialize(value));
+  }
+
+  static class ChunkInfo {
+    private final int totalChunkCount;
+    private final int eachCountSizeInBytes;
+
+    public ChunkInfo(int totalChunkCount, int eachCountSizeInBytes) {
+      this.totalChunkCount = totalChunkCount;
+      this.eachCountSizeInBytes = eachCountSizeInBytes;
+    }
   }
 }

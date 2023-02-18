@@ -44,4 +44,8 @@ public class ReferenceCounted<T> implements AutoCloseable {
       }
     }
   }
+
+  public int getReferenceCount() {
+    return refCount.get();
+  }
 }

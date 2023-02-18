@@ -13,7 +13,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericArray;
 import org.apache.avro.generic.GenericData;
@@ -22,7 +21,7 @@ import org.testng.annotations.Test;
 
 
 public class TestWriteComputeProcessor {
-  private final String recordSchemaStr = "{\n" + "  \"type\" : \"record\",\n" + "  \"name\" : \"testRecord\",\n"
+  private final static String recordSchemaStr = "{\n" + "  \"type\" : \"record\",\n" + "  \"name\" : \"testRecord\",\n"
       + "  \"namespace\" : \"com.linkedin.avro\",\n" + "  \"fields\" : [ {\n" + "    \"name\" : \"hits\",\n"
       + "    \"type\" : {\n" + "      \"type\" : \"array\",\n" + "      \"items\" : {\n"
       + "        \"type\" : \"record\",\n" + "        \"name\" : \"JobAlertHit\",\n" + "        \"fields\" : [ {\n"
@@ -31,18 +30,13 @@ public class TestWriteComputeProcessor {
       + "    },\n" + "    \"default\" : [ ]\n" + "  }, {\n" + "    \"name\" : \"hasNext\",\n"
       + "    \"type\" : \"boolean\",\n" + "    \"default\" : false\n" + "  } ]\n" + "}";
 
-  private final String simpleRecordSchemaStr = "{\n" + "  \"type\" : \"record\",\n"
-      + "  \"name\" : \"simpleTestRecord\",\n" + "  \"namespace\" : \"com.linkedin.avro\",\n" + "  \"fields\" : [ {\n"
-      + "    \"name\" : \"field1\",\n" + "    \"type\" : \"int\",\n" + "    \"default\" : 0\n" + "  }, {\n"
-      + "    \"name\" : \"field2\",\n" + "    \"type\" : \"int\",\n" + "    \"default\" : 0\n" + " } ]\n" + "}";
-
-  private final String nullableRecordStr =
+  private final static String nullableRecordStr =
       "{\n" + "  \"type\" : \"record\",\n" + "  \"name\" : \"nullableRecord\",\n" + "  \"fields\" : [ {\n"
           + "    \"name\" : \"nullableArray\",\n" + "    \"type\" : [ \"null\", {\n" + "      \"type\" : \"array\",\n"
           + "      \"items\" : \"int\"\n" + "    } ],\n" + "    \"default\" : null\n" + "  }, {\n"
           + "    \"name\" : \"intField\",\n" + "    \"type\" : \"int\",\n" + "    \"default\" : 0\n" + "  } ]\n" + "}";
 
-  private final String nestedRecordStr = "{\n" + "  \"type\" : \"record\",\n" + "  \"name\" : \"testRecord\",\n"
+  private final static String nestedRecordStr = "{\n" + "  \"type\" : \"record\",\n" + "  \"name\" : \"testRecord\",\n"
       + "  \"fields\" : [ {\n" + "    \"name\" : \"nestedRecord\",\n" + "    \"type\" : {\n"
       + "      \"type\" : \"record\",\n" + "      \"name\" : \"nestedRecord\",\n" + "      \"fields\" : [ {\n"
       + "        \"name\" : \"intField\",\n" + "        \"type\" : \"int\"\n" + "      } ]\n" + "    },\n"
@@ -149,8 +143,7 @@ public class TestWriteComputeProcessor {
     recordUpdateRecord.put("hits", noOpRecord);
     recordUpdateRecord.put("hasNext", true);
 
-    Object result =
-        writeComputeHandler.updateValueRecord(recordSchema, Optional.of(originalRecord), recordUpdateRecord);
+    Object result = writeComputeHandler.updateValueRecord(recordSchema, originalRecord, recordUpdateRecord);
     Assert.assertTrue(result instanceof GenericData.Record);
     Assert.assertEquals(((GenericData.Record) result).get("hits"), innerArray);
     Assert.assertEquals(((GenericData.Record) result).get("hasNext"), true);
@@ -166,7 +159,7 @@ public class TestWriteComputeProcessor {
     collectionUpdateRecord.put(SET_DIFF, Collections.emptyList());
     recordUpdateRecord.put("hits", collectionUpdateRecord);
 
-    result = writeComputeHandler.updateValueRecord(recordSchema, Optional.of(originalRecord), recordUpdateRecord);
+    result = writeComputeHandler.updateValueRecord(recordSchema, originalRecord, recordUpdateRecord);
     List hitsList = (List) ((GenericData.Record) result).get("hits");
     Assert.assertEquals(hitsList.size(), 2);
     Assert.assertTrue(hitsList.contains(innerRecord));
@@ -175,7 +168,7 @@ public class TestWriteComputeProcessor {
     // test passing a "null" as the original value. The write compute adapter should set noOp field to
     // its default value if it's possible
     recordUpdateRecord.put("hasNext", noOpRecord);
-    result = writeComputeHandler.updateValueRecord(recordSchema, Optional.empty(), recordUpdateRecord);
+    result = writeComputeHandler.updateValueRecord(recordSchema, null, recordUpdateRecord);
     Assert.assertEquals(((GenericData.Record) result).get("hasNext"), false);
   }
 
@@ -195,8 +188,8 @@ public class TestWriteComputeProcessor {
     writeComputeRecord.put("nullableArray", noOpRecord);
     writeComputeRecord.put("intField", noOpRecord);
 
-    GenericData.Record result = (GenericData.Record) writeComputeProcessor
-        .updateRecord(nullableRecordSchema, Optional.empty(), writeComputeRecord);
+    GenericData.Record result =
+        (GenericData.Record) writeComputeProcessor.updateRecord(nullableRecordSchema, null, writeComputeRecord);
 
     Assert.assertNull(result.get("nullableArray"));
     Assert.assertEquals(result.get("intField"), 0);
@@ -208,8 +201,7 @@ public class TestWriteComputeProcessor {
     listOpsRecord.put(SET_DIFF, Collections.emptyList());
     writeComputeRecord.put("nullableArray", listOpsRecord);
 
-    result = (GenericData.Record) writeComputeProcessor
-        .updateRecord(nullableRecordSchema, Optional.of(result), writeComputeRecord);
+    result = (GenericData.Record) writeComputeProcessor.updateRecord(nullableRecordSchema, result, writeComputeRecord);
     GenericArray array = (GenericArray) result.get("nullableArray");
     Assert.assertEquals(array.size(), 2);
     Assert.assertTrue(array.contains(1) && array.contains(2));
@@ -229,7 +221,7 @@ public class TestWriteComputeProcessor {
     writeComputeRecord.put("nestedRecord", nestedRecord);
 
     GenericData.Record result =
-        (GenericData.Record) writeComputeProcessor.updateRecord(recordSchema, Optional.empty(), writeComputeRecord);
+        (GenericData.Record) writeComputeProcessor.updateRecord(recordSchema, null, writeComputeRecord);
 
     Assert.assertNotNull(result);
     Assert.assertEquals(result.get("nestedRecord"), nestedRecord);

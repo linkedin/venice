@@ -3,17 +3,21 @@ package com.linkedin.venice.serialization.avro;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
+import com.linkedin.venice.kafka.consumer.KafkaConsumerFactoryImpl;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.SparseConcurrentListWithOffset;
 import com.linkedin.venice.utils.Utils;
+import it.unimi.dsi.fastutil.ints.IntLinkedOpenHashSet;
+import it.unimi.dsi.fastutil.ints.IntSet;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.util.HashMap;
+import java.nio.ByteBuffer;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import java.util.Set;
-import java.util.stream.Collectors;
+import java.util.function.BiConsumer;
 import org.apache.avro.Schema;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.BinaryEncoder;
@@ -49,7 +53,14 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
   private static final ThreadLocal<ReusableObjects> threadLocalReusableObjects =
       ThreadLocal.withInitial(ReusableObjects::new);
 
-  /** Used to configure the {@link #schemaReader}. */
+  /**
+   * Used to configure the {@link #schemaReader}.
+   *
+   * Deprecated: This path has now been superseded by {@link #setSchemaReader(SchemaReader)}, which is used everywhere
+   *             except in {@link KafkaConsumerFactoryImpl#getRecordKafkaConsumer()}. Once that usage is also eliminated
+   *             we could remove the config from here.
+   */
+  @Deprecated
   public static final String VENICE_SCHEMA_READER_CONFIG = "venice.schema-reader";
 
   private static final Logger LOGGER = LogManager.getLogger(InternalAvroSpecificSerializer.class);
@@ -82,7 +93,7 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
   private final SpecificDatumWriter writer;
 
   /** Maintains the mapping between protocol version and the corresponding {@link SpecificDatumReader<SPECIFIC_RECORD>} */
-  private final Map<Integer, VeniceSpecificDatumReader<SPECIFIC_RECORD>> readerMap = new HashMap<>();
+  private final List<VeniceSpecificDatumReader<SPECIFIC_RECORD>> protocolVersionToReader;
 
   /** The schema of the {@link SpecificRecord} which is compiled in the current version of the code. */
   private final Schema compiledProtocol;
@@ -90,11 +101,20 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
   /** Used to fetch unknown schemas, to ensure forward compatibility when the protocol gets upgraded. */
   private SchemaReader schemaReader = null;
 
+  private final BiConsumer<Integer, Schema> newSchemaEncountered;
+
   protected InternalAvroSpecificSerializer(AvroProtocolDefinition protocolDef) {
     this(protocolDef, null);
   }
 
   protected InternalAvroSpecificSerializer(AvroProtocolDefinition protocolDef, Integer payloadOffsetOverride) {
+    this(protocolDef, payloadOffsetOverride, (schemaId, schema) -> {});
+  }
+
+  protected InternalAvroSpecificSerializer(
+      AvroProtocolDefinition protocolDef,
+      Integer payloadOffsetOverride,
+      BiConsumer<Integer, Schema> newSchemaEncountered) {
     // Magic byte handling
     if (protocolDef.getMagicByte().isPresent()) {
       this.magicByte = protocolDef.getMagicByte().get();
@@ -136,7 +156,21 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
       this.PAYLOAD_OFFSET = payloadOffsetOverride;
     }
     this.compiledProtocol = protocolDef.getCurrentProtocolVersionSchema();
-    this.writer = initializeAvroSpecificDatumReaderAndWriter(protocolDef);
+
+    Map<Integer, Schema> protocolSchemaMap = Utils.getAllSchemasFromResources(protocolDef);
+    int minimumSchemaId = protocolSchemaMap.keySet()
+        .stream()
+        .min(Integer::compareTo)
+        .orElseThrow(() -> new VeniceException("There must be at least one schema for: " + protocolDef));
+
+    this.protocolVersionToReader = new SparseConcurrentListWithOffset<>(Math.abs(minimumSchemaId));
+
+    /** Initialize {@link #protocolVersionToReader} based on known protocol versions */
+    protocolSchemaMap.forEach((protocolVersion, protocolSchema) -> cacheDatumReader(protocolVersion, protocolSchema));
+
+    this.writer = new SpecificDatumWriter(protocolDef.schema);
+
+    this.newSchemaEncountered = newSchemaEncountered;
   }
 
   /**
@@ -149,8 +183,20 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
 
   }
 
-  public Set<Integer> knownProtocols() {
-    return readerMap.keySet();
+  public IntSet knownProtocols() {
+    // N.B.: We could do better here, but this is only used by test and exceptional logs, so efficiency does not matter
+    // too much...
+    IntSet knownProtocols = new IntLinkedOpenHashSet(protocolVersionToReader.size());
+    for (int i = 0; i < protocolVersionToReader.size(); i++) {
+      if (protocolVersionToReader.get(i) != null) {
+        knownProtocols.add(i);
+      }
+    }
+    return knownProtocols;
+  }
+
+  public Schema getCompiledProtocol() {
+    return compiledProtocol;
   }
 
   /**
@@ -167,6 +213,9 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
       throw new VeniceException("Cannot use " + getClass().getSimpleName() + " for key data.");
     }
 
+    /**
+     * TODO: Remove this once we remove usages of {@link com.linkedin.venice.kafka.KafkaClientFactory#getConsumer(Properties)}
+     */
     if (configMap.containsKey(VENICE_SCHEMA_READER_CONFIG)) {
       this.schemaReader = (SchemaReader) configMap.get(VENICE_SCHEMA_READER_CONFIG);
       LOGGER.info("Serializer has schemaReader: " + schemaReader);
@@ -182,7 +231,7 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
   /**
    * Construct an array of bytes from the given object
    *
-   * @param topic  Topic to which the object belongs.
+   * @param topic  Topic to which the object belongs (for API compatibility reason only, but unused)
    * @param object A {@link SPECIFIC_RECORD} instance to be serialized.
    * @return The Avro binary format bytes which represent the {@param object}
    */
@@ -223,6 +272,10 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
     }
   }
 
+  public ByteBuffer serialize(SPECIFIC_RECORD object) {
+    return ByteBuffer.wrap(serialize(null, object));
+  }
+
   /**
    * Create an object from an array of bytes
    *
@@ -230,47 +283,32 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
    * which use a magic byte and a protocol version, both of which are stored in the header, before
    * the payload.
    *
-   * @param topic Topic to which the array of bytes belongs.
+   * @param topic Topic to which the array of bytes belongs (only there to implement the interface, but otherwise useless)
    * @param bytes An array of bytes representing the object's data serialized in Avro binary format.
-   * @return A {@link SPECIFIC_RECORD} serialized from the bytes
+   * @return A {@link SPECIFIC_RECORD} deserialized from the bytes
    */
   @Override
   public SPECIFIC_RECORD deserialize(String topic, byte[] bytes) {
-    if (bytes == null || bytes.length < PAYLOAD_OFFSET) {
-      throw new IllegalArgumentException("Invalid byte array for serialization - no bytes to read");
-    }
-
-    if (magicByte == 0) {
-      throw new VeniceMessageException(
-          "This protocol cannot be used as a Kafka deserializer: " + this.getClass().getSimpleName());
-    }
-
-    // Sanity check on the magic byte to make sure we understand the protocol itself
-    if (bytes[MAGIC_BYTE_OFFSET] != magicByte) {
-      throw new VeniceMessageException(
-          "Received Magic Byte '" + new String(bytes, MAGIC_BYTE_OFFSET, MAGIC_BYTE_LENGTH)
-              + "' which is not supported by " + this.getClass().getSimpleName()
-              + ". The only supported Magic Byte for this implementation is '" + magicByte + "'.");
-    }
-
-    if (PROTOCOL_VERSION_LENGTH == 0) {
-      throw new VeniceMessageException(
-          "This protocol cannot be used as a Kafka deserializer: " + this.getClass().getSimpleName());
-    }
-
-    // If the data looks valid, then we deploy the Avro machinery to decode the payload
-
-    return deserialize(bytes, bytes[PROTOCOL_VERSION_OFFSET]);
+    return deserialize(bytes, null);
   }
 
-  // TODO (lcli): can be enhanced in the future to take a ByteBuffer input to avoid unnecessary array copy
+  public SPECIFIC_RECORD deserialize(byte[] bytes, SPECIFIC_RECORD reuse) {
+    return deserialize(bytes, getProtocolVersion(bytes), reuse);
+  }
+
   public SPECIFIC_RECORD deserialize(byte[] bytes, int protocolVersion) {
+    return deserialize(bytes, protocolVersion, null);
+  }
+
+  public SPECIFIC_RECORD deserialize(byte[] bytes, int protocolVersion, SPECIFIC_RECORD reuse) {
     if (bytes == null || bytes.length < PAYLOAD_OFFSET) {
       throw new IllegalArgumentException("Invalid byte array for serialization - no bytes to read");
     }
 
+    VeniceSpecificDatumReader<SPECIFIC_RECORD> specificDatumReader = protocolVersionToReader.get(protocolVersion);
+
     // Sanity check to make sure the writer's protocol (i.e.: Avro schema) version is known to us
-    if (!readerMap.containsKey(protocolVersion)) {
+    if (specificDatumReader == null) {
       if (schemaReader == null) {
         throw new VeniceMessageException(
             "Received Protocol Version '" + protocolVersion + "' which is not supported by "
@@ -289,7 +327,7 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
                     + ". The currently known Protocol Versions are: " + getCurrentlyLoadedProtocolVersions() + ".");
           }
 
-          cacheDatumReader(protocolVersion, newProtocolSchema);
+          specificDatumReader = cacheDatumReader(protocolVersion, newProtocolSchema);
 
           LOGGER.info(
               "Discovered new protocol version '" + protocolVersion + "', and successfully retrieved it. Schema:\n"
@@ -313,20 +351,49 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
       }
     }
 
-    try {
-      /**
-       * Reuse SpecificDatumReader since it is thread-safe, and generating a brand new SpecificDatumReader is very slow
-       * sometimes.
-       *
-       * When generating a new {@link SpecificDatumReader}, both reader schema and writer schema need to be setup, and
-       * internally {@link SpecificDatumReader} needs to calculate {@link org.apache.avro.io.ResolvingDecoder}, but
-       * the slowest part is to persist those info to thread-local variables, which could take tens of seconds sometimes.
-       *
-       * TODO: investigate why {@link ThreadLocal} operations (internally {@link java.lang.ThreadLocal.ThreadLocalMap})
-       * are so slow sometimes.
-       */
+    return deserialize(bytes, specificDatumReader, reuse);
+  }
 
-      VeniceSpecificDatumReader<SPECIFIC_RECORD> specificDatumReader = readerMap.get(protocolVersion);
+  public SPECIFIC_RECORD deserialize(byte[] bytes, Schema providedProtocolSchema, SPECIFIC_RECORD reuse) {
+    int protocolVersion = getProtocolVersion(bytes);
+    VeniceSpecificDatumReader<SPECIFIC_RECORD> specificDatumReader = protocolVersionToReader.get(protocolVersion);
+    if (specificDatumReader == null) {
+      specificDatumReader = cacheDatumReader(protocolVersion, providedProtocolSchema);
+      newSchemaEncountered.accept(protocolVersion, providedProtocolSchema);
+    }
+    return deserialize(bytes, specificDatumReader, reuse);
+  }
+
+  private byte getProtocolVersion(byte[] bytes) {
+    if (bytes == null || bytes.length < PAYLOAD_OFFSET) {
+      throw new IllegalArgumentException("Invalid byte array for serialization - no bytes to read");
+    }
+
+    if (magicByte == 0) {
+      throw new VeniceMessageException(
+          "This protocol cannot be used as a Kafka deserializer: " + this.getClass().getSimpleName());
+    }
+
+    // Sanity check on the magic byte to make sure we understand the protocol itself
+    if (bytes[MAGIC_BYTE_OFFSET] != magicByte) {
+      throw new VeniceMessageException(
+          "Received Magic Byte '" + new String(bytes, MAGIC_BYTE_OFFSET, MAGIC_BYTE_LENGTH)
+              + "' which is not supported by " + this.getClass().getSimpleName()
+              + ". The only supported Magic Byte for this implementation is '" + magicByte + "'.");
+    }
+
+    if (PROTOCOL_VERSION_LENGTH == 0) {
+      throw new VeniceMessageException(
+          "This protocol cannot be used as a Kafka deserializer: " + this.getClass().getSimpleName());
+    }
+    return bytes[PROTOCOL_VERSION_OFFSET];
+  }
+
+  private SPECIFIC_RECORD deserialize(
+      byte[] bytes,
+      VeniceSpecificDatumReader<SPECIFIC_RECORD> specificDatumReader,
+      SPECIFIC_RECORD reuse) {
+    try {
       ReusableObjects reusableObjects = threadLocalReusableObjects.get();
 
       Decoder decoder = createBinaryDecoder(
@@ -336,9 +403,7 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
           reusableObjects.binaryDecoder // This param is to re-use a Decoder instance.
       );
 
-      SPECIFIC_RECORD record = specificDatumReader.read(
-          null, // This param is to re-use a SPECIFIC_RECORD instance. TODO: explore GC tuning later.
-          decoder);
+      SPECIFIC_RECORD record = specificDatumReader.read(reuse, decoder);
 
       return record;
     } catch (IOException e) {
@@ -352,27 +417,14 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
     return DECODER_FACTORY.createBinaryDecoder(bytes, offset, length, reuse);
   }
 
-  /**
-   * Initialize both {@link #readerMap} and {@link #writer}.
-   *
-   * @param protocolDef
-   */
-  private SpecificDatumWriter initializeAvroSpecificDatumReaderAndWriter(AvroProtocolDefinition protocolDef) {
-    Map<Integer, Schema> protocolSchemaMap = Utils.getAllSchemasFromResources(protocolDef);
-
-    /** Initialize {@link #readerMap} based on known protocol versions */
-    protocolSchemaMap.forEach((protocolVersion, protocolSchema) -> cacheDatumReader(protocolVersion, protocolSchema));
-
-    return new SpecificDatumWriter(protocolDef.schema);
-  }
-
-  private void cacheDatumReader(int protocolVersion, Schema protocolSchema) {
+  private VeniceSpecificDatumReader<SPECIFIC_RECORD> cacheDatumReader(int protocolVersion, Schema protocolSchema) {
     VeniceSpecificDatumReader<SPECIFIC_RECORD> datumReader =
         new VeniceSpecificDatumReader<>(protocolSchema, compiledProtocol);
-    this.readerMap.put(protocolVersion, datumReader);
+    this.protocolVersionToReader.set(protocolVersion, datumReader);
+    return datumReader;
   }
 
   private String getCurrentlyLoadedProtocolVersions() {
-    return "[" + readerMap.keySet().stream().sorted().map(b -> b.toString()).collect(Collectors.joining(", ")) + "]";
+    return knownProtocols().toString();
   }
 }

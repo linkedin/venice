@@ -825,11 +825,17 @@ public interface Admin extends AutoCloseable, Closeable {
 
   Map<String, StoreDataAudit> getClusterStaleStores(String clusterName);
 
-  int getStoreLargestUsedVersion(String clusterName, String storeName);
+  /**
+   * @return the largest used version number for the given store from store graveyard.
+   */
+  int getLargestUsedVersionFromStoreGraveyard(String clusterName, String storeName);
 
-  Map<String, RegionPushDetails> listStorePushInfo(String clusterName, String storeName);
+  Map<String, RegionPushDetails> listStorePushInfo(
+      String clusterName,
+      String storeName,
+      boolean isPartitionDetailEnabled);
 
-  RegionPushDetails getRegionPushDetails(String clusterName, String storeName);
+  RegionPushDetails getRegionPushDetails(String clusterName, String storeName, boolean isPartitionDetailEnabled);
 
   Map<String, Long> getAdminTopicMetadata(String clusterName, Optional<String> storeName);
 

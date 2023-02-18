@@ -54,7 +54,7 @@ public class StoragePartitionDiskUsage {
   /**
    * sync with real partition DB usage and reset in memory partition usage to be zero
    */
-  public void syncWithDB() {
+  public final void syncWithDB() {
     synchronized (this) {
       this.diskPartitionUsage = storageEngine.getPartitionSizeInBytes(this.partition);
       this.inMemoryPartitionUsage = 0;

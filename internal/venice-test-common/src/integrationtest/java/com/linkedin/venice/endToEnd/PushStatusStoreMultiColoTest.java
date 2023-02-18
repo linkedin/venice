@@ -14,6 +14,7 @@ import static org.testng.Assert.assertTrue;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.common.VeniceSystemStoreType;
+import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.init.ClusterLeaderInitializationRoutine;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
@@ -43,7 +44,7 @@ import org.testng.annotations.Test;
 
 
 public class PushStatusStoreMultiColoTest {
-  private static final int TEST_TIMEOUT_MS = 60_000;
+  private static final int TEST_TIMEOUT_MS = 90_000;
   private static final int NUMBER_OF_SERVERS = 2;
   private static final int PARTITION_COUNT = 2;
   private static final int REPLICATION_FACTOR = 2;
@@ -88,7 +89,7 @@ public class PushStatusStoreMultiColoTest {
         Optional.of(extraProperties),
         Optional.empty(),
         false);
-    childDatacenters = multiColoMultiClusterWrapper.getClusters();
+    childDatacenters = multiColoMultiClusterWrapper.getChildRegions();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
 
     String[] clusterNames = childDatacenters.get(0).getClusterNames();
@@ -199,6 +200,14 @@ public class PushStatusStoreMultiColoTest {
     // Both the system store and user store should be gone at this point
     assertNull(parentController.getVeniceAdmin().getStore(cluster.getClusterName(), userStoreName));
     assertNull(parentController.getVeniceAdmin().getStore(cluster.getClusterName(), daVinciPushStatusSystemStoreName));
+
+    Admin parentAdmin = parentControllers.get(0).getVeniceAdmin();
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      assertEquals(
+          parentAdmin
+              .getLargestUsedVersionFromStoreGraveyard(cluster.getClusterName(), daVinciPushStatusSystemStoreName),
+          systemStoreCurrVersionBeforeBeingDeleted);
+    });
 
     // Create the same regular store again
     TestUtils.assertCommand(

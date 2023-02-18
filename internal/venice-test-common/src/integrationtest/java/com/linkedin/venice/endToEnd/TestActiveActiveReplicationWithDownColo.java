@@ -15,8 +15,8 @@ import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_KAFKA_PRODUCER_ENABLE
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.PARENT_D2_SERVICE_NAME;
-import static com.linkedin.venice.utils.TestPushUtils.INT_SCHEMA;
-import static com.linkedin.venice.utils.TestPushUtils.STRING_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.INT_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -38,8 +38,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.samza.system.OutgoingMessageEnvelope;
 import org.apache.samza.system.SystemProducer;
 import org.apache.samza.system.SystemStream;
@@ -49,6 +50,8 @@ import org.testng.annotations.BeforeClass;
 
 
 public class TestActiveActiveReplicationWithDownColo {
+  private static final Logger LOGGER = LogManager.getLogger(TestActiveActiveReplicationWithDownColo.class);
+
   private static final int TEST_TIMEOUT = 90_000; // ms
   private static final int RECORDS_TO_POPULATE = 4;
 
@@ -105,7 +108,7 @@ public class TestActiveActiveReplicationWithDownColo {
         Optional.of(controllerProps),
         Optional.of(new VeniceProperties(serverProperties)),
         false);
-    childDatacenters = multiColoMultiClusterWrapper.getClusters();
+    childDatacenters = multiColoMultiClusterWrapper.getChildRegions();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
   }
 
@@ -130,14 +133,18 @@ public class TestActiveActiveReplicationWithDownColo {
     // These variable don't do anything other than to make it easy to find their values in the debugger so you can hook
     // up ZooInspector and figure which colo is assigned where
     int zkPort = multiColoMultiClusterWrapper.getZkServerWrapper().getPort();
-    int dc0Kafka = multiColoMultiClusterWrapper.getClusters().get(0).getKafkaBrokerWrapper().getPort();
-    int dc1kafka = multiColoMultiClusterWrapper.getClusters().get(1).getKafkaBrokerWrapper().getPort();
+    int dc0Kafka = multiColoMultiClusterWrapper.getChildRegions().get(0).getKafkaBrokerWrapper().getPort();
+    int dc1kafka = multiColoMultiClusterWrapper.getChildRegions().get(1).getKafkaBrokerWrapper().getPort();
+
+    // Spotbug doesn't like unused variables. Given they are assigned for debugging purposes, print them out.
+    LOGGER.info("zkPort: {}", zkPort);
+    LOGGER.info("dc0Kafka: {}", dc0Kafka);
+    LOGGER.info("dc1kafka: {}", dc1kafka);
 
     // Create a store in all colos with A/A and hybrid enabled
     String clusterName = CLUSTER_NAMES[0];
     String storeName = Utils.getUniqueString("test-store");
-    String parentControllerUrls =
-        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
+    String parentControllerUrls = multiColoMultiClusterWrapper.getControllerConnectString();
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrls)) {
       parentControllerClient.createNewStore(storeName, "owner", INT_SCHEMA, STRING_SCHEMA);
       TestUtils.updateStoreToHybrid(
@@ -254,7 +261,7 @@ public class TestActiveActiveReplicationWithDownColo {
     // should succeed in the OTHER colos and go live.
 
     // It's simple, we kill the kafka broker
-    multiColoMultiClusterWrapper.getClusters().get(NUMBER_OF_CHILD_DATACENTERS - 1).getKafkaBrokerWrapper().close();
+    multiColoMultiClusterWrapper.getChildRegions().get(NUMBER_OF_CHILD_DATACENTERS - 1).getKafkaBrokerWrapper().close();
 
     // Execute a new push by writing some rows and sending an endOfPushMessage
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrls)) {

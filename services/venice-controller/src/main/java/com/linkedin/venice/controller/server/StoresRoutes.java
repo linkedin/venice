@@ -11,6 +11,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_SOURCE_FABRIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OPERATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OWNER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION_DETAIL_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_OPERATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.READ_WRITE_OPERATION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REGIONS_FILTER;
@@ -634,7 +635,7 @@ public class StoresRoutes extends AbstractRoute {
         String storeName = request.queryParams(NAME);
         veniceResponse.setCluster(clusterName);
         veniceResponse.setName(storeName);
-        List<Version> deletedVersions = Collections.emptyList();
+        List<Version> deletedVersions;
         Optional<AdminCommandExecutionTracker> adminCommandExecutionTracker =
             admin.getAdminCommandExecutionTracker(clusterName);
         if (adminCommandExecutionTracker.isPresent()) {
@@ -974,7 +975,7 @@ public class StoresRoutes extends AbstractRoute {
   }
 
   /**
-   * @see Admin#getStoreLargestUsedVersion(String, String)
+   * @see Admin#getLargestUsedVersionFromStoreGraveyard(String, String)
    */
   public Route getStoreLargestUsedVersion(Admin admin) {
     return new VeniceRouteHandler<VersionResponse>(VersionResponse.class) {
@@ -983,13 +984,13 @@ public class StoresRoutes extends AbstractRoute {
         AdminSparkServer.validateParams(request, GET_STORES_IN_CLUSTER.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
-        veniceResponse.setVersion(admin.getStoreLargestUsedVersion(cluster, storeName));
+        veniceResponse.setVersion(admin.getLargestUsedVersionFromStoreGraveyard(cluster, storeName));
       }
     };
   }
 
   /**
-   * @see Admin#listStorePushInfo(String, String)
+   * @see Admin#listStorePushInfo(String, String, boolean)
    */
   public Route listStorePushInfo(Admin admin) {
     return new VeniceRouteHandler<StoreHealthAuditResponse>(StoreHealthAuditResponse.class) {
@@ -998,17 +999,18 @@ public class StoresRoutes extends AbstractRoute {
         AdminSparkServer.validateParams(request, LIST_STORE_PUSH_INFO.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
         String store = request.queryParams(NAME);
-        Map<String, RegionPushDetails> details = admin.listStorePushInfo(cluster, store);
+        boolean isPartitionDetailEnabled = Boolean.valueOf(request.queryParams(PARTITION_DETAIL_ENABLED));
+        Map<String, RegionPushDetails> details = admin.listStorePushInfo(cluster, store, isPartitionDetailEnabled);
 
-        veniceResponse.setStoreName(store);
-        veniceResponse.setClusterName(cluster);
+        veniceResponse.setName(store);
+        veniceResponse.setCluster(cluster);
         veniceResponse.setRegionPushDetails(details);
       }
     };
   }
 
   /**
-   * @see Admin#getRegionPushDetails(String, String)
+   * @see Admin#getRegionPushDetails(String, String, boolean)
    */
   public Route getRegionPushDetails(Admin admin) {
     return new VeniceRouteHandler<RegionPushDetailsResponse>(RegionPushDetailsResponse.class) {
@@ -1017,7 +1019,8 @@ public class StoresRoutes extends AbstractRoute {
         AdminSparkServer.validateParams(request, GET_REGION_PUSH_DETAILS.getParams(), admin);
         String store = request.queryParams(NAME);
         String cluster = request.queryParams(CLUSTER);
-        RegionPushDetails details = admin.getRegionPushDetails(cluster, store);
+        boolean isPartitionDetailEnabled = Boolean.valueOf(request.queryParams(PARTITION_DETAIL_ENABLED));
+        RegionPushDetails details = admin.getRegionPushDetails(cluster, store, isPartitionDetailEnabled);
         veniceResponse.setRegionPushDetails(details);
       }
     };
@@ -1036,9 +1039,6 @@ public class StoresRoutes extends AbstractRoute {
         AdminSparkServer.validateParams(request, DELETE_KAFKA_TOPIC.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
         String topicName = request.queryParams(TOPIC);
-        if (!Version.isRealTimeTopic(topicName) && !Version.isVersionTopicOrStreamReprocessingTopic(topicName)) {
-          throw new VeniceException("Cannot delete invalid kafka topic: " + topicName);
-        }
         admin.truncateKafkaTopic(topicName);
         veniceResponse.setCluster(cluster);
       }

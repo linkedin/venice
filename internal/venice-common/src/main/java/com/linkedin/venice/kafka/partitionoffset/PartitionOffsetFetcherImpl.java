@@ -300,7 +300,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
 
     while (consumerRecordsIterator.hasNext()) {
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record = consumerRecordsIterator.next();
-      startOffset = (startOffset == null ? record.offset() : startOffset);
+      startOffset = (startOffset == null ? (Long) record.offset() : startOffset);
       recordsCount++;
 
       if (record.key().isControlMessage()) {

@@ -5,11 +5,11 @@ import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
 
 
 /**
@@ -50,15 +50,21 @@ public class KafkaDataIntegrityValidator {
    * Run a thorough DIV check on the message, including UNREGISTERED_PRODUCER, MISSING, CORRUPT and DUPLICATE.
    */
   public void validateMessage(
-      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       boolean endOfPushReceived,
       boolean tolerateMissingMsgs) throws DataValidationException {
-    final GUID producerGUID = consumerRecord.value().producerMetadata.producerGUID;
+    final GUID producerGUID = consumerRecord.getValue().producerMetadata.producerGUID;
     ProducerTracker producerTracker = registerProducer(producerGUID);
     producerTracker.validateMessage(consumerRecord, endOfPushReceived, tolerateMissingMsgs);
   }
 
-  public void updateOffsetRecord(int partition, OffsetRecord offsetRecord) {
+  /**
+   * For a given partition, find all the producers that has written to this partition and update the offsetRecord using
+   * segment information.
+   * @param partition
+   * @param offsetRecord
+   */
+  public void updateOffsetRecordForPartition(int partition, OffsetRecord offsetRecord) {
     producerTrackerMap.values().forEach(producerTracker -> producerTracker.updateOffsetRecord(partition, offsetRecord));
   }
 
@@ -82,9 +88,9 @@ public class KafkaDataIntegrityValidator {
    * This API can be used for ETL.
    */
   public void checkMissingMessage(
-      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       Optional<ProducerTracker.DIVErrorMetricCallback> errorMetricCallback) throws DataValidationException {
-    final GUID producerGUID = consumerRecord.value().producerMetadata.producerGUID;
+    final GUID producerGUID = consumerRecord.getValue().producerMetadata.producerGUID;
     ProducerTracker producerTracker = registerProducer(producerGUID);
     producerTracker.checkMissingMessage(consumerRecord, errorMetricCallback, this.kafkaLogCompactionDelayInMs);
   }

@@ -291,6 +291,11 @@ public class ZkHelixAdminClient implements HelixAdminClient {
     helixAdmin.dropInstance(clusterName, instanceConfig);
   }
 
+  public Map<String, List<String>> getDisabledPartitionsMap(String clusterName, String instanceName) {
+    InstanceConfig instanceConfig = helixAdmin.getInstanceConfig(clusterName, instanceName);
+    return instanceConfig.getDisabledPartitionsMap();
+  }
+
   /**
    * @see HelixAdminClient#resetPartition(String, String, String, List)
    */

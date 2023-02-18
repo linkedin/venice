@@ -13,7 +13,6 @@ import com.linkedin.davinci.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.SingleGetChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
-import com.linkedin.davinci.store.rocksdb.RocksDBComputeAccessMode;
 import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.cleaner.ResourceReadUsageTracker;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -66,9 +65,11 @@ import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
+import it.unimi.dsi.fastutil.ints.IntList;
+import it.unimi.dsi.fastutil.ints.IntLists;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -119,7 +120,6 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
   private final boolean parallelBatchGetEnabled;
   private final int parallelBatchGetChunkSize;
   private final boolean keyValueProfilingEnabled;
-  private final RocksDBComputeAccessMode rocksDBComputeAccessMode;
   private final VeniceServerConfig serverConfig;
   private final Map<String, VenicePartitioner> resourceToPartitionerMap = new VeniceConcurrentHashMap<>();
   private final Map<String, PartitionerConfig> resourceToPartitionConfigMap = new VeniceConcurrentHashMap<>();
@@ -178,7 +178,6 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     this.parallelBatchGetEnabled = parallelBatchGetEnabled;
     this.parallelBatchGetChunkSize = parallelBatchGetChunkSize;
     this.keyValueProfilingEnabled = serverConfig.isKeyValueProfilingEnabled();
-    this.rocksDBComputeAccessMode = serverConfig.getRocksDBServerConfig().getServerStorageOperation();
     this.serverConfig = serverConfig;
     this.compressorFactory = compressorFactory;
     this.resourceReadUsageTracker = resourceReadUsageTracker;
@@ -397,8 +396,8 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     response.setValueRecord(valueRecord);
 
     if (keyValueProfilingEnabled) {
-      response.setOptionalKeySizeList(Optional.of(Arrays.asList(key.length)));
-      response.setOptionalValueSizeList(Optional.of(Arrays.asList(response.isFound() ? valueRecord.getDataSize() : 0)));
+      response.setKeySizeList(IntLists.singleton(key.length));
+      response.setValueSizeList(IntLists.singleton(response.isFound() ? valueRecord.getDataSize() : -1));
     }
 
     return response;
@@ -428,10 +427,8 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     CompletableFuture[] chunkFutures = new CompletableFuture[splitSize];
     PartitionerConfig partitionerConfig = getPartitionerConfig(request.getResourceName());
 
-    Optional<List<Integer>> optionalKeyList =
-        keyValueProfilingEnabled ? Optional.of(new ArrayList<>(totalKeyNum)) : Optional.empty();
-    Optional<List<Integer>> optionalValueList =
-        keyValueProfilingEnabled ? Optional.of(new ArrayList<>(totalKeyNum)) : Optional.empty();
+    IntList responseKeySizeList = keyValueProfilingEnabled ? new IntArrayList(totalKeyNum) : null;
+    IntList responseValueSizeList = keyValueProfilingEnabled ? new IntArrayList(totalKeyNum) : null;
 
     for (int cur = 0; cur < splitSize; ++cur) {
       final int finalCur = cur;
@@ -443,7 +440,9 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
         int endPos = Math.min((finalCur + 1) * parallelChunkSize, totalKeyNum);
         for (int subChunkCur = startPos; subChunkCur < endPos; ++subChunkCur) {
           final MultiGetRouterRequestKeyV1 key = keyList.get(subChunkCur);
-          optionalKeyList.ifPresent(list -> list.add(key.keyBytes.remaining()));
+          if (responseKeySizeList != null) {
+            responseKeySizeList.set(subChunkCur, key.keyBytes.remaining());
+          }
           int subPartitionId = getSubPartitionId(key.partitionId, topic, partitionerConfig, key.keyBytes.array());
           MultiGetResponseRecordV1 record =
               BatchGetChunkingAdapter.get(storageEngine, subPartitionId, key.keyBytes, isChunked, responseWrapper);
@@ -462,17 +461,19 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
           }
 
           if (record != null) {
+            if (responseValueSizeList != null) {
+              responseValueSizeList.set(subChunkCur, record.value.remaining());
+            }
             // TODO: streaming support in storage node
             requestLock.lock();
             try {
               responseWrapper.addRecord(record);
-
-              if (optionalValueList.isPresent()) {
-                optionalValueList.get().add(record.value.remaining());
-              }
-
             } finally {
               requestLock.unlock();
+            }
+          } else {
+            if (responseValueSizeList != null) {
+              responseValueSizeList.set(subChunkCur, -1);
             }
           }
         }
@@ -483,8 +484,8 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
       if (e != null) {
         throw new VeniceException(e);
       }
-      responseWrapper.setOptionalKeySizeList(optionalKeyList);
-      responseWrapper.setOptionalValueSizeList(optionalValueList);
+      responseWrapper.setKeySizeList(responseKeySizeList);
+      responseWrapper.setValueSizeList(responseValueSizeList);
       return responseWrapper;
     });
   }
@@ -576,12 +577,9 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
         .computeIfAbsent(computeResultSchema, k -> new GenericData.Record(finalComputeResultSchema1));
 
     // Reuse the same value record and result record instances for all values
-    ByteBuffer reusedRawValue = null;
-    if (rocksDBComputeAccessMode == RocksDBComputeAccessMode.SINGLE_GET_WITH_REUSE) {
-      reusedRawValue = reusableObjects.reusedByteBuffer;
-    }
-
+    ByteBuffer reusedRawValue = reusableObjects.reusedByteBuffer;
     RecordSerializer<GenericRecord> resultSerializer;
+
     if (fastAvroEnabled) {
       resultSerializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(computeResultSchema);
     } else {
@@ -655,43 +653,20 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
       Map<String, Object> globalContext,
       ByteBuffer reuseRawValue,
       VeniceCompressor compressor) {
-
-    switch (rocksDBComputeAccessMode) {
-      case SINGLE_GET:
-        reuseValueRecord = GenericRecordChunkingAdapter.INSTANCE.get(
-            store,
-            partition,
-            key,
-            isChunked,
-            reuseValueRecord,
-            reusableObjects.binaryDecoder,
-            response,
-            compressionStrategy,
-            fastAvroEnabled,
-            this.schemaRepo,
-            storeName,
-            compressor,
-            false);
-        break;
-      case SINGLE_GET_WITH_REUSE:
-        reuseValueRecord = GenericRecordChunkingAdapter.INSTANCE.get(
-            storeName,
-            store,
-            partition,
-            ByteUtils.extractByteArray(key),
-            reuseRawValue,
-            reuseValueRecord,
-            reusableObjects.binaryDecoder,
-            isChunked,
-            compressionStrategy,
-            fastAvroEnabled,
-            this.schemaRepo,
-            response,
-            compressor);
-        break;
-      default:
-        throw new VeniceException("Unknown rocksDB compute storage operation");
-    }
+    reuseValueRecord = GenericRecordChunkingAdapter.INSTANCE.get(
+        storeName,
+        store,
+        partition,
+        ByteUtils.extractByteArray(key),
+        reuseRawValue,
+        reuseValueRecord,
+        reusableObjects.binaryDecoder,
+        isChunked,
+        compressionStrategy,
+        fastAvroEnabled,
+        this.schemaRepo,
+        response,
+        compressor);
 
     if (reuseValueRecord == null) {
       if (isStreaming) {

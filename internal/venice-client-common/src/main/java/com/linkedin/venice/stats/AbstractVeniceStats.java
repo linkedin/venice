@@ -7,9 +7,11 @@ import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.Avg;
+import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Percentiles;
+import io.tehuti.metrics.stats.Total;
 import java.util.Map;
-import java.util.Optional;
 import java.util.function.Supplier;
 
 
@@ -28,18 +30,17 @@ public class AbstractVeniceStats {
     this.name = name.replace(':', '_').replace(".", "_");
     this.sensors = new VeniceConcurrentHashMap<>();
     this.isTotalStats = name.equals(STORE_NAME_FOR_TOTAL_STAT);
-    ;
   }
 
   public MetricsRepository getMetricsRepository() {
     return metricsRepository;
   }
 
-  protected boolean isTotalStats() {
+  protected final boolean isTotalStats() {
     return isTotalStats;
   }
 
-  public String getName() {
+  public final String getName() {
     // add "." in front of the name because dot separator is a must in Tehuti to split package name and sensor name
     return "." + name;
   }
@@ -48,29 +49,22 @@ public class AbstractVeniceStats {
     return registerSensor(getSensorFullName(getName(), sensorName), null, null, stats);
   }
 
-  protected Sensor registerSensorWithAttributeOverride(
-      String sensorName,
-      String attributeName,
-      MeasurableStat... stats) {
-    return registerSensor(getSensorFullName(getName(), sensorName), Optional.of(attributeName), null, null, stats);
+  protected void registerSensorAttributeGauge(String sensorName, String attributeName, Gauge stat) {
+    String sensorFullName = getSensorFullName(getName(), sensorName);
+    Sensor sensor = sensors.computeIfAbsent(sensorFullName, key -> metricsRepository.sensor(sensorFullName));
+    String metricName = sensorFullName + "." + attributeName;
+    if (metricsRepository.getMetric(metricName) == null) {
+      sensor.add(metricName, stat);
+    }
   }
 
   protected Sensor registerSensor(String sensorName, Sensor[] parents, MeasurableStat... stats) {
     return registerSensor(getSensorFullName(getName(), sensorName), null, parents, stats);
   }
 
-  protected Sensor registerSensor(
-      String sensorFullName,
-      MetricConfig config,
-      Sensor[] parents,
-      MeasurableStat... stats) {
-    return registerSensor(sensorFullName, Optional.empty(), config, parents, stats);
-  }
-
   @SuppressWarnings("SynchronizationOnLocalVariableOrMethodParameter")
   protected Sensor registerSensor(
       String sensorFullName,
-      Optional<String> attributeName,
       MetricConfig config,
       Sensor[] parents,
       MeasurableStat... stats) {
@@ -98,7 +92,7 @@ public class AbstractVeniceStats {
               }
             }
           } else {
-            String metricName = sensorFullName + "." + attributeName.orElse(stat.getClass().getSimpleName());
+            String metricName = sensorFullName + "." + stat.getClass().getSimpleName();
             if (metricsRepository.getMetric(metricName) == null) {
               sensor.add(metricName, stat, config);
             }
@@ -157,5 +151,13 @@ public class AbstractVeniceStats {
       resourceName = "." + resourceName;
     }
     return resourceName + AbstractVeniceStats.DELIMITER + sensorName;
+  }
+
+  protected final MeasurableStat[] avgAndMax() {
+    return new MeasurableStat[] { new Avg(), new Max() };
+  }
+
+  protected final MeasurableStat[] avgAndTotal() {
+    return new MeasurableStat[] { new Avg(), new Total() };
   }
 }

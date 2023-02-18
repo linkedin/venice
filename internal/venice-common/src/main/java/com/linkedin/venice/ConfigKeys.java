@@ -218,14 +218,13 @@ public class ConfigKeys {
    *
    * Ignored if {@value KAFKA_REPLICATION_FACTOR} is present.
    */
-  @Deprecated
-  public static final String KAFKA_REPLICATION_FACTOR_LEGACY_SPELLING = "kafka.replica.factor";
   public static final String KAFKA_ZK_ADDRESS = "kafka.zk.address";
   public static final String DEFAULT_READ_STRATEGY = "default.read.strategy";
   public static final String DEFAULT_OFFLINE_PUSH_STRATEGY = "default.offline.push.strategy";
   public static final String DEFAULT_ROUTING_STRATEGY = "default.routing.strategy";
   public static final String DEFAULT_REPLICA_FACTOR = "default.replica.factor";
   public static final String DEFAULT_NUMBER_OF_PARTITION = "default.partition.count";
+  public static final String DEFAULT_NUMBER_OF_PARTITION_FOR_HYBRID = "default.partition.count.for.hybrid";
   public static final String DEFAULT_MAX_NUMBER_OF_PARTITIONS = "default.partition.max.count";
   public static final String DEFAULT_PARTITION_SIZE = "default.partition.size";
   public static final String OFFLINE_JOB_START_TIMEOUT_MS = "offline.job.start.timeout.ms";
@@ -569,23 +568,6 @@ public class ConfigKeys {
   public static final String SERVER_LEAKED_RESOURCE_CLEANUP_ENABLED = "server.leaked.resource.cleanup.enabled";
 
   /**
-   * Whether Server will try to warm up cache before reporting ready-to-serve or not.
-   */
-  public static final String SERVER_CACHE_WARMING_BEFORE_READY_TO_SERVE_ENABLED =
-      "server.cache.warming.before.ready.to.serve.enabled";
-
-  /**
-   * Store list to enable cache warming, and it is comma separated list.
-   * TODO: once this has bee proved to be useful, we will need to store it as a store-level config.
-   */
-  public static final String SERVER_CACHE_WARMING_STORE_LIST = "server.cache.warming.store.list";
-
-  /**
-   * Cache warming thread pool, and this is used to try to not overwhelm the storage node by cache warming.
-   */
-  public static final String SERVER_CACHE_WARMING_THREAD_POOL_SIZE = "server.cache.warming.thread.pool.size";
-
-  /**
    * The delay serving of the newly started storage node.
    * The reason to have this config is that we noticed a high GC pause for some time because of connection warming or initializing the
    * internal components.
@@ -612,7 +594,7 @@ public class ConfigKeys {
 
   /**
    * A boolean config to specify if we are using Da Vinci client for ingestion. This config will be parsed by
-   * isDaVinciConfig variable in VeniceServerConfig. By default it is false (use Venice Server)
+   * isDaVinciConfig variable in VeniceServerConfig. By default, it is false (use Venice Server)
    */
   public static final String INGESTION_USE_DA_VINCI_CLIENT = "ingestion.use.da.vinci.client";
 
@@ -622,14 +604,12 @@ public class ConfigKeys {
   public static final String SERVER_STOP_CONSUMPTION_WAIT_RETRIES_NUM = "server.stop.consumption.wait.retries.num";
 
   /**
-   * Port number for ingestion listener. For Parent/Child mode, it will be used by child process. For SplitService mode,
-   * it will be used by IngestionService.
+   * Service listening port number for main ingestion service.
    */
   public static final String SERVER_INGESTION_ISOLATION_SERVICE_PORT = "server.ingestion.isolation.service.port";
 
   /**
-   * Port number for ingestion listener. For Parent/Child mode, it will be used by parent process. For SplitService mode,
-   * it will be used by venice server that are using the ingestion service.
+   * Service listening port number for forked ingestion process.
    */
   public static final String SERVER_INGESTION_ISOLATION_APPLICATION_PORT =
       "server.ingestion.isolation.application.port";
@@ -645,9 +625,6 @@ public class ConfigKeys {
   public static final String SERVER_INGESTION_ISOLATION_STATS_CLASS_LIST =
       "server.ingestion.isolation.stats.class.list";
 
-  public static final String SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS =
-      "server.ingestion.isolation.heartbeat.timout.ms";
-
   public static final String SERVER_INGESTION_ISOLATION_SSL_ENABLED = "server.ingestion.isolation.ssl.enabled";
 
   public static final String SERVER_INGESTION_ISOLATION_ACL_ENABLED = "server.ingestion.isolation.acl.enabled";
@@ -658,6 +635,31 @@ public class ConfigKeys {
    * A list of JVM arguments for forked child process, separated by semicolon.
    */
   public static final String SERVER_FORKED_PROCESS_JVM_ARGUMENT_LIST = "server.forked.process.jvm.arg.list";
+
+  /**
+   * Timeout for connection between main process and forked ingestion process. If heartbeat is not refreshed within this
+   * timeout, both processes should act to reconstruct the state in order to restore connection and service.
+   */
+  public static final String SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_SECONDS =
+      "server.ingestion.isolation.connection.timeout.seconds";
+
+  /**
+   * Timeout for single ingestion command request sent from main process to forked ingestion process.
+   */
+  public static final String SERVER_INGESTION_ISOLATION_REQUEST_TIMEOUT_SECONDS =
+      "server.ingestion.isolation.request.timeout.seconds";
+
+  /**
+   * Timeout for single heartbeat request sent from main process to forked ingestion process.
+   */
+  public static final String SERVER_INGESTION_ISOLATION_HEARTBEAT_REQUEST_TIMEOUT_SECONDS =
+      "server.ingestion.isolation.heartbeat.request.timeout.seconds";
+
+  /**
+   * Timeout for single metric request sent from main process to forked ingestion process.
+   */
+  public static final String SERVER_INGESTION_ISOLATION_METRIC_REQUEST_TIMEOUT_SECONDS =
+      "server.ingestion.isolation.metric.request.timeout.seconds";
 
   /**
    * whether to enable checksum verification in the ingestion path from kafka to database persistency. If enabled it will
@@ -697,13 +699,6 @@ public class ConfigKeys {
    */
   public static final String SERVER_SHARED_CONSUMER_NON_EXISTING_TOPIC_CLEANUP_DELAY_MS =
       "server.shared.cosnumer.non.existing.topic.cleanup.delay.ms";
-
-  /**
-   * This config is used to control whether Storage Node should enable auto compaction for Samza Reprocessing Job or not.
-   * Default: true
-   */
-  public static final String SERVER_AUTO_COMPACTION_FOR_SAMZA_REPROCESSING_JOB_ENABLED =
-      "server.auto.compaction.for.samza.reprocessing.job.enabled";
 
   /**
    * This config will determine whether live update will be suppressed. When the feature is turned on, ingestion will stop
@@ -750,7 +745,6 @@ public class ConfigKeys {
   // TODO the config names are same as the names in application.src, some of them should be changed to keep consistent
   // TODO with controller and server.
   public static final String LISTENER_SSL_PORT = "listener.ssl.port";
-  public static final String CLIENT_TIMEOUT = "client.timeout";
   public static final String HEARTBEAT_TIMEOUT = "heartbeat.timeout";
   public static final String HEARTBEAT_CYCLE = "heartbeat.cycle";
   public static final String MAX_READ_CAPACITY = "max.read.capacity";
@@ -1754,16 +1748,6 @@ public class ConfigKeys {
    * Prefix of configs to configure Jetty server in Controller.
    */
   public static final String CONTROLLER_JETTY_CONFIG_OVERRIDE_PREFIX = "controller.jetty.";
-
-  /**
-   * The number of threads that will be used to decompress multi-get records in routers.
-   */
-  public static final String ROUTER_MULTI_KEY_DECOMPRESSION_THREADS = "router.multi.key.decompression.threads";
-
-  /**
-   * The number of records per batch of records that will be decompressed in a multi-get request in routers.
-   */
-  public static final String ROUTER_MULTI_KEY_DECOMPRESSION_BATCH_SIZE = "router.multi.key.decompression.batch.size";
 
   /**
    * The number of records

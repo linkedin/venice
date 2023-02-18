@@ -6,11 +6,9 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
-import com.linkedin.venice.utils.MockTime;
+import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.util.HashMap;
@@ -41,7 +39,7 @@ public class KafkaClusterBasedRecordThrottlerTest {
 
     AtomicLong remoteKafkaQuota = new AtomicLong(10);
 
-    MockTime testTime = new MockTime();
+    TestMockTime testTime = new TestMockTime();
     long timeWindowMS = 1000L;
     // Unlimited
     EventThrottler localThrottler =
@@ -63,7 +61,7 @@ public class KafkaClusterBasedRecordThrottlerTest {
     KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler =
         new KafkaClusterBasedRecordThrottler(kafkaUrlToRecordsThrottler);
 
-    ConsumerRecords<KafkaKey, KafkaMessageEnvelope> consumerRecords = mock(ConsumerRecords.class);
+    ConsumerRecords<byte[], byte[]> consumerRecords = mock(ConsumerRecords.class);
     doReturn(10).when(consumerRecords).count();
 
     KafkaConsumerWrapper localConsumer = mock(KafkaConsumerWrapper.class);
@@ -74,9 +72,9 @@ public class KafkaClusterBasedRecordThrottlerTest {
     doReturn(consumerRecords).when(remoteConsumer).poll(anyLong());
 
     // Verify can ingest at least some record from local and remote Kafka
-    ConsumerRecords<KafkaKey, KafkaMessageEnvelope> localConsumerRecords = kafkaClusterBasedRecordThrottler
+    ConsumerRecords<byte[], byte[]> localConsumerRecords = kafkaClusterBasedRecordThrottler
         .poll(localConsumer, inMemoryLocalKafkaBroker.getKafkaBootstrapServer(), 1 * Time.MS_PER_SECOND);
-    ConsumerRecords<KafkaKey, KafkaMessageEnvelope> remoteConsumerRecords = kafkaClusterBasedRecordThrottler
+    ConsumerRecords<byte[], byte[]> remoteConsumerRecords = kafkaClusterBasedRecordThrottler
         .poll(remoteConsumer, inMemoryRemoteKafkaBroker.getKafkaBootstrapServer(), 1 * Time.MS_PER_SECOND);
     Assert.assertSame(localConsumerRecords, consumerRecords);
     Assert.assertSame(remoteConsumerRecords, consumerRecords);

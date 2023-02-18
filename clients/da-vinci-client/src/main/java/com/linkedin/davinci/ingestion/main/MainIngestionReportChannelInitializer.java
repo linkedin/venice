@@ -29,7 +29,7 @@ public class MainIngestionReportChannelInitializer extends ChannelInitializer<So
     sslFactory.ifPresent(
         sslFactory -> ch.pipeline().addLast(new SslInitializer(SslUtils.toAlpiniSSLFactory(sslFactory), false)));
     ch.pipeline().addLast(new HttpRequestDecoder());
-    ch.pipeline().addLast(new HttpObjectAggregator(1024 * 1024));
+    ch.pipeline().addLast(new HttpObjectAggregator(1024 * 1024 * 100));
     ch.pipeline().addLast(new HttpResponseEncoder());
     if (sslFactory.isPresent()) {
       ch.pipeline().addLast(verifySslHandler);

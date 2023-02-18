@@ -27,13 +27,13 @@ import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_CONTRO
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_D2_ZK_HOSTS;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PUSH_TYPE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_STORE;
-import static com.linkedin.venice.utils.TestPushUtils.STRING_SCHEMA;
-import static com.linkedin.venice.utils.TestPushUtils.sendStreamingDeleteRecord;
-import static com.linkedin.venice.utils.TestPushUtils.sendStreamingRecordWithKeyPrefix;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingDeleteRecord;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecordWithKeyPrefix;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
 import static com.linkedin.venice.utils.TestUtils.createAndVerifyStoreInAllRegions;
 import static com.linkedin.venice.utils.TestUtils.updateStoreToHybrid;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
+import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertNull;
@@ -114,7 +114,7 @@ public class ActiveActiveReplicationForHybridTest {
 
   protected static final int NUMBER_OF_CHILD_DATACENTERS = 3;
   protected static final int NUMBER_OF_CLUSTERS = 1;
-  protected static final String[] CLUSTER_NAMES =
+  static final String[] CLUSTER_NAMES =
       IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
   // ["venice-cluster0", "venice-cluster1", ...];
 
@@ -164,7 +164,7 @@ public class ActiveActiveReplicationForHybridTest {
         Optional.of(controllerProps),
         Optional.of(new VeniceProperties(serverProperties)),
         false);
-    childDatacenters = multiColoMultiClusterWrapper.getClusters();
+    childDatacenters = multiColoMultiClusterWrapper.getChildRegions();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
 
     // Set up a d2 client for DC0 region
@@ -384,7 +384,7 @@ public class ActiveActiveReplicationForHybridTest {
       // disable the purging of transientRecord buffer using reflection.
       if (useTransientRecordCache) {
         String topicName = Version.composeKafkaTopic(storeName, versionNumber);
-        for (VeniceMultiClusterWrapper veniceColo: multiColoMultiClusterWrapper.getClusters()) {
+        for (VeniceMultiClusterWrapper veniceColo: multiColoMultiClusterWrapper.getChildRegions()) {
           VeniceClusterWrapper veniceCluster = veniceColo.getClusters().get(clusterName);
           for (VeniceServerWrapper veniceServerWrapper: veniceCluster.getVeniceServers()) {
             StoreIngestionTaskBackdoor.setPurgeTransientRecordBuffer(veniceServerWrapper, topicName, false);
@@ -572,13 +572,18 @@ public class ActiveActiveReplicationForHybridTest {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testAAReplicationCanResolveConflicts(boolean useLogicalTimestamp) {
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testAAReplicationCanResolveConflicts(boolean useLogicalTimestamp, boolean chunkingEnabled) {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = Utils.getUniqueString("test-store");
     try {
       assertCommand(parentControllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA));
-      updateStoreToHybrid(storeName, parentControllerClient, Optional.of(true), Optional.of(true), Optional.of(false));
+      updateStoreToHybrid(
+          storeName,
+          parentControllerClient,
+          Optional.of(true),
+          Optional.of(true),
+          Optional.of(chunkingEnabled));
 
       // Empty push to create a version
       assertCommand(

@@ -1,9 +1,8 @@
 package com.linkedin.venice.multicluster;
 
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
-import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
-import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
-import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithUserSchema;
+import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUserSchema;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -17,6 +16,7 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -58,7 +58,7 @@ public class TestMetadataOperationInMultiCluster {
       try (VeniceControllerWrapper controllerWrapper = multiClusterWrapper.getRandomController();
           ControllerClient secondControllerClient =
               ControllerClient.constructClusterControllerClient(secondCluster, controllerWrapper.getControllerUrl())) {
-        // controller client could talk to any controller and find the lead of the given cluster correclty.
+        // controller client could talk to any controller and find the leader of the given cluster correctly.
         ControllerClient controllerClient =
             ControllerClient.constructClusterControllerClient(clusterName, controllerWrapper.getControllerUrl());
 
@@ -67,8 +67,6 @@ public class TestMetadataOperationInMultiCluster {
         NewStoreResponse storeResponse = controllerClient.createNewStore(storeName, "test", keySchema, valSchema);
         Assert.assertFalse(storeResponse.isError(), "Should create a new store.");
 
-        // Pickup the second cluster
-        ;
         // Create store with the same name in this cluster
         storeResponse = controllerClient.createNewStore(storeName, "test", keySchema, valSchema);
         Assert.assertTrue(storeResponse.isError(), "Should not create the duplicated store even in another cluster.");
@@ -145,9 +143,9 @@ public class TestMetadataOperationInMultiCluster {
       Map<String, Properties> propertiesMap = new HashMap<>();
       for (String clusterName: clusterNames) {
         String storeName = clusterName + storeNameSuffix;
-        // Use th first cluster in config, and test could vpj find the correct cluster.
+        // Use th first cluster in config, and test could h2v find the correct cluster.
         Properties vpjProperties =
-            defaultVPJProps(multiClusterWrapper.getRandomController().getControllerUrl(), inputDirPath, storeName);
+            IntegrationTestPushUtils.defaultVPJProps(multiClusterWrapper, inputDirPath, storeName);
         propertiesMap.put(clusterName, vpjProperties);
         Schema keySchema = recordSchema.getField(VenicePushJob.DEFAULT_KEY_FIELD_PROP).schema();
         Schema valueSchema = recordSchema.getField(VenicePushJob.DEFAULT_VALUE_FIELD_PROP).schema();
@@ -165,17 +163,12 @@ public class TestMetadataOperationInMultiCluster {
       }
 
       for (String clusterName: clusterNames) {
-        Properties properties = propertiesMap.get(clusterName);
-        properties.setProperty(VenicePushJob.PBNJ_ENABLE, "true");
-        properties.setProperty(
-            VenicePushJob.PBNJ_ROUTER_URL_PROP,
-            multiClusterWrapper.getClusters().get(clusterName).getRandomRouterURL());
-        runVPJ(
-            properties,
-            1,
-            ControllerClient.constructClusterControllerClient(
-                clusterName,
-                multiClusterWrapper.getRandomController().getControllerUrl()));
+        try (ControllerClient controllerClient = ControllerClient.constructClusterControllerClient(
+            clusterName,
+            multiClusterWrapper.getRandomController().getControllerUrl())) {
+          Properties properties = propertiesMap.get(clusterName);
+          runVPJ(properties, 1, controllerClient);
+        }
       }
     }
   }

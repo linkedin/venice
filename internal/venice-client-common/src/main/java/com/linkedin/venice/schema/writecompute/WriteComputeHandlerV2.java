@@ -131,8 +131,14 @@ public class WriteComputeHandlerV2 extends WriteComputeHandlerV1 {
 
     } else if (fieldValue instanceof Map) {
       if (!(fieldValue instanceof IndexedHashMap)) {
-        throw new IllegalStateException(
-            "Expect value of field " + fieldName + " to be an IndexedHashMap. Got: " + fieldValue.getClass());
+        // if the current map field is not of IndexedHashMap type and is empty then replace this field with an empty
+        // IndexedHashMap
+        if (((Map) fieldValue).isEmpty()) {
+          currValueRecord.put(fieldName, new IndexedHashMap<>());
+        } else {
+          throw new IllegalStateException(
+              "Expect value of field " + fieldName + " to be an IndexedHashMap. Got: " + fieldValue.getClass());
+        }
       }
       collectionFieldOperationHandler.handleModifyMap(
           modifyTimestamp,

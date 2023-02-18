@@ -93,7 +93,6 @@ public class OfflinePushStatusTest {
     Assert.assertEquals(
         offlinePushStatus.getPartitionStatus(1),
         ReadOnlyPartitionStatus.fromPartitionStatus(partitionStatus));
-    List<PartitionStatus> partitionStatuses = new ArrayList<>();
 
     try {
       offlinePushStatus.setPartitionStatus(new PartitionStatus(1000));

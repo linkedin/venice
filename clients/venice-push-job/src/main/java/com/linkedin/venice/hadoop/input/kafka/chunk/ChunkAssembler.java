@@ -5,17 +5,13 @@ import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.hadoop.input.kafka.avro.MapperValueType;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
-import com.linkedin.venice.serializer.AvroSpecificDeserializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
-import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
 import java.util.Iterator;
-import java.util.List;
-import org.apache.avro.specific.SpecificDatumReader;
+import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 import org.apache.hadoop.io.BytesWritable;
 
 
@@ -24,122 +20,219 @@ import org.apache.hadoop.io.BytesWritable;
  * message.
  */
 public class ChunkAssembler {
+  private static final OptimizedBinaryDecoderFactory OPTIMIZED_BINARY_DECODER_FACTORY =
+      OptimizedBinaryDecoderFactory.defaultFactory();
   private static final RecordDeserializer<KafkaInputMapperValue> KAFKA_INPUT_MAPPER_VALUE_AVRO_SPECIFIC_DESERIALIZER =
       FastSerializerDeserializerFactory
           .getFastAvroSpecificDeserializer(KafkaInputMapperValue.SCHEMA$, KafkaInputMapperValue.class);
-  private final AvroSpecificDeserializer<ChunkedKeySuffix> chunkedKeySuffixDeserializer;
   private final ChunkedValueManifestSerializer manifestSerializer;
+  private final boolean isRmdChunkingEnabled;
 
-  public ChunkAssembler() {
-    SpecificDatumReader<ChunkedKeySuffix> specificDatumReader = new SpecificDatumReader<>(ChunkedKeySuffix.class);
-    this.chunkedKeySuffixDeserializer = new AvroSpecificDeserializer<>(specificDatumReader);
+  public ChunkAssembler(boolean isRmdChunkingEnabled) {
+    this.isRmdChunkingEnabled = isRmdChunkingEnabled;
     this.manifestSerializer = new ChunkedValueManifestSerializer(true);
   }
 
+  /**
+   * The `valueIterator` of this function is supposed to be in descending order by offset.
+   *
+   * Here is the high-level algo:
+   * 1. If the latest event is a `DELETE`, return;
+   * 2. If the latest event is a regular `PUT`, return;
+   * 3. If the latest event is a manifest, capture all the chunk info from the latest one and ignore the older ones.
+   * 4. For chunks:
+   *    (a). If there is no manifest captured yet, ignore.
+   *    (b). If there is a manifest captured previously, check whether the current chunk belongs to it or not.
+   */
   public ValueBytesAndSchemaId assembleAndGetValue(final byte[] keyBytes, final Iterator<BytesWritable> valueIterator) {
     if (!valueIterator.hasNext()) {
       throw new IllegalArgumentException("Expect values to be not empty.");
     }
-    // TODO: Getting rid of this large allocation would require leveraging MR secondary sorting
-    List<byte[]> chunkBytes = new ArrayList<>();
 
-    KafkaInputMapperValue mapperValue = null;
-    byte[] currentValueBytes;
-    byte[] largestValueBytes = null;
-    long largestOffset = Long.MIN_VALUE;
+    KafkaInputMapperValue reusedMapperValue = null;
+    ChunkedValueManifest latestChunkedValueManifest = null;
+    int latestChunkedValueManifestRMDVersionId = -1;
+    ByteBuffer latestChunkedValueManifestRMDPayload = null;
+    ChunkedValueManifest latestChunkedRmdManifest = null;
+
+    long lastOffset = Long.MAX_VALUE;
+
+    byte[][] valueChunks = new byte[0][0];
+    ByteBuffer[] valueChunkKeySuffixes = new ByteBuffer[0];
+    int valueChunksFound = 0;
+    int totalValueByteCount = 0;
+
+    // Below fields are only useful when RMD chunking is enabled.
+    byte[][] rmdChunks = new byte[0][0];
+    ByteBuffer[] rmdChunkKeySuffixes = new ByteBuffer[0];
+    int rmdChunksFound = 0;
+    int totalRmdByteCount = 0;
+
     while (valueIterator.hasNext()) { // Start from the value with the highest offset
-      currentValueBytes = valueIterator.next().copyBytes();
-      mapperValue = KAFKA_INPUT_MAPPER_VALUE_AVRO_SPECIFIC_DESERIALIZER.deserialize(mapperValue, currentValueBytes);
-      if (mapperValue.schemaId == AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()) {
-        chunkBytes.add(currentValueBytes);
-      } else if (mapperValue.offset > largestOffset) {
-        largestOffset = mapperValue.offset;
-        largestValueBytes = currentValueBytes;
+      BytesWritable currentValue = valueIterator.next();
+      reusedMapperValue = KAFKA_INPUT_MAPPER_VALUE_AVRO_SPECIFIC_DESERIALIZER.deserialize(
+          reusedMapperValue,
+          OPTIMIZED_BINARY_DECODER_FACTORY
+              .createOptimizedBinaryDecoder(currentValue.getBytes(), 0, currentValue.getLength()));
+      if (reusedMapperValue.offset > lastOffset) {
+        throw new VeniceException(
+            "Unexpected, the input is supposed to be in descending order by offset, previous offset: " + lastOffset
+                + ", current offset: " + reusedMapperValue.offset);
       }
-    }
-    if (largestValueBytes == null) {
-      throw new VeniceException("No regular value nor chunk manifest for key: " + ByteUtils.toHexString(keyBytes));
-    }
-    mapperValue = KAFKA_INPUT_MAPPER_VALUE_AVRO_SPECIFIC_DESERIALIZER.deserialize(mapperValue, largestValueBytes);
+      lastOffset = reusedMapperValue.offset;
 
-    if (mapperValue.valueType == MapperValueType.DELETE) {
-      return null;
-    } else if (mapperValue.schemaId > 0) {
-      return new ValueBytesAndSchemaId(
-          mapperValue.value,
-          mapperValue.schemaId,
-          mapperValue.replicationMetadataVersionId,
-          mapperValue.replicationMetadataPayload);
-    } else if (mapperValue.schemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
-      final ChunkedValueManifest chunkedValueManifest = manifestSerializer.deserialize(
-          ByteUtils.extractByteArray(mapperValue.value),
-          AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion());
-
-      return assembleLargeValue(keyBytes, chunkedValueManifest, chunkBytes, mapperValue);
-    } else {
-      throw new VeniceException(
-          String.format(
-              "Unhandled case with chunked key suffix %s and value schema ID %d",
-              deserializeChunkedKeySuffix(mapperValue.chunkedKeySuffix),
-              mapperValue.schemaId));
-    }
-  }
-
-  private ValueBytesAndSchemaId assembleLargeValue(
-      byte[] keyBytes,
-      final ChunkedValueManifest manifest,
-      List<byte[]> allChunkBytes,
-      KafkaInputMapperValue manifestMapperValue) {
-    byte[][] valueChunks = new byte[manifest.keysWithChunkIdSuffix.size()][];
-    ByteBuffer[] chunkKeySuffixes = new ByteBuffer[manifest.keysWithChunkIdSuffix.size()];
-    int startPosition, suffixLength;
-    ByteBuffer byteBuffer;
-    for (int i = 0; i < manifest.keysWithChunkIdSuffix.size(); i++) {
-      byteBuffer = manifest.keysWithChunkIdSuffix.get(i);
-      startPosition = byteBuffer.position() + keyBytes.length;
-      suffixLength = byteBuffer.remaining() - keyBytes.length;
-      chunkKeySuffixes[i] = ByteBuffer.wrap(byteBuffer.array(), startPosition, suffixLength);
-    }
-
-    int totalByteCount = 0;
-    KafkaInputMapperValue chunk = null;
-    int chunksFound = 0;
-    for (byte[] chunkBytes: allChunkBytes) {
-      if (chunksFound == valueChunks.length) {
-        break;
+      if (reusedMapperValue.valueType.equals(MapperValueType.DELETE)) {
+        if (latestChunkedValueManifest != null) {
+          // Ignore older entries since a more recent manifest is discovered.
+          continue;
+        }
+        /**
+         * The latest event is a delete event.
+         */
+        if (reusedMapperValue.replicationMetadataPayload.remaining() != 0) {
+          return new ValueBytesAndSchemaId(
+              null,
+              reusedMapperValue.schemaId,
+              reusedMapperValue.replicationMetadataVersionId,
+              reusedMapperValue.replicationMetadataPayload);
+        }
+        return null;
       }
-      chunk = KAFKA_INPUT_MAPPER_VALUE_AVRO_SPECIFIC_DESERIALIZER.deserialize(chunk, chunkBytes);
-      for (int i = 0; i < chunkKeySuffixes.length; i++) {
-        byteBuffer = chunkKeySuffixes[i];
-        if (byteBuffer.equals(chunk.chunkedKeySuffix)) {
-          byte[] valueChunk = new byte[chunk.value.remaining()];
-          totalByteCount += valueChunk.length;
-          chunk.value.get(valueChunk);
-          valueChunks[i] = valueChunk;
-          chunksFound++;
+
+      if (reusedMapperValue.schemaId > 0) {
+        if (latestChunkedValueManifest != null) {
+          // Ignore older entries since a more recent manifest is discovered.
+          continue;
+        }
+        /**
+         * The latest event is a put event.
+         */
+        return new ValueBytesAndSchemaId(
+            ByteUtils.extractByteArray(reusedMapperValue.value),
+            reusedMapperValue.schemaId,
+            reusedMapperValue.replicationMetadataVersionId,
+            reusedMapperValue.replicationMetadataPayload);
+      }
+
+      if (reusedMapperValue.schemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
+        // Only capture the latest manifest
+        if (latestChunkedValueManifest == null) {
+          latestChunkedValueManifest = manifestSerializer.deserialize(
+              ByteUtils.extractByteArray(reusedMapperValue.value),
+              AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion());
+          int valueChunkCount = latestChunkedValueManifest.keysWithChunkIdSuffix.size();
+          valueChunks = new byte[valueChunkCount][];
+          valueChunkKeySuffixes = new ByteBuffer[valueChunkCount];
+          extractKeySuffixForChunks(latestChunkedValueManifest, keyBytes.length, valueChunkKeySuffixes);
+          latestChunkedValueManifestRMDVersionId = reusedMapperValue.replicationMetadataVersionId;
+          if (!isRmdChunkingEnabled) {
+            latestChunkedValueManifestRMDPayload =
+                ByteBuffer.wrap(ByteUtils.copyByteArray(reusedMapperValue.replicationMetadataPayload));
+          } else {
+            latestChunkedRmdManifest = manifestSerializer.deserialize(
+                ByteUtils.extractByteArray(reusedMapperValue.replicationMetadataPayload),
+                AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion());
+            int rmdChunkCount = latestChunkedRmdManifest.keysWithChunkIdSuffix.size();
+            rmdChunks = new byte[rmdChunkCount][];
+            rmdChunkKeySuffixes = new ByteBuffer[rmdChunkCount];
+            extractKeySuffixForChunks(latestChunkedRmdManifest, keyBytes.length, rmdChunkKeySuffixes);
+          }
+        }
+      } else if (reusedMapperValue.schemaId == AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()) {
+        if (latestChunkedValueManifest == null) {
+          /**
+           * It is possible that KafkaInputFormat could only read the partial chunks for a large message, which means
+           * there are chunks without the corresponding manifest.
+           */
+          continue;
+        }
+        // Matching chunk information with value and RMD chunks.
+        boolean isChunkMatched = false;
+        if (isRmdChunkingEnabled && (rmdChunksFound != rmdChunkKeySuffixes.length)) {
+          for (int i = 0; i < rmdChunkKeySuffixes.length; i++) {
+            ByteBuffer byteBuffer = rmdChunkKeySuffixes[i];
+            if (byteBuffer.equals(reusedMapperValue.chunkedKeySuffix)) {
+              byte[] rmdChunk = new byte[reusedMapperValue.replicationMetadataPayload.remaining()];
+              totalRmdByteCount += rmdChunk.length;
+              reusedMapperValue.replicationMetadataPayload.get(rmdChunk);
+              rmdChunks[i] = rmdChunk;
+              rmdChunksFound++;
+              isChunkMatched = true;
+              break;
+            }
+          }
+        }
+        // Bypass iterations on value chunk matching if it is matched with RMD chunk.
+        if (!isChunkMatched) {
+          for (int i = 0; i < valueChunkKeySuffixes.length; i++) {
+            ByteBuffer byteBuffer = valueChunkKeySuffixes[i];
+            if (byteBuffer.equals(reusedMapperValue.chunkedKeySuffix)) {
+              byte[] valueChunk = new byte[reusedMapperValue.value.remaining()];
+              totalValueByteCount += valueChunk.length;
+              reusedMapperValue.value.get(valueChunk);
+              valueChunks[i] = valueChunk;
+              valueChunksFound++;
+              break;
+            }
+          }
+        }
+        if ((valueChunksFound == valueChunks.length) && (rmdChunksFound == rmdChunks.length)) {
           break;
         }
+      } else {
+        throw new IllegalArgumentException("Unexpected schema id: " + reusedMapperValue.schemaId);
       }
     }
+    if (latestChunkedValueManifest == null) {
+      // No valid data.
+      return null;
+    } else {
+      if (valueChunksFound != valueChunks.length) {
+        int missingChunks = valueChunks.length - valueChunksFound;
+        throw new VeniceException(
+            "Cannot assemble a large value. Missing " + missingChunks + " / " + valueChunks.length + " chunks.");
+      }
+      if (totalValueByteCount != latestChunkedValueManifest.size) {
+        throw new VeniceException(
+            String
+                .format("Expect %d byte(s) but got %d byte(s)", latestChunkedValueManifest.size, totalValueByteCount));
+      }
+      if (!isRmdChunkingEnabled) {
+        return new ValueBytesAndSchemaId(
+            concatenateAllChunks(valueChunks, totalValueByteCount),
+            latestChunkedValueManifest.schemaId,
+            latestChunkedValueManifestRMDVersionId,
+            latestChunkedValueManifestRMDPayload);
+      }
 
-    if (chunksFound != valueChunks.length) {
-      int missingChunks = valueChunks.length - chunksFound;
-      throw new VeniceException(
-          "Cannot assemble a large value. Missing " + missingChunks + " / " + valueChunks.length + " chunks.");
-    }
+      if (rmdChunksFound != rmdChunks.length) {
+        int missingChunks = rmdChunks.length - rmdChunksFound;
+        throw new VeniceException(
+            "Cannot assemble a large RMD. Missing " + missingChunks + " / " + rmdChunks.length + " chunks.");
+      }
+      if (totalRmdByteCount != latestChunkedRmdManifest.size) {
+        throw new VeniceException(
+            String.format("Expect %d byte(s) but got %d byte(s)", latestChunkedRmdManifest.size, totalRmdByteCount));
+      }
+      return new ValueBytesAndSchemaId(
+          concatenateAllChunks(valueChunks, totalValueByteCount),
+          latestChunkedValueManifest.schemaId,
+          latestChunkedValueManifestRMDVersionId,
+          ByteBuffer.wrap(concatenateAllChunks(rmdChunks, totalValueByteCount)));
 
-    if (totalByteCount != manifest.size) {
-      throw new VeniceException(String.format("Expect %d byte(s) but got %d byte(s)", manifest.size, totalByteCount));
     }
-    return new ValueBytesAndSchemaId(
-        concatenateAllChunks(valueChunks, totalByteCount),
-        manifest.schemaId,
-        manifestMapperValue.replicationMetadataVersionId,
-        manifestMapperValue.replicationMetadataPayload);
   }
 
-  private ChunkedKeySuffix deserializeChunkedKeySuffix(ByteBuffer chunkedKeySuffixBytes) {
-    return chunkedKeySuffixDeserializer.deserialize(chunkedKeySuffixBytes);
+  private void extractKeySuffixForChunks(
+      ChunkedValueManifest manifest,
+      int keyBytesLength,
+      ByteBuffer[] chunkKeySuffixes) {
+    for (int i = 0; i < manifest.keysWithChunkIdSuffix.size(); i++) {
+      ByteBuffer byteBuffer = manifest.keysWithChunkIdSuffix.get(i);
+      int startPosition = byteBuffer.position() + keyBytesLength;
+      int suffixLength = byteBuffer.remaining() - keyBytesLength;
+      chunkKeySuffixes[i] = ByteBuffer.wrap(byteBuffer.array(), startPosition, suffixLength);
+    }
   }
 
   private byte[] concatenateAllChunks(final byte[][] chunks, final int totalByteCount) {
@@ -158,10 +251,6 @@ public class ChunkAssembler {
 
     private final int replicationMetadataVersionId;
     private final ByteBuffer replicationMetadataPayload;
-
-    ValueBytesAndSchemaId(ByteBuffer byteBuffer, int schemaID, int rmdId, ByteBuffer rmdPayload) {
-      this(ByteUtils.extractByteArray(byteBuffer), schemaID, rmdId, rmdPayload);
-    }
 
     ValueBytesAndSchemaId(byte[] bytes, int schemaID, int rmdId, ByteBuffer rmdPayload) {
       this.bytes = bytes;

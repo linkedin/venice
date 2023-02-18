@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.ConfigKeys.ADMIN_TOPIC_REPLICATION_FACTOR;
+import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_ALLOWLIST;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_D2;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DEFAULT_READ_QUOTA_PER_ROUTER;
@@ -12,6 +13,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_SCHEMA_VALIDATION_ENABLE
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_NUMBER_OF_PARTITION;
+import static com.linkedin.venice.ConfigKeys.DEFAULT_NUMBER_OF_PARTITION_FOR_HYBRID;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_OFFLINE_PUSH_STRATEGY;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_PARTITION_SIZE;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_READ_STRATEGY;
@@ -45,7 +47,6 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS_ADMIN_TO
 import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_LOG_COMPACTION_LAG_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
-import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR_LEGACY_SPELLING;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR_RT_TOPICS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.KAFKA_ZK_ADDRESS;
@@ -70,10 +71,10 @@ import static com.linkedin.venice.SSLConfig.DEFAULT_CONTROLLER_SSL_ENABLED;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_PER_ROUTER_READ_QUOTA;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS;
+import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_REPLICATION_FACTOR;
 
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.exceptions.ConfigurationException;
-import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
@@ -110,6 +111,7 @@ public class VeniceControllerClusterConfig {
   private RoutingStrategy routingStrategy;
   private int replicationFactor;
   private int numberOfPartition;
+  private int numberOfPartitionForHybrid;
   private int maxNumberOfPartition;
   private long partitionSize;
   private long offLineJobWaitTimeInMilliseconds;
@@ -285,6 +287,8 @@ public class VeniceControllerClusterConfig {
   private int defaultReadQuotaPerRouter;
   private int replicationMetadataVersionId;
 
+  private String childDatacenters;
+
   public VeniceControllerClusterConfig(VeniceProperties props) {
     try {
       this.props = props;
@@ -302,11 +306,7 @@ public class VeniceControllerClusterConfig {
     zkAddress = props.getString(ZOOKEEPER_ADDRESS);
     controllerName = props.getString(CONTROLLER_NAME);
     kafkaZkAddress = props.getString(KAFKA_ZK_ADDRESS);
-    try {
-      kafkaReplicationFactor = props.getInt(KAFKA_REPLICATION_FACTOR);
-    } catch (UndefinedPropertyException e) {
-      kafkaReplicationFactor = props.getInt(KAFKA_REPLICATION_FACTOR_LEGACY_SPELLING);
-    }
+    kafkaReplicationFactor = props.getInt(KAFKA_REPLICATION_FACTOR, DEFAULT_KAFKA_REPLICATION_FACTOR);
     kafkaReplicationFactorRTTopics = props.getInt(KAFKA_REPLICATION_FACTOR_RT_TOPICS, kafkaReplicationFactor);
     minInSyncReplicas = props.getOptionalInt(KAFKA_MIN_IN_SYNC_REPLICAS);
     minInSyncReplicasRealTimeTopics = props.getOptionalInt(KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS);
@@ -318,6 +318,7 @@ public class VeniceControllerClusterConfig {
         props.getLong(KAFKA_MIN_LOG_COMPACTION_LAG_MS, DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS);
     replicationFactor = props.getInt(DEFAULT_REPLICA_FACTOR);
     numberOfPartition = props.getInt(DEFAULT_NUMBER_OF_PARTITION);
+    numberOfPartitionForHybrid = props.getInt(DEFAULT_NUMBER_OF_PARTITION_FOR_HYBRID, numberOfPartition);
     kafkaBootstrapServers = props.getString(KAFKA_BOOTSTRAP_SERVERS);
     partitionSize = props.getSizeInBytes(DEFAULT_PARTITION_SIZE);
     maxNumberOfPartition = props.getInt(DEFAULT_MAX_NUMBER_OF_PARTITIONS);
@@ -453,6 +454,7 @@ public class VeniceControllerClusterConfig {
     this.defaultReadQuotaPerRouter =
         props.getInt(CONTROLLER_DEFAULT_READ_QUOTA_PER_ROUTER, DEFAULT_PER_ROUTER_READ_QUOTA);
     this.replicationMetadataVersionId = props.getInt(REPLICATION_METADATA_VERSION_ID, 1);
+    this.childDatacenters = props.getString(CHILD_CLUSTER_ALLOWLIST);
   }
 
   private boolean doesControllerNeedsSslConfig() {
@@ -474,7 +476,7 @@ public class VeniceControllerClusterConfig {
     return clusterName;
   }
 
-  public String getZkAddress() {
+  public final String getZkAddress() {
     return zkAddress;
   }
 
@@ -508,6 +510,10 @@ public class VeniceControllerClusterConfig {
 
   public int getNumberOfPartition() {
     return numberOfPartition;
+  }
+
+  public int getNumberOfPartitionForHybrid() {
+    return numberOfPartitionForHybrid;
   }
 
   public int getKafkaReplicationFactor() {
@@ -716,5 +722,9 @@ public class VeniceControllerClusterConfig {
 
   public int getReplicationMetadataVersionId() {
     return replicationMetadataVersionId;
+  }
+
+  public String getChildDatacenters() {
+    return childDatacenters;
   }
 }

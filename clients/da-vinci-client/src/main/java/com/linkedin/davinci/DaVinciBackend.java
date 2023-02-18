@@ -124,14 +124,16 @@ public class DaVinciBackend implements Closeable {
 
       SchemaReader partitionStateSchemaReader = ClientFactory.getSchemaReader(
           ClientConfig.cloneConfig(clientConfig)
-              .setStoreName(AvroProtocolDefinition.PARTITION_STATE.getSystemStoreName()));
+              .setStoreName(AvroProtocolDefinition.PARTITION_STATE.getSystemStoreName()),
+          null);
       InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer =
           AvroProtocolDefinition.PARTITION_STATE.getSerializer();
       partitionStateSerializer.setSchemaReader(partitionStateSchemaReader);
 
       SchemaReader versionStateSchemaReader = ClientFactory.getSchemaReader(
           ClientConfig.cloneConfig(clientConfig)
-              .setStoreName(AvroProtocolDefinition.STORE_VERSION_STATE.getSystemStoreName()));
+              .setStoreName(AvroProtocolDefinition.STORE_VERSION_STATE.getSystemStoreName()),
+          null);
       InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer =
           AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
       storeVersionStateSerializer.setSchemaReader(versionStateSchemaReader);
@@ -166,7 +168,8 @@ public class DaVinciBackend implements Closeable {
 
       SchemaReader kafkaMessageEnvelopeSchemaReader = ClientFactory.getSchemaReader(
           ClientConfig.cloneConfig(clientConfig)
-              .setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName()));
+              .setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName()),
+          null);
 
       /**
        * Verify that the latest {@link com.linkedin.venice.serialization.avro.AvroProtocolDefinition#KAFKA_MESSAGE_ENVELOPE}
@@ -466,7 +469,7 @@ public class DaVinciBackend implements Closeable {
     return cacheBackend.map(ObjectCacheBackend::getStoreCacheConfig).equals(config);
   }
 
-  Map<String, VersionBackend> getVersionByTopicMap() {
+  final Map<String, VersionBackend> getVersionByTopicMap() {
     return versionByTopicMap;
   }
 
@@ -502,7 +505,7 @@ public class DaVinciBackend implements Closeable {
     }
   }
 
-  protected boolean isIsolatedIngestion() {
+  protected final boolean isIsolatedIngestion() {
     return configLoader.getVeniceServerConfig().getIngestionMode().equals(IngestionMode.ISOLATED);
   }
 

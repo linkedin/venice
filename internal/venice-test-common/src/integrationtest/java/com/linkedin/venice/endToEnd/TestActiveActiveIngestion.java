@@ -24,13 +24,12 @@ import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_CONTRO
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_D2_ZK_HOSTS;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PUSH_TYPE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_STORE;
-import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
-import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
-import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
-import static com.linkedin.venice.utils.TestPushUtils.sendStreamingDeleteRecord;
-import static com.linkedin.venice.utils.TestPushUtils.sendStreamingRecord;
-import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithUserSchema;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingDeleteRecord;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestUtils.generateInput;
+import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUserSchema;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.ConfigKeys;
@@ -38,6 +37,7 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -53,12 +53,14 @@ import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.MockCircularTime;
-import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.view.TestView;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
@@ -78,6 +80,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
+import org.apache.avro.util.Utf8;
 import org.apache.samza.config.MapConfig;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -122,7 +125,7 @@ public class TestActiveActiveIngestion {
         Optional.of(new VeniceProperties(serverProperties)),
         false);
 
-    childDatacenters = multiColoMultiClusterWrapper.getClusters();
+    childDatacenters = multiColoMultiClusterWrapper.getChildRegions();
     parentControllers = multiColoMultiClusterWrapper.getParentControllers();
     clusterName = CLUSTER_NAMES[0];
     clusterWrapper = childDatacenters.get(0).getClusters().get(clusterName);
@@ -131,10 +134,13 @@ public class TestActiveActiveIngestion {
   @AfterClass
   public void cleanUp() {
     multiColoMultiClusterWrapper.close();
+    TestView.resetCounters();
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testKIFRepushActiveActiveStore(boolean isChunkingEnabled) throws Exception {
+  public void testAAIngestionWithStoreView(boolean isChunkingEnabled) throws Exception {
+    ControllerClient childControllerClient =
+        new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
     String parentControllerURLs =
         parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
     ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
@@ -149,21 +155,49 @@ public class TestActiveActiveIngestion {
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
-    Properties props = defaultVPJProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
+    Properties props =
+        TestWriteUtils.defaultVPJProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
+    Map<String, String> viewConfig = new HashMap<>();
+    viewConfig.put(
+        "testView",
+        "{\"viewClassName\" : \"" + TestView.class.getCanonicalName() + "\", \"viewParameters\" : {}}");
+
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setLeaderFollowerModel(true)
         .setActiveActiveReplicationEnabled(true)
-        .setHybridRewindSeconds(360)
+        .setHybridRewindSeconds(500)
+        .setStoreViews(viewConfig)
         .setHybridOffsetLagThreshold(8)
         .setChunkingEnabled(isChunkingEnabled)
-        .setNativeReplicationEnabled(true);
+        .setNativeReplicationEnabled(true)
+        .setPartitionCount(1);
+    MetricsRepository metricsRepository = new MetricsRepository();
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
+    TestWriteUtils.runPushJob("Run push job", props);
 
-    TestPushUtils.runPushJob("Run push job", props);
+    Map<String, String> samzaConfig = getSamzaConfig(storeName);
+    VeniceSystemFactory factory = new VeniceSystemFactory();
+    // Use a unique key for DELETE with RMD validation
+    int deleteWithRmdKeyIndex = 1000;
 
-    // run samza to stream put and delete
-    runSamzaStreamJob(storeName);
+    try (
+        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
+      veniceProducer.start();
+      // Run Samza job to send PUT and DELETE requests.
+      runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 0);
+      // Produce a DELETE record with large timestamp
+      produceRecordWithLogicalTimestamp(veniceProducer, storeName, deleteWithRmdKeyIndex, 1000, true);
+    }
+
+    try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName)
+            .setVeniceURL(clusterWrapper.getRandomRouterURL())
+            .setMetricsRepository(metricsRepository))) {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        Assert.assertNull(client.get(Integer.toString(deleteWithRmdKeyIndex)).get());
+      });
+    }
 
     // run repush
     props.setProperty(SOURCE_KAFKA, "true");
@@ -171,33 +205,63 @@ public class TestActiveActiveIngestion {
     props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
     // intentionally stop re-consuming from RT so stale records don't affect the testing results
     props.put(REWIND_TIME_IN_SECONDS_OVERRIDE, 0);
-    TestPushUtils.runPushJob("Run repush job", props);
+    TestWriteUtils.runPushJob("Run repush job", props);
     ControllerClient controllerClient =
         new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
     TestUtils.waitForNonDeterministicAssertion(
         5,
         TimeUnit.SECONDS,
         () -> Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 2));
-
     clusterWrapper.refreshAllRouterMetaData();
+
     // Validate repush from version 2
-    MetricsRepository metricsRepository = new MetricsRepository();
-    try (AvroGenericStoreClient avroClient = ClientFactory.getAndStartGenericAvroClient(
+    try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
             .setVeniceURL(clusterWrapper.getRandomRouterURL())
             .setMetricsRepository(metricsRepository))) {
-      // test single get
-      for (int i = 0; i < 10; i++) {
-        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "stream_" + i);
-      }
-      // test deletes
-      for (int i = 10; i < 20; i++) {
-        Assert.assertNull(avroClient.get(Integer.toString(i)).get());
-      }
-      // test old data
-      for (int i = 20; i < 100; i++) {
-        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
-      }
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        // test single get
+        for (int i = 0; i < 10; i++) {
+          String key = Integer.toString(i);
+          Utf8 value = client.get(key).get();
+          Assert.assertNotNull(value);
+          Assert.assertEquals(value.toString(), "stream_" + i);
+        }
+        // test deletes
+        for (int i = 10; i < 20; i++) {
+          String key = Integer.toString(i);
+          Utf8 value = client.get(key).get();
+          Assert.assertNull(value);
+        }
+        // test old data
+        for (int i = 20; i < 100; i++) {
+          String key = Integer.toString(i);
+          Utf8 value = client.get(key).get();
+          Assert.assertNotNull(value);
+          Assert.assertEquals(value.toString(), "test_name_" + i);
+        }
+      });
+    }
+    try (
+        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
+      veniceProducer.start();
+      // Produce a new PUT with smaller logical timestamp, it is expected to be ignored as there was a DELETE with
+      // larger
+      // timestamp
+      produceRecordWithLogicalTimestamp(veniceProducer, storeName, deleteWithRmdKeyIndex, 2, false);
+      // Produce another record to the same partition to make sure the above PUT is processed during validation stage.
+      produceRecordWithLogicalTimestamp(veniceProducer, storeName, deleteWithRmdKeyIndex + 1, 1, false);
+    }
+    try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName)
+            .setVeniceURL(clusterWrapper.getRandomRouterURL())
+            .setMetricsRepository(metricsRepository))) {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        Assert.assertNotNull(client.get(Integer.toString(deleteWithRmdKeyIndex + 1)).get());
+      });
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        Assert.assertNull(client.get(Integer.toString(deleteWithRmdKeyIndex)).get());
+      });
     }
 
     /**
@@ -219,10 +283,14 @@ public class TestActiveActiveIngestion {
     mockTimestampInMs.add(past.toEpochMilli());
     Time mockTime = new MockCircularTime(mockTimestampInMs);
 
-    // run samza to stream put and delete
-    runSamzaStreamJob(storeName, mockTime, 10, 10, 20);
+    try (
+        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
+      veniceProducer.start();
+      // run samza to stream put and delete
+      runSamzaStreamJob(veniceProducer, storeName, mockTime, 10, 10, 20);
+    }
 
-    TestPushUtils.runPushJob("Run repush job with TTL", props);
+    TestWriteUtils.runPushJob("Run repush job with TTL", props);
     TestUtils.waitForNonDeterministicAssertion(
         5,
         TimeUnit.SECONDS,
@@ -230,14 +298,14 @@ public class TestActiveActiveIngestion {
 
     // Validate repush from version 4
     clusterWrapper.refreshAllRouterMetaData();
-    try (AvroGenericStoreClient avroClient = ClientFactory.getAndStartGenericAvroClient(
+    try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
             .setVeniceURL(clusterWrapper.getRandomRouterURL())
             .setMetricsRepository(metricsRepository))) {
       // test single get
       int validGet = 0, filteredGet = 0;
       for (int i = 20; i < 30; i++) {
-        Object result = avroClient.get(Integer.toString(i)).get();
+        Object result = client.get(Integer.toString(i)).get();
         if (result == null) {
           filteredGet++;
         } else {
@@ -250,12 +318,216 @@ public class TestActiveActiveIngestion {
       // test deletes
       for (int i = 30; i < 40; i++) {
         // not matter the DELETE is TTLed or not, the value should always be null
-        Assert.assertNull(avroClient.get(Integer.toString(i)).get());
+        Assert.assertNull(client.get(Integer.toString(i)).get());
       }
 
       // test old data - should be empty due to empty push
       for (int i = 40; i < 100; i++) {
-        Assert.assertNull(avroClient.get(Integer.toString(i)).get());
+        Assert.assertNull(client.get(Integer.toString(i)).get());
+      }
+    }
+
+    // Verify version swap count matches with version count - 1 (since we don't transmit from version 0 to version 1)
+    TestUtils.waitForNonDeterministicAssertion(
+        5,
+        TimeUnit.SECONDS,
+        () -> Assert.assertEquals(TestView.getInstance().getVersionSwapCountForStore(storeName), 3));
+
+    // Verify total updates match up (first 20 + next 20 should make 40, And then double it again as rewind updates are
+    // applied to a version)
+    TestUtils.waitForNonDeterministicAssertion(
+        5,
+        TimeUnit.SECONDS,
+        () -> Assert.assertEquals(TestView.getInstance().getRecordCountForStore(storeName), 85));
+
+    parentControllerClient.disableAndDeleteStore(storeName);
+
+    // Verify that topics and store is cleaned up
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      MultiStoreTopicsResponse storeTopicsResponse = childControllerClient.getDeletableStoreTopics();
+      Assert.assertFalse(storeTopicsResponse.isError());
+      Assert.assertEquals(storeTopicsResponse.getTopics().size(), 0);
+    });
+  }
+
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testKIFRepushActiveActiveStore(boolean isChunkingEnabled) throws Exception {
+    String parentControllerURLs =
+        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
+    ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
+    TestUtils.assertCommand(
+        parentControllerClient.configureActiveActiveReplicationForCluster(
+            true,
+            VeniceUserStoreType.BATCH_ONLY.toString(),
+            Optional.empty()));
+    // create a active-active enabled store and run batch push job
+    // batch job contains 100 records
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
+    String inputDirPath = "file:" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("store");
+    Properties props = IntegrationTestPushUtils.defaultVPJProps(multiColoMultiClusterWrapper, inputDirPath, storeName);
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
+    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setLeaderFollowerModel(true)
+        .setActiveActiveReplicationEnabled(true)
+        .setHybridRewindSeconds(360)
+        .setHybridOffsetLagThreshold(8)
+        .setChunkingEnabled(isChunkingEnabled)
+        .setNativeReplicationEnabled(true)
+        .setPartitionCount(1);
+    MetricsRepository metricsRepository = new MetricsRepository();
+    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
+    TestWriteUtils.runPushJob("Run push job", props);
+
+    Map<String, String> samzaConfig = getSamzaConfig(storeName);
+    VeniceSystemFactory factory = new VeniceSystemFactory();
+    // Use a unique key for DELETE with RMD validation
+    int deleteWithRmdKeyIndex = 1000;
+
+    try (
+        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
+      veniceProducer.start();
+      // Run Samza job to send PUT and DELETE requests.
+      runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 0);
+      // Produce a DELETE record with large timestamp
+      produceRecordWithLogicalTimestamp(veniceProducer, storeName, deleteWithRmdKeyIndex, 1000, true);
+    }
+
+    try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName)
+            .setVeniceURL(clusterWrapper.getRandomRouterURL())
+            .setMetricsRepository(metricsRepository))) {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        Assert.assertNull(client.get(Integer.toString(deleteWithRmdKeyIndex)).get());
+      });
+    }
+
+    // run repush
+    props.setProperty(SOURCE_KAFKA, "true");
+    props.setProperty(KAFKA_INPUT_BROKER_URL, clusterWrapper.getKafka().getAddress());
+    props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
+    // intentionally stop re-consuming from RT so stale records don't affect the testing results
+    props.put(REWIND_TIME_IN_SECONDS_OVERRIDE, 0);
+    TestWriteUtils.runPushJob("Run repush job", props);
+    ControllerClient controllerClient =
+        new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
+    TestUtils.waitForNonDeterministicAssertion(
+        5,
+        TimeUnit.SECONDS,
+        () -> Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 2));
+    clusterWrapper.refreshAllRouterMetaData();
+
+    // Validate repush from version 2
+    try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName)
+            .setVeniceURL(clusterWrapper.getRandomRouterURL())
+            .setMetricsRepository(metricsRepository))) {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        // test single get
+        for (int i = 0; i < 10; i++) {
+          String key = Integer.toString(i);
+          Utf8 value = client.get(key).get();
+          Assert.assertNotNull(value);
+          Assert.assertEquals(value.toString(), "stream_" + i);
+        }
+        // test deletes
+        for (int i = 10; i < 20; i++) {
+          String key = Integer.toString(i);
+          Utf8 value = client.get(key).get();
+          Assert.assertNull(value);
+        }
+        // test old data
+        for (int i = 20; i < 100; i++) {
+          String key = Integer.toString(i);
+          Utf8 value = client.get(key).get();
+          Assert.assertNotNull(value);
+          Assert.assertEquals(value.toString(), "test_name_" + i);
+        }
+      });
+    }
+    try (
+        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
+      veniceProducer.start();
+      // Produce a new PUT with smaller logical timestamp, it is expected to be ignored as there was a DELETE with
+      // larger
+      // timestamp
+      produceRecordWithLogicalTimestamp(veniceProducer, storeName, deleteWithRmdKeyIndex, 2, false);
+      // Produce another record to the same partition to make sure the above PUT is processed during validation stage.
+      produceRecordWithLogicalTimestamp(veniceProducer, storeName, deleteWithRmdKeyIndex + 1, 1, false);
+    }
+    try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName)
+            .setVeniceURL(clusterWrapper.getRandomRouterURL())
+            .setMetricsRepository(metricsRepository))) {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        Assert.assertNotNull(client.get(Integer.toString(deleteWithRmdKeyIndex + 1)).get());
+      });
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        Assert.assertNull(client.get(Integer.toString(deleteWithRmdKeyIndex)).get());
+      });
+    }
+
+    /**
+     * Test Repush with TTL
+     */
+    // run empty push to clean up batch data
+    parentControllerClient.sendEmptyPushAndWait(storeName, "Run empty push job", 1000, 30 * Time.MS_PER_SECOND);
+
+    // enable repush ttl
+    props.setProperty(REPUSH_TTL_ENABLE, "true");
+
+    // set up mocked time for Samza records so some records can be stale intentionally.
+    List<Long> mockTimestampInMs = new LinkedList<>();
+    Instant now = Instant.now();
+    // always-valid record
+    mockTimestampInMs.add(now.toEpochMilli());
+    // always-stale records since ttl time is 360 sec
+    Instant past = now.minus(1, ChronoUnit.HOURS);
+    mockTimestampInMs.add(past.toEpochMilli());
+    Time mockTime = new MockCircularTime(mockTimestampInMs);
+
+    try (
+        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
+      veniceProducer.start();
+      // run samza to stream put and delete
+      runSamzaStreamJob(veniceProducer, storeName, mockTime, 10, 10, 20);
+    }
+
+    TestWriteUtils.runPushJob("Run repush job with TTL", props);
+    TestUtils.waitForNonDeterministicAssertion(
+        5,
+        TimeUnit.SECONDS,
+        () -> Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 4));
+
+    // Validate repush from version 4
+    clusterWrapper.refreshAllRouterMetaData();
+    try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName)
+            .setVeniceURL(clusterWrapper.getRandomRouterURL())
+            .setMetricsRepository(metricsRepository))) {
+      // test single get
+      int validGet = 0, filteredGet = 0;
+      for (int i = 20; i < 30; i++) {
+        Object result = client.get(Integer.toString(i)).get();
+        if (result == null) {
+          filteredGet++;
+        } else {
+          validGet++;
+        }
+      }
+      // Half records are valid, another half is not
+      Assert.assertEquals(validGet, 5);
+      Assert.assertEquals(filteredGet, 5);
+      // test deletes
+      for (int i = 30; i < 40; i++) {
+        // not matter the DELETE is TTLed or not, the value should always be null
+        Assert.assertNull(client.get(Integer.toString(i)).get());
+      }
+
+      // test old data - should be empty due to empty push
+      for (int i = 40; i < 100; i++) {
+        Assert.assertNull(client.get(Integer.toString(i)).get());
       }
     }
   }
@@ -275,7 +547,7 @@ public class TestActiveActiveIngestion {
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
-    Properties props = defaultVPJProps(parentControllers.get(0).getControllerUrl(), inputDirPath, storeName);
+    Properties props = IntegrationTestPushUtils.defaultVPJProps(multiColoMultiClusterWrapper, inputDirPath, storeName);
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
@@ -340,34 +612,42 @@ public class TestActiveActiveIngestion {
     });
   }
 
-  private void runSamzaStreamJob(String storeName) {
-    runSamzaStreamJob(storeName, null, 10, 10, 0);
+  private void runSamzaStreamJob(
+      VeniceSystemProducer veniceProducer,
+      String storeName,
+      Time mockedTime,
+      int numPuts,
+      int numDels,
+      int startIdx) {
+    // Send PUT requests.
+    for (int i = startIdx; i < startIdx + numPuts; i++) {
+      sendStreamingRecord(
+          veniceProducer,
+          storeName,
+          Integer.toString(i),
+          "stream_" + i,
+          mockedTime == null ? null : mockedTime.getMilliseconds());
+    }
+    // Send DELETE requests.
+    for (int i = startIdx + numPuts; i < startIdx + numPuts + numDels; i++) {
+      sendStreamingDeleteRecord(
+          veniceProducer,
+          storeName,
+          Integer.toString(i),
+          mockedTime == null ? null : mockedTime.getMilliseconds());
+    }
   }
 
-  private void runSamzaStreamJob(String storeName, Time mockedTime, int numPuts, int numDels, int startIdx) {
-    Map<String, String> samzaConfig = getSamzaConfig(storeName);
-    VeniceSystemFactory factory = new VeniceSystemFactory();
-
-    try (
-        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
-      veniceProducer.start();
-      // send puts
-      for (int i = startIdx; i < startIdx + numPuts; i++) {
-        sendStreamingRecord(
-            veniceProducer,
-            storeName,
-            Integer.toString(i),
-            "stream_" + i,
-            mockedTime == null ? null : mockedTime.getMilliseconds());
-      }
-      // send deletes
-      for (int i = startIdx + numPuts; i < startIdx + numPuts + numDels; i++) {
-        sendStreamingDeleteRecord(
-            veniceProducer,
-            storeName,
-            Integer.toString(i),
-            mockedTime == null ? null : mockedTime.getMilliseconds());
-      }
+  private void produceRecordWithLogicalTimestamp(
+      VeniceSystemProducer veniceProducer,
+      String storeName,
+      int index,
+      long logicalTimestamp,
+      boolean isDeleteOperation) {
+    if (isDeleteOperation) {
+      sendStreamingDeleteRecord(veniceProducer, storeName, Integer.toString(index), logicalTimestamp);
+    } else {
+      sendStreamingRecord(veniceProducer, storeName, Integer.toString(index), "stream_" + index, logicalTimestamp);
     }
   }
 

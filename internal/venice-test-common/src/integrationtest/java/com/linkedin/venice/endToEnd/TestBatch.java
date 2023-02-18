@@ -18,28 +18,28 @@ import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.ZSTD_COMPRESSION_LEVEL;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_VERSION_NUMBER;
-import static com.linkedin.venice.utils.TestPushUtils.ETL_KEY_SCHEMA_STRING;
-import static com.linkedin.venice.utils.TestPushUtils.ETL_UNION_VALUE_SCHEMA_STRING_WITHOUT_NULL;
-import static com.linkedin.venice.utils.TestPushUtils.ETL_UNION_VALUE_SCHEMA_STRING_WITH_NULL;
-import static com.linkedin.venice.utils.TestPushUtils.ETL_VALUE_SCHEMA_STRING;
-import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
-import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
-import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
-import static com.linkedin.venice.utils.TestPushUtils.loadFileAsString;
-import static com.linkedin.venice.utils.TestPushUtils.testRecordType;
-import static com.linkedin.venice.utils.TestPushUtils.updateStore;
-import static com.linkedin.venice.utils.TestPushUtils.writeAlternateSimpleAvroFileWithUserSchema;
-import static com.linkedin.venice.utils.TestPushUtils.writeAvroFileWithManyFloatsAndCustomTotalSize;
-import static com.linkedin.venice.utils.TestPushUtils.writeETLFileWithUnionWithNullSchema;
-import static com.linkedin.venice.utils.TestPushUtils.writeETLFileWithUnionWithoutNullSchema;
-import static com.linkedin.venice.utils.TestPushUtils.writeETLFileWithUserSchema;
-import static com.linkedin.venice.utils.TestPushUtils.writeEmptyAvroFileWithUserSchema;
-import static com.linkedin.venice.utils.TestPushUtils.writeSchemaWithUnknownFieldIntoAvroFile;
-import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithASchemaWithAWrongDefaultValue;
-import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithCustomSize;
-import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithDuplicateKey;
-import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithUserSchema;
-import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithUserSchema2;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.updateStore;
+import static com.linkedin.venice.utils.TestWriteUtils.ETL_KEY_SCHEMA_STRING;
+import static com.linkedin.venice.utils.TestWriteUtils.ETL_UNION_VALUE_SCHEMA_STRING_WITHOUT_NULL;
+import static com.linkedin.venice.utils.TestWriteUtils.ETL_UNION_VALUE_SCHEMA_STRING_WITH_NULL;
+import static com.linkedin.venice.utils.TestWriteUtils.ETL_VALUE_SCHEMA_STRING;
+import static com.linkedin.venice.utils.TestWriteUtils.TestRecordType;
+import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static com.linkedin.venice.utils.TestWriteUtils.loadFileAsString;
+import static com.linkedin.venice.utils.TestWriteUtils.writeAlternateSimpleAvroFileWithUserSchema;
+import static com.linkedin.venice.utils.TestWriteUtils.writeAvroFileWithManyFloatsAndCustomTotalSize;
+import static com.linkedin.venice.utils.TestWriteUtils.writeETLFileWithUnionWithNullSchema;
+import static com.linkedin.venice.utils.TestWriteUtils.writeETLFileWithUnionWithoutNullSchema;
+import static com.linkedin.venice.utils.TestWriteUtils.writeETLFileWithUserSchema;
+import static com.linkedin.venice.utils.TestWriteUtils.writeEmptyAvroFileWithUserSchema;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSchemaWithUnknownFieldIntoAvroFile;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithASchemaWithAWrongDefaultValue;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithCustomSize;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithDuplicateKey;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUserSchema;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUserSchema2;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
@@ -49,23 +49,19 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.hadoop.PushJobSchemaInfo;
-import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.KeyAndValueSchemas;
-import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.Metric;
@@ -141,7 +137,7 @@ public abstract class TestBatch {
     try (AvroGenericStoreClient avroClient = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
       try {
-        Object value1 = avroClient.get("key1").get();
+        avroClient.get("key1").get();
         Assert.fail("Single get request on store with no push should fail");
       } catch (Exception e) {
         Assert.assertTrue(e.getMessage().contains("Please push data to that store"));
@@ -151,7 +147,7 @@ public abstract class TestBatch {
         Set<String> keys = new HashSet<>();
         keys.add("key2");
         keys.add("key3");
-        Object values = avroClient.batchGet(keys).get();
+        avroClient.batchGet(keys).get();
         Assert.fail("Batch get request on store with no push should fail");
       } catch (Exception e) {
         Assert.assertTrue(e.getMessage().contains("Please push data to that store"));
@@ -481,13 +477,6 @@ public abstract class TestBatch {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testIncrementalPushWritesToRealTimeTopicWithPolicy() throws Exception {
-    /**
-     * N.B. This test has some flaky issues where it occasionally times out... It seems to be specific to
-     *      the {@link TestBatchForIngestionIsolation} subclass, and manifests in the form of one of the
-     *      three push jobs below timing out. Adding some logs just to try to weed out the relevant
-     *      start/end boundaries in build logs since the CI seems to jumble them up sometimes, especially
-     *      when flaky retries are involved...
-     */
     double randomNumber = Math.random();
     String classAndFunctionName = getClass().getSimpleName() + ".testIncrementalPushWritesToRealTimeTopicWithPolicy()";
     String uniqueTestId = "attempt [" + randomNumber + "] of " + classAndFunctionName;
@@ -855,11 +844,11 @@ public abstract class TestBatch {
       }
     }
 
-    TestPushUtils.runPushJob("Test Batch push job", props);
+    TestWriteUtils.runPushJob("Test Batch push job", props);
 
     if (multiPushJobs) {
-      TestPushUtils.runPushJob("Test Batch push job 2", props);
-      TestPushUtils.runPushJob("Test Batch push job 3", props);
+      TestWriteUtils.runPushJob("Test Batch push job 2", props);
+      TestWriteUtils.runPushJob("Test Batch push job 3", props);
     }
 
     veniceCluster.refreshAllRouterMetaData();
@@ -1056,7 +1045,7 @@ public abstract class TestBatch {
           Schema sourceSchema = keyRecord.getSchema().getField("source").schema();
           keyRecord.put("memberId", (long) 1);
           keyRecord
-              .put("source", AvroCompatibilityHelper.newEnumSymbol(sourceSchema, testRecordType.OFFLINE.toString()));
+              .put("source", AvroCompatibilityHelper.newEnumSymbol(sourceSchema, TestRecordType.OFFLINE.toString()));
           IndexedRecord value = (IndexedRecord) avroClient.get(keyRecord).get();
           Assert.assertEquals(value.get(0).toString(), "LOGO");
           Assert.assertEquals(value.get(1), 1);
@@ -1067,7 +1056,7 @@ public abstract class TestBatch {
               new GenericData.Record(schemaWithSymbolDoc.getField(DEFAULT_KEY_FIELD_PROP).schema());
           keyRecord2.put("memberId", (long) 2);
           keyRecord2
-              .put("source", AvroCompatibilityHelper.newEnumSymbol(sourceSchema, testRecordType.NEARLINE.toString()));
+              .put("source", AvroCompatibilityHelper.newEnumSymbol(sourceSchema, TestRecordType.NEARLINE.toString()));
           IndexedRecord value2 = (IndexedRecord) avroClient.get(keyRecord2).get();
           Assert.assertEquals(value2.get(0).toString(), "INDUSTRY");
           Assert.assertEquals(value2.get(1), 2);
@@ -1075,6 +1064,7 @@ public abstract class TestBatch {
   }
 
   private static class StatCounter extends AtomicLong {
+    private static final long serialVersionUID = 1L;
     final long initialValue;
     final LongBinaryOperator accumulator;
 
@@ -1094,18 +1084,24 @@ public abstract class TestBatch {
   }
 
   private static class MaxLong extends StatCounter {
+    private static final long serialVersionUID = 1L;
+
     public MaxLong() {
       super(Integer.MIN_VALUE, Math::max);
     }
   }
 
   private static class MinLong extends StatCounter {
+    private static final long serialVersionUID = 1L;
+
     public MinLong() {
       super(Integer.MAX_VALUE, Math::min);
     }
   }
 
   private static class TotalLong extends StatCounter {
+    private static final long serialVersionUID = 1L;
+
     public TotalLong() {
       super(0, Long::sum);
     }
@@ -1271,58 +1267,6 @@ public abstract class TestBatch {
           }).get();
         },
         new UpdateStoreQueryParams().setBatchGetLimit(1000).setReadQuotaInCU(Integer.MAX_VALUE));
-  }
-
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testRunMRJobAndPBNJ() throws Exception {
-    Utils.thisIsLocalhost();
-
-    File inputDir = getTempDataDirectory();
-    Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
-    String inputDirPath = "file:" + inputDir.getAbsolutePath();
-    String storeName = Utils.getUniqueString("store");
-    Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
-    props.setProperty(VenicePushJob.PBNJ_ENABLE, "true");
-    props.setProperty(VenicePushJob.PBNJ_ROUTER_URL_PROP, veniceCluster.getRandomRouterURL());
-    createStoreForJob(veniceCluster.getClusterName(), recordSchema, props).close();
-
-    try (VenicePushJob job = new VenicePushJob("Test push job", props)) {
-      job.run();
-      // Verify job properties
-      Assert.assertEquals(job.getKafkaTopic(), Version.composeKafkaTopic(storeName, 1));
-      Assert.assertEquals(job.getInputDirectory(), inputDirPath);
-      String schema = "{\"type\":\"record\",\"name\":\"User\",\"namespace\":\"example.avro\",\"fields\":[{\"name\":\""
-          + DEFAULT_KEY_FIELD_PROP + "\",\"type\":\"string\"},{\"name\":\"" + DEFAULT_VALUE_FIELD_PROP
-          + "\",\"type\":\"string\"},{\"name\":\"age\",\"type\":\"int\"}]}";
-      PushJobSchemaInfo pushJobSchemaInfo = job.getVeniceSchemaInfo();
-      Assert.assertEquals(pushJobSchemaInfo.getFileSchemaString(), schema);
-      Assert.assertEquals(pushJobSchemaInfo.getKeySchemaString(), STRING_SCHEMA);
-      Assert.assertEquals(pushJobSchemaInfo.getValueSchemaString(), STRING_SCHEMA);
-
-      veniceCluster.refreshAllRouterMetaData();
-
-      // Verify the data in Venice Store
-      String routerUrl = veniceCluster.getRandomRouterURL();
-      try (AvroGenericStoreClient<String, Object> client = ClientFactory
-          .getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
-        for (int i = 1; i <= 100; ++i) {
-          String expected = "test_name_" + i;
-          String actual =
-              client.get(Integer.toString(i)).get().toString(); /* client.get().get() returns a Utf8 object */
-          Assert.assertEquals(actual, expected);
-        }
-
-        try (ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), routerUrl)) {
-          JobStatusQueryResponse jobStatus = controllerClient.queryJobStatus(job.getKafkaTopic());
-          Assert.assertFalse(jobStatus.isError(), "Error in getting JobStatusResponse: " + jobStatus.getError());
-          Assert.assertEquals(
-              jobStatus.getStatus(),
-              ExecutionStatus.COMPLETED.toString(),
-              "After job is complete, status should reflect that");
-          // We won't verify progress any more here since we decided to disable this feature
-        }
-      }
-    }
   }
 
   @Test(timeOut = TEST_TIMEOUT)

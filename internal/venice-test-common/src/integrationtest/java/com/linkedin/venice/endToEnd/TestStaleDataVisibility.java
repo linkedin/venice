@@ -1,9 +1,8 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
-import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
-import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
-import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithUserSchema;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
+import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUserSchema;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.common.VeniceSystemStoreType;
@@ -17,6 +16,7 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -72,7 +72,7 @@ public class TestStaleDataVisibility {
         Optional.of(new VeniceProperties(serverProperties)),
         false);
 
-    childClusters = multiColoMultiClusterWrapper.getClusters();
+    childClusters = multiColoMultiClusterWrapper.getChildRegions();
     childControllers = childClusters.stream()
         .map(veniceClusterWrapper -> new ArrayList<>(veniceClusterWrapper.getControllers().values()))
         .collect(Collectors.toList());
@@ -107,11 +107,10 @@ public class TestStaleDataVisibility {
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
-    String parentControllerUrls =
-        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
+    String parentControllerUrls = multiColoMultiClusterWrapper.getControllerConnectString();
 
     // create a store via parent controller url
-    Properties props = defaultVPJProps(parentControllerUrls, inputDirPath, storeName);
+    Properties props = IntegrationTestPushUtils.defaultVPJProps(multiColoMultiClusterWrapper, inputDirPath, storeName);
     createStoreForJob(clusterName, recordSchema, props).close();
     try (ControllerClient controllerClient = new ControllerClient(clusterName, parentControllerUrls)) {
       String pushStatusStoreVersionName =
@@ -136,8 +135,8 @@ public class TestStaleDataVisibility {
       Assert.assertFalse(emptyResponse.getAuditMap().containsKey(storeName));
 
       // get single child controller, empty push to it
-      VeniceControllerWrapper childController = childControllers.get(0).get(0);
-      Properties props2 = defaultVPJProps(childController.getControllerUrl(), inputDirPath, storeName);
+      Properties props2 = IntegrationTestPushUtils
+          .defaultVPJProps(multiColoMultiClusterWrapper.getChildRegions().get(0), inputDirPath, storeName);
       try (VenicePushJob job = new VenicePushJob("Test push job", props2)) {
         job.run();
       }
@@ -150,17 +149,15 @@ public class TestStaleDataVisibility {
       Assert.assertEquals(response.getAuditMap().get(storeName).getHealthyRegions().size(), 1);
 
       // test store health check
-      StoreHealthAuditResponse healthResponse =
-          controllerClient.listStorePushInfo(clusterName, parentControllerUrls, storeName);
-      Assert.assertTrue(response.getAuditMap().containsKey(healthResponse.getStoreName()));
-      Map<String, StoreInfo> auditMapEntry =
-          response.getAuditMap().get(healthResponse.getStoreName()).getStaleRegions();
-      for (Map.Entry<String, StoreInfo> entry: auditMapEntry.entrySet())
-        if (Objects.equals(entry.getValue().getName(), storeName))
-          Assert.assertTrue(healthResponse.getRegionsWithStaleData().contains(entry.getKey())); // verify that the same
-                                                                                                // regions are stale
-                                                                                                // across both responses
-                                                                                                // for the same store
+      StoreHealthAuditResponse healthResponse = controllerClient.listStorePushInfo(storeName, true);
+      Assert.assertTrue(response.getAuditMap().containsKey(healthResponse.getName()));
+      Map<String, StoreInfo> auditMapEntry = response.getAuditMap().get(healthResponse.getName()).getStaleRegions();
+      for (Map.Entry<String, StoreInfo> entry: auditMapEntry.entrySet()) {
+        if (Objects.equals(entry.getValue().getName(), storeName)) {
+          // verify that the same regions are stale across both responses for the same store.
+          Assert.assertTrue(healthResponse.getRegionsWithStaleData().contains(entry.getKey()));
+        }
+      }
     }
   }
 }

@@ -37,6 +37,7 @@ dependencies {
   implementation libraries.conscrypt
   implementation (project(':internal:alpini:netty4:alpini-netty4-base'))
   implementation libraries.helix
+  implementation libraries.fastUtil
   implementation libraries.httpAsyncClient
   implementation libraries.kafkaClients
   implementation libraries.log4j2core
@@ -60,3 +61,8 @@ jar {
     ]
   }
 }
+
+ext {
+  jacocoCoverageThreshold = 0.23
+}
+

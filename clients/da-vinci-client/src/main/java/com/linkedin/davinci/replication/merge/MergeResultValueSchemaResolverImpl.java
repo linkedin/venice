@@ -61,7 +61,7 @@ public class MergeResultValueSchemaResolverImpl implements MergeResultValueSchem
       }
       // Neither old value schema nor new value schema is the superset schema. So there must be superset schema
       // registered.
-      final SchemaEntry registeredSupersetSchema = storeSchemaCache.getSupersetSchema().orElse(null);
+      final SchemaEntry registeredSupersetSchema = storeSchemaCache.getSupersetSchema();
       if (registeredSupersetSchema == null) {
         throw new VeniceException("Got null superset schema for store " + storeName);
       }

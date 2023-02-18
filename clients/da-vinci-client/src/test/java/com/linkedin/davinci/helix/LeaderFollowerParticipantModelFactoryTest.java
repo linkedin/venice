@@ -14,7 +14,6 @@ import com.linkedin.venice.utils.TestUtils;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.apache.helix.model.Message;
-import org.apache.helix.participant.statemachine.StateModel;
 import org.mockito.Mockito;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -81,7 +80,7 @@ public class LeaderFollowerParticipantModelFactoryTest {
      * as possible, we shouldn't bind state model creation with the healthiness of other components like ZK.
      */
     String partitionName = HelixUtils.getPartitionName(resourceName, testPartition);
-    StateModel stateModel = factory.createNewStateModel(resourceName, partitionName);
+    factory.createNewStateModel(resourceName, partitionName);
   }
 
   @Test
@@ -89,6 +88,6 @@ public class LeaderFollowerParticipantModelFactoryTest {
     String partitionName = HelixUtils.getPartitionName(resourceName, testPartition);
     Mockito.when(mockReadOnlyStoreRepository.getStore(Version.parseStoreFromKafkaTopicName(resourceName)))
         .thenThrow(new VeniceException());
-    StateModel stateModel = factory.createNewStateModel(resourceName, partitionName);
+    factory.createNewStateModel(resourceName, partitionName);
   }
 }

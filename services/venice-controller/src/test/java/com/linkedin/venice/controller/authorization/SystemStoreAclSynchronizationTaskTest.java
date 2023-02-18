@@ -32,12 +32,12 @@ import org.testng.annotations.Test;
 
 
 public class SystemStoreAclSynchronizationTaskTest {
-  private static long SYNCHRONIZATION_CYCLE_DELAY = 50;
+  private final static long SYNCHRONIZATION_CYCLE_DELAY = 50;
 
   private final ExecutorService executorService = Executors.newSingleThreadExecutor();
   private final List<Store> allStores = new ArrayList<>();
   private final List<String> clustersLeaderOf = new ArrayList<>();
-  private final String defaultCluster = "test-cluster1";
+  private final static String defaultCluster = "test-cluster1";
   private AuthorizerService authorizerService;
   private VeniceParentHelixAdmin veniceParentHelixAdmin;
 

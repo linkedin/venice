@@ -58,6 +58,7 @@ public abstract class AbstractVenicePartitionStateModelTest<MODEL_TYPE extends A
     Mockito.when(mockIngestionBackend.getStoreIngestionService()).thenReturn(mockStoreIngestionService);
     mockStoreConfig = Mockito.mock(VeniceStoreVersionConfig.class);
 
+    mockAggVersionedIngestionStats = Mockito.mock(AggVersionedIngestionStats.class);
     mockMessage = Mockito.mock(Message.class);
     mockContext = Mockito.mock(NotificationContext.class);
 

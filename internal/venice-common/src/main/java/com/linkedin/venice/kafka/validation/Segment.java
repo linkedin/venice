@@ -58,7 +58,9 @@ public class Segment {
    */
   private boolean newSegment;
   private long lastSuccessfulOffset;
+  // record the last timestamp that a validation for this segment happened and passed.
   private long lastRecordTimestamp = -1;
+  // record the last producer message time stamp passed within the ConsumerRecord
   private long lastRecordProducerTimestamp = -1;
 
   public Segment(
@@ -263,6 +265,7 @@ public class Segment {
           case START_OF_INCREMENTAL_PUSH:
           case END_OF_INCREMENTAL_PUSH:
           case TOPIC_SWITCH:
+          case VERSION_SWAP:
             // All other control messages are handled the same way.
             updateCheckSum(messageEnvelope.messageType);
             updateCheckSum(controlMessage.controlMessageType);

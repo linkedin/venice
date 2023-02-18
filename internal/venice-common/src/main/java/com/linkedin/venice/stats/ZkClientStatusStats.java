@@ -60,6 +60,8 @@ public class ZkClientStatusStats extends AbstractVeniceStats implements IZkState
         reconnectionLatency = System.currentTimeMillis() - disconnectionTime;
         zkClientReconnectionLatencySensor.record(reconnectionLatency);
         break;
+      default:
+        // do nothing
     }
 
     String logMessage = "KeeperState for '" + getName() + "' changed from " + clientState + " to " + state;

@@ -5,7 +5,6 @@ import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 
 import com.linkedin.venice.schema.merge.ValueAndRmd;
 import java.util.List;
-import java.util.Optional;
 import org.apache.avro.generic.GenericRecord;
 
 
@@ -75,7 +74,7 @@ abstract class AbstractMerge<T> implements Merge<T> {
     oldRmd.put(
         REPLICATION_CHECKPOINT_VECTOR_FIELD,
         MergeUtils.mergeOffsetVectors(
-            Optional.ofNullable((List<Long>) oldRmd.get(REPLICATION_CHECKPOINT_VECTOR_FIELD)),
+            (List<Long>) oldRmd.get(REPLICATION_CHECKPOINT_VECTOR_FIELD),
             newValueSourceOffset,
             newValueSourceBrokerID));
   }

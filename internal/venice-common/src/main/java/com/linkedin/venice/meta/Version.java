@@ -8,6 +8,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.systemstore.schemas.StoreVersion;
+import com.linkedin.venice.views.VeniceView;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
@@ -115,6 +116,10 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   void setChunkingEnabled(boolean chunkingEnabled);
 
+  boolean isRmdChunkingEnabled();
+
+  void setRmdChunkingEnabled(boolean rmdChunkingEnabled);
+
   String getStoreName();
 
   String getPushJobId();
@@ -134,11 +139,6 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
   boolean isVersionSwapDeferred();
 
   void setVersionSwapDeferred(boolean versionSwapDeferred);
-
-  // TODO(sumane): Kept for interop; should be removed in inc push cleanup Phase-II
-  IncrementalPushPolicy getIncrementalPushPolicy();
-
-  void setIncrementalPushPolicy(IncrementalPushPolicy incrementalPushPolicy);
 
   int getReplicationFactor();
 
@@ -164,7 +164,7 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   Map<String, ViewConfig> getViewConfigs();
 
-  void setViewConfig(Map<String, ViewConfig> viewConfigMap);
+  void setViewConfigs(Map<String, ViewConfig> viewConfigMap);
 
   boolean isUseVersionLevelHybridConfig();
 
@@ -232,6 +232,8 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
     if (kafkaTopic.endsWith(STREAM_REPROCESSING_TOPIC_SUFFIX)) {
       return Integer
           .parseInt(kafkaTopic.substring(versionStartIndex, kafkaTopic.lastIndexOf(STREAM_REPROCESSING_TOPIC_SUFFIX)));
+    } else if (VeniceView.isViewTopic(kafkaTopic)) {
+      return VeniceView.parseVersionFromViewTopic(kafkaTopic);
     } else {
       return Integer.parseInt(kafkaTopic.substring(versionStartIndex));
     }
@@ -312,6 +314,8 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
       return parseStoreFromStreamReprocessingTopic(kafkaTopic);
     } else if (isVersionTopic(kafkaTopic)) {
       return parseStoreFromVersionTopic(kafkaTopic);
+    } else if (VeniceView.isViewTopic(kafkaTopic)) {
+      return VeniceView.parseStoreFromViewTopic(kafkaTopic);
     }
     return "";
   }
@@ -329,6 +333,19 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
    */
   static boolean isVersionTopicOrStreamReprocessingTopic(String kafkaTopic) {
     return checkVersionSRTopic(kafkaTopic, false) || checkVersionSRTopic(kafkaTopic, true);
+  }
+
+  /**
+   * Determines if the the inputted topic is a topic which is versioned. Today that includes reprocessing topics, version
+   * topics, and view topics. This method is named this way in order to avoid confusion with the isVersionTopic (where the
+   * alternative would be isVersionedTopic).
+   *
+   * @param kafkaTopic
+   * @return
+   */
+  static boolean isATopicThatIsVersioned(String kafkaTopic) {
+    return checkVersionSRTopic(kafkaTopic, false) || checkVersionSRTopic(kafkaTopic, true)
+        || VeniceView.isViewTopic(kafkaTopic);
   }
 
   static boolean checkVersionSRTopic(String kafkaTopic, boolean checkSR) {

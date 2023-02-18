@@ -24,15 +24,15 @@ public class StoreCacheStats extends AbstractVeniceStats {
     servingCache = cache;
   }
 
-  public synchronized long getHitCount() {
+  public final synchronized long getHitCount() {
     return servingCache == null ? 0 : servingCache.hitCount();
   }
 
-  public synchronized long getMissCount() {
+  public final synchronized long getMissCount() {
     return servingCache == null ? 0 : servingCache.missCount();
   }
 
-  public synchronized double getHitRate() {
+  public final synchronized double getHitRate() {
     return servingCache == null ? 0 : servingCache.hitRate();
   }
 }

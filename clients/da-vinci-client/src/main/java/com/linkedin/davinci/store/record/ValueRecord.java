@@ -105,12 +105,9 @@ public class ValueRecord {
     if (serializedArr != null) {
       return serializedArr;
     }
-    byte[] dataArr = data.array();
-
-    serializedArr = new byte[SCHEMA_HEADER_LENGTH + dataArr.length];
+    serializedArr = new byte[SCHEMA_HEADER_LENGTH + dataSize];
     ByteUtils.writeInt(serializedArr, schemaId, 0);
-    System.arraycopy(dataArr, 0, serializedArr, SCHEMA_HEADER_LENGTH, dataArr.length);
-
+    data.getBytes(data.readerIndex(), serializedArr, SCHEMA_HEADER_LENGTH, data.readableBytes());
     return serializedArr;
   }
 }

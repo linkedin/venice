@@ -102,4 +102,36 @@ public class TestVersion {
     Assert.assertFalse(Version.isStreamReprocessingTopic(topic));
     Assert.assertFalse(Version.isVersionTopicOrStreamReprocessingTopic(topic));
   }
+
+  @Test
+  public void testIsATopicThatIsVersioned() {
+    String topic = "abc_rt";
+    Assert.assertFalse(Version.isATopicThatIsVersioned(topic));
+    topic = "abc_v1_sr";
+    Assert.assertTrue(Version.isATopicThatIsVersioned(topic));
+    topic = "abc_v1";
+    Assert.assertTrue(Version.isATopicThatIsVersioned(topic));
+    topic = "abc_v1_cc";
+    Assert.assertTrue(Version.isATopicThatIsVersioned(topic));
+  }
+
+  @Test
+  public void testParseStoreFromKafkaTopicName() {
+    String storeName = "abc";
+    String topic = "abc_rt";
+    Assert.assertEquals(Version.parseStoreFromKafkaTopicName(topic), storeName);
+    topic = "abc_v1";
+    Assert.assertEquals(Version.parseStoreFromKafkaTopicName(topic), storeName);
+    topic = "abc_v1_cc";
+    Assert.assertEquals(Version.parseStoreFromKafkaTopicName(topic), storeName);
+  }
+
+  @Test
+  public void testParseVersionFromKafkaTopicName() {
+    int version = 1;
+    String topic = "abc_v1";
+    Assert.assertEquals(Version.parseVersionFromVersionTopicName(topic), version);
+    topic = "abc_v1_cc";
+    Assert.assertEquals(Version.parseVersionFromKafkaTopicName(topic), version);
+  }
 }

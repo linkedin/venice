@@ -6,6 +6,7 @@ import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -30,7 +31,7 @@ public class TestRmdUtils {
   private GenericRecord rmdRecordWithPerFieldLevelTimeStamp;
 
   @BeforeClass
-  public void setup() {
+  public void setUp() {
     valueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(VALUE_RECORD_SCHEMA_STR);
     rmdSchema = RmdSchemaGenerator.generateMetadataSchema(valueSchema, 1);
   }
@@ -87,5 +88,13 @@ public class TestRmdUtils {
   @Test
   public void testExtractOffsetVectorSumFromRmd() {
     Assert.assertEquals(6, RmdUtils.extractOffsetVectorSumFromRmd(rmdRecordWithValueLevelTimeStamp));
+  }
+
+  @Test
+  public void testExtractOffsetVectorFromRmd() {
+    List<Long> vector = RmdUtils.extractOffsetVectorFromRmd(rmdRecordWithValueLevelTimeStamp);
+    Assert.assertEquals(vector, Arrays.asList(1L, 2L, 3L));
+    GenericRecord nullRmdRecord = new GenericData.Record(rmdSchema);
+    Assert.assertEquals(RmdUtils.extractOffsetVectorFromRmd(nullRmdRecord), Collections.emptyList());
   }
 }

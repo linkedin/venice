@@ -8,7 +8,6 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
@@ -28,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import org.apache.commons.io.IOUtils;
 import org.testng.Assert;
@@ -54,7 +54,7 @@ public class TestEarlyTermination {
 
     // Create store first
     storeName = Utils.getUniqueString("test_early_termination");
-    NewStoreResponse newStoreResponse = veniceCluster.getNewStore(storeName);
+    veniceCluster.getNewStore(storeName);
 
     // Create two servers, and one with early termination enabled, and one without
     Properties serverPropertiesWithoutEarlyTermination = new Properties();
@@ -147,6 +147,7 @@ public class TestEarlyTermination {
       try {
         storeClient.batchGet(keySet).get();
       } catch (Exception e) {
+        Assert.assertEquals(e.getClass(), ExecutionException.class);
       }
       try {
         /**
@@ -154,6 +155,7 @@ public class TestEarlyTermination {
          */
         storeClient.get(keyPrefix + 2).get();
       } catch (Exception e) {
+        Assert.assertEquals(e.getClass(), ExecutionException.class);
       }
     }
 

@@ -21,8 +21,10 @@ import org.testng.collections.Lists;
  * make sure your test case has "test" dependency on "venice-test-common" module.
  */
 public class DataProviderUtils {
+  public static final Object[] BOOLEAN_TRUE = { true };
   public static final Object[] BOOLEAN = { false, true };
   public static final Object[] COMPRESSION_STRATEGIES = { NO_OP, GZIP, ZSTD_WITH_DICT };
+  public static final Object[] PARTITION_COUNTS = { 1, 2, 3, 4, 8, 10, 16, 19, 92, 128 };
 
   /**
    * To use these data providers, add (dataProvider = "<provider_name>", dataProviderClass = DataProviderUtils.class)
@@ -41,6 +43,11 @@ public class DataProviderUtils {
   @DataProvider(name = "Three-True-and-False")
   public static Object[][] threeBoolean() {
     return allPermutationGenerator(BOOLEAN, BOOLEAN, BOOLEAN);
+  }
+
+  @DataProvider(name = "Four-True-and-False")
+  public static Object[][] fourBoolean() {
+    return allPermutationGenerator(BOOLEAN, BOOLEAN, BOOLEAN, BOOLEAN);
   }
 
   @DataProvider(name = "Five-True-and-False")
@@ -83,6 +90,11 @@ public class DataProviderUtils {
   @DataProvider(name = "Amplification-Factor")
   public static Object[][] amplificationFactor() {
     return new Object[][] { { 1 }, { 3 } };
+  }
+
+  @DataProvider(name = "Chunking-And-Partition-Counts")
+  public static Object[][] chunkingAndPartitionCountsCombination() {
+    return allPermutationGenerator(BOOLEAN, PARTITION_COUNTS);
   }
 
   @DataProvider(name = "Boolean-Compression")

@@ -63,6 +63,14 @@ public class RmdUtils {
     return sumOffsetVector(offsetVectorObject);
   }
 
+  public static List<Long> extractOffsetVectorFromRmd(GenericRecord replicationMetadataRecord) {
+    Object offsetVector = (List<Long>) replicationMetadataRecord.get(REPLICATION_CHECKPOINT_VECTOR_FIELD);
+    if (offsetVector == null) {
+      return Collections.emptyList();
+    }
+    return (List<Long>) offsetVector;
+  }
+
   public static List<Long> extractTimestampFromRmd(GenericRecord replicationMetadataRecord) {
     // TODO: This function needs a heuristic to work on field level timestamps. At time of writing, this function
     // is only for recording the previous value of a record's timestamp, so we could consider specifying the incoming
@@ -79,7 +87,7 @@ public class RmdUtils {
     RmdTimestampType rmdTimestampType = getRmdTimestampType(timestampObject);
 
     if (rmdTimestampType == RmdTimestampType.VALUE_LEVEL_TIMESTAMP) {
-      return Collections.singletonList((long) timestampObject);
+      return Collections.singletonList((Long) timestampObject);
     } else {
       // not supported yet so ignore it
       // TODO Must clone the results when PER_FIELD_TIMESTAMP mode is enabled to return the list.

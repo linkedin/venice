@@ -3,16 +3,16 @@ package com.linkedin.davinci.ingestion.main;
 import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.buildAndSaveConfigsForForkedIngestionProcess;
 import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.getDummyCommand;
 import static com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils.saveForkedIngestionKafkaClusterMapConfig;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_HEARTBEAT_REQUEST_TIMEOUT_SECONDS;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_REQUEST_TIMEOUT_SECONDS;
 import static com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType.START_CONSUMPTION;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.HttpClientTransport;
-import com.linkedin.davinci.ingestion.IsolatedIngestionProcessStats;
 import com.linkedin.davinci.ingestion.isolated.IsolatedIngestionServer;
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
 import com.linkedin.venice.ingestion.protocol.IngestionStorageMetadata;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskCommand;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
@@ -23,7 +23,6 @@ import com.linkedin.venice.ingestion.protocol.enums.IngestionComponentType;
 import com.linkedin.venice.meta.IngestionMetadataUpdateType;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.ForkedJavaProcess;
-import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
 import java.util.ArrayList;
@@ -39,12 +38,19 @@ import org.apache.logging.log4j.Logger;
  */
 public class MainIngestionRequestClient implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(MainIngestionRequestClient.class);
-  private static final int REQUEST_MAX_ATTEMPT = 10;
-  private static final int HEARTBEAT_REQUEST_TIMEOUT_MS = 10 * Time.MS_PER_SECOND;
-  private HttpClientTransport httpClientTransport;
 
-  public MainIngestionRequestClient(Optional<SSLFactory> sslFactory, int port) {
-    httpClientTransport = new HttpClientTransport(sslFactory, port);
+  private static final int REQUEST_MAX_ATTEMPT = 10;
+  private HttpClientTransport httpClientTransport;
+  private final int heartbeatRequestTimeoutSeconds;
+
+  public MainIngestionRequestClient(VeniceConfigLoader configLoader) {
+    heartbeatRequestTimeoutSeconds =
+        configLoader.getCombinedProperties().getInt(SERVER_INGESTION_ISOLATION_HEARTBEAT_REQUEST_TIMEOUT_SECONDS, 5);
+    Optional<SSLFactory> sslFactory = IsolatedIngestionUtils.getSSLFactory(configLoader);
+    int port = configLoader.getVeniceServerConfig().getIngestionServicePort();
+    int requestTimeoutInSeconds =
+        configLoader.getCombinedProperties().getInt(SERVER_INGESTION_ISOLATION_REQUEST_TIMEOUT_SECONDS, 120);
+    httpClientTransport = new HttpClientTransport(sslFactory, port, requestTimeoutInSeconds);
   }
 
   public synchronized Process startForkedIngestionProcess(VeniceConfigLoader configLoader) {
@@ -222,25 +228,9 @@ public class MainIngestionRequestClient implements Closeable {
     }
   }
 
-  public boolean collectMetrics(IsolatedIngestionProcessStats isolatedIngestionProcessStats) {
-    try {
-      IngestionMetricsReport metricsReport = httpClientTransport.sendRequest(IngestionAction.METRIC, getDummyCommand());
-      if (LOGGER.isDebugEnabled()) {
-        LOGGER
-            .debug("Collected " + metricsReport.aggregatedMetrics.size() + " metrics from isolated ingestion service.");
-      }
-      isolatedIngestionProcessStats.updateMetricMap(metricsReport.aggregatedMetrics);
-      return true;
-    } catch (Exception e) {
-      // Don't spam the server logging.
-      LOGGER.warn("Unable to collect metrics from ingestion service");
-      return false;
-    }
-  }
-
   public boolean sendHeartbeatRequest() {
     try {
-      httpClientTransport.sendRequest(IngestionAction.HEARTBEAT, getDummyCommand(), HEARTBEAT_REQUEST_TIMEOUT_MS);
+      httpClientTransport.sendRequest(IngestionAction.HEARTBEAT, getDummyCommand(), heartbeatRequestTimeoutSeconds);
       return true;
     } catch (Exception e) {
       // Don't spam the server logging.
@@ -273,6 +263,11 @@ public class MainIngestionRequestClient implements Closeable {
       report = httpClientTransport.sendRequestWithRetry(IngestionAction.COMMAND, command, requestMaxAttempt);
     } catch (Exception e) {
       throw new VeniceException("Caught exception when sending command: " + commandType + commandInfo, e);
+    }
+    if (report != null && report.exceptionThrown) {
+      throw new VeniceException(
+          "Caught exception when executing command in isolated process: " + commandType + commandInfo + " "
+              + report.message);
     }
     return report != null && report.isPositive;
   }

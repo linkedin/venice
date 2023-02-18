@@ -368,6 +368,16 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
+    public boolean isRmdChunkingEnabled() {
+      return this.delegate.isRmdChunkingEnabled();
+    }
+
+    @Override
+    public void setRmdChunkingEnabled(boolean rmdChunkingEnabled) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
     public String getStoreName() {
       return this.delegate.getStoreName();
     }
@@ -418,16 +428,6 @@ public class ReadOnlyStore implements Store {
 
     @Override
     public void setVersionSwapDeferred(boolean versionSwapDeferred) {
-      throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public IncrementalPushPolicy getIncrementalPushPolicy() {
-      return IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME;
-    }
-
-    @Override
-    public void setIncrementalPushPolicy(IncrementalPushPolicy incrementalPushPolicy) {
       throw new UnsupportedOperationException();
     }
 
@@ -504,7 +504,7 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
-    public void setViewConfig(Map<String, ViewConfig> viewConfigList) {
+    public void setViewConfigs(Map<String, ViewConfig> viewConfigList) {
       throw new UnsupportedOperationException();
     }
 
@@ -889,6 +889,16 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
+  public boolean isRmdChunkingEnabled() {
+    return this.delegate.isRmdChunkingEnabled();
+  }
+
+  @Override
+  public void setRmdChunkingEnabled(boolean rmdChunkingEnabled) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
   public int getBatchGetLimit() {
     return this.delegate.getBatchGetLimit();
   }
@@ -1079,16 +1089,6 @@ public class ReadOnlyStore implements Store {
 
   @Override
   public void setStoreMetaSystemStoreEnabled(boolean storeMetaSystemStoreEnabled) {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
-  public IncrementalPushPolicy getIncrementalPushPolicy() {
-    return IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME;
-  }
-
-  @Override
-  public void setIncrementalPushPolicy(IncrementalPushPolicy incrementalPushPolicy) {
     throw new UnsupportedOperationException();
   }
 

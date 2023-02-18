@@ -55,7 +55,7 @@ public class TestWritePathComputation {
     try (VeniceTwoLayerMultiColoMultiClusterWrapper twoLayerMultiColoMultiClusterWrapper =
         ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(1, 1, 1, 1, 1, 0)) {
 
-      VeniceMultiClusterWrapper multiCluster = twoLayerMultiColoMultiClusterWrapper.getClusters().get(0);
+      VeniceMultiClusterWrapper multiCluster = twoLayerMultiColoMultiClusterWrapper.getChildRegions().get(0);
       VeniceControllerWrapper parentController = twoLayerMultiColoMultiClusterWrapper.getParentControllers().get(0);
       String clusterName = multiCluster.getClusterNames()[0];
       String storeName = "test-store0";
@@ -78,8 +78,7 @@ public class TestWritePathComputation {
         ControllerResponse response = parentControllerClient
             .updateStore(storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(true));
         Assert.assertTrue(response.isError());
-        Assert.assertTrue(
-            response.getError().contains("Cannot generate write-compute schema from non-Record value schema"));
+        Assert.assertTrue(response.getError().contains("top level field probably missing defaults"));
         TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
           Assert.assertFalse(
               parentAdmin.getStore(clusterName, storeName).isWriteComputationEnabled(),

@@ -1,15 +1,19 @@
 import com.github.spotbugs.snom.SpotBugsTask
 import org.apache.tools.ant.taskdefs.condition.Os
+import org.gradle.internal.logging.text.StyledTextOutputFactory
+import org.gradle.internal.logging.text.StyledTextOutput.Style
+import java.nio.file.Files
 
 plugins {
   id 'idea'
   id 'java'
   id 'maven-publish'
-  id 'com.diffplug.spotless' version '6.9.1'
+  id 'com.diffplug.spotless' version '6.12.0'
   id 'com.dorongold.task-tree' version '2.1.0'
   id 'com.github.johnrengelman.shadow' version '6.1.0' apply false
   id 'com.github.spotbugs' version '4.8.0' apply false
-  id 'org.gradle.test-retry' version '1.4.1' apply false
+  id 'org.gradle.test-retry' version '1.5.0' apply false
+  id 'com.form.diff-coverage' version '0.9.5' apply false
 }
 
 apply from: "$rootDir/gradle/helper/git.gradle"
@@ -31,7 +35,7 @@ if (project.hasProperty('overrideBuildEnvironment')) {
 }
 
 def avroVersion = '1.9.2'
-def avroUtilVersion = '0.2.108'
+def avroUtilVersion = '0.2.136'
 def kafkaGroup = 'com.linkedin.kafka'
 def kafkaVersion = '2.4.1.65'
 def log4j2Version = '2.17.1'
@@ -42,7 +46,7 @@ ext.libraries = [
     avro: 'org.apache.avro:avro:' + avroVersion,
     avroCompiler: 'org.apache.avro:avro-compiler:' + avroVersion,
     avroMapred: 'org.apache.avro:avro-mapred:' + avroVersion,
-    avroUtilBuilder: 'com.linkedin.avroutil1:avro-builder-all:' + avroUtilVersion,
+    avroUtilBuilder: 'com.linkedin.avroutil1:builder:' + avroUtilVersion,
     avroUtilCompatHelper: 'com.linkedin.avroutil1:helper-all:' + avroUtilVersion,
     avroUtilFastserde: 'com.linkedin.avroutil1:avro-fastserde:' + avroUtilVersion,
     avroUtilSpotbugsPlugin: 'com.linkedin.avroutil1:spotbugs-plugin:0.2.69',
@@ -131,6 +135,7 @@ subprojects {
   apply {
     plugin 'idea'
     plugin 'jacoco'
+    plugin 'com.form.diff-coverage'
     plugin 'java-library'
     plugin 'com.github.spotbugs'
     plugin 'org.gradle.test-retry'
@@ -140,6 +145,12 @@ subprojects {
     tasks.withType(JavaCompile) {
       options.release = 8
     }
+  }
+
+  java {
+    withSourcesJar()
+    // TODO: Enable after we have valid javadocs
+    //withJavadocJar()
   }
 
   configurations {
@@ -297,6 +308,7 @@ subprojects {
   }
 
   def ALPINI_TEST_FILTER = 'com.linkedin.alpini.*'
+  def ALPINI_NETTY_TEST_FILTER = 'io.netty.*'
 
   tasks.withType(Test) {
     mustRunAfter tasks.withType(SpotBugsTask)
@@ -329,7 +341,8 @@ subprojects {
 
     filter {
       excludeTestsMatching ALPINI_TEST_FILTER
-      setFailOnNoMatchingTests(false)
+      excludeTestsMatching ALPINI_NETTY_TEST_FILTER
+      failOnNoMatchingTests = false
     }
 
     useTestNG {
@@ -344,9 +357,58 @@ subprojects {
     }
 
     testLogging {
-      events 'started', 'passed', 'failed', 'skipped'
+      events 'started', 'failed', 'skipped' // N.B. we override how 'passed' tests are formatted in afterTest
       showStandardStreams = false // to mute the DDS Router's noisy behavior...
       exceptionFormat = 'full'
+    }
+
+    afterTest { descriptor, result ->
+      if (result.resultType == TestResult.ResultType.SUCCESS) {
+        def totalTime = result.endTime - result.startTime
+        def prettyTime = totalTime < 1000 ? "$totalTime ms" : "${totalTime / 1000} s"
+
+        def out = services.get(StyledTextOutputFactory).create("an-ouput")
+        out.style(Style.Normal).text("Gradle suite > Gradle test > $descriptor.className > $descriptor.displayName ")
+            .style(Style.Identifier).text("PASSED ")
+            .style(Style.Normal).println("($prettyTime)")
+      }
+    }
+  }
+
+  jacocoTestReport {
+    dependsOn test // tests are required to run before generating the report
+  }
+
+  afterEvaluate {
+    jacocoTestCoverageVerification {
+      dependsOn jacocoTestReport
+
+      violationRules {
+        rule {
+          def threshold = project.ext.has('jacocoCoverageThreshold') ?
+              project.ext.jacocoCoverageThreshold : 0.6
+
+          limit {
+            counter = 'BRANCH'
+            value = 'COVEREDRATIO'
+            minimum = threshold
+          }
+        }
+      }
+    }
+
+    diffCoverageReport {
+      diffSource.file = createDiffFile()
+
+      // Report locates at <module_name>/build/reports/jacoco/diffCoverage/html/index.html
+      reports {
+        html = true
+      }
+
+      violationRules {
+        minBranches = project.ext.has('diffCoverageThreshold') ? project.ext.diffCoverageThreshold : 0.33
+        failOnViolation = true
+      }
     }
   }
 
@@ -357,12 +419,12 @@ subprojects {
   }
 
   task alpiniTest(type: Test) {
+    useTestNG()
     filter {
       includeTestsMatching ALPINI_TEST_FILTER
-      setFailOnNoMatchingTests(false)
+      includeTestsMatching ALPINI_NETTY_TEST_FILTER
+      failOnNoMatchingTests = false
     }
-
-    useTestNG()
   }
 
   tasks.withType(Jar) {
@@ -371,25 +433,14 @@ subprojects {
     exclude('**/*.xml')
   }
 
-  // TODO: Enable after we have valid javadocs
-  // task javadocJar(type: Jar) {
-  //   from javadoc
-  //   classifier = 'javadoc'
-  // }
-
   task testJar(type: Jar) {
-    from sourceSets.test.allJava
-    classifier = 'tests'
-  }
-
-  task sourceJar(type: Jar) {
-    from sourceSets.main.allJava
-    classifier 'sources'
+    classifier 'tests'
+    from sourceSets.test.output
   }
 
   // Only publish artifacts for projects that are at the leaf level
   if (project.childProjects.isEmpty()) {
-    publishing.configureArtifactPublishing(project, sourceJar, testJar)
+    publishing.configureArtifactPublishing(project, testJar)
   }
 }
 
@@ -424,6 +475,10 @@ check.dependsOn(spotbugs)
 test {
   mustRunAfter spotbugs
   dependsOn subprojects.test
+  afterTest { descriptor, result ->
+    def totalTime = result.endTime - result.startTime
+    println "Total time of $descriptor.name was $totalTime"
+  }
 }
 
 assemble {
@@ -508,4 +563,28 @@ idea.project.ipr {
       }
     }
   }
+}
+
+// Allow running diffCoverage against uncommitted files
+// See https://github.com/form-com/diff-coverage-gradle/issues/73
+ext.createDiffFile = { ->
+  // Files that we don't plan to write unit tests for now. Will be worked in the future
+  def exclusionFilter = [
+        ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceHelixAdmin.java',
+        ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceParentHelixAdmin.java'
+  ]
+  def file = Files.createTempFile(URLEncoder.encode(project.name, 'UTF-8'), '.diff').toFile()
+  def diffBase = "${git.getUpstreamRemote()}/main"
+  def command = [
+      'git', 'diff', diffBase, '--no-color', '--minimal', '--', '.'
+  ]
+  command.addAll(exclusionFilter)
+  file.withOutputStream { out ->
+    exec {
+      commandLine command
+      standardOutput = out
+    }
+  }
+
+  return file
 }

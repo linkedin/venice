@@ -29,10 +29,7 @@ import com.linkedin.venice.utils.ExceptionUtils;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.FullHttpRequest;
-import io.netty.handler.codec.http.HttpMethod;
-import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
-import java.net.URI;
 import java.util.HashMap;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -74,7 +71,7 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
   @Override
   protected void channelRead0(ChannelHandlerContext ctx, FullHttpRequest msg) throws Exception {
     try {
-      IngestionAction action = getIngestionActionFromRequest(msg);
+      IngestionAction action = IsolatedIngestionUtils.getIngestionActionFromRequest(msg);
       byte[] result = getDummyContent();
       if (LOGGER.isDebugEnabled()) {
         LOGGER.debug("Received {} message: {}", action.name(), msg);
@@ -140,6 +137,12 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
 
     IngestionTaskReport report = createIngestionTaskReport(topicName, partitionId);
     IngestionCommandType ingestionCommandType = IngestionCommandType.valueOf(ingestionTaskCommand.commandType);
+    LOGGER.info(
+        "Received ingestion command {} for topic: {}, partition: {} in timestamp: {}",
+        ingestionCommandType,
+        topicName,
+        partitionId,
+        startTimeInMs);
     try {
       if (!isolatedIngestionServer.isInitiated()) {
         throw new VeniceException("IsolatedIngestionServer has not been initiated.");
@@ -240,12 +243,13 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
     } catch (Exception e) {
       LOGGER.error("Encounter exception while handling ingestion command", e);
       report.isPositive = false;
+      report.exceptionThrown = true;
       report.message = e.getClass().getSimpleName() + "_"
           + ExceptionUtils.compactExceptionDescription(e, "handleIngestionTaskCommand");
     }
     long executionTimeInMs = System.currentTimeMillis() - startTimeInMs;
     LOGGER.info(
-        "Completed ingestion command {} for topic: {}, partition: {} in ms: {}",
+        "Completed ingestion command {} for topic: {}, partition: {} in {} ms.",
         ingestionCommandType,
         topicName,
         partitionId,
@@ -351,27 +355,6 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
           + ExceptionUtils.compactExceptionDescription(e, "handleProcessShutdownCommand");
     }
     return report;
-  }
-
-  private IngestionAction getIngestionActionFromRequest(HttpRequest req) {
-    // Sometimes req.uri() gives a full uri (eg https://host:port/path) and sometimes it only gives a path
-    // Generating a URI lets us always take just the path.
-    String[] requestParts = URI.create(req.uri()).getPath().split("/");
-    HttpMethod reqMethod = req.method();
-    if (!reqMethod.equals(HttpMethod.POST) || requestParts.length < 2) {
-      throw new VeniceException(
-          "Only able to parse POST requests for actions: init, command, report.  Cannot parse request for: "
-              + req.uri());
-    }
-
-    try {
-      return IngestionAction.valueOf(requestParts[1].toUpperCase());
-    } catch (IllegalArgumentException e) {
-      throw new VeniceException(
-          "Only able to parse POST requests for actions: init, command, report.  Cannot support action: "
-              + requestParts[1],
-          e);
-    }
   }
 
   protected void validateAndExecuteCommand(

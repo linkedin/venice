@@ -32,6 +32,7 @@ public class SchemaEntry {
   private Schema schema;
   private boolean failedParsing = false;
   private String schemaStr;
+  private String canonicalSchemaStr = null;
 
   /**
    * Primary constructor taking a literal id and schema.
@@ -79,6 +80,13 @@ public class SchemaEntry {
       schemaStr = schema.toString();
     }
     return schemaStr;
+  }
+
+  public String getCanonicalSchemaStr() {
+    if (canonicalSchemaStr == null) {
+      canonicalSchemaStr = AvroCompatibilityHelper.toParsingForm(schema);
+    }
+    return canonicalSchemaStr;
   }
 
   /** @return the id */

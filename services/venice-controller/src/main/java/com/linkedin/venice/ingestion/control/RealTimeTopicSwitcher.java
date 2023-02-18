@@ -1,6 +1,10 @@
 package com.linkedin.venice.ingestion.control;
 
+import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
+import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR_RT_TOPICS;
 import static com.linkedin.venice.VeniceConstants.REWIND_TIME_DECIDED_BY_SERVER;
+import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_REPLICATION_FACTOR;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -40,6 +44,8 @@ public class RealTimeTopicSwitcher {
   private final String destKafkaBootstrapServers;
   private final VeniceWriterFactory veniceWriterFactory;
   private final Time timer;
+  private final Integer kafkaReplicationFactorForRTTopics;
+  private final Optional<Integer> minSyncReplicasForRTTopics;
 
   public RealTimeTopicSwitcher(
       TopicManager topicManager,
@@ -51,6 +57,10 @@ public class RealTimeTopicSwitcher {
     this.destKafkaBootstrapServers = veniceProperties.getBoolean(ConfigKeys.SSL_TO_KAFKA, false)
         ? veniceProperties.getString(ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS)
         : veniceProperties.getString(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS);
+    int kafkaReplicationFactor = veniceProperties.getInt(KAFKA_REPLICATION_FACTOR, DEFAULT_KAFKA_REPLICATION_FACTOR);
+    this.kafkaReplicationFactorForRTTopics =
+        veniceProperties.getInt(KAFKA_REPLICATION_FACTOR_RT_TOPICS, kafkaReplicationFactor);
+    this.minSyncReplicasForRTTopics = veniceProperties.getOptionalInt(KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS);
   }
 
   /**
@@ -137,14 +147,17 @@ public class RealTimeTopicSwitcher {
       } else {
         partitionCount = store.getPartitionCount();
       }
-      int replicationFactor = getTopicManager().getReplicationFactor(topicWhereToSendTheTopicSwitch);
+      int replicationFactor = Version.isRealTimeTopic(srcTopicName)
+          ? kafkaReplicationFactorForRTTopics
+          : getTopicManager().getReplicationFactor(topicWhereToSendTheTopicSwitch);
+      Optional<Integer> minISR = Version.isRealTimeTopic(srcTopicName) ? minSyncReplicasForRTTopics : Optional.empty();
       getTopicManager().createTopic(
           srcTopicName,
           partitionCount,
           replicationFactor,
           TopicManager.getExpectedRetentionTimeInMs(store, hybridStoreConfig.get()),
           false, // Note: do not enable RT compaction! Might make jobs in Online/Offline model stuck
-          Optional.empty(),
+          minISR,
           false);
     } else {
       /**
@@ -183,6 +196,62 @@ public class RealTimeTopicSwitcher {
       default:
         return getTimer().getMilliseconds() - rewindTimeInMs;
     }
+  }
+
+  public void transmitVersionSwapMessage(Store store, int previousVersion, int nextVersion) {
+
+    if (previousVersion == Store.NON_EXISTING_VERSION || nextVersion == Store.NON_EXISTING_VERSION) {
+      // NoOp
+      return;
+    }
+
+    Version previousStoreVersion = store.getVersion(previousVersion)
+        .orElseThrow(
+            () -> new VeniceException(
+                "Corresponding version " + previousVersion + "does not exist for store: " + store.getName()));
+    Version nextStoreVersion = store.getVersion(nextVersion)
+        .orElseThrow(
+            () -> new VeniceException(
+                "Corresponding version " + nextVersion + "does not exist for store: " + store.getName()));
+
+    // Only transmit version swap message to RT's if there is a view config (temporary check)
+    if (!hasViewConfigs(nextStoreVersion, previousStoreVersion)) {
+      // NoOp for now
+      return;
+    }
+
+    // Only transmit version swap for stores which have an RT.
+    // if a previous version didn't have an RT, then there will be no
+    // version consuming the topic switch message. We'll transmit the version switch
+    // message so long as there exists some RT
+    if (!topicManager.containsTopic(Version.composeRealTimeTopic(store.getName()))) {
+      // NoOp
+      return;
+    }
+
+    // Write the thing!
+    try (VeniceWriter veniceWriter = getVeniceWriterFactory().createBasicVeniceWriter(
+        Version.composeRealTimeTopic(store.getName()),
+        getTimer(),
+        new DefaultVenicePartitioner(),
+        previousStoreVersion.getPartitionCount())) {
+      veniceWriter.broadcastVersionSwap(
+          previousStoreVersion.kafkaTopicName(),
+          nextStoreVersion.kafkaTopicName(),
+          Collections.emptyMap());
+    }
+    LOGGER.info(
+        "Successfully sent VersionTopicSwitch for store {} from version {} to version {}",
+        store.getName(),
+        previousVersion,
+        nextVersion);
+  }
+
+  // TODO: Delete this function once we have confidence in version swap to not stipulate views as a precondition for
+  // transmitting version swap messages on RT.
+  public boolean hasViewConfigs(Version nextStoreVersion, Version previousStoreVersion) {
+    return ((previousStoreVersion.getViewConfigs() != null) && !previousStoreVersion.getViewConfigs().isEmpty())
+        || ((nextStoreVersion.getViewConfigs() != null) && !nextStoreVersion.getViewConfigs().isEmpty());
   }
 
   public void switchToRealTimeTopic(

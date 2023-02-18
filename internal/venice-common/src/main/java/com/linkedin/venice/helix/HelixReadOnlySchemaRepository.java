@@ -2,6 +2,7 @@ package com.linkedin.venice.helix;
 
 import static com.linkedin.venice.common.VeniceSystemStoreUtils.getZkStoreName;
 
+import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
@@ -13,13 +14,17 @@ import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.time.Duration;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Function;
@@ -44,7 +49,7 @@ import org.apache.logging.log4j.Logger;
  *
  */
 public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, StoreDataChangedListener {
-  private final Logger logger = LogManager.getLogger(HelixReadOnlySchemaRepository.class);
+  private static final Logger logger = LogManager.getLogger(HelixReadOnlySchemaRepository.class);
 
   public static final int VALUE_SCHEMA_STARTING_ID = 1;
 
@@ -100,10 +105,10 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
    *
    */
   private void fetchStoreSchemaIfNotInCache(String storeName) {
-    if (!storeRepository.hasStore(storeName)) {
+    if (!getStoreRepository().hasStore(storeName)) {
       throw new VeniceNoStoreException(storeName);
     }
-    if (!schemaMap.containsKey(getZkStoreName(storeName))) {
+    if (!getSchemaMap().containsKey(getZkStoreName(storeName))) {
       populateSchemaMap(storeName);
     }
   }
@@ -128,11 +133,73 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
     }
   }
 
-  private void mayRegisterAndPopulateMetadataSchema(Store store, SchemaData schemaData) {
+  void maybeRegisterAndPopulateRmdSchema(Store store, SchemaData schemaData) {
     if (store.isActiveActiveReplicationEnabled()) {
       String storeName = store.getName();
-      accessor.subscribeReplicationMetadataSchemaCreationChange(storeName, replicationMetadataSchemaChildListener);
-      accessor.getAllReplicationMetadataSchemas(storeName).forEach(schemaData::addReplicationMetadataSchema);
+      getAccessor().subscribeReplicationMetadataSchemaCreationChange(storeName, replicationMetadataSchemaChildListener);
+      getAccessor().getAllReplicationMetadataSchemas(storeName).forEach(schemaData::addReplicationMetadataSchema);
+    }
+  }
+
+  void maybeRegisterAndPopulateUpdateSchema(Store store, SchemaData schemaData) {
+    if (store.isWriteComputationEnabled()) {
+      String storeName = store.getName();
+      getAccessor().subscribeDerivedSchemaCreationChange(storeName, derivedSchemaChildListener);
+      getAccessor().getAllDerivedSchemas(storeName).forEach(schemaData::addDerivedSchema);
+    }
+  }
+
+  SchemaEntry forceRefreshSupersetSchemaWithRetry(String storeName) {
+    Store store = getStoreRepository().getStore(storeName);
+    int supersetSchemaId = store.getLatestSuperSetValueSchemaId();
+    AtomicReference<SchemaEntry> supersetSchemaEntry = new AtomicReference<>();
+    RetryUtils.executeWithMaxAttempt(() -> {
+      try {
+        getSchemaLock().writeLock().lock();
+        SchemaData schemaData = getSchemaMap().get(getZkStoreName(storeName));
+        forceRefreshSchemaData(store, schemaData);
+        if (!isSupersetSchemaReadyToServe(store, schemaData, supersetSchemaId)) {
+          throw new InvalidVeniceSchemaException(
+              "Unable to refresh superset schema id: " + supersetSchemaId + " for store: " + store.getName());
+        }
+        supersetSchemaEntry.set(schemaData.getValueSchema(supersetSchemaId));
+      } finally {
+        getSchemaLock().writeLock().unlock();
+      }
+    }, 3, Duration.ofMillis(100), Collections.singletonList(InvalidVeniceSchemaException.class));
+    return supersetSchemaEntry.get();
+  }
+
+  boolean isSupersetSchemaReadyToServe(Store store, SchemaData schemaData, int supersetSchemaId) {
+    if (schemaData.getValueSchema(supersetSchemaId) == null) {
+      logger.warn("Superset schema ID: {} for store: {} not found in schema cache.", supersetSchemaId, store.getName());
+      return false;
+    }
+    if (store.isWriteComputationEnabled() && !schemaData.hasUpdateSchema(supersetSchemaId)) {
+      logger.warn(
+          "Update schema of superset schema ID: {} for store: {} not found in schema cache.",
+          supersetSchemaId,
+          store.getName());
+      return false;
+    }
+    if (store.isActiveActiveReplicationEnabled() && !schemaData.hasRmdSchema(supersetSchemaId)) {
+      logger.warn(
+          "RMD schema of superset schema ID: {} for store: {} not found in schema cache.",
+          supersetSchemaId,
+          store.getName());
+      return false;
+    }
+    return true;
+  }
+
+  void forceRefreshSchemaData(Store store, SchemaData schemaData) {
+    String storeName = store.getName();
+    getAccessor().getAllValueSchemas(storeName).forEach(schemaData::addValueSchema);
+    if (store.isWriteComputationEnabled()) {
+      getAccessor().getAllDerivedSchemas(storeName).forEach(schemaData::addDerivedSchema);
+    }
+    if (store.isActiveActiveReplicationEnabled()) {
+      getAccessor().getAllReplicationMetadataSchemas(storeName).forEach(schemaData::addReplicationMetadataSchema);
     }
   }
 
@@ -358,9 +425,11 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
       if (schemaData == null) {
         throw new VeniceNoStoreException(storeName);
       }
-      final int latestValueSchemaId;
-      Optional<Integer> supersetSchemaID = getSupersetSchemaID(storeName);
-      latestValueSchemaId = supersetSchemaID.orElseGet(schemaData::getMaxValueSchemaId);
+      Integer supersetSchemaID = getSupersetSchemaID(storeName);
+      int latestValueSchemaId = supersetSchemaID;
+      if (latestValueSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID) {
+        latestValueSchemaId = schemaData.getMaxValueSchemaId();
+      }
       if (latestValueSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID) {
         throw new VeniceException(storeName + " doesn't have latest schema!");
       }
@@ -371,26 +440,34 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
   }
 
   @Override
-  public Optional<SchemaEntry> getSupersetSchema(String storeName) {
-    schemaLock.readLock().lock();
+  public SchemaEntry getSupersetSchema(String storeName) {
+    getSchemaLock().readLock().lock();
+    SchemaData schemaData;
+    Integer supersetSchemaId;
     try {
       fetchStoreSchemaIfNotInCache(storeName);
-      SchemaData schemaData = schemaMap.get(getZkStoreName(storeName));
+      schemaData = getSchemaMap().get(getZkStoreName(storeName));
       if (schemaData == null) {
         throw new VeniceNoStoreException(storeName);
       }
-      Optional<Integer> supersetSchemaID = getSupersetSchemaID(storeName);
-      return supersetSchemaID.map(schemaData::getValueSchema);
-
+      supersetSchemaId = getSupersetSchemaID(storeName);
+      if (supersetSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID) {
+        return null;
+      }
+      if (isSupersetSchemaReadyToServe(getStoreRepository().getStore(storeName), schemaData, supersetSchemaId)) {
+        return schemaData.getValueSchema(supersetSchemaId);
+      }
     } finally {
-      schemaLock.readLock().unlock();
+      getSchemaLock().readLock().unlock();
     }
+    // When superset schema exist, but corresponding schema is not ready, we will force refresh the schema and retrieve
+    // the update.
+    return forceRefreshSupersetSchemaWithRetry(storeName);
   }
 
-  private Optional<Integer> getSupersetSchemaID(String storeName) {
-    Store store = storeRepository.getStoreOrThrow(storeName);
-    final int supersetSchemaId = store.getLatestSuperSetValueSchemaId();
-    return supersetSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID ? Optional.empty() : Optional.of(supersetSchemaId);
+  private Integer getSupersetSchemaID(String storeName) {
+    Store store = getStoreRepository().getStoreOrThrow(storeName);
+    return store.getLatestSuperSetValueSchemaId();
   }
 
   @Override
@@ -477,11 +554,8 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
 
       // Fetch derived schemas if they are existing
       Store store = storeRepository.getStoreOrThrow(storeName);
-      if (store.isWriteComputationEnabled()) {
-        accessor.subscribeDerivedSchemaCreationChange(storeName, derivedSchemaChildListener);
-        accessor.getAllDerivedSchemas(storeName).forEach(schemaData::addDerivedSchema);
-      }
-      mayRegisterAndPopulateMetadataSchema(store, schemaData);
+      maybeRegisterAndPopulateUpdateSchema(store, schemaData);
+      maybeRegisterAndPopulateRmdSchema(store, schemaData);
 
       return schemaData;
     });
@@ -571,11 +645,8 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
       schemaLock.readLock().unlock();
     }
 
-    if (store.isWriteComputationEnabled()) {
-      accessor.subscribeDerivedSchemaCreationChange(storeName, derivedSchemaChildListener);
-      accessor.getAllDerivedSchemas(storeName).forEach(schemaData::addDerivedSchema);
-    }
-    mayRegisterAndPopulateMetadataSchema(store, schemaData);
+    maybeRegisterAndPopulateUpdateSchema(store, schemaData);
+    maybeRegisterAndPopulateRmdSchema(store, schemaData);
   }
 
   private class KeySchemaChildListener extends SchemaChildListener {
@@ -666,8 +737,19 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
     abstract void handleSchemaChanges(String storeName, List<String> currentChildren);
   }
 
-  // For test purpose
-  protected ReadWriteLock getInternalReadWriteLock() {
-    return this.schemaLock;
+  HelixSchemaAccessor getAccessor() {
+    return accessor;
+  }
+
+  ReadOnlyStoreRepository getStoreRepository() {
+    return storeRepository;
+  }
+
+  Map<String, SchemaData> getSchemaMap() {
+    return schemaMap;
+  }
+
+  ReadWriteLock getSchemaLock() {
+    return schemaLock;
   }
 }

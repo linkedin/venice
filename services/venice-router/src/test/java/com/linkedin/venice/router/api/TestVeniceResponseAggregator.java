@@ -47,7 +47,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.testng.Assert;
@@ -62,22 +61,13 @@ public class TestVeniceResponseAggregator {
       RequestType requestType,
       RouterStats routerStats,
       BasicFullHttpRequest request,
-      CompressorFactory compressorFactory,
-      ExecutorService decompressionExecutor) {
+      CompressorFactory compressorFactory) {
     VenicePath path = mock(VenicePath.class);
     doReturn(requestType).when(path).getRequestType();
     doReturn(storeName).when(path).getStoreName();
     doReturn(Optional.empty()).when(path).getChunkedResponse();
-    doReturn(
-        new VeniceResponseDecompressor(
-            false,
-            routerStats,
-            request,
-            storeName,
-            1,
-            compressorFactory,
-            decompressionExecutor,
-            10)).when(path).getResponseDecompressor();
+    doReturn(new VeniceResponseDecompressor(false, routerStats, request, storeName, 1, compressorFactory)).when(path)
+        .getResponseDecompressor();
     return path;
   }
 
@@ -102,11 +92,9 @@ public class TestVeniceResponseAggregator {
     when(mockRouterStat.getStatsByType(RequestType.COMPUTE)).thenReturn(mockStatsForCompute);
 
     CompressorFactory compressorFactory = mock(CompressorFactory.class);
-    ExecutorService decompressionExecutor = mock(ExecutorService.class);
 
     Metrics metrics = new Metrics();
-    metrics.setPath(
-        getPath(storeName, RequestType.SINGLE_GET, mockRouterStat, request, compressorFactory, decompressionExecutor));
+    metrics.setPath(getPath(storeName, RequestType.SINGLE_GET, mockRouterStat, request, compressorFactory));
 
     VeniceResponseAggregator responseAggregator = new VeniceResponseAggregator(mockRouterStat, Optional.empty());
     FullHttpResponse finalResponse = responseAggregator.buildResponse(request, metrics, gatheredResponses);
@@ -170,11 +158,9 @@ public class TestVeniceResponseAggregator {
     when(mockRouterStat.getStatsByType(RequestType.COMPUTE)).thenReturn(mockStatsForCompute);
 
     CompressorFactory compressorFactory = mock(CompressorFactory.class);
-    ExecutorService decompressionExecutor = mock(ExecutorService.class);
 
     Metrics metrics = new Metrics();
-    metrics.setPath(
-        getPath(storeName, RequestType.MULTI_GET, mockRouterStat, request, compressorFactory, decompressionExecutor));
+    metrics.setPath(getPath(storeName, RequestType.MULTI_GET, mockRouterStat, request, compressorFactory));
 
     VeniceResponseAggregator responseAggregator = new VeniceResponseAggregator(mockRouterStat, Optional.empty());
     FullHttpResponse finalResponse = responseAggregator.buildResponse(request, metrics, gatheredResponses);

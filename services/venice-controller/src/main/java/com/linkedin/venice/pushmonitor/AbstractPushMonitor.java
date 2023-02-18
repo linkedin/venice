@@ -5,6 +5,7 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.ERROR;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.NOT_CREATED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED;
 
+import com.linkedin.venice.controller.HelixAdminClient;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
@@ -19,6 +20,8 @@ import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
+import com.linkedin.venice.throttle.EventThrottler;
+import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -27,6 +30,7 @@ import com.linkedin.venice.utils.locks.ClusterLockManager;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -65,6 +69,8 @@ public abstract class AbstractPushMonitor
   private final ClusterLockManager clusterLockManager;
   private final String aggregateRealTimeSourceKafkaUrl;
   private final List<String> activeActiveRealTimeSourceKafkaURLs;
+  private final HelixAdminClient helixAdminClient;
+  private final EventThrottler helixClientThrottler;
 
   public AbstractPushMonitor(
       String clusterName,
@@ -76,7 +82,8 @@ public abstract class AbstractPushMonitor
       RealTimeTopicSwitcher realTimeTopicSwitcher,
       ClusterLockManager clusterLockManager,
       String aggregateRealTimeSourceKafkaUrl,
-      List<String> activeActiveRealTimeSourceKafkaURLs) {
+      List<String> activeActiveRealTimeSourceKafkaURLs,
+      HelixAdminClient helixAdminClient) {
     this.clusterName = clusterName;
     this.offlinePushAccessor = offlinePushAccessor;
     this.storeCleaner = storeCleaner;
@@ -87,6 +94,9 @@ public abstract class AbstractPushMonitor
     this.clusterLockManager = clusterLockManager;
     this.aggregateRealTimeSourceKafkaUrl = aggregateRealTimeSourceKafkaUrl;
     this.activeActiveRealTimeSourceKafkaURLs = activeActiveRealTimeSourceKafkaURLs;
+    this.helixAdminClient = helixAdminClient;
+    this.helixClientThrottler =
+        new EventThrottler(10, "push_monitor_helix_client_throttler", false, EventThrottler.BLOCK_STRATEGY);
   }
 
   @Override
@@ -136,7 +146,7 @@ public abstract class AbstractPushMonitor
             String topic = offlinePushStatus.getKafkaTopic();
             if (routingDataRepository.containsKafkaTopic(topic)) {
               Pair<ExecutionStatus, Optional<String>> status =
-                  checkPushStatus(offlinePushStatus, routingDataRepository.getPartitionAssignments(topic));
+                  checkPushStatus(offlinePushStatus, routingDataRepository.getPartitionAssignments(topic), null);
               if (status.getFirst().isTerminal()) {
                 LOGGER.info(
                     "Found a offline pushes could be terminated: {} status: {}",
@@ -560,7 +570,8 @@ public abstract class AbstractPushMonitor
 
   protected abstract Pair<ExecutionStatus, Optional<String>> checkPushStatus(
       OfflinePushStatus pushStatus,
-      PartitionAssignment partitionAssignment);
+      PartitionAssignment partitionAssignment,
+      DisableReplicaCallback callback);
 
   public abstract List<Instance> getReadyToServeInstances(PartitionAssignment partitionAssignment, int partitionId);
 
@@ -659,10 +670,49 @@ public abstract class AbstractPushMonitor
     checkWhetherToStartBufferReplayForHybrid(offlinePushStatus);
   }
 
+  protected DisableReplicaCallback getDisableReplicaCallback(String kafkaTopic) {
+    DisableReplicaCallback callback = new DisableReplicaCallback() {
+      private final Map<String, Set<Integer>> disabledReplicaMap = new HashMap<>();
+
+      @Override
+      public void disableReplica(String instance, int partitionId) {
+        LOGGER.warn(
+            "Disabling errored out leader replica of {} partition: {} on host {}",
+            kafkaTopic,
+            partitionId,
+            instance);
+        helixAdminClient.enablePartition(
+            false,
+            clusterName,
+            instance,
+            kafkaTopic,
+            Collections.singletonList(HelixUtils.getPartitionName(kafkaTopic, partitionId)));
+        disabledReplicaMap.computeIfAbsent(instance, k -> new HashSet<>()).add(partitionId);
+      }
+
+      @Override
+      public boolean isReplicaDisabled(String instance, int partitionId) {
+        Set<Integer> disabledPartitions = disabledReplicaMap.computeIfAbsent(instance, k -> {
+          helixClientThrottler.maybeThrottle(1);
+          Map<String, List<String>> helixMap = helixAdminClient.getDisabledPartitionsMap(clusterName, instance);
+          if (helixMap.containsKey(kafkaTopic)) {
+            return helixMap.get(kafkaTopic).stream().map(HelixUtils::getPartitionId).collect(Collectors.toSet());
+          } else {
+            return Collections.emptySet();
+          }
+        });
+
+        return disabledPartitions.contains(partitionId);
+      }
+    };
+    return callback;
+  }
+
   @Override
   public void onExternalViewChange(PartitionAssignment partitionAssignment) {
     LOGGER.info("Received the routing data changed notification for topic: {}", partitionAssignment.getTopic());
     String storeName = Version.parseStoreFromKafkaTopicName(partitionAssignment.getTopic());
+
     try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(storeName)) {
       String kafkaTopic = partitionAssignment.getTopic();
       OfflinePushStatus pushStatus = getOfflinePush(kafkaTopic);
@@ -674,8 +724,10 @@ public abstract class AbstractPushMonitor
           return;
         }
 
-        Pair<ExecutionStatus, Optional<String>> status = checkPushStatus(pushStatus, partitionAssignment);
+        Pair<ExecutionStatus, Optional<String>> status =
+            checkPushStatus(pushStatus, partitionAssignment, getDisableReplicaCallback(kafkaTopic));
         if (!status.getFirst().equals(pushStatus.getCurrentStatus())) {
+
           if (status.getFirst().isTerminal()) {
             LOGGER.info(
                 "Offline push status will be changed to {} for topic: {} from status: {}",
@@ -890,7 +942,9 @@ public abstract class AbstractPushMonitor
                 store.getName(),
                 versionNumber);
           } else {
+            int previousVersion = store.getCurrentVersion();
             store.setCurrentVersion(versionNumber);
+            realTimeTopicSwitcher.transmitVersionSwapMessage(store, previousVersion, versionNumber);
           }
         } else {
           LOGGER.info(

@@ -94,54 +94,80 @@ public class WaitNMinusOnePushStatusDeciderTest extends TestPushStatusDecider {
     // Not enough replicas
     partitionStatus.updateReplicaStatus("instance0", COMPLETED);
     Assert.assertEquals(
-        statusDecider.getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap),
+        statusDecider
+            .getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap, getDisableReplicaCallback("")),
         STARTED);
 
     // have n - 1 nodes finished, but leader is still bootstrapping
     partitionStatus.updateReplicaStatus("instance1", COMPLETED);
     partitionStatus.updateReplicaStatus("instance2", STARTED);
     Assert.assertEquals(
-        statusDecider.getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap),
+        statusDecider
+            .getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap, getDisableReplicaCallback("")),
         STARTED);
 
     // have n - 1 nodes finished (include leader)
     partitionStatus.updateReplicaStatus("instance1", STARTED);
     partitionStatus.updateReplicaStatus("instance2", COMPLETED);
     Assert.assertEquals(
-        statusDecider.getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap),
+        statusDecider
+            .getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap, getDisableReplicaCallback("")),
         COMPLETED);
 
     // all the replicas have finished
     partitionStatus.updateReplicaStatus("instance1", COMPLETED);
     Assert.assertEquals(
-        statusDecider.getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap),
+        statusDecider
+            .getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap, getDisableReplicaCallback("")),
         COMPLETED);
 
     // one of the replicas failed
     partitionStatus.updateReplicaStatus("instance1", ERROR);
     Assert.assertEquals(
-        statusDecider.getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap),
+        statusDecider
+            .getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap, getDisableReplicaCallback("")),
         COMPLETED);
 
     // another has also failed
     partitionStatus.updateReplicaStatus("instance0", ERROR);
-    Assert
-        .assertEquals(statusDecider.getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap), ERROR);
+    Assert.assertEquals(
+        statusDecider
+            .getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap, getDisableReplicaCallback("")),
+        ERROR);
 
     // a new replica joined but yet registered in external view
     partitionStatus.updateReplicaStatus("instance3", STARTED);
-    Assert
-        .assertEquals(statusDecider.getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap), ERROR);
-
-    instanceToStateMap.put(new Instance("instance3", "host3", 1), HelixState.STANDBY_STATE);
     Assert.assertEquals(
-        statusDecider.getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap),
-        STARTED);
+        statusDecider
+            .getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap, getDisableReplicaCallback("")),
+        ERROR);
+
+    partitionStatus.updateReplicaStatus("instance2", ERROR);
+    Assert.assertEquals(
+        statusDecider
+            .getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap, getDisableReplicaCallback("")),
+        ERROR);
 
     // new replica has finished
-    partitionStatus.updateReplicaStatus("instance3", COMPLETED);
+    partitionStatus.updateReplicaStatus("instance2", COMPLETED);
+    instanceToStateMap.put(new Instance("instance2", "host3", 1), HelixState.OFFLINE_STATE);
     Assert.assertEquals(
-        statusDecider.getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap),
+        statusDecider
+            .getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap, getDisableReplicaCallback("")),
         COMPLETED);
+  }
+
+  private static DisableReplicaCallback getDisableReplicaCallback(String kafkaTopic) {
+    DisableReplicaCallback callback = new DisableReplicaCallback() {
+      @Override
+      public void disableReplica(String instance, int partitionId) {
+      }
+
+      @Override
+      public boolean isReplicaDisabled(String instance, int partitionId) {
+        return instance.equals("instance3");
+      }
+    };
+    return callback;
   }
 }

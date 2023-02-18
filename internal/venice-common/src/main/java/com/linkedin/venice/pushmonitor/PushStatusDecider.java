@@ -104,7 +104,8 @@ public abstract class PushStatusDecider {
    */
   public Pair<ExecutionStatus, Optional<String>> checkPushStatusAndDetailsByPartitionsStatus(
       OfflinePushStatus pushStatus,
-      PartitionAssignment partitionAssignment) {
+      PartitionAssignment partitionAssignment,
+      DisableReplicaCallback callback) {
     // Sanity check
     if (partitionAssignment == null || partitionAssignment.isMissingAssignedPartitions()) {
       logger.warn("partitionAssignment not ready: {}", partitionAssignment);
@@ -125,8 +126,11 @@ public abstract class PushStatusDecider {
           // Defensive coding. Should never happen if the sanity check above works.
           throw new IllegalStateException("partition " + partitionId + " is null.");
         }
-        ExecutionStatus executionStatus =
-            getPartitionStatus(partitionStatus, pushStatus.getReplicationFactor(), partition.getInstanceToStateMap());
+        ExecutionStatus executionStatus = getPartitionStatus(
+            partitionStatus,
+            pushStatus.getReplicationFactor(),
+            partition.getInstanceToStateMap(),
+            callback);
 
         if (executionStatus == ERROR) {
           return new Pair<>(
@@ -247,15 +251,22 @@ public abstract class PushStatusDecider {
   protected ExecutionStatus getPartitionStatus(
       PartitionStatus partitionStatus,
       int replicationFactor,
-      Map<Instance, String> instanceToStateMap) {
-    return getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap, getNumberOfToleratedErrors());
+      Map<Instance, String> instanceToStateMap,
+      DisableReplicaCallback callback) {
+    return getPartitionStatus(
+        partitionStatus,
+        replicationFactor,
+        instanceToStateMap,
+        getNumberOfToleratedErrors(),
+        callback);
   }
 
   protected ExecutionStatus getPartitionStatus(
       PartitionStatus partitionStatus,
       int replicationFactor,
       Map<Instance, String> instanceToStateMap,
-      int numberOfToleratedErrors) {
+      int numberOfToleratedErrors,
+      DisableReplicaCallback callback) {
     Map<ExecutionStatus, Integer> executionStatusMap = new HashMap<>();
 
     // when resources are running under L/F model, leader is usually taking more critical work and
@@ -263,8 +274,7 @@ public abstract class PushStatusDecider {
     // partitions can be completed. Vice versa, partitions will be in error state if leader is in error
     // state.
     boolean isLeaderCompleted = true;
-    boolean isLeaderInError = false;
-
+    int previouslyDisabledReplica = 0;
     for (Map.Entry<Instance, String> entry: instanceToStateMap.entrySet()) {
       ExecutionStatus currentStatus =
           getReplicaCurrentStatus(partitionStatus.getReplicaHistoricStatusList(entry.getKey().getNodeId()));
@@ -273,26 +283,26 @@ public abstract class PushStatusDecider {
           isLeaderCompleted = false;
         }
 
-        if (currentStatus.equals(ERROR)) {
-          isLeaderInError = true;
+        if (currentStatus.equals(ERROR) && callback != null) {
+          callback.disableReplica(entry.getKey().getNodeId(), partitionStatus.getPartitionId());
         }
-
+      } else if (entry.getValue().equals(HelixState.OFFLINE_STATE)) {
+        // If the replica is in offline state, check if its due to previously disabled replica or not.
+        if (callback != null
+            && callback.isReplicaDisabled(entry.getKey().getNodeId(), partitionStatus.getPartitionId())) {
+          previouslyDisabledReplica++;
+        }
       }
-
       executionStatusMap.merge(currentStatus, 1, Integer::sum);
     }
 
     if (executionStatusMap.containsKey(COMPLETED)
-        && executionStatusMap.get(COMPLETED) >= replicationFactor - numberOfToleratedErrors && isLeaderCompleted) {
+        && executionStatusMap.get(COMPLETED) >= (replicationFactor - numberOfToleratedErrors) && isLeaderCompleted) {
       return COMPLETED;
     }
 
-    if (isLeaderInError) {
-      return ERROR;
-    }
-
-    if (executionStatusMap.containsKey(ERROR)
-        && executionStatusMap.get(ERROR) > instanceToStateMap.size() - replicationFactor + numberOfToleratedErrors) {
+    if (executionStatusMap.containsKey(ERROR) && (executionStatusMap.get(ERROR)
+        + previouslyDisabledReplica > instanceToStateMap.size() - replicationFactor + numberOfToleratedErrors)) {
       return ERROR;
     }
 

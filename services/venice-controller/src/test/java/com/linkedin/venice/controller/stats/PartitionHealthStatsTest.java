@@ -17,7 +17,7 @@ import org.testng.annotations.Test;
 
 public class PartitionHealthStatsTest {
   private String topic = "test_v1";
-  private PushMonitor mockPushMonitor = Mockito.mock(PushMonitor.class);
+  private static PushMonitor mockPushMonitor = Mockito.mock(PushMonitor.class);
 
   @Test
   public void testUnderReplicatedPartitionStats() {
@@ -47,7 +47,6 @@ public class PartitionHealthStatsTest {
         "We give stats two under replicated partitions, but it did not recorded it correctly.");
     // On-going push.
     Mockito.doReturn(VersionStatus.STARTED).when(mockStore).getVersionStatus(Mockito.anyInt());
-    stats = new MockPartitionHealthStats(mockStoreRepo);
     // Reset stats.
     stats = new MockPartitionHealthStats(mockStoreRepo);
     stats.onExternalViewChange(assignment);
@@ -75,7 +74,7 @@ public class PartitionHealthStatsTest {
    * Because {@link Sensor} is a final class so it can not be mocked by {@link Mockito}, so we create a sub-class of
    * {@link AggPartitionHealthStats} to get the internal state from it to verify out tests.
    */
-  private class MockPartitionHealthStats extends AggPartitionHealthStats {
+  private static class MockPartitionHealthStats extends AggPartitionHealthStats {
     int underReplicatedPartitionNumber = 0;
 
     public MockPartitionHealthStats(ReadOnlyStoreRepository storeRepository) {

@@ -2,7 +2,7 @@ package com.linkedin.davinci.ingestion.isolated;
 
 import static com.linkedin.venice.ConfigKeys.CLUSTER_DISCOVERY_D2_SERVICE;
 import static com.linkedin.venice.ConfigKeys.D2_ZK_HOSTS_ADDRESS;
-import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_STATS_CLASS_LIST;
 import static com.linkedin.venice.ConfigKeys.SERVER_REMOTE_INGESTION_REPAIR_SLEEP_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_STOP_CONSUMPTION_WAIT_RETRIES_NUM;
@@ -32,6 +32,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
+import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionReportType;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -98,6 +99,7 @@ import org.apache.logging.log4j.Logger;
  */
 public class IsolatedIngestionServer extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(IsolatedIngestionServer.class);
+
   private final RedundantExceptionFilter redundantExceptionFilter =
       new RedundantExceptionFilter(RedundantExceptionFilter.DEFAULT_BITSET_SIZE, TimeUnit.MINUTES.toMillis(10));
   private final ServerBootstrap bootstrap;
@@ -105,6 +107,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   private final EventLoopGroup workerGroup;
   private final ExecutorService ingestionExecutor = Executors.newFixedThreadPool(10);
   private final ScheduledExecutorService heartbeatCheckScheduler = Executors.newScheduledThreadPool(1);
+  private final ScheduledExecutorService metricsCollectionScheduler = Executors.newScheduledThreadPool(1);
   private final AtomicBoolean isShuttingDown = new AtomicBoolean(false);
   private final int servicePort;
   private final ExecutorService longRunningTaskExecutor = Executors.newFixedThreadPool(10);
@@ -123,7 +126,11 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   private final Map<String, Map<Integer, AtomicBoolean>> topicPartitionSubscriptionMap =
       new VeniceConcurrentHashMap<>();
   private final Map<String, Double> metricsMap = new VeniceConcurrentHashMap<>();
-  private final long heartbeatTimeoutMs;
+  /**
+   * Heartbeat timeout acknowledge disconnection between main and forked processes. After this timeout, forked process
+   * should stop running gracefully.
+   */
+  private final long connectionTimeoutMs;
 
   private ChannelFuture serverFuture;
   private MetricsRepository metricsRepository = null;
@@ -138,6 +145,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   private InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer;
   private boolean isInitiated = false;
   private IsolatedIngestionRequestClient reportClient;
+  private IsolatedIngestionRequestClient metricClient;
   private volatile long heartbeatTimeInMs = System.currentTimeMillis();
   private int stopConsumptionWaitRetriesNum;
   private DefaultIngestionBackend ingestionBackend;
@@ -152,8 +160,9 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         IsolatedIngestionUtils.loadForkedIngestionKafkaClusterMapConfig(configBasePath);
     this.configLoader = new VeniceConfigLoader(loadedVeniceProperties, loadedVeniceProperties, kafkaClusterMap);
     this.servicePort = configLoader.getVeniceServerConfig().getIngestionServicePort();
-    this.heartbeatTimeoutMs = configLoader.getCombinedProperties()
-        .getLong(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, 60 * Time.MS_PER_SECOND);
+    this.connectionTimeoutMs =
+        configLoader.getCombinedProperties().getLong(SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_SECONDS, 180)
+            * Time.MS_PER_SECOND;
     // Initialize Netty server.
     Class<? extends ServerChannel> serverSocketChannelClass = NioServerSocketChannel.class;
     bossGroup = new NioEventLoopGroup();
@@ -198,6 +207,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     LOGGER.info("All ingestion components are initialized.");
 
     heartbeatCheckScheduler.scheduleAtFixedRate(this::checkHeartbeatTimeout, 0, 5, TimeUnit.SECONDS);
+    metricsCollectionScheduler.scheduleAtFixedRate(this::reportMetricsUpdateToMainProcess, 0, 1, TimeUnit.MINUTES);
     // There is no async process in this function, so we are completely finished with the start-up process.
     repairService.start();
     return true;
@@ -227,6 +237,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     }
 
     heartbeatCheckScheduler.shutdownNow();
+    metricsCollectionScheduler.shutdownNow();
     ingestionExecutor.shutdown();
     longRunningTaskExecutor.shutdown();
     try {
@@ -369,7 +380,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
       int partitionId = report.partitionId;
       long offset = report.offset;
 
-      // Collect offsetRecord array and store version state after consumption stops.
+      // Collect the latest OffsetRecord ByteBuffer array and store version state before consumption stops.
       if (ingestionReportType.equals(IngestionReportType.COMPLETED)) {
         // Set offset record in ingestion report.
         report.offsetRecordArray = getStoreIngestionService().getPartitionOffsetRecords(topicName, partitionId);
@@ -500,10 +511,10 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
             heartbeatTimeInMs);
       }
 
-      if ((currentTimeMillis - heartbeatTimeInMs) > heartbeatTimeoutMs) {
+      if ((currentTimeMillis - heartbeatTimeInMs) > connectionTimeoutMs) {
         LOGGER.warn(
             "Lost connection to parent process after {} ms, will shutdown the ingestion backend gracefully.",
-            heartbeatTimeoutMs);
+            connectionTimeoutMs);
         isShuttingDown.set(true);
         try {
           stop();
@@ -515,6 +526,45 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         }
       }
     }
+  }
+
+  void reportMetricsUpdateToMainProcess() {
+    try {
+      IngestionMetricsReport metricsReport = new IngestionMetricsReport();
+      metricsReport.aggregatedMetrics = new VeniceConcurrentHashMap<>();
+      /**
+       * TODO: This approach may lead to metric loss if we fail to deliver a report of metric updates due to timeout.
+       * But since server will continue to handle update even if client times out, it is considered ok for now. We should
+       * try to see if we can safeguard the metric delta delivery mechanism.
+       */
+      if (getMetricsRepository() != null) {
+        getMetricsRepository().metrics().forEach((name, metric) -> {
+          if (metric != null) {
+            try {
+              // Best-effort to reduce metrics delta size sent from child process to main process.
+              Double originalValue = getMetricsMap().get(name);
+              Double newValue = metric.value();
+              if (originalValue == null || !originalValue.equals(newValue)) {
+                metricsReport.aggregatedMetrics.put(name, newValue);
+              }
+              getMetricsMap().put(name, newValue);
+            } catch (Exception e) {
+              String exceptionLogMessage = "Encounter exception when retrieving value of metric: " + name;
+              if (!getRedundantExceptionFilter().isRedundantException(exceptionLogMessage)) {
+                LOGGER.error(exceptionLogMessage, e);
+              }
+            }
+          }
+        });
+      }
+      getMetricClient().reportMetricUpdate(metricsReport);
+    } catch (Exception e) {
+      LOGGER.warn("Encounter exception when fetching latest metrics and reporting back to main process", e);
+    }
+  }
+
+  IsolatedIngestionRequestClient getMetricClient() {
+    return metricClient;
   }
 
   private void initializeIsolatedIngestionServer() {
@@ -559,10 +609,12 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
 
     SchemaReader partitionStateSchemaReader = ClientFactory.getSchemaReader(
         ClientConfig.cloneConfig(clientConfig)
-            .setStoreName(AvroProtocolDefinition.PARTITION_STATE.getSystemStoreName()));
+            .setStoreName(AvroProtocolDefinition.PARTITION_STATE.getSystemStoreName()),
+        null);
     SchemaReader storeVersionStateSchemaReader = ClientFactory.getSchemaReader(
         ClientConfig.cloneConfig(clientConfig)
-            .setStoreName(AvroProtocolDefinition.STORE_VERSION_STATE.getSystemStoreName()));
+            .setStoreName(AvroProtocolDefinition.STORE_VERSION_STATE.getSystemStoreName()),
+        null);
     partitionStateSerializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
     partitionStateSerializer.setSchemaReader(partitionStateSchemaReader);
     storeVersionStateSerializer = AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
@@ -629,7 +681,8 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     // Create SchemaReader
     SchemaReader kafkaMessageEnvelopeSchemaReader = ClientFactory.getSchemaReader(
         ClientConfig.cloneConfig(clientConfig)
-            .setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName()));
+            .setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName()),
+        null);
 
     storageMetadataService =
         new StorageEngineMetadataService(storageService.getStorageEngineRepository(), partitionStateSerializer);
@@ -665,12 +718,11 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     LOGGER.info(
         "Starting report client with target application port: {}",
         configLoader.getVeniceServerConfig().getIngestionApplicationPort());
-    // Create Netty client to report status back to application.
-    reportClient = new IsolatedIngestionRequestClient(
-        IsolatedIngestionUtils.getSSLFactory(configLoader),
-        configLoader.getVeniceServerConfig().getIngestionApplicationPort());
-
-    // Mark the IsolatedIngestionServer as initiated.
+    // Create Netty client to report ingestion status back to main process.
+    reportClient = new IsolatedIngestionRequestClient(configLoader);
+    // Create Netty client to report metrics update back to main process.
+    metricClient = new IsolatedIngestionRequestClient(configLoader);
+    // Mark the isolated ingestion service as initiated.
     isInitiated = true;
   }
 

@@ -4,7 +4,6 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLA
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
-import static com.linkedin.venice.ConfigKeys.SERVER_AUTO_COMPACTION_FOR_SAMZA_REPROCESSING_JOB_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
@@ -19,15 +18,15 @@ import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIM
 import static com.linkedin.venice.meta.BufferReplayPolicy.REWIND_FROM_EOP;
 import static com.linkedin.venice.meta.BufferReplayPolicy.REWIND_FROM_SOP;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_STORAGE;
-import static com.linkedin.venice.utils.TestPushUtils.STRING_SCHEMA;
-import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
-import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
-import static com.linkedin.venice.utils.TestPushUtils.getSamzaProducer;
-import static com.linkedin.venice.utils.TestPushUtils.getSamzaProducerConfig;
-import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
-import static com.linkedin.venice.utils.TestPushUtils.sendCustomSizeStreamingRecord;
-import static com.linkedin.venice.utils.TestPushUtils.sendStreamingRecord;
-import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithUserSchema;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducerConfig;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendCustomSizeStreamingRecord;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
+import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
+import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
+import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUserSchema;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotEquals;
@@ -35,11 +34,13 @@ import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
 
 import com.github.benmanes.caffeine.cache.Cache;
+import com.github.luben.zstd.Zstd;
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -73,6 +74,7 @@ import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.InstanceStatus;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreStatus;
 import com.linkedin.venice.meta.Version;
@@ -85,8 +87,9 @@ import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.Pair;
-import com.linkedin.venice.utils.TestPushUtils;
+import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -182,7 +185,7 @@ public class TestHybrid {
             DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
             100,
             0L,
-            TestUtils.getVeniceConsumerFactory(venice.getKafka()))) {
+            IntegrationTestPushUtils.getVeniceConsumerFactory(venice.getKafka()))) {
       long streamingRewindSeconds = 25L;
       long streamingMessageLag = 2L;
       final String storeName = Utils.getUniqueString("multi-colo-hybrid-store");
@@ -258,7 +261,7 @@ public class TestHybrid {
   /**
    * This test validates the hybrid batch + streaming semantics and verifies that configured rewind time works as expected.
    *
-   * TODO: This test needs to be refactored in order to leverage {@link com.linkedin.venice.utils.MockTime},
+   * TODO: This test needs to be refactored in order to leverage {@link TestMockTime},
    *       which would allow the test to run faster and more deterministically.
    *
    * @param multiDivStream if false, rewind will happen in the middle of a DIV Segment, which was originally broken.
@@ -307,7 +310,7 @@ public class TestHybrid {
               DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
               100,
               MIN_COMPACTION_LAG,
-              TestUtils.getVeniceConsumerFactory(venice.getKafka()))) {
+              IntegrationTestPushUtils.getVeniceConsumerFactory(venice.getKafka()))) {
 
         Cache cacheNothingCache = Mockito.mock(Cache.class);
         Mockito.when(cacheNothingCache.getIfPresent(Mockito.any())).thenReturn(null);
@@ -369,6 +372,8 @@ public class TestHybrid {
           }
         });
 
+        // Run one more VPJ
+        runVPJ(vpjProperties, 2, controllerClient);
         // verify the topic compaction policy
         String topicForStoreVersion2 = Version.composeKafkaTopic(storeName, 2);
         Assert.assertTrue(
@@ -481,6 +486,36 @@ public class TestHybrid {
     }
   }
 
+  private static VeniceCompressor getVeniceCompressor(
+      CompressionStrategy compressionStrategy,
+      String storeName,
+      int storeVersion,
+      VeniceClusterWrapper venice,
+      CloseableHttpAsyncClient storageNodeClient) throws IOException, ExecutionException, InterruptedException {
+    CompressorFactory compressorFactory = new CompressorFactory();
+    if (compressionStrategy.equals(CompressionStrategy.ZSTD_WITH_DICT)) {
+      // query the dictionary
+      VeniceServerWrapper serverWrapper = venice.getVeniceServers().get(0);
+      StringBuilder sb = new StringBuilder().append("http://")
+          .append(serverWrapper.getAddress())
+          .append("/")
+          .append(QueryAction.DICTIONARY.toString().toLowerCase())
+          .append("/")
+          .append(storeName)
+          .append("/")
+          .append(storeVersion);
+      HttpGet getReq = new HttpGet(sb.toString());
+      try (InputStream bodyStream = storageNodeClient.execute(getReq, null).get().getEntity().getContent()) {
+        byte[] dictionary = IOUtils.toByteArray(bodyStream);
+        return compressorFactory.createCompressorWithDictionary(dictionary, Zstd.maxCompressionLevel());
+      } catch (InterruptedException | ExecutionException e) {
+        throw e;
+      }
+    } else {
+      return compressorFactory.getCompressor(compressionStrategy);
+    }
+  }
+
   private void checkLargeRecord(AvroGenericStoreClient client, int index)
       throws ExecutionException, InterruptedException {
     String key = Integer.toString(index);
@@ -507,7 +542,6 @@ public class TestHybrid {
     Properties extraProperties = new Properties();
     extraProperties.setProperty(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB.name());
     extraProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
-    extraProperties.setProperty(SERVER_AUTO_COMPACTION_FOR_SAMZA_REPROCESSING_JOB_ENABLED, "false");
     extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
 
     SystemProducer veniceBatchProducer = null;
@@ -903,7 +937,7 @@ public class TestHybrid {
       controllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L);
 
       // write a few of messages from the Samza
-      producer = TestPushUtils.getSamzaProducer(veniceClusterWrapper, storeName, Version.PushType.STREAM);
+      producer = IntegrationTestPushUtils.getSamzaProducer(veniceClusterWrapper, storeName, Version.PushType.STREAM);
       for (int i = 0; i < 10; i++) {
         sendStreamingRecord(producer, storeName, i);
       }
@@ -1004,9 +1038,9 @@ public class TestHybrid {
           assertEquals(client.get(i).get(), i);
         }
       });
-      SystemProducer producer = TestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.STREAM);
+      SystemProducer producer = IntegrationTestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.STREAM);
       for (int i = 0; i < keyCount; i++) {
-        TestPushUtils.sendStreamingRecord(producer, storeName, i, i + 1);
+        IntegrationTestPushUtils.sendStreamingRecord(producer, storeName, i, i + 1);
       }
       producer.stop();
 
@@ -1074,7 +1108,7 @@ public class TestHybrid {
               DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
               100,
               MIN_COMPACTION_LAG,
-              TestUtils.getVeniceConsumerFactory(venice.getKafka()))) {
+              IntegrationTestPushUtils.getVeniceConsumerFactory(venice.getKafka()))) {
 
         ControllerResponse response = controllerClient.updateStore(
             storeName,
@@ -1285,7 +1319,7 @@ public class TestHybrid {
           Base64.Encoder encoder = Base64.getUrlEncoder();
 
           VeniceCompressor compressor =
-              TestUtils.getVeniceCompressor(compressionStrategy, storeName, 1, venice, storageNodeClient);
+              getVeniceCompressor(compressionStrategy, storeName, 1, venice, storageNodeClient);
           // Check both leader and follower hosts
           TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, true, () -> {
             for (VeniceServerWrapper server: venice.getVeniceServers()) {
@@ -1559,9 +1593,10 @@ public class TestHybrid {
           }
         });
 
-        SystemProducer producer = TestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.STREAM);
+        SystemProducer producer =
+            IntegrationTestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.STREAM);
         for (int i = 0; i < keyCount; i++) {
-          TestPushUtils.sendCustomSizeStreamingRecord(producer, storeName, i, STREAMING_RECORD_SIZE);
+          IntegrationTestPushUtils.sendCustomSizeStreamingRecord(producer, storeName, i, STREAMING_RECORD_SIZE);
         }
         producer.stop();
         AtomicInteger watermarkOfSuccessfullyVerifiedKeys = new AtomicInteger(0);
@@ -1624,9 +1659,10 @@ public class TestHybrid {
             assertEquals(client.get(i).get(), i);
           }
         });
-        SystemProducer producer = TestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.STREAM);
+        SystemProducer producer =
+            IntegrationTestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.STREAM);
         for (int i = 0; i < keyCount; i++) {
-          TestPushUtils.sendStreamingRecord(producer, storeName, i, i);
+          IntegrationTestPushUtils.sendStreamingRecord(producer, storeName, i, i);
         }
         producer.stop();
         TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, true, true, () -> {
@@ -1641,9 +1677,9 @@ public class TestHybrid {
             DEFAULT_KEY_SCHEMA,
             DEFAULT_VALUE_SCHEMA,
             IntStream.range(keyCount, keyCount * 2).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, i)));
-        producer = TestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.STREAM);
+        producer = IntegrationTestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.STREAM);
         for (int i = keyCount; i < keyCount * 2; i++) {
-          TestPushUtils.sendStreamingRecord(producer, storeName, i, i);
+          IntegrationTestPushUtils.sendStreamingRecord(producer, storeName, i, i);
         }
         producer.stop();
         TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, true, true, () -> {
@@ -1658,9 +1694,9 @@ public class TestHybrid {
             DEFAULT_KEY_SCHEMA,
             DEFAULT_VALUE_SCHEMA,
             IntStream.range(keyCount * 2, keyCount * 3).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, i)));
-        producer = TestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.STREAM);
+        producer = IntegrationTestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.STREAM);
         for (int i = keyCount * 2; i < keyCount * 3; i++) {
-          TestPushUtils.sendStreamingRecord(producer, storeName, i, i);
+          IntegrationTestPushUtils.sendStreamingRecord(producer, storeName, i, i);
         }
         TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, true, true, () -> {
           for (int i = 0; i < keyCount * 3; i++) {
@@ -1735,7 +1771,6 @@ public class TestHybrid {
     producerMetadata.segmentNumber = segmentNumber;
     producerMetadata.messageSequenceNumber = sequenceNumber;
     producerMetadata.messageTimestamp = System.currentTimeMillis();
-    producerMetadata.upstreamOffset = -1; // This field has been deprecated
     kafkaValue.producerMetadata = producerMetadata;
     kafkaValue.leaderMetadataFooter = new LeaderMetadata();
     kafkaValue.leaderMetadataFooter.upstreamOffset = upstreamOffset;

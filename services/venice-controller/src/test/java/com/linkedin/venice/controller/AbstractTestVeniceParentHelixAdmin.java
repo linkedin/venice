@@ -50,13 +50,13 @@ public class AbstractTestVeniceParentHelixAdmin {
   static final String TEST_SCHEMA =
       "{\"type\":\"record\", \"name\":\"ValueRecord\", \"fields\": [{\"name\":\"number\", " + "\"type\":\"int\"}]}";
 
-  final String clusterName = "test-cluster";
-  final String coloName = "test-colo";
-  final String topicName = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
-  final String zkMetadataNodePath = ZkAdminTopicMetadataAccessor.getAdminTopicMetadataNodePath(clusterName);
-  final int partitionId = AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID;
-  final TopicPartition topicPartition = new TopicPartition(topicName, partitionId);
-  final AdminOperationSerializer adminOperationSerializer = new AdminOperationSerializer();
+  static final String clusterName = "test-cluster";
+  static final String coloName = "test-colo";
+  static final String topicName = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
+  static final String zkMetadataNodePath = ZkAdminTopicMetadataAccessor.getAdminTopicMetadataNodePath(clusterName);
+  static final int partitionId = AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID;
+  static final TopicPartition topicPartition = new TopicPartition(topicName, partitionId);
+  static final AdminOperationSerializer adminOperationSerializer = new AdminOperationSerializer();
 
   TopicManager topicManager;
   VeniceHelixAdmin internalAdmin;

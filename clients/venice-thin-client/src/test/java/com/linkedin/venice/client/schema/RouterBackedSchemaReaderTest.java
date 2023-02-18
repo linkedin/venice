@@ -3,13 +3,14 @@ package com.linkedin.venice.client.schema;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
-import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.schema.SchemaReader;
+import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.io.IOException;
 import java.util.Optional;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import org.apache.avro.Schema;
@@ -20,7 +21,13 @@ import org.testng.annotations.Test;
 
 public class RouterBackedSchemaReaderTest {
   private static final ObjectMapper mapper = ObjectMapperFactory.getInstance();
-  private final int TIMEOUT = 3;
+  private final static int TIMEOUT = 3;
+  private final ICProvider mockICProvider = new ICProvider() {
+    @Override
+    public <T> T call(String traceContext, Callable<T> callable) throws Exception {
+      return callable.call();
+    }
+  };
 
   @Test
   public void testGetKeySchema() throws IOException, ExecutionException, InterruptedException, VeniceClientException {
@@ -99,7 +106,6 @@ public class RouterBackedSchemaReaderTest {
     CompletableFuture<byte[]> mockFuture = Mockito.mock(CompletableFuture.class);
     Mockito.doReturn(mapper.writeValueAsBytes(schemaResponse)).when(mockFuture).get();
     Mockito.doReturn(mockFuture).when(mockClient).getRaw("key_schema/" + storeName);
-    ClientConfig clientConfig = Mockito.mock(ClientConfig.class);
     SchemaReader schemaReader = new RouterBackedSchemaReader(() -> mockClient);
 
     Mockito.doReturn(mapper.writeValueAsBytes(multiSchemaResponse)).when(mockFuture).get();
@@ -133,7 +139,6 @@ public class RouterBackedSchemaReaderTest {
     schemaResponse.setSchemaStr(keySchemaStr);
     CompletableFuture<byte[]> mockFuture = Mockito.mock(CompletableFuture.class);
     Mockito.doReturn(mapper.writeValueAsBytes(schemaResponse)).when(mockFuture).get();
-    ClientConfig clientConfig = Mockito.mock(ClientConfig.class);
 
     SchemaReader schemaReader = new RouterBackedSchemaReader(() -> mockClient);
     Mockito.doReturn(null).when(mockFuture).get();
@@ -250,7 +255,8 @@ public class RouterBackedSchemaReaderTest {
     try (SchemaReader schemaReader = new RouterBackedSchemaReader(
         () -> clientMock,
         Optional.empty(),
-        Optional.of(schema -> schema.toString().equals(valueSchemaStr1)))) {
+        Optional.of(schema -> schema.toString().equals(valueSchemaStr1)),
+        mockICProvider)) {
       Assert.assertEquals(schemaReader.getValueSchema(valueSchemaId1).toString(), valueSchemaStr1);
       Assert.assertEquals(schemaReader.getValueSchema(valueSchemaId2).toString(), valueSchemaStr2);
       Assert.assertEquals(schemaReader.getLatestValueSchema().toString(), valueSchemaStr1);
@@ -259,7 +265,7 @@ public class RouterBackedSchemaReaderTest {
     }
 
     try (SchemaReader schemaReader =
-        new RouterBackedSchemaReader(() -> clientMock, Optional.empty(), Optional.empty())) {
+        new RouterBackedSchemaReader(() -> clientMock, Optional.empty(), Optional.empty(), mockICProvider)) {
       Assert.assertEquals(schemaReader.getValueSchema(valueSchemaId1).toString(), valueSchemaStr1);
       Assert.assertEquals(schemaReader.getValueSchema(valueSchemaId2).toString(), valueSchemaStr2);
       Assert.assertEquals(schemaReader.getLatestValueSchema().toString(), valueSchemaStr2);
@@ -330,7 +336,7 @@ public class RouterBackedSchemaReaderTest {
     Mockito.doReturn(mapper.writeValueAsBytes(schemaResponse)).when(mockFuture).get();
     Mockito.doReturn(mockFuture).when(mockClient).getRaw(Mockito.anyString());
     try {
-      SchemaReader schemaReader = new RouterBackedSchemaReader(() -> mockClient);
+      new RouterBackedSchemaReader(() -> mockClient);
     } catch (VeniceClientException e) {
       Assert.fail("The unrecognized field should be ignored.");
     }
@@ -401,7 +407,7 @@ public class RouterBackedSchemaReaderTest {
     }
   }
 
-  private class SchemaResponseWithExtraField extends SchemaResponse {
+  private static class SchemaResponseWithExtraField extends SchemaResponse {
     private int extraField;
 
     public int getExtraField() {

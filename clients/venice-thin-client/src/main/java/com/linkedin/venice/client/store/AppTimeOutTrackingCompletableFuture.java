@@ -15,7 +15,7 @@ import java.util.concurrent.TimeoutException;
 public class AppTimeOutTrackingCompletableFuture<T> extends CompletableFuture<T> {
   private final ClientStats stats;
   private long startTime;
-  private final long TIMEOUT_COLLECTION_WINDOW = 10 * Time.MS_PER_MINUTE;
+  private final static long TIMEOUT_COLLECTION_WINDOW = 10 * Time.MS_PER_MINUTE;
   private boolean collectTimeout;
 
   private AppTimeOutTrackingCompletableFuture(ClientStats stats) {

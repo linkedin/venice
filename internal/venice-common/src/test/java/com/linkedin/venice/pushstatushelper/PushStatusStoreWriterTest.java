@@ -26,11 +26,12 @@ public class PushStatusStoreWriterTest {
   private PushStatusStoreVeniceWriterCache veniceWriterCacheMock;
   private VeniceWriter veniceWriterMock;
   private PushStatusStoreWriter pushStatusStoreWriter;
-  private final String storeName = "venice-test-push-status-store";
-  private final int storeVersion = 42;
-  private final String incPushVersion = "inc_push_test_version_1";
-  private final int derivedSchemaId = 42;
-  private final int protoVersion = AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersion();
+  private final static String storeName = "venice-test-push-status-store";
+  private final static int storeVersion = 42;
+  private final static String incPushVersion = "inc_push_test_version_1";
+  private final static int derivedSchemaId = 42;
+  private final static int protoVersion =
+      AvroProtocolDefinition.PUSH_STATUS_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersion();
 
   @BeforeMethod
   public void setUp() {

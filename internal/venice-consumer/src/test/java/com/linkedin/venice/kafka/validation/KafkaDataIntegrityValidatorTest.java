@@ -15,6 +15,10 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -23,13 +27,13 @@ import java.nio.ByteBuffer;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.common.record.TimestampType;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
 public class KafkaDataIntegrityValidatorTest {
+  private static final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+
   @Test
   public void testStatelessDIV() {
     String kafkaTopic = Utils.getUniqueString("TestStore") + "_v1";
@@ -42,7 +46,7 @@ public class KafkaDataIntegrityValidatorTest {
      * record is 28 hours ago.
      */
     GUID producerGUID = GuidUtils.getGUID(new VeniceProperties(new Properties()));
-    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record = buildConsumerRecord(
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record = buildConsumerRecord(
         kafkaTopic,
         0,
         100,
@@ -58,7 +62,7 @@ public class KafkaDataIntegrityValidatorTest {
      * Create a record with sequence number 101 in the same segment and the broken timestamp for this record is 27 hours
      * ago; no error should be thrown since sequence number is incrementing without gap.
      */
-    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record2 = buildConsumerRecord(
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record2 = buildConsumerRecord(
         kafkaTopic,
         0,
         101,
@@ -73,7 +77,7 @@ public class KafkaDataIntegrityValidatorTest {
      * ago; there is a gap between sequence number 101 and 103; however, since the previous record is older than the
      * log compaction delay threshold (24 hours), missing message is allowed.
      */
-    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record3 = buildConsumerRecord(
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record3 = buildConsumerRecord(
         kafkaTopic,
         0,
         200,
@@ -89,7 +93,7 @@ public class KafkaDataIntegrityValidatorTest {
      * because the previous message for the same segment is fresh (20 hours ago), Kafka log compaction hasn't started
      * yet, so missing message is not expected
      */
-    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record4 = buildConsumerRecord(
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record4 = buildConsumerRecord(
         kafkaTopic,
         0,
         205,
@@ -106,7 +110,7 @@ public class KafkaDataIntegrityValidatorTest {
     /**
      * Create a record with a gap in segment number. MISSING_MESSAGE exception should be thrown
      */
-    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record5 = buildConsumerRecord(
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record5 = buildConsumerRecord(
         kafkaTopic,
         0,
         206,
@@ -120,7 +124,7 @@ public class KafkaDataIntegrityValidatorTest {
     verify(errorMetricCallback, times(1)).execute(any());
   }
 
-  private static ConsumerRecord<KafkaKey, KafkaMessageEnvelope> buildConsumerRecord(
+  private static PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> buildConsumerRecord(
       String kafkaTopic,
       int partition,
       long offset,
@@ -140,7 +144,6 @@ public class KafkaDataIntegrityValidatorTest {
     producerMetadata.segmentNumber = currentSegment.getSegmentNumber();
     producerMetadata.messageSequenceNumber = currentSegment.getSequenceNumber();
     producerMetadata.messageTimestamp = brokerTimestamp;
-    producerMetadata.upstreamOffset = -1; // This field has been deprecated
     messageEnvelope.producerMetadata = producerMetadata;
     messageEnvelope.leaderMetadataFooter = new LeaderMetadata();
     messageEnvelope.leaderMetadataFooter.upstreamOffset = -1;
@@ -152,16 +155,12 @@ public class KafkaDataIntegrityValidatorTest {
     putPayload.replicationMetadataPayload = ByteBuffer.wrap(new byte[0]);
     messageEnvelope.payloadUnion = putPayload;
 
-    return new ConsumerRecord<>(
-        kafkaTopic,
-        partition,
+    return new ImmutablePubSubMessage<>(
+        kafkaKey,
+        messageEnvelope,
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(kafkaTopic), partition),
         offset,
         brokerTimestamp,
-        TimestampType.CREATE_TIME,
-        0,
-        0,
-        0,
-        kafkaKey,
-        messageEnvelope);
+        0);
   }
 }

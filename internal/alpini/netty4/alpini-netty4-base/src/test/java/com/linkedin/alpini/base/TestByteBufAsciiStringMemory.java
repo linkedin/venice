@@ -20,7 +20,7 @@ public class TestByteBufAsciiStringMemory {
   private Random r = new Random();
 
   @BeforeMethod(groups = "unit")
-  public void setup() {
+  public void setUp() {
     a = new byte[128];
     b = new byte[256];
     r.nextBytes(a);

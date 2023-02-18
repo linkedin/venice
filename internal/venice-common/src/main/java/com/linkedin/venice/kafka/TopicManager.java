@@ -60,6 +60,7 @@ public class TopicManager implements Closeable {
   public static final int DEFAULT_KAFKA_OPERATION_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
   public static final long UNKNOWN_TOPIC_RETENTION = Long.MIN_VALUE;
   public static final int MAX_TOPIC_DELETE_RETRIES = 3;
+  public static final int DEFAULT_KAFKA_REPLICATION_FACTOR = 3;
 
   /**
    * Default setting is that no log compaction should happen for hybrid store version topics
@@ -441,8 +442,19 @@ public class TopicManager implements Closeable {
     return UNKNOWN_TOPIC_RETENTION;
   }
 
+  /**
+   * Check whether topic is absent or truncated
+   * @param topicName
+   * @param truncatedTopicMaxRetentionMs
+   * @return true if the topic does not exist or if it exists but its retention time is below truncated threshold
+   *         false if the topic exists and its retention time is above truncated threshold
+   */
   public boolean isTopicTruncated(String topicName, long truncatedTopicMaxRetentionMs) {
-    return isRetentionBelowTruncatedThreshold(getTopicRetention(topicName), truncatedTopicMaxRetentionMs);
+    try {
+      return isRetentionBelowTruncatedThreshold(getTopicRetention(topicName), truncatedTopicMaxRetentionMs);
+    } catch (TopicDoesNotExistException e) {
+      return true;
+    }
   }
 
   public boolean isRetentionBelowTruncatedThreshold(long retention, long truncatedTopicMaxRetentionMs) {
@@ -820,7 +832,7 @@ public class TopicManager implements Closeable {
    */
   public static long getExpectedRetentionTimeInMs(Store store, HybridStoreConfig hybridConfig) {
     long rewindTimeInMs = hybridConfig.getRewindTimeInSeconds() * Time.MS_PER_SECOND;
-    long bootstrapToOnlineTimeInMs = store.getBootstrapToOnlineTimeoutInHours() * Time.MS_PER_HOUR;
+    long bootstrapToOnlineTimeInMs = (long) store.getBootstrapToOnlineTimeoutInHours() * Time.MS_PER_HOUR;
     long minimumRetentionInMs = rewindTimeInMs + bootstrapToOnlineTimeInMs + BUFFER_REPLAY_MINIMAL_SAFETY_MARGIN;
     return Math.max(minimumRetentionInMs, TopicManager.DEFAULT_TOPIC_RETENTION_POLICY_MS);
   }

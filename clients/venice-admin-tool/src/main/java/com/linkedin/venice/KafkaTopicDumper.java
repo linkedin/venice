@@ -5,6 +5,7 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.etl.VeniceKafkaDecodedRecord;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.LeaderMetadata;
@@ -167,7 +168,7 @@ public class KafkaTopicDumper implements AutoCloseable {
         && currentMessageCount < messageCount && countdownBeforeStop > 0);
   }
 
-  public void setupDumpFile() {
+  public final void setupDumpFile() {
     // build file
     File dataFile = new File(this.parentDirectory + this.topicName + "_" + this.partition + ".avro");
     List<Schema.Field> outputSchemaFields = new ArrayList<>();
@@ -229,13 +230,13 @@ public class KafkaTopicDumper implements AutoCloseable {
       LeaderMetadata leaderMetadata = kafkaMessageEnvelope.leaderMetadataFooter;
 
       LOGGER.info(
-          "{} {} Offset:{} ProducerMd=(guid:{},seqNum:{},segNum:{},mts:{},lts:{}) LeaderMd=(host:{},uo:{},ukcId:{})",
+          "{} {} Offset:{} ProducerMd=(guid:{},seg:{},seq:{},mts:{},lts:{}) LeaderMd=(host:{},uo:{},ukcId:{})",
           kafkaKey.isControlMessage() ? CONTROL_REC : REGULAR_REC,
           msgType,
           record.offset(),
-          Arrays.toString(producerMetadata.producerGUID.bytes()),
-          producerMetadata.messageSequenceNumber,
+          GuidUtils.getHexFromGuid(producerMetadata.producerGUID),
           producerMetadata.segmentNumber,
+          producerMetadata.messageSequenceNumber,
           producerMetadata.messageTimestamp,
           producerMetadata.logicalTimestamp,
           leaderMetadata == null ? "-" : leaderMetadata.hostName,

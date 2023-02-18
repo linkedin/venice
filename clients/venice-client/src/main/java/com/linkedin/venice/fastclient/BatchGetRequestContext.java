@@ -29,26 +29,36 @@ public class BatchGetRequestContext<K, V> extends RequestContext {
   /**
    * Tracks routes and corresponding request contexts
    */
-  private final Map<String, RouteRequestContext<K>> routeRequests = new VeniceConcurrentHashMap<>();
+  private final Map<String, RouteRequestContext<K>> routeRequests;
 
   /**
    * For synchronized access to timestamps tracking request and response
    */
-  private final AtomicLong firstRequestSentTS = new AtomicLong(-1);
+  private final AtomicLong firstRequestSentTS;
+  private final AtomicLong firstResponseReceivedTS;
+  private final AtomicReference<Throwable> partialResponseException;
 
-  private final AtomicLong firstResponseReceivedTS = new AtomicLong(-1);
-
-  private final AtomicReference<Throwable> partialResponseException = new AtomicReference<>();
-
-  private Map<Integer, Set<String>> routesForPartition = new HashMap<>();
+  private Map<Integer, Set<String>> routesForPartition;
 
   // True if long tail retry was triggered
-  boolean longTailRetryTriggered = false;
+  boolean longTailRetryTriggered;
   // Number of keys triggered in the retry request
-  int numberOfKeysSentInRetryRequest = 0;
+  int numberOfKeysSentInRetryRequest;
   // Number of keys that were successfully resolved in retry request
-  AtomicInteger numberOfKeysCompletedInOriginalRequest = new AtomicInteger();
-  AtomicInteger numberOfKeysCompletedInRetryRequest = new AtomicInteger();
+  AtomicInteger numberOfKeysCompletedInOriginalRequest;
+  AtomicInteger numberOfKeysCompletedInRetryRequest;
+
+  BatchGetRequestContext() {
+    routeRequests = new VeniceConcurrentHashMap<>();
+    firstRequestSentTS = new AtomicLong(-1);
+    firstResponseReceivedTS = new AtomicLong(-1);
+    partialResponseException = new AtomicReference<>();
+    routesForPartition = new HashMap<>();
+    longTailRetryTriggered = false;
+    numberOfKeysSentInRetryRequest = 0;
+    numberOfKeysCompletedInOriginalRequest = new AtomicInteger();
+    numberOfKeysCompletedInRetryRequest = new AtomicInteger();
+  }
 
   void addKey(String route, K key, int partitionId) {
     Validate.notNull(route);
@@ -123,7 +133,6 @@ public class BatchGetRequestContext<K, V> extends RequestContext {
   void recordRequestSentTimeStamp(String routeId) {
     Validate.notNull(routeId);
     long requestSentTS = System.nanoTime();
-    routeRequests.get(routeId).requestSentTimestampNS = requestSentTS;
     if (firstRequestSentTS.compareAndSet(-1, requestSentTS)) {
       requestSentTimestampNS = firstRequestSentTS.get();
     }
@@ -131,7 +140,6 @@ public class BatchGetRequestContext<K, V> extends RequestContext {
 
   void recordRequestSubmissionToResponseHandlingTime(String routeId) {
     Validate.notNull(routeId);
-    routeRequests.get(routeId).recordRequestSubmissionToResponseHandlingTime();
     firstResponseReceivedTS.compareAndSet(-1, System.nanoTime());
   }
 
@@ -176,32 +184,23 @@ public class BatchGetRequestContext<K, V> extends RequestContext {
    */
   private static class RouteRequestContext<K> {
     List<KeyInfo<K>> keysRequested = new ArrayList<>();
-    boolean complete = false;
     CompletableFuture<TransportClientResponseForRoute> routeRequestCompletion = new CompletableFuture<>();
 
     AtomicLong decompressionTime = new AtomicLong();
     AtomicLong responseDeserializationTime = new AtomicLong();
     AtomicLong recordDeserializationTime = new AtomicLong();
     AtomicLong requestSerializationTime = new AtomicLong();
-    long requestSentTimestampNS = -1;
-    double requestSubmissionToResponseHandlingTime = -1;
 
     void addKeyInfo(K key, int partitionId) {
       keysRequested.add(new KeyInfo<>(key, partitionId));
     }
 
     void setComplete(TransportClientResponseForRoute response) {
-      complete = true;
       routeRequestCompletion.complete(response);
     }
 
     void setCompleteExceptionally(Throwable exception) {
-      complete = true;
       routeRequestCompletion.completeExceptionally(exception);
-    }
-
-    void recordRequestSubmissionToResponseHandlingTime() {
-      requestSubmissionToResponseHandlingTime = LatencyUtils.getLatencyInMS(requestSentTimestampNS);
     }
   }
 

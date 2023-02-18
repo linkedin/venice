@@ -83,7 +83,7 @@ public class VersionImpl implements Version {
   }
 
   @Override
-  public int getNumber() {
+  public final int getNumber() {
     return this.storeVersion.number;
   }
 
@@ -170,7 +170,17 @@ public class VersionImpl implements Version {
   }
 
   @Override
-  public String getStoreName() {
+  public boolean isRmdChunkingEnabled() {
+    return this.storeVersion.rmdChunkingEnabled;
+  }
+
+  @Override
+  public void setRmdChunkingEnabled(boolean rmdChunkingEnabled) {
+    this.storeVersion.rmdChunkingEnabled = rmdChunkingEnabled;
+  }
+
+  @Override
+  public final String getStoreName() {
     return this.storeVersion.storeName.toString();
   }
 
@@ -222,16 +232,6 @@ public class VersionImpl implements Version {
   @Override
   public void setVersionSwapDeferred(boolean deferVersionSwap) {
     this.storeVersion.deferVersionSwap = deferVersionSwap;
-  }
-
-  @Override
-  public IncrementalPushPolicy getIncrementalPushPolicy() {
-    return IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME;
-  }
-
-  @Override
-  public void setIncrementalPushPolicy(IncrementalPushPolicy incrementalPushPolicy) {
-    this.storeVersion.incrementalPushPolicy = IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME.getValue();
   }
 
   @Override
@@ -294,7 +294,7 @@ public class VersionImpl implements Version {
     }
   }
 
-  @JsonProperty("views")
+  @JsonProperty("viewConfigs")
   @Override
   public Map<String, ViewConfig> getViewConfigs() {
 
@@ -303,16 +303,16 @@ public class VersionImpl implements Version {
         .collect(Collectors.toMap(Map.Entry::getKey, e -> new ViewConfigImpl(e.getValue())));
   }
 
-  @JsonProperty("views")
+  @JsonProperty("viewConfigs")
   @Override
-  public void setViewConfig(Map<String, ViewConfig> viewConfigList) {
+  public void setViewConfigs(Map<String, ViewConfig> viewConfigList) {
     this.storeVersion.views = viewConfigList.entrySet()
         .stream()
         .collect(
             Collectors.toMap(
                 Map.Entry::getKey,
                 e -> new StoreViewConfig(
-                    e.getValue().getViewType().value,
+                    e.getValue().getViewClassName(),
                     e.getValue().dataModel().getViewParameters())));
   }
 
@@ -425,10 +425,10 @@ public class VersionImpl implements Version {
     clonedVersion.setCompressionStrategy(getCompressionStrategy());
     clonedVersion.setLeaderFollowerModelEnabled(isLeaderFollowerModelEnabled());
     clonedVersion.setChunkingEnabled(isChunkingEnabled());
+    clonedVersion.setRmdChunkingEnabled(isRmdChunkingEnabled());
     clonedVersion.setPushType(getPushType());
     clonedVersion.setNativeReplicationEnabled(isNativeReplicationEnabled());
     clonedVersion.setPushStreamSourceAddress(getPushStreamSourceAddress());
-    clonedVersion.setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME);
     clonedVersion.setReplicationFactor(getReplicationFactor());
     clonedVersion.setNativeReplicationSourceFabric(getNativeReplicationSourceFabric());
     clonedVersion.setIncrementalPushEnabled(isIncrementalPushEnabled());
@@ -438,7 +438,7 @@ public class VersionImpl implements Version {
     clonedVersion.setActiveActiveReplicationEnabled(isActiveActiveReplicationEnabled());
     clonedVersion.setRmdVersionId(getRmdVersionId());
     clonedVersion.setVersionSwapDeferred(isVersionSwapDeferred());
-    clonedVersion.setViewConfig(getViewConfigs());
+    clonedVersion.setViewConfigs(getViewConfigs());
     return clonedVersion;
   }
 

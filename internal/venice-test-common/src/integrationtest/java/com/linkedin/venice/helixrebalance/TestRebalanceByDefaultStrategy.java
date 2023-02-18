@@ -110,16 +110,21 @@ public class TestRebalanceByDefaultStrategy {
     // Ensure each partition has 3 online replica
     TestUtils.waitForNonDeterministicCompletion(TIMEOUT_MS, TimeUnit.MILLISECONDS, () -> {
       List<Replica> replicas = cluster.getLeaderVeniceController().getVeniceAdmin().getReplicas(clusterName, topicName);
-      String log = "";
+      StringBuilder sb = new StringBuilder();
       boolean isAllOnline = true;
       for (Replica replica: replicas) {
         if (replica.getStatus().equals(HelixState.ERROR_STATE)
             || replica.getStatus().equals(HelixState.OFFLINE_STATE)) {
-          log += replica.getInstance().getNodeId() + ":" + replica.getPartitionId() + ":" + replica.getStatus() + "###";
+          sb.append(replica.getInstance().getNodeId());
+          sb.append(":");
+          sb.append(replica.getPartitionId());
+          sb.append(":");
+          sb.append(replica.getStatus());
+          sb.append("###");
           isAllOnline = false;
         }
       }
-      LOGGER.info("Replica number:{}, non-online replicas:{}", replicas.size(), log);
+      LOGGER.info("Replica number:{}, non-online replicas:{}", replicas.size(), sb.toString());
       return (replicas.size() == partitionNumber * replicationFactor) && isAllOnline;
     });
   }

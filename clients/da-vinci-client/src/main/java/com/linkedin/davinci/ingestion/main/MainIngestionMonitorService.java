@@ -1,17 +1,16 @@
 package com.linkedin.davinci.ingestion.main;
 
-import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS;
+import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_SECONDS;
 import static java.lang.Thread.currentThread;
 
 import com.linkedin.davinci.config.VeniceConfigLoader;
 import com.linkedin.davinci.ingestion.IsolatedIngestionBackend;
-import com.linkedin.davinci.ingestion.IsolatedIngestionProcessStats;
 import com.linkedin.davinci.ingestion.utils.IsolatedIngestionUtils;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.davinci.stats.IsolatedIngestionProcessHeartbeatStats;
+import com.linkedin.davinci.stats.IsolatedIngestionProcessStats;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -26,11 +25,11 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -49,20 +48,13 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   private final ServerBootstrap bootstrap;
   private final EventLoopGroup bossGroup;
   private final EventLoopGroup workerGroup;
-  // Application port is the port Da Vinci application is binding and listening to.
-  private final int applicationPort;
-  // Service port is the port isolated ingestion process is binding and listening to.
-  private final int servicePort;
   private final IsolatedIngestionBackend ingestionBackend;
-  private final ScheduledExecutorService metricsRequestScheduler = Executors.newScheduledThreadPool(1);
   private final ScheduledExecutorService heartbeatCheckScheduler = Executors.newScheduledThreadPool(1);
   private final ExecutorService longRunningTaskExecutor = Executors.newSingleThreadExecutor();
-  private final MainIngestionRequestClient metricsClient;
   private final MainIngestionRequestClient heartbeatClient;
   private final Map<String, MainTopicIngestionStatus> topicIngestionStatusMap = new VeniceConcurrentHashMap<>();
   private final List<VeniceNotifier> ingestionNotifierList = new ArrayList<>();
   private final List<VeniceNotifier> pushStatusNotifierList = new ArrayList<>();
-  private final Optional<SSLFactory> sslFactory;
 
   private IsolatedIngestionProcessHeartbeatStats heartbeatStats;
   private ChannelFuture serverFuture;
@@ -72,18 +64,17 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   private KafkaStoreIngestionService storeIngestionService;
   private ReadOnlyStoreRepository storeRepository;
   private final VeniceConfigLoader configLoader;
-  private long heartbeatTimeoutMs;
+  /**
+   * Heartbeat timeout acknowledge disconnection between main and forked processes. After this timeout, main process
+   * should (1) Try to kill lingering forked process to release port (2) Respawn new forked ingestion process to continue
+   * ingestion work.
+   */
+  private long connectionTimeoutMs;
   private volatile long latestHeartbeatTimestamp = -1;
 
-  public MainIngestionMonitorService(
-      IsolatedIngestionBackend ingestionBackend,
-      VeniceConfigLoader configLoader,
-      Optional<SSLFactory> sslFactory) {
+  public MainIngestionMonitorService(IsolatedIngestionBackend ingestionBackend, VeniceConfigLoader configLoader) {
     this.configLoader = configLoader;
-    this.servicePort = configLoader.getVeniceServerConfig().getIngestionServicePort();
-    this.applicationPort = configLoader.getVeniceServerConfig().getIngestionApplicationPort();
     this.ingestionBackend = ingestionBackend;
-    this.sslFactory = sslFactory;
 
     // Initialize Netty server.
     Class<? extends ServerChannel> serverSocketChannelClass = NioServerSocketChannel.class;
@@ -99,31 +90,28 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
         .option(ChannelOption.SO_REUSEADDR, true)
         .childOption(ChannelOption.TCP_NODELAY, true);
 
-    heartbeatClient = new MainIngestionRequestClient(this.sslFactory, this.servicePort);
-    metricsClient = new MainIngestionRequestClient(this.sslFactory, this.servicePort);
-
+    heartbeatClient = new MainIngestionRequestClient(configLoader);
   }
 
   @Override
   public boolean startInner() throws Exception {
+    int applicationPort = configLoader.getVeniceServerConfig().getIngestionApplicationPort();
     serverFuture = bootstrap.bind(applicationPort).sync();
     LOGGER.info("Report listener service started on port: {}", applicationPort);
-    heartbeatTimeoutMs = configLoader.getCombinedProperties()
-        .getLong(SERVER_INGESTION_ISOLATION_HEARTBEAT_TIMEOUT_MS, 60 * Time.MS_PER_SECOND);
+    connectionTimeoutMs =
+        configLoader.getCombinedProperties().getLong(SERVER_INGESTION_ISOLATION_CONNECTION_TIMEOUT_SECONDS, 180)
+            * Time.MS_PER_SECOND;
     setupMetricsCollection();
 
-    // There is no async process in this function, so we are completely finished with the start up process.
+    // There is no async process in this function, so we are completely finished with the start-up process.
     return true;
   }
 
   @Override
   public void stopInner() throws Exception {
-    shutdownScheduler(metricsRequestScheduler, "Metrics collection");
     shutdownScheduler(heartbeatCheckScheduler, "Heartbeat check");
     shutdownScheduler(longRunningTaskExecutor, "Long running task");
-
     heartbeatClient.close();
-    metricsClient.close();
 
     ChannelFuture shutdown = serverFuture.channel().closeFuture();
     workerGroup.shutdownGracefully();
@@ -231,7 +219,6 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
     }
     heartbeatStats = new IsolatedIngestionProcessHeartbeatStats(metricsRepository);
     isolatedIngestionProcessStats = new IsolatedIngestionProcessStats(metricsRepository);
-    metricsRequestScheduler.scheduleAtFixedRate(this::collectIngestionServiceMetrics, 0, 5, TimeUnit.SECONDS);
     heartbeatCheckScheduler.scheduleAtFixedRate(this::checkHeartbeatTimeout, 0, 10, TimeUnit.SECONDS);
   }
 
@@ -242,14 +229,14 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
      * this call. Here we use synchronized modifier and add timeout checking here to make sure we only restart forked
      * process once.
      */
-    if ((System.currentTimeMillis() - latestHeartbeatTimestamp) <= heartbeatTimeoutMs) {
+    if ((System.currentTimeMillis() - latestHeartbeatTimestamp) <= connectionTimeoutMs) {
       return;
     }
     LOGGER.warn(
         "Lost connection to forked ingestion process since timestamp {}, restarting forked process.",
         latestHeartbeatTimestamp);
     heartbeatStats.recordForkedProcessRestart();
-    try (MainIngestionRequestClient client = new MainIngestionRequestClient(sslFactory, servicePort)) {
+    try (MainIngestionRequestClient client = new MainIngestionRequestClient(configLoader)) {
       /**
        * We need to destroy the previous isolated ingestion process first.
        * The previous isolated ingestion process might have released the port binding, but it might still taking up all
@@ -268,55 +255,56 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
     longRunningTaskExecutor.execute(this::resumeOngoingIngestionTasks);
   }
 
-  private void resumeOngoingIngestionTasks() {
-    try (MainIngestionRequestClient client = new MainIngestionRequestClient(sslFactory, servicePort)) {
-      LOGGER.info("Start to recover ongoing ingestion tasks: {}", topicIngestionStatusMap);
+  int resumeOngoingIngestionTasks() {
+    AtomicInteger count = new AtomicInteger();
+    try (MainIngestionRequestClient client = createClient()) {
+      Map<String, MainTopicIngestionStatus> topicIngestionStatusMap = getTopicIngestionStatusMap();
+      LOGGER.info("Start to recover ongoing ingestion tasks: {}", topicIngestionStatusMap.keySet());
       // Re-open metadata partitions in child process for all previously subscribed topics.
       topicIngestionStatusMap.keySet().forEach(client::openStorageEngine);
       // All previously subscribed topics are stored in the keySet of this topic partition map.
-      topicIngestionStatusMap.forEach((topicName, partitionStatus) -> {
-        partitionStatus.getPartitionIngestionStatusSet().forEach((partitionId, status) -> {
+      topicIngestionStatusMap.forEach((topic, partitionStatus) -> {
+        partitionStatus.getPartitionIngestionStatusSet().forEach((partition, status) -> {
           if (status.equals(MainPartitionIngestionStatus.ISOLATED)) {
-            client.startConsumption(topicName, partitionId);
-            LOGGER.info(
-                "Recovered ingestion task for topic: {}, partition: {} in isolated process.",
-                topicName,
-                partitionId);
+            try {
+              client.startConsumption(topic, partition);
+              LOGGER
+                  .info("Recovered ingestion task in isolated process for topic: {}, partition: {}", topic, partition);
+              count.addAndGet(1);
+            } catch (Exception e) {
+              LOGGER.warn("Recovery of ingestion failed for topic: {}, partition: {}", topic, partition, e);
+            }
           }
         });
       });
-      LOGGER.info("All ongoing ingestion tasks has resumed.");
+      LOGGER.info("Resumed {} topic partition ingestion tasks.", count.get());
     }
-  }
-
-  private void collectIngestionServiceMetrics() {
-    if (metricsClient.collectMetrics(isolatedIngestionProcessStats)) {
-      // Update heartbeat time.
-      latestHeartbeatTimestamp = System.currentTimeMillis();
-    }
+    return count.get();
   }
 
   private void checkHeartbeatTimeout() {
-    long currentTimeMillis = System.currentTimeMillis();
+    long requestTimestamp = System.currentTimeMillis();
     LOGGER.info(
         "Checking heartbeat timeout at {}, latest heartbeat received: {}",
-        currentTimeMillis,
+        requestTimestamp,
         latestHeartbeatTimestamp);
     if (heartbeatClient.sendHeartbeatRequest()) {
       // Update heartbeat time.
       latestHeartbeatTimestamp = System.currentTimeMillis();
       heartbeatStats.recordHeartbeatAge(0);
-      LOGGER.info("Received isolated ingestion server heartbeat at: {}", latestHeartbeatTimestamp);
+      LOGGER.info("Received forked process heartbeat ack at: {}", latestHeartbeatTimestamp);
     } else {
-      heartbeatStats.recordHeartbeatAge(currentTimeMillis - latestHeartbeatTimestamp);
+      long responseTimestamp = System.currentTimeMillis();
+      heartbeatStats.recordHeartbeatAge(requestTimestamp - latestHeartbeatTimestamp);
       LOGGER.warn(
-          "Failed to connect to forked ingestion process at {}, last successful timestamp: {}",
-          currentTimeMillis,
+          "Heartbeat request to forked process issued at {}, failed at {}, latest successful timestamp: {}",
+          responseTimestamp,
+          requestTimestamp,
           latestHeartbeatTimestamp);
     }
 
     if (latestHeartbeatTimestamp != -1) {
-      if ((currentTimeMillis - latestHeartbeatTimestamp) > heartbeatTimeoutMs) {
+      if ((requestTimestamp - latestHeartbeatTimestamp) > connectionTimeoutMs) {
         tryRestartForkedProcess();
       }
     }
@@ -332,5 +320,17 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
     } catch (InterruptedException e) {
       currentThread().interrupt();
     }
+  }
+
+  MainIngestionRequestClient createClient() {
+    return new MainIngestionRequestClient(configLoader);
+  }
+
+  Map<String, MainTopicIngestionStatus> getTopicIngestionStatusMap() {
+    return topicIngestionStatusMap;
+  }
+
+  IsolatedIngestionProcessStats getIsolatedIngestionProcessStats() {
+    return isolatedIngestionProcessStats;
   }
 }

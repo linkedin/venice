@@ -133,9 +133,6 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     this.storeProperties.etlConfig = new ETLStoreConfigImpl().dataModel();
     this.storeProperties.latestVersionPromoteToCurrentTimestamp = System.currentTimeMillis();
 
-    // hardcode the policy
-    this.storeProperties.incrementalPushPolicy = IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME.getValue();
-
     setupVersionSupplier(new StoreVersionSupplier() {
       @Override
       public List<StoreVersion> getForUpdate() {
@@ -194,6 +191,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setCompressionStrategy(store.getCompressionStrategy());
     setClientDecompressionEnabled(store.getClientDecompressionEnabled());
     setChunkingEnabled(store.isChunkingEnabled());
+    setRmdChunkingEnabled(store.isRmdChunkingEnabled());
     setBatchGetLimit(store.getBatchGetLimit());
     setNumVersionsToPreserve(store.getNumVersionsToPreserve());
     setIncrementalPushEnabled(store.isIncrementalPushEnabled());
@@ -210,7 +208,6 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setHybridStoreDiskQuotaEnabled(store.isHybridStoreDiskQuotaEnabled());
     setEtlStoreConfig(store.getEtlStoreConfig());
     setStoreMetadataSystemStoreEnabled(store.isStoreMetadataSystemStoreEnabled());
-    setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME); // to be cleaned up in phase-II
     setLatestVersionPromoteToCurrentTimestamp(store.getLatestVersionPromoteToCurrentTimestamp());
     setBackupVersionRetentionMs(store.getBackupVersionRetentionMs());
     setReplicationFactor(store.getReplicationFactor());
@@ -509,6 +506,16 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   }
 
   @Override
+  public boolean isRmdChunkingEnabled() {
+    return this.storeProperties.rmdChunkingEnabled;
+  }
+
+  @Override
+  public void setRmdChunkingEnabled(boolean rmdChunkingEnabled) {
+    this.storeProperties.rmdChunkingEnabled = rmdChunkingEnabled;
+  }
+
+  @Override
   public int getBatchGetLimit() {
     return this.storeProperties.batchGetLimit;
   }
@@ -708,16 +715,6 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @Override
   public void setStoreMetaSystemStoreEnabled(boolean storeMetaSystemStoreEnabled) {
     this.storeProperties.storeMetaSystemStoreEnabled = storeMetaSystemStoreEnabled;
-  }
-
-  @Override
-  public IncrementalPushPolicy getIncrementalPushPolicy() {
-    return IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME;
-  }
-
-  @Override
-  public void setIncrementalPushPolicy(IncrementalPushPolicy incrementalPushPolicy) {
-    this.storeProperties.incrementalPushPolicy = IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME.getValue();
   }
 
   @Override

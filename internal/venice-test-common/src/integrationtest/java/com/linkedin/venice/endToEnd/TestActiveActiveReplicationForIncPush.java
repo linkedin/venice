@@ -12,21 +12,20 @@ import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_KAFKA_PRODUCER_ENABLE
 import static com.linkedin.venice.hadoop.VenicePushJob.INCREMENTAL_PUSH;
 import static com.linkedin.venice.hadoop.VenicePushJob.SEND_CONTROL_MESSAGES_DIRECTLY;
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_GRID_FABRIC;
-import static com.linkedin.venice.utils.TestPushUtils.defaultVPJProps;
-import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
+import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.utils.TestPushUtils;
+import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -35,8 +34,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.function.Function;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -53,12 +50,11 @@ public class TestActiveActiveReplicationForIncPush {
 
   private static final int NUMBER_OF_CHILD_DATACENTERS = 3;
   private static final int NUMBER_OF_CLUSTERS = 1;
-  private static final String[] CLUSTER_NAMES =
-      IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
-  // ["venice-cluster0", "venice-cluster1", ...];
+  private String[] clusterNames;
+  private String parentColoName;
+  private String[] dcNames;
 
   private List<VeniceMultiClusterWrapper> childDatacenters;
-  private List<VeniceControllerWrapper> parentControllers;
   private VeniceTwoLayerMultiColoMultiClusterWrapper multiColoMultiClusterWrapper;
 
   KafkaBrokerWrapper veniceParentDefaultKafka;
@@ -95,8 +91,10 @@ public class TestActiveActiveReplicationForIncPush {
         Optional.of(controllerProps),
         Optional.of(new VeniceProperties(serverProperties)),
         false);
-    childDatacenters = multiColoMultiClusterWrapper.getClusters();
-    parentControllers = multiColoMultiClusterWrapper.getParentControllers();
+    childDatacenters = multiColoMultiClusterWrapper.getChildRegions();
+    clusterNames = multiColoMultiClusterWrapper.getClusterNames();
+    parentColoName = multiColoMultiClusterWrapper.getParentRegionName();
+    dcNames = multiColoMultiClusterWrapper.getChildRegionNames().toArray(new String[0]);
 
     veniceParentDefaultKafka = multiColoMultiClusterWrapper.getParentKafkaBrokerWrapper();
   }
@@ -112,13 +110,12 @@ public class TestActiveActiveReplicationForIncPush {
    */
   @Test(timeOut = TEST_TIMEOUT)
   public void testAAReplicationForIncrementalPushToRT() throws Exception {
-    String clusterName = CLUSTER_NAMES[0];
+    String clusterName = this.clusterNames[0];
     File inputDirBatch = getTempDataDirectory();
     File inputDirInc1 = getTempDataDirectory();
     File inputDirInc2 = getTempDataDirectory();
 
-    String parentControllerUrls =
-        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
+    String parentControllerUrls = multiColoMultiClusterWrapper.getControllerConnectString();
     String inputDirPathBatch = "file:" + inputDirBatch.getAbsolutePath();
     String inputDirPathInc1 = "file:" + inputDirInc1.getAbsolutePath();
     String inputDirPathInc2 = "file:" + inputDirInc2.getAbsolutePath();
@@ -129,24 +126,27 @@ public class TestActiveActiveReplicationForIncPush {
         ControllerClient dc1ControllerClient = new ControllerClient(clusterName, connectionString.apply(1));
         ControllerClient dc2ControllerClient = new ControllerClient(clusterName, connectionString.apply(2))) {
       String storeName = Utils.getUniqueString("store");
-      Properties propsBatch = defaultVPJProps(parentControllerUrls, inputDirPathBatch, storeName);
+      Properties propsBatch =
+          IntegrationTestPushUtils.defaultVPJProps(multiColoMultiClusterWrapper, inputDirPathBatch, storeName);
       propsBatch.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
-      Properties propsInc1 = defaultVPJProps(parentControllerUrls, inputDirPathInc1, storeName);
+      Properties propsInc1 =
+          IntegrationTestPushUtils.defaultVPJProps(multiColoMultiClusterWrapper, inputDirPathInc1, storeName);
       propsInc1.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
-      Properties propsInc2 = defaultVPJProps(parentControllerUrls, inputDirPathInc2, storeName);
+      Properties propsInc2 =
+          IntegrationTestPushUtils.defaultVPJProps(multiColoMultiClusterWrapper, inputDirPathInc2, storeName);
       propsInc2.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
 
-      Schema recordSchema = TestPushUtils.writeSimpleAvroFileWithUserSchema(inputDirBatch, true, 100);
+      Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithUserSchema(inputDirBatch, true, 100);
       String keySchemaStr = recordSchema.getField(VenicePushJob.DEFAULT_KEY_FIELD_PROP).schema().toString();
       String valueSchemaStr = recordSchema.getField(VenicePushJob.DEFAULT_VALUE_FIELD_PROP).schema().toString();
 
       propsInc1.setProperty(INCREMENTAL_PUSH, "true");
-      propsInc1.put(SOURCE_GRID_FABRIC, "dc-2");
-      TestPushUtils.writeSimpleAvroFileWithUserSchema2(inputDirInc1);
+      propsInc1.put(SOURCE_GRID_FABRIC, dcNames[2]);
+      TestWriteUtils.writeSimpleAvroFileWithUserSchema2(inputDirInc1);
 
       propsInc2.setProperty(INCREMENTAL_PUSH, "true");
-      propsInc2.put(SOURCE_GRID_FABRIC, "dc-1");
-      TestPushUtils.writeSimpleAvroFileWithUserSchema3(inputDirInc2);
+      propsInc2.put(SOURCE_GRID_FABRIC, dcNames[1]);
+      TestWriteUtils.writeSimpleAvroFileWithUserSchema3(inputDirInc2);
 
       TestUtils.assertCommand(parentControllerClient.createNewStore(storeName, "owner", keySchemaStr, valueSchemaStr));
       // Store Setup
@@ -164,13 +164,13 @@ public class TestActiveActiveReplicationForIncPush {
       UpdateStoreQueryParams enableAARepl = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true);
 
       // Print all the kafka cluster URLs
-      LOGGER.info("KafkaURL dc-0:{}", childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
-      LOGGER.info("KafkaURL dc-1:{}", childDatacenters.get(1).getKafkaBrokerWrapper().getAddress());
-      LOGGER.info("KafkaURL dc-2:{}", childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
-      LOGGER.info("KafkaURL dc-parent-0:{}", veniceParentDefaultKafka.getAddress());
+      LOGGER.info("KafkaURL {}:{}", dcNames[0], childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
+      LOGGER.info("KafkaURL {}:{}", dcNames[1], childDatacenters.get(1).getKafkaBrokerWrapper().getAddress());
+      LOGGER.info("KafkaURL {}:{}", dcNames[2], childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
+      LOGGER.info("KafkaURL {}:{}", parentColoName, veniceParentDefaultKafka.getAddress());
 
       // Turn on A/A in parent to trigger auto replication metadata schema registration
-      TestPushUtils.updateStore(storeName, parentControllerClient, enableAARepl);
+      TestWriteUtils.updateStore(storeName, parentControllerClient, enableAARepl);
 
       // verify store configs
       TestUtils.verifyDCConfigNativeAndActiveRepl(parentControllerClient, storeName, true, true);
@@ -195,7 +195,7 @@ public class TestActiveActiveReplicationForIncPush {
         // Verify the current version should be 1.
         Optional<Version> version =
             childDataCenter.getRandomController().getVeniceAdmin().getStore(clusterName, storeName).getVersion(1);
-        Assert.assertTrue(version.isPresent(), "Version 1 is not present for DC: " + i);
+        Assert.assertTrue(version.isPresent(), "Version 1 is not present for DC: " + dcNames[i]);
       }
       NativeReplicationTestUtils.verifyIncrementalPushData(childDatacenters, clusterName, storeName, 150, 2);
 

@@ -56,11 +56,11 @@ public class StoreReadThrottlerTest {
     // be assigned the quota value which equals to quota/partitionCount * 1.5
     Assert.assertEquals(
         throttler.getQuotaForStorageNode(Utils.getHelixNodeIdentifier(10001)),
-        (long) (quota / partitionCount * 1.5 * (1 + perStorageNodeReadQuotaBuffer)));
+        (long) (quota / (double) partitionCount * 1.5 * (1 + perStorageNodeReadQuotaBuffer)));
     // Instance 2 hold 1 of 2 online prelicas for partition 0 and 0 of 1 online replicas for partition 1.
     Assert.assertEquals(
         throttler.getQuotaForStorageNode(Utils.getHelixNodeIdentifier(10002)),
-        (long) (quota / partitionCount * 0.5 * (1 + perStorageNodeReadQuotaBuffer)));
+        (long) (quota / (double) partitionCount * 0.5 * (1 + perStorageNodeReadQuotaBuffer)));
 
     // Bootstrap replica in partition2 and instance2 become online.
     p1StateToInstance = new HashMap<>();
@@ -70,11 +70,11 @@ public class StoreReadThrottlerTest {
     // Instance1 holds 1 of 2 online replicas for partition 0 and 1 of 2 online replicas for partition 1.
     Assert.assertEquals(
         throttler.getQuotaForStorageNode(Utils.getHelixNodeIdentifier(10001)),
-        (long) (quota / partitionCount * (1 + perStorageNodeReadQuotaBuffer)));
+        (long) (quota / (double) partitionCount * (1 + perStorageNodeReadQuotaBuffer)));
     // Instance 2 hold 1 of 2 online replicas for partition 0 and 1 of 2 online replicas for partition 1.
     Assert.assertEquals(
         throttler.getQuotaForStorageNode(Utils.getHelixNodeIdentifier(10002)),
-        (long) (quota / partitionCount * (1 + perStorageNodeReadQuotaBuffer)));
+        (long) (quota / (double) partitionCount * (1 + perStorageNodeReadQuotaBuffer)));
 
     // All replicas in Partition 1 failed.
     p1StateToInstance.remove(HelixState.ONLINE_STATE);
@@ -83,11 +83,11 @@ public class StoreReadThrottlerTest {
     // Instance1 holds 1 of 2 online replicas for partition 0 and 0 of 0 online replicas for partition 1.
     Assert.assertEquals(
         throttler.getQuotaForStorageNode(Utils.getHelixNodeIdentifier(10001)),
-        (long) (quota / partitionCount / 2 * (1 + perStorageNodeReadQuotaBuffer)));
+        (long) (quota / (double) partitionCount / 2 * (1 + perStorageNodeReadQuotaBuffer)));
     // Instance 2 hold 1 of 2 online prelicas for partition 0 and 0 of 0 online replicas for partition 1.
     Assert.assertEquals(
         throttler.getQuotaForStorageNode(Utils.getHelixNodeIdentifier(10002)),
-        (long) (quota / partitionCount / 2 * (1 + perStorageNodeReadQuotaBuffer)));
+        (long) (quota / (double) partitionCount / 2 * (1 + perStorageNodeReadQuotaBuffer)));
   }
 
   @Test

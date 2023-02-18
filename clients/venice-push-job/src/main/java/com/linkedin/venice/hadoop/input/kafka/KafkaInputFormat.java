@@ -4,6 +4,7 @@ import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_MAX_RECORDS_P
 import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.hadoop.input.kafka.KafkaInputUtils.getConsumerFactory;
 
+import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperKey;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManager;
@@ -12,7 +13,6 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.mapred.InputFormat;
 import org.apache.hadoop.mapred.InputSplit;
 import org.apache.hadoop.mapred.JobConf;
@@ -27,7 +27,7 @@ import org.apache.kafka.common.TopicPartition;
  *
  * This {@link InputFormat} implementation is used to read data off a Kafka topic.
  */
-public class KafkaInputFormat implements InputFormat<BytesWritable, KafkaInputMapperValue> {
+public class KafkaInputFormat implements InputFormat<KafkaInputMapperKey, KafkaInputMapperValue> {
   /**
    * The default max records per mapper, and if there are more records in one topic partition, it will be
    * consumed by multiple mappers in parallel.
@@ -82,7 +82,7 @@ public class KafkaInputFormat implements InputFormat<BytesWritable, KafkaInputMa
   }
 
   @Override
-  public RecordReader<BytesWritable, KafkaInputMapperValue> getRecordReader(
+  public RecordReader<KafkaInputMapperKey, KafkaInputMapperValue> getRecordReader(
       InputSplit split,
       JobConf job,
       Reporter reporter) {

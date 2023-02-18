@@ -58,6 +58,8 @@ import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.HttpHeaderNames;
+import io.netty.handler.codec.http.HttpMethod;
+import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
@@ -65,6 +67,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -89,7 +92,7 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * IsolatedIngestionUtils class contains methods used for communication between ingestion client and server.
+ * This class contains methods used for communication between ingestion client and server.
  */
 public class IsolatedIngestionUtils {
   public static final String INGESTION_ISOLATION_CONFIG_PREFIX = "isolated";
@@ -123,7 +126,7 @@ public class IsolatedIngestionUtils {
           .of(
               new AbstractMap.SimpleEntry<>(COMMAND, ingestionTaskCommandSerializer),
               new AbstractMap.SimpleEntry<>(REPORT, ingestionTaskReportSerializer),
-              new AbstractMap.SimpleEntry<>(METRIC, ingestionDummyContentSerializer),
+              new AbstractMap.SimpleEntry<>(METRIC, ingestionMetricsReportSerializer),
               new AbstractMap.SimpleEntry<>(HEARTBEAT, ingestionDummyContentSerializer),
               new AbstractMap.SimpleEntry<>(UPDATE_METADATA, ingestionStorageMetadataSerializer),
               new AbstractMap.SimpleEntry<>(SHUTDOWN_COMPONENT, processShutdownCommandSerializer))
@@ -134,7 +137,7 @@ public class IsolatedIngestionUtils {
           .of(
               new AbstractMap.SimpleEntry<>(COMMAND, ingestionTaskReportSerializer),
               new AbstractMap.SimpleEntry<>(REPORT, ingestionDummyContentSerializer),
-              new AbstractMap.SimpleEntry<>(METRIC, ingestionMetricsReportSerializer),
+              new AbstractMap.SimpleEntry<>(METRIC, ingestionDummyContentSerializer),
               new AbstractMap.SimpleEntry<>(HEARTBEAT, ingestionTaskCommandSerializer),
               new AbstractMap.SimpleEntry<>(UPDATE_METADATA, ingestionTaskReportSerializer),
               new AbstractMap.SimpleEntry<>(SHUTDOWN_COMPONENT, ingestionTaskReportSerializer))
@@ -203,6 +206,24 @@ public class IsolatedIngestionUtils {
     byte[] responseContent = new byte[response.content().readableBytes()];
     response.content().readBytes(responseContent);
     return responseContent;
+  }
+
+  public static IngestionAction getIngestionActionFromRequest(HttpRequest req) {
+    // Sometimes req.uri() gives a full uri (eg https://host:port/path) and sometimes it only gives a path
+    // Generating a URI lets us always take just the path.
+    String[] requestParts = URI.create(req.uri()).getPath().split("/");
+    HttpMethod reqMethod = req.method();
+    if (!reqMethod.equals(HttpMethod.POST) || requestParts.length < 2) {
+      throw new VeniceException("Cannot parse request for: " + req.uri());
+    }
+
+    try {
+      return IngestionAction.valueOf(requestParts[1].toUpperCase());
+    } catch (IllegalArgumentException e) {
+      throw new VeniceException(
+          "Only able to parse POST requests for IngestionActions. Cannot support action: " + requestParts[1],
+          e);
+    }
   }
 
   public static void startD2Client(D2Client d2Client) {
@@ -308,7 +329,11 @@ public class IsolatedIngestionUtils {
    */
   public static Optional<Integer> getLingeringIngestionProcessId(int port) {
     Optional<Integer> isolatedIngestionProcessPid = Optional.empty();
-    String processIds = executeShellCommand("/usr/sbin/lsof -t -i :" + port);
+    String cmd = "lsof -t -i :" + port;
+    String processIds = executeShellCommand("/usr/sbin/" + cmd);
+    if (processIds.isEmpty()) {
+      processIds = executeShellCommand(cmd);
+    }
     if (processIds.length() != 0) {
       LOGGER.info("Target port is associated to process IDs:\n {}", processIds);
       for (String processId: processIds.split("\n")) {
@@ -537,27 +562,6 @@ public class IsolatedIngestionUtils {
   }
 
   /**
-   * Create SSLFactory for inter-process communication encryption purpose.
-   */
-  public static Optional<SSLFactory> getSSLFactoryForInterProcessCommunication(VeniceConfigLoader configLoader) {
-    if (isolatedIngestionServerSslEnabled(configLoader)) {
-      try {
-        // If SSL communication is enabled but SSL configs are missing, we should fail fast here.
-        if (!sslEnabled(configLoader)) {
-          throw new VeniceException(
-              "Ingestion isolation SSL is enabled for communication, but SSL configs are missing.");
-        }
-        LOGGER.info("SSL is enabled, will create SSLFactory");
-        return Optional.of(new DefaultSSLFactory(configLoader.getCombinedProperties().toProperties()));
-      } catch (Exception e) {
-        throw new VeniceException("Caught exception during SSLFactory creation", e);
-      }
-    } else {
-      return Optional.empty();
-    }
-  }
-
-  /**
    * Create SSLFactory for D2Client in ClientConfig, which will be used by different ingestion components.
    */
   public static Optional<SSLFactory> getSSLFactoryForIngestion(VeniceConfigLoader configLoader) {
@@ -591,7 +595,7 @@ public class IsolatedIngestionUtils {
       }
       LOGGER.info(
           "Isolated ingestion server request ACL validation is enabled. Creating ACL handler with allowed principal name: {}",
-              allowedPrincipalName);
+          allowedPrincipalName);
       return Optional.of(new IsolatedIngestionServerAclHandler(identityParser, allowedPrincipalName));
     } else {
       return Optional.empty();

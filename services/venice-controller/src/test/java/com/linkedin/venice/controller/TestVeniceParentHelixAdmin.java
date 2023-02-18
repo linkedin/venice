@@ -58,6 +58,7 @@ import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
+import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
@@ -67,17 +68,22 @@ import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.InvalidKeySchemaPartitioner;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.pushmonitor.OfflinePushStatus;
+import com.linkedin.venice.pushmonitor.PartitionStatus;
+import com.linkedin.venice.pushmonitor.StatusSnapshot;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.DataProviderUtils;
-import com.linkedin.venice.utils.MockTime;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SystemTime;
+import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
+import java.nio.ByteBuffer;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -89,6 +95,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import org.apache.commons.lang.StringUtils;
 import org.apache.http.HttpStatus;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
@@ -246,7 +253,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     AsyncSetupMockVeniceParentHelixAdmin mockVeniceParentHelixAdmin =
         new AsyncSetupMockVeniceParentHelixAdmin(internalAdmin, asyncEnabledConfig);
     mockVeniceParentHelixAdmin.setVeniceWriterForCluster(arbitraryCluster, veniceWriter);
-    mockVeniceParentHelixAdmin.setTimer(new MockTime());
+    mockVeniceParentHelixAdmin.setTimer(new TestMockTime());
     try {
       mockVeniceParentHelixAdmin.initStorageCluster(arbitraryCluster);
       TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> {
@@ -296,7 +303,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     Assert.assertEquals(keyBytes.length, 0);
 
-    AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+    AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
     Assert.assertEquals(adminMessage.operationType, AdminMessageType.STORE_CREATION.getValue());
 
     StoreCreation storeCreationMessage = (StoreCreation) adminMessage.payloadUnion;
@@ -372,7 +379,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       int schemaId = schemaCaptor.getValue();
       Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
       Assert.assertEquals(keyBytes.length, 0);
-      AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+      AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
       Assert.assertEquals(adminMessage.operationType, AdminMessageType.STORE_CREATION.getValue());
       StoreCreation storeCreationMessage = (StoreCreation) adminMessage.payloadUnion;
       Assert.assertEquals(storeCreationMessage.clusterName.toString(), cluster);
@@ -489,7 +496,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     Assert.assertEquals(keyBytes.length, 0);
 
-    AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+    AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
     Assert.assertEquals(adminMessage.operationType, AdminMessageType.VALUE_SCHEMA_CREATION.getValue());
 
     ValueSchemaCreation valueSchemaCreationMessage = (ValueSchemaCreation) adminMessage.payloadUnion;
@@ -526,7 +533,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
     verify(veniceWriter).put(any(), valueCaptor.capture(), schemaCaptor.capture());
 
-    AdminOperation adminMessage = adminOperationSerializer.deserialize(valueCaptor.getValue(), schemaCaptor.getValue());
+    AdminOperation adminMessage =
+        adminOperationSerializer.deserialize(ByteBuffer.wrap(valueCaptor.getValue()), schemaCaptor.getValue());
     DerivedSchemaCreation derivedSchemaCreation = (DerivedSchemaCreation) adminMessage.payloadUnion;
 
     Assert.assertEquals(derivedSchemaCreation.clusterName.toString(), clusterName);
@@ -564,7 +572,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     Assert.assertEquals(keyBytes.length, 0);
 
-    AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+    AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
     Assert.assertEquals(adminMessage.operationType, AdminMessageType.DISABLE_STORE_READ.getValue());
 
     DisableStoreRead disableStoreRead = (DisableStoreRead) adminMessage.payloadUnion;
@@ -600,7 +608,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     Assert.assertEquals(keyBytes.length, 0);
 
-    AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+    AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
     Assert.assertEquals(adminMessage.operationType, AdminMessageType.DISABLE_STORE_WRITE.getValue());
 
     PauseStore pauseStore = (PauseStore) adminMessage.payloadUnion;
@@ -656,7 +664,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     Assert.assertEquals(keyBytes.length, 0);
 
-    AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+    AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
     Assert.assertEquals(adminMessage.operationType, AdminMessageType.ENABLE_STORE_READ.getValue());
 
     EnableStoreRead enableStoreRead = (EnableStoreRead) adminMessage.payloadUnion;
@@ -692,7 +700,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     Assert.assertEquals(keyBytes.length, 0);
 
-    AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+    AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
     Assert.assertEquals(adminMessage.operationType, AdminMessageType.ENABLE_STORE_WRITE.getValue());
 
     ResumeStore resumeStore = (ResumeStore) adminMessage.payloadUnion;
@@ -733,7 +741,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     Assert.assertEquals(keyBytes.length, 0);
 
-    AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+    AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
     Assert.assertEquals(adminMessage.operationType, AdminMessageType.KILL_OFFLINE_PUSH_JOB.getValue());
 
     KillOfflinePushJob killJob = (KillOfflinePushJob) adminMessage.payloadUnion;
@@ -1486,7 +1494,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   @Test
   public void testGetIncrementalPushVersion() {
     String storeName = "testStore";
-    String rtTopic = Version.composeRealTimeTopic(storeName);
     Version incrementalPushVersion = new VersionImpl(storeName, 1);
     Assert.assertEquals(
         parentAdmin.getIncrementalPushVersion(incrementalPushVersion, ExecutionStatus.COMPLETED),
@@ -1696,7 +1703,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(store).when(internalAdmin).getStore(anyString(), anyString());
     completeMap.remove("cluster-slow");
     offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic2_v1", completeMap);
-    extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.COMPLETED);
     verify(internalAdmin, timeout(TIMEOUT_IN_MS)).truncateKafkaTopic("topic2_v1");
 
@@ -1762,7 +1768,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     Assert.assertEquals(keyBytes.length, 0);
 
-    AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+    AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
     Assert.assertEquals(adminMessage.operationType, AdminMessageType.UPDATE_STORE.getValue());
 
     UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
@@ -1792,7 +1798,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     verify(veniceWriter, times(2)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
     valueBytes = valueCaptor.getValue();
     schemaId = schemaCaptor.getValue();
-    adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+    adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
     updateStore = (UpdateStore) adminMessage.payloadUnion;
     Assert.assertEquals(updateStore.clusterName.toString(), clusterName);
     Assert.assertEquals(updateStore.storeName.toString(), storeName);
@@ -1826,7 +1832,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     verify(veniceWriter, times(3)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
     valueBytes = valueCaptor.getValue();
     schemaId = schemaCaptor.getValue();
-    adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+    adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
     updateStore = (UpdateStore) adminMessage.payloadUnion;
     Assert.assertEquals(updateStore.accessControlled, accessControlled);
 
@@ -1842,7 +1848,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     verify(veniceWriter, times(5)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
     valueBytes = valueCaptor.getValue();
     schemaId = schemaCaptor.getValue();
-    adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+    adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
     updateStore = (UpdateStore) adminMessage.payloadUnion;
     Assert.assertTrue(
         updateStore.nativeReplicationEnabled,
@@ -1856,6 +1862,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       Assert.fail("The partitioner creation should not be successful");
     } catch (Exception e) {
       Assert.assertTrue(e.getClass().isAssignableFrom(VeniceHttpException.class));
+      Assert.assertTrue(e instanceof VeniceHttpException);
       VeniceHttpException veniceHttpException = (VeniceHttpException) e;
       Assert.assertEquals(veniceHttpException.getHttpStatusCode(), HttpStatus.SC_BAD_REQUEST);
       Assert.assertEquals(veniceHttpException.getErrorType(), ErrorType.INVALID_SCHEMA);
@@ -1886,10 +1893,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     verify(veniceWriter, times(1)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
     byte[] valueBytes = valueCaptor.getValue();
     int schemaId = schemaCaptor.getValue();
-
-    valueBytes = valueCaptor.getValue();
-    schemaId = schemaCaptor.getValue();
-    AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+    AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
     UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
     Assert.assertTrue(
         "dc1".equals(updateStore.nativeReplicationSourceFabric.toString()),
@@ -1979,7 +1983,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     Assert.assertEquals(keyBytes.length, 0);
 
-    AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+    AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
     Assert.assertEquals(adminMessage.operationType, AdminMessageType.DELETE_STORE.getValue());
 
     DeleteStore deleteStore = (DeleteStore) adminMessage.payloadUnion;
@@ -2111,7 +2115,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.COMPLETED, extraInfo)).when(mockParentAdmin)
         .getOffLinePushStatus(clusterName, latestTopic);
     doCallRealMethod().when(mockParentAdmin).setTimer(any());
-    mockParentAdmin.setTimer(new MockTime());
+    mockParentAdmin.setTimer(new TestMockTime());
     currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false, false);
     Assert.assertFalse(currentPush.isPresent());
     verify(mockParentAdmin, times(7)).getOffLinePushStatus(clusterName, latestTopic);
@@ -2175,7 +2179,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     topics.add(storeName + "_v8");
     topics.add(storeName + "_v5");
     topics.add(storeName + "_v7");
-    doReturn(topics).when(mockParentAdmin).existingTopicsForStore(storeName);
+    doReturn(topics).when(mockParentAdmin).existingVersionTopicsForStore(storeName);
     // isTopicTruncated will return false for other topics
     doReturn(true).when(mockParentAdmin).isTopicTruncated(storeName + "_v8");
     doCallRealMethod().when(mockParentAdmin).truncateTopicsBasedOnMaxErroredTopicNumToKeep(any(), anyBoolean(), any());
@@ -2201,7 +2205,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     topics1.add(storeName1 + "_v8");
     topics1.add(storeName1 + "_v5");
     topics1.add(storeName1 + "_v7");
-    doReturn(topics1).when(mockParentAdmin).existingTopicsForStore(storeName1);
+    doReturn(topics1).when(mockParentAdmin).existingVersionTopicsForStore(storeName1);
     doReturn(true).when(mockParentAdmin).isTopicTruncated(storeName1 + "_v10");
     doReturn(true).when(mockParentAdmin).isTopicTruncated(storeName1 + "_v7");
     doReturn(true).when(mockParentAdmin).isTopicTruncated(storeName1 + "_v8");
@@ -2235,7 +2239,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     try (PartialMockVeniceParentHelixAdmin partialMockParentAdmin =
         new PartialMockVeniceParentHelixAdmin(internalAdmin, config)) {
       long startTime = System.currentTimeMillis();
-      MockTime mockTime = new MockTime(startTime);
+      TestMockTime mockTime = new TestMockTime(startTime);
       partialMockParentAdmin.setTimer(mockTime);
       mockTime.addMilliseconds(TimeUnit.HOURS.toMillis(30));
       String storeName = "test_store";
@@ -2449,7 +2453,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     Assert.assertEquals(keyBytes.length, 0);
 
-    AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+    AdminOperation adminMessage = adminOperationSerializer.deserialize(ByteBuffer.wrap(valueBytes), schemaId);
     Assert.assertEquals(adminMessage.operationType, AdminMessageType.UPDATE_STORE.getValue());
 
     UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
@@ -2497,5 +2501,49 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     parentAdmin.createStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
     doReturn(clusterLockManager).when(resources).getClusterLockManager();
     verify(clusterLockManager).createClusterReadLock();
+  }
+
+  @Test
+  public void testDataRecoveryAPIs() {
+    final String storeName = "test";
+    final String owner = "test";
+    final int numOfPartition = 5;
+    final int replicationFactor = 3;
+    final String kafkaTopic = "test_v1";
+
+    OfflinePushStatus status = new OfflinePushStatus(
+        kafkaTopic,
+        numOfPartition,
+        replicationFactor,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    LocalDateTime now = LocalDateTime.now();
+
+    for (int i = 0; i < numOfPartition; i++) {
+      PartitionStatus partition = new PartitionStatus(i);
+      for (int j = 0; j < replicationFactor; j++) {
+        partition.updateReplicaStatus("instanceId-" + j, ExecutionStatus.STARTED, StringUtils.EMPTY);
+        partition.updateReplicaStatus("instanceId-" + j, ExecutionStatus.COMPLETED, StringUtils.EMPTY);
+      }
+      status.setPartitionStatus(partition);
+    }
+
+    status.getStatusHistory().add(new StatusSnapshot(ExecutionStatus.STARTED, now.toString()));
+    status.getStatusHistory().add(new StatusSnapshot(ExecutionStatus.COMPLETED, now.plusHours(1).toString()));
+    doReturn(status).when(internalAdmin).retrievePushStatus(anyString(), anyString());
+
+    Store s = TestUtils.createTestStore(storeName, owner, System.currentTimeMillis());
+    s.addVersion(new VersionImpl(s.getName(), 1, "pushJobId"));
+    s.setCurrentVersion(1);
+    when(internalAdmin.getRegionPushDetails(anyString(), anyString(), anyBoolean())).thenCallRealMethod();
+    doReturn(s).when(internalAdmin).getStore(anyString(), anyString());
+
+    RegionPushDetails details = internalAdmin.getRegionPushDetails(clusterName, storeName, true);
+    Assert.assertEquals(details.getPushEndTimestamp(), now.plusHours(1).toString());
+    Assert.assertEquals(details.getVersions().size(), 1);
+    Assert.assertEquals(details.getCurrentVersion().intValue(), 1);
+    Assert.assertEquals(details.getPartitionDetails().size(), numOfPartition);
+    for (int i = 0; i < numOfPartition; i++) {
+      Assert.assertEquals(details.getPartitionDetails().get(i).getReplicaDetails().size(), replicationFactor);
+    }
   }
 }

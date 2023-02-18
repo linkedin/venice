@@ -1,6 +1,5 @@
 package com.linkedin.davinci.storage.chunking;
 
-import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
@@ -205,9 +204,9 @@ public class ChunkingTest {
     System.arraycopy(serializedCVM, 0, serializedCVMwithHeader, ValueRecord.SCHEMA_HEADER_LENGTH, serializedCVM.length);
 
     doReturn(serializedCVMwithHeader).when(storageEngine)
-        .get(eq(partition), eq(ByteBuffer.wrap(serializeNonChunkedKey)), anyBoolean());
-    doReturn(chunk1Bytes).when(storageEngine).get(eq(partition), eq(firstKey), anyBoolean());
-    doReturn(chunk2Bytes).when(storageEngine).get(eq(partition), eq(secondKey), anyBoolean());
+        .get(eq(partition), eq(ByteBuffer.wrap(serializeNonChunkedKey)));
+    doReturn(chunk1Bytes).when(storageEngine).get(eq(partition), eq(firstKey));
+    doReturn(chunk2Bytes).when(storageEngine).get(eq(partition), eq(secondKey));
 
     try (StorageEngineBackedCompressorFactory compressorFactory =
         new StorageEngineBackedCompressorFactory(mock(StorageMetadataService.class))) {
@@ -226,8 +225,7 @@ public class ChunkingTest {
               true,
               schemaRepository,
               storeName,
-              compressor,
-              false));
+              compressor));
     }
   }
 

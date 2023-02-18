@@ -141,6 +141,11 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
 
     CompletableFuture<V> valueFuture = new CompletableFuture<>();
     long timestampBeforeSendingRequest = System.nanoTime();
+
+    /**
+     * Check {@link StoreMetadata#getReplicas} to understand why the below method
+     * might return more than required number of routes
+     */
     List<String> routes = metadata.getReplicas(
         requestContext.requestId,
         currentVersion,
@@ -157,14 +162,34 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     }
 
     /**
-     * This atomic variable is used to indicate whether a faster response has returned or not.
+     * This atomic variable is used to find the fastest response received and ignore other responses
      */
     AtomicBoolean receivedSuccessfulResponse = new AtomicBoolean(false);
+
+    /**
+     * List of futures used below and their relationships:
+     * 1. valueFuture => this is the completable future that is returned from this function which either throws an exception or
+     *                    returns null or returns value.
+     * 2. routeRequestFuture => an incomplete completable future returned from {@link InstanceHealthMonitor} for
+     *                          {@link AbstractStoreMetadata} by adjusting {@link InstanceHealthMonitor#pendingRequestCounterMap}
+     *                          for each server instances per store before starting a get request and during completing this future.
+     *                          This is also added to {@link requestContext.routeRequestMap} to indicate whether a particular server
+     *                          instance is already used for this get request: to not reuse the same instance for both the queries
+     *                          for a key when speculative query is enabled.
+     * 3. transportFuture => completable future for the actual get() operation to the server. This future was passed as callback to
+     *                       the async call {@link Client#restRequest} and once get() is done, this will be completed. When this is
+     *                       completed, it will also
+     *                       1. complete routeRequestFuture by passing in the status (200/404/etc) which will handle(decrement)
+     *                          {@link InstanceHealthMonitor#pendingRequestCounterMap}
+     *                       2. complete valueFuture by passing in either null/value/exception
+     * 4. transportFutures => List of transportFuture for this request (eg: 2 if speculative query is enabled or even more depends on
+     *                        health of the replicas).
+     */
     List<CompletableFuture<TransportClientResponse>> transportFutures = new LinkedList<>();
     requestContext.requestSentTimestampNS = System.nanoTime();
     for (String route: routes) {
       CompletableFuture<HttpStatus> routeRequestFuture =
-          metadata.sendRequestToInstance(route, currentVersion, partitionId);
+          metadata.trackHealthBasedOnRequestToInstance(route, currentVersion, partitionId);
       requestContext.routeRequestMap.put(route, routeRequestFuture);
       try {
         String url = route + uri;
@@ -219,7 +244,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       }
     }
     if (transportFutures.isEmpty()) {
-      // No request has been sent out.
+      // No request has been sent out: Routes were found, but get() failed. But setting a generic exception for now.
       valueFuture.completeExceptionally(
           new VeniceClientException(
               "No available replica for store: " + getStoreName() + ", version: " + currentVersion + " and partition: "

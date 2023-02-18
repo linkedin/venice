@@ -41,9 +41,9 @@ public class ClientFactory {
   }
 
   /**
-   * TODO: once we decide to completely remove the helix based implementation, we won't need to pass the param: {@param storeMetadata}
-   * in these factory methods.
-   * So far, it is for the testing purpose.
+   * TODO: once we decide to completely remove the helix based implementation, we won't need to pass
+   *  the param: {@param storeMetadata} in these factory methods.
+   *  So far, it is for the testing purpose.
    */
   public static <K, V> AvroGenericStoreClient<K, V> getAndStartGenericStoreClient(
       StoreMetadata storeMetadata,

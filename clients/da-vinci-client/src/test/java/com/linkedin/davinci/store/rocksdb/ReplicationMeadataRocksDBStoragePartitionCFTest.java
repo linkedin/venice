@@ -1,6 +1,6 @@
 package com.linkedin.davinci.store.rocksdb;
 
-import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_SEPRATE_RMD_CACHE_ENABLED;
+import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_SEPARATE_RMD_CACHE_ENABLED;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
@@ -32,10 +32,10 @@ import org.testng.annotations.BeforeClass;
 public class ReplicationMeadataRocksDBStoragePartitionCFTest extends ReplicationMetadataRocksDBStoragePartitionTest {
   private static final int PARTITION_ID = 0;
 
-  private final String storeName = Utils.getUniqueString("rocksdb_store_test");
+  private static final String storeName = Utils.getUniqueString("rocksdb_store_test");
   private final ReadOnlyStoreRepository mockReadOnlyStoreRepository = mock(ReadOnlyStoreRepository.class);
-  private final int versionNumber = 0;
-  private final String topicName = Version.composeKafkaTopic(storeName, versionNumber);
+  private static final int versionNumber = 0;
+  private static final String topicName = Version.composeKafkaTopic(storeName, versionNumber);
 
   private StorageService storageService;
   private VeniceStoreVersionConfig storeConfig;
@@ -50,7 +50,7 @@ public class ReplicationMeadataRocksDBStoragePartitionCFTest extends Replication
     when(mockReadOnlyStoreRepository.getStoreOrThrow(storeName)).thenReturn(mockStore);
 
     Properties properties = new Properties();
-    properties.put(ROCKSDB_SEPRATE_RMD_CACHE_ENABLED, "true");
+    properties.put(ROCKSDB_SEPARATE_RMD_CACHE_ENABLED, "true");
     VeniceProperties serverProps = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB, properties);
     storageService = new StorageService(
         AbstractStorageEngineTest.getVeniceConfigLoader(serverProps),

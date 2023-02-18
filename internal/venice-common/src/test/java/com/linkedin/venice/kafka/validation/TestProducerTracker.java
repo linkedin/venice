@@ -14,6 +14,11 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
@@ -21,8 +26,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Optional;
 import org.apache.avro.specific.FixedSize;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.common.record.TimestampType;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -32,13 +35,14 @@ public class TestProducerTracker {
   private ProducerTracker producerTracker;
   private GUID guid;
   private String topic;
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @BeforeMethod(alwaysRun = true)
   public void methodSetUp() {
     String testGuid = "test_guid_" + System.currentTimeMillis();
     this.guid = new GUID();
     guid.bytes(testGuid.getBytes());
-    this.topic = "test_topic_" + System.currentTimeMillis();
+    this.topic = "test_topic_" + System.currentTimeMillis() + "_v1";
     this.producerTracker = new ProducerTracker(guid, topic);
   }
 
@@ -122,23 +126,21 @@ public class TestProducerTracker {
   public void testSequenceNumber() {
     int partitionId = 0;
     Segment currentSegment = new Segment(partitionId, 0, CheckSumType.NONE);
+    PubSubTopicPartition pubSubTopicPartition =
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId);
 
     // Send Start_Of_Segment control msg.
     ControlMessage startOfSegment = getStartOfSegment();
     KafkaMessageEnvelope startOfSegmentMessage =
         getKafkaMessageEnvelope(MessageType.CONTROL_MESSAGE, guid, currentSegment, Optional.empty(), startOfSegment);
     long offset = 10;
-    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> controlMessageConsumerRecord = new ConsumerRecord<>(
-        topic,
-        partitionId,
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> controlMessageConsumerRecord = new ImmutablePubSubMessage<>(
+        getControlMessageKey(startOfSegmentMessage),
+        startOfSegmentMessage,
+        pubSubTopicPartition,
         offset++,
         System.currentTimeMillis() + 1000,
-        TimestampType.NO_TIMESTAMP_TYPE,
-        ConsumerRecord.NULL_CHECKSUM,
-        ConsumerRecord.NULL_SIZE,
-        ConsumerRecord.NULL_SIZE,
-        getControlMessageKey(startOfSegmentMessage),
-        startOfSegmentMessage);
+        0);
     producerTracker.validateMessage(controlMessageConsumerRecord, false, false);
 
     Put firstPut = getPutMessage("first_message".getBytes());
@@ -146,17 +148,13 @@ public class TestProducerTracker {
         getKafkaMessageEnvelope(MessageType.PUT, guid, currentSegment, Optional.empty(), firstPut); // sequence number
                                                                                                     // is 1
     KafkaKey firstMessageKey = getPutMessageKey("first_key".getBytes());
-    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> firstConsumerRecord = new ConsumerRecord<>(
-        topic,
-        partitionId,
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> firstConsumerRecord = new ImmutablePubSubMessage<>(
+        firstMessageKey,
+        firstMessage,
+        pubSubTopicPartition,
         offset++,
         System.currentTimeMillis() + 1000,
-        TimestampType.NO_TIMESTAMP_TYPE,
-        ConsumerRecord.NULL_CHECKSUM,
-        ConsumerRecord.NULL_SIZE,
-        ConsumerRecord.NULL_SIZE,
-        firstMessageKey,
-        firstMessage);
+        0);
     producerTracker.validateMessage(firstConsumerRecord, false, false);
 
     // Message with gap
@@ -165,17 +163,13 @@ public class TestProducerTracker {
         getKafkaMessageEnvelope(MessageType.PUT, guid, currentSegment, Optional.of(100), secondPut); // sequence number
                                                                                                      // is 100
     KafkaKey secondMessageKey = getPutMessageKey("second_key".getBytes());
-    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> secondConsumerRecord = new ConsumerRecord<>(
-        topic,
-        partitionId,
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> secondConsumerRecord = new ImmutablePubSubMessage<>(
+        secondMessageKey,
+        secondMessage,
+        pubSubTopicPartition,
         offset++,
         System.currentTimeMillis() + 1000,
-        TimestampType.NO_TIMESTAMP_TYPE,
-        ConsumerRecord.NULL_CHECKSUM,
-        ConsumerRecord.NULL_SIZE,
-        ConsumerRecord.NULL_SIZE,
-        secondMessageKey,
-        secondMessage);
+        0);
     Assert.assertThrows(
         MissingDataException.class,
         () -> producerTracker.validateMessage(secondConsumerRecord, false, false));
@@ -186,17 +180,13 @@ public class TestProducerTracker {
         getKafkaMessageEnvelope(MessageType.PUT, guid, currentSegment, Optional.of(2), thirdPut); // sequence number is
                                                                                                   // 2
     KafkaKey thirdMessageKey = getPutMessageKey("third_key".getBytes());
-    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> thirdConsumerRecord = new ConsumerRecord<>(
-        topic,
-        partitionId,
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> thirdConsumerRecord = new ImmutablePubSubMessage<>(
+        thirdMessageKey,
+        thirdMessage,
+        pubSubTopicPartition,
         offset++,
         System.currentTimeMillis() + 1000,
-        TimestampType.NO_TIMESTAMP_TYPE,
-        ConsumerRecord.NULL_CHECKSUM,
-        ConsumerRecord.NULL_SIZE,
-        ConsumerRecord.NULL_SIZE,
-        thirdMessageKey,
-        thirdMessage);
+        0);
     // It doesn't matter whether EOP is true/false. The result is same.
     producerTracker.validateMessage(thirdConsumerRecord, false, false);
 
@@ -206,23 +196,22 @@ public class TestProducerTracker {
         getKafkaMessageEnvelope(MessageType.PUT, guid, currentSegment, Optional.of(100), fourthPut); // sequence number
                                                                                                      // is 100
     KafkaKey fourthMessageKey = getPutMessageKey("fourth_key".getBytes());
-    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> fourthConsumerRecord = new ConsumerRecord<>(
-        topic,
-        partitionId,
-        offset++,
-        System.currentTimeMillis() + 1000,
-        TimestampType.NO_TIMESTAMP_TYPE,
-        ConsumerRecord.NULL_CHECKSUM,
-        ConsumerRecord.NULL_SIZE,
-        ConsumerRecord.NULL_SIZE,
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> fourthConsumerRecord = new ImmutablePubSubMessage<>(
         fourthMessageKey,
-        fourthMessage);
+        fourthMessage,
+        pubSubTopicPartition,
+        offset,
+        System.currentTimeMillis() + 1000,
+        0);
     producerTracker.validateMessage(fourthConsumerRecord, false, true);
   }
 
   @Test
   public void testSegmentNumber() {
     int partitionId = 0;
+    PubSubTopicPartition pubSubTopicPartition =
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId);
+
     int firstSegmentNumber = 0;
     int skipSegmentNumber = 2;
     Segment firstSegment = new Segment(partitionId, firstSegmentNumber, CheckSumType.NONE);
@@ -236,17 +225,13 @@ public class TestProducerTracker {
                                                                                                                     // number
                                                                                                                     // is
                                                                                                                     // zero
-    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> controlMessageConsumerRecord = new ConsumerRecord<>(
-        topic,
-        partitionId,
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> controlMessageConsumerRecord = new ImmutablePubSubMessage<>(
+        getControlMessageKey(startOfSegmentMessage),
+        startOfSegmentMessage,
+        pubSubTopicPartition,
         offset++,
         System.currentTimeMillis() + 1000,
-        TimestampType.NO_TIMESTAMP_TYPE,
-        ConsumerRecord.NULL_CHECKSUM,
-        ConsumerRecord.NULL_SIZE,
-        ConsumerRecord.NULL_SIZE,
-        getControlMessageKey(startOfSegmentMessage),
-        startOfSegmentMessage);
+        0);
     producerTracker.validateMessage(controlMessageConsumerRecord, true, false);
 
     // Send the second segment. Notice this segment number has a gap than previous one
@@ -255,17 +240,13 @@ public class TestProducerTracker {
     KafkaMessageEnvelope firstMessage =
         getKafkaMessageEnvelope(MessageType.PUT, guid, secondSegment, Optional.of(skipSequenceNumber), firstPut);
     KafkaKey firstMessageKey = getPutMessageKey("key".getBytes());
-    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> firstConsumerRecord = new ConsumerRecord<>(
-        topic,
-        partitionId,
-        offset++,
-        System.currentTimeMillis() + 1000,
-        TimestampType.NO_TIMESTAMP_TYPE,
-        ConsumerRecord.NULL_CHECKSUM,
-        ConsumerRecord.NULL_SIZE,
-        ConsumerRecord.NULL_SIZE,
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> firstConsumerRecord = new ImmutablePubSubMessage<>(
         firstMessageKey,
-        firstMessage);
+        firstMessage,
+        pubSubTopicPartition,
+        offset,
+        System.currentTimeMillis() + 1000,
+        0);
     /**
      * The new message with segment number gap will not be accepted by ProducerTracker if tolerate message flag is false
      */
@@ -289,6 +270,8 @@ public class TestProducerTracker {
   @Test
   public void testDuplicateMsgsDetected() {
     int partitionId = 0;
+    PubSubTopicPartition pubSubTopicPartition =
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId);
     Segment firstSegment = new Segment(partitionId, 0, CheckSumType.MD5);
     long offset = 10;
 
@@ -299,17 +282,13 @@ public class TestProducerTracker {
                                                                                                                     // number
                                                                                                                     // is
                                                                                                                     // 0
-    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> controlMessageConsumerRecord = new ConsumerRecord<>(
-        topic,
-        partitionId,
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> controlMessageConsumerRecord = new ImmutablePubSubMessage<>(
+        getControlMessageKey(startOfSegmentMessage),
+        startOfSegmentMessage,
+        pubSubTopicPartition,
         offset++,
         System.currentTimeMillis() + 1000,
-        TimestampType.NO_TIMESTAMP_TYPE,
-        ConsumerRecord.NULL_CHECKSUM,
-        ConsumerRecord.NULL_SIZE,
-        ConsumerRecord.NULL_SIZE,
-        getControlMessageKey(startOfSegmentMessage),
-        startOfSegmentMessage);
+        0);
     producerTracker.validateMessage(controlMessageConsumerRecord, true, false);
     Assert.assertEquals(producerTracker.segments.get(partitionId).getSequenceNumber(), 0);
 
@@ -319,17 +298,13 @@ public class TestProducerTracker {
         getKafkaMessageEnvelope(MessageType.CONTROL_MESSAGE, guid, firstSegment, Optional.of(5), endOfSegment); // sequence
                                                                                                                 // number
                                                                                                                 // is 5
-    controlMessageConsumerRecord = new ConsumerRecord<>(
-        topic,
-        partitionId,
+    controlMessageConsumerRecord = new ImmutablePubSubMessage<>(
+        getControlMessageKey(endOfSegmentMessage),
+        endOfSegmentMessage,
+        pubSubTopicPartition,
         offset++,
         System.currentTimeMillis() + 1000,
-        TimestampType.NO_TIMESTAMP_TYPE,
-        ConsumerRecord.NULL_CHECKSUM,
-        ConsumerRecord.NULL_SIZE,
-        ConsumerRecord.NULL_SIZE,
-        getControlMessageKey(endOfSegmentMessage),
-        endOfSegmentMessage);
+        0);
     producerTracker.validateMessage(controlMessageConsumerRecord, true, true);
     Assert.assertEquals(producerTracker.segments.get(partitionId).getSequenceNumber(), 5);
 
@@ -338,17 +313,13 @@ public class TestProducerTracker {
     KafkaMessageEnvelope firstMessage =
         getKafkaMessageEnvelope(MessageType.PUT, guid, firstSegment, Optional.of(1), firstPut); // sequence number is 1
     KafkaKey firstMessageKey = getPutMessageKey("first_key".getBytes());
-    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> firstConsumerRecord = new ConsumerRecord<>(
-        topic,
-        partitionId,
-        offset++,
-        System.currentTimeMillis() + 1000,
-        TimestampType.NO_TIMESTAMP_TYPE,
-        ConsumerRecord.NULL_CHECKSUM,
-        ConsumerRecord.NULL_SIZE,
-        ConsumerRecord.NULL_SIZE,
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> firstConsumerRecord = new ImmutablePubSubMessage<>(
         firstMessageKey,
-        firstMessage);
+        firstMessage,
+        pubSubTopicPartition,
+        offset,
+        System.currentTimeMillis() + 1000,
+        0);
     Assert.assertThrows(
         DuplicateDataException.class,
         () -> producerTracker.validateMessage(firstConsumerRecord, true, true));
@@ -363,6 +334,8 @@ public class TestProducerTracker {
   @Test
   public void testMidSegmentCheckSumStates() {
     int partitionId = 0;
+    PubSubTopicPartition pubSubTopicPartition =
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId);
     Segment firstSegment = new Segment(partitionId, 0, CheckSumType.MD5);
     Segment secondSegment = new Segment(partitionId, 1, CheckSumType.MD5);
     long offset = 10;
@@ -372,17 +345,13 @@ public class TestProducerTracker {
     ControlMessage startOfSegment = getStartOfSegment(CheckSumType.MD5);
     KafkaMessageEnvelope startOfSegmentMessage =
         getKafkaMessageEnvelope(MessageType.CONTROL_MESSAGE, guid, firstSegment, Optional.empty(), startOfSegment);
-    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> controlMessageConsumerRecord = new ConsumerRecord<>(
-        topic,
-        partitionId,
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> controlMessageConsumerRecord = new ImmutablePubSubMessage<>(
+        getControlMessageKey(startOfSegmentMessage),
+        startOfSegmentMessage,
+        pubSubTopicPartition,
         offset++,
         System.currentTimeMillis() + 1000,
-        TimestampType.NO_TIMESTAMP_TYPE,
-        ConsumerRecord.NULL_CHECKSUM,
-        ConsumerRecord.NULL_SIZE,
-        ConsumerRecord.NULL_SIZE,
-        getControlMessageKey(startOfSegmentMessage),
-        startOfSegmentMessage);
+        0);
     producerTracker.validateMessage(controlMessageConsumerRecord, true, false);
     producerTracker.updateOffsetRecord(partitionId, record);
     Assert.assertEquals(record.getProducerPartitionState(guid).checksumType, CheckSumType.MD5.getValue());
@@ -392,17 +361,13 @@ public class TestProducerTracker {
     KafkaMessageEnvelope firstMessage =
         getKafkaMessageEnvelope(MessageType.PUT, guid, secondSegment, Optional.empty(), firstPut);
     KafkaKey firstMessageKey = getPutMessageKey("first_key".getBytes());
-    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> firstConsumerRecord = new ConsumerRecord<>(
-        topic,
-        partitionId,
-        offset++,
-        System.currentTimeMillis() + 1000,
-        TimestampType.NO_TIMESTAMP_TYPE,
-        ConsumerRecord.NULL_CHECKSUM,
-        ConsumerRecord.NULL_SIZE,
-        ConsumerRecord.NULL_SIZE,
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> firstConsumerRecord = new ImmutablePubSubMessage<>(
         firstMessageKey,
-        firstMessage);
+        firstMessage,
+        pubSubTopicPartition,
+        offset,
+        System.currentTimeMillis() + 1000,
+        0);
     producerTracker.validateMessage(firstConsumerRecord, true, true);
     producerTracker.updateOffsetRecord(partitionId, record);
     Assert.assertEquals(record.getProducerPartitionState(guid).checksumType, CheckSumType.NONE.getValue());

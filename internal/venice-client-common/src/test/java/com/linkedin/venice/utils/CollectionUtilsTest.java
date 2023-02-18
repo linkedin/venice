@@ -6,8 +6,11 @@ import static org.apache.avro.Schema.createArray;
 import static org.testng.Assert.assertTrue;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.apache.avro.generic.GenericData;
+import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
@@ -74,6 +77,22 @@ public class CollectionUtilsTest {
         "We cannot compare java.util.ArrayList<Object> by content equality properly!");
   }
 
+  @Test
+  public void testGetStringKeyCharSequenceValueMapFromStringMap() {
+    // Assert null argument
+    Assert.assertNull(CollectionUtils.getStringKeyCharSequenceValueMapFromStringMap(null));
+
+    Map<String, String> stringMap = new HashMap<>();
+    stringMap.put("key1", "value1");
+    stringMap.put("key2", "value2");
+
+    Map<String, CharSequence> stringCharSequenceMap =
+        CollectionUtils.getStringKeyCharSequenceValueMapFromStringMap(stringMap);
+    Assert.assertEquals(stringMap.size(), stringCharSequenceMap.size());
+    Assert.assertEquals(stringMap.get("key1"), stringCharSequenceMap.get("key1").toString());
+    Assert.assertEquals(stringMap.get("key2"), stringCharSequenceMap.get("key2").toString());
+  }
+
   private void populateIntegerList(List<Integer> list) {
     list.add(1);
     list.add(2);
@@ -96,7 +115,7 @@ public class CollectionUtilsTest {
     assertTrue(CollectionUtils.listEquals(list1, list2), errorMessage);
   }
 
-  class TestContentObject {
+  static class TestContentObject {
     Integer intVal;
     Boolean booleanVal;
     String stringVal;
@@ -121,6 +140,15 @@ public class CollectionUtilsTest {
         return false;
       }
       return true;
+    }
+
+    @Override
+    public int hashCode() {
+      int res = 1;
+      res = res * 31 + intVal;
+      res = res * 31 + booleanVal.hashCode();
+      res = res * 31 + stringVal.hashCode();
+      return res;
     }
   }
 }

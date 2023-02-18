@@ -4,10 +4,12 @@ import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdVersionId;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
 import org.apache.avro.Schema;
@@ -17,33 +19,39 @@ import org.apache.avro.Schema;
  * This class is used to store all the schemas related to a given store:
  * 1. key schema
  * 2. value schemas
- * 3. write compute derived schemas
+ * 3. partial update schemas
  * 4. replication metadata schemas
  */
 public final class SchemaData {
-  private String storeName;
+  private final String storeName;
   private SchemaEntry keySchema;
-  private SortedMap<Integer, SchemaEntry> valueSchemaMap;
-  private Map<SchemaEntry, Integer> valueSchemaRMap;
-  private Map<Pair<Integer, Integer>, DerivedSchemaEntry> derivedSchemaMap;
-  private Map<DerivedSchemaEntry, Pair<Integer, Integer>> derivedSchemaRMap;
-  private Map<RmdVersionId, RmdSchemaEntry> replicationMetadataSchemaMap;
-  private Map<Schema, RmdVersionId> replicationMetadataSchemaRMap;
+  private final SortedMap<Integer, SchemaEntry> valueSchemaMap;
+  private final Map<SchemaEntry, Integer> valueSchemaRMap;
+  private final Map<Pair<Integer, Integer>, DerivedSchemaEntry> updateSchemaMap;
+  private final Map<DerivedSchemaEntry, Pair<Integer, Integer>> updateSchemaRMap;
+  private final Map<RmdVersionId, RmdSchemaEntry> rmdSchemaMap;
+  private final Map<Schema, RmdVersionId> rmdSchemaRMap;
 
-  public static int UNKNOWN_SCHEMA_ID = 0;
-  public static int INVALID_VALUE_SCHEMA_ID = -1;
-  public static int DUPLICATE_VALUE_SCHEMA_CODE = -2;
+  private final Set<Integer> updateSchemaExistenceSet;
+  private final Set<Integer> rmdSchemaExistenceSet;
+
+  public final static int UNKNOWN_SCHEMA_ID = 0;
+  public final static int INVALID_VALUE_SCHEMA_ID = -1;
+  public final static int DUPLICATE_VALUE_SCHEMA_CODE = -2;
 
   public SchemaData(String storeName) {
     this.storeName = storeName;
     valueSchemaMap = new TreeMap<>();
-    valueSchemaRMap = new HashMap<>();
+    valueSchemaRMap = new VeniceConcurrentHashMap<>();
 
-    derivedSchemaMap = new HashMap<>();
-    derivedSchemaRMap = new HashMap<>();
+    updateSchemaMap = new VeniceConcurrentHashMap<>();
+    updateSchemaRMap = new VeniceConcurrentHashMap<>();
 
-    replicationMetadataSchemaMap = new HashMap<>();
-    replicationMetadataSchemaRMap = new HashMap<>();
+    rmdSchemaMap = new VeniceConcurrentHashMap<>();
+    rmdSchemaRMap = new VeniceConcurrentHashMap<>();
+
+    updateSchemaExistenceSet = new HashSet<>();
+    rmdSchemaExistenceSet = new HashSet<>();
   }
 
   public String getStoreName() {
@@ -70,16 +78,16 @@ public final class SchemaData {
   }
 
   public DerivedSchemaEntry getDerivedSchema(int valueSchemaId, int derivedSchemaId) {
-    return derivedSchemaMap.get(new Pair<>(valueSchemaId, derivedSchemaId));
+    return updateSchemaMap.get(new Pair<>(valueSchemaId, derivedSchemaId));
   }
 
   public Collection<DerivedSchemaEntry> getDerivedSchemas() {
-    return derivedSchemaMap.values();
+    return updateSchemaMap.values();
   }
 
   public Pair<Integer, Integer> getDerivedSchemaId(DerivedSchemaEntry entry) {
-    if (derivedSchemaRMap.containsKey(entry)) {
-      return derivedSchemaRMap.get(entry);
+    if (updateSchemaRMap.containsKey(entry)) {
+      return updateSchemaRMap.get(entry);
     }
 
     return new Pair<>(INVALID_VALUE_SCHEMA_ID, INVALID_VALUE_SCHEMA_ID);
@@ -88,8 +96,9 @@ public final class SchemaData {
   public void addDerivedSchema(DerivedSchemaEntry derivedSchemaEntry) {
     Pair<Integer, Integer> derivedSchemaId =
         new Pair<>(derivedSchemaEntry.getValueSchemaID(), derivedSchemaEntry.getId());
-    derivedSchemaMap.put(derivedSchemaId, derivedSchemaEntry);
-    derivedSchemaRMap.put(derivedSchemaEntry, derivedSchemaId);
+    updateSchemaMap.put(derivedSchemaId, derivedSchemaEntry);
+    updateSchemaRMap.put(derivedSchemaEntry, derivedSchemaId);
+    updateSchemaExistenceSet.add(derivedSchemaEntry.getValueSchemaID());
   }
 
   public int getMaxValueSchemaId() {
@@ -120,16 +129,16 @@ public final class SchemaData {
   }
 
   public RmdSchemaEntry getReplicationMetadataSchema(int valueSchemaId, int replicationMetadataVersionId) {
-    return replicationMetadataSchemaMap.get(new RmdVersionId(valueSchemaId, replicationMetadataVersionId));
+    return rmdSchemaMap.get(new RmdVersionId(valueSchemaId, replicationMetadataVersionId));
   }
 
   public Collection<RmdSchemaEntry> getReplicationMetadataSchemas() {
-    return replicationMetadataSchemaMap.values();
+    return rmdSchemaMap.values();
   }
 
   public RmdVersionId getReplicationMetadataVersionId(RmdSchemaEntry entry) {
-    if (replicationMetadataSchemaRMap.containsKey(entry.getSchema())) {
-      return replicationMetadataSchemaRMap.get(entry.getSchema());
+    if (rmdSchemaRMap.containsKey(entry.getSchema())) {
+      return rmdSchemaRMap.get(entry.getSchema());
     }
 
     return new RmdVersionId(INVALID_VALUE_SCHEMA_ID, INVALID_VALUE_SCHEMA_ID);
@@ -137,7 +146,16 @@ public final class SchemaData {
 
   public void addReplicationMetadataSchema(RmdSchemaEntry rmdSchemaEntry) {
     RmdVersionId rmdVersionId = new RmdVersionId(rmdSchemaEntry.getValueSchemaID(), rmdSchemaEntry.getId());
-    replicationMetadataSchemaMap.put(rmdVersionId, rmdSchemaEntry);
-    replicationMetadataSchemaRMap.put(rmdSchemaEntry.getSchema(), rmdVersionId);
+    rmdSchemaMap.put(rmdVersionId, rmdSchemaEntry);
+    rmdSchemaRMap.put(rmdSchemaEntry.getSchema(), rmdVersionId);
+    rmdSchemaExistenceSet.add(rmdSchemaEntry.getValueSchemaID());
+  }
+
+  public boolean hasUpdateSchema(int valueSchemaId) {
+    return updateSchemaExistenceSet.contains(valueSchemaId);
+  }
+
+  public boolean hasRmdSchema(int valueSchemaId) {
+    return rmdSchemaExistenceSet.contains(valueSchemaId);
   }
 }

@@ -6,8 +6,8 @@ import com.linkedin.venice.client.store.AppTimeOutTrackingCompletableFuture;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
 import com.linkedin.venice.fastclient.meta.InstanceHealthMonitor;
-import com.linkedin.venice.fastclient.stats.ClientStats;
 import com.linkedin.venice.fastclient.stats.ClusterStats;
+import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Time;
@@ -28,8 +28,8 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
   private static final Logger LOGGER = LogManager.getLogger(StatsAvroGenericStoreClient.class);
   private static final int TIMEOUT_IN_SECOND = 5;
 
-  private final ClientStats clientStatsForSingleGet;
-  private final ClientStats clientStatsForBatchGet;
+  private final FastClientStats clientStatsForSingleGet;
+  private final FastClientStats clientStatsForBatchGet;
   private final ClusterStats clusterStats;
 
   private final int maxAllowedKeyCntInBatchGetReq;
@@ -50,9 +50,9 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
   }
 
   /**
-   * This method is intended to replace the implementation of batchGet once we have some stabilization in the streaming
-   * versions.
-   * Once ready , remove the batchGet(keys) method and then rename this method name to batchGet
+   * This method is intended to replace the implementation of batchGet once we have some
+   * stabilization in the streaming versions. Once ready , remove the batchGet(keys) method and
+   * then rename this method name to batchGet and remove the existing batchGet method in this Class.
    * @param requestContext
    * @param keys
    * @return
@@ -94,7 +94,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
       int numberOfKeys,
       CompletableFuture<R> innerFuture,
       long startTimeInNS,
-      ClientStats clientStats) {
+      FastClientStats clientStats) {
     CompletableFuture<R> statFuture =
         recordRequestMetrics(requestContext, numberOfKeys, innerFuture, startTimeInNS, clientStats);
     // Record per replica metric
@@ -108,7 +108,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
       int numberOfKeys,
       CompletableFuture<R> innerFuture,
       long startTimeInNS,
-      ClientStats clientStats) {
+      FastClientStats clientStats) {
 
     return innerFuture.handle((value, throwable) -> {
       double latency = LatencyUtils.getLatencyInMS(startTimeInNS);
@@ -181,7 +181,7 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
     });
   }
 
-  private void recordPerRouteMetrics(RequestContext requestContext, ClientStats clientStats) {
+  private void recordPerRouteMetrics(RequestContext requestContext, FastClientStats clientStats) {
     final long requestSentTimestampNS = requestContext.requestSentTimestampNS;
     if (requestSentTimestampNS > 0) {
       Map<String, CompletableFuture<HttpStatus>> replicaRequestFuture = requestContext.routeRequestMap;
@@ -262,7 +262,17 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
     }
   }
 
-  @Override
+  /**
+   *
+   *  Leverage single-get implementation here:
+   *  1. Looping through all keys and call get() for each of the keys
+   *  2. Collect the reply and send it back
+   *  3. This is a naive scatter and gather approach.
+   *
+   *  TODO: This function was built before streamingBatchGet() was implemented for a customer
+   *   to support two-key batch-get. Will need to be replaced with streamingBatchGet() once it is validated.
+   *   check {@link #batchGetWithStreaming} for more details.
+   */
   public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
     if (keys.isEmpty()) {
       return CompletableFuture.completedFuture(Collections.emptyMap());

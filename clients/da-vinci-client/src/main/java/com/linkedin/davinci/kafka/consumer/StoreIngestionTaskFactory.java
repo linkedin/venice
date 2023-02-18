@@ -10,6 +10,7 @@ import com.linkedin.davinci.stats.AggVersionedIngestionStats;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
+import com.linkedin.davinci.store.view.VeniceViewWriterFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManagerRepository;
@@ -18,6 +19,7 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.throttle.EventThrottler;
@@ -26,7 +28,6 @@ import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
-import java.util.concurrent.ExecutorService;
 import java.util.function.BooleanSupplier;
 
 
@@ -92,6 +93,8 @@ public class StoreIngestionTaskFactory {
     private volatile boolean built = false;
 
     private VeniceWriterFactory veniceWriterFactory;
+
+    private VeniceViewWriterFactory veniceViewWriterFactory;
     private KafkaClientFactory kafkaClientFactory;
     private StorageEngineRepository storageEngineRepository;
     private StorageMetadataService storageMetadataService;
@@ -111,13 +114,13 @@ public class StoreIngestionTaskFactory {
     private VeniceServerConfig serverConfig;
     private DiskUsage diskUsage;
     private AggKafkaConsumerService aggKafkaConsumerService;
-    private ExecutorService cacheWarmingThreadPool;
     private long startReportingReadyToServeTimestamp;
     private InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
     private boolean isDaVinciClient;
     private RemoteIngestionRepairService remoteIngestionRepairService;
     private MetaStoreWriter metaStoreWriter;
     private StorageEngineBackedCompressorFactory compressorFactory;
+    private PubSubTopicRepository pubSubTopicRepository;
 
     private interface Setter {
       void apply();
@@ -140,8 +143,16 @@ public class StoreIngestionTaskFactory {
       return veniceWriterFactory;
     }
 
+    public VeniceViewWriterFactory getVeniceViewWriterFactory() {
+      return veniceViewWriterFactory;
+    }
+
     public Builder setVeniceWriterFactory(VeniceWriterFactory writerFactory) {
       return set(() -> this.veniceWriterFactory = writerFactory);
+    }
+
+    public Builder setVeniceViewWriterFactory(VeniceViewWriterFactory viewWriterFactory) {
+      return set(() -> this.veniceViewWriterFactory = viewWriterFactory);
     }
 
     public Builder setRemoteIngestionRepairService(RemoteIngestionRepairService repairService) {
@@ -312,14 +323,6 @@ public class StoreIngestionTaskFactory {
       return set(() -> this.aggKafkaConsumerService = aggKafkaConsumerService);
     }
 
-    public ExecutorService getCacheWarmingThreadPool() {
-      return cacheWarmingThreadPool;
-    }
-
-    public Builder setCacheWarmingThreadPool(ExecutorService cacheWarmingThreadPool) {
-      return set(() -> this.cacheWarmingThreadPool = cacheWarmingThreadPool);
-    }
-
     public long getStartReportingReadyToServeTimestamp() {
       return startReportingReadyToServeTimestamp;
     }
@@ -351,6 +354,14 @@ public class StoreIngestionTaskFactory {
 
     public Builder setCompressorFactory(StorageEngineBackedCompressorFactory compressorFactory) {
       return set(() -> this.compressorFactory = compressorFactory);
+    }
+
+    public PubSubTopicRepository getPubSubTopicRepository() {
+      return pubSubTopicRepository;
+    }
+
+    public Builder setPubSubTopicRepository(PubSubTopicRepository pubSubTopicRepository) {
+      return set(() -> this.pubSubTopicRepository = pubSubTopicRepository);
     }
   }
 }

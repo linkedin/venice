@@ -137,7 +137,6 @@ public class ReplicationConsumptionBenchmark {
     if (sorted) {
       storagePartition.beginBatchWrite(new HashMap<>(), checksumSupplier);
     }
-    Map<String, String> checkpointingInfo = new HashMap<>();
 
     for (Map.Entry<String, Pair<String, String>> entry: inputRecords.entrySet()) {
       if (entry.getValue().getFirst() == null) {
@@ -166,9 +165,8 @@ public class ReplicationConsumptionBenchmark {
         rocksDBServerConfig);
     // Test deletion
     String toBeDeletedKey = KEY_PREFIX + 10;
-    // Assert.assertNotNull(storagePartition.get(toBeDeletedKey.getBytes(), false));
     storagePartition.delete(toBeDeletedKey.getBytes());
-    Assert.assertNull(storagePartition.get(toBeDeletedKey.getBytes(), false));
+    Assert.assertNull(storagePartition.get(toBeDeletedKey.getBytes()));
   }
 
   private Map<String, Pair<String, String>> generateInputWithMetadata(int startIndex, int endIndex) {

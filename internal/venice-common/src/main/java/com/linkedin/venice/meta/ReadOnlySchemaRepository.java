@@ -51,7 +51,7 @@ public interface ReadOnlySchemaRepository extends VeniceResource {
    *
    * @return Superset value or {@link Optional#empty()} if store {@param storeName} does not have any superset value schema.
    */
-  Optional<SchemaEntry> getSupersetSchema(String storeName);
+  SchemaEntry getSupersetSchema(String storeName);
 
   /**
    * Look up derived schema id and its corresponding value schema id

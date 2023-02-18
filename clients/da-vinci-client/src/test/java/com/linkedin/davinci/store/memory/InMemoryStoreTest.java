@@ -15,7 +15,7 @@ public class InMemoryStoreTest extends AbstractStoreTest {
   }
 
   @Override
-  public void createStoreForTest() throws Exception {
+  public final void createStoreForTest() throws Exception {
     File configFile = new File("src/test/resources/config"); // TODO this does not run from IDE because IDE expects
     // relative path starting from venice-server
     veniceConfigLoader = VeniceConfigLoader.loadFromConfigDirectory(configFile.getAbsolutePath());

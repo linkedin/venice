@@ -41,11 +41,16 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.REGULAR_V
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_FACTOR;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATION_METADATA_PROTOCOL_VERSION_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TIME_IN_SECONDS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.RMD_CHUNKING_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_QUOTA_IN_BYTE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_MIGRATION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_VIEW;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TIME_LAG_TO_GO_ONLINE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.WRITE_COMPUTATION_ENABLED;
+import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD;
+import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
+import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REWIND_TIME_IN_SECONDS;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -150,7 +155,6 @@ import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
-import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
@@ -197,8 +201,10 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
+import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.IOException;
 import java.security.cert.X509Certificate;
 import java.time.Duration;
@@ -373,12 +379,12 @@ public class VeniceParentHelixAdmin implements Admin {
     Validate.notNull(writeComputeSchemaConverter);
     this.veniceHelixAdmin = veniceHelixAdmin;
     this.multiClusterConfigs = multiClusterConfigs;
-    this.waitingTimeForConsumptionMs = getMultiClusterConfigs().getParentControllerWaitingTimeForConsumptionMs();
-    this.batchJobHeartbeatEnabled = getMultiClusterConfigs().getBatchJobHeartbeatEnabled();
+    this.waitingTimeForConsumptionMs = this.multiClusterConfigs.getParentControllerWaitingTimeForConsumptionMs();
+    this.batchJobHeartbeatEnabled = this.multiClusterConfigs.getBatchJobHeartbeatEnabled();
     this.veniceWriterMap = new ConcurrentHashMap<>();
     this.adminTopicMetadataAccessor = new ZkAdminTopicMetadataAccessor(
-        this.getVeniceHelixAdmin().getZkClient(),
-        this.getVeniceHelixAdmin().getAdapterSerializer());
+        this.veniceHelixAdmin.getZkClient(),
+        this.veniceHelixAdmin.getAdapterSerializer());
     this.adminCommandExecutionTrackers = new HashMap<>();
     this.asyncSetupEnabledMap = new VeniceConcurrentHashMap<>();
     this.accessController = accessController;
@@ -387,7 +393,7 @@ public class VeniceParentHelixAdmin implements Admin {
         authorizerService.map(service -> Executors.newSingleThreadExecutor()).orElse(null);
     if (sslEnabled) {
       try {
-        String sslFactoryClassName = getMultiClusterConfigs().getSslFactoryClassName();
+        String sslFactoryClassName = this.multiClusterConfigs.getSslFactoryClassName();
         Properties sslProperties = sslConfig.get().getSslProperties();
         sslFactory = Optional.of(SslUtils.getSSLFactory(sslProperties, sslFactoryClassName));
       } catch (Exception e) {
@@ -395,28 +401,28 @@ public class VeniceParentHelixAdmin implements Admin {
         throw new VeniceException(e);
       }
     }
-    for (String cluster: getMultiClusterConfigs().getClusters()) {
-      VeniceControllerConfig config = getMultiClusterConfigs().getControllerConfig(cluster);
+    for (String cluster: this.multiClusterConfigs.getClusters()) {
+      VeniceControllerConfig config = this.multiClusterConfigs.getControllerConfig(cluster);
       adminCommandExecutionTrackers.put(
           cluster,
           new AdminCommandExecutionTracker(
               config.getClusterName(),
-              getVeniceHelixAdmin().getExecutionIdAccessor(),
-              getVeniceHelixAdmin().getControllerClientMap(config.getClusterName())));
+              this.veniceHelixAdmin.getExecutionIdAccessor(),
+              this.veniceHelixAdmin.getControllerClientMap(config.getClusterName())));
       perStoreAdminLocks.put(cluster, new ConcurrentHashMap<>());
       perClusterAdminLocks.put(cluster, new ReentrantLock());
     }
     this.pushStrategyZKAccessor = new MigrationPushStrategyZKAccessor(
-        getVeniceHelixAdmin().getZkClient(),
-        getVeniceHelixAdmin().getAdapterSerializer());
-    this.maxErroredTopicNumToKeep = getMultiClusterConfigs().getParentControllerMaxErroredTopicNumToKeep();
+        this.veniceHelixAdmin.getZkClient(),
+        this.veniceHelixAdmin.getAdapterSerializer());
+    this.maxErroredTopicNumToKeep = this.multiClusterConfigs.getParentControllerMaxErroredTopicNumToKeep();
     this.offlinePushAccessor = new ParentHelixOfflinePushAccessor(
-        getVeniceHelixAdmin().getZkClient(),
-        getVeniceHelixAdmin().getAdapterSerializer());
+        this.veniceHelixAdmin.getZkClient(),
+        this.veniceHelixAdmin.getAdapterSerializer());
     terminalStateTopicChecker = new TerminalStateTopicCheckerForParentController(
         this,
-        getVeniceHelixAdmin().getStoreConfigRepo(),
-        getMultiClusterConfigs().getTerminalStateTopicCheckerDelayMs());
+        this.veniceHelixAdmin.getStoreConfigRepo(),
+        this.multiClusterConfigs.getTerminalStateTopicCheckerDelayMs());
     topicCheckerExecutor.submit(terminalStateTopicChecker);
     systemStoreAclSynchronizationTask =
         authorizerService
@@ -424,7 +430,7 @@ public class VeniceParentHelixAdmin implements Admin {
                 service -> new SystemStoreAclSynchronizationTask(
                     service,
                     this,
-                    getMultiClusterConfigs().getSystemStoreAclSynchronizationDelayMs()))
+                    this.multiClusterConfigs.getSystemStoreAclSynchronizationDelayMs()))
             .orElse(null);
     if (systemStoreAclSynchronizationTask != null) {
       systemStoreAclSynchronizationExecutor.submit(systemStoreAclSynchronizationTask);
@@ -494,7 +500,11 @@ public class VeniceParentHelixAdmin implements Admin {
        * 2. Data out of order;
        * 3. Data duplication;
        */
-      return getVeniceWriterFactory().createBasicVeniceWriter(topicName, getTimer());
+      VeniceWriterOptions options = new VeniceWriterOptions.Builder(topicName).setTime(getTimer())
+          .setPartitionCount(Optional.of(AdminTopicUtils.PARTITION_NUM_FOR_ADMIN_TOPIC))
+          .build();
+
+      return getVeniceWriterFactory().createVeniceWriter(options);
     });
 
     if (!getMultiClusterConfigs().getPushJobStatusStoreClusterName().isEmpty()
@@ -1145,14 +1155,14 @@ public class VeniceParentHelixAdmin implements Admin {
   * For the 1st case, it is expected to refuse the new data push,
   * and for the 2nd case, customer should reach out Venice team to fix this issue for now.
   **/
-  List<String> existingTopicsForStore(String storeName) {
+  List<String> existingVersionTopicsForStore(String storeName) {
     List<String> outputList = new ArrayList<>();
     TopicManager topicManager = getTopicManager();
     Set<String> topics = topicManager.listTopics();
     String storeNameForCurrentTopic;
     for (String topic: topics) {
       if (AdminTopicUtils.isAdminTopic(topic) || AdminTopicUtils.isKafkaInternalTopic(topic)
-          || Version.isRealTimeTopic(topic)) {
+          || Version.isRealTimeTopic(topic) || VeniceView.isViewTopic(topic)) {
         continue;
       }
       try {
@@ -1175,7 +1185,7 @@ public class VeniceParentHelixAdmin implements Admin {
    * @return the version topics in freshness order
    */
   List<String> getKafkaTopicsByAge(String storeName) {
-    List<String> existingTopics = existingTopicsForStore(storeName);
+    List<String> existingTopics = existingVersionTopicsForStore(storeName);
     if (!existingTopics.isEmpty()) {
       existingTopics.sort((t1, t2) -> {
         int v1 = Version.parseVersionFromKafkaTopicName(t1);
@@ -1358,7 +1368,6 @@ public class VeniceParentHelixAdmin implements Admin {
    * Test if the given certificate has the write-access permission for the given batch-job heartbeat store.
    * @param requesterCert X.509 certificate object.
    * @param batchJobHeartbeatStoreName name of the batch-job heartbeat store.
-   * @param identityParser a parser object to retrieve identity information from a certificate.
    * @return <code>true</code> if input certificate has write-access permission for the given store;
    *         <code>false</code> otherwise.
    * @throws AclException
@@ -2190,6 +2199,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<CompressionStrategy> compressionStrategy = params.getCompressionStrategy();
       Optional<Boolean> clientDecompressionEnabled = params.getClientDecompressionEnabled();
       Optional<Boolean> chunkingEnabled = params.getChunkingEnabled();
+      Optional<Boolean> rmdChunkingEnabled = params.getRmdChunkingEnabled();
       Optional<Integer> batchGetLimit = params.getBatchGetLimit();
       Optional<Integer> numVersionsToPreserve = params.getNumVersionsToPreserve();
       Optional<Boolean> incrementalPushEnabled = params.getIncrementalPushEnabled();
@@ -2235,43 +2245,18 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.clusterName = clusterName;
       setStore.storeName = storeName;
       setStore.owner = owner.map(addToUpdatedConfigList(updatedConfigsList, OWNER)).orElseGet(currStore::getOwner);
-      setStore.incrementalPushPolicy = IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME.getValue();
 
       // Invalid config update on hybrid will not be populated to admin channel so subsequent updates on the store won't
       // be blocked by retry mechanism.
-      if (currStore.isHybrid()) {
-        // Update-store message copied to the other cluster during store migration also has partitionCount.
-        // Allow updating store if the partitionCount is equal to the existing value.
-        if (partitionCount.isPresent() && partitionCount.get() != currStore.getPartitionCount()) {
-          String errorMessage = errorMessagePrefix + "Cannot change partition count for hybrid stores";
-          LOGGER.error(errorMessage);
-          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.BAD_REQUEST);
-        }
-        if (partitionerClass.isPresent() || partitionerParams.isPresent()) {
-          String errorMessage = errorMessagePrefix + "Cannot change partitioner class and parameters for hybrid stores";
-          LOGGER.error(errorMessage);
-          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.BAD_REQUEST);
-        }
+      if (currStore.isHybrid() && (partitionerClass.isPresent() || partitionerParams.isPresent())) {
+        String errorMessage = errorMessagePrefix + "Cannot change partitioner class and parameters for hybrid stores";
+        LOGGER.error(errorMessage);
+        throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.BAD_REQUEST);
       }
 
       if (partitionCount.isPresent()) {
+        getVeniceHelixAdmin().preCheckStorePartitionCountUpdate(clusterName, currStore, partitionCount.get());
         setStore.partitionNum = partitionCount.get();
-        int maxPartitionNum =
-            getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getConfig().getMaxNumberOfPartition();
-        if (setStore.partitionNum > maxPartitionNum) {
-          String errorMessage = errorMessagePrefix + "Partition count: " + partitionCount + " should be less than max: "
-              + maxPartitionNum;
-          LOGGER.error(errorMessage);
-          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, errorMessage, ErrorType.INVALID_CONFIG);
-        }
-        if (setStore.partitionNum < 0) {
-          String errorMessage = errorMessagePrefix + "Partition count: " + partitionCount + " should NOT be negative";
-          LOGGER.error(errorMessage);
-          throw new VeniceHttpException(
-              HttpStatus.SC_BAD_REQUEST,
-              "Partition count: " + partitionCount + " should NOT be negative",
-              ErrorType.INVALID_CONFIG);
-        }
         updatedConfigsList.add(PARTITION_COUNT);
       } else {
         setStore.partitionNum = currStore.getPartitionCount();
@@ -2302,6 +2287,7 @@ public class VeniceParentHelixAdmin implements Admin {
         Map<String, StoreViewConfigRecord> mergedViewSettings =
             VeniceHelixAdmin.mergeNewViewConfigsIntoOldConfigs(currStore, storeViewConfig.get());
         setStore.views = mergedViewSettings;
+        updatedConfigsList.add(STORE_VIEW);
       }
 
       // Only update fields that are set, other fields will be read from the original store's partitioner config.
@@ -2399,8 +2385,20 @@ public class VeniceParentHelixAdmin implements Admin {
           && !veniceHelixAdmin.isHybrid(currStore.getHybridStoreConfig())
           && !veniceHelixAdmin.isHybrid(hybridStoreConfig)) {
         LOGGER.info(
-            "Enabling incremental push for a batch store:{} will convert it to a hybrid store with default configs.",
+            "Enabling incremental push for a batch store:{}. Converting it to a hybrid store with default configs.",
             storeName);
+        HybridStoreConfigRecord hybridStoreConfigRecord = new HybridStoreConfigRecord();
+        hybridStoreConfigRecord.rewindTimeInSeconds = DEFAULT_REWIND_TIME_IN_SECONDS;
+        updatedConfigsList.add(REWIND_TIME_IN_SECONDS);
+        hybridStoreConfigRecord.offsetLagThresholdToGoOnline = DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD;
+        updatedConfigsList.add(OFFSET_LAG_TO_GO_ONLINE);
+        hybridStoreConfigRecord.producerTimestampLagThresholdToGoOnlineInSeconds = DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
+        updatedConfigsList.add(TIME_LAG_TO_GO_ONLINE);
+        hybridStoreConfigRecord.dataReplicationPolicy = DataReplicationPolicy.NONE.getValue();
+        updatedConfigsList.add(DATA_REPLICATION_POLICY);
+        hybridStoreConfigRecord.bufferReplayPolicy = BufferReplayPolicy.REWIND_FROM_EOP.getValue();
+        updatedConfigsList.add(BUFFER_REPLAY_POLICY);
+        setStore.hybridStoreConfig = hybridStoreConfigRecord;
       }
 
       /**
@@ -2408,7 +2406,6 @@ public class VeniceParentHelixAdmin implements Admin {
        * do append-only and compaction will happen later.
        * We expose actual disk usage to users, instead of multiplying/dividing the overhead ratio by situations.
        */
-
       setStore.storageQuotaInByte =
           storageQuotaInByte.map(addToUpdatedConfigList(updatedConfigsList, STORAGE_QUOTA_IN_BYTE))
               .orElseGet(currStore::getStorageQuotaInByte);
@@ -2424,6 +2421,9 @@ public class VeniceParentHelixAdmin implements Admin {
               .orElseGet(currStore::getClientDecompressionEnabled);
       setStore.chunkingEnabled = chunkingEnabled.map(addToUpdatedConfigList(updatedConfigsList, CHUNKING_ENABLED))
           .orElseGet(currStore::isChunkingEnabled);
+      setStore.rmdChunkingEnabled =
+          rmdChunkingEnabled.map(addToUpdatedConfigList(updatedConfigsList, RMD_CHUNKING_ENABLED))
+              .orElseGet(currStore::isRmdChunkingEnabled);
       setStore.batchGetLimit = batchGetLimit.map(addToUpdatedConfigList(updatedConfigsList, BATCH_GET_LIMIT))
           .orElseGet(currStore::getBatchGetLimit);
       setStore.numVersionsToPreserve =
@@ -2555,6 +2555,19 @@ public class VeniceParentHelixAdmin implements Admin {
         addWriteComputeSchemaForStore(clusterName, storeName, true);
       }
 
+      if (!veniceHelixAdmin.isHybrid(currStore.getHybridStoreConfig())
+          && veniceHelixAdmin.isHybrid(setStore.hybridStoreConfig) && setStore.partitionNum == 0) {
+        // This is a new hybrid store and partition count is not specified. Use default hybrid store partition count.
+        setStore.partitionNum = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName)
+            .getConfig()
+            .getNumberOfPartitionForHybrid();
+        LOGGER.info(
+            "Enforcing default hybrid partition count:{} for a new hybrid store:{}.",
+            setStore.partitionNum,
+            storeName);
+        updatedConfigsList.add(PARTITION_COUNT);
+      }
+
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.UPDATE_STORE.getValue();
       message.payloadUnion = setStore;
@@ -2599,11 +2612,24 @@ public class VeniceParentHelixAdmin implements Admin {
 
   private void addWriteComputeSchemaForStore(String clusterName, String storeName, boolean dryRun) {
     Collection<SchemaEntry> valueSchemaEntries = getValueSchemas(clusterName, storeName);
+
     List<SchemaEntry> writeComputeSchemaEntries = new ArrayList<>(valueSchemaEntries.size());
+    int maxId = valueSchemaEntries.stream().map(SchemaEntry::getId).max(Comparator.naturalOrder()).get();
+
     for (SchemaEntry valueSchemaEntry: valueSchemaEntries) {
-      Schema writeComputeSchema =
-          writeComputeSchemaConverter.convertFromValueRecordSchema(valueSchemaEntry.getSchema());
-      writeComputeSchemaEntries.add(new SchemaEntry(valueSchemaEntry.getId(), writeComputeSchema));
+      try {
+        Schema writeComputeSchema =
+            writeComputeSchemaConverter.convertFromValueRecordSchema(valueSchemaEntry.getSchema());
+        writeComputeSchemaEntries.add(new SchemaEntry(valueSchemaEntry.getId(), writeComputeSchema));
+      } catch (Exception e) {
+        // Allow failure in write-compute schema generation in all schema except the latest value schema
+        if (valueSchemaEntry.getId() == maxId) {
+          throw new VeniceException(
+              "For store " + storeName + " cannot generate update schema for value schema ID :"
+                  + valueSchemaEntry.getId() + ", top level field probably missing defaults.",
+              e);
+        }
+      }
     }
     // Start adding write compute schemas only after all write compute schema generation is successful.
     if (dryRun) {
@@ -2737,6 +2763,9 @@ public class VeniceParentHelixAdmin implements Admin {
       DirectionalSchemaCompatibilityType expectedCompatibilityType) {
     acquireAdminMessageLock(clusterName, storeName);
     try {
+      Schema newValueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(newValueSchemaStr);
+      // TODO: Enable the following check for all new schema registration.
+      // AvroSchemaUtils.validateTopLevelFieldDefaultsValueRecordSchema(newValueSchema);
       final int newValueSchemaId = getVeniceHelixAdmin().checkPreConditionForAddValueSchemaAndGetNewSchemaId(
           clusterName,
           storeName,
@@ -2758,7 +2787,6 @@ public class VeniceParentHelixAdmin implements Admin {
 
       final boolean doUpdateSupersetSchemaID;
       if (existingValueSchema != null && (store.isReadComputationEnabled() || store.isWriteComputationEnabled())) {
-        Schema newValueSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(newValueSchemaStr);
         Schema newSuperSetSchema = AvroSupersetSchemaUtils.generateSuperSetSchema(existingValueSchema, newValueSchema);
         String newSuperSetSchemaStr = newSuperSetSchema.toString();
 
@@ -4441,18 +4469,13 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * @return the largest used version number by the given store.
+   * @return the largest used version number for the given store from the store graveyard.
    */
   @Override
-  public int getStoreLargestUsedVersion(String clusterName, String storeName) {
+  public int getLargestUsedVersionFromStoreGraveyard(String clusterName, String storeName) {
     Map<String, ControllerClient> childControllers = getVeniceHelixAdmin().getControllerClientMap(clusterName);
-    int aggregatedLargestUsedVersionNumber;
-    if (hasStore(clusterName, storeName)) {
-      aggregatedLargestUsedVersionNumber = getStore(clusterName, storeName).getLargestUsedVersionNumber();
-    } else {
-      aggregatedLargestUsedVersionNumber =
-          getVeniceHelixAdmin().getStoreGraveyard().getLargestUsedVersionNumber(storeName);
-    }
+    int aggregatedLargestUsedVersionNumber =
+        getVeniceHelixAdmin().getStoreGraveyard().getLargestUsedVersionNumber(storeName);
     for (Map.Entry<String, ControllerClient> controller: childControllers.entrySet()) {
       VersionResponse response = controller.getValue().getStoreLargestUsedVersion(clusterName, storeName);
       if (response.getVersion() > aggregatedLargestUsedVersionNumber) {
@@ -4473,7 +4496,7 @@ public class VeniceParentHelixAdmin implements Admin {
    * Unsupported operation in the parent controller.
    */
   @Override
-  public RegionPushDetails getRegionPushDetails(String clusterName, String storeName) {
+  public RegionPushDetails getRegionPushDetails(String clusterName, String storeName, boolean isPartitionDetailAdded) {
     throw new UnsupportedOperationException("This function has no implementation.");
   }
 
@@ -4482,18 +4505,22 @@ public class VeniceParentHelixAdmin implements Admin {
    * push jobs for that store across all regions.
    */
   @Override
-  public Map<String, RegionPushDetails> listStorePushInfo(String clusterName, String storeName) {
+  public Map<String, RegionPushDetails> listStorePushInfo(
+      String clusterName,
+      String storeName,
+      boolean isPartitionDetailEnabled) {
     Map<String, RegionPushDetails> retMap = new HashMap<>();
-
     try {
       Map<String, ControllerClient> controllerClientMap = getVeniceHelixAdmin().getControllerClientMap(clusterName);
       for (Map.Entry<String, ControllerClient> entry: controllerClientMap.entrySet()) {
-        RegionPushDetailsResponse details = entry.getValue().getRegionPushDetails(storeName, clusterName);
-        if (details != null && details.getRegionPushDetails() != null) {
-          retMap.put(entry.getKey(), details.getRegionPushDetails());
-          retMap.get(entry.getKey()).setRegionName(entry.getKey());
+        RegionPushDetailsResponse detailsResp =
+            entry.getValue().getRegionPushDetails(storeName, isPartitionDetailEnabled);
+        if (detailsResp != null && detailsResp.getRegionPushDetails() != null) {
+          detailsResp.getRegionPushDetails().setRegionName(entry.getKey());
+          retMap.put(entry.getKey(), detailsResp.getRegionPushDetails());
         }
       }
+
     } catch (Exception e) {
       throw new VeniceException("Something went wrong trying to get store push info. ", e);
     }

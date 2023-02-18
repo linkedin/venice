@@ -55,6 +55,7 @@ import org.apache.samza.util.SinglePartitionWithoutOffsetsSystemAdmin;
  */
 
 public class VeniceSystemFactory implements SystemFactory, Serializable {
+  private static final long serialVersionUID = 1L;
   private static final Logger LOGGER = LogManager.getLogger(VeniceSystemFactory.class);
 
   public static final String LEGACY_CHILD_D2_ZK_HOSTS_PROPERTY = "__r2d2DefaultClient__.r2d2Client.zkHosts";
@@ -190,6 +191,48 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
       Optional<String> partitioners) {
     return createSystemProducer(
         primaryControllerColoD2ZKHost,
+        primaryControllerColoD2ZKHost,
+        primaryControllerD2Service,
+        storeName,
+        venicePushType,
+        samzaJobId,
+        runningFabric,
+        verifyLatestProtocolPresent,
+        config,
+        sslFactory,
+        partitioners);
+  }
+
+  /**
+   * Construct a new instance of {@link VeniceSystemProducer}
+   * @param veniceChildD2ZkHost D2 Zk Address where the components in the child colo are announcing themselves
+   * @param primaryControllerColoD2ZKHost D2 Zk Address of the colo where the primary controller resides
+   * @param primaryControllerD2ServiceName The service name that the primary controller uses to announce itself to D2
+   * @param storeName The store to write to
+   * @param pushType The {@link PushType} to use to write to the store
+   * @param samzaJobId A unique id used to identify jobs that can concurrently write to the same store
+   * @param runningFabric The colo where the job is running. It is used to find the best destination for the data to be written to
+   * @param verifyLatestProtocolPresent Config to check whether the protocol versions used at runtime are valid in Venice backend
+   * @param factory The {@link VeniceSystemFactory} object that was used to create this object
+   * @param config A Config object that may be used by the factory implementation to create an overridden SystemProducer instance
+   * @param sslFactory An optional {@link SSLFactory} that is used to communicate with other components using SSL
+   * @param partitioners A list of comma-separated partitioners class names that are supported.
+   */
+  @SuppressWarnings("unused")
+  protected SystemProducer createSystemProducer(
+      String veniceChildD2ZkHost,
+      String primaryControllerColoD2ZKHost,
+      String primaryControllerD2Service,
+      String storeName,
+      Version.PushType venicePushType,
+      String samzaJobId,
+      String runningFabric,
+      boolean verifyLatestProtocolPresent,
+      Config config,
+      Optional<SSLFactory> sslFactory,
+      Optional<String> partitioners) {
+    return createSystemProducer(
+        veniceChildD2ZkHost,
         primaryControllerColoD2ZKHost,
         primaryControllerD2Service,
         storeName,
@@ -354,6 +397,8 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
         samzaJobId,
         runningFabric,
         verifyLatestProtocolPresent,
+        config, // Although we don't use this config in our default implementation, overridden implementations might
+                // need this
         sslFactory,
         partitioners);
     this.systemProducerStatues.computeIfAbsent(systemProducer, k -> Pair.create(true, false));
