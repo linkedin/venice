@@ -3,6 +3,7 @@ package com.linkedin.venice.datarecovery;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreInfo;
 import java.util.Scanner;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -11,22 +12,20 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-public class Client {
-  private static final Logger LOGGER = LogManager.getLogger(Client.class);
+public class DataRecoveryClient {
+  private static final Logger LOGGER = LogManager.getLogger(DataRecoveryClient.class);
   private final static String STORE_NAME_SEPARATOR = "[,:]+";
-  private ControllerClient controllerClient;
-  private Module executor;
+  private final DataRecoveryModule executor;
 
-  public Client(ControllerClient controllerClient) {
-    this(controllerClient, new Module());
+  public DataRecoveryClient() {
+    this(new DataRecoveryModule());
   }
 
-  public Client(ControllerClient controllerClient, Module module) {
-    this.controllerClient = controllerClient;
+  public DataRecoveryClient(DataRecoveryModule module) {
     this.executor = module;
   }
 
-  public Module getExecutor() {
+  public DataRecoveryModule getExecutor() {
     return executor;
   }
 
@@ -48,21 +47,20 @@ public class Client {
     LOGGER.info("Recover " + storeNames.size() + " stores, please confirm (yes/no) [y/n]:");
     Scanner in = new Scanner(System.in);
     String line = in.nextLine();
-    if (line.toLowerCase().equals("yes") || line.toLowerCase().equals("y")) {
-      return true;
-    }
-    return false;
+    return line.equalsIgnoreCase("yes") || line.equalsIgnoreCase("y");
   }
 
-  public class OperationLevel {
-    private String multiStores;
+  public static class OperationLevel {
+    private ControllerClient controllerClient;
+    private final String multiStores;
     private String clusterName;
 
     public OperationLevel(String multiStores) {
       this.multiStores = multiStores;
     }
 
-    public OperationLevel(String multiStores, String clusterName) {
+    public OperationLevel(ControllerClient controllerClient, String multiStores, String clusterName) {
+      this.controllerClient = controllerClient;
       this.multiStores = multiStores;
       this.clusterName = clusterName;
     }
@@ -75,8 +73,8 @@ public class Client {
         MultiStoreInfoResponse status = controllerClient.getClusterStores(clusterName);
         storeNames = status.getStoreInfoList()
             .stream()
-            .filter(storeInfo -> !Store.isSystemStore(storeInfo.getName()))
-            .map(storeInfo -> storeInfo.getName())
+            .map(StoreInfo::getName)
+            .filter(name -> !Store.isSystemStore(name))
             .collect(Collectors.toSet());
       }
       return storeNames;

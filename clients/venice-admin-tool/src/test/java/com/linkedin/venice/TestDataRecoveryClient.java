@@ -6,10 +6,10 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 
-import com.linkedin.venice.datarecovery.Client;
-import com.linkedin.venice.datarecovery.Module;
+import com.linkedin.venice.datarecovery.DataRecoveryClient;
+import com.linkedin.venice.datarecovery.DataRecoveryModule;
+import com.linkedin.venice.datarecovery.DataRecoveryTask;
 import com.linkedin.venice.datarecovery.StoreRepushCommand;
-import com.linkedin.venice.datarecovery.Task;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -20,8 +20,7 @@ import org.testng.annotations.Test;
 
 
 public class TestDataRecoveryClient {
-  private Module executor;
-  private Client client;
+  private DataRecoveryModule executor;
 
   @Test
   public void testExecutor() {
@@ -32,17 +31,18 @@ public class TestDataRecoveryClient {
   }
 
   private void verifyRecoveryResults(boolean isSuccess) {
-    Assert.assertEquals(executor.getTasks().size(), 3);
+    int numOfStores = 3;
+    Assert.assertEquals(executor.getTasks().size(), numOfStores);
     if (isSuccess) {
       // Verify all stores are executed successfully.
-      Assert.assertFalse(executor.getTasks().get(0).getTaskResult().isError());
-      Assert.assertFalse(executor.getTasks().get(1).getTaskResult().isError());
-      Assert.assertFalse(executor.getTasks().get(2).getTaskResult().isError());
+      for (int i = 0; i < numOfStores; i++) {
+        Assert.assertFalse(executor.getTasks().get(i).getTaskResult().isError());
+      }
     } else {
-      // Verify all stores are executed successfully.
-      Assert.assertTrue(executor.getTasks().get(0).getTaskResult().isError());
-      Assert.assertTrue(executor.getTasks().get(1).getTaskResult().isError());
-      Assert.assertTrue(executor.getTasks().get(2).getTaskResult().isError());
+      // Verify all stores are executed unsuccessfully.
+      for (int i = 0; i < numOfStores; i++) {
+        Assert.assertTrue(executor.getTasks().get(i).getTaskResult().isError());
+      }
     }
   }
 
@@ -51,8 +51,8 @@ public class TestDataRecoveryClient {
     cmdParams.setFabricGroup("ei");
 
     // Partial mock of Module class to take password from console input.
-    executor = spy(Module.class);
-    doReturn("test").when(executor).getPasswordVIP();
+    executor = spy(DataRecoveryModule.class);
+    doReturn("test").when(executor).getUserCredentials();
 
     // Mock command to mimic a successful repush result.
     List<String> mockCmd = new ArrayList<>();
@@ -60,7 +60,7 @@ public class TestDataRecoveryClient {
     mockCmd.add("-c");
 
     if (isSuccess) {
-      mockCmd.add("echo \"https://ltx1-faroaz01.grid.linkedin.com:8443/executor?execid=21585379\"");
+      mockCmd.add("echo \"https://example.com/executor?execid=21585379\"");
     } else {
       mockCmd.add(
           "echo \"Could not fetch session information from Azkaban. Response: {'error': 'Incorrect Login. Username/Password+VIP not found.'}\"");
@@ -71,23 +71,26 @@ public class TestDataRecoveryClient {
 
     // Inject the mocked command into the running system.
     Set<String> storeName = new HashSet<>(Arrays.asList("store1", "store2", "store3"));
-    List<Task> tasks = buildTasks(storeName, mockStoreRepushCmd, cmdParams);
+    List<DataRecoveryTask> tasks = buildTasks(storeName, mockStoreRepushCmd, cmdParams);
     doReturn(tasks).when(executor).buildTasks(any(), any());
 
     // Partial mock of Client class to confirm to-be-repushed stores from standard input.
-    client = mock(Client.class);
-    doReturn(executor).when(client).getExecutor();
-    doCallRealMethod().when(client).execute(any(), any());
-    doReturn(true).when(client).confirmStores(any());
+    DataRecoveryClient dataRecoveryClient = mock(DataRecoveryClient.class);
+    doReturn(executor).when(dataRecoveryClient).getExecutor();
+    doCallRealMethod().when(dataRecoveryClient).execute(any(), any());
+    doReturn(true).when(dataRecoveryClient).confirmStores(any());
     // client executes three store recovery.
-    client.execute(client.new OperationLevel("store1,store2,store3"), cmdParams);
+    dataRecoveryClient.execute(new DataRecoveryClient.OperationLevel("store1,store2,store3"), cmdParams);
   }
 
-  private List<Task> buildTasks(Set<String> storeNames, StoreRepushCommand cmd, StoreRepushCommand.Params params) {
-    List<Task> tasks = new ArrayList<>();
+  private List<DataRecoveryTask> buildTasks(
+      Set<String> storeNames,
+      StoreRepushCommand cmd,
+      StoreRepushCommand.Params params) {
+    List<DataRecoveryTask> tasks = new ArrayList<>();
     for (String name: storeNames) {
-      Task.TaskParams taskParams = new Task.TaskParams(name, params);
-      tasks.add(new Task(cmd, taskParams));
+      DataRecoveryTask.TaskParams taskParams = new DataRecoveryTask.TaskParams(name, params);
+      tasks.add(new DataRecoveryTask(cmd, taskParams));
     }
     return tasks;
   }

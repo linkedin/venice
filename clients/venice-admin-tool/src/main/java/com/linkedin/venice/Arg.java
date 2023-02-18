@@ -241,7 +241,8 @@ public enum Arg {
   PROGRESS_INTERVAL("progress-interval", "pi", true, "Dump progress after processing this number of messages"),
 
   STORAGE_PERSONA("storage-persona", "sp", true, "Name of Storage Persona"),
-  DEBUG("debug", "d", false, "Print debugging messages");
+  RECOVERY_COMMAND("recovery-command", "rc", true, "command to execute the data recovery"),
+  DEBUG("debug", "d", false, "Print debugging messages for execute-data-recovery");
 
   private final String argName;
   private final String first;

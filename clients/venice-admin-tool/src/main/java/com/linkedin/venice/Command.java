@@ -17,6 +17,7 @@ import static com.linkedin.venice.Arg.CLUSTER;
 import static com.linkedin.venice.Arg.CLUSTER_DEST;
 import static com.linkedin.venice.Arg.CLUSTER_SRC;
 import static com.linkedin.venice.Arg.COMPRESSION_STRATEGY;
+import static com.linkedin.venice.Arg.DEBUG;
 import static com.linkedin.venice.Arg.DERIVED_SCHEMA;
 import static com.linkedin.venice.Arg.DERIVED_SCHEMA_ID;
 import static com.linkedin.venice.Arg.DEST_FABRIC;
@@ -29,6 +30,7 @@ import static com.linkedin.venice.Arg.EXPECTED_ROUTER_COUNT;
 import static com.linkedin.venice.Arg.FABRIC;
 import static com.linkedin.venice.Arg.FABRIC_A;
 import static com.linkedin.venice.Arg.FABRIC_B;
+import static com.linkedin.venice.Arg.FABRIC_GROUP;
 import static com.linkedin.venice.Arg.FORCE;
 import static com.linkedin.venice.Arg.FUTURE_VERSION_ETL_ENABLED;
 import static com.linkedin.venice.Arg.HYBRID_BUFFER_REPLAY_POLICY;
@@ -70,6 +72,7 @@ import static com.linkedin.venice.Arg.PUSH_STREAM_SOURCE_ADDRESS;
 import static com.linkedin.venice.Arg.READABILITY;
 import static com.linkedin.venice.Arg.READ_COMPUTATION_ENABLED;
 import static com.linkedin.venice.Arg.READ_QUOTA;
+import static com.linkedin.venice.Arg.RECOVERY_COMMAND;
 import static com.linkedin.venice.Arg.REGIONS_FILTER;
 import static com.linkedin.venice.Arg.REGULAR_VERSION_ETL_ENABLED;
 import static com.linkedin.venice.Arg.REPLICATE_ALL_CONFIGS;
@@ -438,9 +441,9 @@ public enum Command {
       "cleanup-instance-customized-states", "Cleanup any lingering instance level customized states",
       new Arg[] { URL, CLUSTER }
   ),
-  DATA_RECOVERY_EXECUTE(
-      "data-recovery-execute", "Trigger data recovery executor module", new Arg[] { URL, CLUSTER },
-      new Arg[] { FABRIC, STORE }
+  EXECUTE_DATA_RECOVERY(
+      "execute-data-recovery", "Trigger data recovery for a group of stores",
+      new Arg[] { URL, CLUSTER, RECOVERY_COMMAND }, new Arg[] { FABRIC, STORE, FABRIC_GROUP, DEBUG }
   );
 
   private final String commandName;

@@ -18,7 +18,6 @@ import org.apache.logging.log4j.Logger;
 
 public class StoreRepushCommand {
   private static final Logger LOGGER = LogManager.getLogger(StoreRepushCommand.class);
-  private static final String VENICE_TOOLS = "venice-tools";
   private static final String REPUSH_MODULE = "repush";
   private static final String REPUSH_SOURCE_KAFKA = "kafka";
 
@@ -51,7 +50,7 @@ public class StoreRepushCommand {
 
   private List<String> generateRepushCommand() {
     List<String> cmd = new ArrayList<>();
-    cmd.add(VENICE_TOOLS);
+    cmd.add(this.params.command);
     cmd.add(REPUSH_MODULE);
     cmd.add(REPUSH_SOURCE_KAFKA);
 
@@ -146,9 +145,10 @@ public class StoreRepushCommand {
       Process process = pb.start();
       reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
       String line;
-      StringBuffer buf = new StringBuffer();
+      StringBuilder buf = new StringBuilder();
       while ((line = reader.readLine()) != null) {
-        buf.append(line + "\n");
+        buf.append(line);
+        buf.append('\n');
       }
       stdOut = buf.toString();
       // remove trailing white spaces and new lines.
@@ -184,6 +184,8 @@ public class StoreRepushCommand {
   }
 
   public static class Params {
+    // command name;
+    private String command;
     // Fabric to recover data from, must be used with --force.
     private String fabric;
     // Rewind time to trigger the store with.
@@ -250,6 +252,10 @@ public class StoreRepushCommand {
 
     public void setDebug(boolean debug) {
       this.debug = debug;
+    }
+
+    public void setCommand(String cmd) {
+      this.command = cmd;
     }
   }
 
@@ -333,7 +339,7 @@ public class StoreRepushCommand {
     }
 
     private boolean matchAzkabanSuccessPattern() {
-      // Success: (example) https://ltx1-faroaz01.grid.linkedin.com:8443/executor?execid=21585379
+      // Success: (example) https://example.com/executor?execid=21585379
       String successPattern = "^https(.*)execid(.*)$";
       Pattern pattern = Pattern.compile(successPattern, Pattern.CASE_INSENSITIVE | Pattern.MULTILINE);
       Matcher matcher = pattern.matcher(stdOut);

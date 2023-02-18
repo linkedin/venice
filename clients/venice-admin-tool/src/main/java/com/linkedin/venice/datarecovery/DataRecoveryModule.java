@@ -16,25 +16,25 @@ import org.apache.logging.log4j.Logger;
 /**
  * Module is the engine to run Tasks in data recovery.
  */
-public class Module {
-  private final Logger LOGGER = LogManager.getLogger(Module.class);
+public class DataRecoveryModule {
+  private final Logger LOGGER = LogManager.getLogger(DataRecoveryModule.class);
   private final static int DEFAULT_POOL_SIZE = 10;
   private final static int DEFAULT_POOL_TIMEOUT_IN_SECONDS = 30;
   private final int poolSize;
   private final ExecutorService pool;
-  private List<Task> tasks;
+  private List<DataRecoveryTask> tasks;
 
-  public Module() {
+  public DataRecoveryModule() {
     this(DEFAULT_POOL_SIZE);
   }
 
-  public Module(int poolSize) {
+  public DataRecoveryModule(int poolSize) {
     this.poolSize = poolSize;
     this.pool = Executors.newFixedThreadPool(this.poolSize);
   }
 
   public void perform(Set<String> storeNames, StoreRepushCommand.Params params) {
-    String pass = getPasswordVIP();
+    String pass = getUserCredentials();
     if (pass == null) {
       LOGGER.error("Cannot get password, exit");
       return;
@@ -42,8 +42,9 @@ public class Module {
     params.setPassword(pass);
 
     tasks = buildTasks(storeNames, params);
-    List<CompletableFuture<Void>> taskFutures =
-        tasks.stream().map(task -> CompletableFuture.runAsync(task, pool)).collect(Collectors.toList());
+    List<CompletableFuture<Void>> taskFutures = tasks.stream()
+        .map(dataRecoveryTask -> CompletableFuture.runAsync(dataRecoveryTask, pool))
+        .collect(Collectors.toList());
     taskFutures.stream().map(CompletableFuture::join).collect(Collectors.toList());
     displayTaskResult();
 
@@ -63,16 +64,16 @@ public class Module {
     }
   }
 
-  public List<Task> buildTasks(Set<String> storeNames, StoreRepushCommand.Params params) {
-    List<Task> tasks = new ArrayList<>();
+  public List<DataRecoveryTask> buildTasks(Set<String> storeNames, StoreRepushCommand.Params params) {
+    List<DataRecoveryTask> tasks = new ArrayList<>();
     for (String name: storeNames) {
-      Task.TaskParams taskParams = new Task.TaskParams(name, params);
-      tasks.add(new Task(taskParams));
+      DataRecoveryTask.TaskParams taskParams = new DataRecoveryTask.TaskParams(name, params);
+      tasks.add(new DataRecoveryTask(taskParams));
     }
     return tasks;
   }
 
-  public String getPasswordVIP() {
+  public String getUserCredentials() {
     Console console = System.console();
     if (console == null) {
       LOGGER.warn("System.console is null");
@@ -84,16 +85,18 @@ public class Module {
   }
 
   private void displayTaskResult() {
-    for (Task task: tasks) {
+    for (DataRecoveryTask dataRecoveryTask: tasks) {
       LOGGER.info(
           "[store: {}, status: {}, message: {}]",
-          task.getTaskParams().getStore(),
-          task.getTaskResult().isError() ? "failed" : "started",
-          task.getTaskResult().isError() ? task.getTaskResult().getError() : task.getTaskResult().getMessage());
+          dataRecoveryTask.getTaskParams().getStore(),
+          dataRecoveryTask.getTaskResult().isError() ? "failed" : "started",
+          dataRecoveryTask.getTaskResult().isError()
+              ? dataRecoveryTask.getTaskResult().getError()
+              : dataRecoveryTask.getTaskResult().getMessage());
     }
   }
 
-  public List<Task> getTasks() {
+  public List<DataRecoveryTask> getTasks() {
     return tasks;
   }
 }

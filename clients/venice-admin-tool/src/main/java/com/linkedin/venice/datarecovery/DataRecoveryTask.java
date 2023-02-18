@@ -3,16 +3,16 @@ package com.linkedin.venice.datarecovery;
 /**
  * A Task is wrapper class that designed to execute multiple commands in sequence.
  */
-public class Task implements Runnable {
+public class DataRecoveryTask implements Runnable {
   private final TaskParams taskParams;
   private final StoreRepushCommand command;
   private TaskResult taskResult;
 
-  public Task(TaskParams params) {
+  public DataRecoveryTask(TaskParams params) {
     this(new StoreRepushCommand(params.getStore(), params.getCmdParams()), params);
   }
 
-  public Task(StoreRepushCommand command, TaskParams params) {
+  public DataRecoveryTask(StoreRepushCommand command, TaskParams params) {
     this.taskParams = params;
     this.command = command;
   }
@@ -32,7 +32,7 @@ public class Task implements Runnable {
   }
 
   public static class TaskResult {
-    private StoreRepushCommand.Result cmdResult;
+    private final StoreRepushCommand.Result cmdResult;
 
     public TaskResult(StoreRepushCommand.Result cmdResult) {
       this.cmdResult = cmdResult;
@@ -54,7 +54,7 @@ public class Task implements Runnable {
   public static class TaskParams {
     // Store name.
     private final String store;
-    private StoreRepushCommand.Params cmdParams;
+    private final StoreRepushCommand.Params cmdParams;
 
     public TaskParams(String storeName, StoreRepushCommand.Params cmdParams) {
       this.store = storeName;
