@@ -1,7 +1,6 @@
 package com.linkedin.venice.unit.kafka.consumer.poll;
 
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
 import java.util.Arrays;
 import java.util.List;
@@ -28,7 +27,7 @@ public class RandomPollStrategy extends AbstractPollStrategy {
   }
 
   @Override
-  protected Pair<PubSubTopicPartition, Long> getNextPoll(Map<PubSubTopicPartition, Long> offsets) {
+  protected PubSubTopicPartitionOffset getNextPoll(Map<PubSubTopicPartition, Long> offsets) {
     if (offsets.isEmpty()) {
       Utils.sleep(50); // So that keepPollingWhenEmpty doesn't lead to 10 null polls per ms
       return null;
@@ -36,10 +35,10 @@ public class RandomPollStrategy extends AbstractPollStrategy {
     List<PubSubTopicPartition> PubSubTopicPartitionList =
         Arrays.asList(offsets.keySet().toArray(new PubSubTopicPartition[] {}));
     int numberOfPubSubTopicPartitions = offsets.size();
-    PubSubTopicPartition PubSubTopicPartition =
+    PubSubTopicPartition pubSubTopicPartition =
         PubSubTopicPartitionList.get((int) Math.round(Math.random() * (numberOfPubSubTopicPartitions - 1)));
-    Long offset = offsets.get(PubSubTopicPartition);
+    Long offset = offsets.get(pubSubTopicPartition);
 
-    return new Pair<>(PubSubTopicPartition, offset);
+    return new PubSubTopicPartitionOffset(pubSubTopicPartition, offset);
   }
 }

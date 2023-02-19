@@ -143,6 +143,7 @@ import com.linkedin.venice.unit.kafka.consumer.poll.CompositePollStrategy;
 import com.linkedin.venice.unit.kafka.consumer.poll.DuplicatingPollStrategy;
 import com.linkedin.venice.unit.kafka.consumer.poll.FilteringPollStrategy;
 import com.linkedin.venice.unit.kafka.consumer.poll.PollStrategy;
+import com.linkedin.venice.unit.kafka.consumer.poll.PubSubTopicPartitionOffset;
 import com.linkedin.venice.unit.kafka.consumer.poll.RandomPollStrategy;
 import com.linkedin.venice.unit.kafka.producer.MockInMemoryProducer;
 import com.linkedin.venice.unit.kafka.producer.TransformingProducer;
@@ -204,7 +205,6 @@ import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.producer.RecordMetadata;
-import org.apache.kafka.common.TopicPartition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.mockito.ArgumentCaptor;
@@ -926,8 +926,6 @@ public abstract class StoreIngestionTaskTest {
       StoreIngestionTask storeIngestionTask = invocation.getArgument(1, StoreIngestionTask.class);
       PubSubTopicPartition topicPartition = invocation.getArgument(2, PubSubTopicPartition.class);
       long offset = invocation.getArgument(3, Long.class);
-      TopicPartition kafkaTopicPartition =
-          new TopicPartition(topicPartition.getPubSubTopic().getName(), topicPartition.getPartitionNumber());
       KafkaConsumerService kafkaConsumerService;
       int kafkaClusterId;
       boolean local = kafkaUrl.equals(inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
@@ -1072,15 +1070,17 @@ public abstract class StoreIngestionTaskTest {
     setStoreVersionStateSupplier(storeVersionState);
   }
 
-  private Pair<PubSubTopicPartition, Long> getTopicPartitionOffsetPair(RecordMetadata recordMetadata) {
+  private PubSubTopicPartitionOffset getTopicPartitionOffsetPair(RecordMetadata recordMetadata) {
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(
         pubSubTopicRepository.getTopic(recordMetadata.topic()),
         recordMetadata.partition());
-    return new Pair<>(pubSubTopicPartition, recordMetadata.offset());
+    return new PubSubTopicPartitionOffset(pubSubTopicPartition, recordMetadata.offset());
   }
 
-  private Pair<PubSubTopicPartition, Long> getTopicPartitionOffsetPair(String topic, int partition, long offset) {
-    return new Pair<>(new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partition), offset);
+  private PubSubTopicPartitionOffset getTopicPartitionOffsetPair(String topic, int partition, long offset) {
+    return new PubSubTopicPartitionOffset(
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partition),
+        offset);
   }
 
   /**
@@ -1102,7 +1102,7 @@ public abstract class StoreIngestionTaskTest {
     pollStrategies.add(new RandomPollStrategy());
 
     // We re-deliver the old put out of order, so we can make sure it's ignored.
-    Queue<Pair<PubSubTopicPartition, Long>> pollDeliveryOrder = new LinkedList<>();
+    Queue<PubSubTopicPartitionOffset> pollDeliveryOrder = new LinkedList<>();
     pollDeliveryOrder.add(getTopicPartitionOffsetPair(putMetadata));
     pollStrategies.add(new ArbitraryOrderingPollStrategy(pollDeliveryOrder));
 
@@ -1202,7 +1202,7 @@ public abstract class StoreIngestionTaskTest {
         (RecordMetadata) localVeniceWriter.put(putKeyFoo2, putValueToCorrupt, SCHEMA_ID).get();
     RecordMetadata putMetadata4 = (RecordMetadata) localVeniceWriter.put(putKeyFoo2, putValue, SCHEMA_ID).get();
 
-    Queue<Pair<PubSubTopicPartition, Long>> pollDeliveryOrder = new LinkedList<>();
+    Queue<PubSubTopicPartitionOffset> pollDeliveryOrder = new LinkedList<>();
     /**
      * The reason to put offset -1 and offset 0 in the deliveryOrder queue is that the SOS and SOP need to be polled.
      */
@@ -1497,8 +1497,9 @@ public abstract class StoreIngestionTaskTest {
     localVeniceWriter.put(putKeyBar, putValue, SCHEMA_ID);
     localVeniceWriter.broadcastEndOfPush(new HashMap<>());
 
-    PollStrategy pollStrategy =
-        new FilteringPollStrategy(new RandomPollStrategy(), Utils.setOf(new Pair(barTopicPartition, barOffsetToSkip)));
+    PollStrategy pollStrategy = new FilteringPollStrategy(
+        new RandomPollStrategy(),
+        Utils.setOf(new PubSubTopicPartitionOffset(barTopicPartition, barOffsetToSkip)));
 
     runTest(pollStrategy, Utils.setOf(PARTITION_FOO, PARTITION_BAR), () -> {}, () -> {
       verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce())
@@ -1530,7 +1531,8 @@ public abstract class StoreIngestionTaskTest {
 
     PollStrategy pollStrategy = new DuplicatingPollStrategy(
         new RandomPollStrategy(),
-        Utils.mutableSetOf(new Pair(new TopicPartition(topic, PARTITION_BAR), barOffsetToDupe)));
+        Utils.mutableSetOf(
+            new PubSubTopicPartitionOffset(new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_BAR), barOffsetToDupe)));
 
     runTest(pollStrategy, Utils.setOf(PARTITION_FOO, PARTITION_BAR), () -> {}, () -> {
       verify(mockLogNotifier, timeout(TEST_TIMEOUT_MS).atLeastOnce())
@@ -1730,7 +1732,8 @@ public abstract class StoreIngestionTaskTest {
 
     PollStrategy pollStrategy = new FilteringPollStrategy(
         new RandomPollStrategy(),
-        Utils.setOf(new Pair(new TopicPartition(topic, PARTITION_FOO), fooOffsetToSkip)));
+        Utils.setOf(
+            new PubSubTopicPartitionOffset(new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO), fooOffsetToSkip)));
 
     LOGGER.info("lastOffsetBeforeEOP: {}, lastOffset: {}", lastOffsetBeforeEOP, lastOffset);
 
@@ -1975,8 +1978,8 @@ public abstract class StoreIngestionTaskTest {
     // This doesn't really need to be atomic, but it does need to be final, and int/Integer cannot be mutated.
     final AtomicInteger messagesConsumedSoFar = new AtomicInteger(0);
     PollStrategy pollStrategy =
-        new BlockingObserverPollStrategy(new RandomPollStrategy(false), topicPartitionOffsetRecordPair -> {
-          if (topicPartitionOffsetRecordPair == null || topicPartitionOffsetRecordPair.getSecond() == null) {
+        new BlockingObserverPollStrategy(new RandomPollStrategy(false), topicPartitionOffset -> {
+          if (topicPartitionOffset == null || topicPartitionOffset.getOffset() == null) {
             LOGGER.info("Received null OffsetRecord!");
           } else if (messagesConsumedSoFar.incrementAndGet()
               % (totalNumberOfMessages / totalNumberOfConsumptionRestarts) == 0) {
@@ -1992,8 +1995,8 @@ public abstract class StoreIngestionTaskTest {
           } else {
             LOGGER.info(
                 "TopicPartition: {}, Offset: {}",
-                topicPartitionOffsetRecordPair.getFirst(),
-                topicPartitionOffsetRecordPair.getSecond());
+                topicPartitionOffset.getPubSubTopicPartition(),
+                topicPartitionOffset.getOffset());
           }
         });
 

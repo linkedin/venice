@@ -1,7 +1,6 @@
 package com.linkedin.venice.unit.kafka.consumer.poll;
 
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.utils.Pair;
 import java.util.Map;
 import java.util.function.Consumer;
 
@@ -15,19 +14,19 @@ import java.util.function.Consumer;
  */
 public class BlockingObserverPollStrategy extends AbstractPollStrategy {
   private final AbstractPollStrategy basePollStrategy;
-  private final Consumer<Pair<PubSubTopicPartition, Long>> observer;
+  private final Consumer<PubSubTopicPartitionOffset> observer;
 
   public BlockingObserverPollStrategy(
       AbstractPollStrategy basePollStrategy,
-      Consumer<Pair<PubSubTopicPartition, Long>> observer) {
+      Consumer<PubSubTopicPartitionOffset> observer) {
     super(basePollStrategy.keepPollingWhenEmpty);
     this.basePollStrategy = basePollStrategy;
     this.observer = observer;
   }
 
   @Override
-  protected Pair<PubSubTopicPartition, Long> getNextPoll(Map<PubSubTopicPartition, Long> offsets) {
-    Pair<PubSubTopicPartition, Long> nextPoll = basePollStrategy.getNextPoll(offsets);
+  protected PubSubTopicPartitionOffset getNextPoll(Map<PubSubTopicPartition, Long> offsets) {
+    PubSubTopicPartitionOffset nextPoll = basePollStrategy.getNextPoll(offsets);
     observer.accept(nextPoll);
     return nextPoll;
   }

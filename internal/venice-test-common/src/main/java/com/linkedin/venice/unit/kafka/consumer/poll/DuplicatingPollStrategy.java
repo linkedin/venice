@@ -1,7 +1,6 @@
 package com.linkedin.venice.unit.kafka.consumer.poll;
 
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.utils.Pair;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
@@ -15,30 +14,31 @@ import java.util.Set;
  */
 public class DuplicatingPollStrategy extends AbstractPollStrategy {
   private final AbstractPollStrategy basePollStrategy;
-  private final Set<Pair<PubSubTopicPartition, Long>> PubSubTopicPartitionOffsetsToDuplicate;
+  private final Set<PubSubTopicPartitionOffset> PubSubTopicPartitionOffsetsToDuplicate;
   private final Map<PubSubTopicPartition, Long> amountOfIntroducedDupes = new HashMap<>();
 
   public DuplicatingPollStrategy(
       AbstractPollStrategy basePollStrategy,
-      Set<Pair<PubSubTopicPartition, Long>> PubSubTopicPartitionOffsetsToDuplicate) {
+      Set<PubSubTopicPartitionOffset> PubSubTopicPartitionOffsetsToDuplicate) {
     super(basePollStrategy.keepPollingWhenEmpty);
     this.basePollStrategy = basePollStrategy;
     this.PubSubTopicPartitionOffsetsToDuplicate = PubSubTopicPartitionOffsetsToDuplicate;
   }
 
   @Override
-  protected Pair<PubSubTopicPartition, Long> getNextPoll(Map<PubSubTopicPartition, Long> offsets) {
-    Pair<PubSubTopicPartition, Long> nextPoll = basePollStrategy.getNextPoll(offsets);
+  protected PubSubTopicPartitionOffset getNextPoll(Map<PubSubTopicPartition, Long> offsets) {
+    PubSubTopicPartitionOffset nextPoll = basePollStrategy.getNextPoll(offsets);
 
     if (nextPoll == null) {
       return null;
     }
 
-    PubSubTopicPartition PubSubTopicPartition = nextPoll.getFirst();
-    long offset = nextPoll.getSecond();
+    PubSubTopicPartition PubSubTopicPartition = nextPoll.getPubSubTopicPartition();
+    long offset = nextPoll.getOffset();
     offset += getAmountOfDupes(PubSubTopicPartition);
 
-    Pair<PubSubTopicPartition, Long> nextPollWithAdjustedOffset = new Pair<>(PubSubTopicPartition, offset);
+    PubSubTopicPartitionOffset nextPollWithAdjustedOffset =
+        new PubSubTopicPartitionOffset(PubSubTopicPartition, offset);
 
     if (PubSubTopicPartitionOffsetsToDuplicate.contains(nextPoll)) {
       if (!amountOfIntroducedDupes.containsKey(PubSubTopicPartition)) {

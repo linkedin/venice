@@ -902,13 +902,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * This function may modify the original record in KME and it is unsafe to use the payload from KME directly after this call.
    *
    * @param records : received consumer records
-   * @param whetherToApplyThrottling : whether to apply throttling in this function or not.
    * @param topicPartition
    * @throws InterruptedException
    */
   protected void produceToStoreBufferServiceOrKafka(
       Iterable<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> records,
-      boolean whetherToApplyThrottling,
       PubSubTopicPartition topicPartition,
       String kafkaUrl,
       int kafkaClusterId) throws InterruptedException {
@@ -1010,39 +1008,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
 
       hostLevelIngestionStats.recordStorageQuotaUsed(storageUtilizationManager.getDiskQuotaUsage());
-    }
-
-    if (whetherToApplyThrottling) {
-      /**
-       * We would like to throttle the ingestion by batches of ({@link PubSubMessage} returned by each poll.
-       * The batch shouldn't be too big, otherwise, the {@link StoreBufferService#putConsumerRecord(PubSubMessage, StoreIngestionTask, LeaderProducedRecordContext, int, String, long)}
-       * could be blocked when the buffer is full, and the throttling could be inaccurate.
-       * So every record returned from {@link com.linkedin.venice.pubsub.consumer.PubSubConsumer#poll(long)} should be processed
-       * as fast as possible to avoid long-lasting objects in JVM to minimize the 'object copy' time
-       * during GC.
-       *
-       * Here are more details:
-       * 1. Previously, the throttling was happening in StoreIngestionTask#processConsumerRecord,
-       *    which would be invoked by StoreBufferService;
-       * 2. When the ingestion got throttled, the database operations would halt, but the deserialized
-       *    records would be kept pushing to the intermediate buffer pool until the pool is full;
-       * 3. When Young GC happens, all the objects in the buffer pool could be potentially copied to Survivor
-       *    space since they are being actively referenced;
-       * 4. The object copy time is the slowest phase in Young GC;
-       *
-       * By moving the throttling logic after putting deserialized records to buffer, the records in the buffer
-       * will be processed as long as there is enough capacity.
-       * With this way, the actively referenced object will be reduced greatly during throttling and Young GC
-       * won't need to copy many objects from Young regions to Survivor regions, which reduces the overall
-       * GC pause time.
-       */
-      bandwidthThrottler.maybeThrottle(totalBytesRead);
-      recordsThrottler.maybeThrottle(recordCount);
-
-      if (!orderedWritesOnly) {
-        unorderedBandwidthThrottler.maybeThrottle(totalBytesRead);
-        unorderedRecordsThrottler.maybeThrottle(recordCount);
-      }
     }
   }
 
@@ -1821,9 +1786,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (partitionConsumptionState.isEndOfPushReceived() && partitionConsumptionState.isBatchOnly()) {
       KafkaKey key = record.getKey();
       KafkaMessageEnvelope value = record.getValue();
-      LOGGER.info(
-          "Checking shouldProcessRecord after get offset: " + record.getOffset() + " , is batch only: "
-              + partitionConsumptionState.isBatchOnly() + " is control message:" + record.getKey().isControlMessage());
       if (key.isControlMessage()
           && ControlMessageType.valueOf((ControlMessage) value.payloadUnion) == ControlMessageType.END_OF_SEGMENT) {
         // Still allow END_OF_SEGMENT control message
@@ -1844,7 +1806,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        */
       String message = "The record was received after 'EOP', but the store: " + kafkaVersionTopic
           + " is neither hybrid nor incremental push enabled, so will skip it.";
-      LOGGER.warn(message);
       if (!REDUNDANT_LOGGING_FILTER.isRedundantException(message)) {
         LOGGER.warn(message);
       }

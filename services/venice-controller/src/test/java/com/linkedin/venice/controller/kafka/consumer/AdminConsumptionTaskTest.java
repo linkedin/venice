@@ -86,10 +86,10 @@ import com.linkedin.venice.unit.kafka.consumer.poll.ArbitraryOrderingPollStrateg
 import com.linkedin.venice.unit.kafka.consumer.poll.CompositePollStrategy;
 import com.linkedin.venice.unit.kafka.consumer.poll.FilteringPollStrategy;
 import com.linkedin.venice.unit.kafka.consumer.poll.PollStrategy;
+import com.linkedin.venice.unit.kafka.consumer.poll.PubSubTopicPartitionOffset;
 import com.linkedin.venice.unit.kafka.consumer.poll.RandomPollStrategy;
 import com.linkedin.venice.unit.kafka.producer.MockInMemoryProducer;
 import com.linkedin.venice.utils.DataProviderUtils;
-import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -241,11 +241,11 @@ public class AdminConsumptionTaskTest {
         pubSubMessageDeserializer);
   }
 
-  private Pair<PubSubTopicPartition, Long> getTopicPartitionOffsetPair(RecordMetadata recordMetadata) {
+  private PubSubTopicPartitionOffset getTopicPartitionOffsetPair(RecordMetadata recordMetadata) {
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(
         pubSubTopicRepository.getTopic(recordMetadata.topic()),
         recordMetadata.partition());
-    return new Pair<>(pubSubTopicPartition, recordMetadata.offset());
+    return new PubSubTopicPartitionOffset(pubSubTopicPartition, recordMetadata.offset());
   }
 
   private long getLastOffset(String clusterName) {
@@ -480,7 +480,7 @@ public class AdminConsumptionTaskTest {
 
     Queue<AbstractPollStrategy> pollStrategies = new LinkedList<>();
     pollStrategies.add(new RandomPollStrategy());
-    Queue<Pair<PubSubTopicPartition, Long>> pollDeliveryOrder = new LinkedList<>();
+    Queue<PubSubTopicPartitionOffset> pollDeliveryOrder = new LinkedList<>();
     pollDeliveryOrder.add(getTopicPartitionOffsetPair(killJobMetadata));
     pollStrategies.add(new ArbitraryOrderingPollStrategy(pollDeliveryOrder));
     PollStrategy pollStrategy = new CompositePollStrategy(pollStrategies);
@@ -550,7 +550,7 @@ public class AdminConsumptionTaskTest {
             AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
         .get();
 
-    Queue<Pair<PubSubTopicPartition, Long>> pollDeliveryOrder = new LinkedList<>();
+    Queue<PubSubTopicPartitionOffset> pollDeliveryOrder = new LinkedList<>();
     pollDeliveryOrder.add(getTopicPartitionOffsetPair(killJobMetadata));
     PollStrategy pollStrategy = new ArbitraryOrderingPollStrategy(pollDeliveryOrder);
 
@@ -597,9 +597,9 @@ public class AdminConsumptionTaskTest {
         getStoreCreationMessage(clusterName, storeName3, owner, keySchema, valueSchema, 3),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
-    Set<Pair<PubSubTopicPartition, Long>> set = new HashSet<>();
+    Set<PubSubTopicPartitionOffset> set = new HashSet<>();
     set.add(
-        new Pair(
+        new PubSubTopicPartitionOffset(
             new PubSubTopicPartitionImpl(
                 pubSubTopicRepository.getTopic(topicName),
                 AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
@@ -1225,9 +1225,9 @@ public class AdminConsumptionTaskTest {
         getKillOfflinePushJobMessage(clusterName, storeTopicName, 5L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     // We need to actually create a gap in producer metadata too in order to craft a valid DIV exception.
-    Set<Pair<PubSubTopicPartition, Long>> set = new HashSet<>();
+    Set<PubSubTopicPartitionOffset> set = new HashSet<>();
     set.add(
-        new Pair(
+        new PubSubTopicPartitionOffset(
             new PubSubTopicPartitionImpl(
                 pubSubTopicRepository.getTopic(topicName),
                 AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),

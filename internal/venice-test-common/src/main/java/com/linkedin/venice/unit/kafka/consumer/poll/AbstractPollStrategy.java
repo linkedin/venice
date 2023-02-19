@@ -12,7 +12,6 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaMessage;
 import com.linkedin.venice.utils.ByteUtils;
-import com.linkedin.venice.utils.Pair;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -37,7 +36,7 @@ public abstract class AbstractPollStrategy implements PollStrategy {
     this.maxMessagePerPoll = maxMessagePerPoll;
   }
 
-  protected abstract Pair<PubSubTopicPartition, Long> getNextPoll(Map<PubSubTopicPartition, Long> offsets);
+  protected abstract PubSubTopicPartitionOffset getNextPoll(Map<PubSubTopicPartition, Long> offsets);
 
   public synchronized PubSubMessages<KafkaKey, KafkaMessageEnvelope, Long> poll(
       InMemoryKafkaBroker broker,
@@ -50,7 +49,7 @@ public abstract class AbstractPollStrategy implements PollStrategy {
     int numberOfRecords = 0;
 
     while (numberOfRecords < maxMessagePerPoll && System.currentTimeMillis() < startTime + timeout) {
-      Pair<PubSubTopicPartition, Long> nextPoll = getNextPoll(offsets);
+      PubSubTopicPartitionOffset nextPoll = getNextPoll(offsets);
       if (nextPoll == null) {
         if (keepPollingWhenEmpty) {
           continue;
@@ -58,8 +57,8 @@ public abstract class AbstractPollStrategy implements PollStrategy {
           break;
         }
       }
-      PubSubTopicPartition pubSubTopicPartition = nextPoll.getFirst();
-      long offset = nextPoll.getSecond();
+      PubSubTopicPartition pubSubTopicPartition = nextPoll.getPubSubTopicPartition();
+      long offset = nextPoll.getOffset();
       String topic = pubSubTopicPartition.getPubSubTopic().getName();
       int partition = pubSubTopicPartition.getPartitionNumber();
       /**
