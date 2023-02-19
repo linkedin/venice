@@ -289,11 +289,17 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
         return;
       }
       LOGGER.info("Sending command {} of topic: {}, partition: {} to fork process.", command, topicName, partition);
+      if (command.equals(START_CONSUMPTION)) {
+        /**
+         * StartConsumption operation may take long time to wait for non-existence store/version until it times out.
+         * Add version check here so that the long waiting period won't impact forked ingestion process Netty server
+         * performance.
+         */
+        Utils.waitStoreVersionOrThrow(topicName, getStoreIngestionService().getMetadataRepo());
+        // Start consumption should set up resource ingestion status for tracking purpose.
+        getMainIngestionMonitorService().setVersionPartitionToIsolatedIngestion(topicName, partition);
+      }
       try {
-        if (command.equals(START_CONSUMPTION)) {
-          // Start consumption should set up resource ingestion status for tracking purpose.
-          getMainIngestionMonitorService().setVersionPartitionToIsolatedIngestion(topicName, partition);
-        }
         if (remoteCommandSupplier.get()) {
           return;
         }
