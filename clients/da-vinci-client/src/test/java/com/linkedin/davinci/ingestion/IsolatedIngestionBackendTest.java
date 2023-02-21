@@ -16,6 +16,11 @@ import com.linkedin.davinci.ingestion.main.MainIngestionMonitorService;
 import com.linkedin.davinci.ingestion.main.MainTopicIngestionStatus;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceTimeoutException;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -29,11 +34,14 @@ public class IsolatedIngestionBackendTest {
   public void testBackendCanDirectCommandCorrectly() {
     try (MainIngestionMonitorService monitorService = mock(MainIngestionMonitorService.class);
         IsolatedIngestionBackend backend = mock(IsolatedIngestionBackend.class)) {
-      String topic = "testTopic";
+      String topic = "testTopic_v1";
       int partition = 0;
-
       when(backend.getMainIngestionMonitorService()).thenReturn(monitorService);
       KafkaStoreIngestionService storeIngestionService = mock(KafkaStoreIngestionService.class);
+      ReadOnlyStoreRepository repository = mock(ReadOnlyStoreRepository.class);
+      when(repository.waitVersion(anyString(), anyInt(), any()))
+          .thenReturn(Pair.create(mock(Store.class), mock(Version.class)));
+      when(storeIngestionService.getMetadataRepo()).thenReturn(repository);
       when(storeIngestionService.isPartitionConsuming(topic, partition)).thenReturn(true);
       when(backend.getStoreIngestionService()).thenReturn(storeIngestionService);
 
@@ -89,11 +97,15 @@ public class IsolatedIngestionBackendTest {
   public void testBackendCanHandleErrorCorrectly() {
     try (MainIngestionMonitorService monitorService = mock(MainIngestionMonitorService.class);
         IsolatedIngestionBackend backend = mock(IsolatedIngestionBackend.class)) {
-      String topic = "testTopic";
+      String topic = "testTopic_v1";
       int partition = 0;
 
       when(backend.getMainIngestionMonitorService()).thenReturn(monitorService);
       KafkaStoreIngestionService storeIngestionService = mock(KafkaStoreIngestionService.class);
+      ReadOnlyStoreRepository repository = mock(ReadOnlyStoreRepository.class);
+      when(repository.waitVersion(anyString(), anyInt(), any()))
+          .thenReturn(Pair.create(mock(Store.class), mock(Version.class)));
+      when(storeIngestionService.getMetadataRepo()).thenReturn(repository);
       when(storeIngestionService.isPartitionConsuming(topic, partition)).thenReturn(true);
       when(backend.getStoreIngestionService()).thenReturn(storeIngestionService);
 
@@ -119,15 +131,34 @@ public class IsolatedIngestionBackendTest {
       Assert.assertEquals(executionFlag.get(), -1);
 
       /**
-       * Test Case (2): START_CONSUMPTION failed remotely. Ingestion status should be cleaned up so rollback can be
-       * successful.
+       * Test Case (2): Remote START_CONSUMPTION failed remotely due to exception. Ingestion status should be cleaned up
+       * so rollback can be successful.
        */
       executionFlag.set(0);
       topicIngestionStatusMap.clear();
-      Assert.assertThrows(() -> {
+      Assert.assertThrows(VeniceTimeoutException.class, () -> {
         backend.executeCommandWithRetry(topic, partition, START_CONSUMPTION, () -> {
           monitorService.setVersionPartitionToIsolatedIngestion(topic, partition);
-          throw new VeniceException("Ingestion request failed due to timeout!");
+          throw new VeniceTimeoutException("Ingestion request failed due to timeout!");
+        }, localCommandRunnable);
+      });
+      Assert.assertEquals(monitorService.getTopicPartitionIngestionStatus(topic, partition), NOT_EXIST);
+      Assert.assertEquals(executionFlag.get(), 0);
+      backend.executeCommandWithRetry(topic, partition, STOP_CONSUMPTION, () -> false, localCommandRunnable);
+      Assert.assertEquals(executionFlag.get(), -1);
+
+      /**
+       * Test Case (3): Remote START_CONSUMPTION failed locally due to no version exist. Ingestion status should be
+       * cleaned up so rollback can be successful.
+       */
+      executionFlag.set(0);
+      topicIngestionStatusMap.clear();
+      when(repository.waitVersion(anyString(), anyInt(), any())).thenReturn(Pair.create(null, null));
+
+      Assert.assertThrows(VeniceException.class, () -> {
+        backend.executeCommandWithRetry(topic, partition, START_CONSUMPTION, () -> {
+          monitorService.setVersionPartitionToIsolatedIngestion(topic, partition);
+          throw new VeniceTimeoutException("Ingestion request failed due to timeout!");
         }, localCommandRunnable);
       });
       Assert.assertEquals(monitorService.getTopicPartitionIngestionStatus(topic, partition), NOT_EXIST);
