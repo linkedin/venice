@@ -1108,45 +1108,50 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   @Override
   public MetadataResponse getMetadata(String storeName) {
-    Store store = metadataRepo.getStoreOrThrow(storeName);
-
-    List<Integer> versions = new ArrayList<>();
-    for (Version version: store.getVersions()) {
-      versions.add(version.getNumber());
-    }
-    VersionProperties versionProperties =
-        new VersionProperties(store.getCurrentVersion(), versions, store.getCompressionStrategy().getValue());
-
-    String keySchema = schemaRepo.getKeySchema(storeName).getSchema().toString();
-    List<CharSequence> valueSchemas = new ArrayList<>();
-    for (SchemaEntry schemaEntry: schemaRepo.getValueSchemas(storeName)) {
-      valueSchemas.add(schemaEntry.getSchema().toString());
-    }
-
-    Map<CharSequence, Map<CharSequence, List<CharSequence>>> routingInfo = new HashMap<>();
-    for (String resource: routingRepository.getResourceAssignment().getAssignedResources()) {
-      for (Partition partition: routingRepository.getPartitionAssignments(resource).getAllPartitions()) {
-        List<CharSequence> instances = new ArrayList<>();
-        for (Instance instance: partition.getInstanceToStateMap().keySet()) {
-          instances.add(instance.toString());
-        }
-
-        if (!routingInfo.containsKey(resource)) {
-          routingInfo.put(resource, new HashMap<CharSequence, List<CharSequence>>());
-        }
-        routingInfo.get(resource).put(String.valueOf(partition.getId()), instances);
-      }
-    }
-
-    Map<CharSequence, Integer> helixGroupInfo = new HashMap<>();
-    helixGroupInfo.putAll(helixInstanceConfigRepository.getInstanceGroupIdMapping());
-
     MetadataResponse response = new MetadataResponse();
-    response.setVersionMetadata(versionProperties);
-    response.setKeySchema(keySchema);
-    response.setValueSchemas(valueSchemas);
-    response.setRoutingInfo(routingInfo);
-    response.setHelixGroupInfo(helixGroupInfo);
+    try {
+      Store store = metadataRepo.getStoreOrThrow(storeName);
+
+      List<Integer> versions = new ArrayList<>();
+      for (Version version: store.getVersions()) {
+        versions.add(version.getNumber());
+      }
+      VersionProperties versionProperties =
+          new VersionProperties(store.getCurrentVersion(), versions, store.getCompressionStrategy().getValue(), null);
+
+      String keySchema = schemaRepo.getKeySchema(storeName).getSchema().toString();
+      List<CharSequence> valueSchemas = new ArrayList<>();
+      for (SchemaEntry schemaEntry: schemaRepo.getValueSchemas(storeName)) {
+        valueSchemas.add(schemaEntry.getSchema().toString());
+      }
+
+      Map<CharSequence, List<CharSequence>> routingInfo = new HashMap<>();
+      for (String resource: routingRepository.getResourceAssignment().getAssignedResources()) {
+        if (resource.endsWith("v" + store.getCurrentVersion())) {
+          for (Partition partition: routingRepository.getPartitionAssignments(resource).getAllPartitions()) {
+            List<CharSequence> instances = new ArrayList<>();
+            for (Instance instance: partition.getInstanceToStateMap().keySet()) {
+              instances.add(instance.toString());
+            }
+
+            routingInfo.put(String.valueOf(partition.getId()), instances);
+          }
+        }
+      }
+
+      Map<CharSequence, Integer> helixGroupInfo = new HashMap<>();
+      helixGroupInfo.putAll(helixInstanceConfigRepository.getInstanceGroupIdMapping());
+
+      response.setVersionMetadata(versionProperties);
+      response.setKeySchema(keySchema);
+      response.setValueSchemas(valueSchemas);
+      response.setRoutingInfo(routingInfo);
+      response.setHelixGroupInfo(helixGroupInfo);
+    } catch (VeniceNoStoreException e) {
+      LOGGER.warn("Store {} not found in metadataRepo.", storeName);
+      response.setMessage("Store \"" + storeName + "\" not found");
+      response.setError(true);
+    }
 
     return response;
   }

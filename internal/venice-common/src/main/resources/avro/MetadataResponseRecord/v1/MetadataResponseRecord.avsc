@@ -68,11 +68,8 @@
         {
           "type": "map",
           "values": {
-            "type": "map",
-            "values": {
-              "type": "array",
-              "items": "string"
-            }
+            "type": "array",
+            "items": "string"
           }
         }
       ],
