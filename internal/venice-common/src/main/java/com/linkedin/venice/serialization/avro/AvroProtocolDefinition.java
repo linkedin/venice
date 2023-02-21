@@ -13,6 +13,7 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.metadata.response.MetadataResponseRecord;
 import com.linkedin.venice.pushstatus.PushStatusKey;
 import com.linkedin.venice.pushstatus.PushStatusValue;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
@@ -142,7 +143,12 @@ public enum AvroProtocolDefinition {
   /**
    * Response record for admin request v1
    */
-  SERVER_ADMIN_RESPONSE_V1(1, AdminResponseRecord.class);
+  SERVER_ADMIN_RESPONSE_V1(1, AdminResponseRecord.class),
+
+  /**
+   * Response record for metadata fetch request v1
+   */
+  SERVER_METADATA_RESPONSE_V1(1, MetadataResponseRecord.class);
 
   private static final Set<Byte> magicByteSet = validateMagicBytes();
 

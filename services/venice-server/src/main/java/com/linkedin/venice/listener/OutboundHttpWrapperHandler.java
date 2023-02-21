@@ -112,6 +112,7 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
       } else if (msg instanceof MetadataResponse) {
         MetadataResponse metadataResponse = (MetadataResponse) msg;
         body = metadataResponse.getResponseBody();
+        schemaIdHeader = metadataResponse.getResponseSchemaIdHeader();
       } else if (msg instanceof DefaultFullHttpResponse) {
         ctx.writeAndFlush(msg);
         return;

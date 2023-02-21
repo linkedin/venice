@@ -2,6 +2,7 @@ package com.linkedin.davinci.listener.response;
 
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
 import com.linkedin.venice.metadata.response.VersionProperties;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
@@ -15,6 +16,8 @@ import java.util.Map;
  * This class stores all the information required for answering a server metadata fetch request.
  */
 public class MetadataResponse {
+  private boolean isError;
+  private String message;
   private final MetadataResponseRecord responseRecord;
 
   public MetadataResponse() {
@@ -50,6 +53,26 @@ public class MetadataResponse {
         SerializerDeserializerFactory.getAvroGenericSerializer(MetadataResponseRecord.SCHEMA$);
 
     return serializer.serialize(responseRecord, AvroSerializer.REUSE.get());
+  }
+
+  public int getResponseSchemaIdHeader() {
+    return AvroProtocolDefinition.SERVER_METADATA_RESPONSE_V1.getCurrentProtocolVersion();
+  }
+
+  public void setError(boolean error) {
+    this.isError = error;
+  }
+
+  public boolean isError() {
+    return this.isError;
+  }
+
+  public void setMessage(String message) {
+    this.message = message;
+  }
+
+  public String getMessage() {
+    return this.message;
   }
 
   public MetadataResponseRecord getResponseRecord() {
