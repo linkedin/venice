@@ -421,8 +421,8 @@ public class VenicePushJob implements AutoCloseable {
   private PushJobSchemaInfo pushJobSchemaInfo;
   private ValidateSchemaAndBuildDictMapperOutput validateSchemaAndBuildDictMapperOutput;
   private String validateSchemaAndBuildDictMapperOutputDirectory;
-  private boolean isZstdDictTrainSuccess = false;
   private boolean isZstdDictCreationRequired = false;
+  private boolean isZstdDictCreationSuccess = false;
 
   protected static class PushJobSetting {
     boolean enablePush;
@@ -931,8 +931,10 @@ public class VenicePushJob implements AutoCloseable {
             pushJobSchemaInfo,
             storeSetting.isSchemaAutoRegisterFromPushJobEnabled);
 
+        pushJobSetting.compressionMetricCollectionEnabled =
+            reevaluateCompressionMetricCollectionEnabled(pushJobSetting, inputFileHasRecords);
         isZstdDictCreationRequired =
-            shouldBuildCompressionDictionary(pushJobSetting, storeSetting, inputFileHasRecords);
+            shouldBuildZstdCompressionDictionary(pushJobSetting, storeSetting, inputFileHasRecords);
 
         if (pushJobSetting.useMapperToBuildDict) {
           /**
@@ -1339,19 +1341,20 @@ public class VenicePushJob implements AutoCloseable {
    * This functions decides whether Zstd compression dictionary needs to be trained or not,
    * based on the type of push, configs and whether there are any input records or not.
    */
-  protected static boolean shouldBuildCompressionDictionary(
+  protected static boolean shouldBuildZstdCompressionDictionary(
       PushJobSetting pushJobSetting,
       StoreSetting storeSetting,
       boolean inputFileHasRecords) {
-    if (!inputFileHasRecords) {
-      LOGGER.info("No compression dictionary will be generated as there are no records");
+    if (pushJobSetting.isSourceKafka) {
+      // repush from kafka: Existing dictionary will be collected from kafka if found,
+      // but will not be built again. This is already checked before calling this function.
+      // This is a defensive check.
+      LOGGER.info("No compression dictionary will be generated as the push type is repush");
       return false;
     }
 
-    if (pushJobSetting.isSourceKafka) {
-      // repush from kafka: Existing dictionary will be collected from kafka if found,
-      // but will not be built again
-      LOGGER.info("No compression dictionary will be generated as the push type is repush");
+    if (!inputFileHasRecords) {
+      LOGGER.info("No compression dictionary will be generated as there are no records");
       return false;
     }
 
@@ -1370,9 +1373,42 @@ public class VenicePushJob implements AutoCloseable {
     }
 
     LOGGER.info(
-        "No Compression dictionary will be generated with the compression strategy {} and compressionMetricCollectionEnabled is disabled",
+        "No Compression dictionary will be generated with the compression strategy"
+            + " {} and compressionMetricCollectionEnabled is disabled",
         storeSetting.compressionStrategy);
     return false;
+  }
+
+  /**
+   * This functions reevaluates {@link PushJobSetting#compressionMetricCollectionEnabled}
+   * based on the input data
+   */
+  protected static boolean reevaluateCompressionMetricCollectionEnabled(
+      PushJobSetting pushJobSetting,
+      boolean inputFileHasRecords) {
+    if (!pushJobSetting.compressionMetricCollectionEnabled) {
+      // if the config is not enabled, just return false
+      return false;
+    }
+
+    if (pushJobSetting.isSourceKafka) {
+      // repush from kafka: This is already checked before calling this function.
+      // This is a defensive check.
+      LOGGER.info("No compression related metrics will be generated as the push type is repush");
+      return false;
+    }
+
+    if (!inputFileHasRecords) {
+      LOGGER.info("No compression related metrics will be generated as there are no records");
+      return false;
+    }
+
+    if (pushJobSetting.isIncrementalPush) {
+      LOGGER.info("No compression related metrics will be generated as the push type is incremental push");
+      return false;
+    }
+
+    return true;
   }
 
   /**
@@ -1422,11 +1458,12 @@ public class VenicePushJob implements AutoCloseable {
 
       final long zstdDictTrainFailure = MRJobCounterHelper.getMapperZstdDictTrainFailureCount(counters);
       final long zstdDictTrainSuccess = MRJobCounterHelper.getMapperZstdDictTrainSuccessCount(counters);
-      isZstdDictTrainSuccess = (zstdDictTrainSuccess == 1);
-      final long numRecordsProcessed = MRJobCounterHelper.getMapperNumRecordsSuccessfullyProcessedCount(counters);
-      if (numRecordsProcessed == inputNumFiles + 1) {
+      isZstdDictCreationSuccess = (zstdDictTrainSuccess == 1);
+      final long numRecordsSuccessfullyProcessed =
+          MRJobCounterHelper.getMapperNumRecordsSuccessfullyProcessedCount(counters);
+      if (numRecordsSuccessfullyProcessed == inputNumFiles + 1) {
         if (isZstdDictCreationRequired) {
-          if (zstdDictTrainSuccess != 1) {
+          if (isZstdDictCreationSuccess == false) {
             checkLastModificationTimeAndLog(true);
             updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.INVALID_INPUT_FILE);
             String err = "Error while validating schema: MR job counter is not reliable to point out the exact reason";
@@ -1434,7 +1471,7 @@ public class VenicePushJob implements AutoCloseable {
             throw new VeniceException(err);
           }
         }
-      } else if (numRecordsProcessed == inputNumFiles) {
+      } else if (numRecordsSuccessfullyProcessed == inputNumFiles) {
         if (zstdDictTrainFailure == 1) {
           if (storeSetting.compressionStrategy != CompressionStrategy.ZSTD_WITH_DICT) {
             // Tried creating dictionary due to compressionMetricCollectionEnabled
@@ -1614,9 +1651,9 @@ public class VenicePushJob implements AutoCloseable {
       if (!pushJobSetting.useMapperToBuildDict) {
         LOGGER.info("Training Zstd dictionary");
         compressionDictionary = ByteBuffer.wrap(getInputDataInfoProvider().getZstdDictTrainSamples());
-        isZstdDictTrainSuccess = true;
+        isZstdDictCreationSuccess = true;
       } else {
-        if (isZstdDictTrainSuccess) {
+        if (isZstdDictCreationSuccess) {
           LOGGER.info(
               "Retrieving the Zstd dictionary trained by {}",
               ValidateSchemaAndBuildDictMapper.class.getSimpleName());
@@ -1723,7 +1760,7 @@ public class VenicePushJob implements AutoCloseable {
       pushJobDetails.totalGzipCompressedValueBytes =
           MRJobCounterHelper.getTotalGzipCompressedValueSize(runningJob.getCounters());
       // size of the Zstd compressed data
-      pushJobDetails.totalZstdCompressedValueBytes =
+      pushJobDetails.totalZstdWithDictCompressedValueBytes =
           MRJobCounterHelper.getTotalZstdCompressedValueSize(runningJob.getCounters());
     } catch (Exception e) {
       LOGGER.warn(
@@ -2641,7 +2678,7 @@ public class VenicePushJob implements AutoCloseable {
     conf.set(
         ZSTD_COMPRESSION_LEVEL,
         props.getString(ZSTD_COMPRESSION_LEVEL, String.valueOf(Zstd.maxCompressionLevel())));
-    conf.setBoolean(ZSTD_DICTIONARY_CREATION_SUCCESS, isZstdDictTrainSuccess);
+    conf.setBoolean(ZSTD_DICTIONARY_CREATION_SUCCESS, isZstdDictCreationSuccess);
 
     /** Allow overriding properties if their names start with {@link HADOOP_PREFIX}.
      *  Allow overriding properties if their names start with {@link VeniceWriter.VENICE_WRITER_CONFIG_PREFIX}

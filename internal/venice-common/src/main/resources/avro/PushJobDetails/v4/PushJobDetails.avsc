@@ -42,9 +42,9 @@
     {"name": "totalNumberOfRecords", "type": "long", "doc": "total number of key value pairs pushed", "default": -1},
     {"name": "totalKeyBytes", "type": "long", "doc": "total amount of key bytes pushed", "default": -1},
     {"name": "totalRawValueBytes", "type": "long", "doc": "total amount of uncompressed value bytes", "default": -1},
-    {"name": "totalCompressedValueBytes", "type": "long", "doc": "total amount of final stored value bytes. Can be compressed/uncompressed.", "default": -1},
+    {"name": "totalCompressedValueBytes", "type": "long", "doc": "total amount of compressed value bytes stored", "default": -1},
     {"name": "totalGzipCompressedValueBytes", "type": "long", "doc": "total amount of Gzip compressed value bytes", "default": -1},
-    {"name": "totalZstdCompressedValueBytes", "type": "long", "doc": "total amount of Zstd compressed value bytes", "default": -1},
+    {"name": "totalZstdWithDictCompressedValueBytes", "type": "long", "doc": "total amount of Zstd with Dictionary compressed value bytes", "default": -1},
     {"name": "pushJobConfigs",
       "type": [
         "null",

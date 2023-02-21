@@ -14,6 +14,7 @@ import static com.linkedin.venice.hadoop.VenicePushJob.TOPIC_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_SCHEMA_ID_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.ZSTD_DICTIONARY_CREATION_REQUIRED;
+import static com.linkedin.venice.hadoop.VenicePushJob.ZSTD_DICTIONARY_CREATION_SUCCESS;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
@@ -73,6 +74,7 @@ public class AbstractTestVeniceMR {
     config.set(COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.toString());
     config.setBoolean(COMPRESSION_METRIC_COLLECTION_ENABLED, false);
     config.setBoolean(ZSTD_DICTIONARY_CREATION_REQUIRED, false);
+    config.setBoolean(ZSTD_DICTIONARY_CREATION_SUCCESS, false);
     config.set(SSL_CONFIGURATOR_CLASS_CONFIG, TempFileSSLConfigurator.class.getName());
     config.set(SSL_KEY_STORE_PROPERTY_NAME, "ssl.identity");
     config.set(SSL_TRUST_STORE_PROPERTY_NAME, "ssl.truststore");

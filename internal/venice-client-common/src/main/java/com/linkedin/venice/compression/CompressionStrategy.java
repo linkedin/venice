@@ -15,7 +15,7 @@ public enum CompressionStrategy implements VeniceEnumValue {
   private final int value;
   private final boolean compressionEnabled;
 
-  public static final CompressionStrategy[] TYPES_ARRAY = EnumUtils.getEnumValuesArray(CompressionStrategy.class);
+  private static final CompressionStrategy[] TYPES_ARRAY = EnumUtils.getEnumValuesArray(CompressionStrategy.class);
 
   CompressionStrategy(int value, boolean compressionEnabled) {
     this.value = value;
@@ -36,5 +36,9 @@ public enum CompressionStrategy implements VeniceEnumValue {
     } catch (IndexOutOfBoundsException e) {
       throw new VeniceException("Invalid compression strategy: " + value);
     }
+  }
+
+  public static int getCompressionStrategyTypesArrayLength() {
+    return TYPES_ARRAY.length;
   }
 }

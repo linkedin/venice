@@ -185,7 +185,7 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
       if (isZstdDictCreationRequired) {
         if (inputDataInfo.hasRecords()) {
           LOGGER.info(
-              "Creating ZSTD compression dictionary using {}  bytes of samples",
+              "Creating ZSTD compression dictionary using {} bytes of samples",
               inputDataInfoProvider.pushJobZstdConfig.getFilledSize());
           ByteBuffer compressionDictionary;
           try {
@@ -274,13 +274,13 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
 
     pushJobSetting.storeName = props.getString(VENICE_STORE_NAME_PROP);
     pushJobSetting.isIncrementalPush = props.getBoolean(INCREMENTAL_PUSH);
-    pushJobSetting.useMapperToBuildDict = props.getBoolean(USE_MAPPER_TO_BUILD_DICTIONARY);
-    pushJobSetting.compressionMetricCollectionEnabled = props.getBoolean(COMPRESSION_METRIC_COLLECTION_ENABLED);
     pushJobSetting.etlValueSchemaTransformation = ETLValueSchemaTransformation
         .valueOf(props.getString(ETL_VALUE_SCHEMA_TRANSFORMATION, ETLValueSchemaTransformation.NONE.name()));
     storeSetting.compressionStrategy = CompressionStrategy.valueOf(props.getString(COMPRESSION_STRATEGY));
     // Getting the original modified time from driver
     inputModificationTime = props.getLong(INPUT_PATH_LAST_MODIFIED_TIME);
+    pushJobSetting.useMapperToBuildDict = props.getBoolean(USE_MAPPER_TO_BUILD_DICTIONARY);
+    pushJobSetting.compressionMetricCollectionEnabled = props.getBoolean(COMPRESSION_METRIC_COLLECTION_ENABLED);
     isZstdDictCreationRequired = props.getBoolean(ZSTD_DICTIONARY_CREATION_REQUIRED);
 
     try {

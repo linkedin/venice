@@ -1,6 +1,7 @@
 package com.linkedin.venice.hadoop;
 
 import static com.linkedin.venice.compression.CompressionStrategy.GZIP;
+import static com.linkedin.venice.compression.CompressionStrategy.NO_OP;
 import static com.linkedin.venice.compression.CompressionStrategy.ZSTD_WITH_DICT;
 import static com.linkedin.venice.hadoop.VenicePushJob.COMPRESSION_METRIC_COLLECTION_ENABLED;
 import static com.linkedin.venice.hadoop.VenicePushJob.COMPRESSION_STRATEGY;
@@ -16,7 +17,6 @@ import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DictionaryUtils;
-import com.linkedin.venice.utils.EnumUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
@@ -44,9 +44,10 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE> extends Abstr
   private static final int TASK_ID_WHICH_SHOULD_SPRAY_ALL_PARTITIONS = 0;
 
   // Compression related
-  private boolean compressionMetricCollectionEnabled;
   private CompressionStrategy compressionStrategy;
+  private boolean compressionMetricCollectionEnabled;
   private boolean isZstdDictCreationSuccess;
+  private boolean isZstdDictCreationRequired;
   private CompressorFactory compressorFactory;
   private VeniceCompressor[] compressor;
 
@@ -138,33 +139,33 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE> extends Abstr
     if (compressionMetricCollectionEnabled) {
       byte[] compressedRecordValue;
       for (CompressionStrategy compressionStrategy: CompressionStrategy.values()) {
-        if (compressor[compressionStrategy.getValue()] != null) {
-          switch (compressionStrategy) {
-            case NO_OP:
-              // incrTotalUncompressedValueSize() already collected this data
-              break;
+        // incrTotalUncompressedValueSize() already collected data for NO_OP
+        if (compressionStrategy != NO_OP && compressor[compressionStrategy.getValue()] != null) {
+          try {
+            if (compressionStrategy == this.compressionStrategy) {
+              // Extra check to not redo compression
+              compressedRecordValue = finalRecordValue;
+            } else {
+              compressedRecordValue = compressor[compressionStrategy.getValue()].compress(recordValue);
+            }
+            switch (compressionStrategy) {
+              case GZIP:
+                MRJobCounterHelper.incrTotalGzipCompressedValueSize(reporter, compressedRecordValue.length);
+                break;
 
-            case GZIP:
-            case ZSTD_WITH_DICT:
-              try {
-                if (compressionStrategy == this.compressionStrategy) {
-                  // Extra check to not redo compression
-                  compressedRecordValue = finalRecordValue;
-                } else {
-                  compressedRecordValue = compressor[compressionStrategy.getValue()].compress(recordValue);
-                }
-                if (compressionStrategy == GZIP)
-                  MRJobCounterHelper.incrTotalGzipCompressedValueSize(reporter, compressedRecordValue.length);
-                else
-                  MRJobCounterHelper.incrTotalZstdCompressedValueSize(reporter, compressedRecordValue.length);
-              } catch (IOException e) {
-                // TODO: ignore for now?
-              }
-              break;
+              case ZSTD_WITH_DICT:
+                MRJobCounterHelper.incrTotalZstdCompressedValueSize(reporter, compressedRecordValue.length);
+                break;
 
-            default: // defensive check
-              throw new VeniceException(
-                  "Support for compression Strategy: " + compressionStrategy.name() + " needs to be added");
+              default: // defensive check
+                throw new VeniceException(
+                    "Support for compression Strategy: " + compressionStrategy.name() + " needs to be added");
+            }
+          } catch (IOException e) {
+            LOGGER.warn(
+                "Compression to collect metrics failed for compression strategy: {}",
+                compressionStrategy.name(),
+                e);
           }
         }
       }
@@ -191,24 +192,39 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE> extends Abstr
     }
 
     // init compressor array
-    this.compressor = new VeniceCompressor[EnumUtils.getEnumValuesArray(CompressionStrategy.class).length];
+    this.compressor = new VeniceCompressor[CompressionStrategy.getCompressionStrategyTypesArrayLength()];
+    setupCompression(props);
+  }
+
+  /**
+   * A => {@link VenicePushJob#COMPRESSION_METRIC_COLLECTION_ENABLED} => if enabled, Compression metrics needs to be collected.
+   * check {@link VenicePushJob#reevaluateCompressionMetricCollectionEnabled} for more details. <br>
+   * B => {@link VenicePushJob#ZSTD_DICTIONARY_CREATION_REQUIRED} => Check {@link VenicePushJob#shouldBuildZstdCompressionDictionary}
+   * for more details<br>
+   * C => {@link VenicePushJob#ZSTD_DICTIONARY_CREATION_SUCCESS} => Whether Zstd Dictionary creation is a success.<br><br>
+   *
+   * case 1: A is true <br>
+   * case 1a: B is true, C is true => Collect Metrics for all compression strategies. <br>
+   * case 1b: B is true, C is False => Collect Metrics for all compression strategies except ZSTD <br>
+   * case 1c: B is false => Collect Metrics for all compression strategies except ZSTD. Currently, this case won't occur <br><br>
+   *
+   * case 2: A is false => Compression metrics will not be collected <br>
+   * case 2a: B is true, C is true => Compression strategy is {@link CompressionStrategy#ZSTD_WITH_DICT} <br>
+   * case 2b: B is true, C is false => Should have failed with an exception <br>
+   * case 2c: B is false => No compression metrics collection, but compression strategies other than ZSTD could be enabled  <br>
+   */
+  private void setupCompression(VeniceProperties props) {
     compressionStrategy = CompressionStrategy.valueOf(props.getString(COMPRESSION_STRATEGY));
 
-    /**
-     * COMPRESSION_METRIC_COLLECTION_ENABLED being true => this config is enabled
-     * ZSTD_DICTIONARY_CREATION_REQUIRED being true => Zstd dictionary creation was required after checking the configs/push type.
-     * Both of the above being true => We need to collect metrics for all compression mechanisms
-      */
-    compressionMetricCollectionEnabled =
-        props.getBoolean(COMPRESSION_METRIC_COLLECTION_ENABLED) && props.getBoolean(ZSTD_DICTIONARY_CREATION_REQUIRED);
+    // A
+    compressionMetricCollectionEnabled = props.getBoolean(COMPRESSION_METRIC_COLLECTION_ENABLED);
+    // B
+    isZstdDictCreationRequired = props.getBoolean(ZSTD_DICTIONARY_CREATION_REQUIRED);
+    // C
+    isZstdDictCreationSuccess = props.getBoolean(ZSTD_DICTIONARY_CREATION_SUCCESS);
 
     if (compressionMetricCollectionEnabled) {
-      /**
-       * ZSTD_DICTIONARY_CREATION_STATUS will tell us whether metrics for only GZIP will be collected or
-       * whether data for both GZIP and ZSTD needs to be collected.
-       */
-      isZstdDictCreationSuccess = props.getBoolean(ZSTD_DICTIONARY_CREATION_SUCCESS);
-
+      // case 1
       for (CompressionStrategy compressionStrategy: CompressionStrategy.values()) {
         switch (compressionStrategy) {
           case NO_OP:
@@ -217,9 +233,10 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE> extends Abstr
             break;
 
           case ZSTD_WITH_DICT:
-            if (isZstdDictCreationSuccess) {
+            if (isZstdDictCreationRequired && isZstdDictCreationSuccess) {
+              // case 1a
               this.compressor[ZSTD_WITH_DICT.getValue()] = getZstdCompressor(props);
-            }
+            } // else 1b
             break;
 
           case ZSTD:
@@ -232,20 +249,28 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE> extends Abstr
         }
       }
     } else {
+      // case 2
       if (compressionStrategy == ZSTD_WITH_DICT) {
-        this.compressor[ZSTD_WITH_DICT.getValue()] = getZstdCompressor(props);
+        if (isZstdDictCreationRequired && isZstdDictCreationSuccess) {
+          // case 2a
+          this.compressor[ZSTD_WITH_DICT.getValue()] = getZstdCompressor(props);
+        } // else: case 2b
       } else {
+        // case 2c
         this.compressor[compressionStrategy.getValue()] = compressorFactory.getCompressor(compressionStrategy);
       }
     }
   }
 
+  protected ByteBuffer readDictionaryFromKafka(String topicName, VeniceProperties props) {
+    return DictionaryUtils.readDictionaryFromKafka(topicName, props);
+  }
+
   private VeniceCompressor getZstdCompressor(VeniceProperties props) {
     String topicName = props.getString(TOPIC_PROP);
-    ByteBuffer compressionDictionary = DictionaryUtils.readDictionaryFromKafka(topicName, props);
+    ByteBuffer compressionDictionary = readDictionaryFromKafka(topicName, props);
     int compressionLevel = props.getInt(ZSTD_COMPRESSION_LEVEL, Zstd.maxCompressionLevel());
 
-    // TODO check how Venice services get the level? Do they need them?
     if (compressionDictionary != null && compressionDictionary.limit() > 0) {
       return compressorFactory.createVersionSpecificCompressorIfNotExist(
           ZSTD_WITH_DICT,
@@ -259,7 +284,7 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE> extends Abstr
   @Override
   public void close() {
     if (compressorFactory != null) {
-      compressorFactory.close();
+      Utils.closeQuietlyWithErrorLogged(compressorFactory);
     }
 
     if (veniceFilterChain != null) {
