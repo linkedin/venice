@@ -1,19 +1,18 @@
 package com.linkedin.venice.client.consumer;
 
 import com.linkedin.venice.client.store.ClientConfig;
-import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
+import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.schema.SchemaReader;
 import java.util.Properties;
 import org.apache.avro.specific.SpecificRecord;
 
 
 public class ChangelogClientConfig<T extends SpecificRecord> {
-  private HelixReadOnlyStoreRepository storeRepo;
   private Properties consumerProperties;
   private SchemaReader schemaReader;
   private String viewClassName;
   private ClientConfig<T> innerClientConfig;
-  private String zkAddressForStoreRepo;
+  private D2ControllerClient d2ControllerClient;
   private String clusterName;
 
   public ChangelogClientConfig(String storeName) {
@@ -31,15 +30,6 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
 
   public String getStoreName() {
     return innerClientConfig.getStoreName();
-  }
-
-  public ChangelogClientConfig<T> setStoreRepo(HelixReadOnlyStoreRepository storeRepo) {
-    this.storeRepo = storeRepo;
-    return this;
-  }
-
-  public HelixReadOnlyStoreRepository getStoreRepo() {
-    return storeRepo;
   }
 
   public ChangelogClientConfig<T> setConsumerProperties(Properties consumerProperties) {
@@ -78,6 +68,15 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return this.innerClientConfig.getD2ServiceName();
   }
 
+  public ChangelogClientConfig<T> setD2ControllerClient(D2ControllerClient d2ControllerClient) {
+    this.d2ControllerClient = d2ControllerClient;
+    return this;
+  }
+
+  public D2ControllerClient getD2ControllerClient() {
+    return this.d2ControllerClient;
+  }
+
   public ChangelogClientConfig<T> setVeniceURL(String veniceURL) {
     this.innerClientConfig.setVeniceURL(veniceURL);
     return this;
@@ -89,15 +88,6 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
 
   public ClientConfig<T> getInnerClientConfig() {
     return this.innerClientConfig;
-  }
-
-  public ChangelogClientConfig<T> setZkAddressForStoreRepo(String zkAddressForStoreRepo) {
-    this.zkAddressForStoreRepo = zkAddressForStoreRepo;
-    return this;
-  }
-
-  public String getZkAddressForStoreRepo() {
-    return this.zkAddressForStoreRepo;
   }
 
   public ChangelogClientConfig<T> setClusterName(String clusterName) {
@@ -114,11 +104,10 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setVeniceURL(config.getVeniceURL())
         .setD2ServiceName(config.getD2ServiceName())
         .setConsumerProperties(config.getConsumerProperties())
-        .setStoreRepo(config.getStoreRepo())
         .setSchemaReader(config.getSchemaReader())
         .setClusterName(config.getClusterName())
-        .setZkAddressForStoreRepo(config.getZkAddressForStoreRepo())
-        .setViewClassName(config.getViewClassName());
+        .setViewClassName(config.getViewClassName())
+        .setD2ControllerClient(config.getD2ControllerClient());
     return newConfig;
   }
 }

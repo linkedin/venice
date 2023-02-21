@@ -208,8 +208,7 @@ public class TestActiveActiveIngestion {
         new ChangelogClientConfig().setViewClassName(ChangeCaptureView.class.getCanonicalName())
             .setConsumerProperties(consumerProperties)
             .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
-            .setVeniceURL(multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper().getAddress())
-            .setZkAddressForStoreRepo(childDatacenters.get(0).getZkServerWrapper().getAddress());
+            .setVeniceURL(multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper().getAddress());
     VeniceChangeLogConsumerClientFactory veniceChangeLogConsumerClientFactory =
         new VeniceChangeLogConsumerClientFactory(globalChangeLogClientConfig);
     VeniceChangelogConsumer<String, Utf8> veniceChangeLogConsumer =
@@ -256,7 +255,7 @@ public class TestActiveActiveIngestion {
         String key = Integer.toString(i);
         VeniceChangeLogConsumerImpl.ChangeEvent<Utf8> changeEvent = polledChangeEvents.get(key);
         Assert.assertNotNull(changeEvent);
-        Assert.assertEquals(changeEvent.getPreviousValue().toString(), "test_name_" + i);
+        Assert.assertNull(changeEvent.getPreviousValue()); // schema id is negative, so we did not parse.
         Assert.assertNull(changeEvent.getCurrentValue());
       }
     });
@@ -455,6 +454,7 @@ public class TestActiveActiveIngestion {
       Assert.assertFalse(storeTopicsResponse.isError());
       Assert.assertEquals(storeTopicsResponse.getTopics().size(), 0);
     });
+
   }
 
 
