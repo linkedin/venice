@@ -53,8 +53,6 @@ public class ApacheKafkaConsumer implements PubSubConsumer {
   private final Optional<TopicPartitionsOffsetsTracker> topicPartitionsOffsetsTracker;
 
   private final Map<TopicPartition, PubSubTopicPartition> assignments;
-  private final Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> polledPubSubMessages =
-      new HashMap<>();
 
   private final KafkaPubSubMessageDeserializer pubSubMessageDeserializer;
 
@@ -152,8 +150,7 @@ public class ApacheKafkaConsumer implements PubSubConsumer {
             new TopicPartition(
                 pubSubTopicPartition.getPubSubTopic().getName(),
                 pubSubTopicPartition.getPartitionNumber())));
-    Collection<TopicPartition> kafkaTopicPartitions =
-        convertPubSubTopicPartitionsToTopicPartitions(assignments.values());
+    Collection<TopicPartition> kafkaTopicPartitions = assignments.keySet();
     kafkaConsumer.assign(kafkaTopicPartitions);
   }
 
@@ -175,17 +172,22 @@ public class ApacheKafkaConsumer implements PubSubConsumer {
     // TODO: we may want to wrap this call in our own thread to enforce the timeout...
     int attemptCount = 1;
     ConsumerRecords<byte[], byte[]> records = ConsumerRecords.empty();
+    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> polledPubSubMessages =
+        new HashMap<>();
     while (attemptCount <= consumerPollRetryTimes && !Thread.currentThread().isInterrupted()) {
       try {
         records = kafkaConsumer.poll(Duration.ofMillis(timeoutMs));
-        polledPubSubMessages.clear();
         for (TopicPartition topicPartition: records.partitions()) {
           PubSubTopicPartition pubSubTopicPartition = assignments.get(topicPartition);
-          for (ConsumerRecord<byte[], byte[]> consumerRecord: records.records(topicPartition)) {
+          List<ConsumerRecord<byte[], byte[]>> topicPartitionConsumerRecords = records.records(topicPartition);
+          List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> topicPartitionPubSubMessages =
+              new ArrayList<>(topicPartitionConsumerRecords.size());
+          for (ConsumerRecord<byte[], byte[]> consumerRecord: topicPartitionConsumerRecords) {
             PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage =
                 pubSubMessageDeserializer.deserialize(consumerRecord, pubSubTopicPartition);
-            polledPubSubMessages.computeIfAbsent(pubSubTopicPartition, k -> new ArrayList<>()).add(pubSubMessage);
+            topicPartitionPubSubMessages.add(pubSubMessage);
           }
+          polledPubSubMessages.put(pubSubTopicPartition, topicPartitionPubSubMessages);
         }
         break;
       } catch (RetriableException e) {
@@ -259,17 +261,6 @@ public class ApacheKafkaConsumer implements PubSubConsumer {
   @Override
   public Set<PubSubTopicPartition> getAssignment() {
     return new HashSet<>(assignments.values());
-  }
-
-  private Collection<TopicPartition> convertPubSubTopicPartitionsToTopicPartitions(
-      Collection<PubSubTopicPartition> pubSubTopicPartitions) {
-    Collection<TopicPartition> topicPartitions = new HashSet<>();
-    pubSubTopicPartitions.forEach(
-        pubSubTopicPartition -> topicPartitions.add(
-            new TopicPartition(
-                pubSubTopicPartition.getPubSubTopic().getName(),
-                pubSubTopicPartition.getPartitionNumber())));
-    return topicPartitions;
   }
 
   @Override

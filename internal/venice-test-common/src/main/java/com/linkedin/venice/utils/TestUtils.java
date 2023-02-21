@@ -74,7 +74,6 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.serializer.AvroSerializer;
-import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.writer.ApacheKafkaProducer;
 import com.linkedin.venice.writer.SharedKafkaProducerService;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -748,10 +747,6 @@ public class TestUtils {
         .setStorageEngineRepository(mockStorageEngineRepository)
         .setStorageMetadataService(mockStorageMetadataService)
         .setLeaderFollowerNotifiersQueue(new ArrayDeque<>())
-        .setBandwidthThrottler(mock(EventThrottler.class))
-        .setRecordsThrottler(mock(EventThrottler.class))
-        .setUnorderedBandwidthThrottler(mock(EventThrottler.class))
-        .setUnorderedRecordsThrottler(mock(EventThrottler.class))
         .setSchemaRepository(mock(ReadOnlySchemaRepository.class))
         .setMetadataRepository(mockReadOnlyStoreRepository)
         .setTopicManagerRepository(mock(TopicManagerRepository.class))

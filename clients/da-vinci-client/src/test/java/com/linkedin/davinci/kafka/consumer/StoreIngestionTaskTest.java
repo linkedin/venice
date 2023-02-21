@@ -891,18 +891,12 @@ public abstract class StoreIngestionTaskTest {
     doReturn(100L).when(mockBandwidthThrottler).getMaxRatePerSecond();
     prepareAggKafkaConsumerServiceMock();
 
-    EventThrottler mockUnorderedBandwidthThrottler = mock(EventThrottler.class);
-    EventThrottler mockUnorderedRecordsThrottler = mock(EventThrottler.class);
     return StoreIngestionTaskFactory.builder()
         .setVeniceWriterFactory(mockWriterFactory)
         .setKafkaClientFactory(mockFactory)
         .setStorageEngineRepository(mockStorageEngineRepository)
         .setStorageMetadataService(offsetManager)
         .setLeaderFollowerNotifiersQueue(leaderFollowerNotifiers)
-        .setBandwidthThrottler(mockBandwidthThrottler)
-        .setRecordsThrottler(mockRecordsThrottler)
-        .setUnorderedBandwidthThrottler(mockUnorderedBandwidthThrottler)
-        .setUnorderedRecordsThrottler(mockUnorderedRecordsThrottler)
         .setSchemaRepository(mockSchemaRepo)
         .setMetadataRepository(mockMetadataRepo)
         .setTopicManagerRepository(mockTopicManagerRepository)

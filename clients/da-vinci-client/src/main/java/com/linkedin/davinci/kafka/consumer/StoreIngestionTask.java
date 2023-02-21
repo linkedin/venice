@@ -82,7 +82,6 @@ import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.system.store.MetaStoreWriter;
-import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.DiskUsage;
@@ -172,10 +171,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final TopicManagerRepository topicManagerRepository;
   protected final TopicManagerRepository topicManagerRepositoryJavaBased;
   protected final CachedKafkaMetadataGetter cachedKafkaMetadataGetter;
-  protected final EventThrottler bandwidthThrottler;
-  protected final EventThrottler recordsThrottler;
-  protected final EventThrottler unorderedBandwidthThrottler;
-  protected final EventThrottler unorderedRecordsThrottler;
   /** Per-partition consumption state map */
   protected final ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap;
   protected final AbstractStoreBufferService storeBufferService;
@@ -225,15 +220,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final SparseConcurrentList<Object> deserializedSchemaIds = new SparseConcurrentList<>();
   protected int idleCounter = 0;
 
-  // This indicates whether it polls nothing from Kafka
-  // It's for stats measuring purpose
-  protected int recordCount = 0;
-
   private final StorageUtilizationManager storageUtilizationManager;
 
   protected final AggKafkaConsumerService aggKafkaConsumerService;
-
-  private boolean orderedWritesOnly = true;
 
   /**
    * Please refer to {@link com.linkedin.venice.ConfigKeys#SERVER_DELAY_REPORT_READY_TO_SERVE_MS} to
@@ -326,10 +315,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.kafkaProps = kafkaConsumerProperties;
     this.storageEngineRepository = builder.getStorageEngineRepository();
     this.storageMetadataService = builder.getStorageMetadataService();
-    this.bandwidthThrottler = builder.getBandwidthThrottler();
-    this.recordsThrottler = builder.getRecordsThrottler();
-    this.unorderedBandwidthThrottler = builder.getUnorderedBandwidthThrottler();
-    this.unorderedRecordsThrottler = builder.getUnorderedRecordsThrottler();
     this.storeRepository = builder.getMetadataRepo();
     this.schemaRepository = builder.getSchemaRepo();
     this.kafkaVersionTopic = storeConfig.getStoreVersionName();
@@ -626,7 +611,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // Prior to the EOP, we can optimize the storage if the data is sorted.
       deferredWrites = sorted;
     }
-    orderedWritesOnly &= deferredWrites;
     storagePartitionConfig.setDeferredWrite(deferredWrites);
     storagePartitionConfig.setReadOnly(readOnly);
     return storagePartitionConfig;
