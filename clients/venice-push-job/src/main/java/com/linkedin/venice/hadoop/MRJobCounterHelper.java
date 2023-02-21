@@ -12,9 +12,10 @@ public class MRJobCounterHelper {
   private static final String COUNTER_GROUP_QUOTA = "Quota";
   private static final String COUNTER_TOTAL_KEY_SIZE = "total key size";
   private static final String COUNTER_TOTAL_UNCOMPRESSED_VALUE_SIZE = "total uncompressed value size";
-  private static final String COUNTER_TOTAL_VALUE_SIZE = "total value size";
+  private static final String COUNTER_TOTAL_VALUE_SIZE = "total compressed value size stored";
   private static final String COUNTER_TOTAL_GZIP_COMPRESSED_VALUE_SIZE = "total GZIP compressed value size";
-  private static final String COUNTER_TOTAL_ZSTD_COMPRESSED_VALUE_SIZE = "total ZSTD compressed value size";
+  private static final String COUNTER_TOTAL_ZSTD_WITH_DICT_COMPRESSED_VALUE_SIZE =
+      "total ZSTD with dictionary compressed value size";
 
   private static final String COUNTER_GROUP_KAFKA = "Kafka";
   private static final String COUNTER_OUTPUT_RECORDS = "Output Records";
@@ -61,8 +62,8 @@ public class MRJobCounterHelper {
   static final GroupAndCounterNames TOTAL_GZIP_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME =
       new GroupAndCounterNames(COUNTER_GROUP_QUOTA, COUNTER_TOTAL_GZIP_COMPRESSED_VALUE_SIZE);
 
-  static final GroupAndCounterNames TOTAL_ZSTD_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME =
-      new GroupAndCounterNames(COUNTER_GROUP_QUOTA, COUNTER_TOTAL_ZSTD_COMPRESSED_VALUE_SIZE);
+  static final GroupAndCounterNames TOTAL_ZSTD_WITH_DICT_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME =
+      new GroupAndCounterNames(COUNTER_GROUP_QUOTA, COUNTER_TOTAL_ZSTD_WITH_DICT_COMPRESSED_VALUE_SIZE);
 
   static final GroupAndCounterNames DUP_KEY_WITH_IDENTICAL_VALUE_GROUP_COUNTER_NAME =
       new GroupAndCounterNames(COUNTER_GROUP_DATA_QUALITY, DUPLICATE_KEY_WITH_IDENTICAL_VALUE);
@@ -149,7 +150,7 @@ public class MRJobCounterHelper {
   }
 
   static void incrTotalZstdCompressedValueSize(Reporter reporter, long amount) {
-    incrAmountWithGroupCounterName(reporter, TOTAL_ZSTD_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME, amount);
+    incrAmountWithGroupCounterName(reporter, TOTAL_ZSTD_WITH_DICT_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME, amount);
   }
 
   static void incrDuplicateKeyWithIdenticalValue(Reporter reporter, long amount) {
@@ -236,8 +237,8 @@ public class MRJobCounterHelper {
     return getCountFromCounters(counters, TOTAL_GZIP_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME);
   }
 
-  static long getTotalZstdCompressedValueSize(Counters counters) {
-    return getCountFromCounters(counters, TOTAL_ZSTD_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME);
+  static long getTotalZstdWithDictCompressedValueSize(Counters counters) {
+    return getCountFromCounters(counters, TOTAL_ZSTD_WITH_DICT_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME);
   }
 
   static long getTotalPutOrDeleteRecordsCount(Counters counters) {

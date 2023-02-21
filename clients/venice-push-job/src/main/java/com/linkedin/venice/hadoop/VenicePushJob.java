@@ -1324,14 +1324,14 @@ public class VenicePushJob implements AutoCloseable {
     checkLastModificationTimeAndLog(false);
   }
 
-  private void checkLastModificationTimeAndLog(boolean throwException) throws IOException {
+  private void checkLastModificationTimeAndLog(boolean throwExceptionOnDataSetChange) throws IOException {
     long lastModificationTime = getInputDataInfoProvider().getInputLastModificationTime(inputDirectory);
     if (lastModificationTime > inputModificationTime) {
       updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.DATASET_CHANGED);
       String error = "Dataset changed during the push job. Please check above logs to see if the change "
           + "caused the MapReduce failure and rerun the job without dataset change.";
       LOGGER.error(error);
-      if (throwException) {
+      if (throwExceptionOnDataSetChange) {
         throw new VeniceException(error);
       }
     }
@@ -1349,19 +1349,19 @@ public class VenicePushJob implements AutoCloseable {
       // repush from kafka: Existing dictionary will be collected from kafka if found,
       // but will not be built again. This is already checked before calling this function.
       // This is a defensive check.
-      LOGGER.info("No compression dictionary will be generated as the push type is repush");
+      LOGGER.warn("No compression dictionary will be generated as the push type is repush");
       return false;
     }
 
     if (!inputFileHasRecords) {
-      LOGGER.info("No compression dictionary will be generated as there are no records");
+      LOGGER.warn("No compression dictionary will be generated as there are no records");
       return false;
     }
 
     if (pushJobSetting.compressionMetricCollectionEnabled
         || storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
       if (pushJobSetting.isIncrementalPush) {
-        LOGGER.info("No compression dictionary will be generated as the push type is incremental push");
+        LOGGER.warn("No compression dictionary will be generated as the push type is incremental push");
         return false;
       }
       LOGGER.info(
@@ -1372,7 +1372,7 @@ public class VenicePushJob implements AutoCloseable {
       return true;
     }
 
-    LOGGER.info(
+    LOGGER.warn(
         "No Compression dictionary will be generated with the compression strategy"
             + " {} and compressionMetricCollectionEnabled is disabled",
         storeSetting.compressionStrategy);
@@ -1380,8 +1380,10 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   /**
-   * This functions reevaluates {@link PushJobSetting#compressionMetricCollectionEnabled}
-   * based on the input data
+   * This functions reevaluates the config {@link PushJobSetting#compressionMetricCollectionEnabled}
+   * based on the input data and other configs as an initial filter to disable this config for cases
+   * where we won't be able to collect this information or where it doesn't make sense to collect this
+   * information. eg: When there are no data or for Incremental push.
    */
   protected static boolean reevaluateCompressionMetricCollectionEnabled(
       PushJobSetting pushJobSetting,
@@ -1394,17 +1396,17 @@ public class VenicePushJob implements AutoCloseable {
     if (pushJobSetting.isSourceKafka) {
       // repush from kafka: This is already checked before calling this function.
       // This is a defensive check.
-      LOGGER.info("No compression related metrics will be generated as the push type is repush");
+      LOGGER.warn("No compression related metrics will be generated as the push type is repush");
       return false;
     }
 
     if (!inputFileHasRecords) {
-      LOGGER.info("No compression related metrics will be generated as there are no records");
+      LOGGER.warn("No compression related metrics will be generated as there are no records");
       return false;
     }
 
     if (pushJobSetting.isIncrementalPush) {
-      LOGGER.info("No compression related metrics will be generated as the push type is incremental push");
+      LOGGER.warn("No compression related metrics will be generated as the push type is incremental push");
       return false;
     }
 
@@ -1421,8 +1423,9 @@ public class VenicePushJob implements AutoCloseable {
   private void validateCountersAfterValidateSchemaAndBuildDict() throws IOException {
     if (inputFileHasRecords) {
       Counters counters = runningJob.getCounters();
-      final long dataModifiedDuringPushJob = MRJobCounterHelper.getMapperErrorDataModifiedDuringPushJobCount(counters);
-      if (dataModifiedDuringPushJob != 0) {
+      final long dataModifiedDuringPushJobCount =
+          MRJobCounterHelper.getMapperErrorDataModifiedDuringPushJobCount(counters);
+      if (dataModifiedDuringPushJobCount != 0) {
         updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.DATASET_CHANGED);
         String err =
             "Error while validating schema and building dictionary: Because Dataset changed during the push job. Rerun the job without dataset change";
@@ -1430,8 +1433,8 @@ public class VenicePushJob implements AutoCloseable {
         throw new VeniceException(err);
       }
 
-      final long readInvalidInputIdx = MRJobCounterHelper.getMapperInvalidInputIdxCount(counters);
-      if (readInvalidInputIdx != 0) {
+      final long readInvalidInputIdxCount = MRJobCounterHelper.getMapperInvalidInputIdxCount(counters);
+      if (readInvalidInputIdxCount != 0) {
         checkLastModificationTimeAndLog(true);
         updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.INVALID_INPUT_FILE);
         String err = "Error while validating schema and building dictionary: Input file Idx is invalid, "
@@ -1448,22 +1451,25 @@ public class VenicePushJob implements AutoCloseable {
         throw new VeniceException(err);
       }
 
-      final long schemaInconsistencyFailure = MRJobCounterHelper.getMapperSchemaInconsistencyFailureCount(counters);
-      if (schemaInconsistencyFailure != 0) {
+      final long schemaInconsistencyFailureCount =
+          MRJobCounterHelper.getMapperSchemaInconsistencyFailureCount(counters);
+      if (schemaInconsistencyFailureCount != 0) {
         updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.FILE_SCHEMA_VALIDATION_FAILED);
         String err = "Error while validating schema: Inconsistent file schema found";
         LOGGER.error(err);
         throw new VeniceException(err);
       }
 
-      final long zstdDictTrainFailure = MRJobCounterHelper.getMapperZstdDictTrainFailureCount(counters);
-      final long zstdDictTrainSuccess = MRJobCounterHelper.getMapperZstdDictTrainSuccessCount(counters);
-      isZstdDictCreationSuccess = (zstdDictTrainSuccess == 1);
-      final long numRecordsSuccessfullyProcessed =
+      final long zstdDictCreationFailureCount = MRJobCounterHelper.getMapperZstdDictTrainFailureCount(counters);
+      final long zstdDictTrainSuccessCount = MRJobCounterHelper.getMapperZstdDictTrainSuccessCount(counters);
+      isZstdDictCreationSuccess = (zstdDictTrainSuccessCount == 1);
+      boolean isZstdDictCreationFailure = (zstdDictCreationFailureCount == 1);
+
+      final long recordsSuccessfullyProcessedCount =
           MRJobCounterHelper.getMapperNumRecordsSuccessfullyProcessedCount(counters);
-      if (numRecordsSuccessfullyProcessed == inputNumFiles + 1) {
+      if (recordsSuccessfullyProcessedCount == inputNumFiles + 1) {
         if (isZstdDictCreationRequired) {
-          if (isZstdDictCreationSuccess == false) {
+          if (!isZstdDictCreationSuccess) {
             checkLastModificationTimeAndLog(true);
             updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.INVALID_INPUT_FILE);
             String err = "Error while validating schema: MR job counter is not reliable to point out the exact reason";
@@ -1471,8 +1477,8 @@ public class VenicePushJob implements AutoCloseable {
             throw new VeniceException(err);
           }
         }
-      } else if (numRecordsSuccessfullyProcessed == inputNumFiles) {
-        if (zstdDictTrainFailure == 1) {
+      } else if (recordsSuccessfullyProcessedCount == inputNumFiles) {
+        if (isZstdDictCreationFailure) {
           if (storeSetting.compressionStrategy != CompressionStrategy.ZSTD_WITH_DICT) {
             // Tried creating dictionary due to compressionMetricCollectionEnabled
             LOGGER.warn(
@@ -1754,14 +1760,14 @@ public class VenicePushJob implements AutoCloseable {
       pushJobDetails.totalKeyBytes = MRJobCounterHelper.getTotalKeySize(runningJob.getCounters());
       // size of uncompressed value
       pushJobDetails.totalRawValueBytes = MRJobCounterHelper.getTotalUncompressedValueSize(runningJob.getCounters());
-      // size of the final stored data in SN (can be compressed/uncompressed)
+      // size of the final stored data in SN (can be compressed using NO_OP/GZIP/ZSTD_WITH_DICT)
       pushJobDetails.totalCompressedValueBytes = MRJobCounterHelper.getTotalValueSize(runningJob.getCounters());
       // size of the Gzip compressed data
       pushJobDetails.totalGzipCompressedValueBytes =
           MRJobCounterHelper.getTotalGzipCompressedValueSize(runningJob.getCounters());
       // size of the Zstd compressed data
       pushJobDetails.totalZstdWithDictCompressedValueBytes =
-          MRJobCounterHelper.getTotalZstdCompressedValueSize(runningJob.getCounters());
+          MRJobCounterHelper.getTotalZstdWithDictCompressedValueSize(runningJob.getCounters());
     } catch (Exception e) {
       LOGGER.warn(
           "Exception caught while updating push job details with map reduce counters. {}",

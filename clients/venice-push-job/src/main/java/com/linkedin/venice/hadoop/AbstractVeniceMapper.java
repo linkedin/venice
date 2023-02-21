@@ -21,6 +21,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.function.Consumer;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.Mapper;
@@ -118,7 +119,6 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE> extends Abstr
 
     // both key and value are not null
     MRJobCounterHelper.incrTotalKeySize(reporter, recordKey.length);
-    MRJobCounterHelper.incrTotalUncompressedValueSize(reporter, recordValue.length);
 
     // Compress and save the details based on the configured compression strategy: This should not fail
     byte[] finalRecordValue;
@@ -135,37 +135,44 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE> extends Abstr
     keyBW.set(recordKey, 0, recordKey.length);
     valueBW.set(finalRecordValue, 0, finalRecordValue.length);
 
-    // Compress based on all compression strategies to collect metrics if enabled.
-    if (compressionMetricCollectionEnabled) {
+    if (!compressionMetricCollectionEnabled) {
+      // collect the uncompressed value size
+      MRJobCounterHelper.incrTotalUncompressedValueSize(reporter, recordValue.length);
+    } else {
+      // Compress based on all compression strategies to collect metrics if enabled.
       byte[] compressedRecordValue;
       for (CompressionStrategy compressionStrategy: CompressionStrategy.values()) {
-        // incrTotalUncompressedValueSize() already collected data for NO_OP
-        if (compressionStrategy != NO_OP && compressor[compressionStrategy.getValue()] != null) {
-          try {
-            if (compressionStrategy == this.compressionStrategy) {
-              // Extra check to not redo compression
-              compressedRecordValue = finalRecordValue;
-            } else {
+        if (compressor[compressionStrategy.getValue()] != null) {
+          if (compressionStrategy == this.compressionStrategy) {
+            // Extra check to not redo compression
+            compressedRecordValue = finalRecordValue;
+          } else {
+            try {
               compressedRecordValue = compressor[compressionStrategy.getValue()].compress(recordValue);
+            } catch (IOException e) {
+              LOGGER.warn(
+                  "Compression to collect metrics failed for compression strategy: {}",
+                  compressionStrategy.name(),
+                  e);
+              continue;
             }
-            switch (compressionStrategy) {
-              case GZIP:
-                MRJobCounterHelper.incrTotalGzipCompressedValueSize(reporter, compressedRecordValue.length);
-                break;
+          }
+          switch (compressionStrategy) {
+            case NO_OP:
+              MRJobCounterHelper.incrTotalUncompressedValueSize(reporter, compressedRecordValue.length);
+              break;
 
-              case ZSTD_WITH_DICT:
-                MRJobCounterHelper.incrTotalZstdCompressedValueSize(reporter, compressedRecordValue.length);
-                break;
+            case GZIP:
+              MRJobCounterHelper.incrTotalGzipCompressedValueSize(reporter, compressedRecordValue.length);
+              break;
 
-              default: // defensive check
-                throw new VeniceException(
-                    "Support for compression Strategy: " + compressionStrategy.name() + " needs to be added");
-            }
-          } catch (IOException e) {
-            LOGGER.warn(
-                "Compression to collect metrics failed for compression strategy: {}",
-                compressionStrategy.name(),
-                e);
+            case ZSTD_WITH_DICT:
+              MRJobCounterHelper.incrTotalZstdCompressedValueSize(reporter, compressedRecordValue.length);
+              break;
+
+            default: // ZSTD won't reach here as it won't be initialized
+              throw new VeniceException(
+                  "Support for compression Strategy: " + compressionStrategy.name() + " needs to be added");
           }
         }
       }
@@ -205,13 +212,13 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE> extends Abstr
    *
    * case 1: A is true <br>
    * case 1a: B is true, C is true => Collect Metrics for all compression strategies. <br>
-   * case 1b: B is true, C is False => Collect Metrics for all compression strategies except ZSTD <br>
-   * case 1c: B is false => Collect Metrics for all compression strategies except ZSTD. Currently, this case won't occur <br><br>
+   * case 1b: B is true, C is False => Collect Metrics for all compression strategies except {@link CompressionStrategy#ZSTD_WITH_DICT} <br>
+   * case 1c: B is false => Same as 1b. Currently, this case won't occur <br><br>
    *
    * case 2: A is false => Compression metrics will not be collected <br>
    * case 2a: B is true, C is true => Compression strategy is {@link CompressionStrategy#ZSTD_WITH_DICT} <br>
    * case 2b: B is true, C is false => Should have failed with an exception <br>
-   * case 2c: B is false => No compression metrics collection, but compression strategies other than ZSTD could be enabled  <br>
+   * case 2c: B is false => No compression metrics collection, but compression strategies other than {@link CompressionStrategy#ZSTD_WITH_DICT} could be enabled <br>
    */
   private void setupCompression(VeniceProperties props) {
     compressionStrategy = CompressionStrategy.valueOf(props.getString(COMPRESSION_STRATEGY));
@@ -236,7 +243,7 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE> extends Abstr
             if (isZstdDictCreationRequired && isZstdDictCreationSuccess) {
               // case 1a
               this.compressor[ZSTD_WITH_DICT.getValue()] = getZstdCompressor(props);
-            } // else 1b
+            } // else: case 1b or 1c
             break;
 
           case ZSTD:
@@ -262,6 +269,11 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE> extends Abstr
     }
   }
 
+  /**
+   * This function is added to allow it to be mocked for tests.
+   * Since mocking this function of an actual object in {@link AbstractTestVeniceMapper#getMapper(int, int, Consumer)}
+   * ended up hitting the original function always, added an override for this in {@link TestVeniceAvroMapperClass}.
+   */
   protected ByteBuffer readDictionaryFromKafka(String topicName, VeniceProperties props) {
     return DictionaryUtils.readDictionaryFromKafka(topicName, props);
   }

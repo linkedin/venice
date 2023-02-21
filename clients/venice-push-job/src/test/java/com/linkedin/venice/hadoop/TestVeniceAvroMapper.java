@@ -196,8 +196,8 @@ public class TestVeniceAvroMapper extends AbstractTestVeniceMapper<VeniceAvroMap
         anyLong());
 
     verify(mockReporter, never()).incrCounter(
-        eq(MRJobCounterHelper.TOTAL_ZSTD_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
-        eq(MRJobCounterHelper.TOTAL_ZSTD_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+        eq(MRJobCounterHelper.TOTAL_ZSTD_WITH_DICT_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+        eq(MRJobCounterHelper.TOTAL_ZSTD_WITH_DICT_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
         anyLong());
 
     // Not write ACL failure
@@ -253,8 +253,8 @@ public class TestVeniceAvroMapper extends AbstractTestVeniceMapper<VeniceAvroMap
         eq(gzipCompressedValueSize));
 
     verify(mockReporter, never()).incrCounter(
-        eq(MRJobCounterHelper.TOTAL_ZSTD_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
-        eq(MRJobCounterHelper.TOTAL_ZSTD_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+        eq(MRJobCounterHelper.TOTAL_ZSTD_WITH_DICT_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+        eq(MRJobCounterHelper.TOTAL_ZSTD_WITH_DICT_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
         anyLong());
   }
 
@@ -300,8 +300,8 @@ public class TestVeniceAvroMapper extends AbstractTestVeniceMapper<VeniceAvroMap
         eq(gzipCompressedValueSize));
 
     verify(mockReporter, times(1)).incrCounter(
-        eq(MRJobCounterHelper.TOTAL_ZSTD_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
-        eq(MRJobCounterHelper.TOTAL_ZSTD_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+        eq(MRJobCounterHelper.TOTAL_ZSTD_WITH_DICT_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+        eq(MRJobCounterHelper.TOTAL_ZSTD_WITH_DICT_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
         eq(zstdCompressedValueSize));
   }
 
@@ -348,8 +348,8 @@ public class TestVeniceAvroMapper extends AbstractTestVeniceMapper<VeniceAvroMap
         eq(gzipCompressedValueSize));
 
     verify(mockReporter, times(1)).incrCounter(
-        eq(MRJobCounterHelper.TOTAL_ZSTD_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
-        eq(MRJobCounterHelper.TOTAL_ZSTD_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+        eq(MRJobCounterHelper.TOTAL_ZSTD_WITH_DICT_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+        eq(MRJobCounterHelper.TOTAL_ZSTD_WITH_DICT_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
         eq(zstdCompressedValueSize));
   }
 
@@ -396,8 +396,8 @@ public class TestVeniceAvroMapper extends AbstractTestVeniceMapper<VeniceAvroMap
         eq(gzipCompressedValueSize));
 
     verify(mockReporter, times(1)).incrCounter(
-        eq(MRJobCounterHelper.TOTAL_ZSTD_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
-        eq(MRJobCounterHelper.TOTAL_ZSTD_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+        eq(MRJobCounterHelper.TOTAL_ZSTD_WITH_DICT_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+        eq(MRJobCounterHelper.TOTAL_ZSTD_WITH_DICT_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
         eq(zstdCompressedValueSize));
   }
 
@@ -444,8 +444,8 @@ public class TestVeniceAvroMapper extends AbstractTestVeniceMapper<VeniceAvroMap
         anyLong());
 
     verify(mockReporter, never()).incrCounter(
-        eq(MRJobCounterHelper.TOTAL_ZSTD_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
-        eq(MRJobCounterHelper.TOTAL_ZSTD_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+        eq(MRJobCounterHelper.TOTAL_ZSTD_WITH_DICT_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+        eq(MRJobCounterHelper.TOTAL_ZSTD_WITH_DICT_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
         anyLong());
   }
 
