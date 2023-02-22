@@ -17,7 +17,6 @@ import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
-import com.linkedin.venice.pubsub.PubSubMessages;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -77,8 +76,7 @@ public class KafkaInputRecordReaderTest {
 
     Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> recordsMap = new HashMap<>();
     recordsMap.put(pubSubTopicPartition, consumerRecordList);
-    PubSubMessages<KafkaKey, KafkaMessageEnvelope, Long> messages = new PubSubMessages<>(recordsMap);
-    when(consumer.poll(anyLong())).thenReturn(messages, PubSubMessages.empty());
+    when(consumer.poll(anyLong())).thenReturn(recordsMap, new HashMap<>());
 
     KafkaInputSplit split = new KafkaInputSplit(topic, 0, 0, 102);
     try (KafkaInputRecordReader reader =

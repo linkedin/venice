@@ -7,14 +7,17 @@ import static org.mockito.Mockito.mock;
 
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.pubsub.PubSubMessages;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
 import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
@@ -63,8 +66,13 @@ public class KafkaClusterBasedRecordThrottlerTest {
     KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler =
         new KafkaClusterBasedRecordThrottler(kafkaUrlToRecordsThrottler);
 
-    PubSubMessages consumerRecords = mock(PubSubMessages.class);
-    doReturn(10).when(consumerRecords).count();
+    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> consumerRecords =
+        new HashMap<>();
+    PubSubTopicPartition pubSubTopicPartition = mock(PubSubTopicPartition.class);
+    consumerRecords.put(pubSubTopicPartition, new ArrayList<>());
+    for (int i = 0; i < 10; i++) {
+      consumerRecords.get(pubSubTopicPartition).add(mock(PubSubMessage.class));
+    }
 
     PubSubConsumer localConsumer = mock(PubSubConsumer.class);
     PubSubConsumer remoteConsumer = mock(PubSubConsumer.class);
@@ -74,10 +82,12 @@ public class KafkaClusterBasedRecordThrottlerTest {
     doReturn(consumerRecords).when(remoteConsumer).poll(anyLong());
 
     // Verify can ingest at least some record from local and remote Kafka
-    PubSubMessages<KafkaKey, KafkaMessageEnvelope, Long> localPubSubMessages = kafkaClusterBasedRecordThrottler
-        .poll(localConsumer, inMemoryLocalKafkaBroker.getKafkaBootstrapServer(), 1 * Time.MS_PER_SECOND);
-    PubSubMessages<KafkaKey, KafkaMessageEnvelope, Long> remotePubSubMessages = kafkaClusterBasedRecordThrottler
-        .poll(remoteConsumer, inMemoryRemoteKafkaBroker.getKafkaBootstrapServer(), 1 * Time.MS_PER_SECOND);
+    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> localPubSubMessages =
+        kafkaClusterBasedRecordThrottler
+            .poll(localConsumer, inMemoryLocalKafkaBroker.getKafkaBootstrapServer(), 1 * Time.MS_PER_SECOND);
+    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> remotePubSubMessages =
+        kafkaClusterBasedRecordThrottler
+            .poll(remoteConsumer, inMemoryRemoteKafkaBroker.getKafkaBootstrapServer(), 1 * Time.MS_PER_SECOND);
     Assert.assertSame(localPubSubMessages, consumerRecords);
     Assert.assertSame(remotePubSubMessages, consumerRecords);
 

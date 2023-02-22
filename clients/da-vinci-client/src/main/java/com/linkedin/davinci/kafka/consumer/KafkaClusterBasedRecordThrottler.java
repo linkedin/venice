@@ -6,10 +6,13 @@ import com.linkedin.venice.exceptions.QuotaExceededException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.pubsub.PubSubMessages;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -23,22 +26,23 @@ public class KafkaClusterBasedRecordThrottler {
   // Kafka URL to records throttler
   private final Map<String, EventThrottler> kafkaUrlToRecordsThrottler;
   // Kafka URL to throttled records
-  protected Map<String, PubSubMessages<KafkaKey, KafkaMessageEnvelope, Long>> kafkaUrlToThrottledRecords;
+  protected Map<String, Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>>> kafkaUrlToThrottledRecords;
 
   public KafkaClusterBasedRecordThrottler(Map<String, EventThrottler> kafkaUrlToRecordsThrottler) {
     this.kafkaUrlToRecordsThrottler = kafkaUrlToRecordsThrottler;
     this.kafkaUrlToThrottledRecords = new VeniceConcurrentHashMap<>();
   }
 
-  public PubSubMessages<KafkaKey, KafkaMessageEnvelope, Long> poll(
+  public Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> poll(
       PubSubConsumer consumer,
       String kafkaUrl,
       long pollTimeoutMs) {
-    PubSubMessages<KafkaKey, KafkaMessageEnvelope, Long> consumerRecords = kafkaUrlToThrottledRecords.get(kafkaUrl);
+    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> consumerRecords =
+        kafkaUrlToThrottledRecords.get(kafkaUrl);
     if (consumerRecords == null) {
       consumerRecords = consumer.poll(pollTimeoutMs);
       if (consumerRecords == null) {
-        consumerRecords = PubSubMessages.empty();
+        consumerRecords = new HashMap<>();
       }
     }
 
@@ -46,7 +50,7 @@ public class KafkaClusterBasedRecordThrottler {
       try {
         EventThrottler eventThrottler = kafkaUrlToRecordsThrottler.get(kafkaUrl);
         if (eventThrottler != null) {
-          eventThrottler.maybeThrottle(consumerRecords.count());
+          eventThrottler.maybeThrottle(consumerRecords.values().stream().mapToInt(List::size).sum());
           // if code reaches here, then the consumer records should be ingested to storage engine
           kafkaUrlToThrottledRecords.remove(kafkaUrl);
         }
@@ -67,7 +71,7 @@ public class KafkaClusterBasedRecordThrottler {
         }
 
         // Return early so we don't ingest these records
-        return PubSubMessages.empty();
+        return new HashMap<>();
       }
     }
 

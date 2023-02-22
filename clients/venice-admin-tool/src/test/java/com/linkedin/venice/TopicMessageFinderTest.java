@@ -13,7 +13,6 @@ import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
-import com.linkedin.venice.pubsub.PubSubMessages;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -71,8 +70,7 @@ public class TopicMessageFinderTest {
     pubSubMessageList.add(pubSubMessage2);
     Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messagesMap = new HashMap<>();
     messagesMap.put(pubSubTopicPartition, pubSubMessageList);
-    PubSubMessages<KafkaKey, KafkaMessageEnvelope, Long> records = new PubSubMessages<>(messagesMap);
-    when(apacheKafkaConsumer.poll(anyLong())).thenReturn(records, PubSubMessages.empty());
+    when(apacheKafkaConsumer.poll(anyLong())).thenReturn(messagesMap, new HashMap<>());
 
     TopicMessageFinder.consume(
         apacheKafkaConsumer,

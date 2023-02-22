@@ -6,7 +6,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.pubsub.PubSubMessages;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -123,7 +122,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
           this::recordPartitionsPerConsumerSensor,
           this::handleUnsubscription);
 
-      Supplier<PubSubMessages<KafkaKey, KafkaMessageEnvelope, Long>> pollFunction =
+      Supplier<Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>>> pollFunction =
           liveConfigBasedKafkaThrottlingEnabled
               ? () -> kafkaClusterBasedRecordThrottler.poll(pubSubConsumer, kafkaUrl, readCycleDelayMs)
               : () -> pubSubConsumer.poll(readCycleDelayMs);

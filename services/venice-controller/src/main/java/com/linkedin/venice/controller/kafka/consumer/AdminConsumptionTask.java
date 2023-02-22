@@ -22,12 +22,12 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.pubsub.PubSubMessages;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.utils.DaemonThreadFactory;
@@ -341,12 +341,14 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         Iterator<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> recordsIterator;
         // Only poll the kafka channel if there are no more undelegated records due to exceptions.
         if (undelegatedRecords.isEmpty()) {
-          PubSubMessages<KafkaKey, KafkaMessageEnvelope, Long> messages = consumer.poll(READ_CYCLE_DELAY_MS);
+          Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messages =
+              consumer.poll(READ_CYCLE_DELAY_MS);
           if (messages == null || messages.isEmpty()) {
             LOGGER.debug("Received null or no messages");
           } else {
-            LOGGER.info("Consumed {} admin messages from kafka. Will queue them up for processing", messages.count());
-            recordsIterator = messages.iterator();
+            int polledMessageCount = messages.values().stream().mapToInt(List::size).sum();
+            LOGGER.info("Consumed {} admin messages from kafka. Will queue them up for processing", polledMessageCount);
+            recordsIterator = Utils.iterateOnMapOfLists(messages);
             while (recordsIterator.hasNext()) {
               PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> newRecord = recordsIterator.next();
               lastConsumedOffset = newRecord.getOffset();

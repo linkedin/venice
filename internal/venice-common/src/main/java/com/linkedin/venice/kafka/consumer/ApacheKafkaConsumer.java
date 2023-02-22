@@ -6,7 +6,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
-import com.linkedin.venice.pubsub.PubSubMessages;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
@@ -166,7 +165,7 @@ public class ApacheKafkaConsumer implements PubSubConsumer {
   }
 
   @Override
-  public PubSubMessages<KafkaKey, KafkaMessageEnvelope, Long> poll(long timeoutMs) {
+  public Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> poll(long timeoutMs) {
     // The timeout is not respected when hitting UNKNOWN_TOPIC_OR_PARTITION and when the
     // fetcher.retrieveOffsetsByTimes call inside kafkaConsumer times out,
     // TODO: we may want to wrap this call in our own thread to enforce the timeout...
@@ -216,7 +215,7 @@ public class ApacheKafkaConsumer implements PubSubConsumer {
     if (topicPartitionsOffsetsTracker.isPresent()) {
       topicPartitionsOffsetsTracker.get().updateEndOffsets(records, kafkaConsumer.metrics());
     }
-    return new PubSubMessages(polledPubSubMessages);
+    return polledPubSubMessages;
   }
 
   @Override

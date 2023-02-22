@@ -10,7 +10,6 @@ import static org.mockito.Mockito.when;
 import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.pubsub.PubSubMessages;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -54,7 +53,7 @@ public class SharedKafkaConsumerTest {
 
     Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> pubSubMessagesReturnedByConsumer =
         new HashMap<>();
-    doReturn(new PubSubMessages<>(pubSubMessagesReturnedByConsumer)).when(consumer).poll(anyLong());
+    doReturn(pubSubMessagesReturnedByConsumer).when(consumer).poll(anyLong());
 
     sharedConsumer.poll(1000);
     verify(consumer, times(1)).poll(1000);

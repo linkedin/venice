@@ -10,7 +10,6 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.pubsub.PubSubMessages;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -18,6 +17,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.TimeZone;
 import org.apache.kafka.clients.CommonClientConfigs;
@@ -78,11 +79,13 @@ public class DumpAdminMessages {
       KafkaMessageEnvelope messageEnvelope = null;
 
       while (curMsgCnt < messageCnt) {
-        PubSubMessages<KafkaKey, KafkaMessageEnvelope, Long> records = consumer.poll(1000); // 1 second
+        Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> records =
+            consumer.poll(1000); // 1 second
         if (records.isEmpty()) {
           break;
         }
-        Iterator<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> recordsIterator = records.iterator();
+        Iterator<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> recordsIterator =
+            Utils.iterateOnMapOfLists(records);
         while (recordsIterator.hasNext()) {
           PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record = recordsIterator.next();
           messageEnvelope = record.getValue();

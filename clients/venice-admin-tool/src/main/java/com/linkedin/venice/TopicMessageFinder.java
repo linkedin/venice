@@ -10,7 +10,6 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
-import com.linkedin.venice.pubsub.PubSubMessages;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -25,6 +24,7 @@ import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import org.apache.avro.Schema;
@@ -136,12 +136,13 @@ public class TopicMessageFinder {
       consumer.subscribe(assignedPubSubTopicPartition, startOffset);
       boolean done = false;
       while (!done) {
-        PubSubMessages<KafkaKey, KafkaMessageEnvelope, Long> records = consumer.poll(10000);
-        if (records.isEmpty()) {
+        Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messages =
+            consumer.poll(10000);
+        if (messages.isEmpty()) {
           break;
         }
         long lastRecordTimestamp = 0;
-        for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record: records) {
+        for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record: messages.get(assignedPubSubTopicPartition)) {
           if (record.getOffset() >= endOffset) {
             done = true;
             break;
@@ -152,8 +153,8 @@ public class TopicMessageFinder {
             LOGGER.info("Offset: {}, Value: {}", record.getOffset(), value.toString());
           }
           lastRecordTimestamp = record.getPubSubMessageTime();
+          recordCnt++;
         }
-        recordCnt += records.count();
         if (recordCnt - lastReportRecordCnt >= progressInterval) {
           LOGGER.info(
               "Consumed {} messages from topic partition: {}, and last consumed timestamp: {}",

@@ -4,7 +4,6 @@ import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
 import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.pubsub.PubSubMessages;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.ExceptionUtils;
@@ -43,7 +42,7 @@ class ConsumptionTask implements Runnable {
   private final Map<PubSubTopicPartition, ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>>> dataReceiverMap =
       new VeniceConcurrentHashMap<>();
   private final long readCycleDelayMs;
-  private final Supplier<PubSubMessages<KafkaKey, KafkaMessageEnvelope, Long>> pollFunction;
+  private final Supplier<Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>>> pollFunction;
   private final IntConsumer bandwidthThrottler;
   private final IntConsumer recordsThrottler;
   private final KafkaConsumerServiceStats stats;
@@ -61,7 +60,7 @@ class ConsumptionTask implements Runnable {
       final String kafkaUrl,
       final int taskId,
       final long readCycleDelayMs,
-      final Supplier<PubSubMessages<KafkaKey, KafkaMessageEnvelope, Long>> pollFunction,
+      final Supplier<Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>>> pollFunction,
       final IntConsumer bandwidthThrottler,
       final IntConsumer recordsThrottler,
       final KafkaConsumerServiceStats stats,
@@ -82,7 +81,7 @@ class ConsumptionTask implements Runnable {
 
     // Pre-allocate some variables to clobber in the loop
     long beforePollingTimeStamp;
-    PubSubMessages<KafkaKey, KafkaMessageEnvelope, Long> polledPubSubMessages;
+    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> polledPubSubMessages;
     long beforeProducingToWriteBufferTimestamp;
     ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> consumedDataReceiver;
     Set<PubSubTopicPartition> topicPartitionsToUnsub = new HashSet<>();
@@ -117,14 +116,17 @@ class ConsumptionTask implements Runnable {
          * and thus be capable of operating on a non-threadsafe consumer.
          */
         polledPubSubMessages = pollFunction.get();
-        polledPubSubMessagesCount = polledPubSubMessages.count();
+        polledPubSubMessagesCount = polledPubSubMessages.values().stream().mapToInt(List::size).sum();
         lastSuccessfulPollTimestamp = System.currentTimeMillis();
         stats.recordPollRequestLatency(lastSuccessfulPollTimestamp - beforePollingTimeStamp);
         stats.recordPollResultNum(polledPubSubMessagesCount);
         payloadBytesConsumedInOnePoll = 0;
         if (!polledPubSubMessages.isEmpty()) {
           beforeProducingToWriteBufferTimestamp = System.currentTimeMillis();
-          for (PubSubTopicPartition pubSubTopicPartition: polledPubSubMessages.pubSubTopicPartitions()) {
+          for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: polledPubSubMessages
+              .entrySet()) {
+            PubSubTopicPartition pubSubTopicPartition = entry.getKey();
+            List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> topicPartitionMessages = entry.getValue();
             consumedDataReceiver = dataReceiverMap.get(pubSubTopicPartition);
             if (consumedDataReceiver == null) {
               // defensive code
@@ -134,11 +136,10 @@ class ConsumptionTask implements Runnable {
               topicPartitionsToUnsub.add(pubSubTopicPartition);
               continue;
             }
-            for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage: polledPubSubMessages
-                .messages(pubSubTopicPartition)) {
+            for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage: topicPartitionMessages) {
               payloadBytesConsumedInOnePoll += pubSubMessage.getPayloadSize();
             }
-            consumedDataReceiver.write(polledPubSubMessages.messages(pubSubTopicPartition));
+            consumedDataReceiver.write(topicPartitionMessages);
           }
           stats.recordConsumerRecordsProducingToWriterBufferLatency(
               LatencyUtils.getElapsedTimeInMs(beforeProducingToWriteBufferTimestamp));

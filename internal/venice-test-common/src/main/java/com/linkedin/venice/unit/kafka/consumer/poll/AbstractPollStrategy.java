@@ -6,7 +6,6 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
-import com.linkedin.venice.pubsub.PubSubMessages;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
@@ -38,7 +37,7 @@ public abstract class AbstractPollStrategy implements PollStrategy {
 
   protected abstract PubSubTopicPartitionOffset getNextPoll(Map<PubSubTopicPartition, Long> offsets);
 
-  public synchronized PubSubMessages<KafkaKey, KafkaMessageEnvelope, Long> poll(
+  public synchronized Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> poll(
       InMemoryKafkaBroker broker,
       Map<PubSubTopicPartition, Long> offsets,
       long timeout) {
@@ -105,7 +104,7 @@ public abstract class AbstractPollStrategy implements PollStrategy {
       }
     }
 
-    return new PubSubMessages<>(records);
+    return records;
   }
 
   protected void incrementOffset(

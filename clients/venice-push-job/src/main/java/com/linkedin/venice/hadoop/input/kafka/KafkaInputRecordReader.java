@@ -14,7 +14,6 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.pubsub.PubSubMessages;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -24,11 +23,15 @@ import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
@@ -290,7 +293,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
    */
   private void loadRecords() throws InterruptedException {
     if ((recordIterator == null) || !recordIterator.hasNext()) {
-      PubSubMessages<KafkaKey, KafkaMessageEnvelope, Long> messages = null;
+      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messages = new HashMap<>();
       int retry = 0;
       while (retry++ < CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES) {
         messages = consumer.poll(CONSUMER_POLL_TIMEOUT);
@@ -311,7 +314,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
         throw new VeniceException(sb.toString());
       }
 
-      recordIterator = messages.iterator();
+      recordIterator = Utils.iterateOnMapOfLists(messages);
     }
   }
 }

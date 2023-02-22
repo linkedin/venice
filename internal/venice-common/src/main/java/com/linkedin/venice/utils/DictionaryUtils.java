@@ -6,7 +6,6 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.StartOfPush;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.pubsub.PubSubMessages;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
@@ -17,6 +16,8 @@ import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import java.nio.ByteBuffer;
+import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.logging.log4j.LogManager;
@@ -66,8 +67,9 @@ public class DictionaryUtils {
     KafkaKey kafkaKey;
     KafkaMessageEnvelope kafkaValue = null;
     while (!startOfPushReceived) {
-      PubSubMessages<KafkaKey, KafkaMessageEnvelope, Long> messages = pubSubConsumer.poll(10 * Time.MS_PER_SECOND);
-      for (final PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message: messages) {
+      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messages =
+          pubSubConsumer.poll(10 * Time.MS_PER_SECOND);
+      for (final PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message: messages.get(pubSubTopicPartition)) {
         kafkaKey = message.getKey();
         kafkaValue = message.getValue();
         if (kafkaKey.isControlMessage()) {
