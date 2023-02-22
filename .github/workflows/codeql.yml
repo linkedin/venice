@@ -67,8 +67,14 @@ jobs:
     #   If the Autobuild fails above, remove it and uncomment the following three lines.
     #   modify them (or add more) to build your code if your project, please refer to the EXAMPLE below for guidance.
 
+    - shell: bash
+      run: |
+        git remote set-head origin --auto
+        git remote add upstream https://github.com/linkedin/venice
+        git fetch upstream
+
     - run: |
-        echo "Run, Build Application using script"
+        echo "Run, Build Application using gradle"
         ./gradlew assemble
 
     - name: Perform CodeQL Analysis
