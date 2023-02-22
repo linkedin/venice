@@ -82,7 +82,6 @@ import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.system.store.MetaStoreWriter;
-import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.DiskUsage;
@@ -153,6 +152,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /** storage destination for consumption */
   protected final StorageEngineRepository storageEngineRepository;
   protected final AbstractStorageEngine storageEngine;
+
+  /** Topics used for this topic consumption
+   * TODO: Using a PubSubVersionTopic and PubSubRealTimeTopic extending PubSubTopic for type safety.
+   * */
   protected final String kafkaVersionTopic;
   protected final PubSubTopic versionTopic;
   protected final PubSubTopic realTimeTopic;
@@ -172,13 +175,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final TopicManagerRepository topicManagerRepository;
   protected final TopicManagerRepository topicManagerRepositoryJavaBased;
   protected final CachedKafkaMetadataGetter cachedKafkaMetadataGetter;
-  protected final EventThrottler bandwidthThrottler;
-  protected final EventThrottler recordsThrottler;
-  protected final EventThrottler unorderedBandwidthThrottler;
-  protected final EventThrottler unorderedRecordsThrottler;
   /** Per-partition consumption state map */
   protected final ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap;
   protected final AbstractStoreBufferService storeBufferService;
+
   /**
    * Persists partitions that encountered exceptions in other threads. i.e. consumer, producer and drainer.
    *
@@ -224,15 +224,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final SparseConcurrentList<Object> deserializedSchemaIds = new SparseConcurrentList<>();
   protected int idleCounter = 0;
 
-  // This indicates whether it polls nothing from Kafka
-  // It's for stats measuring purpose
-  protected int recordCount = 0;
-
   private final StorageUtilizationManager storageUtilizationManager;
 
   protected final AggKafkaConsumerService aggKafkaConsumerService;
-
-  private boolean orderedWritesOnly = true;
 
   /**
    * Please refer to {@link com.linkedin.venice.ConfigKeys#SERVER_DELAY_REPORT_READY_TO_SERVE_MS} to
@@ -325,10 +319,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.kafkaProps = kafkaConsumerProperties;
     this.storageEngineRepository = builder.getStorageEngineRepository();
     this.storageMetadataService = builder.getStorageMetadataService();
-    this.bandwidthThrottler = builder.getBandwidthThrottler();
-    this.recordsThrottler = builder.getRecordsThrottler();
-    this.unorderedBandwidthThrottler = builder.getUnorderedBandwidthThrottler();
-    this.unorderedRecordsThrottler = builder.getUnorderedRecordsThrottler();
     this.storeRepository = builder.getMetadataRepo();
     this.schemaRepository = builder.getSchemaRepo();
     this.kafkaVersionTopic = storeConfig.getStoreVersionName();
@@ -625,7 +615,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // Prior to the EOP, we can optimize the storage if the data is sorted.
       deferredWrites = sorted;
     }
-    orderedWritesOnly &= deferredWrites;
     storagePartitionConfig.setDeferredWrite(deferredWrites);
     storagePartitionConfig.setReadOnly(readOnly);
     return storagePartitionConfig;
@@ -901,13 +890,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * This function may modify the original record in KME and it is unsafe to use the payload from KME directly after this call.
    *
    * @param records : received consumer records
-   * @param whetherToApplyThrottling : whether to apply throttling in this function or not.
    * @param topicPartition
    * @throws InterruptedException
    */
   protected void produceToStoreBufferServiceOrKafka(
       Iterable<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> records,
-      boolean whetherToApplyThrottling,
       PubSubTopicPartition topicPartition,
       String kafkaUrl,
       int kafkaClusterId) throws InterruptedException {
@@ -1009,39 +996,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
 
       hostLevelIngestionStats.recordStorageQuotaUsed(storageUtilizationManager.getDiskQuotaUsage());
-    }
-
-    if (whetherToApplyThrottling) {
-      /**
-       * We would like to throttle the ingestion by batches of ({@link PubSubMessage} returned by each poll.
-       * The batch shouldn't be too big, otherwise, the {@link StoreBufferService#putConsumerRecord(PubSubMessage, StoreIngestionTask, LeaderProducedRecordContext, int, String, long)}
-       * could be blocked when the buffer is full, and the throttling could be inaccurate.
-       * So every record returned from {@link KafkaConsumerWrapper#poll(long)} should be processed
-       * as fast as possible to avoid long-lasting objects in JVM to minimize the 'object copy' time
-       * during GC.
-       *
-       * Here are more details:
-       * 1. Previously, the throttling was happening in StoreIngestionTask#processConsumerRecord,
-       *    which would be invoked by StoreBufferService;
-       * 2. When the ingestion got throttled, the database operations would halt, but the deserialized
-       *    records would be kept pushing to the intermediate buffer pool until the pool is full;
-       * 3. When Young GC happens, all the objects in the buffer pool could be potentially copied to Survivor
-       *    space since they are being actively referenced;
-       * 4. The object copy time is the slowest phase in Young GC;
-       *
-       * By moving the throttling logic after putting deserialized records to buffer, the records in the buffer
-       * will be processed as long as there is enough capacity.
-       * With this way, the actively referenced object will be reduced greatly during throttling and Young GC
-       * won't need to copy many objects from Young regions to Survivor regions, which reduces the overall
-       * GC pause time.
-       */
-      bandwidthThrottler.maybeThrottle(totalBytesRead);
-      recordsThrottler.maybeThrottle(recordCount);
-
-      if (!orderedWritesOnly) {
-        unorderedBandwidthThrottler.maybeThrottle(totalBytesRead);
-        unorderedRecordsThrottler.maybeThrottle(recordCount);
-      }
     }
   }
 
@@ -1340,7 +1294,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       LOGGER.error("{} Error while resetting offset.", consumerTaskId, e);
     }
     // Unsubscribe any topic partitions related to this version topic from the shared consumer.
-    aggKafkaConsumerService.unsubscribeAll(kafkaVersionTopic);
+    aggKafkaConsumerService.unsubscribeAll(versionTopic);
     LOGGER.info("Detached Kafka consumer(s) for version topic: {}", kafkaVersionTopic);
     try {
       partitionConsumptionStateMap.values().parallelStream().forEach(PartitionConsumptionState::unsubscribe);
@@ -1695,7 +1649,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           partitionIngestionExceptionList.set(partition, null);
         } else {
           LOGGER.info(
-              "{} No need to reset offset by Kafka consumer, since the consumer is not subscribing: {}",
+              "{} No need to reset offset by Kafka consumer, since the consumer is not " + "subscribing: {}",
               consumerTaskId,
               topicPartition);
         }
@@ -1723,7 +1677,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return;
     }
     // Proceed if persisted OffsetRecord exists and has meaningful content.
-    long endOffset = getKafkaTopicPartitionEndOffSet(localKafkaServer, kafkaVersionTopic, pcs.getPartition());
+    long endOffset = getKafkaTopicPartitionEndOffSet(localKafkaServer, versionTopic, pcs.getPartition());
     if (endOffset != StatsErrorCode.LAG_MEASUREMENT_FAILURE.code && offset > endOffset) {
       // report offset rewind.
       LOGGER.warn(
@@ -1739,8 +1693,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /**
    * @return the end offset in kafka for the topic partition in SIT.
    */
-  protected long getKafkaTopicPartitionEndOffSet(String kafkaUrl, String kafkaVersionTopic, int partition) {
-    long offsetFromConsumer = getPartitionLatestOffset(kafkaUrl, kafkaVersionTopic, partition);
+  protected long getKafkaTopicPartitionEndOffSet(String kafkaUrl, PubSubTopic pubSubTopic, int partition) {
+    long offsetFromConsumer = getPartitionLatestOffset(kafkaUrl, pubSubTopic, partition);
     if (offsetFromConsumer >= 0) {
       return offsetFromConsumer;
     }
@@ -1749,16 +1703,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * The returned end offset is the last successfully replicated message plus one. If the partition has never been
      * written to, the end offset is 0.
      * @see CachedKafkaMetadataGetter#getOffset(TopicManager, String, int)
+     * TODO: Refactor this using PubSubTopicPartition.
      */
     return cachedKafkaMetadataGetter.getOffset(getTopicManager(kafkaUrl), kafkaVersionTopic, partition);
   }
 
-  protected long getPartitionOffsetLag(String kafkaSourceAddress, String topic, int partition) {
-    return aggKafkaConsumerService.getOffsetLagFor(kafkaSourceAddress, kafkaVersionTopic, topic, partition);
+  protected long getPartitionOffsetLag(String kafkaSourceAddress, PubSubTopic topic, int partition) {
+    return aggKafkaConsumerService
+        .getOffsetLagFor(kafkaSourceAddress, versionTopic, new PubSubTopicPartitionImpl(topic, partition));
   }
 
-  protected long getPartitionLatestOffset(String kafkaSourceAddress, String topic, int partition) {
-    return aggKafkaConsumerService.getLatestOffsetFor(kafkaSourceAddress, kafkaVersionTopic, topic, partition);
+  protected long getPartitionLatestOffset(String kafkaSourceAddress, PubSubTopic topic, int partition) {
+    return aggKafkaConsumerService
+        .getLatestOffsetFor(kafkaSourceAddress, versionTopic, new PubSubTopicPartitionImpl(topic, partition));
   }
 
   protected abstract void checkLongRunningTaskState() throws InterruptedException;
@@ -2731,18 +2688,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   public boolean consumerHasAnySubscription() {
-    return aggKafkaConsumerService.hasAnyConsumerAssignedForVersionTopic(getVersionTopic());
+    return aggKafkaConsumerService.hasAnyConsumerAssignedForVersionTopic(versionTopic);
   }
 
   public boolean consumerHasSubscription(PubSubTopic topic, PartitionConsumptionState partitionConsumptionState) {
     int partitionId = partitionConsumptionState.getSourceTopicPartitionNumber(topic);
-    return aggKafkaConsumerService.hasConsumerAssignedFor(getVersionTopic(), topic.getName(), partitionId);
+    return aggKafkaConsumerService
+        .hasConsumerAssignedFor(versionTopic, new PubSubTopicPartitionImpl(topic, partitionId));
   }
 
-  public void consumerUnSubscribe(String topic, PartitionConsumptionState partitionConsumptionState) {
+  public void consumerUnSubscribe(PubSubTopic topic, PartitionConsumptionState partitionConsumptionState) {
     Instant startTime = Instant.now();
     int partitionId = partitionConsumptionState.getPartition();
-    aggKafkaConsumerService.unsubscribeConsumerFor(getVersionTopic(), topic, partitionId);
+    aggKafkaConsumerService.unsubscribeConsumerFor(versionTopic, new PubSubTopicPartitionImpl(topic, partitionId));
     LOGGER.info(
         "Consumer unsubscribed topic {} partition {}. Took {} ms",
         topic,
@@ -2752,7 +2710,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public void consumerBatchUnsubscribe(Set<PubSubTopicPartition> topicPartitionSet) {
     Instant startTime = Instant.now();
-    aggKafkaConsumerService.batchUnsubscribeConsumerFor(getVersionTopic(), topicPartitionSet);
+    aggKafkaConsumerService.batchUnsubscribeConsumerFor(versionTopic, topicPartitionSet);
     LOGGER.info(
         "Consumer unsubscribed {} partitions. Took {} ms",
         topicPartitionSet.size(),
@@ -2771,15 +2729,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public void consumerResetOffset(PubSubTopic topic, PartitionConsumptionState partitionConsumptionState) {
     int partitionId = partitionConsumptionState.getSourceTopicPartitionNumber(topic);
-    aggKafkaConsumerService.resetOffsetFor(getVersionTopic(), topic.getName(), partitionId);
+    aggKafkaConsumerService.resetOffsetFor(versionTopic, new PubSubTopicPartitionImpl(topic, partitionId));
   }
 
   private void pauseConsumption(String topic, int partitionId) {
-    aggKafkaConsumerService.pauseConsumerFor(kafkaVersionTopic, topic, partitionId);
+    aggKafkaConsumerService.pauseConsumerFor(
+        versionTopic,
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
   }
 
   private void resumeConsumption(String topic, int partitionId) {
-    aggKafkaConsumerService.resumeConsumerFor(kafkaVersionTopic, topic, partitionId);
+    aggKafkaConsumerService.resumeConsumerFor(
+        versionTopic,
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), partitionId));
   }
 
   /**
@@ -3117,8 +3079,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return isRunning.get();
   }
 
-  public String getVersionTopic() {
-    return kafkaVersionTopic;
+  public PubSubTopic getVersionTopic() {
+    return versionTopic;
   }
 
   public boolean isMetricsEmissionEnabled() {

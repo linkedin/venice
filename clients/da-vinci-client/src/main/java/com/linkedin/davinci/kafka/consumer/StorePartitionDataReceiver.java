@@ -6,6 +6,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.ExceptionUtils;
 import java.util.List;
@@ -56,9 +57,9 @@ public class StorePartitionDataReceiver
        * The potential isolation strategy is:
        * 1. When detecting such kind of prolonged or infinite blocking, the following function should expose a
        * param to decide whether it should return early in those conditions;
-       * 2. Once this function realizes this behavior, it could choose to temporarily {@link KafkaConsumerWrapper#pause}
+       * 2. Once this function realizes this behavior, it could choose to temporarily {@link com.linkedin.venice.pubsub.consumer.PubSubConsumer#pause}
        * the blocked consumptions;
-       * 3. This runnable could {@link KafkaConsumerWrapper#resume} the subscriptions after some delays or
+       * 3. This runnable could {@link com.linkedin.venice.pubsub.consumer.PubSubConsumer#resume} the subscriptions after some delays or
        * condition change, and there are at least two ways to make the subscription resumption without missing messages:
        * a. Keep the previous message leftover in this class and retry, and once the messages can be processed
        * without blocking, then resume the paused subscriptions;
@@ -67,19 +68,18 @@ public class StorePartitionDataReceiver
        *
        * For option #a, the logic is simpler and but the concern is that
        * the buffered messages inside the shared consumer and the message leftover could potentially cause
-       * some GC issue, and option #b won't have this problem since {@link KafkaConsumerWrapper#pause} will drop
+       * some GC issue, and option #b won't have this problem since {@link com.linkedin.venice.pubsub.consumer.PubSubConsumer#pause} will drop
        * all the buffered messages for the paused partitions, but just slightly more complicate.
        *
        */
-      storeIngestionTask
-          .produceToStoreBufferServiceOrKafka(consumedData, false, topicPartition, kafkaUrl, kafkaClusterId);
+      storeIngestionTask.produceToStoreBufferServiceOrKafka(consumedData, topicPartition, kafkaUrl, kafkaClusterId);
     } catch (Exception e) {
       handleDataReceiverException(e);
     }
   }
 
   @Override
-  public String destinationIdentifier() {
+  public PubSubTopic destinationIdentifier() {
     return storeIngestionTask.getVersionTopic();
   }
 

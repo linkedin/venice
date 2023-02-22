@@ -39,8 +39,10 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
@@ -898,5 +900,28 @@ public class Utils {
 
   public static <T> Set<T> newConcurrentSet() {
     return VeniceConcurrentHashMap.newKeySet();
+  }
+
+  public static <K, V> Iterator<V> iterateOnMapOfLists(Map<K, List<V>> mapOfLists) {
+    return new Iterator<V>() {
+      private Iterator<Map.Entry<K, List<V>>> mapIterator = mapOfLists.entrySet().iterator();
+      private Iterator<V> listIterator = Collections.emptyIterator();
+
+      @Override
+      public boolean hasNext() {
+        while (!listIterator.hasNext() && mapIterator.hasNext()) {
+          listIterator = mapIterator.next().getValue().iterator();
+        }
+        return listIterator.hasNext();
+      }
+
+      @Override
+      public V next() {
+        if (!hasNext()) {
+          throw new NoSuchElementException();
+        }
+        return listIterator.next();
+      }
+    };
   }
 }

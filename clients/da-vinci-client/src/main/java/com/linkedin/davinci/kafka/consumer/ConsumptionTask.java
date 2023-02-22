@@ -5,19 +5,16 @@ import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
-import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.IntConsumer;
 import java.util.function.Supplier;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -42,15 +39,14 @@ import org.apache.logging.log4j.Logger;
 class ConsumptionTask implements Runnable {
   private final Logger logger;
   private final int taskId;
-  private final Map<TopicPartition, ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>>> dataReceiverMap =
+  private final Map<PubSubTopicPartition, ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>>> dataReceiverMap =
       new VeniceConcurrentHashMap<>();
   private final long readCycleDelayMs;
-  private final Supplier<ConsumerRecords<byte[], byte[]>> pollFunction;
+  private final Supplier<Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>>> pollFunction;
   private final IntConsumer bandwidthThrottler;
   private final IntConsumer recordsThrottler;
   private final KafkaConsumerServiceStats stats;
   private final ConsumerSubscriptionCleaner cleaner;
-  private final KafkaPubSubMessageDeserializer pubSubDeserializer;
 
   private volatile boolean running = true;
 
@@ -64,12 +60,11 @@ class ConsumptionTask implements Runnable {
       final String kafkaUrl,
       final int taskId,
       final long readCycleDelayMs,
-      final Supplier<ConsumerRecords<byte[], byte[]>> pollFunction,
+      final Supplier<Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>>> pollFunction,
       final IntConsumer bandwidthThrottler,
       final IntConsumer recordsThrottler,
       final KafkaConsumerServiceStats stats,
-      final ConsumerSubscriptionCleaner cleaner,
-      final KafkaPubSubMessageDeserializer pubSubDeserializer) {
+      final ConsumerSubscriptionCleaner cleaner) {
     this.taskId = taskId;
     this.readCycleDelayMs = readCycleDelayMs;
     this.pollFunction = pollFunction;
@@ -77,7 +72,6 @@ class ConsumptionTask implements Runnable {
     this.recordsThrottler = recordsThrottler;
     this.stats = stats;
     this.cleaner = cleaner;
-    this.pubSubDeserializer = pubSubDeserializer;
     this.logger = LogManager.getLogger(getClass().getSimpleName() + "[ " + kafkaUrl + " - " + taskId + " ]");
   }
 
@@ -87,13 +81,12 @@ class ConsumptionTask implements Runnable {
 
     // Pre-allocate some variables to clobber in the loop
     long beforePollingTimeStamp;
-    ConsumerRecords<byte[], byte[]> records;
+    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> polledPubSubMessages;
     long beforeProducingToWriteBufferTimestamp;
     ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> consumedDataReceiver;
-    List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> partitionRecords = new ArrayList<>();
-    Set<TopicPartition> topicPartitionsToUnsub = new HashSet<>();
+    Set<PubSubTopicPartition> topicPartitionsToUnsub = new HashSet<>();
     int payloadBytesConsumedInOnePoll;
-    PubSubMessage pubSubMessage;
+    int polledPubSubMessagesCount = 0;
     while (running) {
       try {
         if (addSomeDelay) {
@@ -108,11 +101,11 @@ class ConsumptionTask implements Runnable {
         }
         beforePollingTimeStamp = System.currentTimeMillis();
         topicPartitionsToUnsub = cleaner.getTopicPartitionsToUnsubscribe(topicPartitionsToUnsub); // N.B. cheap call
-        for (TopicPartition topicPartitionToUnSub: topicPartitionsToUnsub) {
+        for (PubSubTopicPartition topicPartitionToUnSub: topicPartitionsToUnsub) {
           ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> dataReceiver =
               dataReceiverMap.remove(topicPartitionToUnSub);
           if (dataReceiver != null) {
-            dataReceiver.notifyOfTopicDeletion(topicPartitionToUnSub.topic());
+            dataReceiver.notifyOfTopicDeletion(topicPartitionToUnSub.getPubSubTopic().getName());
           }
         }
         topicPartitionsToUnsub.clear();
@@ -122,36 +115,37 @@ class ConsumptionTask implements Runnable {
          * JavaDoc, about how this class could become the sole entry point for all consumer-related interactions,
          * and thus be capable of operating on a non-threadsafe consumer.
          */
-        records = pollFunction.get();
+        polledPubSubMessages = pollFunction.get();
         lastSuccessfulPollTimestamp = System.currentTimeMillis();
         stats.recordPollRequestLatency(lastSuccessfulPollTimestamp - beforePollingTimeStamp);
-        stats.recordPollResultNum(records.count());
+        stats.recordPollResultNum(polledPubSubMessagesCount);
         payloadBytesConsumedInOnePoll = 0;
-        if (!records.isEmpty()) {
+        polledPubSubMessagesCount = 0;
+        if (!polledPubSubMessages.isEmpty()) {
           beforeProducingToWriteBufferTimestamp = System.currentTimeMillis();
-          for (TopicPartition topicPartition: records.partitions()) {
-            consumedDataReceiver = dataReceiverMap.get(topicPartition);
+          for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: polledPubSubMessages
+              .entrySet()) {
+            PubSubTopicPartition pubSubTopicPartition = entry.getKey();
+            List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> topicPartitionMessages = entry.getValue();
+            consumedDataReceiver = dataReceiverMap.get(pubSubTopicPartition);
             if (consumedDataReceiver == null) {
               // defensive code
               logger.error(
                   "Couldn't find consumed data receiver for topic partition : {} after receiving records from `poll` request",
-                  topicPartition);
-              topicPartitionsToUnsub.add(topicPartition);
+                  pubSubTopicPartition);
+              topicPartitionsToUnsub.add(pubSubTopicPartition);
               continue;
             }
-            partitionRecords.clear();
-            for (ConsumerRecord<byte[], byte[]> consumerRecord: records.records(topicPartition)) {
-              pubSubMessage =
-                  pubSubDeserializer.deserialize(consumerRecord, consumedDataReceiver.getPubSubTopicPartition());
-              partitionRecords.add(pubSubMessage);
+            polledPubSubMessagesCount += topicPartitionMessages.size();
+            for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage: topicPartitionMessages) {
               payloadBytesConsumedInOnePoll += pubSubMessage.getPayloadSize();
             }
-            consumedDataReceiver.write(partitionRecords);
+            consumedDataReceiver.write(topicPartitionMessages);
           }
           stats.recordConsumerRecordsProducingToWriterBufferLatency(
               LatencyUtils.getElapsedTimeInMs(beforeProducingToWriteBufferTimestamp));
           bandwidthThrottler.accept(payloadBytesConsumedInOnePoll);
-          recordsThrottler.accept(records.count());
+          recordsThrottler.accept(polledPubSubMessagesCount);
           cleaner.unsubscribe(topicPartitionsToUnsub);
           stats.recordDetectedNoRunningIngestionTopicPartitionNum(topicPartitionsToUnsub.size());
         } else {
@@ -188,10 +182,10 @@ class ConsumptionTask implements Runnable {
   }
 
   void setDataReceiver(
-      TopicPartition topicPartition,
+      PubSubTopicPartition pubSubTopicPartition,
       ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> consumedDataReceiver) {
     ConsumedDataReceiver<List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> previousConsumedDataReceiver =
-        dataReceiverMap.put(topicPartition, consumedDataReceiver);
+        dataReceiverMap.put(pubSubTopicPartition, consumedDataReceiver);
     if (previousConsumedDataReceiver != null
         && !previousConsumedDataReceiver.destinationIdentifier().equals(consumedDataReceiver.destinationIdentifier())) {
       // Defensive coding. Should never happen except in case of a regression.
@@ -205,7 +199,7 @@ class ConsumptionTask implements Runnable {
     }
   }
 
-  void removeDataReceiver(TopicPartition topicPartition) {
+  void removeDataReceiver(PubSubTopicPartition topicPartition) {
     dataReceiverMap.remove(topicPartition);
   }
 }

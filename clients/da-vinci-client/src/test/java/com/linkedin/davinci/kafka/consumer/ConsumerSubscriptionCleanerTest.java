@@ -7,50 +7,56 @@ import static org.mockito.Mockito.verify;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.TestMockTime;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
-import org.apache.kafka.common.TopicPartition;
 import org.testng.annotations.Test;
 
 
 public class ConsumerSubscriptionCleanerTest {
   protected static final long NON_EXISTING_TOPIC_CLEANUP_DELAY_MS = 1000;
 
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+
   @Test
   public void testCleanUp() {
-    String existingTopic1 = "existingTopic1_v1";
-    String existingTopic2 = "existingTopic2_v1";
-    String existingTopicWithoutIngestionTask1 = "existingTopicWithoutIngestionTask1";
-    String nonExistingTopic1 = "nonExistingTopic1_v1";
+    PubSubTopic existingTopic1 = pubSubTopicRepository.getTopic("existingTopic1_v1");
+    PubSubTopic existingTopic2 = pubSubTopicRepository.getTopic("existingTopic2_v1");
+    PubSubTopic existingTopicWithoutIngestionTask1 =
+        pubSubTopicRepository.getTopic("existingTopicWithoutIngestionTask_v1");
+    PubSubTopic nonExistingTopic1 = pubSubTopicRepository.getTopic("nonExistingTopic1_v1");
 
-    Set<TopicPartition> currentAssignment = new HashSet<>();
-    TopicPartition existingTopicPartitionWithoutIngestionTask =
-        new TopicPartition(existingTopicWithoutIngestionTask1, 1);
-    TopicPartition nonExistentTopicPartition = new TopicPartition(nonExistingTopic1, 1);
-    currentAssignment.add(new TopicPartition(existingTopic1, 1));
-    currentAssignment.add(new TopicPartition(existingTopic2, 1));
+    Set<PubSubTopicPartition> currentAssignment = new HashSet<>();
+    PubSubTopicPartition existingTopicPartitionWithoutIngestionTask =
+        new PubSubTopicPartitionImpl(existingTopicWithoutIngestionTask1, 1);
+    PubSubTopicPartition nonExistentTopicPartition = new PubSubTopicPartitionImpl(nonExistingTopic1, 1);
+    currentAssignment.add(new PubSubTopicPartitionImpl(existingTopic1, 1));
+    currentAssignment.add(new PubSubTopicPartitionImpl(existingTopic2, 1));
     currentAssignment.add(existingTopicPartitionWithoutIngestionTask);
     currentAssignment.add(nonExistentTopicPartition);
 
     TestMockTime time = new TestMockTime();
 
-    Consumer<Set<TopicPartition>> batchUnsubFunction = mock(Consumer.class);
+    Consumer<Set<PubSubTopicPartition>> batchUnsubFunction = mock(Consumer.class);
     int batchUnsubFunctionExpectedCallCount = 0;
 
     ConsumerSubscriptionCleaner consumerSubscriptionCleaner = new ConsumerSubscriptionCleaner(
         NON_EXISTING_TOPIC_CLEANUP_DELAY_MS,
         1,
-        topic -> !topic.equals(nonExistingTopic1),
+        topic -> !topic.equals(nonExistingTopic1.getName()),
         () -> currentAssignment,
         value -> {},
         batchUnsubFunction,
         time);
 
     // Nothing should be unsubbed prior to configured delay
-    Set<TopicPartition> partitionsToUnsub =
+    Set<PubSubTopicPartition> partitionsToUnsub =
         consumerSubscriptionCleaner.getTopicPartitionsToUnsubscribe(new HashSet<>());
     assertTrue(partitionsToUnsub.isEmpty());
     verify(batchUnsubFunction, times(batchUnsubFunctionExpectedCallCount)).accept(anySet());
@@ -71,7 +77,7 @@ public class ConsumerSubscriptionCleanerTest {
                                                                                              // times as before
 
     // Explicitly call topic-partition to unsub
-    Set<TopicPartition> topicPartitionsToUnsubExplicitly = new HashSet<>();
+    Set<PubSubTopicPartition> topicPartitionsToUnsubExplicitly = new HashSet<>();
     topicPartitionsToUnsubExplicitly.add(existingTopicPartitionWithoutIngestionTask);
     consumerSubscriptionCleaner.unsubscribe(topicPartitionsToUnsubExplicitly);
     verify(batchUnsubFunction, times(++batchUnsubFunctionExpectedCallCount)).accept(anySet());

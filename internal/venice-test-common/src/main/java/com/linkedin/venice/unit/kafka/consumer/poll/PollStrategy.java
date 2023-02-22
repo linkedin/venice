@@ -1,9 +1,12 @@
 package com.linkedin.venice.unit.kafka.consumer.poll;
 
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
+import java.util.List;
 import java.util.Map;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.common.TopicPartition;
 
 
 /**
@@ -14,5 +17,8 @@ import org.apache.kafka.common.TopicPartition;
  * arbitrary messages, skip messages...
  */
 public interface PollStrategy {
-  ConsumerRecords<byte[], byte[]> poll(InMemoryKafkaBroker broker, Map<TopicPartition, Long> offsets, long timeout);
+  Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> poll(
+      InMemoryKafkaBroker broker,
+      Map<PubSubTopicPartition, Long> offsets,
+      long timeout);
 }

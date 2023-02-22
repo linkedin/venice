@@ -88,7 +88,6 @@ public class VeniceServer {
   private final Optional<ClientConfig> clientConfigForConsumer;
   private final AtomicBoolean isStarted;
   private final Lazy<List<AbstractVeniceService>> services;
-
   private StorageService storageService;
   private StorageMetadataService storageMetadataService;
   private StorageEngineMetadataService storageEngineMetadataService;

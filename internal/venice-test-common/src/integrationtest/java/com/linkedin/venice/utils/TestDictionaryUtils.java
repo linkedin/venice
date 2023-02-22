@@ -10,6 +10,7 @@ import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
@@ -37,7 +38,7 @@ public class TestDictionaryUtils {
 
   private String getTopic() {
     String callingFunction = Thread.currentThread().getStackTrace()[2].getMethodName();
-    String topicName = Utils.getUniqueString(callingFunction);
+    String topicName = Version.composeKafkaTopic(Utils.getUniqueString(callingFunction), 1);
     int replicas = 1;
     manager.createTopic(topicName, PARTITION_COUNT, replicas, false);
     TestUtils.waitForNonDeterministicAssertion(
