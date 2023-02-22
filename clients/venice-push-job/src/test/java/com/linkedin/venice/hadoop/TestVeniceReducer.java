@@ -271,8 +271,8 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
             MRJobCounterHelper.TOTAL_KEY_SIZE_GROUP_COUNTER_NAME.getCounterName())).thenReturn(zeroCounters);
     when(
         mockReporter.getCounter(
-            MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName(),
-            MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName())).thenReturn(zeroCounters);
+            TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName(),
+            TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName())).thenReturn(zeroCounters);
 
     when(
         mockReporter.getCounter(

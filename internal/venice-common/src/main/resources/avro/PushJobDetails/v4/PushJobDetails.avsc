@@ -1,0 +1,82 @@
+{
+  "name": "PushJobDetails",
+  "namespace": "com.linkedin.venice.status.protocol",
+  "type": "record",
+  "fields": [
+    {"name": "clusterName", "type": "string"},
+    {"name": "reportTimestamp", "type": "long", "doc": "timestamp for when the reported details were collected"},
+    {
+      "name": "overallStatus",
+      "type": {
+        "type":"array",
+        "items":{
+          "name": "PushJobDetailsStatusTuple",
+          "type": "record",
+          "fields": [
+            {"name": "status", "type": "int"},
+            {"name": "timestamp", "type": "long"}
+          ],
+          "doc": "0 => STARTED, 1 => COMPLETED, 2 => ERROR, 3 => NOT_CREATED, 4 => UNKNOWN, 5 => TOPIC_CREATED, 6 => WRITE_TO_KAFKA_COMPLETED, 7 => KILLED, 8 => END_OF_PUSH_RECEIVED, 9 => START_OF_INCREMENTAL_PUSH_RECEIVED, 10 => END_OF_INCREMENTAL_PUSH_RECEIVED"
+        }
+      }
+    },
+    {
+      "name": "coloStatus",
+      "type": [
+        "null",
+        {
+          "type" : "map",
+          "values": {
+            "type": "array",
+            "items": "com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple"
+          }
+        }
+      ],
+      "default": null
+    },
+    {"name": "pushId", "type": "string", "default": ""},
+    {"name": "partitionCount", "type": "int", "default": -1},
+    {"name": "valueCompressionStrategy", "type": "int", "doc": "0 => NO_OP, 1 => GZIP", "default": 0},
+    {"name": "chunkingEnabled", "type": "boolean", "default": false},
+    {"name": "jobDurationInMs", "type": "long", "default": -1},
+    {"name": "totalNumberOfRecords", "type": "long", "doc": "total number of key value pairs pushed", "default": -1},
+    {"name": "totalKeyBytes", "type": "long", "doc": "total amount of key bytes pushed", "default": -1},
+    {"name": "totalRawValueBytes", "type": "long", "doc": "total amount of uncompressed value bytes", "default": -1},
+    {"name": "totalCompressedValueBytes", "type": "long", "doc": "total amount of compressed value bytes stored", "default": -1},
+    {"name": "totalGzipCompressedValueBytes", "type": "long", "doc": "total amount of Gzip compressed value bytes", "default": -1},
+    {"name": "totalZstdWithDictCompressedValueBytes", "type": "long", "doc": "total amount of Zstd with Dictionary compressed value bytes", "default": -1},
+    {"name": "pushJobConfigs",
+      "type": [
+        "null",
+        {
+          "type": "map",
+          "values": "string"
+        }
+      ],
+      "default": null
+    },
+    {"name": "producerConfigs",
+      "type": [
+        "null",
+        {
+          "type": "map",
+          "values": "string"
+        }
+      ],
+      "default": null
+    },
+    {
+      "name": "pushJobLatestCheckpoint",
+      "doc": "Latest checkpoint reached by the push job if available, negative values are known error checkpoints. Refer to {@link com.linkedin.venice.hadoop.VenicePushJob.PushJobCheckpoints}",
+      "type": ["null", "int"],
+      "default":  null
+    },
+    {"name": "failureDetails", "type": "string", "default":  ""},
+    {
+      "name": "sendLivenessHeartbeatFailureDetails",
+      "doc": "Failure details of sending liveness heartbeat from the push job. If no failure or the job is not enabled to send liveness heartbeat, this field is null",
+      "type": ["null", "string"],
+      "default":  null
+    }
+  ]
+}
