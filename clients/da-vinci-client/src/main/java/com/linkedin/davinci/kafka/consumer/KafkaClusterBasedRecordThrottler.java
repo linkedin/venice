@@ -11,7 +11,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import java.util.HashMap;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import org.apache.logging.log4j.LogManager;
@@ -42,7 +42,7 @@ public class KafkaClusterBasedRecordThrottler {
     if (consumerRecords == null) {
       consumerRecords = consumer.poll(pollTimeoutMs);
       if (consumerRecords == null) {
-        consumerRecords = new HashMap<>();
+        consumerRecords = Collections.emptyMap();
       }
     }
 
@@ -71,7 +71,7 @@ public class KafkaClusterBasedRecordThrottler {
         }
 
         // Return early so we don't ingest these records
-        return new HashMap<>();
+        return Collections.emptyMap();
       }
     }
 

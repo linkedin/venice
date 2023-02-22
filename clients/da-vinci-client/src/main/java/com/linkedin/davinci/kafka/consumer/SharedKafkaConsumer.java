@@ -14,7 +14,6 @@ import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -246,7 +245,7 @@ class SharedKafkaConsumer implements PubSubConsumer {
         // TODO: removing this sleep inside the poll with synchronization, this sleep should be added by the logic
         // calling this poll method.
         Thread.sleep(timeoutMs);
-        return new HashMap<>();
+        return Collections.emptyMap();
       }
     } catch (InterruptedException e) {
       throw new VeniceException("Shared Consumer poll sleep got interrupted", e);

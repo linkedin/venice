@@ -116,11 +116,11 @@ class ConsumptionTask implements Runnable {
          * and thus be capable of operating on a non-threadsafe consumer.
          */
         polledPubSubMessages = pollFunction.get();
-        polledPubSubMessagesCount = polledPubSubMessages.values().stream().mapToInt(List::size).sum();
         lastSuccessfulPollTimestamp = System.currentTimeMillis();
         stats.recordPollRequestLatency(lastSuccessfulPollTimestamp - beforePollingTimeStamp);
         stats.recordPollResultNum(polledPubSubMessagesCount);
         payloadBytesConsumedInOnePoll = 0;
+        polledPubSubMessagesCount = 0;
         if (!polledPubSubMessages.isEmpty()) {
           beforeProducingToWriteBufferTimestamp = System.currentTimeMillis();
           for (Map.Entry<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> entry: polledPubSubMessages
@@ -136,6 +136,7 @@ class ConsumptionTask implements Runnable {
               topicPartitionsToUnsub.add(pubSubTopicPartition);
               continue;
             }
+            polledPubSubMessagesCount += topicPartitionMessages.size();
             for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage: topicPartitionMessages) {
               payloadBytesConsumedInOnePoll += pubSubMessage.getPayloadSize();
             }

@@ -46,7 +46,7 @@ public class ApacheKafkaPubSubConsumerTest {
   }
 
   @Test
-  public void TestApacheKafkaConsumer() {
+  public void testApacheKafkaConsumer() {
     PubSubTopic testTopic = pubSubTopicRepository.getTopic("test_topic_v1");
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(testTopic, 1);
     TopicPartition topicPartition = new TopicPartition(testTopic.getName(), pubSubTopicPartition.getPartitionNumber());

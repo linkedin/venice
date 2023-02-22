@@ -152,6 +152,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /** storage destination for consumption */
   protected final StorageEngineRepository storageEngineRepository;
   protected final AbstractStorageEngine storageEngine;
+
+  /** Topics used for this topic consumption
+   * TODO: Using a PubSubVersionTopic and PubSubRealTimeTopic extending PubSubTopic for type safety.
+   * */
   protected final String kafkaVersionTopic;
   protected final PubSubTopic versionTopic;
   protected final PubSubTopic realTimeTopic;
