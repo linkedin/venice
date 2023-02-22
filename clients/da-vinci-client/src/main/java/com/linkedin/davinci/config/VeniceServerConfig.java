@@ -379,7 +379,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     rocksDBServerConfig = new RocksDBServerConfig(serverProperties);
     enableServerAllowList = serverProperties.getBoolean(ENABLE_SERVER_ALLOW_LIST, false);
     maxLeaderFollowerStateTransitionThreadNumber =
-        serverProperties.getInt(MAX_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER, 5);
+        serverProperties.getInt(MAX_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER, 3);
 
     String lfThreadPoolStrategyStr = serverProperties.getString(
         LEADER_FOLLOWER_STATE_TRANSITION_THREAD_POOL_STRATEGY,
