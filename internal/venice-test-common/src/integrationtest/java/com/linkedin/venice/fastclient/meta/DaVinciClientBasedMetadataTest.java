@@ -1,5 +1,6 @@
 package com.linkedin.venice.fastclient.meta;
 
+import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
@@ -92,6 +93,7 @@ public class DaVinciClientBasedMetadataTest {
           .put(PERSISTENCE_TYPE, ROCKS_DB)
           .put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
           .put(CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY, true)
+          .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
           .build();
     });
 
@@ -164,6 +166,39 @@ public class DaVinciClientBasedMetadataTest {
     assertEquals(daVinciClientBasedMetadata.getLatestValueSchema(), latestValueSchema.getSchema());
     assertEquals(daVinciClientBasedMetadata.getValueSchema(latestValueSchema.getId()), latestValueSchema.getSchema());
     assertEquals(daVinciClientBasedMetadata.getValueSchemaId(latestValueSchema.getSchema()), latestValueSchema.getId());
+  }
+
+  @Test(timeOut = TIME_OUT)
+  public void testMetaSystemStoreVersionBump() {
+    // Bump the underlying system store version twice and make sure DaVinciClientBasedMetadata is still subscribed to
+    // the correct meta system store version.
+    String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
+    veniceCluster.useControllerClient(controllerClient -> {
+      for (int i = 0; i < 2; i++) {
+        VersionCreationResponse metaSystemStoreVersionCreationResponse =
+            controllerClient.emptyPush(metaSystemStoreName, "test_meta_system_store_bump_" + i, 10000);
+        assertFalse(
+            metaSystemStoreVersionCreationResponse.isError(),
+            "New version push for meta system store failed with error: "
+                + metaSystemStoreVersionCreationResponse.getError());
+        TestUtils.waitForNonDeterministicPushCompletion(
+            metaSystemStoreVersionCreationResponse.getKafkaTopic(),
+            controllerClient,
+            30,
+            TimeUnit.SECONDS);
+      }
+    });
+    // Make a new version and check the metadata
+    veniceCluster.useControllerClient(controllerClient -> {
+      controllerClient.emptyPush(storeName, "test_meta_system_store_bump_user_push", 10000);
+    });
+    ReadOnlyStoreRepository storeRepository = veniceCluster.getRandomVeniceRouter().getMetaDataRepository();
+    TestUtils.waitForNonDeterministicAssertion(
+        30,
+        TimeUnit.SECONDS,
+        () -> assertEquals(
+            daVinciClientBasedMetadata.getCurrentStoreVersion(),
+            storeRepository.getStore(storeName).getCurrentVersion()));
   }
 
   private void verifyMetadata(
