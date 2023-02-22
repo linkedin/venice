@@ -69,6 +69,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.status.BatchJobHeartbeatConfigs;
@@ -124,7 +125,8 @@ public class TestPushJobWithNativeReplication {
   private final String DEFAULT_NATIVE_REPLICATION_SOURCE = "dc-0";
 
   private static final String VPJ_HEARTBEAT_STORE_CLUSTER = CLUSTER_NAMES[0]; // "venice-cluster0"
-  private static final String VPJ_HEARTBEAT_STORE_NAME = "venice_system_store_BATCH_JOB_HEARTBEAT";
+  private static final String VPJ_HEARTBEAT_STORE_NAME =
+      AvroProtocolDefinition.BATCH_JOB_HEARTBEAT.getSystemStoreName();
 
   private List<VeniceMultiClusterWrapper> childDatacenters;
   private List<VeniceControllerWrapper> parentControllers;

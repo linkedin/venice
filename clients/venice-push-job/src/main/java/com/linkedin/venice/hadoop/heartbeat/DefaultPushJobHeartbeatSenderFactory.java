@@ -4,7 +4,6 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_INITIAL_DELAY_CONFIG;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_INTERVAL_CONFIG;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_LAST_HEARTBEAT_IS_DELETE_CONFIG;
-import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_STORE_NAME_CONFIG;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
@@ -15,6 +14,7 @@ import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -43,7 +43,7 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
       @Nonnull ControllerClient controllerClient,
       Optional<Properties> sslProperties) {
     Validate.notNull(controllerClient);
-    final String heartbeatStoreName = getHeartbeatStoreName(properties);
+    final String heartbeatStoreName = AvroProtocolDefinition.BATCH_JOB_HEARTBEAT.getSystemStoreName();
     int retryAttempts = properties.getInt(VenicePushJob.CONTROLLER_REQUEST_RETRY_ATTEMPTS, 3);
     StoreResponse heartBeatStoreResponse =
         ControllerClient.retryableRequest(controllerClient, retryAttempts, c -> c.getStore(heartbeatStoreName));
@@ -113,10 +113,6 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
         ControllerClient.retryableRequest(controllerClient, retryAttempts, c -> c.getKeySchema(heartbeatStoreName));
     LOGGER.info("Got [heartbeat store: {}] SchemaResponse for key schema: {}", heartbeatStoreName, keySchemaResponse);
     return Schema.parse(keySchemaResponse.getSchemaStr());
-  }
-
-  private String getHeartbeatStoreName(VeniceProperties properties) {
-    return properties.getString(HEARTBEAT_STORE_NAME_CONFIG.getConfigName());
   }
 
   protected VeniceWriter<byte[], byte[], byte[]> getVeniceWriter(
