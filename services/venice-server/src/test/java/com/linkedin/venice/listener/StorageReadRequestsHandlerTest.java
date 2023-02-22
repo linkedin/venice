@@ -33,7 +33,6 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.ServerAdminAction;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.metadata.response.CompressionStrategy;
 import com.linkedin.venice.metadata.response.VersionProperties;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -382,8 +381,7 @@ public class StorageReadRequestsHandlerTest {
 
     // Mock the MetadataResponse from ingestion task
     MetadataResponse expectedMetadataResponse = new MetadataResponse();
-    VersionProperties versionProperties =
-        new VersionProperties(123, Collections.singletonList(456), CompressionStrategy.GZIP, true);
+    VersionProperties versionProperties = new VersionProperties(123, Collections.singletonList(456), 0);
     expectedMetadataResponse.setVersionMetadata(versionProperties);
     expectedMetadataResponse.setKeySchema(keySchema);
     expectedMetadataResponse.setValueSchemas(valueSchemas);
