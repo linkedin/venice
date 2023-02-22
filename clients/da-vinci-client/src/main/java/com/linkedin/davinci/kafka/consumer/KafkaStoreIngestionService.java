@@ -870,14 +870,14 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       int sleepSeconds,
       int numRetries) {
     String topicName = veniceStore.getStoreVersionName();
-    if (isPartitionConsuming(veniceStore, partitionId)) {
+    if (isPartitionConsuming(topicName, partitionId)) {
       stopConsumption(veniceStore, partitionId);
       try {
         long startTimeInMs = System.currentTimeMillis();
         for (int i = 0; i < numRetries; i++) {
-          if (!isPartitionConsuming(veniceStore, partitionId)) {
+          if (!isPartitionConsuming(topicName, partitionId)) {
             LOGGER.info(
-                "Partition: {} of topic: {} has stopped consumption in {}ms.",
+                "Partition: {} of topic: {} has stopped consumption in {} ms.",
                 partitionId,
                 topicName,
                 LatencyUtils.getElapsedTimeInMs(startTimeInMs));
@@ -982,8 +982,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   @Override
-  public boolean isPartitionConsuming(VeniceStoreVersionConfig veniceStore, int partitionId) {
-    final String topic = veniceStore.getStoreVersionName();
+  public boolean isPartitionConsuming(String topic, int partitionId) {
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
       StoreIngestionTask ingestionTask = topicNameToIngestionTaskMap.get(topic);
       return ingestionTask != null && ingestionTask.isRunning() && ingestionTask.isPartitionConsuming(partitionId);
