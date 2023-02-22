@@ -27,10 +27,10 @@ import static com.linkedin.venice.Arg.END_DATE;
 import static com.linkedin.venice.Arg.ETLED_PROXY_USER_ACCOUNT;
 import static com.linkedin.venice.Arg.EXECUTION;
 import static com.linkedin.venice.Arg.EXPECTED_ROUTER_COUNT;
+import static com.linkedin.venice.Arg.EXTRA_COMMAND_ARGS;
 import static com.linkedin.venice.Arg.FABRIC;
 import static com.linkedin.venice.Arg.FABRIC_A;
 import static com.linkedin.venice.Arg.FABRIC_B;
-import static com.linkedin.venice.Arg.FABRIC_GROUP;
 import static com.linkedin.venice.Arg.FORCE;
 import static com.linkedin.venice.Arg.FUTURE_VERSION_ETL_ENABLED;
 import static com.linkedin.venice.Arg.HYBRID_BUFFER_REPLAY_POLICY;
@@ -443,7 +443,7 @@ public enum Command {
   ),
   EXECUTE_DATA_RECOVERY(
       "execute-data-recovery", "Trigger data recovery for a group of stores",
-      new Arg[] { URL, CLUSTER, RECOVERY_COMMAND }, new Arg[] { FABRIC, STORE, FABRIC_GROUP, DEBUG }
+      new Arg[] { URL, CLUSTER, RECOVERY_COMMAND }, new Arg[] { EXTRA_COMMAND_ARGS, STORE, DEBUG }
   );
 
   private final String commandName;

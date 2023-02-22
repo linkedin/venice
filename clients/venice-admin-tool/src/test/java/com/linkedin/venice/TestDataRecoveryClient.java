@@ -48,7 +48,8 @@ public class TestDataRecoveryClient {
 
   private void executeRecovery(boolean isSuccess) {
     StoreRepushCommand.Params cmdParams = new StoreRepushCommand.Params();
-    cmdParams.setFabricGroup("ei");
+    cmdParams.setCommand("cmd");
+    cmdParams.setExtraCommandArgs("args");
 
     // Partial mock of Module class to take password from console input.
     executor = spy(DataRecoveryModule.class);
@@ -60,14 +61,13 @@ public class TestDataRecoveryClient {
     mockCmd.add("-c");
 
     if (isSuccess) {
-      mockCmd.add("echo \"https://example.com/executor?execid=21585379\"");
+      mockCmd.add("echo \"success: https://example.com/executor?execid=21585379\"");
     } else {
-      mockCmd.add(
-          "echo \"Could not fetch session information from Azkaban. Response: {'error': 'Incorrect Login. Username/Password+VIP not found.'}\"");
+      mockCmd.add("echo \"failure: Incorrect Login. Username/Password+VIP not found.\"");
     }
     StoreRepushCommand mockStoreRepushCmd = spy(StoreRepushCommand.class);
     mockStoreRepushCmd.setParams(cmdParams);
-    doReturn(mockCmd).when(mockStoreRepushCmd).getExpectCmd();
+    doReturn(mockCmd).when(mockStoreRepushCmd).getShellCmd();
 
     // Inject the mocked command into the running system.
     Set<String> storeName = new HashSet<>(Arrays.asList("store1", "store2", "store3"));

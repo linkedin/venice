@@ -614,22 +614,15 @@ public class AdminTool {
     String stores = getOptionalArgument(cmd, Arg.STORE);
     String command = getRequiredArgument(cmd, Arg.RECOVERY_COMMAND);
 
-    String fabricGroup = getOptionalArgument(cmd, Arg.FABRIC_GROUP);
-    String fabric = getOptionalArgument(cmd, Arg.FABRIC);
+    String extraCommandArgs = getOptionalArgument(cmd, Arg.EXTRA_COMMAND_ARGS);
     boolean isDebuggingEnabled = cmd.hasOption(Arg.DEBUG.toString());
 
     StoreRepushCommand.Params cmdParams = new StoreRepushCommand.Params();
     cmdParams.setCommand(command);
+    if (extraCommandArgs != null) {
+      cmdParams.setExtraCommandArgs(extraCommandArgs);
+    }
     cmdParams.setDebug(isDebuggingEnabled);
-
-    if (fabricGroup != null) {
-      cmdParams.setFabricGroup(fabricGroup);
-    }
-
-    if (fabric != null) {
-      cmdParams.setFabric(fabric);
-      cmdParams.setForce(true);
-    }
 
     DataRecoveryClient dataRecoveryClient = new DataRecoveryClient();
     DataRecoveryClient.OperationLevel level = new DataRecoveryClient.OperationLevel(controllerClient, stores, cluster);

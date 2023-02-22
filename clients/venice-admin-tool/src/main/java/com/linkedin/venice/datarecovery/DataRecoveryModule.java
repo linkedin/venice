@@ -80,7 +80,7 @@ public class DataRecoveryModule {
       return null;
     }
     // Read password into character array.
-    char[] passwordVip = console.readPassword("Enter password + VIP : ");
+    char[] passwordVip = console.readPassword("Enter Credentials: ");
     return String.copyValueOf(passwordVip);
   }
 

@@ -176,10 +176,7 @@ public enum Arg {
   FABRIC_B("fabric-b", "fb", true, "The name of the second fabric in store comparison."),
   SOURCE_FABRIC("source-fabric", "sf", true, "The fabric where metadata/data copy over starts from"),
   DEST_FABRIC("dest-fabric", "df", true, "The fabric where metadata/data gets copy over into"),
-  FABRIC_GROUP(
-      "fabric-group", "fg", true,
-      "Fabric group from which largest version will be chosen for repush (prod/ei). Used by data-recovery."
-  ), DEFAULT_CONFIGS("default-configs", "dc", false, "Use default store configs (intended for system stores)"),
+  DEFAULT_CONFIGS("default-configs", "dc", false, "Use default store configs (intended for system stores)"),
   ACL_PERMS("acl-perms", "ap", true, "Acl permissions for the store"),
   LOG_METADATA("log-metedata", "lm", false, "Only log the metadata for each kafka message on console"),
   NATIVE_REPLICATION_SOURCE_FABRIC(
@@ -242,6 +239,7 @@ public enum Arg {
 
   STORAGE_PERSONA("storage-persona", "sp", true, "Name of Storage Persona"),
   RECOVERY_COMMAND("recovery-command", "rc", true, "command to execute the data recovery"),
+  EXTRA_COMMAND_ARGS("extra-command-args", "eca", true, "extra command arguments"),
   DEBUG("debug", "d", false, "Print debugging messages for execute-data-recovery");
 
   private final String argName;
