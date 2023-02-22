@@ -4,21 +4,18 @@ import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
-import com.linkedin.venice.serialization.KafkaKeySerializer;
-import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
+import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaMessage;
 import com.linkedin.venice.utils.ByteUtils;
-import com.linkedin.venice.utils.Pair;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.common.TopicPartition;
-import org.apache.kafka.common.record.TimestampType;
 
 
 /**
@@ -29,9 +26,6 @@ public abstract class AbstractPollStrategy implements PollStrategy {
   private final int maxMessagePerPoll;
   protected final boolean keepPollingWhenEmpty;
 
-  private final KafkaValueSerializer valueSerializer = new KafkaValueSerializer();
-  private final KafkaKeySerializer keySerializer = new KafkaKeySerializer();
-
   public AbstractPollStrategy(boolean keepPollingWhenEmpty) {
     this(keepPollingWhenEmpty, DEFAULT_MAX_MESSAGES_PER_POLL);
   }
@@ -41,20 +35,20 @@ public abstract class AbstractPollStrategy implements PollStrategy {
     this.maxMessagePerPoll = maxMessagePerPoll;
   }
 
-  protected abstract Pair<TopicPartition, Long> getNextPoll(Map<TopicPartition, Long> offsets);
+  protected abstract PubSubTopicPartitionOffset getNextPoll(Map<PubSubTopicPartition, Long> offsets);
 
-  public synchronized ConsumerRecords<byte[], byte[]> poll(
+  public synchronized Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> poll(
       InMemoryKafkaBroker broker,
-      Map<TopicPartition, Long> offsets,
+      Map<PubSubTopicPartition, Long> offsets,
       long timeout) {
 
-    Map<TopicPartition, List<ConsumerRecord<byte[], byte[]>>> records = new HashMap<>();
+    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> records = new HashMap<>();
 
     long startTime = System.currentTimeMillis();
     int numberOfRecords = 0;
 
     while (numberOfRecords < maxMessagePerPoll && System.currentTimeMillis() < startTime + timeout) {
-      Pair<TopicPartition, Long> nextPoll = getNextPoll(offsets);
+      PubSubTopicPartitionOffset nextPoll = getNextPoll(offsets);
       if (nextPoll == null) {
         if (keepPollingWhenEmpty) {
           continue;
@@ -62,11 +56,10 @@ public abstract class AbstractPollStrategy implements PollStrategy {
           break;
         }
       }
-
-      TopicPartition topicPartition = nextPoll.getFirst();
-      long offset = nextPoll.getSecond();
-      String topic = topicPartition.topic();
-      int partition = topicPartition.partition();
+      PubSubTopicPartition pubSubTopicPartition = nextPoll.getPubSubTopicPartition();
+      long offset = nextPoll.getOffset();
+      String topic = pubSubTopicPartition.getPubSubTopic().getName();
+      int partition = pubSubTopicPartition.getPartitionNumber();
       /**
        * TODO: need to understand why "+ 1" here, since for {@link ArbitraryOrderingPollStrategy}, it always
        * returns the next message specified in the delivery order, which is causing confusion.
@@ -90,35 +83,34 @@ public abstract class AbstractPollStrategy implements PollStrategy {
           }
         }
 
-        ConsumerRecord<byte[], byte[]> consumerRecord = new ConsumerRecord<>(
-            topic,
-            partition,
+        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord = new ImmutablePubSubMessage<>(
+            message.get().key,
+            message.get().value,
+            pubSubTopicPartition,
             nextOffset,
             System.currentTimeMillis(),
-            TimestampType.NO_TIMESTAMP_TYPE,
-            -1, // checksum
-            -1, // serializedKeySize
-            -1, // serializedValueSize
-            keySerializer.serialize(null, message.get().key),
-            valueSerializer.serialize(null, message.get().value));
-        if (!records.containsKey(topicPartition)) {
-          records.put(topicPartition, new ArrayList<>());
+            -1);
+        if (!records.containsKey(pubSubTopicPartition)) {
+          records.put(pubSubTopicPartition, new ArrayList<>());
         }
-        records.get(topicPartition).add(consumerRecord);
-        incrementOffset(offsets, topicPartition, offset);
+        records.get(pubSubTopicPartition).add(consumerRecord);
+        incrementOffset(offsets, pubSubTopicPartition, offset);
         numberOfRecords++;
       } else if (keepPollingWhenEmpty) {
         continue;
       } else {
-        offsets.remove(topicPartition);
+        offsets.remove(pubSubTopicPartition);
         continue;
       }
     }
 
-    return new ConsumerRecords(records);
+    return records;
   }
 
-  protected void incrementOffset(Map<TopicPartition, Long> offsets, TopicPartition topicPartition, long offset) {
+  protected void incrementOffset(
+      Map<PubSubTopicPartition, Long> offsets,
+      PubSubTopicPartition topicPartition,
+      long offset) {
     offsets.put(topicPartition, offset + 1);
   }
 }

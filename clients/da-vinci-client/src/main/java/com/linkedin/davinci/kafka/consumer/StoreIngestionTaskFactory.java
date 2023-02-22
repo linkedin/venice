@@ -22,7 +22,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.system.store.MetaStoreWriter;
-import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.Optional;
@@ -99,10 +98,6 @@ public class StoreIngestionTaskFactory {
     private StorageEngineRepository storageEngineRepository;
     private StorageMetadataService storageMetadataService;
     private Queue<VeniceNotifier> leaderFollowerNotifiers;
-    private EventThrottler bandwidthThrottler;
-    private EventThrottler recordsThrottler;
-    private EventThrottler unorderedBandwidthThrottler;
-    private EventThrottler unorderedRecordsThrottler;
     private ReadOnlySchemaRepository schemaRepo;
     private ReadOnlyStoreRepository metadataRepo;
     private TopicManagerRepository topicManagerRepository;
@@ -201,38 +196,6 @@ public class StoreIngestionTaskFactory {
 
     public Builder setLeaderFollowerNotifiersQueue(Queue<VeniceNotifier> leaderFollowerNotifiers) {
       return set(() -> this.leaderFollowerNotifiers = leaderFollowerNotifiers);
-    }
-
-    public EventThrottler getBandwidthThrottler() {
-      return bandwidthThrottler;
-    }
-
-    public Builder setBandwidthThrottler(EventThrottler bandwidthThrottler) {
-      return set(() -> this.bandwidthThrottler = bandwidthThrottler);
-    }
-
-    public EventThrottler getRecordsThrottler() {
-      return recordsThrottler;
-    }
-
-    public Builder setRecordsThrottler(EventThrottler recordsThrottler) {
-      return set(() -> this.recordsThrottler = recordsThrottler);
-    }
-
-    public EventThrottler getUnorderedBandwidthThrottler() {
-      return unorderedBandwidthThrottler;
-    }
-
-    public Builder setUnorderedBandwidthThrottler(EventThrottler throttler) {
-      return set(() -> this.unorderedBandwidthThrottler = throttler);
-    }
-
-    public EventThrottler getUnorderedRecordsThrottler() {
-      return unorderedRecordsThrottler;
-    }
-
-    public Builder setUnorderedRecordsThrottler(EventThrottler throttler) {
-      return set(() -> this.unorderedRecordsThrottler = throttler);
     }
 
     public ReadOnlySchemaRepository getSchemaRepo() {

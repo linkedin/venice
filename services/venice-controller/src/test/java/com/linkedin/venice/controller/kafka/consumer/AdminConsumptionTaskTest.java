@@ -60,7 +60,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
@@ -71,7 +70,10 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.InMemoryOffsetManager;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -84,10 +86,10 @@ import com.linkedin.venice.unit.kafka.consumer.poll.ArbitraryOrderingPollStrateg
 import com.linkedin.venice.unit.kafka.consumer.poll.CompositePollStrategy;
 import com.linkedin.venice.unit.kafka.consumer.poll.FilteringPollStrategy;
 import com.linkedin.venice.unit.kafka.consumer.poll.PollStrategy;
+import com.linkedin.venice.unit.kafka.consumer.poll.PubSubTopicPartitionOffset;
 import com.linkedin.venice.unit.kafka.consumer.poll.RandomPollStrategy;
 import com.linkedin.venice.unit.kafka.producer.MockInMemoryProducer;
 import com.linkedin.venice.utils.DataProviderUtils;
-import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -116,7 +118,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 import org.apache.kafka.clients.producer.RecordMetadata;
-import org.apache.kafka.common.TopicPartition;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -135,6 +136,8 @@ public class AdminConsumptionTaskTest {
   private static final byte[] emptyKeyBytes = new byte[] { 'a' };
   private final AdminOperationSerializer adminOperationSerializer = new AdminOperationSerializer();
 
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+
   private static final String storeName = Utils.getUniqueString("test_store");
   private static final String storeTopicName = storeName + "_v1";
   private static final String owner = "test_owner";
@@ -142,7 +145,7 @@ public class AdminConsumptionTaskTest {
   private static final String valueSchema = "\"string\"";
 
   // Objects will be used by each test method
-  private KafkaConsumerWrapper mockKafkaConsumer;
+  private PubSubConsumer mockKafkaConsumer;
   private VeniceHelixAdmin admin;
   private OffsetManager offsetManager;
   private AdminTopicMetadataAccessor adminTopicMetadataAccessor;
@@ -161,7 +164,7 @@ public class AdminConsumptionTaskTest {
     veniceWriter = getVeniceWriter(inMemoryKafkaBroker);
     executionIdAccessor = new InMemoryExecutionIdAccessor();
 
-    mockKafkaConsumer = mock(KafkaConsumerWrapper.class);
+    mockKafkaConsumer = mock(PubSubConsumer.class);
 
     admin = mock(VeniceHelixAdmin.class);
     // By default, current controller is the leader controller
@@ -238,8 +241,11 @@ public class AdminConsumptionTaskTest {
         pubSubMessageDeserializer);
   }
 
-  private Pair<TopicPartition, Long> getTopicPartitionOffsetPair(RecordMetadata recordMetadata) {
-    return new Pair<>(new TopicPartition(recordMetadata.topic(), recordMetadata.partition()), recordMetadata.offset());
+  private PubSubTopicPartitionOffset getTopicPartitionOffsetPair(RecordMetadata recordMetadata) {
+    PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(
+        pubSubTopicRepository.getTopic(recordMetadata.topic()),
+        recordMetadata.partition());
+    return new PubSubTopicPartitionOffset(pubSubTopicPartition, recordMetadata.offset());
   }
 
   private long getLastOffset(String clusterName) {
@@ -258,7 +264,7 @@ public class AdminConsumptionTaskTest {
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false);
     executor.submit(task);
     verify(admin, timeout(TIMEOUT).atLeastOnce()).isLeaderControllerFor(clusterName);
-    verify(mockKafkaConsumer, never()).subscribe(any(), anyInt(), anyLong());
+    verify(mockKafkaConsumer, never()).subscribe(any(), anyLong());
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
@@ -296,10 +302,10 @@ public class AdminConsumptionTaskTest {
     if (isParent) {
       verify(topicManager, timeout(TIMEOUT))
           .createTopic(AdminTopicUtils.getTopicNameFromClusterName(clusterName), 1, 1, true, false, Optional.empty());
-      verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyInt(), anyLong());
+      verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyLong());
     } else {
       verify(topicManager, never()).createTopic(anyString(), anyInt(), anyInt(), anyBoolean(), anyBoolean(), any());
-      verify(mockKafkaConsumer, never()).subscribe(any(), anyInt(), anyLong());
+      verify(mockKafkaConsumer, never()).subscribe(any(), anyLong());
     }
     task.close();
     executor.shutdown();
@@ -332,8 +338,8 @@ public class AdminConsumptionTaskTest {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
     verify(admin, timeout(TIMEOUT).atLeastOnce()).isLeaderControllerFor(clusterName);
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyInt(), anyLong());
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any(), anyInt());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyLong());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any());
     verify(admin, timeout(TIMEOUT)).createStore(clusterName, storeName, owner, keySchema, valueSchema, false);
     verify(admin, timeout(TIMEOUT)).killOfflinePush(clusterName, storeTopicName, false);
   }
@@ -363,8 +369,8 @@ public class AdminConsumptionTaskTest {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
     verify(admin, timeout(TIMEOUT).atLeastOnce()).isLeaderControllerFor(clusterName);
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyInt(), anyLong());
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any(), anyInt());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyLong());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any());
     verify(admin, timeout(TIMEOUT).times(2)).createStore(clusterName, storeName, owner, keySchema, valueSchema, false);
   }
 
@@ -474,7 +480,7 @@ public class AdminConsumptionTaskTest {
 
     Queue<AbstractPollStrategy> pollStrategies = new LinkedList<>();
     pollStrategies.add(new RandomPollStrategy());
-    Queue<Pair<TopicPartition, Long>> pollDeliveryOrder = new LinkedList<>();
+    Queue<PubSubTopicPartitionOffset> pollDeliveryOrder = new LinkedList<>();
     pollDeliveryOrder.add(getTopicPartitionOffsetPair(killJobMetadata));
     pollStrategies.add(new ArbitraryOrderingPollStrategy(pollDeliveryOrder));
     PollStrategy pollStrategy = new CompositePollStrategy(pollStrategies);
@@ -494,8 +500,8 @@ public class AdminConsumptionTaskTest {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
     verify(admin, timeout(TIMEOUT).atLeastOnce()).isLeaderControllerFor(clusterName);
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyInt(), anyLong());
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any(), anyInt());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyLong());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any());
     verify(admin, timeout(TIMEOUT)).createStore(clusterName, storeName, owner, keySchema, valueSchema, false);
   }
 
@@ -544,7 +550,7 @@ public class AdminConsumptionTaskTest {
             AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
         .get();
 
-    Queue<Pair<TopicPartition, Long>> pollDeliveryOrder = new LinkedList<>();
+    Queue<PubSubTopicPartitionOffset> pollDeliveryOrder = new LinkedList<>();
     pollDeliveryOrder.add(getTopicPartitionOffsetPair(killJobMetadata));
     PollStrategy pollStrategy = new ArbitraryOrderingPollStrategy(pollDeliveryOrder);
 
@@ -563,8 +569,8 @@ public class AdminConsumptionTaskTest {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
     verify(admin, timeout(TIMEOUT).atLeastOnce()).isLeaderControllerFor(clusterName);
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyInt(), anyLong());
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any(), anyInt());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyLong());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any());
     verify(admin, timeout(TIMEOUT)).createStore(clusterName, storeName, owner, keySchema, valueSchema, false);
     // Kill message is before persisted offset
     verify(admin, never()).killOfflinePush(clusterName, storeTopicName, false);
@@ -591,8 +597,13 @@ public class AdminConsumptionTaskTest {
         getStoreCreationMessage(clusterName, storeName3, owner, keySchema, valueSchema, 3),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
-    Set<Pair<TopicPartition, Long>> set = new HashSet<>();
-    set.add(new Pair(new TopicPartition(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID), offsetToSkip - 1));
+    Set<PubSubTopicPartitionOffset> set = new HashSet<>();
+    set.add(
+        new PubSubTopicPartitionOffset(
+            new PubSubTopicPartitionImpl(
+                pubSubTopicRepository.getTopic(topicName),
+                AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
+            offsetToSkip - 1));
     PollStrategy pollStrategy = new FilteringPollStrategy(new RandomPollStrategy(false), set);
 
     // The stores don't exist
@@ -622,8 +633,8 @@ public class AdminConsumptionTaskTest {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
     verify(stats, atLeastOnce()).recordAdminTopicDIVErrorReportCount();
     verify(admin, atLeastOnce()).isLeaderControllerFor(clusterName);
-    verify(mockKafkaConsumer, times(1)).subscribe(any(), anyInt(), anyLong());
-    verify(mockKafkaConsumer, times(1)).unSubscribe(any(), anyInt());
+    verify(mockKafkaConsumer, times(1)).subscribe(any(), anyLong());
+    verify(mockKafkaConsumer, times(1)).unSubscribe(any());
     verify(admin, times(1)).createStore(clusterName, storeName1, owner, keySchema, valueSchema, false);
     verify(admin, never()).createStore(clusterName, storeName2, owner, keySchema, valueSchema, false);
     verify(admin, never()).createStore(clusterName, storeName3, owner, keySchema, valueSchema, false);
@@ -747,8 +758,8 @@ public class AdminConsumptionTaskTest {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
     verify(admin, timeout(TIMEOUT).atLeastOnce()).isLeaderControllerFor(clusterName);
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyInt(), anyLong());
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any(), anyInt());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyLong());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any());
     verify(admin, timeout(TIMEOUT)).createStore(clusterName, storeName, owner, keySchema, valueSchema, false);
   }
 
@@ -782,8 +793,8 @@ public class AdminConsumptionTaskTest {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
     verify(admin, timeout(TIMEOUT).atLeastOnce()).isLeaderControllerFor(clusterName);
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyInt(), anyLong());
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any(), anyInt());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyLong());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any());
 
     verify(admin, never()).createStore(clusterName, storeName1, owner, keySchema, valueSchema, false);
     verify(admin, atLeastOnce()).createStore(clusterName, storeName2, owner, keySchema, valueSchema, false);
@@ -808,8 +819,8 @@ public class AdminConsumptionTaskTest {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
     verify(admin, timeout(TIMEOUT).atLeastOnce()).isLeaderControllerFor(clusterName);
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyInt(), anyLong());
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any(), anyInt());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyLong());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any());
     verify(admin, never()).killOfflinePush(clusterName, storeTopicName, false);
   }
 
@@ -1017,8 +1028,8 @@ public class AdminConsumptionTaskTest {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
     verify(admin, timeout(TIMEOUT).atLeastOnce()).isLeaderControllerFor(clusterName);
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyInt(), anyLong());
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any(), anyInt());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyLong());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any());
 
     verify(admin, atLeastOnce()).createStore(clusterName, storeName1, owner, keySchema, valueSchema, false);
     verify(admin, times(1)).createStore(clusterName, storeName2, owner, keySchema, valueSchema, false);
@@ -1214,8 +1225,13 @@ public class AdminConsumptionTaskTest {
         getKillOfflinePushJobMessage(clusterName, storeTopicName, 5L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     // We need to actually create a gap in producer metadata too in order to craft a valid DIV exception.
-    Set<Pair<TopicPartition, Long>> set = new HashSet<>();
-    set.add(new Pair(new TopicPartition(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID), 2L));
+    Set<PubSubTopicPartitionOffset> set = new HashSet<>();
+    set.add(
+        new PubSubTopicPartitionOffset(
+            new PubSubTopicPartitionImpl(
+                pubSubTopicRepository.getTopic(topicName),
+                AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
+            2L));
     PollStrategy pollStrategy = new FilteringPollStrategy(new RandomPollStrategy(false), set);
     AdminConsumptionTask task = getAdminConsumptionTask(pollStrategy, false);
     executor.submit(task);

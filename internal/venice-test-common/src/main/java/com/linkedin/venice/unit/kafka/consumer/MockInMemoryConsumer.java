@@ -1,20 +1,23 @@
 package com.linkedin.venice.unit.kafka.consumer;
 
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
 import com.linkedin.venice.unit.kafka.consumer.poll.PollStrategy;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.common.TopicPartition;
 
 
 /**
- * A {@link KafkaConsumerWrapper} implementation which reads messages from the {@link InMemoryKafkaBroker}.
+ * A {@link PubSubConsumer} implementation which reads messages from the {@link InMemoryKafkaBroker}.
  *
  * Used in unit tests as a lightweight alternative to a full-fledged integration test. Can be configured
  * with various {@link PollStrategy} implementations in order to tweak the consuming behavior.
@@ -22,60 +25,58 @@ import org.apache.kafka.common.TopicPartition;
  * When {@link MockInMemoryConsumer} is used to simulate the shared consumer behavior, there might be 2 different threads calling the methods
  * from this class. For example, consumer task thread from {@link com.linkedin.davinci.kafka.consumer.KafkaConsumerService} will
  * periodically call {@link MockInMemoryConsumer#poll(long)} and {@link com.linkedin.davinci.kafka.consumer.StoreIngestionTask} thread
- * is calling {@link MockInMemoryConsumer#resetOffset(String, int)}, which may cause test failure.
+ * is calling {@link MockInMemoryConsumer#resetOffset(PubSubTopicPartition)}, which may cause test failure.
  *
  * TODO: Remove synchronized keyword in this class when consumer operations in consumption task is event-driven.
  */
-public class MockInMemoryConsumer implements KafkaConsumerWrapper {
+public class MockInMemoryConsumer implements PubSubConsumer {
   private final InMemoryKafkaBroker broker;
-  private final Map<TopicPartition, Long> offsets = new HashMap<>();
+  private final Map<PubSubTopicPartition, Long> offsets = new HashMap<>();
   private final PollStrategy pollStrategy;
-  private final KafkaConsumerWrapper delegate;
-  private final Set<TopicPartition> pausedTopicPartitions = new HashSet<>();
+  private final PubSubConsumer delegate;
+  private final Set<PubSubTopicPartition> pausedTopicPartitions = new HashSet<>();
 
   /**
    * @param delegate Can be used to pass a mock, in order to verify calls. Note: functions that return
    *                 do not return the result of the mock, but rather the results of the in-memory
    *                 consumer components.
    */
-  public MockInMemoryConsumer(InMemoryKafkaBroker broker, PollStrategy pollStrategy, KafkaConsumerWrapper delegate) {
+  public MockInMemoryConsumer(InMemoryKafkaBroker broker, PollStrategy pollStrategy, PubSubConsumer delegate) {
     this.broker = broker;
     this.pollStrategy = pollStrategy;
     this.delegate = delegate;
   }
 
   @Override
-  public synchronized void subscribe(String topic, int partition, long lastReadOffset) {
-    TopicPartition topicPartition = new TopicPartition(topic, partition);
-    pausedTopicPartitions.remove(topicPartition);
-    delegate.subscribe(topic, partition, lastReadOffset);
-    offsets.put(topicPartition, lastReadOffset);
+  public synchronized void subscribe(PubSubTopicPartition pubSubTopicPartition, long lastReadOffset) {
+    pausedTopicPartitions.remove(pubSubTopicPartition);
+    delegate.subscribe(pubSubTopicPartition, lastReadOffset);
+    offsets.put(pubSubTopicPartition, lastReadOffset);
   }
 
   @Override
-  public synchronized void unSubscribe(String topic, int partition) {
-    delegate.unSubscribe(topic, partition);
-    TopicPartition topicPartition = new TopicPartition(topic, partition);
-    offsets.remove(topicPartition);
-    pausedTopicPartitions.remove(topicPartition);
+  public synchronized void unSubscribe(PubSubTopicPartition pubSubTopicPartition) {
+    delegate.unSubscribe(pubSubTopicPartition);
+    offsets.remove(pubSubTopicPartition);
+    pausedTopicPartitions.remove(pubSubTopicPartition);
   }
 
   @Override
-  public void batchUnsubscribe(Set<TopicPartition> topicPartitionSet) {
-    delegate.batchUnsubscribe(topicPartitionSet);
-    for (TopicPartition topicPartition: topicPartitionSet) {
+  public void batchUnsubscribe(Set<PubSubTopicPartition> pubSubTopicPartitionSet) {
+    delegate.batchUnsubscribe(pubSubTopicPartitionSet);
+    for (PubSubTopicPartition topicPartition: pubSubTopicPartitionSet) {
       offsets.remove(topicPartition);
       pausedTopicPartitions.remove(topicPartition);
     }
   }
 
   @Override
-  public synchronized void resetOffset(String topic, int partition) {
-    if (!hasSubscription(topic, partition)) {
-      throw new UnsubscribedTopicPartitionException(topic, partition);
+  public synchronized void resetOffset(PubSubTopicPartition pubSubTopicPartition) {
+    if (!hasSubscription(pubSubTopicPartition)) {
+      throw new UnsubscribedTopicPartitionException(pubSubTopicPartition);
     }
-    delegate.resetOffset(topic, partition);
-    offsets.put(new TopicPartition(topic, partition), OffsetRecord.LOWEST_OFFSET);
+    delegate.resetOffset(pubSubTopicPartition);
+    offsets.put(pubSubTopicPartition, OffsetRecord.LOWEST_OFFSET);
   }
 
   @Override
@@ -86,30 +87,34 @@ public class MockInMemoryConsumer implements KafkaConsumerWrapper {
   }
 
   @Override
-  public synchronized ConsumerRecords<byte[], byte[]> poll(long timeout) {
-    if (delegate.poll(timeout) != null) {
+  public synchronized Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> poll(
+      long timeout) {
+    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> delegatePolledMessages =
+        delegate.poll(timeout);
+    if (delegatePolledMessages != null && !delegatePolledMessages.isEmpty()) {
       throw new IllegalArgumentException(
           "The MockInMemoryConsumer's delegate can only be used to verify calls, not to return arbitrary instances.");
     }
 
-    Map<TopicPartition, Long> offsetsToPoll = new HashMap<>();
-    for (Map.Entry<TopicPartition, Long> entry: offsets.entrySet()) {
-      TopicPartition topicPartition = entry.getKey();
+    Map<PubSubTopicPartition, Long> offsetsToPoll = new HashMap<>();
+    for (Map.Entry<PubSubTopicPartition, Long> entry: offsets.entrySet()) {
+      PubSubTopicPartition topicPartition = entry.getKey();
       Long offset = entry.getValue();
       if (!pausedTopicPartitions.contains(entry.getKey())) {
         offsetsToPoll.put(topicPartition, offset);
       }
     }
 
-    ConsumerRecords<byte[], byte[]> consumerRecords = pollStrategy.poll(broker, offsetsToPoll, timeout);
-    for (Map.Entry<TopicPartition, Long> entry: offsetsToPoll.entrySet()) {
-      TopicPartition topicPartition = entry.getKey();
+    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> pubSubMessages =
+        pollStrategy.poll(broker, offsetsToPoll, timeout);
+    for (Map.Entry<PubSubTopicPartition, Long> entry: offsetsToPoll.entrySet()) {
+      PubSubTopicPartition topicPartition = entry.getKey();
       Long offsetToPoll = entry.getValue();
       if (offsets.containsKey(topicPartition)) {
         offsets.put(topicPartition, offsetToPoll);
       }
     }
-    return consumerRecords;
+    return pubSubMessages;
   }
 
   @Override
@@ -118,31 +123,30 @@ public class MockInMemoryConsumer implements KafkaConsumerWrapper {
   }
 
   @Override
-  public boolean hasSubscription(String topic, int partition) {
-    return offsets.containsKey(new TopicPartition(topic, partition));
+  public boolean hasSubscription(PubSubTopicPartition pubSubTopicPartition) {
+    return offsets.containsKey(pubSubTopicPartition);
   }
 
-  public Map<TopicPartition, Long> getOffsets() {
+  public Map<PubSubTopicPartition, Long> getOffsets() {
     return offsets;
   }
 
   @Override
-  public synchronized void pause(String topic, int partition) {
-    pausedTopicPartitions.add(new TopicPartition(topic, partition));
-    delegate.pause(topic, partition);
+  public synchronized void pause(PubSubTopicPartition pubSubTopicPartition) {
+    pausedTopicPartitions.add(pubSubTopicPartition);
+    delegate.pause(pubSubTopicPartition);
   }
 
   @Override
-  public synchronized void resume(String topic, int partition) {
-    TopicPartition topicPartitionToResume = new TopicPartition(topic, partition);
-    if (pausedTopicPartitions.contains(topicPartitionToResume)) {
-      pausedTopicPartitions.remove(topicPartitionToResume);
+  public synchronized void resume(PubSubTopicPartition pubSubTopicPartition) {
+    if (pausedTopicPartitions.contains(pubSubTopicPartition)) {
+      pausedTopicPartitions.remove(pubSubTopicPartition);
     }
-    delegate.resume(topic, partition);
+    delegate.resume(pubSubTopicPartition);
   }
 
   @Override
-  public Set<TopicPartition> getAssignment() {
+  public Set<PubSubTopicPartition> getAssignment() {
     return offsets.keySet();
   }
 }

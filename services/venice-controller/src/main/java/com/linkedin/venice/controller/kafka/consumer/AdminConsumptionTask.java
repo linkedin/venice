@@ -14,7 +14,6 @@ import com.linkedin.venice.exceptions.validation.DataValidationException;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
 import com.linkedin.venice.exceptions.validation.MissingDataException;
 import com.linkedin.venice.kafka.TopicManager;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
@@ -28,6 +27,8 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LatencyUtils;
@@ -55,7 +56,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -142,7 +142,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private final boolean remoteConsumptionEnabled;
 
   private boolean isSubscribed;
-  private final KafkaConsumerWrapper consumer;
+  private final PubSubConsumer consumer;
   private volatile long offsetToSkip = UNASSIGNED_VALUE;
   private volatile long offsetToSkipDIV = UNASSIGNED_VALUE;
   /**
@@ -239,7 +239,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
   public AdminConsumptionTask(
       String clusterName,
-      KafkaConsumerWrapper consumer,
+      PubSubConsumer consumer,
       boolean remoteConsumptionEnabled,
       Optional<String> remoteKafkaServerUrl,
       Optional<String> remoteKafkaZkAddress,
@@ -338,19 +338,19 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           }
           subscribe();
         }
-        Iterator<ConsumerRecord<byte[], byte[]>> recordsIterator;
+        Iterator<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> recordsIterator;
         // Only poll the kafka channel if there are no more undelegated records due to exceptions.
         if (undelegatedRecords.isEmpty()) {
-          ConsumerRecords records = consumer.poll(READ_CYCLE_DELAY_MS);
-          if (records == null || records.isEmpty()) {
-            LOGGER.debug("Received null or no records");
+          Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messages =
+              consumer.poll(READ_CYCLE_DELAY_MS);
+          if (messages == null || messages.isEmpty()) {
+            LOGGER.debug("Received null or no messages");
           } else {
-            LOGGER.info("Consumed {} admin messages from kafka. Will queue them up for processing", records.count());
-            recordsIterator = records.iterator();
+            int polledMessageCount = messages.values().stream().mapToInt(List::size).sum();
+            LOGGER.info("Consumed {} admin messages from kafka. Will queue them up for processing", polledMessageCount);
+            recordsIterator = Utils.iterateOnMapOfLists(messages);
             while (recordsIterator.hasNext()) {
-              ConsumerRecord<byte[], byte[]> consumerRecord = recordsIterator.next();
-              PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> newRecord = pubSubMessageDeserializer
-                  .deserialize(consumerRecord, new PubSubTopicPartitionImpl(pubSubTopic, consumerRecord.partition()));
+              PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> newRecord = recordsIterator.next();
               lastConsumedOffset = newRecord.getOffset();
               undelegatedRecords.add(newRecord);
             }
@@ -432,7 +432,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     stats.setAdminConsumptionCheckpointOffset(lastPersistedOffset);
     stats.registerAdminConsumptionCheckpointOffset();
     // Subscribe the admin topic
-    consumer.subscribe(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, lastOffset);
+    consumer.subscribe(new PubSubTopicPartitionImpl(pubSubTopic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID), lastOffset);
     isSubscribed = true;
     LOGGER.info(
         "Subscribed to topic name: {}, with offset: {} and execution id: {}. Remote consumption flag: {}",
@@ -444,7 +444,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
   private void unSubscribe() {
     if (isSubscribed) {
-      consumer.unSubscribe(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+      consumer.unSubscribe(new PubSubTopicPartitionImpl(pubSubTopic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID));
       storeAdminOperationsMapWithOffset.clear();
       problematicStores.clear();
       undelegatedRecords.clear();
