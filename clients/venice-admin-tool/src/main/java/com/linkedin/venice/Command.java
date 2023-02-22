@@ -443,7 +443,7 @@ public enum Command {
   ),
   EXECUTE_DATA_RECOVERY(
       "execute-data-recovery", "Trigger data recovery for a group of stores",
-      new Arg[] { URL, CLUSTER, RECOVERY_COMMAND }, new Arg[] { EXTRA_COMMAND_ARGS, STORE, DEBUG }
+      new Arg[] { URL, CLUSTER, RECOVERY_COMMAND }, new Arg[] { SOURCE_FABRIC, EXTRA_COMMAND_ARGS, STORE, DEBUG }
   );
 
   private final String commandName;

@@ -613,12 +613,14 @@ public class AdminTool {
     String cluster = getRequiredArgument(cmd, Arg.CLUSTER);
     String stores = getOptionalArgument(cmd, Arg.STORE);
     String command = getRequiredArgument(cmd, Arg.RECOVERY_COMMAND);
+    String sourceFabric = getRequiredArgument(cmd, Arg.SOURCE_FABRIC);
 
     String extraCommandArgs = getOptionalArgument(cmd, Arg.EXTRA_COMMAND_ARGS);
     boolean isDebuggingEnabled = cmd.hasOption(Arg.DEBUG.toString());
 
     StoreRepushCommand.Params cmdParams = new StoreRepushCommand.Params();
     cmdParams.setCommand(command);
+    cmdParams.setSourceFabric(sourceFabric);
     if (extraCommandArgs != null) {
       cmdParams.setExtraCommandArgs(extraCommandArgs);
     }

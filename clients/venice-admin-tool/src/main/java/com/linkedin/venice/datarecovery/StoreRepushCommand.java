@@ -17,7 +17,7 @@ import org.apache.logging.log4j.Logger;
  * We expect the command to comply with the following contract:
  *
  * Input:
- *    Command --store store_name EXTRA_COMMAND_ARGS (e.g. --fabric source_fabric --password user_credentials)
+ *    <COMMAND> --store <store_name> --fabric <source_fabric> [<EXTRA_COMMAND_ARGS>]
  * Output:
  *    success: link_to_running_task
  *    failure: failure_reason
@@ -57,8 +57,12 @@ public class StoreRepushCommand {
     List<String> cmd = new ArrayList<>();
     cmd.add(this.params.command);
     cmd.add(this.params.extraCommandArgs);
-    cmd.add("--password" + this.params.password);
-
+    if (this.params.password != null) {
+      cmd.add("--password " + this.params.password);
+    }
+    if (this.params.sourceFabric != null) {
+      cmd.add("--fabric " + this.params.sourceFabric);
+    }
     if (store != null) {
       cmd.add("--store " + store);
     }
@@ -139,8 +143,10 @@ public class StoreRepushCommand {
   }
 
   public static class Params {
-    // command name;
+    // command name.
     private String command;
+    // source fabric.
+    private String sourceFabric;
     // extra arguments to command.
     private String extraCommandArgs;
     // User's credentials.
@@ -166,6 +172,10 @@ public class StoreRepushCommand {
 
     public void setExtraCommandArgs(String args) {
       this.extraCommandArgs = args;
+    }
+
+    public void setSourceFabric(String fabric) {
+      this.sourceFabric = fabric;
     }
   }
 
