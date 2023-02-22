@@ -23,16 +23,25 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Field;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.Encoder;
+import org.apache.avro.util.Utf8;
 import org.apache.commons.io.IOUtils;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
+import org.apache.helix.model.ClusterConfig;
+import org.apache.helix.model.HelixConfigScope;
 import org.apache.helix.model.InstanceConfig;
+import org.apache.helix.model.builder.HelixConfigScopeBuilder;
 import org.apache.http.HttpResponse;
 import org.apache.http.HttpStatus;
 import org.apache.http.client.methods.HttpGet;
@@ -165,23 +174,37 @@ public class VeniceServerTest {
         CloseableHttpAsyncClient client =
             HttpClientUtils.getMinimalHttpClient(1, 1, Optional.of(SslUtils.getVeniceLocalSslFactory()));) {
 
-      String storeName = cluster.createStore(1);
-      client.start();
+      HelixAdmin admin = new ZKHelixAdmin(cluster.getZk().getAddress());
+
+      HelixConfigScope configScope =
+          new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER).forCluster(cluster.getClusterName())
+              .build();
+      Map<String, String> clusterProperties = new HashMap<String, String>() {
+        {
+          put(ClusterConfig.ClusterConfigProperty.TOPOLOGY.name(), "/zone/instance");
+          put(ClusterConfig.ClusterConfigProperty.TOPOLOGY_AWARE_ENABLED.name(), "TRUE");
+          put(ClusterConfig.ClusterConfigProperty.FAULT_ZONE_TYPE.name(), "zone");
+        }
+      };
+
+      admin.setConfig(configScope, clusterProperties);
 
       for (int i = 0; i < servers; i++) {
         VeniceServerWrapper server = cluster.getVeniceServers().get(i);
         String instanceName = server.getHost() + "_" + server.getPort();
         String domain = "zone=zone_" + (char) (i % replicationFactor + 65) + ",instance=" + instanceName;
 
-        InstanceConfig config = new InstanceConfig(instanceName);
-        config.setDomain(domain);
-        config.setHostName(server.getHost());
-        config.setPort(String.valueOf(server.getPort()));
+        InstanceConfig instanceConfig = new InstanceConfig(instanceName);
+        instanceConfig.setDomain(domain);
+        instanceConfig.setHostName(server.getHost());
+        instanceConfig.setPort(String.valueOf(server.getPort()));
 
-        HelixAdmin admin = new ZKHelixAdmin(cluster.getZk().getAddress());
-        admin.setInstanceConfig(cluster.getClusterName(), instanceName, config);
+        admin.setInstanceConfig(cluster.getClusterName(), instanceName, instanceConfig);
       }
 
+      String storeName = cluster.createStore(1);
+
+      client.start();
       HttpGet httpsRequest =
           new HttpGet("http://" + cluster.getVeniceServers().get(0).getAddress() + "/metadata/" + storeName);
       HttpResponse httpsResponse = client.execute(httpsRequest, null).get();
@@ -192,7 +215,7 @@ public class VeniceServerTest {
         Assert.assertEquals(httpsResponse.getStatusLine().getStatusCode(), HttpStatus.SC_OK);
         RecordDeserializer<MetadataResponseRecord> metadataResponseRecordRecordDeserializer =
             SerializerDeserializerFactory.getAvroGenericDeserializer(MetadataResponseRecord.SCHEMA$);
-        GenericRecord metadataResponse = metadataResponseRecordRecordDeserializer.deserialize(null, body);
+        GenericRecord metadataResponse = metadataResponseRecordRecordDeserializer.deserialize(body);
 
         try (ByteArrayOutputStream output = new ByteArrayOutputStream()) {
           GenericDatumWriter<Object> avroDatumWriter = new GenericDatumWriter<>(MetadataResponseRecord.SCHEMA$);
@@ -206,10 +229,23 @@ public class VeniceServerTest {
           throw new VeniceException(e);
         }
 
-        Assert.assertEquals(
-            metadataResponse.get("keySchema").toString(),
-            "\"int\"",
-            metadataResponse.get("keySchema").toString());
+        // check we can parse the fields of the response
+        Assert.assertEquals(metadataResponse.get("keySchema").toString(), "\"int\"");
+
+        // verify the property that no replicas of the same partition are in the same helix group
+        Map<Utf8, Integer> helixGroupInfo = (HashMap<Utf8, Integer>) metadataResponse.get("helixGroupInfo");
+        Map<Utf8, Collection<Utf8>> routingInfo = (HashMap<Utf8, Collection<Utf8>>) metadataResponse.get("routingInfo");
+
+        for (Utf8 partitionId: routingInfo.keySet()) {
+          Set<Integer> zonesSeen = new HashSet<>();
+          for (Utf8 instance: routingInfo.get(partitionId)) {
+            Assert.assertFalse(
+                zonesSeen.contains(helixGroupInfo.get(instance)),
+                instance + " is in the same helix zone as another replica of the partition");
+            zonesSeen.add(helixGroupInfo.get(instance));
+          }
+        }
+
       }
     }
   }

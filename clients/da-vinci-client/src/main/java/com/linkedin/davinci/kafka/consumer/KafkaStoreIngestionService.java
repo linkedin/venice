@@ -1117,7 +1117,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         versions.add(version.getNumber());
       }
       VersionProperties versionProperties =
-          new VersionProperties(store.getCurrentVersion(), versions, store.getCompressionStrategy().getValue(), null);
+          new VersionProperties(store.getCurrentVersion(), versions, store.getCompressionStrategy().getValue());
 
       String keySchema = schemaRepo.getKeySchema(storeName).getSchema().toString();
       List<CharSequence> valueSchemas = new ArrayList<>();
