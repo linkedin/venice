@@ -12,7 +12,9 @@ public class MRJobCounterHelper {
   private static final String COUNTER_GROUP_QUOTA = "Quota";
   private static final String COUNTER_TOTAL_KEY_SIZE = "total key size";
   private static final String COUNTER_TOTAL_UNCOMPRESSED_VALUE_SIZE = "total uncompressed value size";
-  private static final String COUNTER_TOTAL_VALUE_SIZE = "total compressed value size stored";
+  private static final String COUNTER_TOTAL_VALUE_SIZE = "total compressed value size stored"; // Compressed using
+                                                                                               // NO_OP/GZIP/ZSTD_WITH_DICT
+                                                                                               // Compressor
   private static final String COUNTER_TOTAL_GZIP_COMPRESSED_VALUE_SIZE = "total GZIP compressed value size";
   private static final String COUNTER_TOTAL_ZSTD_WITH_DICT_COMPRESSED_VALUE_SIZE =
       "total ZSTD with dictionary compressed value size";

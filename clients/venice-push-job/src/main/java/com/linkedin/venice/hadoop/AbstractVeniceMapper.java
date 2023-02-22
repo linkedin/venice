@@ -1,6 +1,5 @@
 package com.linkedin.venice.hadoop;
 
-import static com.linkedin.venice.compression.CompressionStrategy.GZIP;
 import static com.linkedin.venice.compression.CompressionStrategy.NO_OP;
 import static com.linkedin.venice.compression.CompressionStrategy.ZSTD_WITH_DICT;
 import static com.linkedin.venice.hadoop.VenicePushJob.COMPRESSION_METRIC_COLLECTION_ENABLED;
@@ -117,8 +116,9 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE> extends Abstr
       return false;
     }
 
-    // both key and value are not null
+    // both key and value are not null: Record uncompressed Key and value lengths
     MRJobCounterHelper.incrTotalKeySize(reporter, recordKey.length);
+    MRJobCounterHelper.incrTotalUncompressedValueSize(reporter, recordValue.length);
 
     // Compress and save the details based on the configured compression strategy: This should not fail
     byte[] finalRecordValue;
@@ -130,19 +130,16 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE> extends Abstr
               + compressor[compressionStrategy.getValue()].getCompressionStrategy().name(),
           e);
     }
-    // record the final stored value details
+    // record the final stored value length
     MRJobCounterHelper.incrTotalValueSize(reporter, finalRecordValue.length);
     keyBW.set(recordKey, 0, recordKey.length);
     valueBW.set(finalRecordValue, 0, finalRecordValue.length);
 
-    if (!compressionMetricCollectionEnabled) {
-      // collect the uncompressed value size
-      MRJobCounterHelper.incrTotalUncompressedValueSize(reporter, recordValue.length);
-    } else {
-      // Compress based on all compression strategies to collect metrics if enabled.
+    if (compressionMetricCollectionEnabled) {
+      // Compress based on all compression strategies to collect metrics
       byte[] compressedRecordValue;
       for (CompressionStrategy compressionStrategy: CompressionStrategy.values()) {
-        if (compressor[compressionStrategy.getValue()] != null) {
+        if (compressionStrategy != NO_OP && compressor[compressionStrategy.getValue()] != null) {
           if (compressionStrategy == this.compressionStrategy) {
             // Extra check to not redo compression
             compressedRecordValue = finalRecordValue;
@@ -158,10 +155,6 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE> extends Abstr
             }
           }
           switch (compressionStrategy) {
-            case NO_OP:
-              MRJobCounterHelper.incrTotalUncompressedValueSize(reporter, compressedRecordValue.length);
-              break;
-
             case GZIP:
               MRJobCounterHelper.incrTotalGzipCompressedValueSize(reporter, compressedRecordValue.length);
               break;
@@ -170,7 +163,9 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE> extends Abstr
               MRJobCounterHelper.incrTotalZstdCompressedValueSize(reporter, compressedRecordValue.length);
               break;
 
-            default: // ZSTD won't reach here as it won't be initialized
+            default:
+              // NO_OP won't reach here as its collected already for all cases.
+              // ZSTD won't reach here as its deprecated, so not initialized.
               throw new VeniceException(
                   "Support for compression Strategy: " + compressionStrategy.name() + " needs to be added");
           }
@@ -295,12 +290,7 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE> extends Abstr
 
   @Override
   public void close() {
-    if (compressorFactory != null) {
-      Utils.closeQuietlyWithErrorLogged(compressorFactory);
-    }
-
-    if (veniceFilterChain != null) {
-      Utils.closeQuietlyWithErrorLogged(veniceFilterChain);
-    }
+    Utils.closeQuietlyWithErrorLogged(compressorFactory);
+    Utils.closeQuietlyWithErrorLogged(veniceFilterChain);
   }
 }

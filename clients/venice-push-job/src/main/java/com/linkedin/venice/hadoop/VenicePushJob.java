@@ -1349,19 +1349,19 @@ public class VenicePushJob implements AutoCloseable {
       // repush from kafka: Existing dictionary will be collected from kafka if found,
       // but will not be built again. This is already checked before calling this function.
       // This is a defensive check.
-      LOGGER.warn("No compression dictionary will be generated as the push type is repush");
+      LOGGER.info("No compression dictionary will be generated as the push type is repush");
       return false;
     }
 
     if (!inputFileHasRecords) {
-      LOGGER.warn("No compression dictionary will be generated as there are no records");
+      LOGGER.info("No compression dictionary will be generated as there are no records");
       return false;
     }
 
     if (pushJobSetting.compressionMetricCollectionEnabled
         || storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
       if (pushJobSetting.isIncrementalPush) {
-        LOGGER.warn("No compression dictionary will be generated as the push type is incremental push");
+        LOGGER.info("No compression dictionary will be generated as the push type is incremental push");
         return false;
       }
       LOGGER.info(
@@ -1372,7 +1372,7 @@ public class VenicePushJob implements AutoCloseable {
       return true;
     }
 
-    LOGGER.warn(
+    LOGGER.info(
         "No Compression dictionary will be generated with the compression strategy"
             + " {} and compressionMetricCollectionEnabled is disabled",
         storeSetting.compressionStrategy);
@@ -1396,17 +1396,17 @@ public class VenicePushJob implements AutoCloseable {
     if (pushJobSetting.isSourceKafka) {
       // repush from kafka: This is already checked before calling this function.
       // This is a defensive check.
-      LOGGER.warn("No compression related metrics will be generated as the push type is repush");
+      LOGGER.info("No compression related metrics will be generated as the push type is repush");
       return false;
     }
 
     if (!inputFileHasRecords) {
-      LOGGER.warn("No compression related metrics will be generated as there are no records");
+      LOGGER.info("No compression related metrics will be generated as there are no records");
       return false;
     }
 
     if (pushJobSetting.isIncrementalPush) {
-      LOGGER.warn("No compression related metrics will be generated as the push type is incremental push");
+      LOGGER.info("No compression related metrics will be generated as the push type is incremental push");
       return false;
     }
 
