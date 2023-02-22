@@ -34,10 +34,22 @@ public class CompressorFactory implements Closeable, AutoCloseable {
       CompressionStrategy compressionStrategy,
       String kafkaTopic,
       final byte[] dictionary) {
+    return createVersionSpecificCompressorIfNotExist(
+        compressionStrategy,
+        kafkaTopic,
+        dictionary,
+        Zstd.maxCompressionLevel());
+  }
+
+  public VeniceCompressor createVersionSpecificCompressorIfNotExist(
+      CompressionStrategy compressionStrategy,
+      String kafkaTopic,
+      final byte[] dictionary,
+      int compressionLevel) {
     switch (compressionStrategy) {
       case ZSTD_WITH_DICT:
         return versionSpecificCompressorMap
-            .computeIfAbsent(kafkaTopic, key -> createCompressorWithDictionary(dictionary, Zstd.maxCompressionLevel()));
+            .computeIfAbsent(kafkaTopic, key -> createCompressorWithDictionary(dictionary, compressionLevel));
       default:
         return getCompressor(compressionStrategy);
     }
