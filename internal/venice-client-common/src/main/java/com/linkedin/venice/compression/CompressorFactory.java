@@ -12,8 +12,8 @@ import org.apache.logging.log4j.Logger;
 
 public class CompressorFactory implements Closeable, AutoCloseable {
   private static final Logger LOGGER = LogManager.getLogger(CompressorFactory.class);
-  private static final VeniceCompressor NO_OP_COMPRESSOR = new NoopCompressor();
-  private static final VeniceCompressor GZIP_COMPRESSOR = new GzipCompressor();
+  private final VeniceCompressor NO_OP_COMPRESSOR = new NoopCompressor();
+  private final VeniceCompressor GZIP_COMPRESSOR = new GzipCompressor();
   private final Map<String, VeniceCompressor> versionSpecificCompressorMap = new VeniceConcurrentHashMap<>();
 
   public VeniceCompressor getCompressor(CompressionStrategy compressionStrategy) {
