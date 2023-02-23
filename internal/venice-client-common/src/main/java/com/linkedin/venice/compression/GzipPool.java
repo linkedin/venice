@@ -22,7 +22,7 @@ class GzipPool implements AutoCloseable {
     }
   }
 
-  private static final CloseableThreadLocal<ReusableObjects> reusableObjectsThreadLocal =
+  private final CloseableThreadLocal<ReusableObjects> reusableObjectsThreadLocal =
       new CloseableThreadLocal(ReusableObjects::new);
 
   /**
