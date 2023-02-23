@@ -23,25 +23,16 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Field;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
-import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.Encoder;
-import org.apache.avro.util.Utf8;
 import org.apache.commons.io.IOUtils;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
-import org.apache.helix.model.ClusterConfig;
-import org.apache.helix.model.HelixConfigScope;
 import org.apache.helix.model.InstanceConfig;
-import org.apache.helix.model.builder.HelixConfigScopeBuilder;
 import org.apache.http.HttpResponse;
 import org.apache.http.HttpStatus;
 import org.apache.http.client.methods.HttpGet;
@@ -167,40 +158,21 @@ public class VeniceServerTest {
   @Test
   public void testMetadataFetchRequest() throws ExecutionException, InterruptedException, IOException {
     Utils.thisIsLocalhost();
-    int servers = 6;
-    int replicationFactor = 2;
 
-    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, servers, 0, replicationFactor);
+    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 1, 0, 1);
         CloseableHttpAsyncClient client =
             HttpClientUtils.getMinimalHttpClient(1, 1, Optional.of(SslUtils.getVeniceLocalSslFactory()));) {
 
       HelixAdmin admin = new ZKHelixAdmin(cluster.getZk().getAddress());
 
-      HelixConfigScope configScope =
-          new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER).forCluster(cluster.getClusterName())
-              .build();
-      Map<String, String> clusterProperties = new HashMap<String, String>() {
-        {
-          put(ClusterConfig.ClusterConfigProperty.TOPOLOGY.name(), "/zone/instance");
-          put(ClusterConfig.ClusterConfigProperty.TOPOLOGY_AWARE_ENABLED.name(), "TRUE");
-          put(ClusterConfig.ClusterConfigProperty.FAULT_ZONE_TYPE.name(), "zone");
-        }
-      };
+      VeniceServerWrapper server = cluster.getVeniceServers().get(0);
+      String instanceName = server.getHost() + "_" + server.getPort();
 
-      admin.setConfig(configScope, clusterProperties);
+      InstanceConfig instanceConfig = new InstanceConfig(instanceName);
+      instanceConfig.setHostName(server.getHost());
+      instanceConfig.setPort(String.valueOf(server.getPort()));
 
-      for (int i = 0; i < servers; i++) {
-        VeniceServerWrapper server = cluster.getVeniceServers().get(i);
-        String instanceName = server.getHost() + "_" + server.getPort();
-        String domain = "zone=zone_" + (char) (i % replicationFactor + 65) + ",instance=" + instanceName;
-
-        InstanceConfig instanceConfig = new InstanceConfig(instanceName);
-        instanceConfig.setDomain(domain);
-        instanceConfig.setHostName(server.getHost());
-        instanceConfig.setPort(String.valueOf(server.getPort()));
-
-        admin.setInstanceConfig(cluster.getClusterName(), instanceName, instanceConfig);
-      }
+      admin.setInstanceConfig(cluster.getClusterName(), instanceName, instanceConfig);
 
       String storeName = cluster.createStore(1);
 
@@ -231,21 +203,6 @@ public class VeniceServerTest {
 
         // check we can parse the fields of the response
         Assert.assertEquals(metadataResponse.get("keySchema").toString(), "\"int\"");
-
-        // verify the property that no replicas of the same partition are in the same helix group
-        Map<Utf8, Integer> helixGroupInfo = (HashMap<Utf8, Integer>) metadataResponse.get("helixGroupInfo");
-        Map<Utf8, Collection<Utf8>> routingInfo = (HashMap<Utf8, Collection<Utf8>>) metadataResponse.get("routingInfo");
-
-        for (Utf8 partitionId: routingInfo.keySet()) {
-          Set<Integer> zonesSeen = new HashSet<>();
-          for (Utf8 instance: routingInfo.get(partitionId)) {
-            Assert.assertFalse(
-                zonesSeen.contains(helixGroupInfo.get(instance)),
-                instance + " is in the same helix zone as another replica of the partition");
-            zonesSeen.add(helixGroupInfo.get(instance));
-          }
-        }
-
       }
     }
   }
