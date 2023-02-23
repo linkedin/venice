@@ -36,13 +36,25 @@ public interface PubSubProducerAdapter {
     return future.get(timeout, timeUnit);
   }
 
-  Future<PubSubProduceResult> sendMessage(
+  /**
+   * @param topic      destination topic
+   * @param partition  partition in the target topic
+   * @param key        message key
+   * @param value      message value/payload
+   * @param headers    message headers (key-value pairs)
+   * @param pubSubProducerCallback   A CompletableFuture-come-callback which will be "invoked and completed" when
+   *                                message is sent successfully.
+   * All implementations of this interface MUST guarantee that "pubSubProducerCallback" will be
+   *   1) invoked (call PubSubProducerCallback::onCompletion) and
+   *   2) marked completed (PubSubProducerCallback::completeExceptionally or PubSubProducerCallback::complete).
+   */
+  void sendMessage(
       String topic,
       Integer partition,
       KafkaKey key,
       KafkaMessageEnvelope value,
       PubSubMessageHeaders headers,
-      PubSubProducerCallback callback);
+      PubSubProducerCallback pubSubProducerCallback);
 
   void flush();
 

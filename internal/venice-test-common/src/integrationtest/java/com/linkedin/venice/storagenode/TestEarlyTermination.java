@@ -15,6 +15,8 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.adapter.SimplePubSubProducerCallbackImpl;
+import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -113,8 +115,9 @@ public class TestEarlyTermination {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     // Insert test record and wait synchronously for it to succeed
     for (int i = 0; i < 100; ++i) {
-
-      veniceWriter.put(keyPrefix + i, valuePrefix + i, valueSchemaId).get();
+      PubSubProducerCallback putResult = new SimplePubSubProducerCallbackImpl();
+      veniceWriter.put(keyPrefix + i, valuePrefix + i, valueSchemaId, putResult);
+      putResult.get();
     }
     // Write end of push message to make node become ONLINE from BOOTSTRAP
     veniceWriter.broadcastEndOfPush(new HashMap<>());

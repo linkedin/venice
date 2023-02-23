@@ -24,6 +24,8 @@ import com.linkedin.venice.meta.ServerAdminAction;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.pubsub.adapter.SimplePubSubProducerCallbackImpl;
+import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
@@ -362,7 +364,9 @@ public class StorageNodeReadTest {
     // Insert test record and wait synchronously for it to succeed
     Future[] writerFutures = new Future[numOfRecords];
     for (int i = 0; i < numOfRecords; i++) {
-      writerFutures[i] = veniceWriter.put(keyPrefix + i, valuePrefix + i, valueSchemaId);
+      PubSubProducerCallback putResult = new SimplePubSubProducerCallbackImpl();
+      veniceWriter.put(keyPrefix + i, valuePrefix + i, valueSchemaId, putResult);
+      writerFutures[i] = putResult;
     }
     for (int i = 0; i < numOfRecords; i++) {
       writerFutures[i].get();

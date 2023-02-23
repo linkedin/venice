@@ -14,9 +14,11 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.pubsub.adapter.SimplePubSubProducerCallbackImpl;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapter;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -195,7 +197,9 @@ public abstract class ConsumerIntegrationTest {
       VeniceWriter<String, String, byte[]> veniceWriter,
       AvroGenericStoreClient client,
       String testValue) throws ExecutionException, InterruptedException {
-    veniceWriter.put(TEST_KEY, testValue, 1).get();
+    PubSubProducerCallback putResult = new SimplePubSubProducerCallbackImpl();
+    veniceWriter.put(TEST_KEY, testValue, 1, putResult);
+    putResult.get();
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       try {
         Object value = client.get(TEST_KEY).get();

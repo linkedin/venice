@@ -185,19 +185,23 @@ class DefaultPushJobHeartbeatSender implements PushJobHeartbeatSender {
     byte[] valueBytes = valueSerializer.serialize(heartbeatKafkaTopicName, BatchJobHeartbeatValue);
     CountDownLatch sendComplete = new CountDownLatch(1);
     final Instant sendStartTime = Instant.now();
-    final PubSubProducerCallback callback = (PubSubProduceResult produceResult, Exception exception) -> {
-      Duration sendDuration = Duration.between(sendStartTime, Instant.now());
-      if (exception == null) {
-        successfulHeartbeatCount++;
-        LOGGER.info("Sending one heartbeat event successfully. Took: {} ms", sendDuration.toMillis());
-      } else {
-        failedHeartbeatCount++;
-        if (firstSendHeartbeatException == null) {
-          firstSendHeartbeatException = exception;
+
+    final PubSubProducerCallback callback = new PubSubProducerCallback() {
+      @Override
+      public void onCompletion(PubSubProduceResult produceResult, Exception exception) {
+        Duration sendDuration = Duration.between(sendStartTime, Instant.now());
+        if (exception == null) {
+          successfulHeartbeatCount++;
+          LOGGER.info("Sending one heartbeat event successfully. Took: {} ms", sendDuration.toMillis());
+        } else {
+          failedHeartbeatCount++;
+          if (firstSendHeartbeatException == null) {
+            firstSendHeartbeatException = exception;
+          }
+          LOGGER.info("Failed to send one heartbeat event after {} ms", sendDuration.toMillis(), exception);
         }
-        LOGGER.info("Failed to send one heartbeat event after {} ms", sendDuration.toMillis(), exception);
+        sendComplete.countDown();
       }
-      sendComplete.countDown();
     };
 
     if (isLastHeartbeat && sendDeleteAsLasHeartbeat) {

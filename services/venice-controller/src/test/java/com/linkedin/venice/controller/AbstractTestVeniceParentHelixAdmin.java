@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -24,6 +25,7 @@ import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.pubsub.adapter.SimplePubSubProduceResultImpl;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -35,6 +37,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ExecutionException;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 
 
@@ -60,7 +63,7 @@ public class AbstractTestVeniceParentHelixAdmin {
   VeniceHelixAdmin internalAdmin;
   VeniceControllerConfig config;
   ZkClient zkClient;
-  VeniceWriter veniceWriter;
+  VeniceWriter<byte[], byte[], byte[]> veniceWriter;
   VeniceParentHelixAdmin parentAdmin = null;
   HelixVeniceClusterResources resources;
   VeniceAdminStats adminStats;
@@ -71,7 +74,7 @@ public class AbstractTestVeniceParentHelixAdmin {
   ClusterLockManager clusterLockManager;
   StoragePersonaRepository personaRepository;
 
-  public void setupInternalMocks() {
+  public void setupInternalMocks() throws ExecutionException, InterruptedException {
     topicManager = mock(TopicManager.class);
     doReturn(new HashSet<String>(Arrays.asList(topicName))).when(topicManager).listTopics();
     Map<String, Long> topicRetentions = new HashMap<>();
@@ -138,6 +141,9 @@ public class AbstractTestVeniceParentHelixAdmin {
 
     // Need to bypass VeniceWriter initialization
     veniceWriter = mock(VeniceWriter.class);
+
+    doReturn(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)).when(veniceWriter)
+        .syncPut(any(), any(), anyInt());
   }
 
   /**

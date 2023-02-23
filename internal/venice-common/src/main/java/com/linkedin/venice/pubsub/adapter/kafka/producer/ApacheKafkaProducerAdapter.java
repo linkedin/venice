@@ -5,7 +5,6 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
-import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import it.unimi.dsi.fastutil.objects.Object2DoubleMap;
@@ -14,7 +13,6 @@ import it.unimi.dsi.fastutil.objects.Object2DoubleOpenHashMap;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
@@ -68,7 +66,7 @@ public class ApacheKafkaProducerAdapter implements PubSubProducerAdapter {
    * @param pubsubProducerCallback - The callback function, which will be triggered when Kafka client sends out the message.
    * */
   @Override
-  public Future<PubSubProduceResult> sendMessage(
+  public void sendMessage(
       String topic,
       Integer partition,
       KafkaKey key,
@@ -85,7 +83,6 @@ public class ApacheKafkaProducerAdapter implements PubSubProducerAdapter {
     ApacheKafkaProducerCallback kafkaCallback = new ApacheKafkaProducerCallback(pubsubProducerCallback);
     try {
       producer.send(record, kafkaCallback);
-      return kafkaCallback.getProduceResultFuture();
     } catch (Exception e) {
       throw new VeniceException(
           "Got an error while trying to produce message into Kafka. Topic: '" + record.topic() + "', partition: "

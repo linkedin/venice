@@ -7,7 +7,7 @@ import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 /**
  * Wraps another {@link PubSubProducerCallback} and propagates exceptions to it, but swallows successful completions.
  */
-class ErrorPropagationCallback implements PubSubProducerCallback {
+class ErrorPropagationCallback extends PubSubProducerCallback {
   private final PubSubProducerCallback callback;
 
   public ErrorPropagationCallback(PubSubProducerCallback callback) {

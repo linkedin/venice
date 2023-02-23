@@ -1,7 +1,9 @@
 package com.linkedin.venice.pushstatushelper;
 
 import com.linkedin.venice.common.PushStatusStoreUtils;
+import com.linkedin.venice.pubsub.adapter.SimplePubSubProducerCallbackImpl;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
+import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pushstatus.PushStatusKey;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -54,7 +56,9 @@ public class PushStatusStoreRecordDeleter implements AutoCloseable {
         "Deleting incremental push status belonging to a partition:{}. pushStatusKey:{}",
         partitionId,
         pushStatusKey);
-    return veniceWriterCache.prepareVeniceWriter(storeName).delete(pushStatusKey, null);
+    PubSubProducerCallback callback = new SimplePubSubProducerCallbackImpl();
+    veniceWriterCache.prepareVeniceWriter(storeName).delete(pushStatusKey, callback);
+    return callback;
   }
 
   public void removePushStatusStoreVeniceWriter(String storeName) {

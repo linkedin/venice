@@ -18,7 +18,9 @@ import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapter;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.SharedKafkaProducerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -87,13 +89,19 @@ public class PubSubSharedProducerAdapterFactoryTest {
         CountDownLatch producedTopicPresent = new CountDownLatch(100);
         for (int i = 0; i < 100 && !Thread.interrupted(); i++) {
           try {
-            veniceWriter1
-                .put(new KafkaKey(MessageType.PUT, "topic1".getBytes()), "topic1".getBytes(), 1, (metadata, e) -> {
-                  if (e != null) {
-                    LOGGER.error("Error when producing to an existing topic: {}", existingTopic, e);
-                  } else {
-                    LOGGER.info("produced offset test-topic-1: {}", metadata.getOffset());
-                    producedTopicPresent.countDown();
+            veniceWriter1.put(
+                new KafkaKey(MessageType.PUT, "topic1".getBytes()),
+                "topic1".getBytes(),
+                1,
+                new PubSubProducerCallback() {
+                  @Override
+                  public void onCompletion(PubSubProduceResult produceResult, Exception exception) {
+                    if (exception != null) {
+                      LOGGER.error("Error when producing to an existing topic: {}", existingTopic, exception);
+                    } else {
+                      LOGGER.info("produced offset test-topic-1: {}", produceResult.getOffset());
+                      producedTopicPresent.countDown();
+                    }
                   }
                 });
           } catch (VeniceException e) {
@@ -123,7 +131,12 @@ public class PubSubSharedProducerAdapterFactoryTest {
                   new KafkaKey(MessageType.PUT, "topic2".getBytes()),
                   "topic2".getBytes(),
                   1,
-                  (metadata, e) -> producedTopicNotPresent.getAndIncrement());
+                  new PubSubProducerCallback() {
+                    @Override
+                    public void onCompletion(PubSubProduceResult produceResult, Exception exception) {
+                      producedTopicNotPresent.getAndIncrement();
+                    }
+                  });
             } catch (VeniceException e) {
               LOGGER.error("Exception: ", e);
             }

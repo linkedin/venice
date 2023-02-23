@@ -11,10 +11,6 @@ import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaMessage;
 import it.unimi.dsi.fastutil.objects.Object2DoubleMap;
 import it.unimi.dsi.fastutil.objects.Object2DoubleMaps;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
 
 /**
@@ -34,7 +30,7 @@ public class MockInMemoryProducerAdapter implements PubSubProducerAdapter {
   }
 
   @Override
-  public Future<PubSubProduceResult> sendMessage(
+  public void sendMessage(
       String topic,
       Integer partition,
       KafkaKey key,
@@ -44,33 +40,7 @@ public class MockInMemoryProducerAdapter implements PubSubProducerAdapter {
     long offset = broker.produce(topic, partition, new InMemoryKafkaMessage(key, value));
     PubSubProduceResult produceResult = new SimplePubSubProduceResultImpl(topic, partition, offset, -1);
     callback.onCompletion(produceResult, null);
-    return new Future<PubSubProduceResult>() {
-      @Override
-      public boolean cancel(boolean mayInterruptIfRunning) {
-        return false;
-      }
-
-      @Override
-      public boolean isCancelled() {
-        return false;
-      }
-
-      @Override
-      public boolean isDone() {
-        return false;
-      }
-
-      @Override
-      public PubSubProduceResult get() throws InterruptedException, ExecutionException {
-        return produceResult;
-      }
-
-      @Override
-      public PubSubProduceResult get(long timeout, TimeUnit unit)
-          throws InterruptedException, ExecutionException, TimeoutException {
-        return produceResult;
-      }
-    };
+    callback.complete(produceResult);
   }
 
   @Override

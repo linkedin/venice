@@ -19,7 +19,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import it.unimi.dsi.fastutil.objects.Object2DoubleMap;
 import java.time.Duration;
@@ -85,18 +84,14 @@ public class ApacheKafkaProducerAdapterTest {
 
     // interaction (1) when pubsub-callback is null
     when(kafkaProducerMock.send(any(ProducerRecord.class), isNull())).thenReturn(recordMetadataFutureMock);
-    Future<PubSubProduceResult> produceResultFuture =
-        producerAdapter.sendMessage(TOPIC_NAME, 42, testKafkaKey, testKafkaValue, null, null);
-    assertNotNull(produceResultFuture);
+    producerAdapter.sendMessage(TOPIC_NAME, 42, testKafkaKey, testKafkaValue, null, null);
     verify(kafkaProducerMock, never()).send(any(ProducerRecord.class), isNull());
     verify(kafkaProducerMock, times(1)).send(any(ProducerRecord.class), any(Callback.class));
 
     // interaction (1) when pubsub-callback is non-null
     PubSubProducerCallback producerCallbackMock = mock(PubSubProducerCallback.class);
     when(kafkaProducerMock.send(any(ProducerRecord.class), any(Callback.class))).thenReturn(recordMetadataFutureMock);
-    produceResultFuture =
-        producerAdapter.sendMessage(TOPIC_NAME, 42, testKafkaKey, testKafkaValue, null, producerCallbackMock);
-    assertNotNull(produceResultFuture);
+    producerAdapter.sendMessage(TOPIC_NAME, 42, testKafkaKey, testKafkaValue, null, producerCallbackMock);
     verify(kafkaProducerMock, never()).send(any(ProducerRecord.class), isNull());
     verify(kafkaProducerMock, times(2)).send(any(ProducerRecord.class), any(Callback.class));
   }

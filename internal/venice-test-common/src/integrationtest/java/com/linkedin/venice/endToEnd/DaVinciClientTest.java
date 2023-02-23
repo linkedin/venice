@@ -61,6 +61,8 @@ import com.linkedin.venice.meta.IngestionMetadataUpdateType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.ConstantVenicePartitioner;
+import com.linkedin.venice.pubsub.adapter.SimplePubSubProducerCallbackImpl;
+import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
@@ -382,7 +384,9 @@ public class DaVinciClientTest {
       writer.broadcastStartOfPush(Collections.emptyMap());
       Future[] writerFutures = new Future[KEY_COUNT];
       for (int i = 0; i < KEY_COUNT; i++) {
-        writerFutures[i] = writer.put(i, pushVersion, valueSchemaId);
+        PubSubProducerCallback putResult = new SimplePubSubProducerCallbackImpl();
+        writer.put(i, pushVersion, valueSchemaId, putResult);
+        writerFutures[i] = putResult;
       }
       for (int i = 0; i < KEY_COUNT; i++) {
         writerFutures[i].get();
@@ -752,7 +756,9 @@ public class DaVinciClientTest {
       batchProducer.broadcastStartOfPush(Collections.emptyMap());
       Future[] writerFutures = new Future[KEY_COUNT];
       for (int i = 0; i < KEY_COUNT; i++) {
-        writerFutures[i] = batchProducer.put(i, i, valueSchemaId);
+        PubSubProducerCallback putResult = new SimplePubSubProducerCallbackImpl();
+        batchProducer.put(i, i, valueSchemaId, putResult);
+        writerFutures[i] = putResult;
       }
       for (int i = 0; i < KEY_COUNT; i++) {
         writerFutures[i].get();

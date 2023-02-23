@@ -34,6 +34,8 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.adapter.SimplePubSubProducerCallbackImpl;
+import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.system.store.MetaStoreDataType;
@@ -171,7 +173,9 @@ public abstract class AbstractClientEndToEndSetup {
     for (int i = 0; i < recordCnt; ++i) {
       GenericRecord record = new GenericData.Record(VALUE_SCHEMA);
       record.put(VALUE_FIELD_NAME, i);
-      veniceWriter.put(keyPrefix + i, record, valueSchemaId).get();
+      PubSubProducerCallback putResult = new SimplePubSubProducerCallbackImpl();
+      veniceWriter.put(keyPrefix + i, record, valueSchemaId, putResult);
+      putResult.get();
     }
     // Write end of push message to make node become ONLINE from BOOTSTRAP
     veniceWriter.broadcastEndOfPush(new HashMap<>());

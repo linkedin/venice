@@ -72,7 +72,9 @@ import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.SimplePubSubProducerCallbackImpl;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
+import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
@@ -114,7 +116,6 @@ import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.testng.Assert;
@@ -384,13 +385,13 @@ public class AdminConsumptionTaskTest {
 
   @Test(timeOut = TIMEOUT)
   public void testDelegateExceptionSetsFailingOffset() throws ExecutionException, InterruptedException, IOException {
-    long failingOffset =
-        ((PubSubProduceResult) veniceWriter
-            .put(
-                emptyKeyBytes,
-                getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1),
-                AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
-            .get()).getOffset();
+    PubSubProducerCallback putResult = new SimplePubSubProducerCallbackImpl();
+    veniceWriter.put(
+        emptyKeyBytes,
+        getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION,
+        putResult);
+    long failingOffset = putResult.get().getOffset();
     AdminConsumptionStats mockStats = mock(AdminConsumptionStats.class);
     doThrow(StringIndexOutOfBoundsException.class).when(mockStats).recordAdminMessageDelegateLatency(anyDouble());
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false, mockStats, 10000);
@@ -472,19 +473,21 @@ public class AdminConsumptionTaskTest {
 
   @Test(timeOut = TIMEOUT)
   public void testRunWithDuplicateMessagesWithSameOffset() throws Exception {
-    PubSubProduceResult killJobMetadata =
-        (PubSubProduceResult) veniceWriter
-            .put(
-                emptyKeyBytes,
-                getKillOfflinePushJobMessage(clusterName, storeTopicName, 1),
-                AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
-            .get();
-    veniceWriter
-        .put(
-            emptyKeyBytes,
-            getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 2),
-            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
-        .get();
+    PubSubProducerCallback killJobPutResult = new SimplePubSubProducerCallbackImpl();
+    veniceWriter.put(
+        emptyKeyBytes,
+        getKillOfflinePushJobMessage(clusterName, storeTopicName, 1),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION,
+        killJobPutResult);
+    PubSubProduceResult killJobMetadata = killJobPutResult.get();
+
+    PubSubProducerCallback storeCreatePutResult = new SimplePubSubProducerCallbackImpl();
+    veniceWriter.put(
+        emptyKeyBytes,
+        getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 2),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION,
+        storeCreatePutResult);
+    storeCreatePutResult.get();
 
     Queue<AbstractPollStrategy> pollStrategies = new LinkedList<>();
     pollStrategies.add(new RandomPollStrategy());
@@ -544,19 +547,21 @@ public class AdminConsumptionTaskTest {
     OffsetRecord offsetRecord = getOffsetRecordByOffsetAndSeqNum(firstAdminMessageOffset, firstAdminMessageSeqNum);
     offsetManager.put(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, offsetRecord);
 
-    PubSubProduceResult killJobMetadata =
-        (PubSubProduceResult) veniceWriter
-            .put(
-                emptyKeyBytes,
-                getKillOfflinePushJobMessage(clusterName, storeTopicName, 1),
-                AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
-            .get();
-    veniceWriter
-        .put(
-            emptyKeyBytes,
-            getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 2),
-            AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
-        .get();
+    PubSubProducerCallback killJobPutResult = new SimplePubSubProducerCallbackImpl();
+    veniceWriter.put(
+        emptyKeyBytes,
+        getKillOfflinePushJobMessage(clusterName, storeTopicName, 1),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION,
+        killJobPutResult);
+    PubSubProduceResult killJobMetadata = killJobPutResult.get();
+
+    PubSubProducerCallback createStorePutResult = new SimplePubSubProducerCallbackImpl();
+    veniceWriter.put(
+        emptyKeyBytes,
+        getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 2),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION,
+        createStorePutResult);
+    createStorePutResult.get();
 
     Queue<PubSubTopicPartitionOffset> pollDeliveryOrder = new LinkedList<>();
     pollDeliveryOrder.add(getTopicPartitionOffsetPair(killJobMetadata));
@@ -593,13 +598,14 @@ public class AdminConsumptionTaskTest {
         emptyKeyBytes,
         getStoreCreationMessage(clusterName, storeName1, owner, keySchema, valueSchema, 1),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    long offsetToSkip =
-        ((PubSubProduceResult) veniceWriter
-            .put(
-                emptyKeyBytes,
-                getStoreCreationMessage(clusterName, storeName2, owner, keySchema, valueSchema, 2),
-                AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
-            .get()).getOffset();
+
+    PubSubProducerCallback putResult = new SimplePubSubProducerCallbackImpl();
+    veniceWriter.put(
+        emptyKeyBytes,
+        getStoreCreationMessage(clusterName, storeName2, owner, keySchema, valueSchema, 2),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION,
+        putResult);
+    long offsetToSkip = putResult.get().getOffset();
     veniceWriter.put(
         emptyKeyBytes,
         getStoreCreationMessage(clusterName, storeName3, owner, keySchema, valueSchema, 3),
@@ -696,10 +702,12 @@ public class AdminConsumptionTaskTest {
     String storeName3 = "test_store3";
 
     VeniceWriter oldVeniceWriter = getVeniceWriter(inMemoryKafkaBroker);
-    Future<PubSubProduceResult> metadataForStoreName0Future = oldVeniceWriter.put(
+    PubSubProducerCallback metadataForStoreName0Future = new SimplePubSubProducerCallbackImpl();
+    oldVeniceWriter.put(
         emptyKeyBytes,
         getStoreCreationMessage(clusterName, storeName0, owner, keySchema, valueSchema, 1),
-        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION,
+        metadataForStoreName0Future);
     adminTopicMetadataAccessor.updateMetadata(
         clusterName,
         AdminTopicMetadataAccessor.generateMetadataMap(metadataForStoreName0Future.get().getOffset(), -1, 1));
@@ -1071,10 +1079,12 @@ public class AdminConsumptionTaskTest {
         emptyKeyBytes,
         getKillOfflinePushJobMessage(clusterName, storeTopicName, 3L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    Future<PubSubProduceResult> future = veniceWriter.put(
+    PubSubProducerCallback future = new SimplePubSubProducerCallbackImpl();
+    veniceWriter.put(
         emptyKeyBytes,
         getKillOfflinePushJobMessage(clusterName, storeTopicName, 4L),
-        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION,
+        future);
     long offset = future.get(TIMEOUT, TimeUnit.MILLISECONDS).getOffset();
     Map<String, Long> newMetadata = AdminTopicMetadataAccessor.generateMetadataMap(offset, -1, 4L);
     adminTopicMetadataAccessor.updateMetadata(clusterName, newMetadata);
@@ -1104,13 +1114,15 @@ public class AdminConsumptionTaskTest {
         emptyKeyBytes,
         getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    long failingOffset =
-        ((PubSubProduceResult) veniceWriter
-            .put(
-                emptyKeyBytes,
-                getAddVersionMessage(clusterName, storeName, mockPushJobId, 1, 1, 2L),
-                AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
-            .get()).getOffset();
+
+    PubSubProducerCallback putResult = new SimplePubSubProducerCallbackImpl();
+    veniceWriter.put(
+        emptyKeyBytes,
+        getAddVersionMessage(clusterName, storeName, mockPushJobId, 1, 1, 2L),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION,
+        putResult);
+
+    long failingOffset = putResult.get().getOffset();
     veniceWriter.put(
         emptyKeyBytes,
         getKillOfflinePushJobMessage(clusterName, storeTopicName, 3L),
@@ -1167,10 +1179,13 @@ public class AdminConsumptionTaskTest {
         emptyKeyBytes,
         getKillOfflinePushJobMessage(clusterName, storeTopicName, 2L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    Future<PubSubProduceResult> future = veniceWriter.put(
+
+    PubSubProducerCallback future = new SimplePubSubProducerCallbackImpl();
+    veniceWriter.put(
         emptyKeyBytes,
         getKillOfflinePushJobMessage(clusterName, storeTopicName, 3L),
-        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION,
+        future);
     final long offset = future.get(TIMEOUT, TimeUnit.MILLISECONDS).getOffset();
     OffsetRecord offsetRecord = offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
     offsetRecord.setCheckpointLocalVersionTopicOffset(offset);
@@ -1191,11 +1206,15 @@ public class AdminConsumptionTaskTest {
         emptyKeyBytes,
         getKillOfflinePushJobMessage(clusterName, storeTopicName, 4L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    future = veniceWriter.put(
+
+    future = new SimplePubSubProducerCallbackImpl();
+    veniceWriter.put(
         emptyKeyBytes,
         getKillOfflinePushJobMessage(clusterName, storeTopicName, 5L),
-        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION,
+        future);
     final long latestOffset = future.get(TIMEOUT, TimeUnit.MILLISECONDS).getOffset();
+
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
@@ -1223,10 +1242,13 @@ public class AdminConsumptionTaskTest {
         getKillOfflinePushJobMessage(clusterName, storeTopicName, 3L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     // New admin messages should fail with DIV error
-    Future<PubSubProduceResult> future = veniceWriter.put(
+
+    PubSubProducerCallback future = new SimplePubSubProducerCallbackImpl();
+    veniceWriter.put(
         emptyKeyBytes,
         getKillOfflinePushJobMessage(clusterName, storeTopicName, 4L),
-        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION,
+        future);
     long offset = future.get(TIMEOUT, TimeUnit.MILLISECONDS).getOffset();
     veniceWriter.put(
         emptyKeyBytes,
@@ -1283,10 +1305,14 @@ public class AdminConsumptionTaskTest {
             -1,
             1,
             false);
-    Future<PubSubProduceResult> future = veniceWriter.put(
+
+    PubSubProducerCallback future = new SimplePubSubProducerCallbackImpl();
+    veniceWriter.put(
         emptyKeyBytes,
         getAddVersionMessage(clusterName, storeName, mockPushJobId, versionNumber, numberOfPartitions, 1L),
-        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION,
+        future);
+
     long offset = future.get(TIMEOUT, TimeUnit.MILLISECONDS).getOffset();
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,

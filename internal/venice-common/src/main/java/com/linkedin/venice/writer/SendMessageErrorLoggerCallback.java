@@ -6,7 +6,7 @@ import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import org.apache.logging.log4j.Logger;
 
 
-class SendMessageErrorLoggerCallback implements PubSubProducerCallback {
+class SendMessageErrorLoggerCallback extends PubSubProducerCallback {
   private final KafkaMessageEnvelope value;
   private final Logger logger;
 

@@ -15,6 +15,8 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.adapter.SimplePubSubProducerCallbackImpl;
+import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
@@ -200,7 +202,9 @@ public class VeniceClusterInitializer implements Closeable {
       veniceWriter.broadcastStartOfPush(Collections.emptyMap());
       Future[] writerFutures = new Future[ENTRY_COUNT];
       for (int i = 0; i < ENTRY_COUNT; i++) {
-        writerFutures[i] = veniceWriter.put(KEY_PREFIX + i, values.get(i), valueSchemaId);
+        PubSubProducerCallback putResult = new SimplePubSubProducerCallbackImpl();
+        veniceWriter.put(KEY_PREFIX + i, values.get(i), valueSchemaId, putResult);
+        writerFutures[i] = putResult;
       }
 
       // wait synchronously for them to succeed

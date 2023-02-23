@@ -3,11 +3,9 @@ package com.linkedin.venice.unit.kafka.producer;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.api.PubSubMessageHeaders;
-import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import it.unimi.dsi.fastutil.objects.Object2DoubleMap;
-import java.util.concurrent.Future;
 
 
 /**
@@ -32,7 +30,7 @@ public class TransformingProducerAdapter implements PubSubProducerAdapter {
   }
 
   @Override
-  public Future<PubSubProduceResult> sendMessage(
+  public void sendMessage(
       String topic,
       Integer partition,
       KafkaKey key,
@@ -40,7 +38,7 @@ public class TransformingProducerAdapter implements PubSubProducerAdapter {
       PubSubMessageHeaders headers,
       PubSubProducerCallback callback) {
     SendMessageParameters parameters = transformer.transform(topic, key, value, partition);
-    return baseProducer
+    baseProducer
         .sendMessage(parameters.topic, parameters.partition, parameters.key, parameters.value, headers, callback);
   }
 

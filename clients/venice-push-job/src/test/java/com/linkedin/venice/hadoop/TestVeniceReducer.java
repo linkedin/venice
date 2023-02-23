@@ -10,6 +10,7 @@ import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -36,7 +37,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.Future;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.mapred.Counters;
@@ -68,16 +68,15 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
   @Test
   public void testReducerPutWithTooLargeValueAndChunkingDisabled() {
     AbstractVeniceWriter mockWriter = mock(AbstractVeniceWriter.class);
-    when(mockWriter.put(any(), any(), anyInt(), any(), any()))
-        .thenThrow(new RecordTooLargeException("expected exception"));
+    doThrow(new RecordTooLargeException("expected exception")).when(mockWriter).put(any(), any(), anyInt(), any());
     testReduceWithTooLargeValueAndChunkingDisabled(mockWriter, setupJobConf());
   }
 
   @Test
   public void testReducerUpdateWithTooLargeValueAndChunkingDisabled() {
     AbstractVeniceWriter mockWriter = mock(AbstractVeniceWriter.class);
-    when(mockWriter.update(any(), any(), anyInt(), anyInt(), any()))
-        .thenThrow(new RecordTooLargeException("expected exception"));
+    doThrow(new RecordTooLargeException("expected exception")).when(mockWriter)
+        .update(any(), any(), anyInt(), anyInt(), any());
     JobConf jobConf = setupJobConf();
     jobConf.setInt(DERIVED_SCHEMA_ID_PROP, 2);
     jobConf.setBoolean(ENABLE_WRITE_COMPUTE, true);
@@ -122,16 +121,11 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<Integer> schemaIdCaptor = ArgumentCaptor.forClass(Integer.class);
-    ArgumentCaptor<PutMetadata> metadataArgumentCaptor = ArgumentCaptor.forClass(PutMetadata.class);
     ArgumentCaptor<VeniceReducer.ReducerProduceCallback> callbackCaptor =
         ArgumentCaptor.forClass(VeniceReducer.ReducerProduceCallback.class);
 
-    verify(mockWriter).put(
-        keyCaptor.capture(),
-        valueCaptor.capture(),
-        schemaIdCaptor.capture(),
-        callbackCaptor.capture(),
-        metadataArgumentCaptor.capture());
+    verify(mockWriter)
+        .put(keyCaptor.capture(), valueCaptor.capture(), schemaIdCaptor.capture(), callbackCaptor.capture());
     Assert.assertEquals(keyCaptor.getValue(), keyFieldValue.getBytes());
     Assert.assertEquals(valueCaptor.getValue(), valueFieldValue.getBytes());
     Assert.assertEquals((int) schemaIdCaptor.getValue(), VALUE_SCHEMA_ID);
@@ -299,7 +293,7 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
         Arrays.asList(new BytesWritable("test_value_0".getBytes()), new BytesWritable("test_value_1".getBytes()));
     OutputCollector mockCollector = mock(OutputCollector.class);
     reducer.reduce(new BytesWritable(keyBytes), values.iterator(), mockCollector, mockReporter);
-    verify(mockWriter).put(any(), any(), anyInt(), any(), any()); // Expect the writer to be invoked
+    verify(mockWriter).put(any(), any(), anyInt(), any()); // Expect the writer to be invoked
     Assert.assertFalse(reducer.hasReportedFailure(mockReporter, isDuplicateKeyAllowed));
   }
 
@@ -314,8 +308,8 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
 
     OutputCollector mockCollector = mock(OutputCollector.class);
     AbstractVeniceWriter mockVeniceWriter = mock(AbstractVeniceWriter.class);
-    when(mockVeniceWriter.put(any(), any(), anyInt(), any(), any()))
-        .thenThrow(new TopicAuthorizationVeniceException("No ACL permission"));
+    doThrow(new TopicAuthorizationVeniceException("No ACL permission")).when(mockVeniceWriter)
+        .put(any(), any(), anyInt(), any());
     VeniceReducer reducer = new VeniceReducer();
     reducer.setVeniceWriter(mockVeniceWriter);
     reducer.configure(setupJobConf());
@@ -427,14 +421,14 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
     ArgumentCaptor<VeniceReducer.ReducerProduceCallback> callbackCaptor =
         ArgumentCaptor.forClass(VeniceReducer.ReducerProduceCallback.class);
 
-    verify(mockWriter).put(any(), any(), anyInt(), callbackCaptor.capture(), any());
+    verify(mockWriter).put(any(), any(), anyInt(), callbackCaptor.capture());
     Assert.assertEquals(callbackCaptor.getValue().getProgressable(), mockReporter);
 
     // test with different reporter
     Reporter newMockReporter = createZeroCountReporterMock();
 
     reducer.reduce(keyWritable, values.iterator(), mockCollector, newMockReporter);
-    verify(mockWriter, times(2)).put(any(), any(), anyInt(), callbackCaptor.capture(), any());
+    verify(mockWriter, times(2)).put(any(), any(), anyInt(), callbackCaptor.capture());
     Assert.assertEquals(callbackCaptor.getValue().getProgressable(), newMockReporter);
   }
 
@@ -447,43 +441,35 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
       }
 
       @Override
-      public Future<PubSubProduceResult> put(
-          Object key,
-          Object value,
-          int valueSchemaId,
-          PubSubProducerCallback callback) {
+      public void put(Object key, Object value, int valueSchemaId, PubSubProducerCallback callback) {
         callback.onCompletion(null, new VeniceException("Fake exception"));
-        return null;
+        callback.completeExceptionally(new VeniceException("Fake exception"));
       }
 
       @Override
-      public Future<PubSubProduceResult> put(
+      public void put(
           Object key,
           Object value,
           int valueSchemaId,
           PubSubProducerCallback callback,
           PutMetadata putMetadata) {
         callback.onCompletion(null, new VeniceException("Fake exception"));
-        return null;
+        callback.completeExceptionally(new VeniceException("Fake exception"));
       }
 
       @Override
-      public Future<PubSubProduceResult> delete(
-          Object key,
-          PubSubProducerCallback callback,
-          DeleteMetadata deleteMetadata) {
-        return null;
+      public void delete(Object key, PubSubProducerCallback callback, DeleteMetadata deleteMetadata) {
       }
 
       @Override
-      public Future<PubSubProduceResult> update(
+      public void update(
           Object key,
           Object update,
           int valueSchemaId,
           int derivedSchemaId,
           PubSubProducerCallback callback) {
+        callback.complete(null);
         // no-op
-        return null;
       }
 
       @Override
@@ -520,43 +506,35 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
   public void testClosingReducerWithWriterException() throws IOException {
     AbstractVeniceWriter exceptionWriter = new AbstractVeniceWriter(TOPIC_NAME) {
       @Override
-      public Future<PubSubProduceResult> put(
+      public void put(
           Object key,
           Object value,
           int valueSchemaId,
           PubSubProducerCallback callback,
           PutMetadata putMetadata) {
         callback.onCompletion(null, new VeniceException("Some writer exception"));
-        return null;
+        callback.completeExceptionally(new VeniceException("Some writer exception"));
       }
 
       @Override
-      public Future<PubSubProduceResult> delete(
-          Object key,
-          PubSubProducerCallback callback,
-          DeleteMetadata deleteMetadata) {
-        return null;
+      public void delete(Object key, PubSubProducerCallback callback, DeleteMetadata deleteMetadata) {
       }
 
       @Override
-      public Future<PubSubProduceResult> put(
-          Object key,
-          Object value,
-          int valueSchemaId,
-          PubSubProducerCallback callback) {
+      public void put(Object key, Object value, int valueSchemaId, PubSubProducerCallback callback) {
         callback.onCompletion(null, new VeniceException("Some writer exception"));
-        return null;
+        callback.completeExceptionally(new VeniceException("Some writer exception"));
       }
 
       @Override
-      public Future<PubSubProduceResult> update(
+      public void update(
           Object key,
           Object update,
           int valueSchemaId,
           int derivedSchemaId,
           PubSubProducerCallback callback) {
         // no-op
-        return null;
+        callback.complete(null);
       }
 
       @Override

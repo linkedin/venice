@@ -33,6 +33,8 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.adapter.SimplePubSubProducerCallbackImpl;
+import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.DataProviderUtils;
@@ -154,7 +156,9 @@ public class TestStreaming {
       }
 
       byte[] value = compressor.compress(valueSerializer.serialize("", valueRecord));
-      veniceWriter.put(KEY_PREFIX + i, value, valueSchemaId).get();
+      PubSubProducerCallback putResult = new SimplePubSubProducerCallbackImpl();
+      veniceWriter.put(KEY_PREFIX + i, value, valueSchemaId, putResult);
+      putResult.get();
     }
     // Write end of push message to make node become ONLINE from BOOTSTRAP
     veniceWriter.broadcastEndOfPush(new HashMap<>());

@@ -743,10 +743,8 @@ public class VeniceParentHelixAdmin implements Admin {
         VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterMap.get(clusterName);
         byte[] serializedValue = adminOperationSerializer.serialize(message);
         try {
-          Future<PubSubProduceResult> future = veniceWriter
-              .put(emptyKeyByteArr, serializedValue, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-          PubSubProduceResult produceResult = future.get();
-
+          PubSubProduceResult produceResult = veniceWriter
+              .syncPut(emptyKeyByteArr, serializedValue, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
           LOGGER.info("Sent message: {} to kafka, offset: {}", message, produceResult.getOffset());
         } catch (Exception e) {
           throw new VeniceException("Got exception during sending message to Kafka -- " + e.getMessage(), e);

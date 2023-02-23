@@ -126,7 +126,7 @@ public class VeniceReducer extends AbstractMapReduceTask
         } else if (enableWriteCompute && derivedValueSchemaId > 0) {
           writer.update(keyBytes, valueBytes, valueSchemaId, derivedValueSchemaId, callback);
         } else {
-          writer.put(keyBytes, valueBytes, valueSchemaId, callback, null);
+          writer.put(keyBytes, valueBytes, valueSchemaId, callback);
         }
       };
     }
@@ -576,7 +576,7 @@ public class VeniceReducer extends AbstractMapReduceTask
     this.exceedQuota = exceedQuota;
   }
 
-  protected class ReducerProduceCallback implements PubSubProducerCallback {
+  protected class ReducerProduceCallback extends PubSubProducerCallback {
     private final Reporter reporter;
 
     public ReducerProduceCallback(Reporter reporter) {

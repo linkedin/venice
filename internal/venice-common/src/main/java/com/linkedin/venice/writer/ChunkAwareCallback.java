@@ -11,7 +11,7 @@ import java.nio.ByteBuffer;
  *  {@link #setChunkingInfo(byte[], ByteBuffer[], ChunkedValueManifest, ByteBuffer[], ChunkedValueManifest)} whenever
  *  processing a {@link MessageType#PUT}, whether it is chunked or not.
  */
-public interface ChunkAwareCallback extends PubSubProducerCallback {
+public abstract class ChunkAwareCallback extends PubSubProducerCallback {
   /**
    * For all PUT operations, the {@param key} is guaranteed to be passed via this function, whether chunking
    * is enabled or not, and whether the value is chunked or not. The other two parameters are null if the value
@@ -21,7 +21,7 @@ public interface ChunkAwareCallback extends PubSubProducerCallback {
    * @param valueChunks An array of {@link ByteBuffer} where the backing array has sufficient headroom to prepend Venice's header
    * @param chunkedValueManifest The {@link ChunkedValueManifest} of the chunked value
    */
-  void setChunkingInfo(
+  public abstract void setChunkingInfo(
       byte[] key,
       ByteBuffer[] valueChunks,
       ChunkedValueManifest chunkedValueManifest,

@@ -1,12 +1,15 @@
 package com.linkedin.venice.pubsub.api;
 
+import java.util.concurrent.CompletableFuture;
+
+
 /**
  * A callback interface that users of PubSubProducerAdapter should implement if they want
  * to execute some code once PubSubProducerAdapter#sendMessage request is completed.
  */
-public interface PubSubProducerCallback {
+public abstract class PubSubProducerCallback extends CompletableFuture<PubSubProduceResult> {
   /**
    * exception will be null if request was completed without an error.
    */
-  void onCompletion(PubSubProduceResult produceResult, Exception exception);
+  public abstract void onCompletion(PubSubProduceResult produceResult, Exception exception);
 }

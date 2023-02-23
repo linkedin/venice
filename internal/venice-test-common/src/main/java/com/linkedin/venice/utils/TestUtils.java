@@ -67,8 +67,10 @@ import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.pubsub.adapter.SimplePubSubProducerCallbackImpl;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.SharedKafkaProducerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -388,7 +390,9 @@ public class TestUtils {
         byte[] key = keySerializer.serialize(kafkaTopic, e.getKey());
         byte[] value = valueSerializer.serialize(kafkaTopic, e.getValue());
         value = compressor.compress(value);
-        putFutures.add(writer.put(key, value, valueSchemaId));
+        PubSubProducerCallback putResult = new SimplePubSubProducerCallbackImpl();
+        writer.put(key, value, valueSchemaId, putResult);
+        putFutures.add(putResult);
       }
       for (Future future: putFutures) {
         future.get();
@@ -419,7 +423,9 @@ public class TestUtils {
 
       LinkedList<Future> putFutures = new LinkedList<>();
       for (Map.Entry e: (Iterable<Map.Entry>) batchData::iterator) {
-        putFutures.add(writer.put(e.getKey(), e.getValue(), valueSchemaId));
+        PubSubProducerCallback putResult = new SimplePubSubProducerCallbackImpl();
+        writer.put(e.getKey(), e.getValue(), valueSchemaId, putResult);
+        putFutures.add(putResult);
       }
       for (Future future: putFutures) {
         future.get();

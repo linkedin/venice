@@ -22,6 +22,8 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.adapter.SimplePubSubProducerCallbackImpl;
+import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
@@ -435,7 +437,9 @@ public class StorageNodeComputeTest {
     Future[] writerFutures = new Future[numOfRecords];
     for (int i = 0; i < numOfRecords; i++) {
       byte[] compressedValue = compressor.compress(values.get(i));
-      writerFutures[i] = veniceWriter.put(keyPrefix + i, compressedValue, valueSchemaId);
+      PubSubProducerCallback putResult = new SimplePubSubProducerCallbackImpl();
+      veniceWriter.put(keyPrefix + i, compressedValue, valueSchemaId, putResult);
+      writerFutures[i] = putResult;
     }
 
     // wait synchronously for them to succeed

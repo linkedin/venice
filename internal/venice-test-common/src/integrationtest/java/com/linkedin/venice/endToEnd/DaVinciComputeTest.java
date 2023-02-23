@@ -32,6 +32,8 @@ import com.linkedin.venice.integration.utils.DaVinciTestContext;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
+import com.linkedin.venice.pubsub.adapter.SimplePubSubProducerCallbackImpl;
+import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -815,7 +817,9 @@ public class DaVinciComputeTest {
         value.put("companiesEmbedding", companiesEmbedding);
       }
       value.put("member_feature", mfEmbedding);
-      writer.put(i, value, valueSchemaId).get();
+      PubSubProducerCallback putResult = new SimplePubSubProducerCallbackImpl();
+      writer.put(i, value, valueSchemaId, putResult);
+      putResult.get();
     }
     writer.broadcastEndOfPush(Collections.emptyMap());
   }
@@ -827,7 +831,9 @@ public class DaVinciComputeTest {
 
     veniceWriter.broadcastStartOfPush(Collections.emptyMap());
     for (Map.Entry<Integer, GenericRecord> keyValue: valuesByKey.entrySet()) {
-      veniceWriter.put(keyValue.getKey(), keyValue.getValue(), valueSchemaId).get();
+      PubSubProducerCallback putResult = new SimplePubSubProducerCallbackImpl();
+      veniceWriter.put(keyValue.getKey(), keyValue.getValue(), valueSchemaId, putResult);
+      putResult.get();
     }
     veniceWriter.broadcastEndOfPush(Collections.emptyMap());
   }
@@ -845,7 +851,9 @@ public class DaVinciComputeTest {
       GenericRecord valueRecord = new GenericData.Record(valueSchema);
       valueRecord.put("int_field", i);
       valueRecord.put("float_field", i + 100.0f);
-      writer.put(KEY_PREFIX + i, valueRecord, valueSchemaId).get();
+      PubSubProducerCallback putResult = new SimplePubSubProducerCallbackImpl();
+      writer.put(KEY_PREFIX + i, valueRecord, valueSchemaId, putResult);
+      putResult.get();
     }
 
     writer.broadcastEndOfPush(Collections.emptyMap());
@@ -884,7 +892,9 @@ public class DaVinciComputeTest {
         value.put("companiesEmbedding", companiesEmbedding);
       }
       value.put("member_feature", mfEmbedding);
-      writer.put(key, value, valueSchemaId).get();
+      PubSubProducerCallback putResult = new SimplePubSubProducerCallbackImpl();
+      writer.put(key, value, valueSchemaId, putResult);
+      putResult.get();
     }
     writer.broadcastEndOfPush(Collections.emptyMap());
   }

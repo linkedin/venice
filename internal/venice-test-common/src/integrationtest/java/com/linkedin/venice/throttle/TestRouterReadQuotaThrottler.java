@@ -14,6 +14,8 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.pubsub.adapter.SimplePubSubProducerCallbackImpl;
+import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
@@ -66,7 +68,9 @@ public class TestRouterReadQuotaThrottler {
 
       writer.broadcastStartOfPush(new HashMap<>());
       // Insert test record and wait synchronously for it to succeed
-      writer.put(key, value, valueSchemaId).get();
+      PubSubProducerCallback putResult = new SimplePubSubProducerCallbackImpl();
+      writer.put(key, value, valueSchemaId, putResult);
+      putResult.get();
       // Write end of push message to make node become ONLINE from BOOTSTRAP
       writer.broadcastEndOfPush(new HashMap<String, String>());
     }

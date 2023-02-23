@@ -20,6 +20,8 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.adapter.SimplePubSubProducerCallbackImpl;
+import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
@@ -398,7 +400,9 @@ public class ReadComputeValidationTest {
     for (Map.Entry<Integer, GenericRecord> keyValue: valuesByKey.entrySet()) {
       byte[] compressedValue = compressorFactory.getCompressor(CompressionStrategy.NO_OP)
           .compress(serializer.serialize(topic, keyValue.getValue()));
-      veniceWriter.put(keyValue.getKey(), compressedValue, valueSchemaId).get();
+      PubSubProducerCallback putResult = new SimplePubSubProducerCallbackImpl();
+      veniceWriter.put(keyValue.getKey(), compressedValue, valueSchemaId, putResult);
+      putResult.get();
     }
     // Write end of push message to make node become ONLINE from BOOTSTRAP
     veniceWriter.broadcastEndOfPush(Collections.emptyMap());
@@ -426,7 +430,9 @@ public class ReadComputeValidationTest {
       value.put("member_feature", MF_EMBEDDING);
       byte[] compressedValue =
           compressorFactory.getCompressor(CompressionStrategy.NO_OP).compress(serializer.serialize(topic, value));
-      veniceWriter.put(i, compressedValue, valueSchemaId).get();
+      PubSubProducerCallback putResult = new SimplePubSubProducerCallbackImpl();
+      veniceWriter.put(i, compressedValue, valueSchemaId, putResult);
+      putResult.get();
     }
     // Write end of push message to make node become ONLINE from BOOTSTRAP
     veniceWriter.broadcastEndOfPush(new HashMap<>());

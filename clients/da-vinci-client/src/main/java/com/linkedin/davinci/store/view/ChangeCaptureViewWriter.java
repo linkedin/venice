@@ -82,7 +82,7 @@ public class ChangeCaptureViewWriter extends VeniceViewWriter {
     // updatedKeyBytes = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(key); (line 604
     // A/AIngestionTask?)
     try {
-      veniceWriter.put(key, recordChangeEvent, 1).get();
+      veniceWriter.syncPut(key, recordChangeEvent, 1);
     } catch (InterruptedException | ExecutionException e) {
       LOGGER
           .error("Failed to produce to Change Capture view topic for store: {} version: {}", store.getName(), version);

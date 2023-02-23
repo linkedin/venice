@@ -11,7 +11,7 @@ import java.util.concurrent.CompletableFuture;
  * changed and the callback will be called. The caller can pass a {@code CompletableFutureCallback} to a function
  * accepting a {@code Callback} parameter to get a {@code CompletableFuture} after the function returns.
  */
-public class CompletableFutureCallback implements PubSubProducerCallback {
+public class CompletableFutureCallback extends PubSubProducerCallback {
   private final CompletableFuture<Void> completableFuture;
   private PubSubProducerCallback callback = null;
 
