@@ -110,13 +110,27 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
       long startTimeInNS,
       FastClientStats clientStats) {
 
-    /**
-     * In case of failures we still attempt to increment the metrics leading up to it.
-     */
     return innerFuture.handle((value, throwable) -> {
       double latency = LatencyUtils.getLatencyInMS(startTimeInNS);
 
-      if (throwable != null || (latency > TIMEOUT_IN_SECOND * Time.MS_PER_SECOND)) {
+      if (throwable != null) {
+        /**
+         * If the request (both original and retry) failed due to an exception,
+         * just increment the unhealthy counters as the other counters might not
+         * be useful, especially when the counters are currently common for
+         * healthy/unhealthy requests. No new unhealthy specific error
+         * counters for now apart from the below 2.
+         */
+        clientStats.recordUnhealthyRequest();
+        clientStats.recordUnhealthyLatency(latency);
+        if (throwable instanceof VeniceClientException) {
+          throw (VeniceClientException) throwable;
+        } else {
+          throw new VeniceClientException(throwable);
+        }
+      }
+
+      if (latency > TIMEOUT_IN_SECOND * Time.MS_PER_SECOND) {
         clientStats.recordUnhealthyRequest();
         clientStats.recordUnhealthyLatency(latency);
       } else {
@@ -168,14 +182,6 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
           clientStats.recordRetryRequestKeyCount(batchGetRequestContext.numberOfKeysSentInRetryRequest);
           clientStats
               .recordRetryRequestSuccessKeyCount(batchGetRequestContext.numberOfKeysCompletedInRetryRequest.get());
-        }
-      }
-
-      if (throwable != null) {
-        if (throwable instanceof VeniceClientException) {
-          throw (VeniceClientException) throwable;
-        } else {
-          throw new VeniceClientException(throwable);
         }
       }
 
