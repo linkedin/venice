@@ -449,7 +449,6 @@ public class TestPushJobWithNativeReplication {
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
           // Enable VPJ to send liveness heartbeat.
           props.put(BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG.getConfigName(), true);
-          props.put(BatchJobHeartbeatConfigs.HEARTBEAT_STORE_NAME_CONFIG.getConfigName(), VPJ_HEARTBEAT_STORE_NAME);
           // Prevent heartbeat from being deleted when the VPJ run finishes.
           props.put(BatchJobHeartbeatConfigs.HEARTBEAT_LAST_HEARTBEAT_IS_DELETE_CONFIG.getConfigName(), false);
 

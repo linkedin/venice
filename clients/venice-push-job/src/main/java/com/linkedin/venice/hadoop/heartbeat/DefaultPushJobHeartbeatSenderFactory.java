@@ -9,6 +9,7 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.StoreInfo;
@@ -47,6 +48,9 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
     int retryAttempts = properties.getInt(VenicePushJob.CONTROLLER_REQUEST_RETRY_ATTEMPTS, 3);
     StoreResponse heartBeatStoreResponse =
         ControllerClient.retryableRequest(controllerClient, retryAttempts, c -> c.getStore(heartbeatStoreName));
+    if (heartBeatStoreResponse.isError()) {
+      throw new VeniceException("Could not get store info for store: " + heartbeatStoreName);
+    }
     StoreInfo storeInfo = heartBeatStoreResponse.getStore();
     PartitionerConfig partitionerConfig = storeInfo.getPartitionerConfig();
     int partitionNum = storeInfo.getPartitionCount();
