@@ -102,7 +102,6 @@ public abstract class TestBatch {
   private static final Logger LOGGER = LogManager.getLogger(TestBatch.class);
   protected static final int TEST_TIMEOUT = 60 * Time.MS_PER_SECOND;
   private static final int MAX_RETRY_ATTEMPTS = 3;
-  private static final String STRING_SCHEMA = "\"string\"";
   protected static final String BASE_DATA_PATH_1 = Utils.getTempDataDirectory().getAbsolutePath();
   protected static final String BASE_DATA_PATH_2 = Utils.getTempDataDirectory().getAbsolutePath();
 
@@ -429,6 +428,11 @@ public abstract class TestBatch {
         inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithUserSchema2(inputDir)),
         properties -> properties.setProperty(INCREMENTAL_PUSH, "true"),
         (avroClient, vsonClient, metricsRepository) -> {
+          // Original data from the full push
+          for (int i = 1; i <= 50; i++) {
+            Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
+          }
+          // Modified data from the inc push
           for (int i = 51; i <= 150; i++) {
             Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + (i * 2));
           }
@@ -459,6 +463,11 @@ public abstract class TestBatch {
       properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, String.valueOf(compressionMetricCollectionEnabled));
       properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, String.valueOf(useMapperToBuildDict));
     }, (avroClient, vsonClient, metricsRepository) -> {
+      // Original data from the full push
+      for (int i = 1; i <= 50; i++) {
+        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
+      }
+      // Modified data from the inc push
       for (int i = 51; i <= 150; i++) {
         Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + (i * 2));
       }

@@ -147,6 +147,37 @@ public class MetaSystemStoreTest {
         10,
         TimeUnit.SECONDS);
     String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(regularVeniceStoreName);
+
+    // Check meta system store property
+    Store metaSystemStore =
+        venice.getLeaderVeniceController().getVeniceAdmin().getStore(venice.getClusterName(), metaSystemStoreName);
+    assertNotNull(metaSystemStore, "Meta System Store shouldn't be null");
+    long currentLatestVersionPromoteToCurrentTimestampForMetaSystemStore =
+        metaSystemStore.getLatestVersionPromoteToCurrentTimestamp();
+    assertTrue(
+        currentLatestVersionPromoteToCurrentTimestampForMetaSystemStore > 0,
+        "The version promotion timestamp should be positive, but got "
+            + currentLatestVersionPromoteToCurrentTimestampForMetaSystemStore);
+
+    // Do an empty push against the meta system store
+    versionCreationResponse = controllerClient.emptyPush(metaSystemStoreName, "test_meta_system_store_push_id", 100000);
+    assertFalse(
+        versionCreationResponse.isError(),
+        "New version creation should success, but got error: " + versionCreationResponse.getError());
+    TestUtils.waitForNonDeterministicPushCompletion(
+        versionCreationResponse.getKafkaTopic(),
+        controllerClient,
+        10,
+        TimeUnit.SECONDS);
+    // Check meta system stsore property again
+    metaSystemStore =
+        venice.getLeaderVeniceController().getVeniceAdmin().getStore(venice.getClusterName(), metaSystemStoreName);
+    assertNotNull(metaSystemStore, "Meta System Store shouldn't be null");
+    assertTrue(
+        metaSystemStore
+            .getLatestVersionPromoteToCurrentTimestamp() > currentLatestVersionPromoteToCurrentTimestampForMetaSystemStore,
+        "The version promotion timestamp should be changed");
+
     // Query meta system store
     AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> storeClient = ClientFactory.getAndStartSpecificAvroClient(
         ClientConfig.defaultSpecificClientConfig(metaSystemStoreName, StoreMetaValue.class)
@@ -232,7 +263,7 @@ public class MetaSystemStoreTest {
     TestUtils.waitForNonDeterministicPushCompletion(
         versionCreationResponse.getKafkaTopic(),
         controllerClient,
-        10000,
+        10,
         TimeUnit.SECONDS);
     // Query replica status
     StoreMetaKey replicaStatusKeyForV2P0 =

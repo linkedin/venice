@@ -1,6 +1,7 @@
 package com.linkedin.venice.hadoop;
 
 import static com.linkedin.venice.hadoop.VenicePushJob.ALLOW_DUPLICATE_KEY;
+import static com.linkedin.venice.hadoop.VenicePushJob.COMPRESSION_METRIC_COLLECTION_ENABLED;
 import static com.linkedin.venice.hadoop.VenicePushJob.COMPRESSION_STRATEGY;
 import static com.linkedin.venice.hadoop.VenicePushJob.KEY_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.SCHEMA_STRING_PROP;
@@ -12,6 +13,8 @@ import static com.linkedin.venice.hadoop.VenicePushJob.STORAGE_QUOTA_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.TOPIC_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_SCHEMA_ID_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.ZSTD_DICTIONARY_CREATION_REQUIRED;
+import static com.linkedin.venice.hadoop.VenicePushJob.ZSTD_DICTIONARY_CREATION_SUCCESS;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
@@ -69,6 +72,9 @@ public class AbstractTestVeniceMR {
     config.setDouble(STORAGE_ENGINE_OVERHEAD_RATIO, DEFAULT_STORAGE_ENGINE_OVERHEAD_RATIO);
     config.setBoolean(ALLOW_DUPLICATE_KEY, false);
     config.set(COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.toString());
+    config.setBoolean(COMPRESSION_METRIC_COLLECTION_ENABLED, false);
+    config.setBoolean(ZSTD_DICTIONARY_CREATION_REQUIRED, false);
+    config.setBoolean(ZSTD_DICTIONARY_CREATION_SUCCESS, false);
     config.set(SSL_CONFIGURATOR_CLASS_CONFIG, TempFileSSLConfigurator.class.getName());
     config.set(SSL_KEY_STORE_PROPERTY_NAME, "ssl.identity");
     config.set(SSL_TRUST_STORE_PROPERTY_NAME, "ssl.truststore");
