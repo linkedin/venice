@@ -7,7 +7,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 
 import com.linkedin.venice.datarecovery.DataRecoveryClient;
-import com.linkedin.venice.datarecovery.DataRecoveryModule;
+import com.linkedin.venice.datarecovery.DataRecoveryExecutor;
 import com.linkedin.venice.datarecovery.DataRecoveryTask;
 import com.linkedin.venice.datarecovery.StoreRepushCommand;
 import java.util.ArrayList;
@@ -20,7 +20,7 @@ import org.testng.annotations.Test;
 
 
 public class TestDataRecoveryClient {
-  private DataRecoveryModule executor;
+  private DataRecoveryExecutor executor;
 
   @Test
   public void testExecutor() {
@@ -52,7 +52,7 @@ public class TestDataRecoveryClient {
     cmdParams.setExtraCommandArgs("args");
 
     // Partial mock of Module class to take password from console input.
-    executor = spy(DataRecoveryModule.class);
+    executor = spy(DataRecoveryExecutor.class);
     doReturn("test").when(executor).getUserCredentials();
 
     // Mock command to mimic a successful repush result.
@@ -80,7 +80,8 @@ public class TestDataRecoveryClient {
     doCallRealMethod().when(dataRecoveryClient).execute(any(), any());
     doReturn(true).when(dataRecoveryClient).confirmStores(any());
     // client executes three store recovery.
-    dataRecoveryClient.execute(new DataRecoveryClient.OperationLevel("store1,store2,store3"), cmdParams);
+    dataRecoveryClient
+        .execute(new DataRecoveryClient.DataRecoveryParams(null, "store1,store2,store3", null), cmdParams);
   }
 
   private List<DataRecoveryTask> buildTasks(

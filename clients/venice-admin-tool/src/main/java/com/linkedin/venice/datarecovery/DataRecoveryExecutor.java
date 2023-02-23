@@ -14,21 +14,21 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * Module is the engine to run Tasks in data recovery.
+ * DataRecoveryExecutor is the engine to run tasks in data recovery.
  */
-public class DataRecoveryModule {
-  private final Logger LOGGER = LogManager.getLogger(DataRecoveryModule.class);
+public class DataRecoveryExecutor {
+  private final Logger LOGGER = LogManager.getLogger(DataRecoveryExecutor.class);
   private final static int DEFAULT_POOL_SIZE = 10;
   private final static int DEFAULT_POOL_TIMEOUT_IN_SECONDS = 30;
   private final int poolSize;
   private final ExecutorService pool;
   private List<DataRecoveryTask> tasks;
 
-  public DataRecoveryModule() {
+  public DataRecoveryExecutor() {
     this(DEFAULT_POOL_SIZE);
   }
 
-  public DataRecoveryModule(int poolSize) {
+  public DataRecoveryExecutor(int poolSize) {
     this.poolSize = poolSize;
     this.pool = Executors.newFixedThreadPool(this.poolSize);
   }
@@ -68,7 +68,8 @@ public class DataRecoveryModule {
     List<DataRecoveryTask> tasks = new ArrayList<>();
     for (String name: storeNames) {
       DataRecoveryTask.TaskParams taskParams = new DataRecoveryTask.TaskParams(name, params);
-      tasks.add(new DataRecoveryTask(taskParams));
+      tasks.add(
+          new DataRecoveryTask(new StoreRepushCommand(taskParams.getStore(), taskParams.getCmdParams()), taskParams));
     }
     return tasks;
   }

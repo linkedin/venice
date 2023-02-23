@@ -8,10 +8,6 @@ public class DataRecoveryTask implements Runnable {
   private final StoreRepushCommand command;
   private TaskResult taskResult;
 
-  public DataRecoveryTask(TaskParams params) {
-    this(new StoreRepushCommand(params.getStore(), params.getCmdParams()), params);
-  }
-
   public DataRecoveryTask(StoreRepushCommand command, TaskParams params) {
     this.taskParams = params;
     this.command = command;

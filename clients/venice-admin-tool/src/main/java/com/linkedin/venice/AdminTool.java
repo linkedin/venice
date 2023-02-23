@@ -610,16 +610,17 @@ public class AdminTool {
   }
 
   private static void executeDataRecovery(CommandLine cmd) {
-    String cluster = getRequiredArgument(cmd, Arg.CLUSTER);
-    String stores = getOptionalArgument(cmd, Arg.STORE);
-    String command = getRequiredArgument(cmd, Arg.RECOVERY_COMMAND);
+    String recoveryCommand = getRequiredArgument(cmd, Arg.RECOVERY_COMMAND);
     String sourceFabric = getRequiredArgument(cmd, Arg.SOURCE_FABRIC);
 
+    String recoveryCluster = getOptionalArgument(cmd, Arg.RECOVERY_CLUSTER);
+    String controllerUrl = getOptionalArgument(cmd, Arg.URL);
+    String stores = getOptionalArgument(cmd, Arg.STORES);
     String extraCommandArgs = getOptionalArgument(cmd, Arg.EXTRA_COMMAND_ARGS);
     boolean isDebuggingEnabled = cmd.hasOption(Arg.DEBUG.toString());
 
     StoreRepushCommand.Params cmdParams = new StoreRepushCommand.Params();
-    cmdParams.setCommand(command);
+    cmdParams.setCommand(recoveryCommand);
     cmdParams.setSourceFabric(sourceFabric);
     if (extraCommandArgs != null) {
       cmdParams.setExtraCommandArgs(extraCommandArgs);
@@ -627,7 +628,8 @@ public class AdminTool {
     cmdParams.setDebug(isDebuggingEnabled);
 
     DataRecoveryClient dataRecoveryClient = new DataRecoveryClient();
-    DataRecoveryClient.OperationLevel level = new DataRecoveryClient.OperationLevel(controllerClient, stores, cluster);
+    DataRecoveryClient.DataRecoveryParams level =
+        new DataRecoveryClient.DataRecoveryParams(controllerUrl, stores, recoveryCluster);
     dataRecoveryClient.execute(level, cmdParams);
   }
 

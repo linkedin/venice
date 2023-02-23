@@ -32,6 +32,7 @@ public class StoreRepushCommand {
   private Result result;
   private List<String> shellCmd;
 
+  // For unit test only.
   public StoreRepushCommand() {
   }
 
@@ -41,6 +42,7 @@ public class StoreRepushCommand {
     this.shellCmd = generateShellCmd();
   }
 
+  // For unit test only.
   public void setParams(Params params) {
     this.params = params;
   }
