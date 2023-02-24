@@ -240,7 +240,7 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats {
         () -> totalStats.readComputeDeserializationLatencySensor,
         TehutiUtils.getPercentileStatWithAvgAndMax(
             getName(),
-            getFullMetricName("storage_engine_read_compute_latency_for_large_value")));
+            getFullMetricName("storage_engine_read_compute_deserialization_latency")));
 
     readComputeSerializationLatencySensor = registerPerStoreAndTotal(
         "storage_engine_read_compute_serialization_latency",
