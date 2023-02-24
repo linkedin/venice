@@ -133,7 +133,7 @@ public class ClientStats extends AbstractVeniceHttpStats {
     retryRequestKeyCountSensor = registerSensor("retry_request_key_count", retryRequestKeyCount, new Avg(), new Max());
     Rate retryRequestSuccessKeyCount = new Rate();
     retryRequestSuccessKeyCountSensor =
-        registerSensor("retry_request_success_key_count", retryRequestKeyCount, new Avg(), new Max());
+        registerSensor("retry_request_success_key_count", retryRequestSuccessKeyCount, new Avg(), new Max());
     retryKeySuccessRatioSensor = registerSensor(
         "retry_key_success_ratio",
         new TehutiUtils.SimpleRatioStat(retryRequestSuccessKeyCount, successRequestKeyCount));
