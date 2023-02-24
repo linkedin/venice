@@ -208,7 +208,7 @@ public class VeniceServerTest {
 
       for (int i = 0; i < servers; i++) {
         HttpGet httpsRequest =
-            new HttpGet("http://" + cluster.getVeniceServers().get(0).getAddress() + "/metadata/" + storeName);
+            new HttpGet("http://" + cluster.getVeniceServers().get(i).getAddress() + "/metadata/" + storeName);
         HttpResponse httpsResponse = client.execute(httpsRequest, null).get();
         Assert.assertEquals(httpsResponse.getStatusLine().getStatusCode(), 200);
 
