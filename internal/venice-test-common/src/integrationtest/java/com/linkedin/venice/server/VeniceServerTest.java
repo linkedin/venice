@@ -239,9 +239,9 @@ public class VeniceServerTest {
           Map<Utf8, Collection<Utf8>> routingInfo =
               (HashMap<Utf8, Collection<Utf8>>) metadataResponse.get("routingInfo");
 
-          for (Utf8 partitionId: routingInfo.keySet()) {
+          for (Map.Entry<Utf8, Collection<Utf8>> entry: routingInfo.entrySet()) {
             Set<Integer> zonesSeen = new HashSet<>();
-            for (Utf8 instance: routingInfo.get(partitionId)) {
+            for (Utf8 instance: entry.getValue()) {
               Assert.assertFalse(
                   zonesSeen.contains(helixGroupInfo.get(instance)),
                   instance + " is in the same helix zone as another replica of the partition");

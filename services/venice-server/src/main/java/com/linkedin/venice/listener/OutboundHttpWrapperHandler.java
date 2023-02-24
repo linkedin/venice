@@ -116,6 +116,9 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
           schemaIdHeader = metadataResponse.getResponseSchemaIdHeader();
         } else {
           String errorMessage = metadataResponse.getMessage();
+          if (errorMessage == null) {
+            errorMessage = "Unknown error";
+          }
           body = Unpooled.wrappedBuffer(errorMessage.getBytes(StandardCharsets.UTF_8));
           contentType = HttpConstants.TEXT_PLAIN;
           responseStatus = INTERNAL_SERVER_ERROR;
