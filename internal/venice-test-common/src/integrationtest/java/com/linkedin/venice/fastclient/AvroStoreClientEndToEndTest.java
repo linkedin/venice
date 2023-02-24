@@ -13,6 +13,7 @@ import com.linkedin.venice.fastclient.utils.ClientTestUtils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
 import org.apache.avro.generic.GenericRecord;
@@ -36,7 +37,13 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
       boolean useDaVinciClientBasedMetadata,
       boolean batchGet,
       int batchGetKeySize) throws Exception {
-    runTest(clientConfigBuilder, useDaVinciClientBasedMetadata, batchGet, batchGetKeySize, (metricsRepository) -> {});
+    runTest(
+        clientConfigBuilder,
+        useDaVinciClientBasedMetadata,
+        batchGet,
+        batchGetKeySize,
+        (metricsRepository) -> {},
+        Optional.empty());
   }
 
   /**
@@ -53,15 +60,19 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
       boolean useDaVinciClientBasedMetadata,
       boolean batchGet,
       int batchGetKeySize,
-      Consumer<MetricsRepository> statsValidation) throws Exception {
+      Consumer<MetricsRepository> statsValidation,
+      Optional<AvroGenericStoreClient> vsonThinClient) throws Exception {
     MetricsRepository metricsRepositoryForGenericClient = new MetricsRepository();
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
         getGenericFastClient(clientConfigBuilder, metricsRepositoryForGenericClient, useDaVinciClientBasedMetadata);
 
     AvroGenericStoreClient<String, Object> genericFastVsonClient = null;
     // Construct a Vson store client
-    genericFastVsonClient =
-        getGenericFastVsonClient(clientConfigBuilder.clone(), new MetricsRepository(), useDaVinciClientBasedMetadata);
+    genericFastVsonClient = getGenericFastVsonClient(
+        clientConfigBuilder.clone(),
+        new MetricsRepository(),
+        useDaVinciClientBasedMetadata,
+        vsonThinClient);
     try {
       if (batchGet) {
         // test batch get of size 2 (current default max)
@@ -84,14 +95,14 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
             Object vsonResultObj = vsonResultMapofObj.get(key1);
             assertTrue(
                 vsonResultObj instanceof Map,
-                "VsonClient should return Map, but got" + vsonResultObj.getClass());
+                "VsonClient should return Map, but got " + vsonResultObj.getClass());
             Map vsonResult = (Map) vsonResultObj;
             assertEquals((int) vsonResult.get(VALUE_FIELD_NAME), i);
 
             vsonResultObj = vsonResultMapofObj.get(key2);
             assertTrue(
                 vsonResultObj instanceof Map,
-                "VsonClient should return Map, but got" + vsonResultObj.getClass());
+                "VsonClient should return Map, but got " + vsonResultObj.getClass());
             vsonResult = (Map) vsonResultObj;
             assertEquals((int) vsonResult.get(VALUE_FIELD_NAME), i + 1);
           }
@@ -229,6 +240,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
     // dualRead also needs thinClient
     AvroGenericStoreClient<String, GenericRecord> genericThinClient = null;
     AvroSpecificStoreClient<String, TestValueSchema> specificThinClient = null;
+    AvroGenericStoreClient<String, Object> genericVsonThinClient = null;
 
     try {
       if (dualRead) {
@@ -236,15 +248,33 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
         clientConfigBuilder.setGenericThinClient(genericThinClient);
         specificThinClient = getSpecificThinClient();
         clientConfigBuilder.setSpecificThinClient(specificThinClient);
-      }
+        genericVsonThinClient = getGenericVsonThinClient();
 
-      runTest(clientConfigBuilder, useDaVinciClientBasedMetadata, multiGet, batchGetKeySize);
+        runTest(
+            clientConfigBuilder,
+            useDaVinciClientBasedMetadata,
+            multiGet,
+            batchGetKeySize,
+            m -> {},
+            Optional.of(genericVsonThinClient));
+      } else {
+        runTest(
+            clientConfigBuilder,
+            useDaVinciClientBasedMetadata,
+            multiGet,
+            batchGetKeySize,
+            m -> {},
+            Optional.empty());
+      }
     } finally {
       if (genericThinClient != null) {
         genericThinClient.close();
       }
       if (specificThinClient != null) {
         specificThinClient.close();
+      }
+      if (genericVsonThinClient != null) {
+        genericVsonThinClient.close();
       }
     }
   }
@@ -283,6 +313,6 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
           assertTrue(metric.value() > 0, "Long tail retry for single-get should be triggered");
         }
       });
-    });
+    }, Optional.empty());
   }
 }
