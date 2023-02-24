@@ -143,7 +143,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
           routerProperties,
           d2Servers,
           Optional.empty(),
-          Optional.of(H2SSLUtils.getLocalHttp2SslFactory()));
+          Optional.of(SslUtils.getVeniceLocalSslFactory()));
       return new VeniceRouterWrapper(
           coloName,
           serviceName,

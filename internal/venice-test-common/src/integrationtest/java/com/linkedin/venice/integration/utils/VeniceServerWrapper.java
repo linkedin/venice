@@ -237,7 +237,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
 
         Optional<SSLFactory> sslFactory = Optional.empty();
         if (ssl) {
-          sslFactory = Optional.of(H2SSLUtils.getLocalHttp2SslFactory());
+          sslFactory = Optional.of(SslUtils.getVeniceLocalSslFactory());
         }
 
         TestVeniceServer server = new TestVeniceServer(

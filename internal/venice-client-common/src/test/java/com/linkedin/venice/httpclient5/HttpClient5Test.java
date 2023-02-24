@@ -1,9 +1,9 @@
 package com.linkedin.venice.httpclient5;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.integration.utils.H2SSLUtils;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.ForkedJavaProcess;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
@@ -150,7 +150,7 @@ public class HttpClient5Test {
 
   @Test
   public void testWithH2SpecificAPI() throws Exception {
-    SSLFactory sslFactory = H2SSLUtils.getLocalHttp2SslFactory();
+    SSLFactory sslFactory = SslUtils.getVeniceLocalSslFactory();
     CloseableHttpAsyncClient httpClient = HttpAsyncClients.customHttp2()
         .setTlsStrategy(
             VeniceClientTlsStrategyBuilder.create()
@@ -172,10 +172,9 @@ public class HttpClient5Test {
     }
   }
 
-  // The following test will fail because of a bug in httpclient5 and it couldn't recover from a crashed peer
-  @Test(enabled = false)
+  @Test
   public void testWithH2CompatibleAPI() throws Exception {
-    SSLFactory sslFactory = H2SSLUtils.getLocalHttp2SslFactory();
+    SSLFactory sslFactory = SslUtils.getVeniceLocalSslFactory();
     final IOReactorConfig ioReactorConfig = IOReactorConfig.custom()
         .setSoKeepAlive(true)
         .setTcpNoDelay(true)
