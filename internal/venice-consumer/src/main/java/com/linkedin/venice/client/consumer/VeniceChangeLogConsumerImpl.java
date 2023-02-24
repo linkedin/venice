@@ -3,6 +3,7 @@ package com.linkedin.venice.client.consumer;
 import com.linkedin.venice.client.change.capture.protocol.RecordChangeEvent;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.validation.UnsupportedMessageTypeException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
@@ -55,7 +56,7 @@ public class VeniceChangeLogConsumerImpl<K, V> implements VeniceChangelogConsume
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
   private RecordDeserializer<K> keyDeserializer;
 
-  private Map<PubSubTopicPartition, List<Long>> currentVersionHighWatermarks = new HashMap<>();
+  private Map<Integer, List<Long>> currentVersionHighWatermarks = new HashMap<>();
 
   private final RecordDeserializer<RecordChangeEvent> recordChangeDeserializer =
       FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(
@@ -159,7 +160,7 @@ public class VeniceChangeLogConsumerImpl<K, V> implements VeniceChangelogConsume
       if (consumerRecord.key().isControlMessage()) {
         ControlMessage controlMessage = (ControlMessage) consumerRecord.value().payloadUnion;
         boolean isVersionSwap = handleControlMessage(controlMessage, pubSubTopicPartition);
-        // Stop processing messages from current version once we get pubSubMessages.
+        // Stop processing messages from current version once we get version swap message.
         if (isVersionSwap) {
           return pubSubMessages;
         }
@@ -184,6 +185,9 @@ public class VeniceChangeLogConsumerImpl<K, V> implements VeniceChangelogConsume
                   payloadSize);
               pubSubMessages.add(pubSubMessage);
             }
+          } else {
+            throw new UnsupportedMessageTypeException(
+                "Unrecognized message type for change event message: " + messageType);
           }
         } else {
           PubSubMessage<K, V, Long> pubSubMessage = convertRecordToPubSubMessage(
@@ -217,6 +221,11 @@ public class VeniceChangeLogConsumerImpl<K, V> implements VeniceChangelogConsume
             FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(valueSchema, valueSchema);
         currentValue = valueDeserializer.deserialize(put.putValue);
         break;
+      case DELETE:
+        currentValue = null;
+        break;
+      default:
+        throw new UnsupportedMessageTypeException("Unrecognized message type " + messageType);
     }
     return new ImmutablePubSubMessage(currentKey, currentValue, pubSubTopicPartition, offset, timestamp, payloadSize);
   }
@@ -228,7 +237,6 @@ public class VeniceChangeLogConsumerImpl<K, V> implements VeniceChangelogConsume
       Long offset,
       Long timestamp,
       int payloadSize) {
-
     V currentValue = null;
     if (recordChangeEvent.currentValue != null && recordChangeEvent.currentValue.getSchemaId() > 0) {
       currentValue = deserializeValueFromBytes(
@@ -258,11 +266,13 @@ public class VeniceChangeLogConsumerImpl<K, V> implements VeniceChangelogConsume
   private boolean filterRecordByVersionSwapHighWatermarks(
       List<Long> recordCheckpointVector,
       PubSubTopicPartition pubSubTopicPartition) {
-    if (recordCheckpointVector != null && currentVersionHighWatermarks.containsKey(pubSubTopicPartition)) {
-      List<Long> partitionCurrentVersionHighWatermarks = currentVersionHighWatermarks.get(pubSubTopicPartition);
+    int partitionId = pubSubTopicPartition.getPartitionNumber();
+    if (recordCheckpointVector != null && currentVersionHighWatermarks.containsKey(partitionId)) {
+      List<Long> partitionCurrentVersionHighWatermarks = currentVersionHighWatermarks.get(partitionId);
       if (recordCheckpointVector.size() > partitionCurrentVersionHighWatermarks.size()) {
         return false;
       }
+      // Only filter the record when all regions fall behind.
       for (int i = 0; i < recordCheckpointVector.size(); i++) {
         if (recordCheckpointVector.get(i) > partitionCurrentVersionHighWatermarks.get(i)) {
           return false;
@@ -279,9 +289,10 @@ public class VeniceChangeLogConsumerImpl<K, V> implements VeniceChangelogConsume
     boolean isVersionSwap = false;
     if (controlMessageType.equals(ControlMessageType.VERSION_SWAP)) {
       VersionSwap versionSwap = (VersionSwap) controlMessage.controlMessageUnion;
-      LOGGER.info("Obtain version swap message: " + versionSwap);
+      LOGGER.info("Obtain version swap message: {}", versionSwap);
       String newServingVersionTopic = versionSwap.newServingVersionTopic.toString();
-      currentVersionHighWatermarks.computeIfAbsent(pubSubTopicPartition, k -> versionSwap.getLocalHighWatermarks());
+      currentVersionHighWatermarks
+          .computeIfAbsent(pubSubTopicPartition.getPartitionNumber(), k -> versionSwap.getLocalHighWatermarks());
       Set<Integer> partitions = new HashSet<>();
       for (Integer partition: subscribedPartitions) {
         partitions.add(partition);

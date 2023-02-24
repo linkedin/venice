@@ -207,12 +207,14 @@ public class TestActiveActiveIngestion {
     ChangelogClientConfig globalChangeLogClientConfig =
         new ChangelogClientConfig().setViewClassName(ChangeCaptureView.class.getCanonicalName())
             .setConsumerProperties(consumerProperties)
+            .setControllerD2ServiceName(D2_SERVICE_NAME)
             .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
-            .setVeniceURL(multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper().getAddress());
+            .setVeniceURL(localZkServer.getAddress())
+            .setControllerRequestRetryCount(3);
     VeniceChangeLogConsumerClientFactory veniceChangeLogConsumerClientFactory =
         new VeniceChangeLogConsumerClientFactory(globalChangeLogClientConfig);
     VeniceChangelogConsumer<String, Utf8> veniceChangeLogConsumer =
-        veniceChangeLogConsumerClientFactory.getChangeLogConsumer(storeName, clusterName);
+        veniceChangeLogConsumerClientFactory.getChangeLogConsumer(storeName);
     veniceChangeLogConsumer.subscribeAll().get();
     try (
         VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
@@ -373,8 +375,9 @@ public class TestActiveActiveIngestion {
         Version.composeKafkaTopic(storeName, 3) + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX;
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
       pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangeLogConsumer, changeCaptureTopicV3);
-      Assert.assertEquals(polledChangeEvents.size(), 42);
-      for (int i = 0; i < 40; i++) {
+      // Filter previous 21 messages.
+      Assert.assertEquals(polledChangeEvents.size(), 21);
+      for (int i = 20; i < 40; i++) {
         String key = Integer.toString(i);
         VeniceChangeLogConsumerImpl.ChangeEvent<Utf8> changeEvent = polledChangeEvents.get(key);
         Assert.assertNotNull(changeEvent);

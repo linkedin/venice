@@ -13,7 +13,8 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
   private String viewClassName;
   private ClientConfig<T> innerClientConfig;
   private D2ControllerClient d2ControllerClient;
-  private String clusterName;
+  private String controllerD2ServiceName;
+  private int controllerRequestRetryCount;
 
   public ChangelogClientConfig(String storeName) {
     this.innerClientConfig = new ClientConfig<>(storeName);
@@ -59,6 +60,15 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return viewClassName;
   }
 
+  public ChangelogClientConfig<T> setControllerD2ServiceName(String controllerD2ServiceName) {
+    this.controllerD2ServiceName = controllerD2ServiceName;
+    return this;
+  }
+
+  public String getControllerD2ServiceName() {
+    return this.controllerD2ServiceName;
+  }
+
   public ChangelogClientConfig<T> setD2ServiceName(String d2ServiceName) {
     this.innerClientConfig.setD2ServiceName(d2ServiceName);
     return this;
@@ -86,17 +96,17 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return this.innerClientConfig.getVeniceURL();
   }
 
-  public ClientConfig<T> getInnerClientConfig() {
-    return this.innerClientConfig;
-  }
-
-  public ChangelogClientConfig<T> setClusterName(String clusterName) {
-    this.clusterName = clusterName;
+  public ChangelogClientConfig<T> setControllerRequestRetryCount(int controllerRequestRetryCount) {
+    this.controllerRequestRetryCount = controllerRequestRetryCount;
     return this;
   }
 
-  public String getClusterName() {
-    return this.clusterName;
+  public int getControllerRequestRetryCount() {
+    return this.controllerRequestRetryCount;
+  }
+
+  public ClientConfig<T> getInnerClientConfig() {
+    return this.innerClientConfig;
   }
 
   public static <V extends SpecificRecord> ChangelogClientConfig<V> cloneConfig(ChangelogClientConfig<V> config) {
@@ -105,9 +115,10 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setD2ServiceName(config.getD2ServiceName())
         .setConsumerProperties(config.getConsumerProperties())
         .setSchemaReader(config.getSchemaReader())
-        .setClusterName(config.getClusterName())
         .setViewClassName(config.getViewClassName())
-        .setD2ControllerClient(config.getD2ControllerClient());
+        .setD2ControllerClient(config.getD2ControllerClient())
+        .setControllerD2ServiceName(config.controllerD2ServiceName)
+        .setControllerRequestRetryCount(config.getControllerRequestRetryCount());
     return newConfig;
   }
 }

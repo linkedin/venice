@@ -1,9 +1,8 @@
 package com.linkedin.venice.client.consumer;
 
-import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.client.store.ClientFactory;
-import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
+import com.linkedin.venice.controllerapi.D2ControllerClientFactory;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -18,18 +17,17 @@ public class VeniceChangeLogConsumerClientFactory {
     this.globalChangeLogClientConfig = globalChangeLogClientConfig;
   }
 
-  public synchronized <K, V> VeniceChangelogConsumer<K, V> getChangeLogConsumer(String storeName, String clusterName) {
+  public synchronized <K, V> VeniceChangelogConsumer<K, V> getChangeLogConsumer(String storeName) {
     return storeClientMap.computeIfAbsent(storeName, name -> {
+
       ChangelogClientConfig newStoreChangeLogClientConfig =
           ChangelogClientConfig.cloneConfig(globalChangeLogClientConfig).setStoreName(storeName);
-      D2Client d2Client =
-          ((D2TransportClient) ClientFactory.getTransportClient(globalChangeLogClientConfig.getInnerClientConfig()))
-              .getD2Client();
-      D2ControllerClient d2ControllerClient = new D2ControllerClient(
-          globalChangeLogClientConfig.getD2ServiceName(),
-          clusterName,
-          d2Client,
-          Optional.ofNullable(newStoreChangeLogClientConfig.getInnerClientConfig().getSslFactory()));
+      D2ControllerClient d2ControllerClient = D2ControllerClientFactory.discoverAndConstructControllerClient(
+          storeName,
+          globalChangeLogClientConfig.getControllerD2ServiceName(),
+          globalChangeLogClientConfig.getVeniceURL(),
+          Optional.ofNullable(newStoreChangeLogClientConfig.getInnerClientConfig().getSslFactory()),
+          globalChangeLogClientConfig.getControllerRequestRetryCount());
       newStoreChangeLogClientConfig.setD2ControllerClient(d2ControllerClient);
       newStoreChangeLogClientConfig
           .setSchemaReader(ClientFactory.getSchemaReader(newStoreChangeLogClientConfig.getInnerClientConfig()));
