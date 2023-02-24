@@ -457,13 +457,6 @@ public class TestPushJobWithNativeReplication {
                   new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
               ControllerClient dc1Client =
                   new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString())) {
-            TestWriteUtils.updateStore(
-                VPJ_HEARTBEAT_STORE_NAME,
-                parentControllerClient,
-                new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true));
-            parentControllerClient
-                .sendEmptyPushAndWait(VPJ_HEARTBEAT_STORE_NAME, "new push", 1L, 20 * Time.MS_PER_SECOND);
-
             // verify the update store command has taken effect before starting the push job.
             NativeReplicationTestUtils
                 .verifyDCConfigNativeRepl(Arrays.asList(dc0Client, dc1Client), VPJ_HEARTBEAT_STORE_NAME, true);
