@@ -764,7 +764,9 @@ public class VenicePushJob implements AutoCloseable {
         pushJobSetting.controllerRetries,
         c -> c.getRepushInfo(userProvidedStoreName, userProvidedFabricNameOptional));
     if (pushJobSetting.repushInfoResponse.isError()) {
-      throw new VeniceException("Could not get repush info for store " + userProvidedStoreName);
+      throw new VeniceException(
+          "Could not get repush info for store " + userProvidedStoreName + " with error: "
+              + pushJobSetting.repushInfoResponse.getError());
     }
     int version = pushJobSetting.repushInfoResponse.getRepushInfo().getVersion().getNumber();
     return Version.composeKafkaTopic(userProvidedStoreName, version);
@@ -2464,7 +2466,7 @@ public class VenicePushJob implements AutoCloseable {
         // status could not be queried which could be due to a communication error.
         throw new VeniceException(
             "Failed to connect to: " + pushJobSetting.veniceControllerUrl + " to query job status, after "
-                + pushJobSetting.controllerStatusPollRetries + " attempts.");
+                + pushJobSetting.controllerStatusPollRetries + " attempts. Error: " + response.getError());
       }
 
       previousOverallDetails = printJobStatus(response, previousOverallDetails, previousExtraDetails);

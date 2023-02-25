@@ -26,9 +26,11 @@ public class TestPushJobHeartbeatSender {
     String kafkaUrl = "localhost:1234";
     String heartbeatStoreName = AvroProtocolDefinition.BATCH_JOB_HEARTBEAT.getSystemStoreName();
     VeniceProperties properties = new VeniceProperties();
-    ControllerClient controllerClient = mock(ControllerClient.class);
     Optional<Properties> sslProperties = Optional.empty();
     DefaultPushJobHeartbeatSenderFactory pushJobHeartbeatSenderFactory = new DefaultPushJobHeartbeatSenderFactory();
+
+    // Prepare controller client.
+    ControllerClient controllerClient = mock(ControllerClient.class);
     StoreResponse storeResponse = mock(StoreResponse.class);
     StoreInfo storeInfo = mock(StoreInfo.class);
     PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
@@ -36,23 +38,28 @@ public class TestPushJobHeartbeatSender {
     doReturn(partitionerConfig).when(storeInfo).getPartitionerConfig();
     doReturn(storeInfo).when(storeResponse).getStore();
     doReturn(storeResponse).when(controllerClient).getStore(heartbeatStoreName);
-    SchemaResponse keySchemaResponse = mock(SchemaResponse.class);
-    doReturn(BatchJobHeartbeatKey.SCHEMA$.toString()).when(keySchemaResponse).getSchemaStr();
 
+    // Value Schema prepare.
     MultiSchemaResponse multiSchemaResponse = mock(MultiSchemaResponse.class);
     MultiSchemaResponse.Schema valueSchema = mock(MultiSchemaResponse.Schema.class);
     doReturn(BatchJobHeartbeatValue.SCHEMA$.toString()).when(valueSchema).getSchemaStr();
     MultiSchemaResponse.Schema[] valueSchemas = { valueSchema };
     doReturn(valueSchemas).when(multiSchemaResponse).getSchemas();
 
+    // Key schema prepare.
+    SchemaResponse keySchemaResponse = mock(SchemaResponse.class);
+    doReturn(BatchJobHeartbeatKey.SCHEMA$.toString()).when(keySchemaResponse).getSchemaStr();
     doReturn(keySchemaResponse).when(controllerClient).getKeySchema(heartbeatStoreName);
     doReturn(multiSchemaResponse).when(controllerClient).getAllValueSchema(heartbeatStoreName);
 
-    DefaultPushJobHeartbeatSender pushJobHeartbeatSender = (DefaultPushJobHeartbeatSender) pushJobHeartbeatSenderFactory
-        .createHeartbeatSender(kafkaUrl, properties, controllerClient, sslProperties);
+    PushJobHeartbeatSender pushJobHeartbeatSender =
+        pushJobHeartbeatSenderFactory.createHeartbeatSender(kafkaUrl, properties, controllerClient, sslProperties);
     Assert.assertNotNull(pushJobHeartbeatSender);
+    Assert.assertTrue(pushJobHeartbeatSender instanceof DefaultPushJobHeartbeatSender);
+    DefaultPushJobHeartbeatSender defaultPushJobHeartbeatSender =
+        (DefaultPushJobHeartbeatSender) pushJobHeartbeatSender;
     Assert.assertEquals(
-        pushJobHeartbeatSender.getVeniceWriter().getTopicName(),
+        defaultPushJobHeartbeatSender.getVeniceWriter().getTopicName(),
         Version.composeRealTimeTopic(heartbeatStoreName));
   }
 }

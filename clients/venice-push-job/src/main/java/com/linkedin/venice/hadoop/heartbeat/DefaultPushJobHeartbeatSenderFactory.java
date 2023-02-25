@@ -49,7 +49,9 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
     StoreResponse heartBeatStoreResponse =
         ControllerClient.retryableRequest(controllerClient, retryAttempts, c -> c.getStore(heartbeatStoreName));
     if (heartBeatStoreResponse.isError()) {
-      throw new VeniceException("Could not get store info for store: " + heartbeatStoreName);
+      throw new VeniceException(
+          "Could not get store info for store: " + heartbeatStoreName + " with error: "
+              + heartBeatStoreResponse.getError());
     }
     StoreInfo storeInfo = heartBeatStoreResponse.getStore();
     PartitionerConfig partitionerConfig = storeInfo.getPartitionerConfig();
