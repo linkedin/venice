@@ -33,9 +33,9 @@ import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUs
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.consumer.ChangelogClientConfig;
-import com.linkedin.venice.client.consumer.VeniceChangeLogConsumerClientFactory;
-import com.linkedin.venice.client.consumer.VeniceChangeLogConsumerImpl;
 import com.linkedin.venice.client.consumer.VeniceChangelogConsumer;
+import com.linkedin.venice.client.consumer.VeniceChangelogConsumerClientFactory;
+import com.linkedin.venice.client.consumer.VeniceChangelogConsumerImpl;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -211,11 +211,11 @@ public class TestActiveActiveIngestion {
             .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
             .setVeniceURL(localZkServer.getAddress())
             .setControllerRequestRetryCount(3);
-    VeniceChangeLogConsumerClientFactory veniceChangeLogConsumerClientFactory =
-        new VeniceChangeLogConsumerClientFactory(globalChangeLogClientConfig);
-    VeniceChangelogConsumer<String, Utf8> veniceChangeLogConsumer =
-        veniceChangeLogConsumerClientFactory.getChangeLogConsumer(storeName);
-    veniceChangeLogConsumer.subscribeAll().get();
+    VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
+        new VeniceChangelogConsumerClientFactory(globalChangeLogClientConfig);
+    VeniceChangelogConsumer<String, Utf8> veniceChangelogConsumer =
+        veniceChangelogConsumerClientFactory.getChangelogConsumer(storeName);
+    veniceChangelogConsumer.subscribeAll().get();
     try (
         VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
       veniceProducer.start();
@@ -235,15 +235,15 @@ public class TestActiveActiveIngestion {
     }
 
     // Validate change events for version 1.
-    Map<String, VeniceChangeLogConsumerImpl.ChangeEvent<Utf8>> polledChangeEvents = new HashMap<>();
+    Map<String, VeniceChangelogConsumerImpl.ChangeEvent<Utf8>> polledChangeEvents = new HashMap<>();
     String changeCaptureTopicV1 =
         Version.composeKafkaTopic(storeName, 1) + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX;
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangeLogConsumer, changeCaptureTopicV1);
+      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer, changeCaptureTopicV1);
       Assert.assertTrue(polledChangeEvents.size() == 21);
       for (int i = 0; i < 10; i++) {
         String key = Integer.toString(i);
-        VeniceChangeLogConsumerImpl.ChangeEvent<Utf8> changeEvent = polledChangeEvents.get(key);
+        VeniceChangelogConsumerImpl.ChangeEvent<Utf8> changeEvent = polledChangeEvents.get(key);
         Assert.assertNotNull(changeEvent);
         if (i == 0) {
           Assert.assertNull(changeEvent.getPreviousValue());
@@ -255,7 +255,7 @@ public class TestActiveActiveIngestion {
 
       for (int i = 10; i < 20; i++) {
         String key = Integer.toString(i);
-        VeniceChangeLogConsumerImpl.ChangeEvent<Utf8> changeEvent = polledChangeEvents.get(key);
+        VeniceChangelogConsumerImpl.ChangeEvent<Utf8> changeEvent = polledChangeEvents.get(key);
         Assert.assertNotNull(changeEvent);
         Assert.assertNull(changeEvent.getPreviousValue()); // schema id is negative, so we did not parse.
         Assert.assertNull(changeEvent.getCurrentValue());
@@ -332,7 +332,7 @@ public class TestActiveActiveIngestion {
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
       pollChangeEventsFromChangeCaptureConsumer(
           polledChangeEvents,
-          veniceChangeLogConsumer,
+          veniceChangelogConsumer,
           Version.composeKafkaTopic(storeName, 2) + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX);
       String deleteWithRmdKey = Integer.toString(deleteWithRmdKeyIndex);
       String persistWithRmdKey = Integer.toString(deleteWithRmdKeyIndex + 1);
@@ -374,12 +374,12 @@ public class TestActiveActiveIngestion {
     String changeCaptureTopicV3 =
         Version.composeKafkaTopic(storeName, 3) + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX;
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangeLogConsumer, changeCaptureTopicV3);
+      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer, changeCaptureTopicV3);
       // Filter previous 21 messages.
       Assert.assertEquals(polledChangeEvents.size(), 21);
       for (int i = 20; i < 40; i++) {
         String key = Integer.toString(i);
-        VeniceChangeLogConsumerImpl.ChangeEvent<Utf8> changeEvent = polledChangeEvents.get(key);
+        VeniceChangelogConsumerImpl.ChangeEvent<Utf8> changeEvent = polledChangeEvents.get(key);
         Assert.assertNotNull(changeEvent);
         Assert.assertNull(changeEvent.getPreviousValue());
         if ((i >= 20 && i < 30) || (i < 10)) {
@@ -432,7 +432,7 @@ public class TestActiveActiveIngestion {
     String changeCaptureTopicV4 =
         Version.composeKafkaTopic(storeName, 4) + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX;
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, true, () -> {
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangeLogConsumer, changeCaptureTopicV4);
+      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer, changeCaptureTopicV4);
       Assert.assertEquals(polledChangeEvents.size(), 0);
     });
 
@@ -462,14 +462,14 @@ public class TestActiveActiveIngestion {
 
 
   private void pollChangeEventsFromChangeCaptureConsumer(
-      Map<String, VeniceChangeLogConsumerImpl.ChangeEvent<Utf8>> polledChangeEvents,
-      VeniceChangelogConsumer veniceChangeLogConsumer,
+      Map<String, VeniceChangelogConsumerImpl.ChangeEvent<Utf8>> polledChangeEvents,
+      VeniceChangelogConsumer veniceChangelogConsumer,
       String expectedVersionTopic) {
-    Collection<PubSubMessage> pubSubMessages = veniceChangeLogConsumer.poll(100);
+    Collection<PubSubMessage> pubSubMessages = veniceChangelogConsumer.poll(100);
     for (PubSubMessage pubSubMessage: pubSubMessages) {
       if (pubSubMessage.getTopicPartition().getPubSubTopic().getName().equals(expectedVersionTopic)) {
-        VeniceChangeLogConsumerImpl.ChangeEvent<Utf8> changeEvent =
-            (VeniceChangeLogConsumerImpl.ChangeEvent<Utf8>) pubSubMessage.getValue();
+        VeniceChangelogConsumerImpl.ChangeEvent<Utf8> changeEvent =
+            (VeniceChangelogConsumerImpl.ChangeEvent<Utf8>) pubSubMessage.getValue();
         String key = pubSubMessage.getKey().toString();
         polledChangeEvents.put(key, changeEvent);
       }

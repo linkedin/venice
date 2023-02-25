@@ -1,12 +1,14 @@
 package com.linkedin.venice.consumer;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.change.capture.protocol.RecordChangeEvent;
 import com.linkedin.venice.client.change.capture.protocol.ValueBytes;
 import com.linkedin.venice.client.consumer.ChangelogClientConfig;
-import com.linkedin.venice.client.consumer.VeniceChangeLogConsumerImpl;
+import com.linkedin.venice.client.consumer.VeniceChangelogConsumerImpl;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
@@ -110,22 +112,22 @@ public class VeniceChangeLogConsumerImplTest {
             .setSchemaReader(schemaReader)
             .setStoreName(storeName)
             .setViewClassName(ChangeCaptureView.class.getCanonicalName());
-    VeniceChangeLogConsumerImpl<String, String> veniceChangeLogConsumer =
-        new VeniceChangeLogConsumerImpl<>(changelogClientConfig, kafkaConsumer);
-    veniceChangeLogConsumer.subscribe(new HashSet<>(Arrays.asList(0)));
+    VeniceChangelogConsumerImpl<String, String> veniceChangelogConsumer =
+        new VeniceChangelogConsumerImpl<>(changelogClientConfig, kafkaConsumer);
+    veniceChangelogConsumer.subscribe(new HashSet<>(Arrays.asList(0)));
     verify(kafkaConsumer).assign(Arrays.asList(new TopicPartition(oldChangeCaptureTopic, 0)));
 
-    List<PubSubMessage> pubSubMessages = (List<PubSubMessage>) veniceChangeLogConsumer.poll(100);
+    List<PubSubMessage> pubSubMessages = (List<PubSubMessage>) veniceChangelogConsumer.poll(100);
     for (int i = 0; i < 5; i++) {
       PubSubMessage pubSubMessage = pubSubMessages.get(i);
-      VeniceChangeLogConsumerImpl.ChangeEvent<Utf8> changeEvent =
-          (VeniceChangeLogConsumerImpl.ChangeEvent<Utf8>) pubSubMessage.getValue();
+      VeniceChangelogConsumerImpl.ChangeEvent<Utf8> changeEvent =
+          (VeniceChangelogConsumerImpl.ChangeEvent<Utf8>) pubSubMessage.getValue();
       Assert.assertEquals(changeEvent.getCurrentValue().toString(), "newValue" + i);
       Assert.assertEquals(changeEvent.getPreviousValue().toString(), "oldValue" + i);
     }
     // Verify version swap happened.
     verify(kafkaConsumer).assign(Arrays.asList(new TopicPartition(newChangeCaptureTopic, 0)));
-    pubSubMessages = (List<PubSubMessage>) veniceChangeLogConsumer.poll(100);
+    pubSubMessages = (List<PubSubMessage>) veniceChangelogConsumer.poll(100);
     Assert.assertTrue(pubSubMessages.isEmpty());
   }
 
