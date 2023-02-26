@@ -1,6 +1,10 @@
 package com.linkedin.venice.client.consumer;
 
+import static com.linkedin.venice.schema.rmd.RmdConstants.*;
+
 import com.linkedin.venice.client.change.capture.protocol.RecordChangeEvent;
+import com.linkedin.venice.controllerapi.D2ControllerClient;
+import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.validation.UnsupportedMessageTypeException;
@@ -22,6 +26,7 @@ import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
+import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.views.ChangeCaptureView;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -34,6 +39,8 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -58,17 +65,30 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   private final Map<Integer, List<Long>> currentVersionHighWatermarks = new HashMap<>();
 
+  private final D2ControllerClient d2ControllerClient;
+
+  private final ReplicationMetadataSchemaRepository replicationMetadataSchemaRepository;
+
+  private boolean isReadFromChangeCaptureTopic;
+
   private final RecordDeserializer<RecordChangeEvent> recordChangeDeserializer =
       FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(
           AvroProtocolDefinition.RECORD_CHANGE_EVENT.getCurrentProtocolVersionSchema(),
           RecordChangeEvent.class);
+
+  private Map<Integer, List<Long>> currentVersionTempHighWatermarks = new HashMap<>();
 
   public VeniceChangelogConsumerImpl(
       ChangelogClientConfig changelogClientConfig,
       Consumer<KafkaKey, KafkaMessageEnvelope> kafkaConsumer) {
     this.kafkaConsumer = kafkaConsumer;
     this.storeName = changelogClientConfig.getStoreName();
+    this.d2ControllerClient = changelogClientConfig.getD2ControllerClient();
     StoreResponse storeResponse = changelogClientConfig.getD2ControllerClient().getStore(storeName);
+    if (storeResponse.isError()) {
+      throw new VeniceException(
+          "Failed to get store info for store: " + storeName + " with error: " + storeResponse.getError());
+    }
     StoreInfo store = storeResponse.getStore();
     int currentVersion = store.getCurrentVersion();
     this.partitionCount = store.getPartitionCount();
@@ -76,9 +96,12 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     if (viewClassName.equals(ChangeCaptureView.class.getCanonicalName())) {
       this.currentTopic =
           Version.composeKafkaTopic(storeName, currentVersion) + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX;
+      this.isReadFromChangeCaptureTopic = true;
     } else {
       this.currentTopic = Version.composeKafkaTopic(storeName, currentVersion);
+      this.isReadFromChangeCaptureTopic = false;
     }
+    this.replicationMetadataSchemaRepository = new ReplicationMetadataSchemaRepository(d2ControllerClient);
     this.schemaReader = changelogClientConfig.getSchemaReader();
     this.subscribedPartitions = new HashSet<>();
     Schema keySchema = schemaReader.getKeySchema();
@@ -163,15 +186,20 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       long timestamp = consumerRecord.timestamp();
       if (consumerRecord.key().isControlMessage()) {
         ControlMessage controlMessage = (ControlMessage) consumerRecord.value().payloadUnion;
-        boolean isVersionSwap = handleControlMessage(controlMessage, pubSubTopicPartition);
+        ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
         // Stop processing messages from current version once we get version swap message.
-        if (isVersionSwap) {
+        if (controlMessageType.equals(ControlMessageType.VERSION_SWAP)) {
+          VersionSwap versionSwap = (VersionSwap) controlMessage.controlMessageUnion;
+          handleVersionControlMessage(versionSwap, pubSubTopicPartition);
+          return pubSubMessages;
+        } else if (controlMessageType.equals(ControlMessageType.END_OF_PUSH)) {
+          handleEndOfPushControlMessage(pubSubTopicPartition);
           return pubSubMessages;
         }
       } else {
         byte[] keyBytes = consumerRecord.key().getKey();
         K currentKey = keyDeserializer.deserialize(keyBytes);
-        if (viewClassName.equals(ChangeCaptureView.class.getCanonicalName())) {
+        if (isReadFromChangeCaptureTopic) {
           MessageType messageType = MessageType.valueOf(consumerRecord.value());
           if (messageType.equals(MessageType.PUT)) {
             Put put = (Put) consumerRecord.value().payloadUnion;
@@ -187,7 +215,18 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
                   offset,
                   timestamp,
                   payloadSize);
-              pubSubMessages.add(pubSubMessage);
+              if (viewClassName.equals(ChangeCaptureView.class.getCanonicalName())) {
+                pubSubMessages.add(pubSubMessage);
+              } else {
+                pubSubMessages.add(
+                    new ImmutablePubSubMessage(
+                        pubSubMessage.getKey(),
+                        pubSubMessage.getValue().currentValue,
+                        pubSubTopicPartition,
+                        offset,
+                        timestamp,
+                        payloadSize));
+              }
             }
           } else {
             throw new UnsupportedMessageTypeException(
@@ -224,6 +263,31 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         RecordDeserializer<V> valueDeserializer =
             FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(valueSchema, valueSchema);
         currentValue = valueDeserializer.deserialize(put.putValue);
+        MultiSchemaResponse.Schema replicationMetadataSchema = replicationMetadataSchemaRepository
+            .getReplicationMetadataSchemaById(storeName, put.replicationMetadataVersionId);
+        RecordDeserializer<GenericRecord> deserializer = SerializerDeserializerFactory
+            .getAvroGenericDeserializer(Schema.parse(replicationMetadataSchema.getSchemaStr()));
+        GenericRecord replicationMetadataRecord = deserializer.deserialize(put.replicationMetadataPayload);
+        GenericData.Array replicationCheckpointVector =
+            (GenericData.Array) replicationMetadataRecord.get(REPLICATION_CHECKPOINT_VECTOR_FIELD);
+        List<Long> offsetVector = new ArrayList<>();
+        for (int i = 0; i < replicationCheckpointVector.size(); i++) {
+          offsetVector.add((Long) replicationCheckpointVector.get(i));
+        }
+        currentVersionTempHighWatermarks.putIfAbsent(pubSubTopicPartition.getPartitionNumber(), offsetVector);
+        currentVersionTempHighWatermarks.computeIfPresent(pubSubTopicPartition.getPartitionNumber(), (k, v) -> {
+          for (int i = 0; i < offsetVector.size(); i++) {
+            if (i < v.size()) {
+              if (offsetVector.get(i) > v.get(i)) {
+                v.set(i, offsetVector.get(i));
+              }
+            } else {
+              v.add(offsetVector.get(i));
+            }
+          }
+          return v;
+        });
+        System.out.println(currentVersionTempHighWatermarks);
         break;
       case DELETE:
         currentValue = null;
@@ -288,31 +352,35 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     return false;
   }
 
-  private boolean handleControlMessage(ControlMessage controlMessage, PubSubTopicPartition pubSubTopicPartition) {
-    final ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
-    boolean isVersionSwap = false;
-    if (controlMessageType.equals(ControlMessageType.VERSION_SWAP)) {
-      VersionSwap versionSwap = (VersionSwap) controlMessage.controlMessageUnion;
-      LOGGER.info("Obtain version swap message: {}", versionSwap);
-      String newServingVersionTopic = versionSwap.newServingVersionTopic.toString();
-      currentVersionHighWatermarks
-          .computeIfAbsent(pubSubTopicPartition.getPartitionNumber(), k -> versionSwap.getLocalHighWatermarks());
-      Set<Integer> partitions = new HashSet<>(subscribedPartitions);
-      unsubscribe(subscribedPartitions);
-      if (viewClassName.equals(ChangeCaptureView.class.getCanonicalName())) {
-        currentTopic = newServingVersionTopic + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX;
-      } else {
-        currentTopic = newServingVersionTopic;
-      }
-      try {
-        subscribe(partitions).get();
-      } catch (InterruptedException | ExecutionException e) {
-        throw new VeniceException(
-            "Subscribe to new topic:" + newServingVersionTopic + "is not successful, error: " + e);
-      }
-      isVersionSwap = true;
+  private void handleVersionControlMessage(VersionSwap versionSwap, PubSubTopicPartition pubSubTopicPartition) {
+    LOGGER.info("Obtain version swap message: {}", versionSwap);
+    String newServingVersionTopic = versionSwap.newServingVersionTopic.toString();
+    currentVersionHighWatermarks
+        .computeIfAbsent(pubSubTopicPartition.getPartitionNumber(), k -> versionSwap.getLocalHighWatermarks());
+    if (isReadFromChangeCaptureTopic) {
+      switchToNewTopic(newServingVersionTopic + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX);
+    } else {
+      switchToNewTopic(newServingVersionTopic);
     }
-    return isVersionSwap;
+  }
+
+  private void switchToNewTopic(String newTopic) {
+    Set<Integer> partitions = new HashSet<>(subscribedPartitions);
+    unsubscribe(subscribedPartitions);
+    currentTopic = newTopic;
+    try {
+      subscribe(partitions).get();
+    } catch (InterruptedException | ExecutionException e) {
+      throw new VeniceException("Subscribe to new topic:" + newTopic + " is not successful, error: " + e);
+    }
+  }
+
+  private void handleEndOfPushControlMessage(PubSubTopicPartition pubSubTopicPartition) {
+    isReadFromChangeCaptureTopic = true;
+    int partitionId = pubSubTopicPartition.getPartitionNumber();
+    currentVersionHighWatermarks.put(partitionId, currentVersionTempHighWatermarks.get(partitionId));
+    // Jump to change capture topic.
+    switchToNewTopic(currentTopic + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX);
   }
 
   private PubSubTopicPartition getPubSubTopicPartitionFromConsumerRecord(
