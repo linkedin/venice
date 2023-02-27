@@ -38,6 +38,7 @@ import com.linkedin.venice.hadoop.heartbeat.NoOpPushJobHeartbeatSender;
 import com.linkedin.venice.hadoop.heartbeat.NoOpPushJobHeartbeatSenderFactory;
 import com.linkedin.venice.hadoop.heartbeat.PushJobHeartbeatSender;
 import com.linkedin.venice.hadoop.heartbeat.PushJobHeartbeatSenderFactory;
+import com.linkedin.venice.hadoop.input.kafka.KafkaInputDictTrainer;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputFormat;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputFormatCombiner;
 import com.linkedin.venice.hadoop.input.kafka.KafkaInputKeyComparator;
@@ -213,6 +214,10 @@ public class VenicePushJob implements AutoCloseable {
   // Optional
   public static final String KAFKA_INPUT_MAX_RECORDS_PER_MAPPER = "kafka.input.max.records.per.mapper";
   public static final String KAFKA_INPUT_COMBINER_ENABLED = "kafka.input.combiner.enabled";
+  // Whether to build a new dict in the repushed version or not while the original version has already enabled dict
+  // compression.
+  public static final String KAFKA_INPUT_COMPRESSION_BUILD_NEW_DICT_ENABLED =
+      "kafka.input.compression.build.new.dict.enabled";
   /**
    * Optional.
    * If we want to use a different rewind time from the default store-level rewind time config for Kafka Input re-push,
@@ -316,6 +321,7 @@ public class VenicePushJob implements AutoCloseable {
   public static final String VSON_PUSH = "vson.push";
   public static final String KAFKA_SECURITY_PROTOCOL = "SSL";
   public static final String COMPRESSION_STRATEGY = "compression.strategy";
+  public static final String KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY = "kafka.input.source.compression.strategy";
   public static final String SSL_CONFIGURATOR_CLASS_CONFIG = "ssl.configurator.class";
   public static final String SSL_KEY_STORE_PROPERTY_NAME = "ssl.key.store.property.name";
   public static final String SSL_TRUST_STORE_PROPERTY_NAME = "ssl.trust.store.property.name";
@@ -444,6 +450,7 @@ public class VenicePushJob implements AutoCloseable {
     RepushInfoResponse repushInfoResponse;
     long rewindTimeInSecondsOverride;
     boolean kafkaInputCombinerEnabled;
+    boolean kafkaInputBuildNewDictEnabled;
     BufferReplayPolicy validateRemoteReplayPolicy;
     boolean suppressEndOfPushMessage;
     boolean deferVersionSwap;
@@ -503,6 +510,7 @@ public class VenicePushJob implements AutoCloseable {
     boolean isIncrementalPushEnabled;
     Version sourceKafkaInputVersionInfo;
     long storeRewindTimeInSeconds;
+    Schema keySchema;
   }
 
   protected StoreSetting storeSetting;
@@ -628,6 +636,8 @@ public class VenicePushJob implements AutoCloseable {
     pushJobSettingToReturn.isSourceETL = props.getBoolean(SOURCE_ETL, false);
     pushJobSettingToReturn.isSourceKafka = props.getBoolean(SOURCE_KAFKA, false);
     pushJobSettingToReturn.kafkaInputCombinerEnabled = props.getBoolean(KAFKA_INPUT_COMBINER_ENABLED, false);
+    pushJobSettingToReturn.kafkaInputBuildNewDictEnabled =
+        props.getBoolean(KAFKA_INPUT_COMPRESSION_BUILD_NEW_DICT_ENABLED, true);
     pushJobSettingToReturn.suppressEndOfPushMessage = props.getBoolean(SUPPRESS_END_OF_PUSH_MESSAGE, false);
     pushJobSettingToReturn.deferVersionSwap = props.getBoolean(DEFER_VERSION_SWAP, false);
     pushJobSettingToReturn.repushTTLEnabled = props.getBoolean(REPUSH_TTL_ENABLE, false);
@@ -922,8 +932,7 @@ public class VenicePushJob implements AutoCloseable {
           throw new VeniceException("Empty push with ZSTD dictionary Compression is not allowed");
         }
 
-        // validate the key/value of the first file with the store by speaking to the controller
-        validateKeySchema(controllerClient, pushJobSetting, pushJobSchemaInfo);
+        validateKeySchema(controllerClient, pushJobSetting, pushJobSchemaInfo, storeSetting);
         validateValueSchema(
             controllerClient,
             pushJobSetting,
@@ -934,7 +943,6 @@ public class VenicePushJob implements AutoCloseable {
             reevaluateCompressionMetricCollectionEnabled(pushJobSetting, inputFileHasRecords);
         isZstdDictCreationRequired =
             shouldBuildZstdCompressionDictionary(pushJobSetting, storeSetting, inputFileHasRecords);
-
         if (pushJobSetting.useMapperToBuildDict) {
           /**
            * 1. validate whether the remaining file's schema are consistent with the first file
@@ -1347,13 +1355,12 @@ public class VenicePushJob implements AutoCloseable {
       StoreSetting storeSetting,
       boolean inputFileHasRecords) {
     if (pushJobSetting.isSourceKafka) {
-      // repush from kafka: Existing dictionary will be collected from kafka if found,
-      // but will not be built again. This is already checked before calling this function.
-      // This is a defensive check.
-      LOGGER.info("No compression dictionary will be generated as the push type is repush");
+      /**
+       * Currently, KIF repush will use a different code path for dict buid.
+       * If later, we add the support to build the dict in a MR job, we need to revist this logic.
+       */
       return false;
     }
-
     if (!inputFileHasRecords) {
       LOGGER.info("No compression dictionary will be generated as there are no records");
       return false;
@@ -1654,51 +1661,79 @@ public class VenicePushJob implements AutoCloseable {
   private Optional<ByteBuffer> getCompressionDictionary() throws VeniceException {
     ByteBuffer compressionDictionary = null;
 
-    if (isZstdDictCreationRequired) {
-      if (!pushJobSetting.useMapperToBuildDict) {
-        LOGGER.info("Training Zstd dictionary");
-        compressionDictionary = ByteBuffer.wrap(getInputDataInfoProvider().getZstdDictTrainSamples());
-        isZstdDictCreationSuccess = true;
-      } else {
-        if (isZstdDictCreationSuccess) {
-          LOGGER.info(
-              "Retrieving the Zstd dictionary trained by {}",
-              ValidateSchemaAndBuildDictMapper.class.getSimpleName());
-          compressionDictionary = validateSchemaAndBuildDictMapperOutput.getZstdDictionary();
-        } else {
-          if (storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
-            // This should not happen
-            String err = "Dictionary creation failed for the configured ZSTD compression type";
-            LOGGER.error(err);
-            throw new VeniceException(err);
-          } // else case: Dictionary creation failed, but it was not needed for the push job to succeed
-        }
-      }
-    } else if (pushJobSetting.isSourceKafka) {
+    if (pushJobSetting.isSourceKafka) {
+      /**
+       * Currently KIF repush will always build a dict in Azkaban Job driver if necessary.
+       */
+      boolean rebuildDict = pushJobSetting.kafkaInputBuildNewDictEnabled;
       // Repush
       if (storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
-        LOGGER.info("Reading Zstd dictionary from input topic");
-        // set up ssl properties and kafka consumer properties
-        Properties kafkaConsumerProperties = new Properties();
-        kafkaConsumerProperties.putAll(this.sslProperties.get());
-        kafkaConsumerProperties
-            .setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, props.getString(KAFKA_INPUT_BROKER_URL));
-        compressionDictionary = DictionaryUtils
-            .readDictionaryFromKafka(pushJobSetting.kafkaInputTopic, new VeniceProperties(kafkaConsumerProperties));
+        if (rebuildDict) {
+          LOGGER.info("Rebuild a new Zstd dictionary from the input topic");
+          KafkaInputDictTrainer.ParamBuilder paramBuilder =
+              new KafkaInputDictTrainer.ParamBuilder().setKafkaInputBroker(pushJobSetting.kafkaInputBrokerUrl)
+                  .setTopicName(pushJobSetting.kafkaInputTopic)
+                  .setKeySchema(AvroCompatibilityHelper.toParsingForm(storeSetting.keySchema))
+                  .setSslProperties(isSslEnabled() ? sslProperties.get() : new Properties())
+                  .setCompressionDictSize(
+                      props.getInt(
+                          DefaultInputDataInfoProvider.COMPRESSION_DICTIONARY_SIZE_LIMIT,
+                          VeniceWriter.DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES))
+                  .setDictSampleSize(
+                      props.getInt(
+                          DefaultInputDataInfoProvider.COMPRESSION_DICTIONARY_SAMPLE_SIZE,
+                          DefaultInputDataInfoProvider.DEFAULT_COMPRESSION_DICTIONARY_SAMPLE_SIZE));
+          KafkaInputDictTrainer dictTrainer = new KafkaInputDictTrainer(paramBuilder.build());
+          compressionDictionary = ByteBuffer.wrap(dictTrainer.trainDict());
+        } else {
+          LOGGER.info("Reading Zstd dictionary from input topic");
+          // set up ssl properties and kafka consumer properties
+          Properties kafkaConsumerProperties = new Properties();
+          if (isSslEnabled()) {
+            kafkaConsumerProperties.putAll(this.sslProperties.get());
+          }
+          kafkaConsumerProperties
+              .setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, pushJobSetting.kafkaInputBrokerUrl);
+          compressionDictionary = DictionaryUtils
+              .readDictionaryFromKafka(pushJobSetting.kafkaInputTopic, new VeniceProperties(kafkaConsumerProperties));
+        }
       }
-    }
 
-    if (compressionDictionary != null) {
-      LOGGER.info("Zstd dictionary size = {} bytes", compressionDictionary.limit());
+      return Optional.ofNullable(compressionDictionary);
     } else {
-      LOGGER.info(
-          "No Compression dictionary is generated with the compression strategy {} "
-              + "and compressionMetricCollectionEnabled is {}",
-          storeSetting.compressionStrategy,
-          (pushJobSetting.compressionMetricCollectionEnabled ? "Enabled" : "Disabled"));
-    }
+      if (isZstdDictCreationRequired) {
+        if (!pushJobSetting.useMapperToBuildDict) {
+          LOGGER.info("Training Zstd dictionary");
+          compressionDictionary = ByteBuffer.wrap(getInputDataInfoProvider().getZstdDictTrainSamples());
+          isZstdDictCreationSuccess = true;
+        } else {
+          if (isZstdDictCreationSuccess) {
+            LOGGER.info(
+                "Retrieving the Zstd dictionary trained by {}",
+                ValidateSchemaAndBuildDictMapper.class.getSimpleName());
+            compressionDictionary = validateSchemaAndBuildDictMapperOutput.getZstdDictionary();
+          } else {
+            if (storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
+              // This should not happen
+              String err = "Dictionary creation failed for the configured ZSTD compression type";
+              LOGGER.error(err);
+              throw new VeniceException(err);
+            } // else case: Dictionary creation failed, but it was not needed for the push job to succeed
+          }
+        }
+      }
+      if (compressionDictionary != null) {
+        LOGGER.info("Zstd dictionary size = {} bytes", compressionDictionary.limit());
+      } else {
+        LOGGER.info(
+            "No Compression dictionary is generated with the compression strategy {} "
+                + "and compressionMetricCollectionEnabled is {}",
+            storeSetting.compressionStrategy,
+            (pushJobSetting.compressionMetricCollectionEnabled ? "Enabled" : "Disabled"));
+      }
 
-    return Optional.ofNullable(compressionDictionary);
+      return Optional.ofNullable(compressionDictionary);
+    }
   }
 
   private void throwVeniceException(Throwable e) throws VeniceException {
@@ -1957,13 +1992,14 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   /**
-   * This method will talk to parent controller to validate key schema.
+   * This method will validate the key schema in the input file against the one registered in Venice.
    */
   private void validateKeySchema(
       ControllerClient controllerClient,
       PushJobSetting setting,
-      PushJobSchemaInfo pushJobSchemaInfo) {
-    Schema serverSchema = getKeySchemaFromController(controllerClient, setting.controllerRetries, setting.storeName);
+      PushJobSchemaInfo pushJobSchemaInfo,
+      StoreSetting storeSetting) {
+    Schema serverSchema = storeSetting.keySchema;
     Schema clientSchema = AvroCompatibilityHelper.parse(pushJobSchemaInfo.getKeySchemaString());
     String canonicalizedServerSchema = AvroCompatibilityHelper.toParsingForm(serverSchema);
     String canonicalizedClientSchema = AvroCompatibilityHelper.toParsingForm(clientSchema);
@@ -2158,6 +2194,8 @@ public class VenicePushJob implements AutoCloseable {
       }
     }
 
+    storeSetting.keySchema = getKeySchemaFromController(controllerClient, setting.controllerRetries, setting.storeName);
+
     if (setting.isSourceKafka) {
       int sourceVersionNumber = Version.parseVersionFromKafkaTopicName(pushJobSetting.kafkaInputTopic);
       Optional<Version> sourceVersion = storeResponse.getStore().getVersion(sourceVersionNumber);
@@ -2177,19 +2215,6 @@ public class VenicePushJob implements AutoCloseable {
       storeSetting.storeStorageQuota = Store.UNLIMITED_STORAGE_QUOTA;
 
       storeSetting.isChunkingEnabled = sourceVersion.get().isChunkingEnabled();
-
-      /**
-       * If the source topic is using compression algorithm, we will keep the compression in the new topic. There are two cases:
-       * 1. The source topic uses ZSTD with dictionary, we will copy the dictionary from source topic to new topic and pass-through.
-       * 2. Other compression algos like Gzip, we will pass-through the compressed msgs to new topic.
-       * For both cases, VPJ won't compress it again.
-       */
-      if (storeSetting.sourceKafkaInputVersionInfo.getCompressionStrategy()
-          .equals(CompressionStrategy.ZSTD_WITH_DICT)) {
-        storeSetting.compressionStrategy = CompressionStrategy.ZSTD_WITH_DICT;
-      } else {
-        storeSetting.compressionStrategy = CompressionStrategy.NO_OP;
-      }
     }
     return storeSetting;
   }
@@ -2310,14 +2335,6 @@ public class VenicePushJob implements AutoCloseable {
       }
       Version newVersion = newVersionOptional.get();
       Version sourceVersion = storeSetting.sourceKafkaInputVersionInfo;
-
-      if (sourceVersion.getCompressionStrategy() != newVersion.getCompressionStrategy()) {
-        throw new VeniceException(
-            "Compression strategy mismatch between the source version and the new version is "
-                + "not supported by Kafka Input right now, source version: " + sourceVersion.getNumber() + " is using: "
-                + sourceVersion.getCompressionStrategy() + ", new version: " + newVersion.getNumber() + " is using: "
-                + newVersion.getCompressionStrategy());
-      }
 
       // Chunked source version cannot be repushed if new version is not chunking enabled.
       if (sourceVersion.isChunkingEnabled() && !newVersion.isChunkingEnabled()) {
@@ -2654,6 +2671,10 @@ public class VenicePushJob implements AutoCloseable {
         // in.
         conf.set(RMD_SCHEMA_DIR, pushJobSetting.rmdSchemaDir);
       }
+      // Pass the compression strategy of source version to repush MR job
+      conf.set(
+          KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY,
+          storeSetting.sourceKafkaInputVersionInfo.getCompressionStrategy().name());
 
     } else {
       conf.setInt(VALUE_SCHEMA_ID_PROP, pushJobSchemaInfo.getValueSchemaId());
@@ -2732,7 +2753,7 @@ public class VenicePushJob implements AutoCloseable {
 
   protected void setupInputFormatConf(JobConf jobConf, PushJobSchemaInfo pushJobSchemaInfo, String inputDirectory) {
     if (pushJobSetting.isSourceKafka) {
-      Schema keySchemaFromController = getKeySchemaFromController(controllerClient, 3, pushJobSetting.storeName);
+      Schema keySchemaFromController = storeSetting.keySchema;
       String keySchemaString = AvroCompatibilityHelper.toParsingForm(keySchemaFromController);
       jobConf.set(KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP, keySchemaString);
       jobConf.setInputFormat(KafkaInputFormat.class);

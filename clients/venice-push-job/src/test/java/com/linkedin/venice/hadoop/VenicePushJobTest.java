@@ -41,6 +41,7 @@ import java.util.Collections;
 import java.util.Properties;
 import java.util.Set;
 import java.util.function.Consumer;
+import org.apache.avro.Schema;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -210,6 +211,12 @@ public class VenicePushJobTest {
     StoreResponse storeResponse = new StoreResponse();
     storeResponse.setStore(getStoreInfo(storeInfo));
     doReturn(storeResponse).when(client).getStore(TEST_STORE);
+
+    // mock key schema
+    SchemaResponse keySchemaResponse = new SchemaResponse();
+    keySchemaResponse.setId(1);
+    keySchemaResponse.setSchemaStr(Schema.create(Schema.Type.STRING).toString());
+    doReturn(keySchemaResponse).when(client).getKeySchema(TEST_STORE);
 
     return client;
   }

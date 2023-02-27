@@ -59,15 +59,18 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.KeyAndValueSchemas;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.text.DecimalFormat;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -87,6 +90,7 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.generic.IndexedRecord;
 import org.apache.avro.util.Utf8;
 import org.apache.commons.lang.StringUtils;
+import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
@@ -331,7 +335,7 @@ public abstract class TestBatch {
         new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
+  @Test(timeOut = TEST_TIMEOUT * 2, dataProvider = "Two-True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testZstdCompressingAvroRecordWhenFallbackAvailable(
       boolean compressionMetricCollectionEnabled,
       boolean useMapperToBuildDict) throws Exception {
@@ -347,6 +351,31 @@ public abstract class TestBatch {
 
     // Then, enabling dictionary compression. After some time has passed, dictionary would have been downloaded and the
     // new version should be served.
+    VPJValidator validator = (avroClient, vsonClient, metricsRepository) -> {
+      // Sleeping to allow dictionary download before version switch.
+      Utils.sleep(1000);
+      // test single get
+      for (int i = 1; i <= 100; i++) {
+        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "alternate_test_name_" + i);
+      }
+
+      // test batch get
+      for (int i = 0; i < 10; i++) {
+        Set<String> keys = new HashSet<>();
+        for (int j = 1; j <= 10; j++) {
+          keys.add(Integer.toString(i * 10 + j));
+        }
+
+        Map<CharSequence, CharSequence> values = (Map<CharSequence, CharSequence>) avroClient.batchGet(keys).get();
+        Assert.assertEquals(values.size(), 10);
+
+        for (int j = 1; j <= 10; j++) {
+          Assert.assertEquals(
+              values.get(Integer.toString(i * 10 + j)).toString(),
+              "alternate_test_name_" + ((i * 10) + j));
+        }
+      }
+    };
     testBatchStore(
         inputDir -> new KeyAndValueSchemas(writeAlternateSimpleAvroFileWithUserSchema(inputDir, false)),
         properties -> {
@@ -354,33 +383,28 @@ public abstract class TestBatch {
               .setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, String.valueOf(compressionMetricCollectionEnabled));
           properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, String.valueOf(useMapperToBuildDict));
         },
-        (avroClient, vsonClient, metricsRepository) -> {
-          // Sleeping to allow dictionary download before version switch.
-          Utils.sleep(1000);
-          // test single get
-          for (int i = 1; i <= 100; i++) {
-            Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "alternate_test_name_" + i);
-          }
-
-          // test batch get
-          for (int i = 0; i < 10; i++) {
-            Set<String> keys = new HashSet<>();
-            for (int j = 1; j <= 10; j++) {
-              keys.add(Integer.toString(i * 10 + j));
-            }
-
-            Map<CharSequence, CharSequence> values = (Map<CharSequence, CharSequence>) avroClient.batchGet(keys).get();
-            Assert.assertEquals(values.size(), 10);
-
-            for (int j = 1; j <= 10; j++) {
-              Assert.assertEquals(
-                  values.get(Integer.toString(i * 10 + j)).toString(),
-                  "alternate_test_name_" + ((i * 10) + j));
-            }
-          }
-        },
+        validator,
         storeName,
         new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
+    // Collect the dict of the current version.
+    String sourceTopic = Version.composeKafkaTopic(storeName, 2);
+    Properties props = new Properties();
+    props.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, veniceCluster.getKafka().getAddress());
+    VeniceProperties veniceProperties = new VeniceProperties(props);
+    ByteBuffer sourceDict = DictionaryUtils.readDictionaryFromKafka(sourceTopic, veniceProperties);
+
+    testRepush(storeName, validator);
+
+    /**
+     * Verify that the dictionary in the repushed version should be different from the source version.
+     * {@link testRepush} will repush twice, so tha latest repushed version will be 4.
+     */
+    String repushedTopic = Version.composeKafkaTopic(storeName, 4);
+    ByteBuffer repushedDict = DictionaryUtils.readDictionaryFromKafka(repushedTopic, veniceProperties);
+    Assert.assertNotEquals(
+        repushedDict,
+        sourceDict,
+        "The dict of repushed version should be different from the source version");
   }
 
   @Test(timeOut = TEST_TIMEOUT)
