@@ -80,8 +80,7 @@ public class TestDataRecoveryClient {
     doCallRealMethod().when(dataRecoveryClient).execute(any(), any());
     doReturn(true).when(dataRecoveryClient).confirmStores(any());
     // client executes three store recovery.
-    dataRecoveryClient
-        .execute(new DataRecoveryClient.DataRecoveryParams(null, "store1,store2,store3", null), cmdParams);
+    dataRecoveryClient.execute(new DataRecoveryClient.DataRecoveryParams("store1,store2,store3"), cmdParams);
   }
 
   private List<DataRecoveryTask> buildTasks(

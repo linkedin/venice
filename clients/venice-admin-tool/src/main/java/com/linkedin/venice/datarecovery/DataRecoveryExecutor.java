@@ -1,5 +1,7 @@
 package com.linkedin.venice.datarecovery;
 
+import static java.lang.Thread.*;
+
 import java.io.Console;
 import java.util.ArrayList;
 import java.util.List;
@@ -52,15 +54,14 @@ public class DataRecoveryExecutor {
   }
 
   private void shutdownAndAwaitTermination() {
-    pool.shutdown();
+    pool.shutdownNow();
     try {
       if (!pool.awaitTermination(DEFAULT_POOL_TIMEOUT_IN_SECONDS, TimeUnit.SECONDS)) {
         // Cancel currently executing tasks.
         pool.shutdownNow();
       }
     } catch (InterruptedException e) {
-      // (Re-)Cancel if current thread also interrupted.
-      pool.shutdownNow();
+      currentThread().interrupt();
     }
   }
 

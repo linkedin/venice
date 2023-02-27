@@ -612,10 +612,8 @@ public class AdminTool {
   private static void executeDataRecovery(CommandLine cmd) {
     String recoveryCommand = getRequiredArgument(cmd, Arg.RECOVERY_COMMAND);
     String sourceFabric = getRequiredArgument(cmd, Arg.SOURCE_FABRIC);
+    String stores = getRequiredArgument(cmd, Arg.STORES);
 
-    String recoveryCluster = getOptionalArgument(cmd, Arg.RECOVERY_CLUSTER);
-    String controllerUrl = getOptionalArgument(cmd, Arg.URL);
-    String stores = getOptionalArgument(cmd, Arg.STORES);
     String extraCommandArgs = getOptionalArgument(cmd, Arg.EXTRA_COMMAND_ARGS);
     boolean isDebuggingEnabled = cmd.hasOption(Arg.DEBUG.toString());
 
@@ -628,9 +626,8 @@ public class AdminTool {
     cmdParams.setDebug(isDebuggingEnabled);
 
     DataRecoveryClient dataRecoveryClient = new DataRecoveryClient();
-    DataRecoveryClient.DataRecoveryParams level =
-        new DataRecoveryClient.DataRecoveryParams(controllerUrl, stores, recoveryCluster);
-    dataRecoveryClient.execute(level, cmdParams);
+    DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(stores);
+    dataRecoveryClient.execute(params, cmdParams);
   }
 
   private static void createNewStore(CommandLine cmd) throws Exception {

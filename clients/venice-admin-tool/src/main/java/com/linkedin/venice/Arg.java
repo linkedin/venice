@@ -13,7 +13,6 @@ public enum Arg {
   CLUSTER("cluster", "c", true, "Name of Venice cluster"),
   CLUSTER_SRC("cluster-src", "cs", true, "Store migration original Venice cluster name"),
   CLUSTER_DEST("cluster-dest", "cd", true, "Store migration destination Venice cluster name"),
-  RECOVERY_CLUSTER("recovery-cluster", "rcl", true, "Cluster name for data recover"),
   STORE("store", "s", true, "Name of Venice store"), STORES("stores", "sts", true, "Name of a group of Venice stores"),
   VERSION("version", "v", true, "Active store version number"),
   LARGEST_USED_VERSION_NUMBER(

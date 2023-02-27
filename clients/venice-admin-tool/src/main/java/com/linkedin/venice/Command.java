@@ -72,7 +72,6 @@ import static com.linkedin.venice.Arg.PUSH_STREAM_SOURCE_ADDRESS;
 import static com.linkedin.venice.Arg.READABILITY;
 import static com.linkedin.venice.Arg.READ_COMPUTATION_ENABLED;
 import static com.linkedin.venice.Arg.READ_QUOTA;
-import static com.linkedin.venice.Arg.RECOVERY_CLUSTER;
 import static com.linkedin.venice.Arg.RECOVERY_COMMAND;
 import static com.linkedin.venice.Arg.REGIONS_FILTER;
 import static com.linkedin.venice.Arg.REGULAR_VERSION_ETL_ENABLED;
@@ -445,8 +444,7 @@ public enum Command {
   ),
   EXECUTE_DATA_RECOVERY(
       "execute-data-recovery", "Execute data recovery for a group of stores",
-      new Arg[] { RECOVERY_COMMAND, SOURCE_FABRIC },
-      new Arg[] { EXTRA_COMMAND_ARGS, URL, RECOVERY_CLUSTER, STORES, DEBUG }
+      new Arg[] { RECOVERY_COMMAND, STORES, SOURCE_FABRIC }, new Arg[] { EXTRA_COMMAND_ARGS, DEBUG }
   );
 
   private final String commandName;

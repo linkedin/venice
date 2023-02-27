@@ -1,13 +1,8 @@
 package com.linkedin.venice.datarecovery;
 
-import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.controllerapi.MultiStoreInfoResponse;
-import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.utils.Utils;
 import java.util.Scanner;
 import java.util.Set;
-import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -55,40 +50,22 @@ public class DataRecoveryClient {
   }
 
   public static class DataRecoveryParams {
-    private final String controllerUrl;
     private final String multiStores;
-    private final String recoveryCluster;
     private final Set<String> recoveryStores;
 
-    public DataRecoveryParams(String controllerUrl, String multiStores, String recoveryCluster) {
-      this.controllerUrl = controllerUrl;
+    public DataRecoveryParams(String multiStores) {
       this.multiStores = multiStores;
-      this.recoveryCluster = recoveryCluster;
-      this.recoveryStores = calculateRecoveryStoreNames(this.controllerUrl, this.multiStores, this.recoveryCluster);
+      this.recoveryStores = calculateRecoveryStoreNames(this.multiStores);
     }
 
     public Set<String> getRecoveryStores() {
       return recoveryStores;
     }
 
-    private Set<String> calculateRecoveryStoreNames(String controllerUrl, String multiStores, String recoveryCluster) {
+    private Set<String> calculateRecoveryStoreNames(String multiStores) {
       Set<String> storeNames = null;
-      // Give high priority to multiStores, if it contains meaningful data, ignore recoveryCluster.
       if (multiStores != null && !multiStores.isEmpty()) {
         storeNames = Utils.parseCommaSeparatedStringToSet(multiStores);
-      } else if (controllerUrl != null && recoveryCluster != null) {
-        MultiStoreInfoResponse status;
-        try (ControllerClient client =
-            ControllerClient.constructClusterControllerClient(recoveryCluster, controllerUrl)) {
-          status = client.getClusterStores(recoveryCluster);
-        }
-        if (status != null) {
-          storeNames = status.getStoreInfoList()
-              .stream()
-              .map(StoreInfo::getName)
-              .filter(name -> !Store.isSystemStore(name))
-              .collect(Collectors.toSet());
-        }
       }
       return storeNames;
     }
