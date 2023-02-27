@@ -3,6 +3,7 @@ package com.linkedin.venice.controller.kafka;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
@@ -37,13 +38,13 @@ public class TopicCleanupServiceForParentController extends TopicCleanupService 
   }
 
   private void cleanupVeniceTopics(TopicManager topicManager) {
-    Map<String, Map<String, Long>> allStoreTopics = getAllVeniceStoreTopicsRetentions(topicManager);
+    Map<String, Map<PubSubTopic, Long>> allStoreTopics = getAllVeniceStoreTopicsRetentions(topicManager);
     allStoreTopics.forEach((storeName, topics) -> {
       topics.forEach((topic, retention) -> {
         if (getAdmin().isTopicTruncatedBasedOnRetention(retention)) {
           // Topic may be deleted after delay
           int remainingFactor = storeToCountdownForDeletion.merge(
-              topic + "_" + topicManager.getKafkaBootstrapServers(),
+              topic.getName() + "_" + topicManager.getKafkaBootstrapServers(),
               delayFactor,
               (oldVal, givenVal) -> oldVal - 1);
           if (remainingFactor > 0) {

@@ -23,7 +23,6 @@ import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyDouble;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.anyLong;
-import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.argThat;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doReturn;
@@ -73,6 +72,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
@@ -157,6 +157,7 @@ public class AdminConsumptionTaskTest {
   public void methodSetup() {
     clusterName = Utils.getUniqueString("test-cluster");
     topicName = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
+    PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(topicName);
     executor = Executors.newCachedThreadPool();
     inMemoryKafkaBroker = new InMemoryKafkaBroker("local");
     inMemoryKafkaBroker.createTopic(topicName, AdminTopicUtils.PARTITION_NUM_FOR_ADMIN_TOPIC);
@@ -175,9 +176,9 @@ public class AdminConsumptionTaskTest {
 
     TopicManager topicManager = mock(TopicManager.class);
     // By default, topic has already been created
-    doReturn(new HashSet<>(Arrays.asList(topicName))).when(topicManager).listTopics();
+    doReturn(new HashSet<>(Arrays.asList(pubSubTopic))).when(topicManager).listTopics();
     doReturn(topicManager).when(admin).getTopicManager();
-    doReturn(true).when(topicManager).containsTopicAndAllPartitionsAreOnline(topicName);
+    doReturn(true).when(topicManager).containsTopicAndAllPartitionsAreOnline(pubSubTopic);
   }
 
   @AfterMethod
@@ -307,12 +308,12 @@ public class AdminConsumptionTaskTest {
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), isParent);
     executor.submit(task);
     verify(admin, timeout(TIMEOUT).atLeastOnce()).isLeaderControllerFor(clusterName);
+    PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(AdminTopicUtils.getTopicNameFromClusterName(clusterName));
     if (isParent) {
-      verify(topicManager, timeout(TIMEOUT))
-          .createTopic(AdminTopicUtils.getTopicNameFromClusterName(clusterName), 1, 1, true, false, Optional.empty());
+      verify(topicManager, timeout(TIMEOUT)).createTopic(pubSubTopic, 1, 1, true, false, Optional.empty());
       verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyLong());
     } else {
-      verify(topicManager, never()).createTopic(anyString(), anyInt(), anyInt(), anyBoolean(), anyBoolean(), any());
+      verify(topicManager, never()).createTopic(any(), anyInt(), anyInt(), anyBoolean(), anyBoolean(), any());
       verify(mockKafkaConsumer, never()).subscribe(any(), anyLong());
     }
     task.close();

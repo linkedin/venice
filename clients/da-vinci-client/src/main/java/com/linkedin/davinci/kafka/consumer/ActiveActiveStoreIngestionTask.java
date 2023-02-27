@@ -36,6 +36,7 @@ import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -748,7 +749,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     final int partition = partitionConsumptionState.getPartition();
     final PubSubTopic currentLeaderTopic =
         partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
-    final String newSourceTopicName = topicSwitch.sourceTopicName.toString();
     final PubSubTopicPartition sourceTopicPartition = partitionConsumptionState.getSourceTopicPartition(newSourceTopic);
     Map<String, Long> upstreamOffsetsByKafkaURLs = new HashMap<>(topicSwitch.sourceKafkaServers.size());
 
@@ -770,12 +770,11 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           rewindStartTimestamp = topicSwitch.rewindStartTimestamp;
         }
         if (rewindStartTimestamp > 0) {
+          PubSubTopicPartition newSourceTopicPartition =
+              new PubSubTopicPartitionImpl(newSourceTopic, sourceTopicPartition.getPartitionNumber());
           try {
-            upstreamStartOffset = getTopicPartitionOffsetByKafkaURL(
-                sourceKafkaURL,
-                newSourceTopicName,
-                sourceTopicPartition.getPartitionNumber(),
-                rewindStartTimestamp);
+            upstreamStartOffset =
+                getTopicPartitionOffsetByKafkaURL(sourceKafkaURL, newSourceTopicPartition, rewindStartTimestamp);
           } catch (Exception e) {
             /**
              * This is actually tricky. Potentially we could return a -1 value here, but this has the gotcha that if we
@@ -835,7 +834,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         String.format(
             "Leader failed to produce the last message to version topic before switching feed topic from %s to %s on partition %s",
             currentLeaderTopic,
-            newSourceTopicName,
+            newSourceTopic,
             partition));
 
     if (topicSwitch.sourceKafkaServers.size() != 1
@@ -844,7 +843,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       LOGGER.info(
           "{} enabled remote consumption and switch to topic {} partition {} with offset by Kafka URL mapping {}",
           consumerTaskId,
-          newSourceTopicName,
+          newSourceTopic,
           sourceTopicPartition,
           upstreamOffsetsByKafkaURLs);
     }
@@ -878,7 +877,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         "{} leader successfully switch feed topic from {} to {} on partition {} with offset by Kafka URL mapping {}",
         consumerTaskId,
         currentLeaderTopic,
-        newSourceTopicName,
+        newSourceTopic,
         partition,
         upstreamOffsetsByKafkaURLs);
 
@@ -945,8 +944,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         if (rewindStartTimestamp > 0) {
           long upstreamStartOffset = OffsetRecord.LOWEST_OFFSET;
           try {
-            upstreamStartOffset = getTopicManager(sourceKafkaURL.toString())
-                .getPartitionOffsetByTime(newSourceTopicName, newSourceTopicPartition, rewindStartTimestamp);
+            PubSubTopicPartition newSourceTP = new PubSubTopicPartitionImpl(newSourceTopic, newSourceTopicPartition);
+            upstreamStartOffset =
+                getTopicManager(sourceKafkaURL.toString()).getPartitionOffsetByTime(newSourceTP, rewindStartTimestamp);
             numberOfContactedBrokers.getAndIncrement();
           } catch (Exception e) {
             // TODO: Catch more specific Exception?
@@ -1161,7 +1161,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
           // Fall back to calculate offset lag in the old way
           return (cachedKafkaMetadataGetter
-              .getOffset(getTopicManager(kafkaSourceAddress), currentLeaderTopic.getName(), pcs.getUserPartition()) - 1)
+              .getOffset(getTopicManager(kafkaSourceAddress), currentLeaderTopic, pcs.getUserPartition()) - 1)
               - pcs.getLeaderConsumedUpstreamRTOffset(kafkaSourceAddress);
         })
         .sum();
@@ -1275,11 +1275,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       PartitionConsumptionState pcs) {
     return () -> {
       // Calculate upstream offset
-      long upstreamOffset = getTopicPartitionOffsetByKafkaURL(
-          sourceKafkaUrl,
-          sourceTopicPartition.getPubSubTopic().getName(),
-          sourceTopicPartition.getPartitionNumber(),
-          rewindStartTimestamp);
+      long upstreamOffset =
+          getTopicPartitionOffsetByKafkaURL(sourceKafkaUrl, sourceTopicPartition, rewindStartTimestamp);
 
       // Subscribe (unsubscribe should have processed correctly regardless of remote broker state)
       consumerSubscribe(sourceTopicPartition, upstreamOffset, sourceKafkaUrl);

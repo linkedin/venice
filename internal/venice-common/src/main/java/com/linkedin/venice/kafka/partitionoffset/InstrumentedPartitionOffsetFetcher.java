@@ -1,5 +1,7 @@
 package com.linkedin.venice.kafka.partitionoffset;
 
+import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import it.unimi.dsi.fastutil.ints.Int2LongMap;
@@ -7,7 +9,6 @@ import java.util.List;
 import javax.annotation.Nonnull;
 import org.apache.commons.lang.Validate;
 import org.apache.kafka.common.PartitionInfo;
-import org.apache.kafka.common.TopicPartition;
 
 
 public class InstrumentedPartitionOffsetFetcher implements PartitionOffsetFetcher {
@@ -28,7 +29,7 @@ public class InstrumentedPartitionOffsetFetcher implements PartitionOffsetFetche
   }
 
   @Override
-  public Int2LongMap getTopicLatestOffsets(String topic) {
+  public Int2LongMap getTopicLatestOffsets(PubSubTopic topic) {
     final long startTimeMs = time.getMilliseconds();
     Int2LongMap res = partitionOffsetFetcher.getTopicLatestOffsets(topic);
     stats.recordLatency(
@@ -38,9 +39,9 @@ public class InstrumentedPartitionOffsetFetcher implements PartitionOffsetFetche
   }
 
   @Override
-  public long getPartitionLatestOffsetAndRetry(String topic, int partition, int retries) {
+  public long getPartitionLatestOffsetAndRetry(PubSubTopicPartition topicPartition, int retries) {
     final long startTimeMs = time.getMilliseconds();
-    long res = partitionOffsetFetcher.getPartitionLatestOffsetAndRetry(topic, partition, retries);
+    long res = partitionOffsetFetcher.getPartitionLatestOffsetAndRetry(topicPartition, retries);
     stats.recordLatency(
         PartitionOffsetFetcherStats.OCCURRENCE_LATENCY_SENSOR_TYPE.GET_PARTITION_LATEST_OFFSET_WITH_RETRY,
         Utils.calculateDurationMs(time, startTimeMs));
@@ -48,9 +49,9 @@ public class InstrumentedPartitionOffsetFetcher implements PartitionOffsetFetche
   }
 
   @Override
-  public long getPartitionOffsetByTime(String topic, int partition, long timestamp) {
+  public long getPartitionOffsetByTime(PubSubTopicPartition topicPartition, long timestamp) {
     final long startTimeMs = time.getMilliseconds();
-    long res = partitionOffsetFetcher.getPartitionOffsetByTime(topic, partition, timestamp);
+    long res = partitionOffsetFetcher.getPartitionOffsetByTime(topicPartition, timestamp);
     stats.recordLatency(
         PartitionOffsetFetcherStats.OCCURRENCE_LATENCY_SENSOR_TYPE.GET_PARTITION_OFFSET_BY_TIME,
         Utils.calculateDurationMs(time, startTimeMs));
@@ -58,9 +59,9 @@ public class InstrumentedPartitionOffsetFetcher implements PartitionOffsetFetche
   }
 
   @Override
-  public long getProducerTimestampOfLastDataRecord(String topic, int partition, int retries) {
+  public long getProducerTimestampOfLastDataRecord(PubSubTopicPartition topicPartition, int retries) {
     final long startTimeMs = time.getMilliseconds();
-    long res = partitionOffsetFetcher.getProducerTimestampOfLastDataRecord(topic, partition, retries);
+    long res = partitionOffsetFetcher.getProducerTimestampOfLastDataRecord(topicPartition, retries);
     stats.recordLatency(
         PartitionOffsetFetcherStats.OCCURRENCE_LATENCY_SENSOR_TYPE.GET_LATEST_PRODUCER_TIMESTAMP_ON_DATA_RECORD_WITH_RETRY,
         Utils.calculateDurationMs(time, startTimeMs));
@@ -68,7 +69,7 @@ public class InstrumentedPartitionOffsetFetcher implements PartitionOffsetFetche
   }
 
   @Override
-  public List<PartitionInfo> partitionsFor(String topic) {
+  public List<PartitionInfo> partitionsFor(PubSubTopic topic) {
     final long startTimeMs = time.getMilliseconds();
     List<PartitionInfo> res = partitionOffsetFetcher.partitionsFor(topic);
     stats.recordLatency(
@@ -78,7 +79,7 @@ public class InstrumentedPartitionOffsetFetcher implements PartitionOffsetFetche
   }
 
   @Override
-  public long getOffsetByTimeIfOutOfRange(TopicPartition topicPartition, long timestamp) {
+  public long getOffsetByTimeIfOutOfRange(PubSubTopicPartition topicPartition, long timestamp) {
     final long startTimeMs = time.getMilliseconds();
     long res = partitionOffsetFetcher.getOffsetByTimeIfOutOfRange(topicPartition, timestamp);
     stats.recordLatency(

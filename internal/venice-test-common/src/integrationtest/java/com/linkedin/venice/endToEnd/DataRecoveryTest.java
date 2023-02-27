@@ -44,6 +44,7 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -76,6 +77,7 @@ public class DataRecoveryTest {
   private List<VeniceMultiClusterWrapper> childDatacenters;
   private List<VeniceControllerWrapper> parentControllers;
   private String clusterName;
+  private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @BeforeClass(alwaysRun = true)
   public void setUp() {
@@ -166,7 +168,9 @@ public class DataRecoveryTest {
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
         Admin dc1Admin = childDatacenters.get(1).getLeaderController(clusterName).getVeniceAdmin();
         Assert.assertTrue(dc1Admin.getStore(clusterName, storeName).containsVersion(1));
-        Assert.assertTrue(dc1Admin.getTopicManager().containsTopic(Version.composeKafkaTopic(storeName, 1)));
+        Assert.assertTrue(
+            dc1Admin.getTopicManager()
+                .containsTopic(pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 1))));
       });
     }
   }

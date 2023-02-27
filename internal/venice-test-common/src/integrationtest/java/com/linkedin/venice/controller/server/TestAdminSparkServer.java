@@ -980,7 +980,9 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
     childControllerAdmin.incrementVersionIdempotent(clusterName, storeName, "test", 1, 1);
     String topicToDelete = Version.composeKafkaTopic(storeName, 1);
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      Assert.assertTrue(childControllerAdmin.getTopicManager().containsTopic(topicToDelete));
+      Assert.assertTrue(
+          childControllerAdmin.getTopicManager()
+              .containsTopic(cluster.getPubSubTopicRepository().getTopic(topicToDelete)));
       Assert.assertFalse(childControllerAdmin.isTopicTruncated(topicToDelete));
     });
     controllerClient.deleteKafkaTopic(topicToDelete);

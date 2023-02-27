@@ -1,6 +1,8 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
@@ -11,11 +13,14 @@ import org.testng.annotations.Test;
 
 
 public class CachedKafkaMetadataGetterTest {
+  private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+
   @Test
   public void testCacheWillResetStatusWhenExceptionIsThrown() {
     CachedKafkaMetadataGetter cachedKafkaMetadataGetter = new CachedKafkaMetadataGetter(1000);
-    CachedKafkaMetadataGetter.KafkaMetadataCacheKey key =
-        new CachedKafkaMetadataGetter.KafkaMetadataCacheKey("server", "topic", 1);
+    CachedKafkaMetadataGetter.KafkaMetadataCacheKey key = new CachedKafkaMetadataGetter.KafkaMetadataCacheKey(
+        "server",
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("topic"), 1));
     Map<CachedKafkaMetadataGetter.KafkaMetadataCacheKey, CachedKafkaMetadataGetter.ValueAndExpiryTime<Long>> offsetCache =
         new VeniceConcurrentHashMap<>();
     CachedKafkaMetadataGetter.ValueAndExpiryTime<Long> valueCache =

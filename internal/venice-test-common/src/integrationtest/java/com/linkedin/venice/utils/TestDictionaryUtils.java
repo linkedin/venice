@@ -12,6 +12,8 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.IOException;
@@ -36,17 +38,19 @@ public class TestDictionaryUtils {
   private ZkServerWrapper zkServer;
   private TopicManager manager;
   private TestMockTime mockTime;
+  private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   private String getTopic() {
     String callingFunction = Thread.currentThread().getStackTrace()[2].getMethodName();
-    String topicName = Version.composeKafkaTopic(Utils.getUniqueString(callingFunction), 1);
+    PubSubTopic pubSubTopic =
+        pubSubTopicRepository.getTopic(Version.composeKafkaTopic(Utils.getUniqueString(callingFunction), 1));
     int replicas = 1;
-    manager.createTopic(topicName, PARTITION_COUNT, replicas, false);
+    manager.createTopic(pubSubTopic, PARTITION_COUNT, replicas, false);
     TestUtils.waitForNonDeterministicAssertion(
         WAIT_TIME,
         TimeUnit.SECONDS,
-        () -> Assert.assertTrue(manager.containsTopicAndAllPartitionsAreOnline(topicName)));
-    return topicName;
+        () -> Assert.assertTrue(manager.containsTopicAndAllPartitionsAreOnline(pubSubTopic)));
+    return pubSubTopic.getName();
   }
 
   private Properties getKafkaProperties() {

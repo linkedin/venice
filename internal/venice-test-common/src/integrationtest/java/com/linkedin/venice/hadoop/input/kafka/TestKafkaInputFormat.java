@@ -9,6 +9,7 @@ import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -36,6 +37,7 @@ public class TestKafkaInputFormat {
   private KafkaBrokerWrapper kafka;
   private TopicManager manager;
   private ZkServerWrapper zkServer;
+  private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @BeforeClass
   public void setUp() {
@@ -56,8 +58,8 @@ public class TestKafkaInputFormat {
   }
 
   public String getTopic(int numRecord, int numPartition) {
-    String topicName = Utils.getUniqueString("test_kafka_input_format");
-    manager.createTopic(topicName, numPartition, 1, true);
+    String topicName = Utils.getUniqueString("test_kafka_input_format") + "_v1";
+    manager.createTopic(pubSubTopicRepository.getTopic(topicName), numPartition, 1, true);
     VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(kafka.getAddress());
     try (VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterFactory.createBasicVeniceWriter(topicName)) {
       for (int i = 0; i < numRecord; ++i) {

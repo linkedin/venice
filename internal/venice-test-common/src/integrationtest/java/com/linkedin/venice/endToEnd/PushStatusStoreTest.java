@@ -37,6 +37,8 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
@@ -71,6 +73,7 @@ public class PushStatusStoreTest {
   private D2Client d2Client;
   private PushStatusStoreReader reader;
   private String storeName;
+  private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @BeforeClass
   public void setUp() {
@@ -157,10 +160,12 @@ public class PushStatusStoreTest {
     assertFalse(admin.isTopicTruncated(pushStatusStoreTopic));
     TestUtils.assertCommand(controllerClient.disableAndDeleteStore(storeName));
 
+    PubSubTopic pushStatusStorePubSubTopic = pubSubTopicRepository.getTopic(pushStatusStoreTopic);
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
       assertFalse(admin.isResourceStillAlive(pushStatusStoreTopic));
       assertTrue(
-          !admin.getTopicManager().containsTopic(pushStatusStoreTopic) || admin.isTopicTruncated(pushStatusStoreTopic));
+          !admin.getTopicManager().containsTopic(pushStatusStorePubSubTopic)
+              || admin.isTopicTruncated(pushStatusStoreTopic));
     });
   }
 

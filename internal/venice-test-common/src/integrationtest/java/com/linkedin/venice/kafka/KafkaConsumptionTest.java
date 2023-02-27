@@ -84,27 +84,26 @@ public class KafkaConsumptionTest {
   private TestMockTime remoteMockTime;
   private ZkServerWrapper localZkServer;
   private ZkServerWrapper remoteZkServer;
-  private String versionTopicName;
   private PubSubTopic versionTopic;
   private KafkaClientFactory localKafkaClientFactory;
   private KafkaClientFactory remoteKafkaClientFactory;
 
-  private String getTopic() {
+  private PubSubTopic getTopic() {
     String callingFunction = Thread.currentThread().getStackTrace()[2].getMethodName();
-    String topicName = Utils.getUniqueString(callingFunction) + "_v1";
+    PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString(callingFunction) + "_v1");
     int partitions = 1;
     int replicas = 1;
-    topicManager.createTopic(topicName, partitions, replicas, false);
+    topicManager.createTopic(versionTopic, partitions, replicas, false);
     TestUtils.waitForNonDeterministicAssertion(
         WAIT_TIME_IN_SECONDS,
         TimeUnit.SECONDS,
-        () -> Assert.assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(topicName)));
-    remoteTopicManager.createTopic(topicName, partitions, replicas, false);
+        () -> Assert.assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(versionTopic)));
+    remoteTopicManager.createTopic(versionTopic, partitions, replicas, false);
     TestUtils.waitForNonDeterministicAssertion(
         WAIT_TIME_IN_SECONDS,
         TimeUnit.SECONDS,
-        () -> Assert.assertTrue(remoteTopicManager.containsTopicAndAllPartitionsAreOnline(topicName)));
-    return topicName;
+        () -> Assert.assertTrue(remoteTopicManager.containsTopicAndAllPartitionsAreOnline(versionTopic)));
+    return versionTopic;
   }
 
   @BeforeClass
@@ -194,8 +193,7 @@ public class KafkaConsumptionTest {
         topicExistenceChecker,
         pubSubDeserializer);
 
-    versionTopicName = getTopic();
-    versionTopic = pubSubTopicRepository.getTopic(versionTopicName);
+    versionTopic = getTopic();
     int partition = 0;
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(versionTopic, partition);
     StoreIngestionTask storeIngestionTask = mock(StoreIngestionTask.class);
@@ -230,11 +228,11 @@ public class KafkaConsumptionTest {
     int controlRecordsNum = 3;
     for (int i = 0; i < dataRecordsNum; i++) {
       timestamp += 1000;
-      produceToKafka(versionTopicName, true, timestamp, localKafkaUrl);
+      produceToKafka(versionTopic.getName(), true, timestamp, localKafkaUrl);
     }
     for (int i = 0; i < controlRecordsNum; i++) {
       timestamp += 1000;
-      produceToKafka(versionTopicName, false, timestamp, localKafkaUrl);
+      produceToKafka(versionTopic.getName(), false, timestamp, localKafkaUrl);
     }
     final int localExpectedRecordsNum = dataRecordsNum + controlRecordsNum;
     waitForNonDeterministicCompletion(
@@ -247,11 +245,11 @@ public class KafkaConsumptionTest {
     controlRecordsNum = 4;
     for (int i = 0; i < dataRecordsNum; i++) {
       timestamp += 1000;
-      produceToKafka(versionTopicName, true, timestamp, remoteKafkaUrl);
+      produceToKafka(versionTopic.getName(), true, timestamp, remoteKafkaUrl);
     }
     for (int i = 0; i < controlRecordsNum; i++) {
       timestamp += 1000;
-      produceToKafka(versionTopicName, false, timestamp, remoteKafkaUrl);
+      produceToKafka(versionTopic.getName(), false, timestamp, remoteKafkaUrl);
     }
     final int remoteExpectedRecordsNum = dataRecordsNum + controlRecordsNum;
     waitForNonDeterministicCompletion(

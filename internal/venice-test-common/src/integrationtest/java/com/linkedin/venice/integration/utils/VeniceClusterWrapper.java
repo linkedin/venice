@@ -32,6 +32,7 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -115,6 +116,9 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   private final boolean sslToStorageNodes;
   private final boolean sslToKafka;
   private final Map<String, String> clusterToD2;
+
+  // TODO: pass it to every venice component.
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   private static Process veniceClusterProcess;
   // Controller discovery URLs are controllers that's created outside of this cluster wrapper but are overseeing the
@@ -1056,5 +1060,9 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
   public String getRegionName() {
     return regionName;
+  }
+
+  public PubSubTopicRepository getPubSubTopicRepository() {
+    return pubSubTopicRepository;
   }
 }
