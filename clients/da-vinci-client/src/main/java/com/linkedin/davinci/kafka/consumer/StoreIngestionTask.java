@@ -657,7 +657,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        * TODO: find a better solution
        */
       final long versionTopicPartitionOffset =
-          cachedKafkaMetadataGetter.getOffset(getTopicManager(localKafkaServer), kafkaVersionTopic, partitionId);
+          cachedKafkaMetadataGetter.getOffset(getTopicManager(localKafkaServer), versionTopic, partitionId);
       isLagAcceptable =
           versionTopicPartitionOffset <= partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset()
               + SLOPPY_OFFSET_CATCHUP_THRESHOLD;
@@ -747,13 +747,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                       realTimeTopicKafkaURLs));
             }
 
-            final String lagMeasurementTopic = realTimeTopic.getName();
+            final PubSubTopic lagMeasurementTopic = pubSubTopicRepository.getTopic(realTimeTopic.getName());
+            final PubSubTopicPartition pubSubTopicPartition =
+                new PubSubTopicPartitionImpl(lagMeasurementTopic, partitionId);
             // Since DaVinci clients run in embedded mode, they may not have network ACLs to check remote RT to get
             // the latest producer timestamp in RT. Only use the latest producer time in local RT.
             final String lagMeasurementKafkaUrl = isDaVinciClient ? localKafkaServer : realTimeTopicKafkaURL;
 
-            if (!cachedKafkaMetadataGetter
-                .containsTopic(getTopicManager(lagMeasurementKafkaUrl), lagMeasurementTopic)) {
+            if (!cachedKafkaMetadataGetter.containsTopic(getTopicManager(lagMeasurementKafkaUrl), realTimeTopic)) {
               timestampLagIsAcceptable = true;
               if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msgIdentifier)) {
                 LOGGER.info(
@@ -762,10 +763,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                     lagMeasurementTopic);
               }
             } else {
-              long latestProducerTimestampInTopic = cachedKafkaMetadataGetter.getProducerTimestampOfLastDataMessage(
-                  getTopicManager(lagMeasurementKafkaUrl),
-                  lagMeasurementTopic,
-                  partitionId);
+              long latestProducerTimestampInTopic = cachedKafkaMetadataGetter
+                  .getProducerTimestampOfLastDataMessage(getTopicManager(lagMeasurementKafkaUrl), pubSubTopicPartition);
               if (latestProducerTimestampInTopic < 0
                   || latestProducerTimestampInTopic <= latestConsumedProducerTimestamp) {
                 timestampLagIsAcceptable = true;
@@ -1701,7 +1700,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * @see CachedKafkaMetadataGetter#getOffset(TopicManager, String, int)
      * TODO: Refactor this using PubSubTopicPartition.
      */
-    return cachedKafkaMetadataGetter.getOffset(getTopicManager(kafkaUrl), kafkaVersionTopic, partition);
+    return cachedKafkaMetadataGetter.getOffset(getTopicManager(kafkaUrl), versionTopic, partition);
   }
 
   protected long getPartitionOffsetLag(String kafkaSourceAddress, PubSubTopic topic, int partition) {
@@ -2543,7 +2542,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       boolean endOfPushReceived,
       PartitionConsumptionState partitionConsumptionState) {
-
     Lazy<Boolean> tolerateMissingMsgs = Lazy.of(() -> {
       TopicManager topicManager = topicManagerRepository.getTopicManager();
       // Tolerate missing message if store version is data recovery + hybrid and TS not received yet (due to source
@@ -2978,7 +2976,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // cluster these metastore writes could be spiky
         if (metaStoreWriter != null && !VeniceSystemStoreType.META_STORE.isSystemStore(storeName)) {
           String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
-          String metaStoreRT = Version.composeRealTimeTopic(metaStoreName);
+          PubSubTopic metaStoreRT = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(metaStoreName));
           if (getTopicManager(localKafkaServer).containsTopic(metaStoreRT)) {
             metaStoreWriter.writeInUseValueSchema(storeName, versionNumber, schemaId);
           }

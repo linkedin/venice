@@ -17,6 +17,8 @@ import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -44,6 +46,8 @@ public class AdminConsumptionTaskIntegrationTest {
   private static final String keySchema = "\"string\"";
   private static final String valueSchema = "\"string\"";
 
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+
   /**
    * This test is flaky on slower hardware, with a short timeout ):
    */
@@ -57,14 +61,14 @@ public class AdminConsumptionTaskIntegrationTest {
             100,
             0L,
             IntegrationTestPushUtils.getVeniceConsumerFactory(kafka))) {
-      String adminTopic = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
+      PubSubTopic adminTopic = pubSubTopicRepository.getTopic(AdminTopicUtils.getTopicNameFromClusterName(clusterName));
       topicManager.createTopic(adminTopic, 1, 1, true);
       String storeName = "test-store";
       try (
           VeniceControllerWrapper controller = ServiceFactory
               .getVeniceController(new VeniceControllerCreateOptions.Builder(clusterName, zkServer, kafka).build());
           VeniceWriter<byte[], byte[], byte[]> writer = TestUtils.getVeniceWriterFactory(kafka.getAddress())
-              .createVeniceWriter(new VeniceWriterOptions.Builder(adminTopic).build())) {
+              .createVeniceWriter(new VeniceWriterOptions.Builder(adminTopic.getName()).build())) {
         byte[] message = getStoreCreationMessage(clusterName, storeName, owner, "invalid_key_schema", valueSchema, 1);
         long badOffset = writer.put(new byte[0], message, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
             .get()

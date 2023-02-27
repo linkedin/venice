@@ -67,6 +67,9 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -131,6 +134,9 @@ public class TestPushJobWithNativeReplication {
   private List<VeniceMultiClusterWrapper> childDatacenters;
   private List<VeniceControllerWrapper> parentControllers;
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
+
+  private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository(); // TODO: Make this from global
+                                                                                     // wrapper.
 
   @DataProvider(name = "storeSize")
   public static Object[][] storeSize() {
@@ -228,10 +234,12 @@ public class TestPushJobWithNativeReplication {
             Assert.assertFalse(partitionIds.isEmpty());
             int partitionId = partitionIds.iterator().next();
             // Get the end offset of the selected partition from version topic
+            PubSubTopicPartition versionTopicPartition =
+                new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(versionTopic), partitionId);
             long latestOffsetInVersionTopic = childDataCenter.getRandomController()
                 .getVeniceAdmin()
                 .getTopicManager()
-                .getPartitionLatestOffsetAndRetry(versionTopic, partitionId, 5);
+                .getPartitionLatestOffsetAndRetry(versionTopicPartition, 5);
             // Get the offset metadata of the selected partition from storage node
             StorageMetadataService metadataService = serverInRemoteFabric.getStorageMetadataService();
             OffsetRecord offsetRecord = metadataService.getLastOffset(versionTopic, partitionId);

@@ -2,6 +2,9 @@ package com.linkedin.venice.kafka.admin;
 
 import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.RetryUtils;
 import java.io.Closeable;
 import java.time.Duration;
@@ -12,8 +15,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.Future;
 import org.apache.kafka.clients.admin.TopicDescription;
-import org.apache.kafka.common.KafkaFuture;
 import org.apache.kafka.common.errors.TimeoutException;
 
 
@@ -21,25 +24,25 @@ import org.apache.kafka.common.errors.TimeoutException;
  * In addition to the APIs below, implementers of this interface are expected to provide a public no-args constructor.
  */
 public interface KafkaAdminWrapper extends Closeable {
-  void initialize(Properties properties);
+  void initialize(Properties properties, PubSubTopicRepository pubSubTopicRepository);
 
-  void createTopic(String topicName, int numPartitions, int replication, Properties topicProperties);
+  void createTopic(PubSubTopic topicName, int numPartitions, int replication, Properties topicProperties);
 
-  KafkaFuture<Void> deleteTopic(String topicName);
+  Future<Void> deleteTopic(PubSubTopic topicName);
 
-  Set<String> listAllTopics();
+  Set<PubSubTopic> listAllTopics();
 
-  void setTopicConfig(String topicName, Properties topicProperties) throws TopicDoesNotExistException;
+  void setTopicConfig(PubSubTopic topicName, Properties topicProperties) throws TopicDoesNotExistException;
 
-  Map<String, Long> getAllTopicRetentions();
+  Map<PubSubTopic, Long> getAllTopicRetentions();
 
-  Properties getTopicConfig(String topicName) throws TopicDoesNotExistException;
+  Properties getTopicConfig(PubSubTopic topicName) throws TopicDoesNotExistException;
 
-  Properties getTopicConfigWithRetry(String topicName);
+  Properties getTopicConfigWithRetry(PubSubTopic topicName);
 
-  boolean containsTopic(String topic);
+  boolean containsTopic(PubSubTopic topic);
 
-  boolean containsTopicWithPartitionCheck(String topic, int partitionID);
+  boolean containsTopicWithPartitionCheck(PubSubTopicPartition pubSubTopicPartition);
 
   /**
    * Retry up to a maximum number of attempts to get the expected result. If the topic existence check returns with
@@ -52,7 +55,10 @@ public interface KafkaAdminWrapper extends Closeable {
    * @param expectedResult expected result
    * @return
    */
-  default boolean containsTopicWithExpectationAndRetry(String topic, int maxAttempts, final boolean expectedResult) {
+  default boolean containsTopicWithExpectationAndRetry(
+      PubSubTopic topic,
+      int maxAttempts,
+      final boolean expectedResult) {
     Duration defaultInitialBackoff = Duration.ofMillis(100);
     Duration defaultMaxBackoff = Duration.ofSeconds(5);
     Duration defaultMaxDuration = Duration.ofSeconds(60);
@@ -66,16 +72,14 @@ public interface KafkaAdminWrapper extends Closeable {
   }
 
   default boolean containsTopicWithPartitionCheckExpectationAndRetry(
-      String topic,
-      int partition,
+      PubSubTopicPartition pubSubTopicPartition,
       int maxAttempts,
       final boolean expectedResult) {
     Duration defaultInitialBackoff = Duration.ofMillis(100);
     Duration defaultMaxBackoff = Duration.ofSeconds(5);
     Duration defaultMaxDuration = Duration.ofSeconds(60);
     return containsTopicWithPartitionCheckExpectationAndRetry(
-        topic,
-        partition,
+        pubSubTopicPartition,
         maxAttempts,
         expectedResult,
         defaultInitialBackoff,
@@ -87,7 +91,7 @@ public interface KafkaAdminWrapper extends Closeable {
       Collections.unmodifiableList(Arrays.asList(VeniceRetriableException.class, TimeoutException.class));
 
   default boolean containsTopicWithExpectationAndRetry(
-      String topic,
+      PubSubTopic topic,
       int maxAttempts,
       final boolean expectedResult,
       Duration initialBackoff,
@@ -113,8 +117,7 @@ public interface KafkaAdminWrapper extends Closeable {
   }
 
   default boolean containsTopicWithPartitionCheckExpectationAndRetry(
-      String topic,
-      int partition,
+      PubSubTopicPartition pubSubTopicPartition,
       int maxAttempts,
       final boolean expectedResult,
       Duration initialBackoff,
@@ -128,9 +131,10 @@ public interface KafkaAdminWrapper extends Closeable {
 
     try {
       return RetryUtils.executeWithMaxAttemptAndExponentialBackoff(() -> {
-        if (expectedResult != this.containsTopicWithPartitionCheck(topic, partition)) {
+        if (expectedResult != this.containsTopicWithPartitionCheck(pubSubTopicPartition)) {
           throw new VeniceRetriableException(
-              "Retrying containsTopic check to get expected result: " + expectedResult + " for topic " + topic);
+              "Retrying containsTopic check to get expected result: " + expectedResult + " for :"
+                  + pubSubTopicPartition);
         }
         return expectedResult;
       }, maxAttempts, initialBackoff, maxBackoff, maxDuration, RETRIABLE_EXCEPTIONS);
@@ -139,11 +143,11 @@ public interface KafkaAdminWrapper extends Closeable {
     }
   }
 
-  Map<String, Properties> getSomeTopicConfigs(Set<String> topicNames);
+  Map<PubSubTopic, Properties> getSomeTopicConfigs(Set<PubSubTopic> topicNames);
 
   boolean isTopicDeletionUnderway();
 
   String getClassName();
 
-  Map<String, KafkaFuture<TopicDescription>> describeTopics(Collection<String> topicNames);
+  Map<PubSubTopic, Future<TopicDescription>> describeTopics(Collection<PubSubTopic> topicNames);
 }

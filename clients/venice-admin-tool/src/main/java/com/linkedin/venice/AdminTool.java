@@ -74,6 +74,7 @@ import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.SchemaCompatibility;
@@ -135,6 +136,8 @@ public class AdminTool {
   private static final String STATUS = "status";
   private static final String ERROR = "error";
   private static final String SUCCESS = "success";
+
+  private static final PubSubTopicRepository PUB_SUB_TOPIC_REPOSITORY = new PubSubTopicRepository();
 
   private static ControllerClient controllerClient;
   private static Optional<SSLFactory> sslFactory = Optional.empty();
@@ -1315,7 +1318,7 @@ public class AdminTool {
         new TopicManager(kafkaTimeOut, topicDeletionStatusPollingInterval, 0L, kafkaClientFactory);
     String topicName = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
     try {
-      topicManager.ensureTopicIsDeletedAndBlock(topicName);
+      topicManager.ensureTopicIsDeletedAndBlock(PUB_SUB_TOPIC_REPOSITORY.getTopic(topicName));
       long runTime = System.currentTimeMillis() - startTime;
       printObject("Topic '" + topicName + "' is deleted. Run time: " + runTime + " ms.");
     } catch (VeniceOperationAgainstKafkaTimedOut e) {

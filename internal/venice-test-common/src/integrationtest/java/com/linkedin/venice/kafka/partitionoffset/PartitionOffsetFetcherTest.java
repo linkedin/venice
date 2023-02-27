@@ -4,6 +4,9 @@ import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -17,6 +20,8 @@ import org.testng.annotations.Test;
 
 public class PartitionOffsetFetcherTest {
   private PubSubBrokerWrapper pubSubBrokerWrapper;
+
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @BeforeClass
   public void setUp() {
@@ -33,12 +38,16 @@ public class PartitionOffsetFetcherTest {
     KafkaClientFactory kafkaClientFactory = IntegrationTestPushUtils.getVeniceConsumerFactory(pubSubBrokerWrapper);
     try (PartitionOffsetFetcher fetcher = PartitionOffsetFetcherFactory.createDefaultPartitionOffsetFetcher(
         kafkaClientFactory,
-        Lazy.of(() -> kafkaClientFactory.getKafkaAdminClient(Optional.empty())),
+        Lazy.of(() -> kafkaClientFactory.getKafkaAdminClient(Optional.empty(), pubSubTopicRepository)),
         1 * Time.MS_PER_SECOND,
-        Optional.empty())) {
-      String topic = Utils.getUniqueString("topic");
-      Assert
-          .assertThrows(TopicDoesNotExistException.class, () -> fetcher.getPartitionLatestOffsetAndRetry(topic, 0, 1));
+        Optional.empty(),
+        pubSubTopicRepository)) {
+      String topic = Utils.getUniqueString("topic") + "_v1";
+      PubSubTopicPartition pubSubTopicPartition =
+          new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), 0);
+      Assert.assertThrows(
+          TopicDoesNotExistException.class,
+          () -> fetcher.getPartitionLatestOffsetAndRetry(pubSubTopicPartition, 1));
     }
   }
 }

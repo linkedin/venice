@@ -2,6 +2,7 @@ package com.linkedin.venice.kafka.partitionoffset;
 
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.lazy.Lazy;
 import io.tehuti.metrics.MetricsRepository;
@@ -13,7 +14,8 @@ public class PartitionOffsetFetcherFactory {
       KafkaClientFactory kafkaClientFactory,
       Lazy<KafkaAdminWrapper> kafkaAdminWrapper,
       long kafkaOperationTimeoutMs,
-      Optional<MetricsRepository> optionalMetricsRepository) {
+      Optional<MetricsRepository> optionalMetricsRepository,
+      PubSubTopicRepository pubSubTopicRepository) {
     PartitionOffsetFetcher partitionOffsetFetcher = new PartitionOffsetFetcherImpl(
         Lazy.of(() -> kafkaClientFactory.getRawBytesKafkaConsumer()),
         Lazy.of(() -> kafkaClientFactory.getRecordKafkaConsumer()),

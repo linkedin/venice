@@ -3,6 +3,7 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.utils.Pair;
 import java.io.Closeable;
 import java.util.HashMap;
@@ -117,10 +118,10 @@ public class TerminalStateTopicCheckerForParentController implements Runnable, C
    * corresponding Venice cluster.
    */
   private Map<String, Map<String, Long>> getRelevantVeniceVersionTopics() {
-    Map<String, Long> topicRetentions = parentController.getTopicManager().getAllTopicRetentions();
+    Map<PubSubTopic, Long> topicRetentions = parentController.getTopicManager().getAllTopicRetentions();
     Map<String, Map<String, Long>> allVeniceVersionTopics = new HashMap<>();
-    for (Map.Entry<String, Long> entry: topicRetentions.entrySet()) {
-      String topic = entry.getKey();
+    for (Map.Entry<PubSubTopic, Long> entry: topicRetentions.entrySet()) {
+      String topic = entry.getKey().getName();
       try {
         if (!Version.isRealTimeTopic(topic) && Version.isVersionTopicOrStreamReprocessingTopic(topic)) {
           String storeName = Version.parseStoreFromKafkaTopicName(topic);

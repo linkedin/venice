@@ -170,7 +170,8 @@ public class TestHybridQuota {
       runVPJ(vpjProperties, 2, controllerClient);
       String topicForStoreVersion2 = Version.composeKafkaTopic(storeName, 2);
       Assert.assertTrue(
-          topicManager.isTopicCompactionEnabled(topicForStoreVersion1),
+          topicManager
+              .isTopicCompactionEnabled(sharedVenice.getPubSubTopicRepository().getTopic(topicForStoreVersion1)),
           "topic: " + topicForStoreVersion1 + " should have compaction enabled");
       // We did not do any STREAM push here. For a version topic, it should have both hybrid store quota status and
       // offline

@@ -18,6 +18,10 @@ import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdap
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.SharedKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.serialization.DefaultSerializer;
+import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -46,6 +50,8 @@ public class PubSubSharedProducerAdapterFactoryTest {
   private TopicManager topicManager;
   private KafkaClientFactory kafkaClientFactory;
 
+  private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+
   @BeforeClass
   public void setUp() {
     pubSubBrokerWrapper = ServiceFactory.getPubSubBroker();
@@ -64,7 +70,7 @@ public class PubSubSharedProducerAdapterFactoryTest {
    */
   @Test(timeOut = 60000)
   public void testSharedProducerWithNonExistingTopic() throws Exception {
-    String existingTopic = "test-topic-1";
+    PubSubTopic existingTopic = pubSubTopicRepository.getTopic("test-topic-1");
     String nonExistingTopic = "test-topic-2";
     topicManager.createTopic(existingTopic, 1, 1, true);
 
@@ -80,7 +86,7 @@ public class PubSubSharedProducerAdapterFactoryTest {
       VeniceWriterFactory veniceWriterFactory =
           TestUtils.getVeniceWriterFactoryWithSharedProducer(properties, sharedKafkaProducerAdapterFactory);
       try (VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter1 = veniceWriterFactory.createVeniceWriter(
-          new VeniceWriterOptions.Builder(existingTopic).setUseKafkaKeySerializer(true).setPartitionCount(1).build())) {
+          new VeniceWriterOptions.Builder(existingTopic.getName()).setUseKafkaKeySerializer(true).setPartitionCount(1).build())) {
         CountDownLatch producedTopicPresent = new CountDownLatch(100);
         for (int i = 0; i < 100 && !Thread.interrupted(); i++) {
           try {
@@ -143,7 +149,7 @@ public class PubSubSharedProducerAdapterFactoryTest {
     }
 
     try (Consumer<KafkaKey, KafkaMessageEnvelope> consumer = kafkaClientFactory.getRecordKafkaConsumer()) {
-      List<TopicPartition> partitions = Collections.singletonList(new TopicPartition(existingTopic, 0));
+      List<TopicPartition> partitions = Collections.singletonList(new TopicPartition(existingTopic.getName(), 0));
       consumer.assign(partitions);
       Long end = consumer.endOffsets(partitions).get(partitions.get(0));
       Assert.assertTrue(end > 100L); // to account for the SOP that VW sends internally.

@@ -20,6 +20,8 @@ import com.linkedin.venice.controllerapi.LeaderControllerResponse;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.utils.Utils;
 import java.util.Optional;
 import org.apache.http.HttpStatus;
@@ -28,6 +30,8 @@ import spark.Route;
 
 
 public class ControllerRoutes extends AbstractRoute {
+  private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+
   public ControllerRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
     super(sslEnabled, accessController);
   }
@@ -82,12 +86,12 @@ public class ControllerRoutes extends AbstractRoute {
   }
 
   /**
-   * @see TopicManager#updateTopicCompactionPolicy(String, boolean)
+   * @see TopicManager#updateTopicCompactionPolicy(PubSubTopic, boolean)
    */
   public Route updateKafkaTopicLogCompaction(Admin admin) {
     return updateKafkaTopicConfig(admin, adminRequest -> {
       AdminSparkServer.validateParams(adminRequest, UPDATE_KAFKA_TOPIC_LOG_COMPACTION.getParams(), admin);
-      String topicName = adminRequest.queryParams(TOPIC);
+      PubSubTopic topicName = pubSubTopicRepository.getTopic(adminRequest.queryParams(TOPIC));
       boolean kafkaTopicLogCompactionEnabled = Utils.parseBooleanFromString(
           adminRequest.queryParams(KAFKA_TOPIC_LOG_COMPACTION_ENABLED),
           KAFKA_TOPIC_LOG_COMPACTION_ENABLED);
@@ -98,12 +102,12 @@ public class ControllerRoutes extends AbstractRoute {
   }
 
   /**
-   * @see TopicManager#updateTopicRetention(String, long)
+   * @see TopicManager#updateTopicRetention(PubSubTopic, long)
    */
   public Route updateKafkaTopicRetention(Admin admin) {
     return updateKafkaTopicConfig(admin, adminRequest -> {
       AdminSparkServer.validateParams(adminRequest, UPDATE_KAFKA_TOPIC_RETENTION.getParams(), admin);
-      String topicName = adminRequest.queryParams(TOPIC);
+      PubSubTopic topicName = pubSubTopicRepository.getTopic(adminRequest.queryParams(TOPIC));
       long kafkaTopicRetentionIsMs =
           Utils.parseLongFromString(adminRequest.queryParams(KAFKA_TOPIC_RETENTION_IN_MS), KAFKA_TOPIC_RETENTION_IN_MS);
       TopicManager topicManager = admin.getTopicManager();

@@ -23,6 +23,8 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -66,6 +68,8 @@ public class VeniceWriterTest {
   private TopicManager topicManager;
   private KafkaClientFactory kafkaClientFactory;
 
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+
   @BeforeClass
   public void setUp() {
     pubSubBrokerWrapper = ServiceFactory.getPubSubBroker();
@@ -84,7 +88,8 @@ public class VeniceWriterTest {
       throws ExecutionException, InterruptedException {
     String topicName = Utils.getUniqueString("topic-for-vw-thread-safety");
     int partitionCount = 1;
-    topicManager.createTopic(topicName, partitionCount, 1, true);
+    PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(topicName);
+    topicManager.createTopic(pubSubTopic, partitionCount, 1, true);
     Properties properties = new Properties();
     properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
     properties.put(ConfigKeys.PARTITIONER_CLASS, DefaultVenicePartitioner.class.getName());

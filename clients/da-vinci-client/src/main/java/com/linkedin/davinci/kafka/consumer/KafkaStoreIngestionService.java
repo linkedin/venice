@@ -343,7 +343,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       this.metaStoreWriter = new MetaStoreWriter(
           topicManagerRepository.getTopicManager(),
           veniceWriterFactoryForMetaStoreWriter,
-          zkSharedSchemaRepository.get());
+          zkSharedSchemaRepository.get(),
+          pubSubTopicRepository);
       this.metaSystemStoreReplicaStatusNotifier = new MetaSystemStoreReplicaStatusNotifier(
           serverConfig.getClusterName(),
           metaStoreWriter,

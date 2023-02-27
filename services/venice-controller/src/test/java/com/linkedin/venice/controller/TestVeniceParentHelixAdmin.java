@@ -68,6 +68,7 @@ import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.InvalidKeySchemaPartitioner;
 import com.linkedin.venice.pubsub.adapter.SimplePubSubProduceResultImpl;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.pushmonitor.PartitionStatus;
@@ -123,7 +124,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     parentAdmin.initStorageCluster(clusterName);
     verify(internalAdmin).getTopicManager();
     verify(topicManager, never()).createTopic(
-        topicName,
+        pubSubTopicRepository.getTopic(topicName),
         AdminTopicUtils.PARTITION_NUM_FOR_ADMIN_TOPIC,
         KAFKA_REPLICA_FACTOR,
         true,
@@ -133,11 +134,12 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
 
   @Test
   public void testStartWhenTopicNotExists() {
-    doReturn(false).when(topicManager).containsTopicAndAllPartitionsAreOnline(topicName);
+    PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(topicName);
+    doReturn(false).when(topicManager).containsTopicAndAllPartitionsAreOnline(pubSubTopic);
     parentAdmin.initStorageCluster(clusterName);
     verify(internalAdmin).getTopicManager();
     verify(topicManager).createTopic(
-        topicName,
+        pubSubTopic,
         AdminTopicUtils.PARTITION_NUM_FOR_ADMIN_TOPIC,
         KAFKA_REPLICA_FACTOR,
         true,
@@ -2008,18 +2010,18 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   @Test
   public void testGetKafkaTopicsByAge() {
     String storeName = Utils.getUniqueString("test-store");
-    List<String> versionTopics = parentAdmin.getKafkaTopicsByAge(storeName);
+    List<PubSubTopic> versionTopics = parentAdmin.getKafkaTopicsByAge(storeName);
     Assert.assertTrue(versionTopics.isEmpty());
 
-    Set<String> topicList = new HashSet<>();
-    topicList.add(storeName + "_v1");
-    topicList.add(storeName + "_v2");
-    topicList.add(storeName + "_v3");
+    Set<PubSubTopic> topicList = new HashSet<>();
+    topicList.add(pubSubTopicRepository.getTopic(storeName + "_v1"));
+    topicList.add(pubSubTopicRepository.getTopic(storeName + "_v2"));
+    topicList.add(pubSubTopicRepository.getTopic(storeName + "_v3"));
     doReturn(topicList).when(topicManager).listTopics();
     versionTopics = parentAdmin.getKafkaTopicsByAge(storeName);
     Assert.assertFalse(versionTopics.isEmpty());
-    String latestTopic = versionTopics.get(0);
-    Assert.assertEquals(latestTopic, storeName + "_v3");
+    PubSubTopic latestTopic = versionTopics.get(0);
+    Assert.assertEquals(latestTopic, pubSubTopicRepository.getTopic(storeName + "_v3"));
     Assert.assertTrue(topicList.containsAll(versionTopics));
     Assert.assertTrue(versionTopics.containsAll(topicList));
   }

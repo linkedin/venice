@@ -2,10 +2,10 @@ package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.controller.VeniceHelixAdmin.OfflinePushStatusInfo;
 import static com.linkedin.venice.controller.VeniceHelixAdmin.VERSION_ID_UNSET;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyInt;
-import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.eq;
@@ -45,6 +45,8 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ZKStore;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.pushmonitor.PushMonitor;
@@ -90,6 +92,8 @@ import org.testng.annotations.Test;
  */
 public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVeniceHelixAdmin {
   private final MetricsRepository metricsRepository = new MetricsRepository();
+
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
   private final static Logger LOGGER = LogManager.getLogger(TestVeniceHelixAdminWithSharedEnvironment.class);
 
   @BeforeClass(alwaysRun = true)
@@ -551,7 +555,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
 
     TopicManager mockedTopicManager = mock(TopicManager.class);
     doThrow(new VeniceOperationAgainstKafkaTimedOut("mock timeout")).when(mockedTopicManager)
-        .createTopic(anyString(), anyInt(), anyInt(), anyBoolean(), anyBoolean(), any(), eq(true));
+        .createTopic(any(), anyInt(), anyInt(), anyBoolean(), anyBoolean(), any(), eq(true));
     TopicManagerRepository mockedTopicManageRepository = mock(TopicManagerRepository.class);
     doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager();
     doReturn(mockedTopicManager).when(mockedTopicManageRepository).getTopicManager(any(String.class));
@@ -857,8 +861,8 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
 
   @Test
   public void testKillOfflinePush() throws Exception {
-    String participantStoreRTTopic =
-        Version.composeRealTimeTopic(VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName));
+    PubSubTopic participantStoreRTTopic = pubSubTopicRepository
+        .getTopic(Version.composeRealTimeTopic(VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName)));
     String newNodeId = Utils.getHelixNodeIdentifier(Utils.getHostName(), 9786);
     // Ensure original participant store would hang on bootstrap state.
     delayParticipantJobCompletion(true);
@@ -1101,9 +1105,10 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         TOTAL_TIMEOUT_FOR_SHORT_TEST_MS,
         TimeUnit.MILLISECONDS,
         () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == version.getNumber());
+    PubSubTopic storeVersionTopic =
+        pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, version.getNumber()));
     Assert.assertTrue(
-        veniceAdmin.getTopicManager()
-            .containsTopicAndAllPartitionsAreOnline(Version.composeKafkaTopic(storeName, version.getNumber())),
+        veniceAdmin.getTopicManager().containsTopicAndAllPartitionsAreOnline(storeVersionTopic),
         "Kafka topic should be created.");
     Assert.assertNotNull(metricsRepository.getMetric("." + storeName + "--successful_push_duration_sec_gauge.Gauge"));
 
@@ -1133,7 +1138,8 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     veniceAdmin.createStore(clusterName, storeName, storeOwner, "\"string\"", "\"string\"");
     Version version =
         veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
-    String versionTopic = Version.composeKafkaTopic(storeName, version.getNumber());
+    PubSubTopic versionTopic =
+        pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, version.getNumber()));
     Assert.assertTrue(
         veniceAdmin.getTopicManager().containsTopicAndAllPartitionsAreOnline(versionTopic),
         "Kafka topic should be created.");
@@ -1176,9 +1182,10 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
           TOTAL_TIMEOUT_FOR_SHORT_TEST_MS,
           TimeUnit.MILLISECONDS,
           () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == version.getNumber());
+      PubSubTopic storeVersionTopic =
+          pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, version.getNumber()));
       Assert.assertTrue(
-          veniceAdmin.getTopicManager()
-              .containsTopicAndAllPartitionsAreOnline(Version.composeKafkaTopic(storeName, version.getNumber())),
+          veniceAdmin.getTopicManager().containsTopicAndAllPartitionsAreOnline(storeVersionTopic),
           "Kafka topic should be created.");
 
       veniceAdmin.setStoreReadability(clusterName, storeName, false);
@@ -1420,8 +1427,8 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
       // Create ten topics and keep track of the active versions in the Store instance
       for (int versionNumber = 1; versionNumber <= NUMBER_OF_VERSIONS; versionNumber++) {
         Version version = new VersionImpl(storeName, versionNumber, Utils.getUniqueString(storeName));
-        String topicName = version.kafkaTopicName();
-        topicManager.createTopic(topicName, 1, 1, true);
+        PubSubTopic versionTopic = pubSubTopicRepository.getTopic(version.kafkaTopicName());
+        topicManager.createTopic(versionTopic, 1, 1, true);
         if (activeVersions.contains(versionNumber)) {
           store.addVersion(version);
         }
@@ -1432,10 +1439,11 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     // Sanity check...
     for (Store store: stores) {
       for (int versionNumber = 1; versionNumber <= NUMBER_OF_VERSIONS; versionNumber++) {
-        String topicName = Version.composeKafkaTopic(store.getName(), versionNumber);
+        PubSubTopic versionTopic =
+            pubSubTopicRepository.getTopic(Version.composeKafkaTopic(store.getName(), versionNumber));
         Assert.assertTrue(
-            topicManager.containsTopicAndAllPartitionsAreOnline(topicName),
-            "Topic '" + topicName + "' should exist.");
+            topicManager.containsTopicAndAllPartitionsAreOnline(versionTopic),
+            "Topic '" + versionTopic + "' should exist.");
       }
     }
 

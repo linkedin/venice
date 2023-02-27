@@ -8,6 +8,7 @@ import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIM
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -35,6 +36,7 @@ public class TestKafkaInputFormat {
 
   private PubSubBrokerWrapper kafka;
   private TopicManager manager;
+  private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @BeforeClass
   public void setUp() {
@@ -53,8 +55,8 @@ public class TestKafkaInputFormat {
   }
 
   public String getTopic(int numRecord, int numPartition) {
-    String topicName = Utils.getUniqueString("test_kafka_input_format");
-    manager.createTopic(topicName, numPartition, 1, true);
+    String topicName = Utils.getUniqueString("test_kafka_input_format") + "_v1";
+    manager.createTopic(pubSubTopicRepository.getTopic(topicName), numPartition, 1, true);
     VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(kafka.getAddress());
     try (VeniceWriter<byte[], byte[], byte[]> veniceWriter =
         veniceWriterFactory.createVeniceWriter(new VeniceWriterOptions.Builder(topicName).build())) {

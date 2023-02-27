@@ -9,6 +9,7 @@ import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
 import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumer;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.schema.SchemaReader;
@@ -98,22 +99,37 @@ public abstract class KafkaClientFactory {
     return new KafkaConsumer<>(propertiesWithSSL);
   }
 
-  public KafkaAdminWrapper getWriteOnlyKafkaAdmin(Optional<MetricsRepository> optionalMetricsRepository) {
-    return createAdminClient(getWriteOnlyAdminClass(), optionalMetricsRepository, "WriteOnlyKafkaAdminStats");
+  public KafkaAdminWrapper getWriteOnlyKafkaAdmin(
+      Optional<MetricsRepository> optionalMetricsRepository,
+      PubSubTopicRepository pubSubTopicRepository) {
+    return createAdminClient(
+        getWriteOnlyAdminClass(),
+        optionalMetricsRepository,
+        "WriteOnlyKafkaAdminStats",
+        pubSubTopicRepository);
   }
 
-  public KafkaAdminWrapper getReadOnlyKafkaAdmin(Optional<MetricsRepository> optionalMetricsRepository) {
-    return createAdminClient(getReadOnlyAdminClass(), optionalMetricsRepository, "ReadOnlyKafkaAdminStats");
+  public KafkaAdminWrapper getReadOnlyKafkaAdmin(
+      Optional<MetricsRepository> optionalMetricsRepository,
+      PubSubTopicRepository pubSubTopicRepository) {
+    return createAdminClient(
+        getReadOnlyAdminClass(),
+        optionalMetricsRepository,
+        "ReadOnlyKafkaAdminStats",
+        pubSubTopicRepository);
   }
 
-  public KafkaAdminWrapper getKafkaAdminClient(Optional<MetricsRepository> optionalMetricsRepository) {
-    return createAdminClient(getKafkaAdminClass(), optionalMetricsRepository, "KafkaAdminStats");
+  public KafkaAdminWrapper getKafkaAdminClient(
+      Optional<MetricsRepository> optionalMetricsRepository,
+      PubSubTopicRepository pubSubTopicRepository) {
+    return createAdminClient(getKafkaAdminClass(), optionalMetricsRepository, "KafkaAdminStats", pubSubTopicRepository);
   }
 
   private KafkaAdminWrapper createAdminClient(
       String kafkaAdminClientClass,
       Optional<MetricsRepository> optionalMetricsRepository,
-      String statsNamePrefix) {
+      String statsNamePrefix,
+      PubSubTopicRepository pubSubTopicRepository) {
     KafkaAdminWrapper adminWrapper =
         ReflectUtils.callConstructor(ReflectUtils.loadClass(kafkaAdminClientClass), new Class[0], new Object[0]);
     Properties properties = setupSSL(new Properties());
@@ -122,7 +138,7 @@ public abstract class KafkaClientFactory {
           ConfigKeys.KAFKA_ADMIN_GET_TOPIC_CONFIG_MAX_RETRY_TIME_SEC,
           DEFAULT_KAFKA_ADMIN_GET_TOPIC_CONFIG_RETRY_IN_SECONDS);
     }
-    adminWrapper.initialize(properties);
+    adminWrapper.initialize(properties, pubSubTopicRepository);
     final String kafkaBootstrapServers = getKafkaBootstrapServers();
 
     if (optionalMetricsRepository.isPresent()) {

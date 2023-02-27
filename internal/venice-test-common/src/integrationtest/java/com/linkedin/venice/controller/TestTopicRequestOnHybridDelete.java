@@ -22,6 +22,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -41,7 +42,9 @@ import org.testng.annotations.Test;
 
 
 public class TestTopicRequestOnHybridDelete {
-  VeniceClusterWrapper venice = null;
+  private VeniceClusterWrapper venice;
+
+  private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @BeforeClass
   public void setUp() {
@@ -110,7 +113,7 @@ public class TestTopicRequestOnHybridDelete {
 
       TopicManager topicManager = venice.getLeaderVeniceController().getVeniceAdmin().getTopicManager();
       try {
-        topicManager.ensureTopicIsDeletedAndBlock(composeRealTimeTopic(storeName));
+        topicManager.ensureTopicIsDeletedAndBlock(pubSubTopicRepository.getTopic(composeRealTimeTopic(storeName)));
       } catch (ExecutionException e) {
         fail("Exception during topic deletion " + e);
       }
@@ -212,7 +215,9 @@ public class TestTopicRequestOnHybridDelete {
     Assert.assertEquals(
         controllerClient.queryJobStatus(startedVersion.getKafkaTopic()).getStatus(),
         ExecutionStatus.STARTED.toString());
-    Assert.assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(startedVersion.getKafkaTopic()));
+    Assert.assertTrue(
+        topicManager
+            .containsTopicAndAllPartitionsAreOnline(pubSubTopicRepository.getTopic(startedVersion.getKafkaTopic())));
 
     // disable store
     controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setEnableReads(false).setEnableWrites(false));

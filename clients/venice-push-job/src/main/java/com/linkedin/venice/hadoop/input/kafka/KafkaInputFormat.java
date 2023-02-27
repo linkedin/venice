@@ -8,6 +8,7 @@ import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperKey;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -35,12 +36,13 @@ public class KafkaInputFormat implements InputFormat<KafkaInputMapperKey, KafkaI
    * being consumed could have log compaction enabled.
    */
   public static final long DEFAULT_KAFKA_INPUT_MAX_RECORDS_PER_MAPPER = 5000000L;
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   protected Map<TopicPartition, Long> getLatestOffsets(JobConf config) {
     KafkaClientFactory consumerFactory = getConsumerFactory(config);
     try (TopicManager topicManager = new TopicManager(consumerFactory)) {
       String topic = config.get(KAFKA_INPUT_TOPIC);
-      Map<Integer, Long> latestOffsets = topicManager.getTopicLatestOffsets(topic);
+      Map<Integer, Long> latestOffsets = topicManager.getTopicLatestOffsets(pubSubTopicRepository.getTopic(topic));
       Map<TopicPartition, Long> partitionOffsetMap = new HashMap<>(latestOffsets.size());
       latestOffsets.forEach(
           (partitionId, latestOffset) -> partitionOffsetMap.put(new TopicPartition(topic, partitionId), latestOffset));

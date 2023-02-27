@@ -11,6 +11,7 @@ import com.linkedin.venice.hadoop.input.kafka.avro.MapperValueType;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -35,6 +36,7 @@ public class TestKafkaInputRecordReader {
 
   private PubSubBrokerWrapper kafka;
   private TopicManager manager;
+  private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @BeforeClass
   public void setUp() {
@@ -54,7 +56,7 @@ public class TestKafkaInputRecordReader {
 
   public String getTopic(int numRecord, Pair<Integer, Integer> updateRange, Pair<Integer, Integer> deleteRange) {
     String topicName = Utils.getUniqueString("test_kafka_input_format") + "_v1";
-    manager.createTopic(topicName, 1, 1, true);
+    manager.createTopic(pubSubTopicRepository.getTopic(topicName), 1, 1, true);
     VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(kafka.getAddress());
     try (VeniceWriter<byte[], byte[], byte[]> veniceWriter =
         veniceWriterFactory.createVeniceWriter(new VeniceWriterOptions.Builder(topicName).build())) {
