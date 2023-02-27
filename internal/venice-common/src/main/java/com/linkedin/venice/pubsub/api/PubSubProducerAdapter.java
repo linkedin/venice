@@ -46,11 +46,7 @@ public interface PubSubProducerAdapter {
 
   void flush();
 
-  void close(int closeTimeOutMs);
-
-  default void close(int closeTimeOutMs, boolean doFlush) {
-    close(closeTimeOutMs);
-  }
+  void close(int closeTimeOutMs, boolean doFlush);
 
   default void close(String topic, int closeTimeOutMs, boolean doFlush) {
     close(closeTimeOutMs, doFlush);

@@ -50,8 +50,8 @@ public class TransformingProducerAdapter implements PubSubProducerAdapter {
   }
 
   @Override
-  public void close(int closeTimeOutMs) {
-    baseProducer.close(closeTimeOutMs);
+  public void close(int closeTimeOutMs, boolean flush) {
+    baseProducer.close(closeTimeOutMs, flush);
   }
 
   @Override

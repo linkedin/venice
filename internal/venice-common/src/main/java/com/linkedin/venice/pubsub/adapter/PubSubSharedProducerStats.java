@@ -13,12 +13,12 @@ public class PubSubSharedProducerStats extends AbstractVeniceStats {
   /**
    * Metric to keep track of number of currently active ingestion tasks that is using a shared producer instance.
    */
-  private Sensor sharedProducerActiveTasksCountSensor;
+  private final Sensor sharedProducerActiveTasksCountSensor;
 
   /**
    * Metric to keep track of number of open shared producer instance.
    */
-  private Sensor sharedProducerActiveCountSensor;
+  private final Sensor sharedProducerActiveCountSensor;
 
   public PubSubSharedProducerStats(
       MetricsRepository metricsRepository,

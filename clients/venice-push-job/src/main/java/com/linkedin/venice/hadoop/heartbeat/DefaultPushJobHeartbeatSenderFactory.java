@@ -15,7 +15,6 @@ import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.utils.PartitionUtils;
-import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -146,8 +145,7 @@ public class DefaultPushJobHeartbeatSenderFactory implements PushJobHeartbeatSen
         new VeniceProperties(partitionerProperties));
 
     return new VeniceWriterFactory(veniceWriterProperties).createVeniceWriter(
-        new VeniceWriterOptions.Builder(versionCreationResponse.getKafkaTopic()).setTime(new SystemTime())
-            .setPartitioner(venicePartitioner)
+        new VeniceWriterOptions.Builder(versionCreationResponse.getKafkaTopic()).setPartitioner(venicePartitioner)
             .setPartitionCount(versionCreationResponse.getPartitions())
             .build());
   }

@@ -105,7 +105,7 @@ public class ApacheKafkaProducerAdapterTest {
   public void testCloseInvokesProducerFlushAndClose() {
     doNothing().when(kafkaProducerMock).flush(anyLong(), any(TimeUnit.class));
     ApacheKafkaProducerAdapter producerAdapter = new ApacheKafkaProducerAdapter(producerConfigMock, kafkaProducerMock);
-    producerAdapter.close(10);
+    producerAdapter.close(10, true);
     verify(kafkaProducerMock, times(1)).flush(anyLong(), any(TimeUnit.class));
     verify(kafkaProducerMock, times(1)).close(any(Duration.class));
   }

@@ -88,11 +88,6 @@ public class PubSubSharedProducerAdapter implements PubSubProducerAdapter {
   }
 
   @Override
-  public void close(int closeTimeOutMs) {
-    producerAdapter.close(closeTimeOutMs);
-  }
-
-  @Override
   public void close(int closeTimeOutMs, boolean doFlush) {
     producerAdapter.close(closeTimeOutMs, doFlush);
   }
@@ -168,7 +163,7 @@ public class PubSubSharedProducerAdapter implements PubSubProducerAdapter {
           return producerMetrics.get(metric);
         }));
       });
-      producerSendLatencySensor = registerSensor("producer_" + id + "_send_api_latency", new Avg(), new Max());
+      producerSendLatencySensor = registerSensor("producer_" + id + "_send_latency", new Avg(), new Max());
     }
 
     public void recordProducerSendLatency(double value) {

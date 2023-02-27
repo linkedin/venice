@@ -108,11 +108,6 @@ public class ApacheKafkaProducerAdapter implements PubSubProducerAdapter {
   }
 
   @Override
-  public void close(int closeTimeOutMs) {
-    close(closeTimeOutMs, true);
-  }
-
-  @Override
   public void close(int closeTimeOutMs, boolean doFlush) {
     if (producer != null) {
       if (doFlush) {

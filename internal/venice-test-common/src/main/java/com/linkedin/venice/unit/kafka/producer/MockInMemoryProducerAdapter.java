@@ -79,7 +79,7 @@ public class MockInMemoryProducerAdapter implements PubSubProducerAdapter {
   }
 
   @Override
-  public void close(int closeTimeOutMs) {
+  public void close(int closeTimeOutMs, boolean flush) {
     // no-op
   }
 
