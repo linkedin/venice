@@ -12,8 +12,8 @@ import org.apache.logging.log4j.Logger;
 
 public class CompressorFactory implements Closeable, AutoCloseable {
   private static final Logger LOGGER = LogManager.getLogger(CompressorFactory.class);
-  private static final VeniceCompressor NO_OP_COMPRESSOR = new NoopCompressor();
-  private static final VeniceCompressor GZIP_COMPRESSOR = new GzipCompressor();
+  private final VeniceCompressor NO_OP_COMPRESSOR = new NoopCompressor();
+  private final VeniceCompressor GZIP_COMPRESSOR = new GzipCompressor();
   private final Map<String, VeniceCompressor> versionSpecificCompressorMap = new VeniceConcurrentHashMap<>();
 
   public VeniceCompressor getCompressor(CompressionStrategy compressionStrategy) {
@@ -34,10 +34,22 @@ public class CompressorFactory implements Closeable, AutoCloseable {
       CompressionStrategy compressionStrategy,
       String kafkaTopic,
       final byte[] dictionary) {
+    return createVersionSpecificCompressorIfNotExist(
+        compressionStrategy,
+        kafkaTopic,
+        dictionary,
+        Zstd.maxCompressionLevel());
+  }
+
+  public VeniceCompressor createVersionSpecificCompressorIfNotExist(
+      CompressionStrategy compressionStrategy,
+      String kafkaTopic,
+      final byte[] dictionary,
+      int compressionLevel) {
     switch (compressionStrategy) {
       case ZSTD_WITH_DICT:
         return versionSpecificCompressorMap
-            .computeIfAbsent(kafkaTopic, key -> createCompressorWithDictionary(dictionary, Zstd.maxCompressionLevel()));
+            .computeIfAbsent(kafkaTopic, key -> createCompressorWithDictionary(dictionary, compressionLevel));
       default:
         return getCompressor(compressionStrategy);
     }

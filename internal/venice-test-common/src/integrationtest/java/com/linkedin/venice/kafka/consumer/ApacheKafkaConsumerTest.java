@@ -1,8 +1,15 @@
 package com.linkedin.venice.kafka.consumer;
 
+import static org.mockito.Mockito.*;
+
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.utils.Utils;
 import java.util.Collections;
 import java.util.HashSet;
@@ -10,7 +17,6 @@ import java.util.Properties;
 import java.util.Set;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -23,6 +29,8 @@ public class ApacheKafkaConsumerTest {
   KafkaBrokerWrapper kafkaBroker;
   private ZkServerWrapper zkServer;
 
+  private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+
   @BeforeMethod
   public void setUp() {
     zkServer = ServiceFactory.getZkServer();
@@ -31,7 +39,7 @@ public class ApacheKafkaConsumerTest {
     properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     properties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafkaBroker.getAddress());
-    consumer = new ApacheKafkaConsumer(properties);
+    consumer = new ApacheKafkaConsumer(properties, mock(KafkaPubSubMessageDeserializer.class));
   }
 
   @AfterMethod
@@ -43,20 +51,24 @@ public class ApacheKafkaConsumerTest {
 
   @Test
   public void testBatchUnsubscribe() {
-    String existingTopic1 = "existingTopic1_v1";
-    consumer.subscribe(existingTopic1, 1, 100L);
-    consumer.subscribe(existingTopic1, 2, 100L);
-    consumer.subscribe(existingTopic1, 3, 100L);
+    PubSubTopic existingTopic1 = pubSubTopicRepository.getTopic("existingTopic1_v1");
+    PubSubTopicPartition existingTopicPartition1 = new PubSubTopicPartitionImpl(existingTopic1, 1);
+    PubSubTopicPartition existingTopicPartition2 = new PubSubTopicPartitionImpl(existingTopic1, 2);
+    PubSubTopicPartition existingTopicPartition3 = new PubSubTopicPartitionImpl(existingTopic1, 3);
 
-    Set<TopicPartition> topicPartitions = new HashSet<>();
-    topicPartitions.add(new TopicPartition(existingTopic1, 1));
-    topicPartitions.add(new TopicPartition(existingTopic1, 2));
+    consumer.subscribe(existingTopicPartition1, 100L);
+    consumer.subscribe(existingTopicPartition2, 100L);
+    consumer.subscribe(existingTopicPartition3, 100L);
+
+    Set<PubSubTopicPartition> topicPartitions = new HashSet<>();
+    topicPartitions.add(existingTopicPartition1);
+    topicPartitions.add(existingTopicPartition2);
 
     consumer.batchUnsubscribe(topicPartitions);
-    assertConsumerHasSpecificNumberOfAssignmedPartitions(consumer, 1);
+    assertConsumerHasSpecificNumberOfAssignedPartitions(consumer, 1);
     topicPartitions.clear();
-    topicPartitions.add(new TopicPartition(existingTopic1, 3));
-    consumer.batchUnsubscribe(Collections.singleton(new TopicPartition(existingTopic1, 3)));
+    topicPartitions.add(existingTopicPartition3);
+    consumer.batchUnsubscribe(Collections.singleton(existingTopicPartition3));
     assertConsumerHasNoAssignment(consumer);
   }
 
@@ -65,26 +77,30 @@ public class ApacheKafkaConsumerTest {
     // Calling pause and resume on an unsubbed partition on a raw Kafka consumer fails,
     // but our wrapper is expected to treat these functions as no-ops in those cases.
     assertConsumerHasNoAssignment(consumer);
-    consumer.resume("some_topic_the_consumer_was_never_subscribed_to", 0);
+    PubSubTopic topicWasNeverSubscribedTo =
+        pubSubTopicRepository.getTopic("some_topic_the_consumer_was_never_subscribed_to_v1");
+    PubSubTopicPartition topicPartitionWasNeverSubscribedTo =
+        new PubSubTopicPartitionImpl(topicWasNeverSubscribedTo, 0);
+    consumer.resume(topicPartitionWasNeverSubscribedTo);
     assertConsumerHasNoAssignment(consumer);
-    consumer.pause("some_topic_the_consumer_was_never_subscribed_to", 0);
+    consumer.pause(topicPartitionWasNeverSubscribedTo);
     assertConsumerHasNoAssignment(consumer);
 
-    String topic = "topic";
-    int partition = 1;
-    consumer.subscribe(topic, partition, 0);
-    assertConsumerHasSpecificNumberOfAssignmedPartitions(consumer, 1);
-    consumer.pause(topic, partition);
-    assertConsumerHasSpecificNumberOfAssignmedPartitions(consumer, 1);
-    consumer.resume(topic, partition);
-    assertConsumerHasSpecificNumberOfAssignmedPartitions(consumer, 1);
+    PubSubTopic topic = pubSubTopicRepository.getTopic("topic_v1");
+    PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(topic, 1);
+    consumer.subscribe(pubSubTopicPartition, 0);
+    assertConsumerHasSpecificNumberOfAssignedPartitions(consumer, 1);
+    consumer.pause(pubSubTopicPartition);
+    assertConsumerHasSpecificNumberOfAssignedPartitions(consumer, 1);
+    consumer.resume(pubSubTopicPartition);
+    assertConsumerHasSpecificNumberOfAssignedPartitions(consumer, 1);
   }
 
   private void assertConsumerHasNoAssignment(ApacheKafkaConsumer c) {
     Assert.assertEquals(c.getAssignment().size(), 0, "Consumer should have no assignment!");
   }
 
-  private void assertConsumerHasSpecificNumberOfAssignmedPartitions(ApacheKafkaConsumer c, int expected) {
+  private void assertConsumerHasSpecificNumberOfAssignedPartitions(ApacheKafkaConsumer c, int expected) {
     Assert
         .assertEquals(c.getAssignment().size(), expected, "Consumer should have exactly " + expected + " assignments!");
   }

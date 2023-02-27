@@ -529,11 +529,6 @@ public class StoreBufferService extends AbstractStoreBufferService {
         slowestEntries.forEach(
             entry -> LOGGER
                 .info("In drainer number {}, time spent on {} : {} ms", finalIndex, entry.getKey(), entry.getValue()));
-        LOGGER.info(
-            "Drainer number {} hosting {} partitions, has memory usage of {}",
-            index,
-            drainer.topicToTimeSpent.size(),
-            queue.getMemoryUsage());
       }
       drainer.topicToTimeSpent.clear();
     }

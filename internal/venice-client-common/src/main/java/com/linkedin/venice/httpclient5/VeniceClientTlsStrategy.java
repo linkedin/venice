@@ -1,21 +1,18 @@
 package com.linkedin.venice.httpclient5;
 
-import java.net.SocketAddress;
 import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
-import javax.net.ssl.SSLException;
 import javax.net.ssl.SSLParameters;
+import org.apache.hc.client5.http.config.TlsConfig;
 import org.apache.hc.client5.http.ssl.DefaultClientTlsStrategy;
+import org.apache.hc.core5.concurrent.FutureCallback;
 import org.apache.hc.core5.function.Factory;
-import org.apache.hc.core5.http.HttpHost;
 import org.apache.hc.core5.http.ssl.TLS;
 import org.apache.hc.core5.http2.HttpVersionPolicy;
 import org.apache.hc.core5.http2.ssl.H2TlsSupport;
 import org.apache.hc.core5.net.NamedEndpoint;
 import org.apache.hc.core5.reactor.ssl.SSLBufferMode;
-import org.apache.hc.core5.reactor.ssl.SSLSessionInitializer;
-import org.apache.hc.core5.reactor.ssl.SSLSessionVerifier;
 import org.apache.hc.core5.reactor.ssl.TlsDetails;
 import org.apache.hc.core5.reactor.ssl.TransportSecurityLayer;
 import org.apache.hc.core5.util.Args;
@@ -56,65 +53,61 @@ public class VeniceClientTlsStrategy extends DefaultClientTlsStrategy {
   }
 
   @Override
-  public boolean upgrade(
+  public void upgrade(
       final TransportSecurityLayer tlsSession,
-      final HttpHost host,
-      final SocketAddress localAddress,
-      final SocketAddress remoteAddress,
+      final NamedEndpoint endpoint,
       final Object attachment,
-      final Timeout handshakeTimeout) {
-    tlsSession.startTls(sslContext, host, sslBufferManagement, new SSLSessionInitializer() {
-      @Override
-      public void initialize(final NamedEndpoint endpoint, final SSLEngine sslEngine) {
+      final Timeout handshakeTimeout,
+      final FutureCallback<TransportSecurityLayer> callback) {
+    tlsSession.startTls(sslContext, endpoint, sslBufferManagement, (e, sslEngine) -> {
 
-        final HttpVersionPolicy versionPolicy =
-            attachment instanceof HttpVersionPolicy ? (HttpVersionPolicy) attachment : HttpVersionPolicy.NEGOTIATE;
+      final TlsConfig tlsConfig = attachment instanceof TlsConfig ? (TlsConfig) attachment : TlsConfig.DEFAULT;
+      final HttpVersionPolicy versionPolicy = tlsConfig.getHttpVersionPolicy();
 
-        final SSLParameters sslParameters = sslEngine.getSSLParameters();
-        if (supportedProtocols != null) {
-          sslParameters.setProtocols(supportedProtocols);
-        } else if (versionPolicy != HttpVersionPolicy.FORCE_HTTP_1) {
-          sslParameters.setProtocols(TLS.excludeWeak(sslParameters.getProtocols()));
-        }
-        if (supportedCipherSuites != null) {
-          sslParameters.setCipherSuites(supportedCipherSuites);
-        } else if (versionPolicy == HttpVersionPolicy.FORCE_HTTP_2) {
-          /**
-           * Skip the H2 cipher check since LinkedIn is using an unsupported cipher.
-           */
-          // sslParameters.setCipherSuites(TlsCiphers.excludeH2-lacklisted(sslParameters.getCipherSuites()));
-          sslParameters.setCipherSuites(sslParameters.getCipherSuites());
-        }
-
-        if (versionPolicy != HttpVersionPolicy.FORCE_HTTP_1) {
-          H2TlsSupport.setEnableRetransmissions(sslParameters, false);
-        }
-
-        applyParameters(sslEngine, sslParameters, H2TlsSupport.selectApplicationProtocols(attachment));
-
-        initializeEngine(sslEngine);
+      final SSLParameters sslParameters = sslEngine.getSSLParameters();
+      final String[] supportedProtocols = tlsConfig.getSupportedProtocols();
+      if (supportedProtocols != null) {
+        sslParameters.setProtocols(supportedProtocols);
+      } else if (this.supportedProtocols != null) {
+        sslParameters.setProtocols(this.supportedProtocols);
+      } else if (versionPolicy != HttpVersionPolicy.FORCE_HTTP_1) {
+        sslParameters.setProtocols(TLS.excludeWeak(sslParameters.getProtocols()));
       }
-
-    }, new SSLSessionVerifier() {
-      @Override
-      public TlsDetails verify(final NamedEndpoint endpoint, final SSLEngine sslEngine) throws SSLException {
-        verifySession(host.getHostName(), sslEngine.getSession());
-        final TlsDetails tlsDetails = createTlsDetails(sslEngine);
+      final String[] supportedCipherSuites = tlsConfig.getSupportedCipherSuites();
+      if (supportedCipherSuites != null) {
+        sslParameters.setCipherSuites(supportedCipherSuites);
+      } else if (this.supportedCipherSuites != null) {
+        sslParameters.setCipherSuites(this.supportedCipherSuites);
+      } else if (versionPolicy == HttpVersionPolicy.FORCE_HTTP_2) {
         /**
          * Skip the H2 cipher check to be backward compatible.
          */
-        // final String negotiatedCipherSuite = sslEngine.getSession().getCipherSuite();
-        // if (tlsDetails != null && ApplicationProtocol.HTTP_2.id.equals(tlsDetails.getApplicationProtocol())) {
-        // if (TlsCiphers.isH2-lacklisted(negotiatedCipherSuite)) {
-        // throw new SSLHandshakeException("Cipher suite `" + negotiatedCipherSuite
-        // + "` does not provide adequate security for HTTP/2");
-        // }
-        // }
-        return tlsDetails;
+        // sslParameters.setCipherSuites(TlsCiphers.excludeH2-lacklisted(sslParameters.getCipherSuites()));
+        sslParameters.setCipherSuites(sslParameters.getCipherSuites());
       }
 
-    }, handshakeTimeout);
-    return true;
+      if (versionPolicy != HttpVersionPolicy.FORCE_HTTP_1) {
+        H2TlsSupport.setEnableRetransmissions(sslParameters, false);
+      }
+
+      applyParameters(sslEngine, sslParameters, H2TlsSupport.selectApplicationProtocols(versionPolicy));
+
+      initializeEngine(sslEngine);
+    }, (e, sslEngine) -> {
+      verifySession(endpoint.getHostName(), sslEngine.getSession());
+      final TlsDetails tlsDetails = createTlsDetails(sslEngine);
+      /**
+       * Skip the H2 cipher check to be backward compatible.
+       */
+      // final String negotiatedCipherSuite = sslEngine.getSession().getCipherSuite();
+      // if (tlsDetails != null && ApplicationProtocol.HTTP_2.id.equals(tlsDetails.getApplicationProtocol())) {
+      // if (TlsCiphers.isH2-lacklisted(negotiatedCipherSuite)) {
+      // throw new SSLHandshakeException("Cipher suite `" + negotiatedCipherSuite
+      // + "` does not provide adequate security for HTTP/2");
+      // }
+      // }
+      return tlsDetails;
+    }, handshakeTimeout, callback);
   }
 
   void applyParameters(final SSLEngine sslEngine, final SSLParameters sslParameters, final String[] appProtocols) {

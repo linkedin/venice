@@ -37,4 +37,8 @@ public enum CompressionStrategy implements VeniceEnumValue {
       throw new VeniceException("Invalid compression strategy: " + value);
     }
   }
+
+  public static int getCompressionStrategyTypesArrayLength() {
+    return TYPES_ARRAY.length;
+  }
 }

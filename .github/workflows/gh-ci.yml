@@ -36,9 +36,9 @@ jobs:
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -Pspotallbugs clean check -x spotlessCheck -x test -x integrationTest -x jacocoTestCoverageVerification"
 
@@ -65,9 +65,9 @@ jobs:
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
           arguments: "jacocoTestCoverageVerification diffCoverage --continue"
 
@@ -94,9 +94,9 @@ jobs:
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestA"
 
@@ -123,9 +123,9 @@ jobs:
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestB"
 
@@ -152,9 +152,9 @@ jobs:
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestC"
 
@@ -181,9 +181,9 @@ jobs:
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestD"
 
@@ -210,9 +210,9 @@ jobs:
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestE"
 
@@ -239,9 +239,9 @@ jobs:
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestF"
 
@@ -268,9 +268,9 @@ jobs:
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestG"
 
@@ -297,9 +297,9 @@ jobs:
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestH"
 
@@ -326,9 +326,9 @@ jobs:
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestI"
 
@@ -355,9 +355,9 @@ jobs:
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestJ"
 
@@ -384,9 +384,9 @@ jobs:
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestK"
 
@@ -413,9 +413,9 @@ jobs:
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestL"
 
@@ -442,9 +442,9 @@ jobs:
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestM"
 
@@ -471,9 +471,9 @@ jobs:
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestN"
 
@@ -500,9 +500,9 @@ jobs:
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestO"
 
@@ -529,9 +529,9 @@ jobs:
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestP"
 
@@ -558,9 +558,9 @@ jobs:
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestQ"
 
@@ -587,9 +587,9 @@ jobs:
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestZ"
 
@@ -617,9 +617,9 @@ jobs:
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
           arguments: "clean"
 

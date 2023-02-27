@@ -112,7 +112,15 @@ public class StatsAvroGenericStoreClient<K, V> extends DelegatingAvroStoreClient
 
     return innerFuture.handle((value, throwable) -> {
       double latency = LatencyUtils.getLatencyInMS(startTimeInNS);
+
       if (throwable != null) {
+        /**
+         * If the request (both original and retry) failed due to an exception,
+         * just increment the unhealthy counters as the other counters might not
+         * be useful, especially when the counters are currently common for
+         * healthy/unhealthy requests. No new unhealthy specific error
+         * counters for now apart from the below 2.
+         */
         clientStats.recordUnhealthyRequest();
         clientStats.recordUnhealthyLatency(latency);
         if (throwable instanceof VeniceClientException) {

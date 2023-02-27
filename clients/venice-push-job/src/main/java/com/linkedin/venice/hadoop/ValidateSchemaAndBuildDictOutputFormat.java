@@ -1,10 +1,7 @@
 package com.linkedin.venice.hadoop;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.JOB_EXEC_ID;
 import static com.linkedin.venice.hadoop.VenicePushJob.MAPPER_OUTPUT_DIRECTORY;
-import static com.linkedin.venice.hadoop.VenicePushJob.UNIQUE_STRING_FOR_MAPPER_OUTPUT_DIRECTORY;
-import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJob.getValidateSchemaAndBuildDictionaryOutputDir;
+import static com.linkedin.venice.hadoop.VenicePushJob.VALIDATE_SCHEMA_AND_BUILD_DICT_MAPPER_OUTPUT_DIRECTORY;
 import static com.linkedin.venice.hadoop.VenicePushJob.getValidateSchemaAndBuildDictionaryOutputFileNameNoExtension;
 import static org.apache.hadoop.mapreduce.MRJobConfig.ID;
 
@@ -85,12 +82,9 @@ public class ValidateSchemaAndBuildDictOutputFormat extends AvroOutputFormat {
     FileSystem fs = outputPath.getFileSystem(job);
     createAndSetDirectoryPermission(fs, outputPath, "777");
 
-    // store specific directory under parent directory
-    String storeName = job.get(VENICE_STORE_NAME_PROP);
-    String jobExecId = job.get(JOB_EXEC_ID);
-    String uniqueString = job.get(UNIQUE_STRING_FOR_MAPPER_OUTPUT_DIRECTORY);
-    outputPath =
-        new Path(getValidateSchemaAndBuildDictionaryOutputDir(parentOutputDir, storeName, jobExecId, uniqueString));
+    // store specific directory under parent directory: already derived in VPJ driver and passed along.
+    String fullOutputDir = job.get(VALIDATE_SCHEMA_AND_BUILD_DICT_MAPPER_OUTPUT_DIRECTORY);
+    outputPath = new Path(fullOutputDir);
     createAndSetDirectoryPermission(fs, outputPath, "700");
 
     LOGGER.info(

@@ -310,20 +310,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         false,
         EventThrottler.BLOCK_STRATEGY);
 
-    EventThrottler unorderedBandwidthThrottler = new EventThrottler(
-        serverConfig.getKafkaFetchQuotaUnorderedBytesPerSecond(),
-        serverConfig.getKafkaFetchQuotaTimeWindow(),
-        "kafka_consumption_unordered_bandwidth",
-        false,
-        EventThrottler.BLOCK_STRATEGY);
-
-    EventThrottler unorderedRecordsThrottler = new EventThrottler(
-        serverConfig.getKafkaFetchQuotaUnorderedRecordPerSecond(),
-        serverConfig.getKafkaFetchQuotaTimeWindow(),
-        "kafka_consumption_unordered_records_count",
-        false,
-        EventThrottler.BLOCK_STRATEGY);
-
     final Map<String, EventThrottler> kafkaUrlToRecordsThrottler;
     if (liveClusterConfigRepository != null) {
       Set<String> regionNames = serverConfig.getRegionNames();
@@ -488,10 +474,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setStorageEngineRepository(storageEngineRepository)
         .setStorageMetadataService(storageMetadataService)
         .setLeaderFollowerNotifiersQueue(leaderFollowerNotifiers)
-        .setBandwidthThrottler(bandwidthThrottler)
-        .setRecordsThrottler(recordsThrottler)
-        .setUnorderedBandwidthThrottler(unorderedBandwidthThrottler)
-        .setUnorderedRecordsThrottler(unorderedRecordsThrottler)
         .setSchemaRepository(schemaRepo)
         .setMetadataRepository(metadataRepo)
         .setTopicManagerRepository(topicManagerRepository)

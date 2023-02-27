@@ -66,16 +66,12 @@ import org.testng.internal.collections.Ints;
  * events while allowing control over the ordering itself. Each timetick is executed approx 1 ms apart
  * The simulator guarantees that every event with a lower timetick will be executed BEFORE one with higher timetick.
  * If events have same timetick they can be executed in any order. Events can be executed in different threads.
- * Initially the simulator is designed to simulate interactions with the R2 client . Later on more events can
+ * Initially the simulator is designed to simulate interactions with the R2 client. Later on more events can
  * be supported.
- *
- * {@link ExpectedRequestEvent} simulates timed expectation that some request to a remote host was sent. The timetick
- * supplied by the event means that as soon as the expected request is matched, time will be set to the given timetick.
- *
- * {@link SendResponseEvent} simulates responses from that host at the given time.
  */
 public class TestClientSimulator implements Client {
   private static final Logger LOGGER = LogManager.getLogger(TestClientSimulator.class);
+  public static final String UNIT_TEST_STORE_NAME = "unittest";
 
   // List of events to simulate by time tick
   TreeMap<Integer, List<Event>> timeToEvents = new TreeMap<>();
@@ -83,6 +79,10 @@ public class TestClientSimulator implements Client {
   ConcurrentHashMap<Integer, RequestInfo> requestIdToRequestInfos = new ConcurrentHashMap<>();
 
   ConcurrentHashMap<String, Deque<ExpectedRequestEvent>> routeToExpectedRequestEvents = new ConcurrentHashMap<>();
+
+  public ClientConfig getClientConfig() {
+    return clientConfig;
+  }
 
   ClientConfig clientConfig;
 
@@ -93,10 +93,13 @@ public class TestClientSimulator implements Client {
   public final RecordSerializer<MultiGetResponseRecordV1> multiGetResponseSerializer;
   public final RecordDeserializer<MultiGetRouterRequestKeyV1> multiGetRequestDeserializer;
   private boolean speculativeQueryEnabled = false;
-  private Map<String, String> keyValues = new HashMap<>();
+  private Map<String, String> keyValues = new HashMap<>(); // all keys in the simulation
+  private Map<String, String> requestedKeyValues = new HashMap<>(); // subset/all of keyValues are a part of requests
   private Map<String, Integer> keysToPartitions = new HashMap<>();
   private Map<String, Set<Integer>> routeToPartitions = new HashMap<>();
   private Map<Integer, List<String>> partitionToReplicas = new HashMap<>();
+  private boolean longTailRetryEnabledForSingleGet = false;
+  private int longTailRetryThresholdForSingleGetInMicroseconds = 0;
   private boolean longTailRetryEnabledForBatchGet = false;
   private int longTailRetryThresholdForBatchGetInMicroseconds = 0;
 
@@ -146,12 +149,15 @@ public class TestClientSimulator implements Client {
     RequestInfo requestInfo = new RequestInfo();
     requestInfo.requestId = requestId;
     requestInfo.route = route;
+    requestInfo.timeTick = timeTick;
 
     Set<Integer> partitionSet = Sets.newHashSet(Ints.asList(partitions));
     requestInfo.keyValues = keysToPartitions.entrySet()
         .stream()
         .filter(e -> partitionSet.contains(e.getValue()))
         .collect(Collectors.toMap(e -> e.getKey(), e -> keyValues.get(e.getKey())));
+
+    requestedKeyValues.putAll(requestInfo.keyValues);
 
     requestIdToRequestInfos.put(requestInfo.requestId, requestInfo);
     ExpectedRequestEvent expectedRequestEvent = new ExpectedRequestEvent(requestInfo, timeTick);
@@ -166,8 +172,14 @@ public class TestClientSimulator implements Client {
     if (!requestIdToRequestInfos.containsKey(requestId)) {
       throw new IllegalStateException("Must have a corresponding request");
     }
+
+    RequestInfo requestInfo = requestIdToRequestInfos.get(requestId);
+    if (requestInfo.timeTick > timeTick) {
+      throw new IllegalStateException("Request should happen before response");
+    }
+
     timeToEvents.putIfAbsent(timeTick, new ArrayList<>());
-    timeToEvents.get(timeTick).add(new SendResponseEvent(requestIdToRequestInfos.get(requestId)));
+    timeToEvents.get(timeTick).add(new SendResponseEvent(requestInfo));
     return this;
   }
 
@@ -190,9 +202,18 @@ public class TestClientSimulator implements Client {
     throw new IllegalStateException("Unexpected rest request");
   }
 
+  /**
+   * Mock of actual restRequest() that will be called as a result of get() or post()
+   * calls, which is called from venice's get() or multiGet() to validate whether the
+   * keys/route coming in from the client get() is what is expected based on input to
+   * {@link #expectRequestWithKeysForPartitionOnRoute}.
+   *
+   * <br><br>
+   * This function receives the get/post request, deserialize it, verify it against
+   * data in {@link #routeToExpectedRequestEvents}
+   */
   @Override
   public void restRequest(RestRequest request, Callback<RestResponse> callback) {
-    // Receive and deserialize the request to verify
     URI uri = request.getURI();
     if (uri.getHost() != null) {
       String route = uri.getScheme() + "://" + uri.getHost();
@@ -260,6 +281,13 @@ public class TestClientSimulator implements Client {
     return keyValues;
   }
 
+  public Map<String, String> getRequestedKeyValues() {
+    // only return all the keys that have been sent to request events
+    return requestedKeyValues;
+  }
+
+  /** Mock the return replica list in the method {@link AbstractStoreMetadata#getReplicas}
+   * created inside {@link TestClientSimulator#getFastClient} */
   public TestClientSimulator expectReplicaRequestForPartitionAndRespondWithReplicas(
       int partitionId,
       List<String> replicas) {
@@ -276,6 +304,7 @@ public class TestClientSimulator implements Client {
 
   static class RequestInfo {
     int requestId;
+    int timeTick;
     String route;
     Map<String, String> keyValues;
     Callback<RestResponse> callback;
@@ -288,6 +317,10 @@ public class TestClientSimulator implements Client {
     }
   }
 
+  /**
+   * Simulates timed expectation that some request to a remote host was sent. The timetick
+   * supplied by the event means that as soon as the expected request is matched, time will be set to the given timetick.
+   */
   class ExpectedRequestEvent extends Event {
     RequestInfo info;
 
@@ -311,6 +344,9 @@ public class TestClientSimulator implements Client {
     }
   }
 
+  /**
+   * Simulates responses from that host at the given time.
+   */
   class SendResponseEvent extends Event {
     RequestInfo info;
     boolean isError;
@@ -368,7 +404,7 @@ public class TestClientSimulator implements Client {
   AtomicInteger currentTimeTick = new AtomicInteger();
   int timeIntervalBetweenEventsInMs = 1;
   ScheduledExecutorService executor;
-  CompletableFuture<Integer> simulatorComplete = new CompletableFuture<>();
+  CompletableFuture<Integer> simulatorCompleteFuture = new CompletableFuture<>();
 
   public void simulate() {
     LOGGER.info(
@@ -384,7 +420,7 @@ public class TestClientSimulator implements Client {
     }
     executor = Executors.newScheduledThreadPool(4);
     executor.schedule(() -> executeTimedEvents(0), timeIntervalBetweenEventsInMs, TimeUnit.MILLISECONDS);
-    getSimulatorComplete().whenComplete((v, t) -> {
+    getSimulatorCompleteFuture().whenComplete((v, t) -> {
       try {
         TestUtils.shutdownExecutor(executor);
       } catch (InterruptedException e) {
@@ -395,9 +431,13 @@ public class TestClientSimulator implements Client {
 
   public synchronized void executeTimedEvents(int time) {
     currentTimeTick.set(time);
-    LOGGER.info("t:{} Executing {} timed events ", currentTimeTick.get(), timeToEvents.get(currentTimeTick.get()));
-    if (timeToEvents.containsKey(currentTimeTick.get())) {
-      List<Event> events = timeToEvents.get(currentTimeTick.get());
+    if (time == 0) {
+      LOGGER.info("t:0 Starting the Execution");
+    } else {
+      LOGGER.info("t:{} Executing {} timed events ", time, timeToEvents.get(time));
+    }
+    if (timeToEvents.containsKey(time)) {
+      List<Event> events = timeToEvents.get(time);
       int index = 0;
       CompletableFuture[] futures = new CompletableFuture[events.size()];
       for (Event event: events) {
@@ -415,7 +455,7 @@ public class TestClientSimulator implements Client {
   private void scheduleNextTimeTick(Void i, Throwable e) {
     if (e != null) {
       LOGGER.error("Exception while executing timed event {} , {} ", currentTimeTick.get(), e);
-      simulatorComplete.completeExceptionally(e);
+      simulatorCompleteFuture.completeExceptionally(e);
     }
     Integer nextTimeTick = timeToEvents.higherKey(currentTimeTick.get());
     LOGGER.info("t:{} Scheduling next timer for {} ", currentTimeTick.get(), nextTimeTick);
@@ -425,17 +465,28 @@ public class TestClientSimulator implements Client {
       executor.schedule(() -> executeTimedEvents(nextTimeTick), delay, TimeUnit.MILLISECONDS);
     } else { // this is the last timetick
       LOGGER.info("Completing simulation at timeTick {} ", currentTimeTick.get());
-      simulatorComplete.complete(currentTimeTick.get());
+      simulatorCompleteFuture.complete(currentTimeTick.get());
     }
   }
 
-  public CompletableFuture<Integer> getSimulatorComplete() {
-    return simulatorComplete;
+  public CompletableFuture<Integer> getSimulatorCompleteFuture() {
+    return simulatorCompleteFuture;
   }
 
   // TODO need to add tests for this
   public TestClientSimulator setSpeculativeQueryEnabled(boolean speculativeQueryEnabled) {
     this.speculativeQueryEnabled = speculativeQueryEnabled;
+    return this;
+  }
+
+  public TestClientSimulator setLongTailRetryEnabledForSingleGet(boolean longTailRetryEnabledForSingleGet) {
+    this.longTailRetryEnabledForSingleGet = longTailRetryEnabledForSingleGet;
+    return this;
+  }
+
+  public TestClientSimulator setLongTailRetryThresholdForSingleGetInMicroseconds(
+      int longTailRetryThresholdForSingleGetInMicroseconds) {
+    this.longTailRetryThresholdForSingleGetInMicroseconds = longTailRetryThresholdForSingleGetInMicroseconds;
     return this;
   }
 
@@ -454,14 +505,19 @@ public class TestClientSimulator implements Client {
     // Test generic store client
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<Object, Object, SpecificRecord>();
-    clientConfigBuilder.setStoreName("unittest");
+    clientConfigBuilder.setStoreName(UNIT_TEST_STORE_NAME);
     clientConfigBuilder.setR2Client(this);
     clientConfigBuilder.setMetricsRepository(new MetricsRepository());
     clientConfigBuilder.setSpeculativeQueryEnabled(speculativeQueryEnabled);
     if (longTailRetryEnabledForBatchGet) {
-      clientConfigBuilder.setLongTailRetryEnabledForBatchGet(longTailRetryEnabledForBatchGet);
+      clientConfigBuilder.setLongTailRetryEnabledForBatchGet(true);
       clientConfigBuilder
           .setLongTailRetryThresholdForBatchGetInMicroSeconds(longTailRetryThresholdForBatchGetInMicroseconds);
+    }
+    if (longTailRetryEnabledForSingleGet) {
+      clientConfigBuilder.setLongTailRetryEnabledForSingleGet(true);
+      clientConfigBuilder
+          .setLongTailRetryThresholdForSingleGetInMicroSeconds(longTailRetryThresholdForSingleGetInMicroseconds);
     }
     clientConfigBuilder.setClientRoutingStrategy(new ClientRoutingStrategy() {
       @Override
