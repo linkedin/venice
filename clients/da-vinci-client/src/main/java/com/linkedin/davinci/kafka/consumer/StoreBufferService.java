@@ -532,7 +532,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
         LOGGER.info(
             "Drainer number {} hosting {} partitions, has memory usage of {}",
             index,
-            drainer.topicToTimeSpent.size(),
+            drainer.blockingQueue.size(),
             queue.getMemoryUsage());
       }
       drainer.topicToTimeSpent.clear();
