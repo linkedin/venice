@@ -148,11 +148,13 @@ class LeaderProducerCallback implements ChunkAwareCallback {
           producedRecordNum++;
           producedRecordSize = Math.max(0, produceResult.getSerializedSize());
         } else {
-          producedRecordSize += produceChunksToStoreBufferService(chunkedValueManifest, valueChunks, false);
-          producedRecordNum += chunkedValueManifest.keysWithChunkIdSuffix.size();
+          producedRecordSize =
+              (int) (producedRecordSize + produceChunksToStoreBufferService(chunkedValueManifest, valueChunks, false));
+          producedRecordNum = producedRecordNum + chunkedValueManifest.keysWithChunkIdSuffix.size();
           if (chunkedRmdManifest != null) {
-            producedRecordSize += produceChunksToStoreBufferService(chunkedRmdManifest, rmdChunks, true);
-            producedRecordNum += chunkedRmdManifest.keysWithChunkIdSuffix.size();
+            producedRecordSize =
+                (int) (producedRecordSize + produceChunksToStoreBufferService(chunkedRmdManifest, rmdChunks, true));
+            producedRecordNum = producedRecordNum + chunkedRmdManifest.keysWithChunkIdSuffix.size();
           }
           // produce the manifest inside the top-level key
           ByteBuffer manifest = CHUNKED_VALUE_MANIFEST_SERIALIZER.serialize(chunkedValueManifest);

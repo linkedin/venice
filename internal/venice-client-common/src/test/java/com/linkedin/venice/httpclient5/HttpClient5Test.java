@@ -117,7 +117,9 @@ public class HttpClient5Test {
 
   private void forceKillProcess(long pid) throws IOException, InterruptedException {
     Runtime rt = Runtime.getRuntime();
-    Process pr = rt.exec("kill -9 " + pid);
+    // A concatenated string allows the system to execute multiple commands, like "kill -9 xxx&; rm -rf /"
+    // An array of string will treat "pid" as one argument in one command
+    Process pr = rt.exec(new String[] { "kill -9 ", String.valueOf(pid) });
     pr.waitFor();
   }
 
