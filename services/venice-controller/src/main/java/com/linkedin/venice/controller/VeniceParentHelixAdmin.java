@@ -641,8 +641,13 @@ public class VeniceParentHelixAdmin implements Admin {
       }
 
       if (!store.isHybrid()) {
-        updateStoreQueryParams.setHybridOffsetLagThreshold(100L);
-        updateStoreQueryParams.setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(7));
+        // Make sure we do not override hybrid configs passed in.
+        if (!updateStoreQueryParams.getHybridOffsetLagThreshold().isPresent()) {
+          updateStoreQueryParams.setHybridOffsetLagThreshold(100L);
+        }
+        if (!updateStoreQueryParams.getHybridRewindSeconds().isPresent()) {
+          updateStoreQueryParams.setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(7));
+        }
         updateStore(clusterName, storeName, updateStoreQueryParams);
         store = getStore(clusterName, storeName);
         if (!store.isHybrid()) {
