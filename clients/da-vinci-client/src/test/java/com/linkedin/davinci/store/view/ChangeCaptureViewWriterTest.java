@@ -16,6 +16,7 @@ import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.views.ChangeCaptureView;
@@ -34,7 +35,6 @@ import java.util.concurrent.Future;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.kafka.clients.producer.RecordMetadata;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.testng.Assert;
@@ -86,7 +86,7 @@ public class ChangeCaptureViewWriterTest {
     urlMappingMap.put(LTX_1, 0);
     urlMappingMap.put(LVA_1, 1);
     urlMappingMap.put(LOR_1, 2);
-    Future<RecordMetadata> mockFuture = Mockito.mock(Future.class);
+    Future<PubSubProduceResult> mockFuture = Mockito.mock(Future.class);
 
     VeniceWriter mockVeniceWriter = Mockito.mock(VeniceWriter.class);
     Mockito.when(mockVeniceWriter.put(Mockito.any(), Mockito.any(), Mockito.anyInt())).thenReturn(mockFuture);
@@ -158,7 +158,7 @@ public class ChangeCaptureViewWriterTest {
 
     VeniceProperties props = new VeniceProperties();
     Object2IntMap<String> urlMappingMap = new Object2IntOpenHashMap<>();
-    Future<RecordMetadata> mockFuture = Mockito.mock(Future.class);
+    Future<PubSubProduceResult> mockFuture = Mockito.mock(Future.class);
 
     VeniceWriter mockVeniceWriter = Mockito.mock(VeniceWriter.class);
     Mockito.when(mockVeniceWriter.put(Mockito.any(), Mockito.any(), Mockito.anyInt())).thenReturn(mockFuture);
@@ -189,7 +189,7 @@ public class ChangeCaptureViewWriterTest {
     Store mockStore = Mockito.mock(Store.class);
     VeniceProperties props = new VeniceProperties();
     Object2IntMap<String> urlMappingMap = new Object2IntOpenHashMap<>();
-    Future<RecordMetadata> mockFuture = Mockito.mock(Future.class);
+    Future<PubSubProduceResult> mockFuture = Mockito.mock(Future.class);
 
     VeniceWriter mockVeniceWriter = Mockito.mock(VeniceWriter.class);
     Mockito.when(mockVeniceWriter.put(Mockito.any(), Mockito.any(), Mockito.anyInt())).thenReturn(mockFuture);

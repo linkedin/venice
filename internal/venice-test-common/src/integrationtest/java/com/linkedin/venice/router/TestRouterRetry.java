@@ -21,6 +21,7 @@ import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -89,7 +90,10 @@ public class TestRouterRetry {
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_STR);
 
     veniceWriter = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress())
-        .createVeniceWriter(storeVersionName, keySerializer, valueSerializer);
+        .createVeniceWriter(
+            new VeniceWriterOptions.Builder(storeVersionName).setKeySerializer(keySerializer)
+                .setValueSerializer(valueSerializer)
+                .build());
     final int pushVersion = Version.parseVersionFromKafkaTopicName(storeVersionName);
 
     veniceWriter.broadcastStartOfPush(new HashMap<>());

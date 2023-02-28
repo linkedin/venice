@@ -8,6 +8,7 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
@@ -15,7 +16,6 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.writer.ChunkAwareCallback;
 import java.nio.ByteBuffer;
-import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -66,7 +66,7 @@ class LeaderProducerCallback implements ChunkAwareCallback {
   }
 
   @Override
-  public void onCompletion(RecordMetadata recordMetadata, Exception e) {
+  public void onCompletion(PubSubProduceResult produceResult, Exception e) {
     if (e != null) {
       LOGGER.error(
           "Leader failed to send out message to version topic when consuming {}",
@@ -80,7 +80,7 @@ class LeaderProducerCallback implements ChunkAwareCallback {
       // when leaderSubPartition != recordMetadata.partition(), local StorageEngine will be written by
       // followers consuming from VTs. So it is safe to skip adding the record to leader's StorageBufferService
       if (partitionConsumptionState.getLeaderFollowerState() == LEADER
-          && recordMetadata.partition() != partitionConsumptionState.getPartition()) {
+          && produceResult.getPartition() != partitionConsumptionState.getPartition()) {
         leaderProducedRecordContext.completePersistedToDBFuture(null);
         return;
       }
@@ -131,7 +131,7 @@ class LeaderProducerCallback implements ChunkAwareCallback {
           if (key != null) {
             leaderProducedRecordContext.setKeyBytes(key);
           }
-          leaderProducedRecordContext.setProducedOffset(recordMetadata.offset());
+          leaderProducedRecordContext.setProducedOffset(produceResult.getOffset());
           ingestionTask.produceToStoreBufferService(
               sourceConsumerRecord,
               leaderProducedRecordContext,
@@ -140,8 +140,7 @@ class LeaderProducerCallback implements ChunkAwareCallback {
               beforeProcessingRecordTimestamp);
 
           producedRecordNum++;
-          producedRecordSize =
-              Math.max(0, recordMetadata.serializedKeySize()) + Math.max(0, recordMetadata.serializedValueSize());
+          producedRecordSize = Math.max(0, produceResult.getSerializedSize());
         } else {
           producedRecordSize += produceChunksToStoreBufferService(chunkedValueManifest, valueChunks, false);
           producedRecordNum += chunkedValueManifest.keysWithChunkIdSuffix.size();
@@ -167,7 +166,7 @@ class LeaderProducerCallback implements ChunkAwareCallback {
               key,
               manifestPut,
               leaderProducedRecordContext.getPersistedToDBFuture());
-          producedRecordForManifest.setProducedOffset(recordMetadata.offset());
+          producedRecordForManifest.setProducedOffset(produceResult.getOffset());
           ingestionTask.produceToStoreBufferService(
               sourceConsumerRecord,
               producedRecordForManifest,

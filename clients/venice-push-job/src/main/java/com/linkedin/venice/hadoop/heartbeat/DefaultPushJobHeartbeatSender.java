@@ -1,5 +1,7 @@
 package com.linkedin.venice.hadoop.heartbeat;
 
+import com.linkedin.venice.pubsub.api.PubSubProduceResult;
+import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatKey;
 import com.linkedin.venice.status.protocol.BatchJobHeartbeatValue;
@@ -18,8 +20,6 @@ import javax.annotation.Nonnull;
 import javax.annotation.concurrent.NotThreadSafe;
 import org.apache.avro.Schema;
 import org.apache.commons.lang.Validate;
-import org.apache.kafka.clients.producer.Callback;
-import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -180,7 +180,7 @@ class DefaultPushJobHeartbeatSender implements PushJobHeartbeatSender {
     byte[] valueBytes = valueSerializer.serialize(heartbeatKafkaTopicName, BatchJobHeartbeatValue);
     CountDownLatch sendComplete = new CountDownLatch(1);
     final Instant sendStartTime = Instant.now();
-    final Callback callback = (RecordMetadata metadata, Exception exception) -> {
+    final PubSubProducerCallback callback = (PubSubProduceResult produceResult, Exception exception) -> {
       Duration sendDuration = Duration.between(sendStartTime, Instant.now());
       if (exception == null) {
         successfulHeartbeatCount++;

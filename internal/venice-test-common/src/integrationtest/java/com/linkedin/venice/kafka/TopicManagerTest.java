@@ -33,6 +33,9 @@ import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.ZKStore;
+import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapter;
+import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
@@ -58,9 +61,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import kafka.log.LogConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
-import org.apache.kafka.clients.producer.KafkaProducer;
-import org.apache.kafka.clients.producer.ProducerConfig;
-import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.errors.TimeoutException;
 import org.apache.logging.log4j.LogManager;
@@ -177,7 +177,7 @@ public class TopicManagerTest {
   }
 
   /**
-   * This method produces either an random data record or a control message/record to Kafka with a given producer timestamp.
+   * This method produces either a random data record or a control message/record to Kafka with a given producer timestamp.
    *
    * @param topic
    * @param isDataRecord
@@ -188,10 +188,11 @@ public class TopicManagerTest {
   private void produceToKafka(String topic, boolean isDataRecord, long producerTimestamp)
       throws ExecutionException, InterruptedException {
     Properties props = new Properties();
-    props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class);
-    props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, KafkaValueSerializer.class);
-    props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafka.getAddress());
-    KafkaProducer<KafkaKey, KafkaMessageEnvelope> producer = new KafkaProducer(props);
+    props.put(ApacheKafkaProducerConfig.KAFKA_KEY_SERIALIZER, KafkaKeySerializer.class.getName());
+    props.put(ApacheKafkaProducerConfig.KAFKA_VALUE_SERIALIZER, KafkaValueSerializer.class.getName());
+    props.put(ApacheKafkaProducerConfig.KAFKA_BOOTSTRAP_SERVERS, kafka.getAddress());
+    PubSubProducerAdapter producer = new ApacheKafkaProducerAdapter(new ApacheKafkaProducerConfig(props));
+
     final byte[] randomBytes = new byte[] { 0, 1 };
 
     // Prepare record key
@@ -217,8 +218,7 @@ public class TopicManagerTest {
       controlMessage.debugInfo = Collections.emptyMap();
       recordValue.payloadUnion = controlMessage;
     }
-    ProducerRecord<KafkaKey, KafkaMessageEnvelope> record = new ProducerRecord<>(topic, recordKey, recordValue);
-    producer.send(record).get();
+    producer.sendMessage(topic, null, recordKey, recordValue, null, null).get();
   }
 
   @Test

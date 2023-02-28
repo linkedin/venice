@@ -33,7 +33,6 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.DataProviderUtils;
@@ -41,6 +40,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
@@ -139,7 +139,7 @@ public class TestStreaming {
     VeniceCompressor compressor = compressorFactory.getCompressor(compressionStrategy);
 
     veniceWriter = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress())
-        .createVeniceWriter(storeVersionName, keySerializer, new DefaultSerializer());
+        .createVeniceWriter(new VeniceWriterOptions.Builder(storeVersionName).setKeySerializer(keySerializer).build());
 
     final int pushVersion = Version.parseVersionFromKafkaTopicName(storeVersionName);
 

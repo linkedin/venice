@@ -21,6 +21,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.pushmonitor.RouterBasedHybridStoreQuotaMonitor;
@@ -41,6 +42,7 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.CompletableFutureCallback;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.io.File;
@@ -60,7 +62,6 @@ import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.DatumWriter;
 import org.apache.avro.util.Utf8;
 import org.apache.commons.io.FileUtils;
-import org.apache.kafka.clients.producer.Callback;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.samza.SamzaException;
@@ -235,7 +236,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
    * @param primaryControllerColoD2ZKHost D2 Zk Address of the colo where the primary controller resides
    * @param primaryControllerD2ServiceName The service name that the primary controller uses to announce itself to D2
    * @param storeName The store to write to
-   * @param pushType The {@link PushType} to use to write to the store
+   * @param pushType The {@link Version.PushType} to use to write to the store
    * @param samzaJobId A unique id used to identify jobs that can concurrently write to the same store
    * @param runningFabric The colo where the job is running. It is used to find the best destination for the data to be written to
    * @param verifyLatestProtocolPresent Config to check whether the protocol versions used at runtime are valid in Venice backend
@@ -321,23 +322,33 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       VersionCreationResponse store,
       Properties veniceWriterProperties) {
     int amplificationFactor = store.getAmplificationFactor();
-    Optional<Integer> partitionCount = pushType.isBatchOrStreamReprocessing()
-        ? Optional.of(store.getPartitions() * amplificationFactor)
+    Integer partitionCount = pushType.isBatchOrStreamReprocessing()
+        ? (store.getPartitions() * amplificationFactor)
         /**
          * N.B. There is an issue in the controller where the partition count inside a {@link VersionCreationResponse}
          *      for a non-batch topic is invalid, so in that case we don't rely on it, and let the {@link VeniceWriter}
          *      figure it out by doing a metadata call to Kafka. It would be great to fix the controller bug and then
          *      always pass in the partition count here, so we can skip this MD call.
          */
-        : Optional.empty();
+        : null;
     Properties partitionerProperties = new Properties();
     partitionerProperties.putAll(store.getPartitionerParams());
     VenicePartitioner venicePartitioner = PartitionUtils.getVenicePartitioner(
         store.getPartitionerClass(),
         amplificationFactor,
         new VeniceProperties(partitionerProperties));
-    return new VeniceWriterFactory(veniceWriterProperties)
-        .createBasicVeniceWriter(store.getKafkaTopic(), time, isChunkingEnabled, venicePartitioner, partitionCount);
+    return constructVeniceWriter(
+        veniceWriterProperties,
+        new VeniceWriterOptions.Builder(store.getKafkaTopic()).setTime(time)
+            .setPartitioner(venicePartitioner)
+            .setPartitionCount(partitionCount)
+            .setChunkingEnabled(isChunkingEnabled)
+            .build());
+  }
+
+  // trickery for unit testing
+  VeniceWriter<byte[], byte[], byte[]> constructVeniceWriter(Properties properties, VeniceWriterOptions writerOptions) {
+    return new VeniceWriterFactory(properties).createVeniceWriter(writerOptions);
   }
 
   @Override
@@ -584,7 +595,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
     byte[] key = serializeObject(topicName, keyObject);
     final CompletableFuture<Void> completableFuture = new CompletableFuture<>();
-    final Callback callback = new CompletableFutureCallback(completableFuture);
+    final PubSubProducerCallback callback = new CompletableFutureCallback(completableFuture);
 
     long logicalTimestamp = -1;
     if (valueObject instanceof VeniceObjectWithTimestamp) {

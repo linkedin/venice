@@ -47,6 +47,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.util.HashMap;
@@ -160,7 +161,10 @@ public abstract class AbstractClientEndToEndSetup {
     valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_STR);
 
     veniceWriter = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress())
-        .createVeniceWriter(storeVersionName, keySerializer, valueSerializer);
+        .createVeniceWriter(
+            new VeniceWriterOptions.Builder(storeVersionName).setKeySerializer(keySerializer)
+                .setValueSerializer(valueSerializer)
+                .build());
     final int pushVersion = Version.parseVersionFromKafkaTopicName(storeVersionName);
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     // Insert test record and wait synchronously for it to succeed by calling get() on the future
