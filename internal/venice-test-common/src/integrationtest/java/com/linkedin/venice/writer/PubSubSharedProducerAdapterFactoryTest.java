@@ -15,14 +15,12 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapter;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.SharedKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
-import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
-import com.linkedin.venice.serialization.DefaultSerializer;
-import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -89,7 +87,9 @@ public class PubSubSharedProducerAdapterFactoryTest {
       VeniceWriterFactory veniceWriterFactory =
           TestUtils.getVeniceWriterFactoryWithSharedProducer(properties, sharedKafkaProducerAdapterFactory);
       try (VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter1 = veniceWriterFactory.createVeniceWriter(
-          new VeniceWriterOptions.Builder(existingTopic.getName()).setUseKafkaKeySerializer(true).setPartitionCount(1).build())) {
+          new VeniceWriterOptions.Builder(existingTopic.getName()).setUseKafkaKeySerializer(true)
+              .setPartitionCount(1)
+              .build())) {
         CountDownLatch producedTopicPresent = new CountDownLatch(100);
         for (int i = 0; i < 100 && !Thread.interrupted(); i++) {
           try {
