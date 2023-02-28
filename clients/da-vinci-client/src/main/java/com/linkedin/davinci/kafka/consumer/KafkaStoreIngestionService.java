@@ -200,8 +200,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       ClusterInfoProvider clusterInfoProvider,
       ReadOnlyStoreRepository metadataRepo,
       ReadOnlySchemaRepository schemaRepo,
-      CompletableFuture<RoutingDataRepository> routingRepositoryFuture,
-      CompletableFuture<HelixInstanceConfigRepository> helixInstanceFuture,
+      Optional<CompletableFuture<RoutingDataRepository>> routingRepositoryFuture,
+      Optional<CompletableFuture<HelixInstanceConfigRepository>> helixInstanceFuture,
       ReadOnlyLiveClusterConfigRepository liveClusterConfigRepository,
       MetricsRepository metricsRepository,
       Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader,
@@ -226,12 +226,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     // Each topic that has any partition ingested by this class has its own lock.
     this.topicLockManager = new ResourceAutoClosableLockManager<>(ReentrantLock::new);
 
-    if (routingRepositoryFuture != null) {
-      routingRepositoryFuture.thenApply(routing -> this.routingRepository = routing);
-    }
-    if (helixInstanceFuture != null) {
-      helixInstanceFuture.thenApply(helix -> this.helixInstanceConfigRepository = helix);
-    }
+    routingRepositoryFuture.ifPresent(future -> future.thenApply(routing -> this.routingRepository = routing));
+    helixInstanceFuture.ifPresent(future -> future.thenApply(helix -> this.helixInstanceConfigRepository = helix));
 
     VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
     ServerKafkaClientFactory veniceConsumerFactory = new ServerKafkaClientFactory(
