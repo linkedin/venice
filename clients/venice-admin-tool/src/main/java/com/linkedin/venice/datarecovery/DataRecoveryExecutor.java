@@ -54,7 +54,7 @@ public class DataRecoveryExecutor {
   }
 
   private void shutdownAndAwaitTermination() {
-    pool.shutdownNow();
+    pool.shutdown();
     try {
       if (!pool.awaitTermination(DEFAULT_POOL_TIMEOUT_IN_SECONDS, TimeUnit.SECONDS)) {
         // Cancel currently executing tasks.
