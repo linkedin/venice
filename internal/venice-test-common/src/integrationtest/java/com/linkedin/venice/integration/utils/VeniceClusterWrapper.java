@@ -49,6 +49,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.lazy.LazyResettable;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -757,7 +758,10 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(stringSchema);
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(stringSchema);
 
-    return factory.createVeniceWriter(storeVersionName, keySerializer, valueSerializer);
+    return factory.createVeniceWriter(
+        new VeniceWriterOptions.Builder(storeVersionName).setKeySerializer(keySerializer)
+            .setValueSerializer(valueSerializer)
+            .build());
   }
 
   public VeniceWriter<String, String, byte[]> getSslVeniceWriter(String storeVersionName) {
@@ -771,7 +775,10 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(stringSchema);
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(stringSchema);
 
-    return factory.createVeniceWriter(storeVersionName, keySerializer, valueSerializer);
+    return factory.createVeniceWriter(
+        new VeniceWriterOptions.Builder(storeVersionName).setKeySerializer(keySerializer)
+            .setValueSerializer(valueSerializer)
+            .build());
   }
 
   /**

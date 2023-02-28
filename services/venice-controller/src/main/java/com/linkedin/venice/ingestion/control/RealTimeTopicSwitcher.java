@@ -15,12 +15,12 @@ import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -96,11 +96,11 @@ public class RealTimeTopicSwitcher {
     } else {
       sourceClusters.add(destKafkaBootstrapServers);
     }
-    try (VeniceWriter veniceWriter = getVeniceWriterFactory().createBasicVeniceWriter(
-        topicWhereToSendTheTopicSwitch,
-        getTimer(),
-        new DefaultVenicePartitioner(),
-        destinationPartitionCount)) {
+
+    try (VeniceWriter<byte[], byte[], byte[]> veniceWriter = getVeniceWriterFactory().createVeniceWriter(
+        new VeniceWriterOptions.Builder(topicWhereToSendTheTopicSwitch).setTime(getTimer())
+            .setPartitionCount(destinationPartitionCount)
+            .build())) {
       veniceWriter
           .broadcastTopicSwitch(sourceClusters, realTimeTopicName, rewindStartTimestamp, Collections.emptyMap());
     }
@@ -228,13 +228,11 @@ public class RealTimeTopicSwitcher {
       // NoOp
       return;
     }
-
     // Write the thing!
-    try (VeniceWriter veniceWriter = getVeniceWriterFactory().createBasicVeniceWriter(
-        Version.composeRealTimeTopic(store.getName()),
-        getTimer(),
-        new DefaultVenicePartitioner(),
-        previousStoreVersion.getPartitionCount())) {
+    try (VeniceWriter veniceWriter = getVeniceWriterFactory().createVeniceWriter(
+        new VeniceWriterOptions.Builder(Version.composeRealTimeTopic(store.getName())).setTime(getTimer())
+            .setPartitionCount(previousStoreVersion.getPartitionCount())
+            .build())) {
       veniceWriter.broadcastVersionSwap(
           previousStoreVersion.kafkaTopicName(),
           nextStoreVersion.kafkaTopicName(),

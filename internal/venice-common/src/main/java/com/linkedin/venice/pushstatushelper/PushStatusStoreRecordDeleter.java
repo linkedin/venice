@@ -1,13 +1,13 @@
 package com.linkedin.venice.pushstatushelper;
 
 import com.linkedin.venice.common.PushStatusStoreUtils;
+import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pushstatus.PushStatusKey;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.Optional;
 import java.util.concurrent.Future;
-import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -40,7 +40,7 @@ public class PushStatusStoreRecordDeleter implements AutoCloseable {
    * N.B.: Currently used by tests only.
    * @return
    */
-  public Future<RecordMetadata> deletePartitionIncrementalPushStatus(
+  public Future<PubSubProduceResult> deletePartitionIncrementalPushStatus(
       String storeName,
       int version,
       String incrementalPushVersion,

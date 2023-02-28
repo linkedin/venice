@@ -3,7 +3,6 @@ package com.linkedin.venice.writer;
 import com.linkedin.venice.utils.ByteUtils;
 import java.nio.ByteBuffer;
 import java.util.Optional;
-import org.apache.kafka.clients.producer.Callback;
 
 
 /**

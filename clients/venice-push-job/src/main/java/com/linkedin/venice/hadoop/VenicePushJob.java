@@ -3,6 +3,10 @@ package com.linkedin.venice.hadoop;
 import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.ConfigKeys.AMPLIFICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_CONFIG_PREFIX;
+import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_REQUEST_TIMEOUT_MS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_PRODUCER_RETRIES_CONFIG;
 import static com.linkedin.venice.ConfigKeys.PARTITIONER_CLASS;
 import static com.linkedin.venice.ConfigKeys.VENICE_PARTITIONERS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
@@ -71,7 +75,6 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
-import com.linkedin.venice.writer.ApacheKafkaProducer;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
@@ -110,7 +113,6 @@ import org.apache.hadoop.mapred.Partitioner;
 import org.apache.hadoop.mapred.RunningJob;
 import org.apache.hadoop.mapred.lib.NullOutputFormat;
 import org.apache.kafka.clients.CommonClientConfigs;
-import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -144,13 +146,6 @@ public class VenicePushJob implements AutoCloseable {
 
   // veniceReducer will not fail fast and override the previous key if this is true and duplicate keys incur.
   public static final String ALLOW_DUPLICATE_KEY = "allow.duplicate.key";
-
-  public static final String KAFKA_PRODUCER_REQUEST_TIMEOUT_MS =
-      ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX + ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG; // kafka.request.timeout.ms
-  public static final String KAFKA_PRODUCER_RETRIES_CONFIG =
-      ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX + ProducerConfig.RETRIES_CONFIG; // kafka.retries
-  public static final String KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS =
-      ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX + ProducerConfig.DELIVERY_TIMEOUT_MS_CONFIG;
   public static final String POLL_STATUS_RETRY_ATTEMPTS = "poll.status.retry.attempts";
   public static final String CONTROLLER_REQUEST_RETRY_ATTEMPTS = "controller.request.retry.attempts";
   public static final String POLL_JOB_STATUS_INTERVAL_MS = "poll.job.status.interval.ms";
@@ -547,7 +542,7 @@ public class VenicePushJob implements AutoCloseable {
    */
   public VenicePushJob(String jobId, Properties vanillaProps) {
     this.jobId = jobId;
-    this.props = getVenicePropsFromVanillaProps(vanillaProps);
+    this.props = getVenicePropsFromVanillaProps(Objects.requireNonNull(vanillaProps, "VPJ props cannot be null"));
     if (isSslEnabled()) {
       VPJSSLUtils.validateSslProperties(vanillaProps);
     }
@@ -575,6 +570,11 @@ public class VenicePushJob implements AutoCloseable {
   // Visible for testing
   PushJobSetting getPushJobSetting() {
     return this.pushJobSetting;
+  }
+
+  // Visible for testing
+  VeniceProperties getVeniceProperties() {
+    return this.props;
   }
 
   private VeniceProperties getVenicePropsFromVanillaProps(Properties vanillaProps) {
@@ -2357,10 +2357,9 @@ public class VenicePushJob implements AutoCloseable {
       VeniceWriterOptions vwOptions = new VeniceWriterOptions.Builder(topicInfo.topic).setUseKafkaKeySerializer(true)
           .setPartitioner(venicePartitioner)
           .setPartitionCount(
-              Optional.of(
-                  Version.isVersionTopic(topicInfo.topic)
-                      ? topicInfo.partitionCount * topicInfo.amplificationFactor
-                      : topicInfo.partitionCount))
+              Version.isVersionTopic(topicInfo.topic)
+                  ? topicInfo.partitionCount * topicInfo.amplificationFactor
+                  : topicInfo.partitionCount)
           .build();
       VeniceWriter<KafkaKey, byte[], byte[]> newVeniceWriter = veniceWriterFactory.createVeniceWriter(vwOptions);
       LOGGER.info("Created VeniceWriter: {}", newVeniceWriter);
@@ -2688,12 +2687,12 @@ public class VenicePushJob implements AutoCloseable {
 
     /** Allow overriding properties if their names start with {@link HADOOP_PREFIX}.
      *  Allow overriding properties if their names start with {@link VeniceWriter.VENICE_WRITER_CONFIG_PREFIX}
-     *  Allow overriding properties if their names start with {@link ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX}
-     *  Allow overriding properties if their names start with {@link KafkaInputRecordReader.KAFKA_INPUT_RECORD_READER_KAFKA_CONFIG_PREFIX}
+     *  Allow overriding properties if their names start with {@link ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX}
+     *  Allow overriding properties if their names start with {@link KafkaInputRecordReader.KIF_RECORD_READER_KAFKA_CONFIG_PREFIX}
      **/
     List<String> passThroughPrefixList = Arrays.asList(
         VeniceWriter.VENICE_WRITER_CONFIG_PREFIX,
-        ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX,
+        KAFKA_CONFIG_PREFIX,
         KafkaInputRecordReader.KIF_RECORD_READER_KAFKA_CONFIG_PREFIX);
     int passThroughPrefixListSize = passThroughPrefixList.size();
     if (passThroughPrefixListSize > 1) {

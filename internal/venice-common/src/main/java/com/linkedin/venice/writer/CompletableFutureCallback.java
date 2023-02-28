@@ -1,8 +1,8 @@
 package com.linkedin.venice.writer;
 
+import com.linkedin.venice.pubsub.api.PubSubProduceResult;
+import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import java.util.concurrent.CompletableFuture;
-import org.apache.kafka.clients.producer.Callback;
-import org.apache.kafka.clients.producer.RecordMetadata;
 
 
 /**
@@ -11,17 +11,17 @@ import org.apache.kafka.clients.producer.RecordMetadata;
  * changed and the callback will be called. The caller can pass a {@code CompletableFutureCallback} to a function
  * accepting a {@code Callback} parameter to get a {@code CompletableFuture} after the function returns.
  */
-public class CompletableFutureCallback implements Callback {
+public class CompletableFutureCallback implements PubSubProducerCallback {
   private final CompletableFuture<Void> completableFuture;
-  private Callback callback = null;
+  private PubSubProducerCallback callback = null;
 
   public CompletableFutureCallback(CompletableFuture<Void> completableFuture) {
     this.completableFuture = completableFuture;
   }
 
   @Override
-  public void onCompletion(RecordMetadata recordMetadata, Exception e) {
-    callback.onCompletion(recordMetadata, e);
+  public void onCompletion(PubSubProduceResult produceResult, Exception e) {
+    callback.onCompletion(produceResult, e);
     if (e == null) {
       completableFuture.complete(null);
     } else {
@@ -29,11 +29,11 @@ public class CompletableFutureCallback implements Callback {
     }
   }
 
-  public Callback getCallback() {
+  public PubSubProducerCallback getCallback() {
     return callback;
   }
 
-  public void setCallback(Callback callback) {
+  public void setCallback(PubSubProducerCallback callback) {
     this.callback = callback;
   }
 }

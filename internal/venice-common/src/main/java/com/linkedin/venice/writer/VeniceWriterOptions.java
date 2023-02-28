@@ -7,7 +7,7 @@ import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
-import java.util.Optional;
+import java.util.Objects;
 
 
 /**
@@ -17,18 +17,20 @@ import java.util.Optional;
  */
 public class VeniceWriterOptions {
   private final String topicName;
+  // TODO: Update to use generic serializers
   private final VeniceKafkaSerializer keySerializer;
   private final VeniceKafkaSerializer valueSerializer;
   private final VeniceKafkaSerializer writeComputeSerializer;
   private final VenicePartitioner partitioner;
   private final Time time;
-  private final Optional<Integer> partitionCount;
+  private final Integer partitionCount;
   private final boolean chunkingEnabled;
   private final boolean rmdChunkingEnabled;
-  private final String kafkaBootstrapServers;
+  // Set this field if you want to use different broker address than the local broker address
+  private final String brokerAddress;
 
-  public String getKafkaBootstrapServers() {
-    return kafkaBootstrapServers;
+  public String getBrokerAddress() {
+    return brokerAddress;
   }
 
   public String getTopicName() {
@@ -55,7 +57,7 @@ public class VeniceWriterOptions {
     return time;
   }
 
-  public Optional<Integer> getPartitionCount() {
+  public Integer getPartitionCount() {
     return partitionCount;
   }
 
@@ -77,7 +79,7 @@ public class VeniceWriterOptions {
     partitionCount = builder.partitionCount;
     chunkingEnabled = builder.chunkingEnabled;
     rmdChunkingEnabled = builder.rmdChunkingEnabled;
-    kafkaBootstrapServers = builder.kafkaBootstrapServers;
+    brokerAddress = builder.brokerAddress;
   }
 
   @Override
@@ -85,14 +87,14 @@ public class VeniceWriterOptions {
     return new StringBuilder("VeniceWriterOptions:{").append("topic:")
         .append(topicName)
         .append(", ")
-        .append("kafkaBootstrapServers:")
-        .append(kafkaBootstrapServers)
+        .append("brokerAddress:")
+        .append(brokerAddress)
         .append(", ")
         .append("chunkingEnabled:")
         .append(chunkingEnabled)
         .append(", ")
         .append("partitionCount:")
-        .append(partitionCount.isPresent() ? partitionCount : "-")
+        .append(partitionCount != null ? partitionCount : "-")
         .append("}")
         .toString();
   }
@@ -104,11 +106,10 @@ public class VeniceWriterOptions {
     private VeniceKafkaSerializer writeComputeSerializer = null;
     private VenicePartitioner partitioner = null;
     private Time time = null;
-    private Optional<Integer> partitionCount = Optional.empty();
-    private boolean chunkingEnabled;
-    private boolean rmdChunkingEnabled;
-    private boolean useKafkaKeySerializer = false;
-    private String kafkaBootstrapServers = null;
+    private Integer partitionCount = null; // default null
+    private boolean chunkingEnabled; // default false
+    private boolean rmdChunkingEnabled; // default false
+    private String brokerAddress = null; // default null
 
     private void addDefaults() {
       if (keySerializer == null) {
@@ -133,38 +134,21 @@ public class VeniceWriterOptions {
       return new VeniceWriterOptions(this);
     }
 
-    public String getKafkaBootstrapServers() {
-      return kafkaBootstrapServers;
-    }
-
-    public Builder setKafkaBootstrapServers(String kafkaBootstrapServers) {
-      this.kafkaBootstrapServers = kafkaBootstrapServers;
+    public Builder setBrokerAddress(String brokerAddress) {
+      this.brokerAddress = brokerAddress;
       return this;
-    }
-
-    public boolean isUseKafkaKeySerializer() {
-      return useKafkaKeySerializer;
     }
 
     public Builder setUseKafkaKeySerializer(boolean useKafkaKeySerializer) {
       if (useKafkaKeySerializer) {
         this.keySerializer = new KafkaKeySerializer();
       }
-      this.useKafkaKeySerializer = useKafkaKeySerializer;
       return this;
-    }
-
-    public boolean isChunkingEnabled() {
-      return chunkingEnabled;
     }
 
     public Builder setChunkingEnabled(boolean chunkingEnabled) {
       this.chunkingEnabled = chunkingEnabled;
       return this;
-    }
-
-    public boolean isRmdChunkingEnabled() {
-      return rmdChunkingEnabled;
     }
 
     public Builder setRmdChunkingEnabled(boolean rmdChunkingEnabled) {
@@ -173,15 +157,7 @@ public class VeniceWriterOptions {
     }
 
     public Builder(String topic) {
-      this.topicName = topic;
-    }
-
-    public String getTopicName() {
-      return topicName;
-    }
-
-    public VeniceKafkaSerializer getKeySerializer() {
-      return keySerializer;
+      this.topicName = Objects.requireNonNull(topic, "Topic name cannot be null for VeniceWriterOptions");
     }
 
     public Builder setKeySerializer(VeniceKafkaSerializer keySerializer) {
@@ -189,17 +165,9 @@ public class VeniceWriterOptions {
       return this;
     }
 
-    public VeniceKafkaSerializer getValueSerializer() {
-      return valueSerializer;
-    }
-
     public Builder setValueSerializer(VeniceKafkaSerializer valueSerializer) {
       this.valueSerializer = valueSerializer;
       return this;
-    }
-
-    public VeniceKafkaSerializer getWriteComputeSerializer() {
-      return writeComputeSerializer;
     }
 
     public Builder setWriteComputeSerializer(VeniceKafkaSerializer writeComputeSerializer) {
@@ -207,17 +175,9 @@ public class VeniceWriterOptions {
       return this;
     }
 
-    public VenicePartitioner getPartitioner() {
-      return partitioner;
-    }
-
     public Builder setPartitioner(VenicePartitioner partitioner) {
       this.partitioner = partitioner;
       return this;
-    }
-
-    public Time getTime() {
-      return time;
     }
 
     public Builder setTime(Time time) {
@@ -225,11 +185,7 @@ public class VeniceWriterOptions {
       return this;
     }
 
-    public Optional<Integer> getPartitionCount() {
-      return partitionCount;
-    }
-
-    public Builder setPartitionCount(Optional<Integer> partitionCount) {
+    public Builder setPartitionCount(Integer partitionCount) {
       this.partitionCount = partitionCount;
       return this;
     }

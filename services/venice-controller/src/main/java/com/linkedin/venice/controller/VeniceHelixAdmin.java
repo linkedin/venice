@@ -190,6 +190,7 @@ import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.views.ViewUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
 import java.security.cert.X509Certificate;
@@ -1083,9 +1084,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           VeniceSystemStoreUtils.getPushJobDetailsStoreName(),
           value.getSchema().toString());
       return getVeniceWriterFactory().createVeniceWriter(
-          pushJobDetailsRTTopic,
-          new VeniceAvroKafkaSerializer(key.getSchema().toString()),
-          new VeniceAvroKafkaSerializer(value.getSchema().toString()));
+          new VeniceWriterOptions.Builder(pushJobDetailsRTTopic)
+              .setKeySerializer(new VeniceAvroKafkaSerializer(key.getSchema().toString()))
+              .setValueSerializer(new VeniceAvroKafkaSerializer(value.getSchema().toString()))
+              .build());
     });
 
     pushJobDetailsWriter.put(key, value, pushJobDetailsSchemaId, null);
@@ -1169,9 +1171,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     // write EOP message
     VeniceWriterFactory factory = getVeniceWriterFactory();
     int partitionCount = version.getPartitionCount() * version.getPartitionerConfig().getAmplificationFactor();
-    try (VeniceWriter veniceWriter = (multiClusterConfigs.isParent() && version.isNativeReplicationEnabled())
-        ? factory.createVeniceWriter(topicToReceiveEndOfPush, version.getPushStreamSourceAddress(), partitionCount)
-        : factory.createVeniceWriter(topicToReceiveEndOfPush, partitionCount)) {
+    VeniceWriterOptions.Builder vwOptionsBuilder =
+        new VeniceWriterOptions.Builder(topicToReceiveEndOfPush).setUseKafkaKeySerializer(true)
+            .setPartitionCount(partitionCount);
+    if (multiClusterConfigs.isParent() && version.isNativeReplicationEnabled()) {
+      vwOptionsBuilder.setBrokerAddress(version.getPushStreamSourceAddress());
+    }
+    try (VeniceWriter veniceWriter = factory.createVeniceWriter(vwOptionsBuilder.build())) {
       if (alsoWriteStartOfPush) {
         veniceWriter.broadcastStartOfPush(
             false,
@@ -2331,18 +2337,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             final Version finalVersion = version;
             VeniceWriter veniceWriter = null;
             try {
+              VeniceWriterOptions.Builder vwOptionsBuilder =
+                  new VeniceWriterOptions.Builder(finalVersion.kafkaTopicName()).setUseKafkaKeySerializer(true)
+                      .setPartitionCount(subPartitionCount);
               if (multiClusterConfigs.isParent() && finalVersion.isNativeReplicationEnabled()) {
-                /**
-                 * Produce directly into one of the child fabric
-                 */
-                veniceWriter = getVeniceWriterFactory().createVeniceWriter(
-                    finalVersion.kafkaTopicName(),
-                    finalVersion.getPushStreamSourceAddress(),
-                    subPartitionCount);
-              } else {
-                veniceWriter =
-                    getVeniceWriterFactory().createVeniceWriter(finalVersion.kafkaTopicName(), subPartitionCount);
+                // Produce directly into one of the child fabric
+                vwOptionsBuilder.setBrokerAddress(finalVersion.getPushStreamSourceAddress());
               }
+              veniceWriter = getVeniceWriterFactory().createVeniceWriter(vwOptionsBuilder.build());
               veniceWriter.broadcastStartOfPush(
                   sorted,
                   finalVersion.isChunkingEnabled(),
@@ -6008,9 +6010,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 + VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName));
       }
       return getVeniceWriterFactory().createVeniceWriter(
-          topic,
-          new VeniceAvroKafkaSerializer(ParticipantMessageKey.getClassSchema().toString()),
-          new VeniceAvroKafkaSerializer(ParticipantMessageValue.getClassSchema().toString()));
+          new VeniceWriterOptions.Builder(topic)
+              .setKeySerializer(new VeniceAvroKafkaSerializer(ParticipantMessageKey.getClassSchema().toString()))
+              .setValueSerializer(new VeniceAvroKafkaSerializer(ParticipantMessageValue.getClassSchema().toString()))
+              .build());
     });
   }
 

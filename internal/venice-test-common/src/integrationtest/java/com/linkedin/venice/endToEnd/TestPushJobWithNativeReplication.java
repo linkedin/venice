@@ -83,6 +83,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
@@ -970,9 +971,10 @@ public class TestPushJobWithNativeReplication {
     assertFalse(response.isError());
     Assert.assertNotNull(response.getKafkaTopic());
     VeniceWriter veniceWriter = veniceWriterFactory.createVeniceWriter(
-        response.getKafkaTopic(),
-        new VeniceAvroKafkaSerializer(STRING_SCHEMA),
-        new VeniceAvroKafkaSerializer(STRING_SCHEMA));
+        new VeniceWriterOptions.Builder(response.getKafkaTopic())
+            .setKeySerializer(new VeniceAvroKafkaSerializer(STRING_SCHEMA))
+            .setValueSerializer(new VeniceAvroKafkaSerializer(STRING_SCHEMA))
+            .build());
     veniceWriter.broadcastStartOfIncrementalPush(incrementalPushVersion, new HashMap<>());
     return veniceWriter;
   }

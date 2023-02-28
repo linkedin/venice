@@ -169,6 +169,7 @@ import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.persona.StoragePersona;
+import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
@@ -238,7 +239,6 @@ import org.apache.avro.Schema;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.Validate;
 import org.apache.http.HttpStatus;
-import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -500,11 +500,10 @@ public class VeniceParentHelixAdmin implements Admin {
        * 2. Data out of order;
        * 3. Data duplication;
        */
-      VeniceWriterOptions options = new VeniceWriterOptions.Builder(topicName).setTime(getTimer())
-          .setPartitionCount(Optional.of(AdminTopicUtils.PARTITION_NUM_FOR_ADMIN_TOPIC))
-          .build();
-
-      return getVeniceWriterFactory().createVeniceWriter(options);
+      return getVeniceWriterFactory().createVeniceWriter(
+          new VeniceWriterOptions.Builder(topicName).setTime(getTimer())
+              .setPartitionCount(AdminTopicUtils.PARTITION_NUM_FOR_ADMIN_TOPIC)
+              .build());
     });
 
     if (!getMultiClusterConfigs().getPushJobStatusStoreClusterName().isEmpty()
@@ -731,11 +730,11 @@ public class VeniceParentHelixAdmin implements Admin {
         VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterMap.get(clusterName);
         byte[] serializedValue = adminOperationSerializer.serialize(message);
         try {
-          Future<RecordMetadata> future = veniceWriter
+          Future<PubSubProduceResult> future = veniceWriter
               .put(emptyKeyByteArr, serializedValue, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-          RecordMetadata meta = future.get();
+          PubSubProduceResult produceResult = future.get();
 
-          LOGGER.info("Sent message: {} to kafka, offset: {}", message, meta.offset());
+          LOGGER.info("Sent message: {} to kafka, offset: {}", message, produceResult.getOffset());
         } catch (Exception e) {
           throw new VeniceException("Got exception during sending message to Kafka -- " + e.getMessage(), e);
         }
