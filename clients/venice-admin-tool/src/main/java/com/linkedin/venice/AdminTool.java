@@ -56,6 +56,8 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
+import com.linkedin.venice.datarecovery.DataRecoveryClient;
+import com.linkedin.venice.datarecovery.StoreRepushCommand;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixSchemaAccessor;
@@ -496,6 +498,9 @@ public class AdminTool {
         case CLEANUP_INSTANCE_CUSTOMIZED_STATES:
           cleanupInstanceCustomizedStates(cmd);
           break;
+        case EXECUTE_DATA_RECOVERY:
+          executeDataRecovery(cmd);
+          break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
           for (Command c: Command.values()) {
@@ -602,6 +607,27 @@ public class AdminTool {
     printObject(keySchema);
     MultiSchemaResponse valueSchemas = controllerClient.getAllValueSchema(store);
     printObject(valueSchemas);
+  }
+
+  private static void executeDataRecovery(CommandLine cmd) {
+    String recoveryCommand = getRequiredArgument(cmd, Arg.RECOVERY_COMMAND);
+    String sourceFabric = getRequiredArgument(cmd, Arg.SOURCE_FABRIC);
+    String stores = getRequiredArgument(cmd, Arg.STORES);
+
+    String extraCommandArgs = getOptionalArgument(cmd, Arg.EXTRA_COMMAND_ARGS);
+    boolean isDebuggingEnabled = cmd.hasOption(Arg.DEBUG.toString());
+
+    StoreRepushCommand.Params cmdParams = new StoreRepushCommand.Params();
+    cmdParams.setCommand(recoveryCommand);
+    cmdParams.setSourceFabric(sourceFabric);
+    if (extraCommandArgs != null) {
+      cmdParams.setExtraCommandArgs(extraCommandArgs);
+    }
+    cmdParams.setDebug(isDebuggingEnabled);
+
+    DataRecoveryClient dataRecoveryClient = new DataRecoveryClient();
+    DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(stores);
+    dataRecoveryClient.execute(params, cmdParams);
   }
 
   private static void createNewStore(CommandLine cmd) throws Exception {
