@@ -11,7 +11,6 @@ import static com.linkedin.venice.ConfigKeys.PARTITIONER_CLASS;
 import static com.linkedin.venice.ConfigKeys.VENICE_PARTITIONERS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG;
-import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_STORE_NAME_CONFIG;
 import static com.linkedin.venice.utils.ByteUtils.generateHumanReadableByteCountString;
 import static com.linkedin.venice.utils.Utils.getUniqueString;
 import static org.apache.hadoop.mapreduce.MRJobConfig.MAPREDUCE_JOB_CLASSLOADER;
@@ -661,8 +660,7 @@ public class VenicePushJob implements AutoCloseable {
     }
 
     pushJobSettingToReturn.livenessHeartbeatEnabled = props.getBoolean(HEARTBEAT_ENABLED_CONFIG.getConfigName(), false);
-    pushJobSettingToReturn.livenessHeartbeatStoreName =
-        props.getString(HEARTBEAT_STORE_NAME_CONFIG.getConfigName(), "");
+    pushJobSettingToReturn.livenessHeartbeatStoreName = AvroProtocolDefinition.BATCH_JOB_HEARTBEAT.getSystemStoreName();
     if (pushJobSettingToReturn.isSourceKafka) {
       /**
        * The topic could contain duplicate records since the topic could belong to a hybrid store
@@ -766,7 +764,9 @@ public class VenicePushJob implements AutoCloseable {
         pushJobSetting.controllerRetries,
         c -> c.getRepushInfo(userProvidedStoreName, userProvidedFabricNameOptional));
     if (pushJobSetting.repushInfoResponse.isError()) {
-      throw new VeniceException("Could not get repush info for store " + userProvidedStoreName);
+      throw new VeniceException(
+          "Could not get repush info for store " + userProvidedStoreName + " with error: "
+              + pushJobSetting.repushInfoResponse.getError());
     }
     int version = pushJobSetting.repushInfoResponse.getRepushInfo().getVersion().getNumber();
     return Version.composeKafkaTopic(userProvidedStoreName, version);
@@ -879,7 +879,6 @@ public class VenicePushJob implements AutoCloseable {
       sendPushJobDetailsToController();
       validateKafkaMessageEnvelopeSchema(pushJobSetting);
       validateRemoteHybridSettings(pushJobSetting);
-      pushJobHeartbeatSender = createPushJobHeartbeatSender(isSslEnabled());
       inputDirectory = getInputURI(props);
       storeSetting = getSettingsFromController(controllerClient, pushJobSetting);
       inputStorageQuotaTracker = new InputStorageQuotaTracker(storeSetting.storeStorageQuota);
@@ -1010,6 +1009,7 @@ public class VenicePushJob implements AutoCloseable {
         pushJobDetails.valueCompressionStrategy = kafkaTopicInfo.compressionStrategy.getValue();
         pushJobDetails.chunkingEnabled = kafkaTopicInfo.chunkingEnabled;
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.TOPIC_CREATED.getValue()));
+        pushJobHeartbeatSender = createPushJobHeartbeatSender(isSslEnabled());
         pushJobHeartbeatSender.start(pushJobSetting.storeName, kafkaTopicInfo.version);
         sendPushJobDetailsToController();
         // Log Venice data push job related info
@@ -1137,6 +1137,7 @@ public class VenicePushJob implements AutoCloseable {
   private PushJobHeartbeatSender createPushJobHeartbeatSender(final boolean sslEnabled) {
     try {
       return pushJobHeartbeatSenderFactory.createHeartbeatSender(
+          kafkaTopicInfo.kafkaUrl,
           props,
           livenessHeartbeatStoreControllerClient,
           sslEnabled ? Optional.of(this.sslProperties.get()) : Optional.empty());
@@ -2267,6 +2268,7 @@ public class VenicePushJob implements AutoCloseable {
     } else {
       LOGGER.info(versionCreationResponse.toString());
     }
+
     kafkaTopicInfo.topic = versionCreationResponse.getKafkaTopic();
     kafkaTopicInfo.version = versionCreationResponse.getVersion();
     kafkaTopicInfo.kafkaUrl = versionCreationResponse.getKafkaBootstrapServers();
@@ -2464,7 +2466,7 @@ public class VenicePushJob implements AutoCloseable {
         // status could not be queried which could be due to a communication error.
         throw new VeniceException(
             "Failed to connect to: " + pushJobSetting.veniceControllerUrl + " to query job status, after "
-                + pushJobSetting.controllerStatusPollRetries + " attempts.");
+                + pushJobSetting.controllerStatusPollRetries + " attempts. Error: " + response.getError());
       }
 
       previousOverallDetails = printJobStatus(response, previousOverallDetails, previousExtraDetails);
