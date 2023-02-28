@@ -2,7 +2,6 @@ package com.linkedin.venice.pubsub;
 
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import io.tehuti.utils.Utils;
 import java.util.Objects;
 
 
@@ -13,7 +12,7 @@ public class PubSubTopicPartitionImpl implements PubSubTopicPartition {
   private String toStringOutput;
 
   public PubSubTopicPartitionImpl(PubSubTopic topic, int partitionNumber) {
-    this.topic = Utils.notNull(topic);
+    this.topic = Objects.requireNonNull(topic, "PubSubTopic cannot be null");
     this.partitionNumber = partitionNumber;
     this.hashCode = Objects.hash(topic, partitionNumber);
   }
@@ -33,7 +32,7 @@ public class PubSubTopicPartitionImpl implements PubSubTopicPartition {
     if (this == o) {
       return true;
     }
-    if (o == null || !(o instanceof PubSubTopicPartition)) {
+    if (!(o instanceof PubSubTopicPartition)) {
       return false;
     }
     PubSubTopicPartition that = (PubSubTopicPartition) o;

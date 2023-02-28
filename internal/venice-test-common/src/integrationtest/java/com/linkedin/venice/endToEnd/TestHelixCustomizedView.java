@@ -24,6 +24,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.HashMap;
@@ -98,7 +99,10 @@ public class TestHelixCustomizedView {
     keySerializer = new VeniceAvroKafkaSerializer(KEY_SCHEMA_STR);
     valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_STR);
     veniceWriter = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress())
-        .createVeniceWriter(storeVersionName, keySerializer, valueSerializer);
+        .createVeniceWriter(
+            new VeniceWriterOptions.Builder(storeVersionName).setKeySerializer(keySerializer)
+                .setValueSerializer(valueSerializer)
+                .build());
 
     /**
      * Explicitly add an emtpy push status ZK path to make both write and read paths are robust to empty push status ZNodes

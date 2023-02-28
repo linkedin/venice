@@ -31,6 +31,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -307,9 +308,10 @@ public class StorageNodeComputeTest {
     final int pushVersion = newVersion.getVersion();
 
     try (
-        VeniceWriter<Object, byte[], byte[]> veniceWriter =
-            TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress())
-                .createVeniceWriter(newVersion.getKafkaTopic(), keySerializer, new DefaultSerializer());
+        VeniceWriter<Object, byte[], byte[]> veniceWriter = TestUtils
+            .getVeniceWriterFactory(veniceCluster.getKafka().getAddress())
+            .createVeniceWriter(
+                new VeniceWriterOptions.Builder(newVersion.getKafkaTopic()).setKeySerializer(keySerializer).build());
         AvroGenericStoreClient<String, Object> storeClient = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerAddr))) {
 

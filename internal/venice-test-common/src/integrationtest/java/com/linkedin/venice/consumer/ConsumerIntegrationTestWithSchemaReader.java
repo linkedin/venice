@@ -4,14 +4,13 @@ import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.writer.KafkaProducerWrapper;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Supplier;
 import org.apache.avro.Schema;
 import org.testng.Assert;
 
@@ -46,8 +45,8 @@ public class ConsumerIntegrationTestWithSchemaReader extends ConsumerIntegration
   VeniceWriterWithNewerProtocol getVeniceWriter(
       VeniceWriterOptions veniceWriterOptions,
       VeniceProperties props,
-      Supplier<KafkaProducerWrapper> producerWrapperSupplier,
+      PubSubProducerAdapter producerAdapter,
       Schema overrideProtocolSchema) {
-    return new VeniceWriterWithNewerProtocol(veniceWriterOptions, props, producerWrapperSupplier, null);
+    return new VeniceWriterWithNewerProtocol(veniceWriterOptions, props, producerAdapter, null);
   }
 }
