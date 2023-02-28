@@ -10,7 +10,6 @@ import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.util.Map;
-import java.util.Optional;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -43,7 +42,7 @@ public class PushStatusStoreVeniceWriterCache implements AutoCloseable {
           .setValueSerializer(new VeniceAvroKafkaSerializer(valueSchema))
           .setWriteComputeSerializer(new VeniceAvroKafkaSerializer(writeComputeSchema))
           .setChunkingEnabled(false)
-          .setPartitionCount(Optional.of(1))
+          .setPartitionCount(1)
           .build();
 
       return writerFactory.createVeniceWriter(options);

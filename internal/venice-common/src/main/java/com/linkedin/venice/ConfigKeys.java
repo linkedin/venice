@@ -1,7 +1,6 @@
 package com.linkedin.venice;
 
-import com.linkedin.venice.writer.ApacheKafkaProducer;
-import org.apache.kafka.clients.producer.ProducerConfig;
+import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 
 
 public class ConfigKeys {
@@ -27,15 +26,19 @@ public class ConfigKeys {
   // store specific properties
   public static final String PERSISTENCE_TYPE = "persistence.type";
 
-  public static final String KAFKA_BOOTSTRAP_SERVERS = "kafka.bootstrap.servers";
-  public static final String SSL_KAFKA_BOOTSTRAP_SERVERS = "ssl.kafka.bootstrap.servers";
+  public static final String KAFKA_CONFIG_PREFIX = ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX;
+  public static final String KAFKA_BOOTSTRAP_SERVERS = ApacheKafkaProducerConfig.KAFKA_BOOTSTRAP_SERVERS;
+  public static final String SSL_KAFKA_BOOTSTRAP_SERVERS = ApacheKafkaProducerConfig.SSL_KAFKA_BOOTSTRAP_SERVERS;
+  public static final String KAFKA_LINGER_MS = ApacheKafkaProducerConfig.KAFKA_LINGER_MS;
+  public static final String KAFKA_BATCH_SIZE = ApacheKafkaProducerConfig.KAFKA_BATCH_SIZE;
+  public static final String KAFKA_PRODUCER_REQUEST_TIMEOUT_MS =
+      ApacheKafkaProducerConfig.KAFKA_PRODUCER_REQUEST_TIMEOUT_MS;
+  public static final String KAFKA_PRODUCER_RETRIES_CONFIG = ApacheKafkaProducerConfig.KAFKA_PRODUCER_RETRIES_CONFIG;
+  public static final String KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS =
+      ApacheKafkaProducerConfig.KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS;
   public static final String KAFKA_ADMIN_GET_TOPIC_CONFIG_MAX_RETRY_TIME_SEC =
       "kafka.admin.get.topic.config.max.retry.sec";
 
-  public static final String KAFKA_LINGER_MS =
-      ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX + ProducerConfig.LINGER_MS_CONFIG;
-  public static final String KAFKA_BATCH_SIZE =
-      ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX + ProducerConfig.BATCH_SIZE_CONFIG;
   /**
    * The time window used by the consumption throttler. Throttler will sum the requests during the time window and
    * compare with the quota accumulated in the time window to see whether the usage exceeds quota or not.
@@ -382,7 +385,7 @@ public class ConfigKeys {
   public static final String SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS =
       "server.netty.graceful.shutdown.period.seconds";
   public static final String SERVER_NETTY_WORKER_THREADS = "server.netty.worker.threads";
-  public static final String SSL_TO_KAFKA = "ssl.to.kakfa";
+  public static final String SSL_TO_KAFKA = ApacheKafkaProducerConfig.SSL_TO_KAFKA;
   public static final String SERVER_COMPUTE_THREAD_NUM = "server.compute.thread.num";
   public static final String HYBRID_QUOTA_ENFORCEMENT_ENABLED = "server.hybrid.quota.enforcement.enabled";
   public static final String SERVER_DATABASE_MEMORY_STATS_ENABLED = "server.database.memory.stats.enabled";

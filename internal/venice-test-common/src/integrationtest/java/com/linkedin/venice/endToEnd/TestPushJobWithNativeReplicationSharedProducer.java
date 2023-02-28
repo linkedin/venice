@@ -8,9 +8,9 @@ import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_PRODUCER_POOL_SIZE_PER
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_KAFKA_PRODUCER_ENABLED;
 import static com.linkedin.venice.hadoop.VenicePushJob.SEND_CONTROL_MESSAGES_DIRECTLY;
+import static com.linkedin.venice.pubsub.adapter.kafka.producer.SharedKafkaProducerConfig.SHARED_KAFKA_PRODUCER_BATCH_SIZE;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
-import static com.linkedin.venice.writer.SharedKafkaProducerService.SHARED_KAFKA_PRODUCER_CONFIG_PREFIX;
 
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -20,7 +20,6 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
@@ -38,7 +37,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.apache.commons.io.FileUtils;
-import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
@@ -65,7 +63,6 @@ public class TestPushJobWithNativeReplicationSharedProducer {
   // ["venice-cluster0", "venice-cluster1", ...];
 
   private List<VeniceMultiClusterWrapper> childDatacenters;
-  private List<VeniceControllerWrapper> parentControllers;
   private VeniceTwoLayerMultiColoMultiClusterWrapper multiColoMultiClusterWrapper;
 
   @DataProvider(name = "storeSize")
@@ -90,7 +87,7 @@ public class TestPushJobWithNativeReplicationSharedProducer {
     serverProperties.put(SERVER_SHARED_KAFKA_PRODUCER_ENABLED, "true");
     serverProperties.put(SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER, "1");
     // this is to make sure config override works for shared producer.
-    serverProperties.put(SHARED_KAFKA_PRODUCER_CONFIG_PREFIX + ProducerConfig.BATCH_SIZE_CONFIG, 32864);
+    serverProperties.put(SHARED_KAFKA_PRODUCER_BATCH_SIZE, 32864);
 
     Properties controllerProps = new Properties();
     controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 1000);
@@ -107,7 +104,6 @@ public class TestPushJobWithNativeReplicationSharedProducer {
         Optional.of(new VeniceProperties(serverProperties)),
         false);
     childDatacenters = multiColoMultiClusterWrapper.getChildRegions();
-    parentControllers = multiColoMultiClusterWrapper.getParentControllers();
   }
 
   @AfterClass(alwaysRun = true)

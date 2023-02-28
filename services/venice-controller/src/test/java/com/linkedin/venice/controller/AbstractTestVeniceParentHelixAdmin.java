@@ -36,7 +36,6 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
-import org.apache.kafka.common.TopicPartition;
 
 
 /**
@@ -55,7 +54,6 @@ public class AbstractTestVeniceParentHelixAdmin {
   static final String topicName = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
   static final String zkMetadataNodePath = ZkAdminTopicMetadataAccessor.getAdminTopicMetadataNodePath(clusterName);
   static final int partitionId = AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID;
-  static final TopicPartition topicPartition = new TopicPartition(topicName, partitionId);
   static final AdminOperationSerializer adminOperationSerializer = new AdminOperationSerializer();
 
   TopicManager topicManager;

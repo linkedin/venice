@@ -65,6 +65,10 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
+/**
+ * This class contains only end-to-end/integration tests for VenicePushJob
+ */
+
 public class TestVenicePushJob {
   private static final int TEST_TIMEOUT = 60 * Time.MS_PER_SECOND;
 

@@ -52,6 +52,9 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
+import com.linkedin.venice.pubsub.adapter.kafka.producer.SharedKafkaProducerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -59,7 +62,6 @@ import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
-import com.linkedin.venice.stats.KafkaClientStats;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ComplementSet;
@@ -70,13 +72,9 @@ import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ResourceAutoClosableLockManager;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
-import com.linkedin.venice.writer.ApacheKafkaProducer;
-import com.linkedin.venice.writer.KafkaProducerWrapper;
-import com.linkedin.venice.writer.SharedKafkaProducerService;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
@@ -170,7 +168,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   // source. This could be a view of the data, or in our case a cache, or both potentially.
   private final Optional<ObjectCacheBackend> cacheBackend;
 
-  private final SharedKafkaProducerService sharedKafkaProducerService;
+  private final PubSubProducerAdapterFactory producerAdapterFactory;
 
   private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
 
@@ -244,34 +242,25 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       veniceWriterProperties.put(KAFKA_LINGER_MS, DEFAULT_KAFKA_LINGER_MS);
     }
 
-    if (serverConfig.isSharedKafkaProducerEnabled()) {
-      sharedKafkaProducerService = new SharedKafkaProducerService(
-          veniceWriterProperties,
-          serverConfig.getSharedProducerPoolSizePerKafkaCluster(),
-          new SharedKafkaProducerService.KafkaProducerSupplier() {
-            @Override
-            public KafkaProducerWrapper getNewProducer(VeniceProperties props) {
-              return new ApacheKafkaProducer(props);
-            }
-          },
-          metricsRepository,
-          serverConfig.getKafkaProducerMetrics());
-    } else {
-      sharedKafkaProducerService = null;
-    }
+    // TODO: Once we start testing with other PubSub systems, we'll inject corresponding systems
+    // PubSubProducerAdapterFactory
     LOGGER.info(
         "Shared kafka producer service is {}",
         serverConfig.isSharedKafkaProducerEnabled() ? "enabled" : "disabled");
+    if (serverConfig.isSharedKafkaProducerEnabled()) {
+      producerAdapterFactory = new SharedKafkaProducerAdapterFactory(
+          veniceWriterProperties,
+          serverConfig.getSharedProducerPoolSizePerKafkaCluster(),
+          new ApacheKafkaProducerAdapterFactory(),
+          metricsRepository,
+          serverConfig.getKafkaProducerMetrics());
+    } else {
+      producerAdapterFactory = new ApacheKafkaProducerAdapterFactory();
+    }
 
     VeniceWriterFactory veniceWriterFactory =
-        new VeniceWriterFactory(veniceWriterProperties, Optional.ofNullable(sharedKafkaProducerService));
+        new VeniceWriterFactory(veniceWriterProperties, producerAdapterFactory, metricsRepository);
     VeniceWriterFactory veniceWriterFactoryForMetaStoreWriter = new VeniceWriterFactory(veniceWriterProperties);
-
-    // Create Kafka client stats
-    KafkaClientStats.registerKafkaClientStats(
-        metricsRepository,
-        "KafkaClientStats",
-        Optional.ofNullable(sharedKafkaProducerService));
 
     EventThrottler bandwidthThrottler = new EventThrottler(
         serverConfig.getKafkaFetchQuotaBytesPerSecond(),
@@ -509,9 +498,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     if (aggKafkaConsumerService != null) {
       aggKafkaConsumerService.start();
     }
-    if (sharedKafkaProducerService != null) {
-      sharedKafkaProducerService.start();
-    }
     if (participantStoreConsumptionTask != null) {
       participantStoreConsumerExecutorService =
           Executors.newSingleThreadExecutor(new DaemonThreadFactory("ParticipantStoreConsumptionTask"));
@@ -602,7 +588,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     kafkaMessageEnvelopeSchemaReader.ifPresent(Utils::closeQuietlyWithErrorLogged);
 
     // close it the very end to make sure all ingestion task have released the shared producers.
-    Utils.closeQuietlyWithErrorLogged(sharedKafkaProducerService);
+    Utils.closeQuietlyWithErrorLogged(producerAdapterFactory);
 
     // close drainer service at the very end as it does not depend on any other service.
     Utils.closeQuietlyWithErrorLogged(storeBufferService);

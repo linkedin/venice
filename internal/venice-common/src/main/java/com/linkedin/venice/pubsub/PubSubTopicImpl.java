@@ -3,7 +3,7 @@ package com.linkedin.venice.pubsub;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicType;
-import io.tehuti.utils.Utils;
+import java.util.Objects;
 
 
 public class PubSubTopicImpl implements PubSubTopic {
@@ -18,7 +18,7 @@ public class PubSubTopicImpl implements PubSubTopic {
    * of the topic.
    */
   PubSubTopicImpl(String name) {
-    this.name = Utils.notNull(name);
+    this.name = Objects.requireNonNull(name, "Topic name cannot be null");
     this.pubSubTopicType = PubSubTopicType.getPubSubTopicType(name);
     this.storeName = Version.parseStoreFromKafkaTopicName(name);
   }
@@ -42,7 +42,7 @@ public class PubSubTopicImpl implements PubSubTopic {
     if (this == o) {
       return true;
     }
-    if (o == null || !(o instanceof PubSubTopic)) {
+    if (!(o instanceof PubSubTopic)) {
       return false;
     }
     PubSubTopic that = (PubSubTopic) o;

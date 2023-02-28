@@ -38,7 +38,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
@@ -392,7 +391,7 @@ public class MetaStoreWriter implements Closeable {
                   AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema()))
           .setWriteComputeSerializer(new VeniceAvroKafkaSerializer(derivedComputeSchema))
           .setChunkingEnabled(false)
-          .setPartitionCount(Optional.of(1))
+          .setPartitionCount(1)
           .build();
 
       return writerFactory.createVeniceWriter(options);

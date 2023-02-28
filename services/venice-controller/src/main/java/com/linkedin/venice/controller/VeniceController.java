@@ -16,7 +16,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
-import com.linkedin.venice.stats.KafkaClientStats;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.Utils;
@@ -134,7 +133,6 @@ public class VeniceController {
     this.routerClientConfig = routerClientConfig;
     this.icProvider = icProvider;
     createServices();
-    KafkaClientStats.registerKafkaClientStats(metricsRepository, "KafkaClientStats", Optional.empty());
   }
 
   private void createServices() {
