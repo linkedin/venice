@@ -167,7 +167,7 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
 
     if (!zkRoutersManager.isMaxCapacityProtectionEnabled() || idealTotalQuotaPerRouter <= maxRouterReadCapacity) {
       // Current router's capacity is big enough to be allocated to each store's quota.
-      return idealStoreQuotaPerRouter;
+      return idealStoreQuotaPerRouter * (1 + (long) perStorageNodeReadQuotaBuffer);
     } else {
       // If we allocate ideal quota value to each store, the total quota would exceed the router's capacity.
       // The reason is the cluster does not have enough number of routers.(Might be caused by to manny router failures)
