@@ -13,7 +13,8 @@ public enum Arg {
   CLUSTER("cluster", "c", true, "Name of Venice cluster"),
   CLUSTER_SRC("cluster-src", "cs", true, "Store migration original Venice cluster name"),
   CLUSTER_DEST("cluster-dest", "cd", true, "Store migration destination Venice cluster name"),
-  STORE("store", "s", true, "Name of Venice store"), VERSION("version", "v", true, "Active store version number"),
+  STORE("store", "s", true, "Name of Venice store"), STORES("stores", "sts", true, "Name of a group of Venice stores"),
+  VERSION("version", "v", true, "Active store version number"),
   LARGEST_USED_VERSION_NUMBER(
       "largest-used-version", "luv", true, "Largest used store version number (whether active or not)"
   ), PUSH_ID("push-id", "pid", true, "Push Id"),
@@ -237,7 +238,10 @@ public enum Arg {
   END_DATE("end-date", "ed", true, "End date in PST. Example: 2020-10-10 10:10:10"),
   PROGRESS_INTERVAL("progress-interval", "pi", true, "Dump progress after processing this number of messages"),
 
-  STORAGE_PERSONA("storage-persona", "sp", true, "Name of Storage Persona");
+  STORAGE_PERSONA("storage-persona", "sp", true, "Name of Storage Persona"),
+  RECOVERY_COMMAND("recovery-command", "rco", true, "command to execute the data recovery"),
+  EXTRA_COMMAND_ARGS("extra-command-args", "eca", true, "extra command arguments"),
+  DEBUG("debug", "d", false, "Print debugging messages for execute-data-recovery");
 
   private final String argName;
   private final String first;
