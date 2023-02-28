@@ -102,19 +102,6 @@ public class ServiceFactory {
     return getStatefulService(ZkServerWrapper.SERVICE_NAME, ZkServerWrapper.generateService());
   }
 
-  /**
-   * @return an instance of {@link KafkaBrokerWrapper}
-   */
-  public static KafkaBrokerWrapper getKafkaBroker() {
-    /**
-     * Get the ZK dependency outside of the lambda, to avoid time complexity of
-     * O({@value maxAttempt} ^2) on the amount of retries. {@link #getZkServer()}
-     * has its own retries, so we can assume it's reliable enough.
-     */
-
-    return getKafkaBroker(ServiceFactory.getZkServer());
-  }
-
   public static KafkaBrokerWrapper getKafkaBroker(ZkServerWrapper zkServerWrapper) {
     return getKafkaBroker(zkServerWrapper, Optional.empty());
   }
