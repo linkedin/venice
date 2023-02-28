@@ -28,8 +28,6 @@ public class BatchJobHeartbeatConfigs {
       "The amount of time the controller waits after a store creation before it enables the heartbeat-based lingering push job checking feature.");
   public static final Utils.ConfigEntity<Long> HEARTBEAT_INITIAL_DELAY_CONFIG =
       new Utils.ConfigEntity<>("batch.job.heartbeat.initial.delay.ms", 0L, "Delay before sending the first heartbeat");
-  public static final Utils.ConfigEntity<String> HEARTBEAT_STORE_NAME_CONFIG =
-      new Utils.ConfigEntity<>("heartbeat.store.name", null, "Heartbeat store name");
   public static final Utils.ConfigEntity<Boolean> HEARTBEAT_LAST_HEARTBEAT_IS_DELETE_CONFIG = new Utils.ConfigEntity<>(
       "heartbeat.is.last.heartbeat.delete",
       true,

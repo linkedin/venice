@@ -508,13 +508,17 @@ public class VeniceParentHelixAdmin implements Admin {
 
     if (!getMultiClusterConfigs().getPushJobStatusStoreClusterName().isEmpty()
         && clusterName.equals(getMultiClusterConfigs().getPushJobStatusStoreClusterName())) {
+      // TODO: When we plan to enable active-active push details store in future, we need to enable it by default.
+      UpdateStoreQueryParams updateStoreQueryParams =
+          new UpdateStoreQueryParams().setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE);
       asyncSetupForInternalRTStore(
           getMultiClusterConfigs().getPushJobStatusStoreClusterName(),
           VeniceSystemStoreUtils.getPushJobDetailsStoreName(),
           PUSH_JOB_DETAILS_STORE_DESCRIPTOR + VeniceSystemStoreUtils.getPushJobDetailsStoreName(),
           PushJobStatusRecordKey.getClassSchema().toString(),
           PushJobDetails.getClassSchema().toString(),
-          getMultiClusterConfigs().getControllerConfig(clusterName).getNumberOfPartition());
+          getMultiClusterConfigs().getControllerConfig(clusterName).getNumberOfPartition(),
+          updateStoreQueryParams);
     }
 
     maybeSetupBatchJobLivenessHeartbeatStore(clusterName);
@@ -525,13 +529,17 @@ public class VeniceParentHelixAdmin implements Admin {
     final String batchJobHeartbeatStoreName = AvroProtocolDefinition.BATCH_JOB_HEARTBEAT.getSystemStoreName();
 
     if (Objects.equals(currClusterName, batchJobHeartbeatStoreCluster)) {
+      UpdateStoreQueryParams updateStoreQueryParams =
+          new UpdateStoreQueryParams().setHybridDataReplicationPolicy(DataReplicationPolicy.ACTIVE_ACTIVE)
+              .setActiveActiveReplicationEnabled(true);
       asyncSetupForInternalRTStore(
           currClusterName,
           batchJobHeartbeatStoreName,
           BATCH_JOB_HEARTBEAT_STORE_DESCRIPTOR + batchJobHeartbeatStoreName,
           BatchJobHeartbeatKey.getClassSchema().toString(),
           BatchJobHeartbeatValue.getClassSchema().toString(),
-          getMultiClusterConfigs().getControllerConfig(currClusterName).getNumberOfPartition());
+          getMultiClusterConfigs().getControllerConfig(currClusterName).getNumberOfPartition(),
+          updateStoreQueryParams);
     } else {
       LOGGER.info(
           "Skip creating the batch job liveness heartbeat store: {} in cluster: {} since the designated cluster is: {}",
@@ -552,7 +560,8 @@ public class VeniceParentHelixAdmin implements Admin {
       String storeDescriptor,
       String keySchema,
       String valueSchema,
-      int partitionCount) {
+      int partitionCount,
+      UpdateStoreQueryParams updateStoreQueryParams) {
 
     asyncSetupExecutor.submit(() -> {
       int retryCount = 0;
@@ -568,7 +577,8 @@ public class VeniceParentHelixAdmin implements Admin {
               storeDescriptor,
               keySchema,
               valueSchema,
-              partitionCount);
+              partitionCount,
+              updateStoreQueryParams);
         } catch (VeniceException e) {
           // Verification attempts (i.e. a controller running this routine but is not the leader of the cluster) do not
           // count towards the retry count.
@@ -613,7 +623,8 @@ public class VeniceParentHelixAdmin implements Admin {
       String storeDescriptor,
       String keySchema,
       String valueSchema,
-      int partitionCount) {
+      int partitionCount,
+      UpdateStoreQueryParams updateStoreQueryParams) {
     boolean storeReady = false;
     if (isLeaderControllerFor(clusterName)) {
       // We should only perform the store validation if the current controller is the leader controller of the requested
@@ -630,11 +641,13 @@ public class VeniceParentHelixAdmin implements Admin {
       }
 
       if (!store.isHybrid()) {
-        UpdateStoreQueryParams updateStoreQueryParams;
-        updateStoreQueryParams = new UpdateStoreQueryParams();
-        updateStoreQueryParams.setHybridOffsetLagThreshold(100L);
-        updateStoreQueryParams.setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(7));
-        updateStoreQueryParams.setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE);
+        // Make sure we do not override hybrid configs passed in.
+        if (!updateStoreQueryParams.getHybridOffsetLagThreshold().isPresent()) {
+          updateStoreQueryParams.setHybridOffsetLagThreshold(100L);
+        }
+        if (!updateStoreQueryParams.getHybridRewindSeconds().isPresent()) {
+          updateStoreQueryParams.setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(7));
+        }
         updateStore(clusterName, storeName, updateStoreQueryParams);
         store = getStore(clusterName, storeName);
         if (!store.isHybrid()) {

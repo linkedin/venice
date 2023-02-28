@@ -69,6 +69,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.status.BatchJobHeartbeatConfigs;
@@ -124,7 +125,8 @@ public class TestPushJobWithNativeReplication {
   private final String DEFAULT_NATIVE_REPLICATION_SOURCE = "dc-0";
 
   private static final String VPJ_HEARTBEAT_STORE_CLUSTER = CLUSTER_NAMES[0]; // "venice-cluster0"
-  private static final String VPJ_HEARTBEAT_STORE_NAME = "venice_system_store_BATCH_JOB_HEARTBEAT";
+  private static final String VPJ_HEARTBEAT_STORE_NAME =
+      AvroProtocolDefinition.BATCH_JOB_HEARTBEAT.getSystemStoreName();
 
   private List<VeniceMultiClusterWrapper> childDatacenters;
   private List<VeniceControllerWrapper> parentControllers;
@@ -439,7 +441,7 @@ public class TestPushJobWithNativeReplication {
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "storeSize")
-  public void testNativeReplicationForHeartbeatSystemStores(int recordCount, int partitionCount) throws Exception {
+  public void testActiveActiveForHeartbeatSystemStores(int recordCount, int partitionCount) throws Exception {
     motherOfAllTests(
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(partitionCount)
             .setIncrementalPushEnabled(true),
@@ -447,7 +449,6 @@ public class TestPushJobWithNativeReplication {
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
           // Enable VPJ to send liveness heartbeat.
           props.put(BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG.getConfigName(), true);
-          props.put(BatchJobHeartbeatConfigs.HEARTBEAT_STORE_NAME_CONFIG.getConfigName(), VPJ_HEARTBEAT_STORE_NAME);
           // Prevent heartbeat from being deleted when the VPJ run finishes.
           props.put(BatchJobHeartbeatConfigs.HEARTBEAT_LAST_HEARTBEAT_IS_DELETE_CONFIG.getConfigName(), false);
 
@@ -456,11 +457,6 @@ public class TestPushJobWithNativeReplication {
                   new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
               ControllerClient dc1Client =
                   new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString())) {
-            TestWriteUtils.updateStore(
-                VPJ_HEARTBEAT_STORE_NAME,
-                parentControllerClient,
-                new UpdateStoreQueryParams().setLeaderFollowerModel(true).setNativeReplicationEnabled(true));
-
             // verify the update store command has taken effect before starting the push job.
             NativeReplicationTestUtils
                 .verifyDCConfigNativeRepl(Arrays.asList(dc0Client, dc1Client), VPJ_HEARTBEAT_STORE_NAME, true);
