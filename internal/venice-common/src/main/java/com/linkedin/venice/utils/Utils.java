@@ -16,6 +16,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.api.PubSubTopicType;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -524,6 +525,22 @@ public class Utils {
 
   public static String getUniqueString(String prefix) {
     return String.format("%s_%x_%x", prefix, System.nanoTime(), ThreadLocalRandom.current().nextInt());
+  }
+
+  public static String getUniqueTopicStr(String prefix) {
+    int typesNum = PubSubTopicType.values().length;
+    PubSubTopicType pubSubTopicType = PubSubTopicType.values()[ThreadLocalRandom.current().nextInt() % typesNum];
+    if (pubSubTopicType.equals(PubSubTopicType.REALTIME_TOPIC)) {
+      return getUniqueString(prefix) + Version.REAL_TIME_TOPIC_SUFFIX;
+    } else if (pubSubTopicType.equals(PubSubTopicType.REPROCESSING_TOPIC)) {
+      return getUniqueString(prefix) + Version.STREAM_REPROCESSING_TOPIC_SUFFIX;
+    } else if (pubSubTopicType.equals(PubSubTopicType.VERSION_TOPIC)) {
+      return getUniqueString(prefix) + Version.VERSION_SEPARATOR + (ThreadLocalRandom.current().nextInt() % typesNum);
+    } else if (pubSubTopicType.equals(PubSubTopicType.ADMIN_TOPIC)) {
+      return pubSubTopicType.ADMIN_TOPIC_PREFIX + getUniqueString(prefix);
+    } else {
+      throw new VeniceException("Unsupported topic type for: " + pubSubTopicType);
+    }
   }
 
   public static String getUniqueTempPath() {

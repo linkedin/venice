@@ -33,11 +33,11 @@ import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.ZKStore;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapter;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
-import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
-import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
@@ -372,9 +372,9 @@ public class TopicManagerTest {
   @Test
   public void testListAllTopics() {
     Set<PubSubTopic> expectTopics = new HashSet<>(topicManager.listTopics());
-    PubSubTopic topic1 = pubSubTopicRepository.getTopic(Utils.getUniqueString("topic") + "_v1");
-    PubSubTopic topic2 = pubSubTopicRepository.getTopic(Utils.getUniqueString("topic") + "_v1");
-    PubSubTopic topic3 = pubSubTopicRepository.getTopic(Utils.getUniqueString("topic") + "_v1");
+    PubSubTopic topic1 = pubSubTopicRepository.getTopic(Utils.getUniqueTopicStr("topic"));
+    PubSubTopic topic2 = pubSubTopicRepository.getTopic(Utils.getUniqueTopicStr("topic"));
+    PubSubTopic topic3 = pubSubTopicRepository.getTopic(Utils.getUniqueTopicStr("topic"));
     // Create 1 topic, expect 1 topic in total
     topicManager.createTopic(topic1, 1, 1, true);
     expectTopics.add(topic1);
