@@ -5,6 +5,7 @@ import com.linkedin.avro.fastserde.primitive.PrimitiveLongArrayList;
 import com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp;
 import com.linkedin.venice.utils.IndexedHashMap;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -18,6 +19,7 @@ import java.util.function.Supplier;
 import javax.annotation.concurrent.ThreadSafe;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.logging.log4j.LogManager;
 
 
 @ThreadSafe
@@ -34,7 +36,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       CollectionRmdTimestamp<Object> collectionFieldRmd,
       GenericRecord currValueRecord,
       String fieldName) {
-    if (ignoreIncomingRequest(putTimestamp, coloID, collectionFieldRmd)) {
+    if (ignoreIncomingUpdateRequest(putTimestamp, coloID, collectionFieldRmd)) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
     validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.ARRAY, false); // Validate before modifying any
@@ -196,7 +198,11 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       CollectionRmdTimestamp<String> collectionFieldRmd,
       GenericRecord currValueRecord,
       String fieldName) {
-    if (ignoreIncomingRequest(putTimestamp, coloID, collectionFieldRmd)) {
+    if (ignoreIncomingUpdateRequest(putTimestamp, coloID, collectionFieldRmd)) {
+      LogManager.getLogger()
+          .info(
+              "DEBUGGING1: " + putTimestamp + " " + coloID + " " + collectionFieldRmd.getTopLevelFieldTimestamp() + " "
+                  + collectionFieldRmd.getTopLevelColoID());
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
     validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.MAP, true); // Validate before modifying any state.
@@ -205,6 +211,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
 
     // Current map will be updated.
     if (collectionFieldRmd.isInPutOnlyState()) {
+      LogManager.getLogger().info("FIELD {} PUT ONLY", fieldName);
       currValueRecord.put(fieldName, toPutMap);
       collectionFieldRmd.setPutOnlyPartLength(toPutMap.size());
       return UpdateResultStatus.COMPLETELY_UPDATED;
@@ -219,6 +226,10 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     currMap.forEach((key, value) -> currKeyValPairs.add(new KeyValPair(key, value)));
 
     final List<Long> activeTimestamps = collectionFieldRmd.getActiveElementTimestamps();
+    LogManager.getLogger()
+        .info(
+            "DEBUGGING OLD ENTRIES: " + currMap + " " + activeTimestamps + " " + putTimestamp + " "
+                + collectionFieldRmd.getTopLevelFieldTimestamp() + " " + collectionFieldRmd.getPutOnlyPartLength());
     // Below map contains only elements with timestamps that are strictly larger than the Put timestamp.
     final IndexedHashMap<KeyValPair, Long> activeEntriesToTsMap = Utils.createElementToActiveTsMap(
         currKeyValPairs,
@@ -226,6 +237,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
         collectionFieldRmd.getTopLevelFieldTimestamp(),
         putTimestamp,
         collectionFieldRmd.getPutOnlyPartLength());
+    LogManager.getLogger().info("DEBUGGING ENTRIES: " + activeEntriesToTsMap);
 
     final List<String> deletedKeys = collectionFieldRmd.getDeletedElements();
     final List<Long> deletedTimestamps = collectionFieldRmd.getDeletedElementTimestamps();
@@ -252,7 +264,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     // Step 2: Insert new put-only part map entries in the front.
     Map<String, Object> newMap = new IndexedHashMap<>();
     PrimitiveLongList newActiveTimestamps = new PrimitiveLongArrayList(activeEntriesToTsMap.size());
-
+    LogManager.getLogger().info("DEBUG NEW PUT ONLY MAP: " + toPutMap);
     collectionFieldRmd.setPutOnlyPartLength(toPutMap.size());
     // Add new entries for the put-only part.
     toPutMap.forEach(newMap::put);
@@ -289,7 +301,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       CollectionRmdTimestamp collectionFieldRmd,
       GenericRecord currValueRecord,
       String fieldName) {
-    if (ignoreIncomingRequest(deleteTimestamp, coloID, collectionFieldRmd)) {
+    if (ignoreIncomingUpdateRequest(deleteTimestamp, coloID, collectionFieldRmd)) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
     validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.ARRAY, false); // Validate before modifying any
@@ -335,7 +347,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       CollectionRmdTimestamp<String> collectionFieldRmd,
       GenericRecord currValueRecord,
       String fieldName) {
-    if (ignoreIncomingRequest(deleteTimestamp, coloID, collectionFieldRmd)) {
+    if (ignoreIncomingUpdateRequest(deleteTimestamp, coloID, collectionFieldRmd)) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
     validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.MAP, true); // Validate before modifying any state.
@@ -381,7 +393,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       List<Object> toRemoveElements) {
     // When timestamps are the same, full put/delete on a collection field always takes precedence over collection
     // merge.
-    if (ignoreIncomingRequest(modifyTimestamp, Integer.MIN_VALUE, collectionFieldRmd)) {
+    if (ignoreIncomingUpdateRequest(modifyTimestamp, Integer.MIN_VALUE, collectionFieldRmd)) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
     validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.ARRAY, false);
@@ -697,7 +709,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       List<String> toRemoveKeys) {
     // When timestamps are the same, full put/delete on a collection field always takes precedence over collection
     // merge.
-    if (ignoreIncomingRequest(modifyTimestamp, Integer.MIN_VALUE, collectionFieldRmd)) {
+    if (ignoreIncomingUpdateRequest(modifyTimestamp, Integer.MIN_VALUE, collectionFieldRmd)) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
     validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.MAP, true);
@@ -707,7 +719,6 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     for (String toRemoveKey: toRemoveKeys) {
       newEntries.remove(toRemoveKey);
     }
-
     if (collectionFieldRmd.isInPutOnlyState()) {
       return handleModifyPutOnlyMap(
           modifyTimestamp,
@@ -838,9 +849,12 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
 
     final List<String> deletedKeys = collectionFieldRmd.getDeletedElements();
     final List<Long> deletedTimestamps = collectionFieldRmd.getDeletedElementTimestamps();
-    final IndexedHashMap<String, Long> deletedKeyToTsMap =
+    final IndexedHashMap<String, Long> deletedUtf8KeyToTsMap =
         Utils.createDeletedElementToTsMap(deletedKeys, deletedTimestamps, Long.MIN_VALUE);
-
+    final IndexedHashMap<String, Long> deletedKeyToTsMap = new IndexedHashMap<>();
+    for (Map.Entry entry: deletedUtf8KeyToTsMap.entrySet()) {
+      deletedKeyToTsMap.put(entry.getKey().toString(), (Long) entry.getValue());
+    }
     boolean updated = false;
     int newPutOnlyPartLength = collectionFieldRmd.getPutOnlyPartLength();
     final long topLevelTimestamp = collectionFieldRmd.getTopLevelFieldTimestamp();
@@ -862,16 +876,32 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
         // Key was not deleted before.
         KeyValPair newKeyValue = new KeyValPair(newKey, newEntry.getValue());
         final Long activeTimestamp = activeEntriesToTsMap.get(newKeyValue);
-        if (activeTimestamp != null && activeTimestamp == topLevelTimestamp) {
-          // This key exists and it is in the put-only part. We remove the key from the put-only part.
-          activeEntriesToTsMap.remove(newKeyValue);
-          newPutOnlyPartLength--;
-        }
-
-        if (activeTimestamp == null || activeTimestamp < modifyTimestamp) {
+        if (activeTimestamp == null) {
+          // The key does not exist before.
           activeEntriesToTsMap.put(newKeyValue, modifyTimestamp);
           updated = true;
-        } // Note that if the current active timestamp is equal to the modify timestamp, we do nothing.
+        } else {
+          // The key exist.
+          if (activeTimestamp == topLevelTimestamp) {
+            newPutOnlyPartLength--;
+          }
+          if (activeTimestamp < modifyTimestamp) {
+            activeEntriesToTsMap.remove(newKeyValue);
+            activeEntriesToTsMap.put(newKeyValue, modifyTimestamp);
+            updated = true;
+
+          } else if (activeTimestamp == modifyTimestamp) {
+            // Note that if the current active timestamp is equal to the modify timestamp, we compare value.
+            Object currentValue = currMap.get(newKey);
+            Object newValue = newKeyValue.getVal();
+            Schema mapValueSchema = currValueRecord.getSchema().getField(fieldName).schema().getValueType();
+            if (AvroCollectionElementComparator.INSTANCE.compare(newValue, currentValue, mapValueSchema) > 0) {
+              activeEntriesToTsMap.remove(newKeyValue);
+              activeEntriesToTsMap.put(newKeyValue, modifyTimestamp);
+              updated = true;
+            }
+          }
+        }
       }
     }
 
@@ -1016,10 +1046,18 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     collectionFieldRmd.setDeletedElementsAndTimestamps(deletedKeys, deletedTimestamps);
   }
 
-  private boolean ignoreIncomingRequest(
+  private boolean ignoreIncomingUpdateRequest(
       final long incomingRequestTimestamp,
       final int incomingRequestColoID,
       CollectionRmdTimestamp<?> currCollectionFieldRmd) {
+    LogManager.getLogger()
+        .info(
+            "DEBUGGING handle PUT list/map {} {} {} {}",
+            currCollectionFieldRmd.getTopLevelFieldTimestamp(),
+            incomingRequestTimestamp,
+            currCollectionFieldRmd.getTopLevelColoID(),
+            incomingRequestColoID);
+    LogManager.getLogger().info("DEBUGGING THREAD: " + Arrays.toString(Thread.currentThread().getStackTrace()));
     if (currCollectionFieldRmd.getTopLevelFieldTimestamp() > incomingRequestTimestamp) {
       return true;
 

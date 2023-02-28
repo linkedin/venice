@@ -183,7 +183,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     }
   }
 
-  // create one system store per region
+  // Create one system producer per region
   private void startVeniceSystemProducers() {
     systemProducerMap = new HashMap<>(NUMBER_OF_CHILD_DATACENTERS);
     VeniceSystemFactory factory = new VeniceSystemFactory();
@@ -206,7 +206,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
   }
 
   /*
-   * Verify write-compute/partial-update on field level in Active-Active replication setup
+   * Verify partial-update on field level in Active-Active replication setup
    */
   @Test(timeOut = TEST_TIMEOUT)
   public void testAAReplicationForPartialUpdateOnFields() throws IOException {
@@ -234,8 +234,6 @@ public class WriteComputeWithActiveActiveReplicationTest {
     String key1 = "key1";
 
     // PartialPut before PUT should succeed with empty values for the fields which were not set using PartialPut
-    // todo: Code fix is required to make this work. NPE is thrown in MCR::getValueSchema
-    // Update: works with hotfix, i.e., using incomingValueSchemaId when oldSchemaId is -1
     UpdateBuilder ubKv1F0 = new UpdateBuilderImpl(wcSchemaV1);
     ubKv1F0.setNewFieldValue(PERSON_F1_NAME, "Bar");
     sendStreamingRecord(systemProducerMap.get(childDatacenters.get(1)), storeName, key1, ubKv1F0.build());
@@ -608,6 +606,26 @@ public class WriteComputeWithActiveActiveReplicationTest {
     VeniceObjectWithTimestamp timestampedOp;
     Map<String, Integer> expectedMapFieldValue = new HashMap<>();
 
+    ub = new UpdateBuilderImpl(wcSchemaV1); // t1
+    mapFieldValue = new HashMap<>();
+    mapFieldValue.put("xx", 1);
+    ub.setEntriesToAddToMapField(MAP_FIELD, mapFieldValue);
+    timestampedOp = new VeniceObjectWithTimestamp(ub.build(), 1);
+    expectedMapFieldValue.putAll(mapFieldValue);
+    sendStreamingRecord(systemProducerMap.get(childDatacenters.get(0)), storeName, key2, timestampedOp);
+    verifyFLMRecord(storeName, dc1RouterUrl, key2, regularFieldDefault, intArrayFieldDefault, expectedMapFieldValue);
+    verifyFLMRecord(storeName, dc0RouterUrl, key2, regularFieldDefault, intArrayFieldDefault, expectedMapFieldValue);
+
+    ub = new UpdateBuilderImpl(wcSchemaV1); // t2
+    mapFieldValue = new HashMap<>();
+    mapFieldValue.put("xx", 2);
+    ub.setEntriesToAddToMapField(MAP_FIELD, mapFieldValue);
+    timestampedOp = new VeniceObjectWithTimestamp(ub.build(), 2);
+    expectedMapFieldValue.putAll(mapFieldValue);
+    sendStreamingRecord(systemProducerMap.get(childDatacenters.get(0)), storeName, key2, timestampedOp);
+    verifyFLMRecord(storeName, dc1RouterUrl, key2, regularFieldDefault, intArrayFieldDefault, expectedMapFieldValue);
+    verifyFLMRecord(storeName, dc0RouterUrl, key2, regularFieldDefault, intArrayFieldDefault, expectedMapFieldValue);
+
     // AddToMap before PUT
     // Add three elements to the Map with TS lower than, equal, and greater than the PUT's timestamp
     ub = new UpdateBuilderImpl(wcSchemaV1); // t1
@@ -638,9 +656,6 @@ public class WriteComputeWithActiveActiveReplicationTest {
     verifyFLMRecord(storeName, dc1RouterUrl, key2, regularFieldDefault, intArrayFieldDefault, expectedMapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, regularFieldDefault, intArrayFieldDefault, expectedMapFieldValue);
 
-    expectedMapFieldValue.remove("OneZero");
-    expectedMapFieldValue.remove("TwoZero");
-
     // PUT
     // Should keep elements with higher timestamps only
     regularFieldValue = "Key2F1";
@@ -656,6 +671,9 @@ public class WriteComputeWithActiveActiveReplicationTest {
     timestampedOp = new VeniceObjectWithTimestamp(val2, 2);
     sendStreamingRecord(systemProducerMap.get(childDatacenters.get(0)), storeName, key2, timestampedOp);
     expectedMapFieldValue.putAll(mapFieldValue);
+    expectedMapFieldValue.remove("OneZero");
+    expectedMapFieldValue.remove("TwoZero");
+    expectedMapFieldValue.remove("xx");
     verifyFLMRecord(storeName, dc0RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
     verifyFLMRecord(storeName, dc1RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
 
@@ -687,7 +705,6 @@ public class WriteComputeWithActiveActiveReplicationTest {
     // first come first server based as that leads to non-deterministic output. To keep this consistent with our
     // approach we should use value-based tie breaking in case of concurrent AddToMap for the same key with the same
     // timestamp
-    /*
     ub = new UpdateBuilderImpl(wcSchemaV1);
     mapFieldValue = new HashMap<>();
     mapFieldValue.put("four", 40);
@@ -697,7 +714,6 @@ public class WriteComputeWithActiveActiveReplicationTest {
     expectedMapFieldValue.putAll(mapFieldValue);
     verifyFLMRecord(storeName, dc1RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
-    */
 
     // AddToMap: Update should be ignored since as PUT takes precedence over partial update when timestamps are the same
     // Let's try for the k-v which existed before full-PUT
@@ -773,7 +789,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     // todo: Fix/add a tie breaker for RemoveFromMap and AddToMap for the same key with the same timestamp
     // AddToMap: adding an element that was deleted with the same timestamp should not succeed as DELETE takes
     // precedence. However, in this case that doesn't happen.
-    /*
+
     ub = new UpdateBuilderImpl(wcSchemaV1);
     mapFieldValue = new HashMap<>();
     mapFieldValue.put("four", 404);
@@ -785,7 +801,6 @@ public class WriteComputeWithActiveActiveReplicationTest {
     sendStreamingRecord(systemProducerMap.get(childDatacenters.get(1)), storeName, key2, timestampedOp);
     verifyFLMRecord(storeName, dc1RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
-    */
 
     // PartialPut: When PartialPut should be ignored when timestamp is lower than all the elements
     ub = new UpdateBuilderImpl(wcSchemaV1);
@@ -804,7 +819,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
 
     // TODO: When PartialPut with the same timestamp as PUT is processed, it wipes out the data with the
     // timestamp <= t2 including PUTs timestamp. This creates a race between PartialPut and PUT
-    /*
+
     ub = new UpdateBuilderImpl(wcSchemaV1);
     mapFieldValue = new HashMap<>();
     mapFieldValue.put("six", 6);
@@ -812,20 +827,23 @@ public class WriteComputeWithActiveActiveReplicationTest {
     ub.setNewFieldValue(MAP_FIELD, mapFieldValue);
     timestampedOp = new VeniceObjectWithTimestamp(ub.build(), 2);
     sendStreamingRecord(systemProducerMap.get(childDatacenters.get(0)), storeName, key2, timestampedOp);
+    expectedMapFieldValue.putAll(mapFieldValue);
+    expectedMapFieldValue.remove("two");
+    expectedMapFieldValue.remove("three");
+
     // send another record from the same region/producer to ensure that the previous operation was completed
     sendStreamingRecord(systemProducerMap.get(childDatacenters.get(0)), storeName, "marker1", val2);
     verifyFLMRecord(storeName, dc1RouterUrl, "marker1", "", Collections.emptyList(), Collections.emptyMap());
     verifyFLMRecord(storeName, dc0RouterUrl, "marker1", "", Collections.emptyList(), Collections.emptyMap());
     verifyFLMRecord(storeName, dc1RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
-    */
 
     // PartialPut: elements with <= to the timestamp of PartialPut will be removed and elements from the PartialPut
     // will be added
     ub = new UpdateBuilderImpl(wcSchemaV1);
     mapFieldValue = new HashMap<>();
-    mapFieldValue.put("six", 6);
-    mapFieldValue.put("seven", 7);
+    mapFieldValue.put("six", 60);
+    mapFieldValue.put("seven", 70);
     ub.setNewFieldValue(MAP_FIELD, mapFieldValue);
     timestampedOp = new VeniceObjectWithTimestamp(ub.build(), 3);
     sendStreamingRecord(systemProducerMap.get(childDatacenters.get(1)), storeName, key2, timestampedOp);
@@ -837,7 +855,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     verifyFLMRecord(storeName, dc0RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
 
     // todo: Two partial puts with the same timestamp doesn't produce deterministic output
-    /*
+
     ub = new UpdateBuilderImpl(wcSchemaV1);
     mapFieldValue = new HashMap<>();
     mapFieldValue.put("eight", 88);
@@ -845,10 +863,10 @@ public class WriteComputeWithActiveActiveReplicationTest {
     ub.setNewFieldValue(MAP_FIELD, mapFieldValue);
     timestampedOp = new VeniceObjectWithTimestamp(ub.build(), 3);
     sendStreamingRecord(systemProducerMap.get(childDatacenters.get(0)), storeName, key2, timestampedOp);
-    expectedMapFieldValue.putAll(mapFieldValue);
+    // expectedMapFieldValue.putAll(mapFieldValue);
     verifyFLMRecord(storeName, dc1RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
-    */
+
   }
 
   /*

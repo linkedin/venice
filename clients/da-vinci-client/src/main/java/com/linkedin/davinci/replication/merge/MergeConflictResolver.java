@@ -29,6 +29,7 @@ import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.lang3.Validate;
+import org.apache.logging.log4j.LogManager;
 
 
 /**
@@ -211,12 +212,15 @@ public class MergeConflictResolver {
         newValueColoID,
         newValueSourceOffset,
         newValueSourceBrokerID);
+    if (mergedValueAndRmd.isUpdateIgnored()) {
+      return MergeConflictResult.getIgnoredResult();
+    }
     ByteBuffer mergedValueBytes = serializeMergedValueRecord(mergeResultValueSchema, mergedValueAndRmd.getValue());
     return new MergeConflictResult(mergedValueBytes, newValueSchemaID, false, mergedValueAndRmd.getRmd());
   }
 
   /**
-   * This methods create a pair of deserialized value of type {@link GenericRecord} and its corresponding replication metadata.
+   * This method create a pair of deserialized value of type {@link GenericRecord} and its corresponding replication metadata.
    * It takes into account the writer schema and reader schema. If the writer schema is different from the reader schema,
    * the replication metadata record will be converted to use the RMD schema generated from the reader schema.
    *
@@ -546,6 +550,10 @@ public class MergeConflictResolver {
         newValueColoID,
         newValueSourceOffset,
         newValueSourceBrokerID);
+    LogManager.getLogger().info("DEBUGGING GET RESULT" + updatedValueAndRmd.isUpdateIgnored());
+    if (updatedValueAndRmd.isUpdateIgnored()) {
+      return MergeConflictResult.getIgnoredResult();
+    }
     final ByteBuffer updatedValueBytes = updatedValueAndRmd.getValue() == null
         ? null
         : serializeMergedValueRecord(oldValueSchema, updatedValueAndRmd.getValue());

@@ -7,6 +7,7 @@ import com.linkedin.venice.schema.merge.AvroCollectionElementComparator;
 import com.linkedin.venice.schema.merge.CollectionFieldOperationHandler;
 import com.linkedin.venice.schema.merge.MergeRecordHelper;
 import com.linkedin.venice.schema.merge.SortBasedCollectionFieldOpHandler;
+import com.linkedin.venice.schema.merge.UpdateResultStatus;
 import com.linkedin.venice.schema.merge.ValueAndRmd;
 import com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp;
 import com.linkedin.venice.utils.IndexedHashMap;
@@ -112,7 +113,7 @@ public class WriteComputeHandlerV2 extends WriteComputeHandlerV1 {
     return currRecordAndRmd;
   }
 
-  private void modifyCollectionField(
+  private UpdateResultStatus modifyCollectionField(
       GenericRecord fieldTimestampRecord,
       GenericRecord fieldWriteComputeRecord,
       long modifyTimestamp,
@@ -121,7 +122,7 @@ public class WriteComputeHandlerV2 extends WriteComputeHandlerV1 {
     Object fieldValue = currValueRecord.get(fieldName);
     if (fieldValue instanceof List) {
 
-      collectionFieldOperationHandler.handleModifyList(
+      return collectionFieldOperationHandler.handleModifyList(
           modifyTimestamp,
           new CollectionRmdTimestamp(fieldTimestampRecord),
           currValueRecord,
@@ -140,7 +141,7 @@ public class WriteComputeHandlerV2 extends WriteComputeHandlerV1 {
               "Expect value of field " + fieldName + " to be an IndexedHashMap. Got: " + fieldValue.getClass());
         }
       }
-      collectionFieldOperationHandler.handleModifyMap(
+      return collectionFieldOperationHandler.handleModifyMap(
           modifyTimestamp,
           new CollectionRmdTimestamp(fieldTimestampRecord),
           currValueRecord,

@@ -1,0 +1,28 @@
+{
+  "type": "record",
+  "name": "PartialUpdateWithMapField",
+  "namespace": "com.linkedin.avro",
+  "fields": [
+    {
+      "name": "regularField",
+      "type": "string",
+      "default": "defaultVenice"
+    },
+    {
+      "name": "stringArrayField",
+      "type": {
+        "type": "array",
+        "items": "string"
+      },
+      "default": []
+    },
+    {
+      "name": "intMapField",
+      "type": {
+        "type": "map",
+        "values": "int"
+      },
+      "default": {}
+    }
+  ]
+}

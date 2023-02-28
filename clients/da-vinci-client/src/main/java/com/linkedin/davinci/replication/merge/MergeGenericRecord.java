@@ -18,6 +18,7 @@ import java.util.List;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.lang.Validate;
+import org.apache.logging.log4j.LogManager;
 
 
 /**
@@ -130,7 +131,7 @@ public class MergeGenericRecord extends AbstractMerge<GenericRecord> {
           newValue.get(fieldName),
           putOperationTimestamp,
           putOperationColoID);
-
+      LogManager.getLogger().info("DEBUGGING: FIELD {} RESULT: {}", fieldName, fieldUpdateResult);
       allFieldsNew &= (fieldUpdateResult == UpdateResultStatus.COMPLETELY_UPDATED);
       noFieldUpdated &= (fieldUpdateResult == UpdateResultStatus.NOT_UPDATED_AT_ALL);
     }

@@ -5,7 +5,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
-import com.linkedin.davinci.replication.merge.helper.utils.ValueAndRmdSchema;
+import com.linkedin.davinci.replication.merge.helper.utils.ValueAndDerivedSchemas;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
@@ -56,9 +56,9 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
   @Test
   public void testPutWithFieldLevelTimestamp() {
 
-    ValueAndRmdSchema userV3Schema = new ValueAndRmdSchema("avro/UserV3.avsc");
-    ValueAndRmdSchema userV4Schema = new ValueAndRmdSchema("avro/UserV4.avsc");
-    ValueAndRmdSchema userV5Schema = new ValueAndRmdSchema("avro/UserV5.avsc");
+    ValueAndDerivedSchemas userV3Schema = new ValueAndDerivedSchemas(storeName, -1, "avro/UserV3.avsc");
+    ValueAndDerivedSchemas userV4Schema = new ValueAndDerivedSchemas(storeName, -1, "avro/UserV4.avsc");
+    ValueAndDerivedSchemas userV5Schema = new ValueAndDerivedSchemas(storeName, -1, "avro/UserV5.avsc");
 
     final Schema userSchemaV3 = userV3Schema.getValueSchema();
     final Schema userSchemaV4 = userV4Schema.getValueSchema();
