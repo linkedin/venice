@@ -1073,6 +1073,13 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     return response;
   }
 
+  /**
+   * Return the metadata information for the given store. The data is retrieved from its respective repositories which
+   * originate from the VeniceServer.
+   * @param storeName
+   * @return {@link MetadataResponse} object that holds all the information required for answering a server metadata
+   * fetch request.
+   */
   @Override
   public MetadataResponse getMetadata(String storeName) {
     MetadataResponse response = new MetadataResponse();

@@ -8,6 +8,7 @@ import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.HealthCheckRequest;
 import com.linkedin.venice.listener.request.MetadataFetchRequest;
 import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
+import com.linkedin.venice.listener.request.RequestHelper;
 import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.meta.QueryAction;
@@ -19,9 +20,10 @@ import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
-import java.net.URI;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 
 /**
@@ -153,22 +155,22 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
   }
 
   static QueryAction getQueryActionFromRequest(HttpRequest req) {
-    // Sometimes req.uri() gives a full uri (eg https://host:port/path) and sometimes it only gives a path
-    // Generating a URI lets us always take just the path.
-    String[] requestParts = URI.create(req.uri()).getPath().split("/");
+    String[] requestParts = RequestHelper.getRequestParts(req.uri());
     HttpMethod reqMethod = req.method();
+    String actions =
+        Arrays.stream(QueryAction.values()).map(e -> e.toString().toLowerCase()).collect(Collectors.joining(", "));
     if ((!reqMethod.equals(HttpMethod.GET) && !reqMethod.equals(HttpMethod.POST)) || requestParts.length < 2) {
       throw new VeniceException(
-          "Only able to parse GET or POST requests for actions: storage, health, compute, dictionary, admin. "
-              + "Cannot parse request for: " + req.uri());
+          "Only able to parse GET or POST requests for actions: " + actions + ". " + "Cannot parse request for: "
+              + req.uri());
     }
 
     try {
       return QueryAction.valueOf(requestParts[1].toUpperCase());
     } catch (IllegalArgumentException e) {
       throw new VeniceException(
-          "Only able to parse GET or POST requests for actions: storage, health, compute, dictionary, admin. "
-              + "Cannot support action: " + requestParts[1],
+          "Only able to parse GET or POST requests for actions: " + actions + ". " + "Cannot support action: "
+              + requestParts[1],
           e);
     }
   }
