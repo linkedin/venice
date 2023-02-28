@@ -157,9 +157,9 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
   static QueryAction getQueryActionFromRequest(HttpRequest req) {
     String[] requestParts = RequestHelper.getRequestParts(req.uri());
     HttpMethod reqMethod = req.method();
-    String actions =
-        Arrays.stream(QueryAction.values()).map(e -> e.toString().toLowerCase()).collect(Collectors.joining(", "));
     if ((!reqMethod.equals(HttpMethod.GET) && !reqMethod.equals(HttpMethod.POST)) || requestParts.length < 2) {
+      String actions =
+          Arrays.stream(QueryAction.values()).map(e -> e.toString().toLowerCase()).collect(Collectors.joining(", "));
       throw new VeniceException(
           "Only able to parse GET or POST requests for actions: " + actions + ". " + "Cannot parse request for: "
               + req.uri());
@@ -167,11 +167,13 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
 
     try {
       return QueryAction.valueOf(requestParts[1].toUpperCase());
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException illegalArgumentException) {
+      String actions =
+          Arrays.stream(QueryAction.values()).map(e -> e.toString().toLowerCase()).collect(Collectors.joining(", "));
       throw new VeniceException(
           "Only able to parse GET or POST requests for actions: " + actions + ". " + "Cannot support action: "
               + requestParts[1],
-          e);
+          illegalArgumentException);
     }
   }
 }
