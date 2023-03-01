@@ -48,6 +48,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -370,8 +371,9 @@ public class StorageReadRequestsHandlerTest {
   @Test
   public static void testMetadataFetchRequestsPassInStorageExecutionHandler() throws Exception {
     String storeName = "test_store_name";
-    String keySchema = "test_key_schema";
-    List<CharSequence> valueSchemas = Collections.singletonList("test_value_schemas");
+    Map<CharSequence, CharSequence> keySchema = Collections.singletonMap("test_key_schema_id", "test_key_schema");
+    Map<CharSequence, CharSequence> valueSchemas =
+        Collections.singletonMap("test_value_schema_id", "test_value_schemas");
     List<Object> outputArray = new ArrayList<Object>();
 
     // [0]""/[1]"action"/[2]"store"
@@ -381,7 +383,14 @@ public class StorageReadRequestsHandlerTest {
 
     // Mock the MetadataResponse from ingestion task
     MetadataResponse expectedMetadataResponse = new MetadataResponse();
-    VersionProperties versionProperties = new VersionProperties(123, Collections.singletonList(456), 0);
+    VersionProperties versionProperties = new VersionProperties(
+        123,
+        Collections.singletonList(456),
+        0,
+        1,
+        "test_partitioner_class",
+        Collections.singletonMap("test_partitioner_param", "test_param"),
+        2);
     expectedMetadataResponse.setVersionMetadata(versionProperties);
     expectedMetadataResponse.setKeySchema(keySchema);
     expectedMetadataResponse.setValueSchemas(valueSchemas);

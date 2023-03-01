@@ -428,7 +428,7 @@ public abstract class KafkaStoreIngestionServiceTest {
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testGetMetadata(boolean isV0) {
+  public void testGetMetadata(boolean isCurrentVersion) {
     kafkaStoreIngestionService = new KafkaStoreIngestionService(
         mockStorageEngineRepository,
         mockVeniceConfigLoader,
@@ -450,7 +450,7 @@ public abstract class KafkaStoreIngestionServiceTest {
         Optional.empty(),
         false,
         null);
-    String topicName = "test-store_v" + (isV0 ? "0" : "1");
+    String topicName = "test-store_v" + (isCurrentVersion ? "0" : "1");
     String storeName = Version.parseStoreFromKafkaTopicName(topicName);
     Store mockStore = new ZKStore(
         storeName,
@@ -479,8 +479,10 @@ public abstract class KafkaStoreIngestionServiceTest {
     MetadataResponse metadataResponse = kafkaStoreIngestionService.getMetadata(storeName);
 
     Assert.assertNotNull(metadataResponse);
-    Assert.assertEquals(metadataResponse.getResponseRecord().getKeySchema(), "\"string\"");
-    if (isV0) {
+    Assert.assertEquals(metadataResponse.getResponseRecord().getKeySchema().get("0"), "\"string\"");
+
+    // verify that routing tables from versions other than the current were not added
+    if (isCurrentVersion) {
       Assert.assertEquals(metadataResponse.getResponseRecord().getRoutingInfo().get("0"), Collections.emptyList());
     } else {
       Assert.assertTrue(metadataResponse.getResponseRecord().getRoutingInfo().isEmpty());

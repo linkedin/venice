@@ -232,7 +232,9 @@ public class VeniceServerTest {
           }
 
           // check we can parse the fields of the response
-          Assert.assertEquals(metadataResponse.get("keySchema").toString(), "\"int\"");
+          Assert.assertEquals(
+              ((HashMap<Utf8, Utf8>) metadataResponse.get("keySchema")).get(new Utf8("1")),
+              new Utf8("\"int\""));
 
           // verify the property that no replicas of the same partition are in the same helix group
           Map<Utf8, Integer> helixGroupInfo = (HashMap<Utf8, Integer>) metadataResponse.get("helixGroupInfo");

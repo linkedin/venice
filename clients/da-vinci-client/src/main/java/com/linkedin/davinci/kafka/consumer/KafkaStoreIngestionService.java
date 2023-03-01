@@ -1088,15 +1088,28 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
       List<Integer> versions = new ArrayList<>();
       for (Version version: store.getVersions()) {
+        version.getPartitionerConfig();
         versions.add(version.getNumber());
       }
-      VersionProperties versionProperties =
-          new VersionProperties(store.getCurrentVersion(), versions, store.getCompressionStrategy().getValue());
+      Map<CharSequence, CharSequence> partitionerParams =
+          new HashMap<>(store.getPartitionerConfig().getPartitionerParams());
+      VersionProperties versionProperties = new VersionProperties(
+          store.getCurrentVersion(),
+          versions,
+          store.getCompressionStrategy().getValue(),
+          store.getPartitionCount(),
+          store.getPartitionerConfig().getPartitionerClass(),
+          partitionerParams,
+          store.getPartitionerConfig().getAmplificationFactor());
 
-      String keySchema = schemaRepo.getKeySchema(storeName).getSchema().toString();
-      List<CharSequence> valueSchemas = new ArrayList<>();
+      Map<CharSequence, CharSequence> keySchema = Collections.singletonMap(
+          String.valueOf(schemaRepo.getKeySchema(storeName).getId()),
+          schemaRepo.getKeySchema(storeName).getSchema().toString());
+      Map<CharSequence, CharSequence> valueSchemas = new HashMap<>();
       for (SchemaEntry schemaEntry: schemaRepo.getValueSchemas(storeName)) {
-        valueSchemas.add(schemaEntry.getSchema().toString());
+        String valueSchemaStr = schemaEntry.getSchema().toString();
+        int valueSchemaId = schemaRepo.getValueSchemaId(storeName, valueSchemaStr);
+        valueSchemas.put(String.valueOf(valueSchemaId), valueSchemaStr);
       }
 
       Map<CharSequence, List<CharSequence>> routingInfo = new HashMap<>();
@@ -1113,8 +1126,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         }
       }
 
-      Map<CharSequence, Integer> helixGroupInfo = new HashMap<>();
-      helixGroupInfo.putAll(helixInstanceConfigRepository.getInstanceGroupIdMapping());
+      Map<CharSequence, Integer> helixGroupInfo =
+          new HashMap<>(helixInstanceConfigRepository.getInstanceGroupIdMapping());
 
       response.setVersionMetadata(versionProperties);
       response.setKeySchema(keySchema);

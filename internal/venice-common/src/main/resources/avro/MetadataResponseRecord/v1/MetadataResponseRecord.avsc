@@ -33,6 +33,29 @@
                 "name": "CompressionStrategy",
                 "type": "int"
               }
+            },
+            {
+              "name": "partitionCount",
+              "doc": "Partition count of the current version",
+              "type": "int"
+            },
+            {
+              "name": "partitionerClass",
+              "doc": "Partitioner class name",
+              "type": "string"
+            },
+            {
+              "name": "partitionerParams",
+              "doc": "Partitioner parameters",
+              "type": {
+                "type": "map",
+                "values": "string"
+              }
+            },
+            {
+              "name": "amplificationFactor",
+              "doc": "Partitioner amplification factor",
+              "type": "int"
             }
           ]
         }
@@ -44,7 +67,10 @@
       "doc": "Key schema",
       "type": [
         "null",
-        "string"
+        {
+          "type": "map",
+          "values": "string"
+        }
       ],
       "default": null
     },
@@ -54,8 +80,8 @@
       "type": [
         "null",
         {
-          "type": "array",
-          "items": "string"
+          "type": "map",
+          "values": "string"
         }
       ],
       "default": null
