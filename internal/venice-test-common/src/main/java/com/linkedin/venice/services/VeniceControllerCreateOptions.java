@@ -8,9 +8,9 @@ import static com.linkedin.venice.services.VeniceControllerWrapper.DEFAULT_PAREN
 import com.linkedin.venice.authorization.AuthorizerService;
 import java.util.Arrays;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Properties;
 import java.util.stream.Collectors;
-import org.apache.commons.lang.Validate;
 
 
 public class VeniceControllerCreateOptions {
@@ -22,9 +22,9 @@ public class VeniceControllerCreateOptions {
   private final int minActiveReplica;
   private final long rebalanceDelayMs;
   private final String[] clusterNames;
-  private final String zkAddress;
   private final Map<String, String> clusterToD2;
   private final VeniceControllerWrapper[] childControllers;
+  private final ZkServerWrapper zkServer;
   private final KafkaBrokerWrapper kafkaBroker;
   private final Properties extraProperties;
   private final AuthorizerService authorizerService;
@@ -38,9 +38,9 @@ public class VeniceControllerCreateOptions {
     minActiveReplica = builder.minActiveReplica;
     rebalanceDelayMs = builder.rebalanceDelayMs;
     clusterNames = builder.clusterNames;
-    zkAddress = builder.zkAddress;
     clusterToD2 = builder.clusterToD2;
     childControllers = builder.childControllers;
+    zkServer = builder.zkServer;
     kafkaBroker = builder.kafkaBroker;
     extraProperties = builder.extraProperties;
     authorizerService = builder.authorizerService;
@@ -75,7 +75,7 @@ public class VeniceControllerCreateOptions {
         .append(Arrays.toString(clusterNames))
         .append(", ")
         .append("zkAddress:")
-        .append(zkAddress)
+        .append(zkServer.getAddress())
         .append(", ")
         .append("kafkaBroker:")
         .append(kafkaBroker == null ? "null" : kafkaBroker.getAddress())
@@ -137,7 +137,7 @@ public class VeniceControllerCreateOptions {
   }
 
   public String getZkAddress() {
-    return zkAddress;
+    return zkServer.getAddress();
   }
 
   public Map<String, String> getClusterToD2() {
@@ -166,6 +166,7 @@ public class VeniceControllerCreateOptions {
 
   public static class Builder {
     private final String[] clusterNames;
+    private final ZkServerWrapper zkServer;
     private final KafkaBrokerWrapper kafkaBroker;
     private boolean sslToKafka = false;
     private boolean d2Enabled = false;
@@ -174,20 +175,21 @@ public class VeniceControllerCreateOptions {
     private int partitionSize = VeniceClusterWrapperConstants.DEFAULT_PARTITION_SIZE_BYTES;
     private int minActiveReplica;
     private long rebalanceDelayMs = VeniceClusterWrapperConstants.DEFAULT_DELAYED_TO_REBALANCE_MS;
-    private String zkAddress;
     private Map<String, String> clusterToD2 = null;
     private VeniceControllerWrapper[] childControllers = null;
     private Properties extraProperties = new Properties();
     private AuthorizerService authorizerService;
     private String coloName = "";
 
-    public Builder(String[] clusterNames, KafkaBrokerWrapper kafkaBroker) {
-      this.clusterNames = clusterNames;
-      this.kafkaBroker = kafkaBroker;
+    public Builder(String[] clusterNames, ZkServerWrapper zkServer, KafkaBrokerWrapper kafkaBroker) {
+      this.clusterNames = Objects.requireNonNull(clusterNames, "clusterNames cannot be null when creating controller");
+      this.zkServer = Objects.requireNonNull(zkServer, "ZkServerWrapper cannot be null when creating controller");
+      this.kafkaBroker =
+          Objects.requireNonNull(kafkaBroker, "KafkaBrokerWrapper cannot be null when creating controller");
     }
 
-    public Builder(String clusterName, KafkaBrokerWrapper kafkaBroker) {
-      this(new String[] { clusterName }, kafkaBroker);
+    public Builder(String clusterName, ZkServerWrapper zkServer, KafkaBrokerWrapper kafkaBroker) {
+      this(new String[] { clusterName }, zkServer, kafkaBroker);
     }
 
     public Builder sslToKafka(boolean sslToKafka) {
@@ -218,11 +220,6 @@ public class VeniceControllerCreateOptions {
 
     public Builder rebalanceDelayMs(long rebalanceDelayMs) {
       this.rebalanceDelayMs = rebalanceDelayMs;
-      return this;
-    }
-
-    public Builder zkAddress(String zkAddress) {
-      this.zkAddress = zkAddress;
       return this;
     }
 
@@ -272,10 +269,6 @@ public class VeniceControllerCreateOptions {
     }
 
     private void addDefaults() {
-      Validate.notNull(kafkaBroker);
-      if (zkAddress == null) {
-        zkAddress = kafkaBroker.getZkAddress();
-      }
       if (extraProperties == null) {
         extraProperties = new Properties();
       }

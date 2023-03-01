@@ -3,7 +3,6 @@ package com.linkedin.venice.services;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_D2;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_ZK_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
 import static com.linkedin.venice.ConfigKeys.LISTENER_SSL_PORT;
 import static com.linkedin.venice.ConfigKeys.ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS;
@@ -108,7 +107,6 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
 
     HelixLiveInstanceMonitor mockLiveInstanceMonitor = Mockito.mock(HelixLiveInstanceMonitor.class);
     doReturn(true).when(mockLiveInstanceMonitor).isInstanceAlive(any());
-    final String kafkaZkAddress = "localhost:1234";
     final String kafkaBootstrapServers = "localhost:1234";
 
     return (serviceName, dataDirectory) -> {
@@ -131,7 +129,6 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
           .put(LISTENER_PORT, port)
           .put(LISTENER_SSL_PORT, sslPortFromPort(port))
           .put(ZOOKEEPER_ADDRESS, zkAddress)
-          .put(KAFKA_ZK_ADDRESS, kafkaZkAddress)
           .put(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers)
           .put(SSL_TO_STORAGE_NODES, sslToStorageNodes)
           .put(CLUSTER_TO_D2, TestUtils.getClusterToD2String(Collections.singletonMap(clusterName, d2ServiceName)))

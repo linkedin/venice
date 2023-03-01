@@ -242,7 +242,6 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       PubSubConsumer consumer,
       boolean remoteConsumptionEnabled,
       Optional<String> remoteKafkaServerUrl,
-      Optional<String> remoteKafkaZkAddress,
       VeniceHelixAdmin admin,
       AdminTopicMetadataAccessor adminTopicMetadataAccessor,
       ExecutionIdAccessor executionIdAccessor,
@@ -289,13 +288,11 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     this.pubSubTopic = pubSubTopicRepository.getTopic(topic);
 
     if (remoteConsumptionEnabled) {
-      if (!(remoteKafkaServerUrl.isPresent() && remoteKafkaZkAddress.isPresent())) {
+      if (!remoteKafkaServerUrl.isPresent()) {
         throw new VeniceException(
-            "Admin topic remote consumption is enabled but no config for the source Kafka "
-                + "bootstrap server url or source Kafka ZK address");
+            "Admin topic remote consumption is enabled but no config found for the source Kafka bootstrap server url");
       }
-      this.sourceKafkaClusterTopicManager =
-          admin.getTopicManager(new Pair<>(remoteKafkaServerUrl.get(), remoteKafkaZkAddress.get()));
+      this.sourceKafkaClusterTopicManager = admin.getTopicManager(remoteKafkaServerUrl.get());
     }
   }
 

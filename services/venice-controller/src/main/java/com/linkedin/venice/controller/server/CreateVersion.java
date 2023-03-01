@@ -42,7 +42,6 @@ import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.security.cert.X509Certificate;
@@ -353,9 +352,8 @@ public class CreateVersion extends AbstractRoute {
                   overRideSourceRegion = sourceGridFabric;
                 }
                 if (overRideSourceRegion.isPresent()) {
-                  Pair<String, String> sourceKafkaBootstrapServersAndZk =
-                      admin.getNativeReplicationKafkaBootstrapServerAndZkAddress(overRideSourceRegion.get());
-                  String sourceKafkaBootstrapServers = sourceKafkaBootstrapServersAndZk.getFirst();
+                  String sourceKafkaBootstrapServers =
+                      admin.getNativeReplicationKafkaBootstrapServerAddress(overRideSourceRegion.get());
                   if (sourceKafkaBootstrapServers == null) {
                     throw new VeniceException(
                         "Failed to get the kafka URL for the source region: " + overRideSourceRegion.get());

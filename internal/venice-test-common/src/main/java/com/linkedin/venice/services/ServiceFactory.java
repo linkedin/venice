@@ -180,6 +180,7 @@ public class ServiceFactory {
         VeniceServerWrapper.generateService(
             coloName,
             clusterName,
+            zkAddress,
             kafkaBrokerWrapper,
             featureProperties,
             configProperties,

@@ -11,7 +11,6 @@ import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.INGESTION_USE_DA_VINCI_CLIENT;
 import static com.linkedin.venice.ConfigKeys.KAFKA_ADMIN_CLASS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_ZK_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_KAFKA_OPENSSL;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static com.linkedin.venice.client.store.ClientFactory.getAndStartAvroClient;
@@ -616,13 +615,9 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
     D2ServiceDiscoveryResponseV2 discoveryResponse = discoverService();
     String clusterName = discoveryResponse.getCluster();
     String zkAddress = discoveryResponse.getZkAddress();
-    String kafkaZkAddress = discoveryResponse.getKafkaZkAddress();
     String kafkaBootstrapServers = discoveryResponse.getKafkaBootstrapServers();
     if (zkAddress == null) {
       zkAddress = backendConfig.getString(ZOOKEEPER_ADDRESS);
-    }
-    if (kafkaZkAddress == null) {
-      kafkaZkAddress = backendConfig.getString(KAFKA_ZK_ADDRESS);
     }
     if (kafkaBootstrapServers == null) {
       kafkaBootstrapServers = backendConfig.getString(KAFKA_BOOTSTRAP_SERVERS);
@@ -638,7 +633,6 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
         .put(backendConfig.toProperties())
         .put(CLUSTER_NAME, clusterName)
         .put(ZOOKEEPER_ADDRESS, zkAddress)
-        .put(KAFKA_ZK_ADDRESS, kafkaZkAddress)
         .put(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers)
         .put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, daVinciConfig.getStorageClass() == StorageClass.MEMORY_BACKED_BY_DISK)
         .put(INGESTION_USE_DA_VINCI_CLIENT, true)

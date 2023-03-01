@@ -226,7 +226,6 @@ public class AdminConsumptionTaskTest {
         inMemoryKafkaConsumer,
         false,
         Optional.empty(),
-        Optional.empty(),
         admin,
         adminTopicMetadataAccessor,
         executionIdAccessor,

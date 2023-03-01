@@ -49,7 +49,6 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_LOG_COMPACTION_LAG_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR_RT_TOPICS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
-import static com.linkedin.venice.ConfigKeys.KAFKA_ZK_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.LEAKED_PUSH_STATUS_CLEAN_UP_SERVICE_SLEEP_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.LF_MODEL_DEPENDENCY_CHECK_DISABLED;
 import static com.linkedin.venice.ConfigKeys.MIN_ACTIVE_REPLICA;
@@ -258,11 +257,6 @@ public class VeniceControllerClusterConfig {
   private long kafkaMinLogCompactionLagInMs;
 
   /**
-   * Address of zookeeper that kafka used. It may be different from what Helix used.
-   */
-  private String kafkaZkAddress;
-
-  /**
    * Alg used by helix to decide the mapping between replicas and nodes.
    */
   private String helixRebalanceAlg;
@@ -305,7 +299,6 @@ public class VeniceControllerClusterConfig {
     clusterName = props.getString(CLUSTER_NAME);
     zkAddress = props.getString(ZOOKEEPER_ADDRESS);
     controllerName = props.getString(CONTROLLER_NAME);
-    kafkaZkAddress = props.getString(KAFKA_ZK_ADDRESS);
     kafkaReplicationFactor = props.getInt(KAFKA_REPLICATION_FACTOR, DEFAULT_KAFKA_REPLICATION_FACTOR);
     kafkaReplicationFactorRTTopics = props.getInt(KAFKA_REPLICATION_FACTOR_RT_TOPICS, kafkaReplicationFactor);
     minInSyncReplicas = props.getOptionalInt(KAFKA_MIN_IN_SYNC_REPLICAS);
@@ -482,10 +475,6 @@ public class VeniceControllerClusterConfig {
 
   public String getControllerName() {
     return controllerName;
-  }
-
-  public String getKafkaZkAddress() {
-    return kafkaZkAddress;
   }
 
   public PersistenceType getPersistenceType() {

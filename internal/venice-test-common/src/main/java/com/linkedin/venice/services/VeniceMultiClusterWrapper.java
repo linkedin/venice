@@ -97,7 +97,8 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
               .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
               .setD2Client(clientConfigD2Client));
       VeniceControllerCreateOptions controllerCreateOptions =
-          new VeniceControllerCreateOptions.Builder(clusterNames, kafkaBrokerWrapper).coloName(options.getColoName())
+          new VeniceControllerCreateOptions.Builder(clusterNames, zkServerWrapper, kafkaBrokerWrapper)
+              .coloName(options.getColoName())
               .replicationFactor(options.getReplicationFactor())
               .partitionSize(options.getPartitionSize())
               .rebalanceDelayMs(options.getRebalanceDelayMs())

@@ -28,7 +28,7 @@ public class TestD2ControllerClient {
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
         KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServer);
         VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceController(
-            new VeniceControllerCreateOptions.Builder(CLUSTER_NAME, kafkaBrokerWrapper).replicationFactor(1)
+            new VeniceControllerCreateOptions.Builder(CLUSTER_NAME, zkServer, kafkaBrokerWrapper).replicationFactor(1)
                 .partitionSize(10)
                 .rebalanceDelayMs(0)
                 .minActiveReplica(1)
@@ -36,14 +36,13 @@ public class TestD2ControllerClient {
                 .d2Enabled(true)
                 .clusterToD2(Collections.singletonMap(CLUSTER_NAME, clusterD2Service))
                 .build())) {
-      String zkAddress = kafkaBrokerWrapper.getZkAddress();
       D2TestUtils.setupD2Config(
-          zkAddress,
+          zkServer.getAddress(),
           false,
           VeniceControllerWrapper.D2_CLUSTER_NAME,
           VeniceControllerWrapper.D2_SERVICE_NAME);
 
-      d2Client = D2TestUtils.getAndStartD2Client(zkAddress);
+      d2Client = D2TestUtils.getAndStartD2Client(zkServer.getAddress());
       String d2ServiceName = VeniceControllerWrapper.D2_SERVICE_NAME;
 
       try (D2ControllerClient d2ControllerClient = new D2ControllerClient(d2ServiceName, CLUSTER_NAME, d2Client)) {

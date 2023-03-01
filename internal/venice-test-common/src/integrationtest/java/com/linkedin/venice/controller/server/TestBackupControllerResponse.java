@@ -28,10 +28,10 @@ public class TestBackupControllerResponse {
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
         KafkaBrokerWrapper kafka = ServiceFactory.getKafkaBroker(zkServer);
         ControllerTransport transport = new ControllerTransport(Optional.empty());
-        VeniceControllerWrapper controller1 =
-            ServiceFactory.getVeniceController(new VeniceControllerCreateOptions.Builder(clusterName, kafka).build());
-        VeniceControllerWrapper controller2 =
-            ServiceFactory.getVeniceController(new VeniceControllerCreateOptions.Builder(clusterName, kafka).build())) {
+        VeniceControllerWrapper controller1 = ServiceFactory
+            .getVeniceController(new VeniceControllerCreateOptions.Builder(clusterName, zkServer, kafka).build());
+        VeniceControllerWrapper controller2 = ServiceFactory
+            .getVeniceController(new VeniceControllerCreateOptions.Builder(clusterName, zkServer, kafka).build())) {
       // TODO: Eliminate sleep to make test reliable
       Thread.sleep(2000);
       VeniceControllerWrapper nonLeaderController =

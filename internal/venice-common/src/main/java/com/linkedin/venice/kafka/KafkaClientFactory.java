@@ -117,7 +117,6 @@ public abstract class KafkaClientFactory {
     KafkaAdminWrapper adminWrapper =
         ReflectUtils.callConstructor(ReflectUtils.loadClass(kafkaAdminClientClass), new Class[0], new Object[0]);
     Properties properties = setupSSL(new Properties());
-    properties.setProperty(ConfigKeys.KAFKA_ZK_ADDRESS, getKafkaZkAddress());
     if (!properties.contains(ConfigKeys.KAFKA_ADMIN_GET_TOPIC_CONFIG_MAX_RETRY_TIME_SEC)) {
       properties.put(
           ConfigKeys.KAFKA_ADMIN_GET_TOPIC_CONFIG_MAX_RETRY_TIME_SEC,
@@ -186,13 +185,10 @@ public abstract class KafkaClientFactory {
    */
   abstract protected String getReadOnlyAdminClass();
 
-  abstract protected String getKafkaZkAddress();
-
   public abstract String getKafkaBootstrapServers();
 
   abstract protected KafkaClientFactory clone(
       String kafkaBootstrapServers,
-      String kafkaZkAddress,
       Optional<MetricsParameters> metricsParameters);
 
   public static class MetricsParameters {

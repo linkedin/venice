@@ -419,7 +419,7 @@ public interface Admin extends AutoCloseable, Closeable {
    */
   String getKafkaBootstrapServers(boolean isSSL);
 
-  Pair<String, String> getNativeReplicationKafkaBootstrapServerAndZkAddress(String sourceFabric);
+  String getNativeReplicationKafkaBootstrapServerAddress(String sourceFabric);
 
   String getNativeReplicationSourceFabric(
       String clusterName,
@@ -436,7 +436,7 @@ public interface Admin extends AutoCloseable, Closeable {
 
   TopicManager getTopicManager();
 
-  TopicManager getTopicManager(Pair<String, String> kafkaBootstrapServersAndZkAddress);
+  TopicManager getTopicManager(String pubSubServerAddress);
 
   /**
    * Check if this controller itself is the leader controller for a given cluster or not. Note that the controller can be

@@ -58,8 +58,8 @@ public class AdminConsumptionTaskIntegrationTest {
       topicManager.createTopic(adminTopic, 1, 1, true);
       String storeName = "test-store";
       try (
-          VeniceControllerWrapper controller =
-              ServiceFactory.getVeniceController(new VeniceControllerCreateOptions.Builder(clusterName, kafka).build());
+          VeniceControllerWrapper controller = ServiceFactory
+              .getVeniceController(new VeniceControllerCreateOptions.Builder(clusterName, zkServer, kafka).build());
           VeniceWriter<byte[], byte[], byte[]> writer =
               TestUtils.getVeniceWriterFactory(kafka.getAddress()).createBasicVeniceWriter(adminTopic)) {
         byte[] message = getStoreCreationMessage(clusterName, storeName, owner, "invalid_key_schema", valueSchema, 1);

@@ -94,7 +94,7 @@ public enum Arg {
   KAFKA_BOOTSTRAP_SERVERS("kafka-bootstrap-servers", "kbs", true, "Kafka bootstrap server URL(s)"),
   KAFKA_BOOTSTRAP_SERVERS_DESTINATION(
       "kafka-bootstrap-servers-dest", "kbd", true, "Kafka bootstrap server URL(s) for the destination cluster"
-  ), KAFKA_ZOOKEEPER_CONNECTION_URL("kafka-zk-url", "kzu", true, "Kafka's Zookeeper URL(s)"),
+  ),
   KAFKA_ZOOKEEPER_CONNECTION_URL_SOURCE(
       "kafka-zk-url-source", "kzs", true, "Kafka's Zookeeper URL(s) for the source cluster"
   ),

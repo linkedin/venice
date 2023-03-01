@@ -146,13 +146,6 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
     return getHost() + ":" + getSslPort();
   }
 
-  /**
-   * @return the address of the ZK used by this Kafka instance
-   */
-  public String getZkAddress() {
-    return zkServerWrapper.getAddress();
-  }
-
   @Override
   protected void internalStart() {
     Properties properties = System.getProperties();

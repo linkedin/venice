@@ -198,7 +198,7 @@ public class IntegrationTestPushUtils {
   }
 
   public static KafkaClientFactory getVeniceConsumerFactory(KafkaBrokerWrapper kafka) {
-    return new TestKafkaClientFactory(kafka.getAddress(), kafka.getZkAddress());
+    return new TestKafkaClientFactory(kafka.getAddress());
   }
 
   public static ControllerClient createStoreForJob(String veniceClusterName, Schema recordSchema, Properties props) {
@@ -352,11 +352,9 @@ public class IntegrationTestPushUtils {
 
   private static class TestKafkaClientFactory extends KafkaClientFactory {
     private final String kafkaBootstrapServers;
-    private final String kafkaZkAddress;
 
-    public TestKafkaClientFactory(String kafkaBootstrapServers, String kafkaZkAddress) {
+    public TestKafkaClientFactory(String kafkaBootstrapServers) {
       this.kafkaBootstrapServers = kafkaBootstrapServers;
-      this.kafkaZkAddress = kafkaZkAddress;
     }
 
     @Override
@@ -381,21 +379,13 @@ public class IntegrationTestPushUtils {
     }
 
     @Override
-    protected String getKafkaZkAddress() {
-      return kafkaZkAddress;
-    }
-
-    @Override
     public String getKafkaBootstrapServers() {
       return kafkaBootstrapServers;
     }
 
     @Override
-    protected KafkaClientFactory clone(
-        String kafkaBootstrapServers,
-        String kafkaZkAddress,
-        Optional<MetricsParameters> metricsParameters) {
-      return new TestKafkaClientFactory(kafkaBootstrapServers, kafkaZkAddress);
+    protected KafkaClientFactory clone(String kafkaBootstrapServers, Optional<MetricsParameters> metricsParameters) {
+      return new TestKafkaClientFactory(kafkaBootstrapServers);
     }
   }
 }

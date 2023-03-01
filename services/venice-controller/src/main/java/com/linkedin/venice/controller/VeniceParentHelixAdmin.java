@@ -3499,11 +3499,11 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * @see VeniceHelixAdmin#getNativeReplicationKafkaBootstrapServerAndZkAddress(String)
+   * @see VeniceHelixAdmin#getNativeReplicationKafkaBootstrapServerAddress(String)
    */
   @Override
-  public Pair<String, String> getNativeReplicationKafkaBootstrapServerAndZkAddress(String sourceFabric) {
-    return getVeniceHelixAdmin().getNativeReplicationKafkaBootstrapServerAndZkAddress(sourceFabric);
+  public String getNativeReplicationKafkaBootstrapServerAddress(String sourceFabric) {
+    return getVeniceHelixAdmin().getNativeReplicationKafkaBootstrapServerAddress(sourceFabric);
   }
 
   /**
@@ -3544,11 +3544,11 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * @see VeniceHelixAdmin#getTopicManager(Pair)
+   * @see VeniceHelixAdmin#getTopicManager(String)
    */
   @Override
-  public TopicManager getTopicManager(Pair<String, String> kafkaBootstrapServersAndZkAddress) {
-    return getVeniceHelixAdmin().getTopicManager(kafkaBootstrapServersAndZkAddress);
+  public TopicManager getTopicManager(String pubSubServerAddress) {
+    return getVeniceHelixAdmin().getTopicManager(pubSubServerAddress);
   }
 
   /**

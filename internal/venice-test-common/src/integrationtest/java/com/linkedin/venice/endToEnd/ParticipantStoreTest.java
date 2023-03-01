@@ -87,9 +87,8 @@ public class ParticipantStoreTest {
     veniceServerWrapper = venice.addVeniceServer(serverFeatureProperties, serverProperties);
     parentZk = ServiceFactory.getZkServer();
     parentController = ServiceFactory.getVeniceController(
-        new VeniceControllerCreateOptions.Builder(venice.getClusterName(), venice.getKafka())
+        new VeniceControllerCreateOptions.Builder(venice.getClusterName(), parentZk, venice.getKafka())
             .childControllers(venice.getVeniceControllers().toArray(new VeniceControllerWrapper[0]))
-            .zkAddress(parentZk.getAddress())
             .extraProperties(controllerConfig)
             .build());
     participantMessageStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(venice.getClusterName());

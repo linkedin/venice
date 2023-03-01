@@ -25,7 +25,6 @@ import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.services.ServiceFactory;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.ObjectMapperFactory;
-import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SslUtils;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -172,12 +171,9 @@ public class TestAdminSparkWithMocks {
     String storeName = "store-inc-push";
     String clusterName = "test_cluster";
     String pushJobId1 = "push_1";
-    String hostname = "localhost";
-    String user = "test_user";
-
-    Pair<String, String> corpRegionKafka = new Pair("kafka-bootstrap.corp", "zk");
-    Pair<String, String> emergencySourceRegionKafka = new Pair("kafka-bootstrap.emergency", "zk");
-    Pair<String, String> sourceGridFabricKafka = new Pair("kafka-bootstrap.grid", "zk");
+    String corpRegionKafka = "kafka-bootstrap.corp";
+    String emergencySourceRegionKafka = "kafka-bootstrap.emergency";
+    String sourceGridFabricKafka = "kafka-bootstrap.grid";
     String corpRegion = "region.corp";
     String emergencySourceRegion = "region.emergency";
     String sourceGridFabric = "region.grid";
@@ -208,14 +204,14 @@ public class TestAdminSparkWithMocks {
     doReturn(true).when(admin).isLeaderControllerFor(anyString());
     doReturn(1).when(admin).getReplicationFactor(anyString(), anyString());
     doReturn(1).when(admin).calculateNumberOfPartitions(anyString(), anyString(), anyLong());
-    doReturn(corpRegionKafka.getFirst()).when(admin).getKafkaBootstrapServers(anyBoolean());
+    doReturn(corpRegionKafka).when(admin).getKafkaBootstrapServers(anyBoolean());
     doReturn(true).when(admin).whetherEnableBatchPushFromAdmin(anyString());
     doReturn(true).when(admin).isActiveActiveReplicationEnabledInAllRegion(clusterName, storeName, false);
     doReturn(storeName + "_rt").when(admin).getRealTimeTopic(anyString(), anyString());
-    doReturn(corpRegionKafka).when(admin).getNativeReplicationKafkaBootstrapServerAndZkAddress(corpRegion);
+    doReturn(corpRegionKafka).when(admin).getNativeReplicationKafkaBootstrapServerAddress(corpRegion);
     doReturn(emergencySourceRegionKafka).when(admin)
-        .getNativeReplicationKafkaBootstrapServerAndZkAddress(emergencySourceRegion);
-    doReturn(sourceGridFabricKafka).when(admin).getNativeReplicationKafkaBootstrapServerAndZkAddress(sourceGridFabric);
+        .getNativeReplicationKafkaBootstrapServerAddress(emergencySourceRegion);
+    doReturn(sourceGridFabricKafka).when(admin).getNativeReplicationKafkaBootstrapServerAddress(sourceGridFabric);
 
     if (emergencySourceRegionPresent) {
       doReturn(Optional.of(emergencySourceRegion)).when(admin).getEmergencySourceRegion();
@@ -274,11 +270,11 @@ public class TestAdminSparkWithMocks {
     // verify response, the kafka bootstrap server should be set correctly depending on inputs.
     Assert.assertFalse(responseObject.isError(), "unexpected error: " + responseObject.getError());
     if (emergencySourceRegionPresent) {
-      Assert.assertEquals(responseObject.getKafkaBootstrapServers(), emergencySourceRegionKafka.getFirst());
+      Assert.assertEquals(responseObject.getKafkaBootstrapServers(), emergencySourceRegionKafka);
     } else if (sourceGridFabricPresent) {
-      Assert.assertEquals(responseObject.getKafkaBootstrapServers(), sourceGridFabricKafka.getFirst());
+      Assert.assertEquals(responseObject.getKafkaBootstrapServers(), sourceGridFabricKafka);
     } else {
-      Assert.assertEquals(responseObject.getKafkaBootstrapServers(), corpRegionKafka.getFirst());
+      Assert.assertEquals(responseObject.getKafkaBootstrapServers(), corpRegionKafka);
     }
 
     server.stop();

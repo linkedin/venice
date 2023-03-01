@@ -4,7 +4,6 @@ import static com.linkedin.venice.ConfigKeys.ADMIN_PORT;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_ZK_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
@@ -39,7 +38,6 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
         .put(ZOOKEEPER_ADDRESS, "localhost:2181")
         .put(PERSISTENCE_TYPE, persistenceType.toString())
         .put(KAFKA_BOOTSTRAP_SERVERS, "127.0.0.1:9092")
-        .put(KAFKA_ZK_ADDRESS, "localhost:2181")
         .put(LISTENER_PORT, 7072)
         .put(ADMIN_PORT, 7073)
         .put(DATA_BASE_PATH, dataDirectory.getAbsolutePath())

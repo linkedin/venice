@@ -47,7 +47,7 @@ public class TestAdminSparkServerGetLeader {
     zkServer = ServiceFactory.getZkServer();
     kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServer);
     veniceControllerWrapper = ServiceFactory
-        .getVeniceController(new VeniceControllerCreateOptions.Builder(cluster, kafkaBrokerWrapper).build());
+        .getVeniceController(new VeniceControllerCreateOptions.Builder(cluster, zkServer, kafkaBrokerWrapper).build());
   }
 
   @AfterMethod

@@ -34,7 +34,6 @@ public class AdminConsumerService extends AbstractVeniceService {
   private final MetricsRepository metricsRepository;
   private final boolean remoteConsumptionEnabled;
   private final Optional<String> remoteKafkaServerUrl;
-  private final Optional<String> remoteKafkaZkAddress;
   // Only support single cluster right now
   private AdminConsumptionTask consumerTask;
   private final ThreadFactory threadFactory = new DaemonThreadFactory("AdminTopicConsumer");
@@ -62,19 +61,16 @@ public class AdminConsumerService extends AbstractVeniceService {
     if (remoteConsumptionEnabled) {
       String adminTopicSourceRegion = config.getAdminTopicSourceRegion();
       remoteKafkaServerUrl = Optional.of(config.getChildDataCenterKafkaUrlMap().get(adminTopicSourceRegion));
-      remoteKafkaZkAddress = Optional.of(config.getChildDataCenterKafkaZkMap().get(adminTopicSourceRegion));
       Optional<MetricsParameters> metricsParameters = Optional.of(
           new MetricsParameters(
               admin.getVeniceConsumerFactory().getClass(),
               this.getClass(),
               cluster + "_" + remoteKafkaServerUrl.get(),
               metricsRepository));
-      this.consumerFactory = admin.getVeniceConsumerFactory()
-          .clone(remoteKafkaServerUrl.get(), remoteKafkaZkAddress.get(), metricsParameters);
+      this.consumerFactory = admin.getVeniceConsumerFactory().clone(remoteKafkaServerUrl.get(), metricsParameters);
     } else {
       this.consumerFactory = admin.getVeniceConsumerFactory();
       remoteKafkaServerUrl = Optional.empty();
-      remoteKafkaZkAddress = Optional.empty();
     }
   }
 
@@ -107,7 +103,6 @@ public class AdminConsumerService extends AbstractVeniceService {
         createKafkaConsumer(clusterName),
         this.remoteConsumptionEnabled,
         remoteKafkaServerUrl,
-        remoteKafkaZkAddress,
         admin,
         adminTopicMetadataAccessor,
         admin.getExecutionIdAccessor(),
