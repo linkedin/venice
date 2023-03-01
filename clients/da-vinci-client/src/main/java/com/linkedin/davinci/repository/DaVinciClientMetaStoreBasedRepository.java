@@ -38,8 +38,9 @@ import org.apache.logging.log4j.Logger;
 
 /**
  * This implementation uses DaVinci client backed meta system store to provide data to the {@link NativeMetadataRepository}.
- * The data is then cached and served from there.
+ * The data is then cached and served from there. Deprecated due to cyclic dependency during initialization.
  */
+@Deprecated
 public class DaVinciClientMetaStoreBasedRepository extends NativeMetadataRepository {
   private static final int KEY_SCHEMA_ID = 1;
   private static final Logger LOGGER = LogManager.getLogger(DaVinciClientMetaStoreBasedRepository.class);
