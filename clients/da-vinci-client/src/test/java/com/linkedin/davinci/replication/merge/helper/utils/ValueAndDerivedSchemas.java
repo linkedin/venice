@@ -22,7 +22,7 @@ public class ValueAndDerivedSchemas {
 
   private final String storeName;
   private final int valueSchemaId;
-  private final int updateSchemaProtocolVersion = 1;
+  private static final int updateSchemaProtocolVersion = 1;
   private final int rmdSchemaProtocolVersion = RmdSchemaGenerator.getLatestVersion();
 
   public ValueAndDerivedSchemas(String storeName, int valueSchemaId, String valueSchemaFilePath) {

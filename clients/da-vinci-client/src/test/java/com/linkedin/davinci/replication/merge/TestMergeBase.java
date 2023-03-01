@@ -26,7 +26,7 @@ public class TestMergeBase {
   protected static final String STRING_ARRAY_FIELD_NAME = "stringArrayField";
   protected static final String INT_MAP_FIELD_NAME = "intMapField";
 
-  protected final String storeName = "testStore";
+  protected static final String storeName = "testStore";
   protected ValueAndDerivedSchemas schemaSet;
   protected ReadOnlySchemaRepository schemaRepository;
   protected MergeConflictResolver mergeConflictResolver;
