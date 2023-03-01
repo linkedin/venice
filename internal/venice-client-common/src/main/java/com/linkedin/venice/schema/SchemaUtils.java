@@ -17,7 +17,6 @@ import java.util.List;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.logging.log4j.LogManager;
 
 
 public class SchemaUtils {
@@ -209,11 +208,6 @@ public class SchemaUtils {
     }
 
     Schema annotatedSchema = annotateStringMapInRmdSchema(schemaEntry.getSchema());
-    LogManager.getLogger()
-        .info(
-            "DEBUGGING: BEFORE: {}\n AFTER:{}\n",
-            schemaEntry.getSchema().toString(true),
-            annotatedSchema.toString(true));
     return new RmdSchemaEntry(schemaEntry.getValueSchemaID(), schemaEntry.getId(), annotatedSchema);
   }
 
