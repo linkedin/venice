@@ -1,6 +1,8 @@
 package com.linkedin.venice.integration.utils;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.Utils;
@@ -25,7 +27,9 @@ import scala.collection.Seq;
  * This class contains a Kafka Broker, and provides facilities for cleaning up
  * its side effects when we're done using it.
  */
-public class KafkaBrokerWrapper extends ProcessWrapper {
+public class KafkaBrokerWrapper extends PubSubBackendWrapper {
+  private static final Logger LOGGER = LogManager.getLogger(KafkaBrokerWrapper.class);
+
   // Class-level state and APIs
   public static final String SERVICE_NAME = "Kafka";
   private static final int OFFSET_TOPIC_PARTITIONS = 1;
@@ -33,7 +37,7 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
   private static final boolean LOG_CLEANER_ENABLE = false;
 
   private final int sslPort;
-  private static final Logger LOGGER = LogManager.getLogger(KafkaBrokerWrapper.class);
+  private final PubSubClientsFactory pubSubClientsFactory;
 
   /**
    * This is package private because the only way to call this should be from
@@ -118,6 +122,8 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
     this.zkServerWrapper = zkServerWrapper;
     this.mockTime = mockTime;
     this.sslPort = sslPort;
+
+    pubSubClientsFactory = new PubSubClientsFactory(new ApacheKafkaProducerAdapterFactory(), null);
   }
 
   /**
@@ -171,5 +177,10 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
   @Override
   public String toString() {
     return "KafkaBrokerWrapper{address: '" + getAddress() + "', sslAddress: '" + getSSLAddress() + "'}";
+  }
+
+  @Override
+  PubSubClientsFactory getPubSubClientsFactory() {
+    return pubSubClientsFactory;
   }
 }
