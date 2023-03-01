@@ -32,7 +32,6 @@ import org.apache.commons.lang3.Validate;
 
 
 /**
- * TODO schema validation of old and new schema for WC enabled stores.
  * The workflow is
  * Query old replication metadata. If it's null (and running in first batch push merge policy), then write the new value directly.
  * If the old replication metadata exists, then deserialize it and run Merge<BB>.
@@ -504,6 +503,9 @@ public class MergeConflictResolver {
         deleteOperationColoID,
         deleteOperationSourceOffset,
         deleteOperationSourceBrokerID);
+    if (mergedValueAndRmd.isUpdateIgnored()) {
+      return MergeConflictResult.getIgnoredResult();
+    }
     final ByteBuffer mergedValueBytes = mergedValueAndRmd.getValue() == null
         ? null
         : serializeMergedValueRecord(oldValueSchema, mergedValueAndRmd.getValue());

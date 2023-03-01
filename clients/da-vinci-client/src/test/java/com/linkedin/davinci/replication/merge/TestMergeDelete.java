@@ -154,15 +154,7 @@ public class TestMergeDelete extends TestMergeBase {
         1L,
         0,
         -2);
-    // TODO: Set UpdateResultStatus correctly for collection merge operation.
-    // Assert.assertTrue(result.isUpdateIgnored());
-    GenericRecord updatedValueRecord = deserializeValueRecord(result.getNewValue());
-    Assert.assertEquals(updatedValueRecord.get(REGULAR_FIELD_NAME), new Utf8("DaVinci"));
-    IndexedHashMap<Utf8, Integer> utf8Map = new IndexedHashMap<>();
-    utf8Map.put(new Utf8("key1"), 1);
-    utf8Map.put(new Utf8("key2"), 1);
-    utf8Map.put(new Utf8("key3"), 1);
-    Assert.assertEquals(updatedValueRecord.get(INT_MAP_FIELD_NAME), utf8Map);
+    Assert.assertTrue(result.isUpdateIgnored());
 
     // Case 3: Delete ignored as collection field has smaller top level TS but active elements has higher TS.
     oldRmdRecord = initiateFieldLevelRmdRecord(oldValueRecord, 4);
@@ -178,10 +170,6 @@ public class TestMergeDelete extends TestMergeBase {
         1L,
         0,
         -2);
-    // TODO: Set UpdateResultStatus correctly for collection merge operation.
-    // Assert.assertTrue(result.isUpdateIgnored());
-    updatedValueRecord = deserializeValueRecord(result.getNewValue());
-    Assert.assertEquals(updatedValueRecord.get(REGULAR_FIELD_NAME), new Utf8("DaVinci"));
-    Assert.assertEquals(updatedValueRecord.get(INT_MAP_FIELD_NAME), utf8Map);
+    Assert.assertTrue(result.isUpdateIgnored());
   }
 }

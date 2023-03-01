@@ -109,15 +109,7 @@ public class TestMergeUpdate extends TestMergeBase {
         1L,
         0,
         -2);
-    // TODO: Set UpdateResultStatus for UPDATE operation.
-    // Assert.assertTrue(result.isUpdateIgnored());
-    GenericRecord updatedValueRecord = deserializeValueRecord(result.getNewValue());
-    IndexedHashMap<Utf8, Integer> expectedMap = new IndexedHashMap<>();
-    expectedMap.put(new Utf8("key1"), 1);
-    expectedMap.put(new Utf8("key2"), 1);
-    Assert.assertEquals(updatedValueRecord.get(INT_MAP_FIELD_NAME), expectedMap);
-    GenericRecord updatedRmdTsRecord = (GenericRecord) result.getRmdRecord().get(RmdConstants.TIMESTAMP_FIELD_NAME);
-    Assert.assertEquals(((GenericRecord) updatedRmdTsRecord.get(INT_MAP_FIELD_NAME)).get(TOP_LEVEL_TS_FIELD_NAME), 2L);
+    Assert.assertTrue(result.isUpdateIgnored());
 
     // Case 3: Apply UPDATE operation addToMap with the same TS as top level record
     partialUpdateRecord =
@@ -134,12 +126,7 @@ public class TestMergeUpdate extends TestMergeBase {
         1L,
         0,
         -2);
-    // TODO: Set UpdateResultStatus for UPDATE operation.
-    // Assert.assertTrue(result.isUpdateIgnored());
-    updatedValueRecord = deserializeValueRecord(result.getNewValue());
-    Assert.assertEquals(updatedValueRecord.get(INT_MAP_FIELD_NAME), expectedMap);
-    updatedRmdTsRecord = (GenericRecord) result.getRmdRecord().get(RmdConstants.TIMESTAMP_FIELD_NAME);
-    Assert.assertEquals(((GenericRecord) updatedRmdTsRecord.get(INT_MAP_FIELD_NAME)).get(TOP_LEVEL_TS_FIELD_NAME), 2L);
+    Assert.assertTrue(result.isUpdateIgnored());
 
     // Case 4: Apply UPDATE operation addToMap with the same TS as activeTS but value is smaller.
     hashMap.put("key1", 0);
@@ -163,15 +150,7 @@ public class TestMergeUpdate extends TestMergeBase {
         1L,
         0,
         -2);
-    // TODO: Set UpdateResultStatus for UPDATE operation.
-    // Assert.assertTrue(result.isUpdateIgnored());
-    updatedValueRecord = deserializeValueRecord(result.getNewValue());
-    Assert.assertEquals(updatedValueRecord.get(INT_MAP_FIELD_NAME), expectedMap);
-    updatedRmdTsRecord = (GenericRecord) result.getRmdRecord().get(RmdConstants.TIMESTAMP_FIELD_NAME);
-    Assert.assertEquals(((GenericRecord) updatedRmdTsRecord.get(INT_MAP_FIELD_NAME)).get(TOP_LEVEL_TS_FIELD_NAME), 1L);
-    Assert.assertEquals(
-        ((GenericRecord) updatedRmdTsRecord.get(INT_MAP_FIELD_NAME)).get(ACTIVE_ELEM_TS_FIELD_NAME),
-        Arrays.asList(2L, 2L));
+    Assert.assertTrue(result.isUpdateIgnored());
   }
 
   @Test

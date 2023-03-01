@@ -34,7 +34,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       CollectionRmdTimestamp<Object> collectionFieldRmd,
       GenericRecord currValueRecord,
       String fieldName) {
-    if (ignoreIncomingUpdateRequest(putTimestamp, coloID, collectionFieldRmd)) {
+    if (ignoreIncomingRequest(putTimestamp, coloID, collectionFieldRmd)) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
     validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.ARRAY, false); // Validate before modifying any
@@ -196,7 +196,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       CollectionRmdTimestamp<String> collectionFieldRmd,
       GenericRecord currValueRecord,
       String fieldName) {
-    if (ignoreIncomingUpdateRequest(putTimestamp, coloID, collectionFieldRmd)) {
+    if (ignoreIncomingRequest(putTimestamp, coloID, collectionFieldRmd)) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
     validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.MAP, true); // Validate before modifying any state.
@@ -289,7 +289,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       CollectionRmdTimestamp collectionFieldRmd,
       GenericRecord currValueRecord,
       String fieldName) {
-    if (ignoreIncomingUpdateRequest(deleteTimestamp, coloID, collectionFieldRmd)) {
+    if (ignoreIncomingRequest(deleteTimestamp, coloID, collectionFieldRmd)) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
     validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.ARRAY, false); // Validate before modifying any
@@ -312,12 +312,16 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     // Step 2: Remove all active elements with smaller or equal timestamps.
     final int removedActiveTimestampsCount = collectionFieldRmd.removeActiveTimestampsLowerOrEqualTo(deleteTimestamp);
     List<Object> currList = (List<Object>) currValueRecord.get(fieldName);
-    List<Object> remainingList =
-        new ArrayList<>(currList.size() - currPutOnlyPartLength - removedActiveTimestampsCount);
 
     // All elements in the current put-only part should be removed.
     final int remainingElementsStartIdx = currPutOnlyPartLength + removedActiveTimestampsCount;
+    if (remainingElementsStartIdx == 0) {
+      // This indicates no put only item exists prior to DELETE operation and also no active items are removed.
+      return UpdateResultStatus.NOT_UPDATED_AT_ALL;
+    }
     Iterator<Object> currListIterator = currList.listIterator(remainingElementsStartIdx);
+    List<Object> remainingList =
+        new ArrayList<>(currList.size() - currPutOnlyPartLength - removedActiveTimestampsCount);
     while (currListIterator.hasNext()) {
       remainingList.add(currListIterator.next());
     }
@@ -335,7 +339,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       CollectionRmdTimestamp<String> collectionFieldRmd,
       GenericRecord currValueRecord,
       String fieldName) {
-    if (ignoreIncomingUpdateRequest(deleteTimestamp, coloID, collectionFieldRmd)) {
+    if (ignoreIncomingRequest(deleteTimestamp, coloID, collectionFieldRmd)) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
     validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.MAP, true); // Validate before modifying any state.
@@ -357,10 +361,14 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     // Step 2: Remove all active entries with smaller or equal timestamps.
     final int removedActiveTimestampsCount = collectionFieldRmd.removeActiveTimestampsLowerOrEqualTo(deleteTimestamp);
     IndexedHashMap<String, Object> currMap = (IndexedHashMap<String, Object>) currValueRecord.get(fieldName);
-    Map<String, Object> remainingMap = new IndexedHashMap<>();
 
     // All map entries in the current put-only part should be removed.
     final int remainingEntriesStartIdx = originalPutOnlyPartLength + removedActiveTimestampsCount;
+    if (remainingEntriesStartIdx == 0) {
+      // This indicates no put only item exists prior to DELETE operation and also no active items are removed.
+      return UpdateResultStatus.NOT_UPDATED_AT_ALL;
+    }
+    Map<String, Object> remainingMap = new IndexedHashMap<>();
     for (int i = remainingEntriesStartIdx; i < currMap.size(); i++) {
       Map.Entry<String, Object> remainingEntry = currMap.getByIndex(i);
       remainingMap.put(remainingEntry.getKey(), remainingEntry.getValue());
@@ -381,7 +389,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       List<Object> toRemoveElements) {
     // When timestamps are the same, full put/delete on a collection field always takes precedence over collection
     // merge.
-    if (ignoreIncomingUpdateRequest(modifyTimestamp, Integer.MIN_VALUE, collectionFieldRmd)) {
+    if (ignoreIncomingRequest(modifyTimestamp, Integer.MIN_VALUE, collectionFieldRmd)) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
     validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.ARRAY, false);
@@ -697,7 +705,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       List<String> toRemoveKeys) {
     // When timestamps are the same, full put/delete on a collection field always takes precedence over collection
     // merge.
-    if (ignoreIncomingUpdateRequest(modifyTimestamp, Integer.MIN_VALUE, collectionFieldRmd)) {
+    if (ignoreIncomingRequest(modifyTimestamp, Integer.MIN_VALUE, collectionFieldRmd)) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
     validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.MAP, true);
@@ -1036,7 +1044,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     collectionFieldRmd.setDeletedElementsAndTimestamps(deletedKeys, deletedTimestamps);
   }
 
-  private boolean ignoreIncomingUpdateRequest(
+  private boolean ignoreIncomingRequest(
       final long incomingRequestTimestamp,
       final int incomingRequestColoID,
       CollectionRmdTimestamp<?> currCollectionFieldRmd) {
