@@ -4,6 +4,8 @@ import static com.linkedin.venice.HttpConstants.HTTP_GET;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
+import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.router.httpclient.HttpClient5StorageNodeClient;
@@ -11,8 +13,6 @@ import com.linkedin.venice.router.httpclient.PortableHttpResponse;
 import com.linkedin.venice.router.httpclient.StorageNodeClientType;
 import com.linkedin.venice.router.httpclient.VeniceMetaDataRequest;
 import com.linkedin.venice.security.SSLFactory;
-import com.linkedin.venice.services.VeniceClusterWrapper;
-import com.linkedin.venice.services.VeniceServerWrapper;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.Optional;

@@ -1,11 +1,11 @@
 package com.linkedin.venice.benchmark;
 
-import static com.linkedin.venice.services.ServiceFactory.getGenericAvroDaVinciClient;
+import static com.linkedin.venice.integration.utils.ServiceFactory.getGenericAvroDaVinciClient;
 
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.services.ServiceFactory;
-import com.linkedin.venice.services.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;

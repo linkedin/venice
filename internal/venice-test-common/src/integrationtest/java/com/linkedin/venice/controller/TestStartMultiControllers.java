@@ -1,9 +1,9 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.helix.SafeHelixManager;
-import com.linkedin.venice.services.ServiceFactory;
-import com.linkedin.venice.services.VeniceClusterWrapper;
-import com.linkedin.venice.services.VeniceControllerWrapper;
+import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;

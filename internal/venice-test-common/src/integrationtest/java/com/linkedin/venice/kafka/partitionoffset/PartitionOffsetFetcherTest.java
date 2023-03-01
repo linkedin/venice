@@ -1,10 +1,10 @@
 package com.linkedin.venice.kafka.partitionoffset;
 
+import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
+import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
-import com.linkedin.venice.services.KafkaBrokerWrapper;
-import com.linkedin.venice.services.ServiceFactory;
-import com.linkedin.venice.services.ZkServerWrapper;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;

@@ -12,7 +12,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.services.ServiceFactory;
+import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.utils.ClassPathSupplierForVeniceCluster;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.TestUtils;

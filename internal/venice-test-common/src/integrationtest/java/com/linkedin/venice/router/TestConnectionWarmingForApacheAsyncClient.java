@@ -2,11 +2,11 @@ package com.linkedin.venice.router;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
+import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.router.httpclient.StorageNodeClientType;
-import com.linkedin.venice.services.ServiceFactory;
-import com.linkedin.venice.services.VeniceClusterWrapper;
-import com.linkedin.venice.services.VeniceRouterWrapper;
-import com.linkedin.venice.services.VeniceServerWrapper;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;

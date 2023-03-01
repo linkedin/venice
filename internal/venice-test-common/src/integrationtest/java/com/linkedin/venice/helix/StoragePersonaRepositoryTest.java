@@ -8,10 +8,10 @@ import static com.linkedin.venice.utils.TestStoragePersonaUtils.createDefaultPer
 
 import com.linkedin.venice.controllerapi.UpdateStoragePersonaQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.persona.StoragePersona;
-import com.linkedin.venice.services.ServiceFactory;
-import com.linkedin.venice.services.ZkServerWrapper;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.locks.ClusterLockManager;

@@ -1,6 +1,8 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
@@ -9,8 +11,6 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.services.ServiceFactory;
-import com.linkedin.venice.services.ZkServerWrapper;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.locks.ClusterLockManager;
 import java.util.Collection;

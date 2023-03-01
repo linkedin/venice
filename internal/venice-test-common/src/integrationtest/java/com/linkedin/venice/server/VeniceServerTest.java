@@ -1,15 +1,15 @@
 package com.linkedin.venice.server;
 
-import static com.linkedin.venice.services.VeniceServerWrapper.SERVER_ENABLE_SERVER_ALLOW_LIST;
-import static com.linkedin.venice.services.VeniceServerWrapper.SERVER_IS_AUTO_JOIN;
+import static com.linkedin.venice.integration.utils.VeniceServerWrapper.SERVER_ENABLE_SERVER_ALLOW_LIST;
+import static com.linkedin.venice.integration.utils.VeniceServerWrapper.SERVER_IS_AUTO_JOIN;
 
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.services.ServiceFactory;
-import com.linkedin.venice.services.TestVeniceServer;
-import com.linkedin.venice.services.VeniceClusterWrapper;
-import com.linkedin.venice.services.VeniceServerWrapper;
+import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.TestVeniceServer;
+import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;

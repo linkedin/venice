@@ -1,6 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import com.linkedin.venice.services.VeniceServerWrapper;
+import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 
 
 public class StoreIngestionTaskBackdoor {

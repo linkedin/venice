@@ -2,8 +2,8 @@ package com.linkedin.venice.persona;
 
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.ZkClientFactory;
-import com.linkedin.venice.services.ServiceFactory;
-import com.linkedin.venice.services.ZkServerWrapper;
+import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;

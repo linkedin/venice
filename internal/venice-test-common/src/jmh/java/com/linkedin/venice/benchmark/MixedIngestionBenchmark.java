@@ -4,11 +4,11 @@ import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_DRAINER_FOR_SORTED
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
-import com.linkedin.venice.services.ServiceFactory;
-import com.linkedin.venice.services.VeniceClusterWrapper;
-import com.linkedin.venice.services.VeniceServerWrapper;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
