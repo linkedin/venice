@@ -78,6 +78,7 @@ public class RouterRequestThrottlingTest {
         2000,
         stats,
         0.0,
+        0.0,
         1000,
         1000);
   }

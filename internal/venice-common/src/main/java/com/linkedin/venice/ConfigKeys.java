@@ -848,6 +848,8 @@ public class ConfigKeys {
    */
   public static final String ROUTER_MAX_OUTGOING_CONNECTION = "router.max.outgoing.connection";
 
+  public static final String ROUTER_PER_STORE_THROTTLER_ENABLED = "router.per.store.throttler.enabled";
+
   /**
    * This config is used to bound the pending request.
    * Without this config, the accumulated requests in Http Async Client could grow unlimitedly,
@@ -882,11 +884,7 @@ public class ConfigKeys {
    */
   public static final String ROUTER_PER_STORAGE_NODE_READ_QUOTA_BUFFER = "router.per.storage.node.read.quota.buffer";
 
-  /**
-   * The TTL for each entry in router cache (millisecond)
-   * If 0, TTL is not enabled; other, cache TTL is enabled
-   */
-  public static final String ROUTER_CACHE_TTL_MILLIS = "router.cache.ttl.millis";
+  public static final String ROUTER_PER_STORE_ROUTER_QUOTA_BUFFER = "router.per.store.router.quota.buffer";
 
   /**
    * Whether to enable customized dns cache in router or not.

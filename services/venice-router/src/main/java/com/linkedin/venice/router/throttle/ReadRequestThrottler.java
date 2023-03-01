@@ -66,6 +66,7 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
   private final AggRouterHttpRequestStats stats;
 
   private final double perStorageNodeReadQuotaBuffer;
+  private final double perStoreRouterQuotaBuffer;
 
   private final long storeQuotaCheckTimeWindow;
   private final long storageNodeQuotaCheckTimeWindow;
@@ -76,7 +77,8 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
       RoutingDataRepository routingDataRepository,
       long maxRouterReadCapacity,
       AggRouterHttpRequestStats stats,
-      double perStorageNodeReadQuotaBuffer) {
+      double perStorageNodeReadQuotaBuffer,
+      double perStoreRouterQuotaBuffer) {
     this(
         zkRoutersManager,
         storeRepository,
@@ -84,6 +86,7 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
         maxRouterReadCapacity,
         stats,
         perStorageNodeReadQuotaBuffer,
+        perStoreRouterQuotaBuffer,
         DEFAULT_STORE_QUOTA_TIME_WINDOW,
         DEFAULT_STORAGE_NODE_QUOTA_TIME_WINDOW);
   }
@@ -95,6 +98,7 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
       long maxRouterReadCapacity,
       AggRouterHttpRequestStats stats,
       double perStorageNodeReadQuotaBuffer,
+      double perStoreRouterQuotaBuffer,
       long storeQuotaCheckTimeWindow,
       long storageNodeQuotaCheckTimeWindow) {
     this.zkRoutersManager = zkRoutersManager;
@@ -110,6 +114,7 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
     this.perStorageNodeReadQuotaBuffer = perStorageNodeReadQuotaBuffer;
     this.storesThrottlers = new AtomicReference<>(buildAllStoreReadThrottlers());
     this.lastRouterCount = zkRoutersManager.getExpectedRoutersCount();
+    this.perStoreRouterQuotaBuffer = perStoreRouterQuotaBuffer;
   }
 
   /**
@@ -122,7 +127,7 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
    * @throws QuotaExceededException if the usage exceeded the quota throw this exception to reject the request.
    */
   @Override
-  public void mayThrottleRead(String storeName, double readCapacityUnit, Optional<String> storageNodeId)
+  public void mayThrottleRead(String storeName, double readCapacityUnit, String storageNodeId)
       throws QuotaExceededException {
     if (!zkRoutersManager.isThrottlingEnabled()) {
       return;
@@ -167,7 +172,7 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
 
     if (!zkRoutersManager.isMaxCapacityProtectionEnabled() || idealTotalQuotaPerRouter <= maxRouterReadCapacity) {
       // Current router's capacity is big enough to be allocated to each store's quota.
-      return idealStoreQuotaPerRouter * (1 + (long) perStorageNodeReadQuotaBuffer);
+      return idealStoreQuotaPerRouter * (1 + (long) perStoreRouterQuotaBuffer);
     } else {
       // If we allocate ideal quota value to each store, the total quota would exceed the router's capacity.
       // The reason is the cluster does not have enough number of routers.(Might be caused by to manny router failures)
