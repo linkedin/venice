@@ -152,8 +152,7 @@ public class CollectionRmdTimestamp<DELETED_ELEMENT_TYPE> {
       if (activeElementCount == nextLargerNumberIndex) {
         collectionRmdRecord.put(ACTIVE_ELEM_TS_FIELD_NAME, Collections.emptyList());
       } else {
-        List<Long> subList =
-            getActiveElementTimestamps().subList(nextLargerNumberIndex, activeElementCount - nextLargerNumberIndex + 1);
+        List<Long> subList = getActiveElementTimestamps().subList(nextLargerNumberIndex, activeElementCount);
         collectionRmdRecord.put(ACTIVE_ELEM_TS_FIELD_NAME, subList);
       }
     }
