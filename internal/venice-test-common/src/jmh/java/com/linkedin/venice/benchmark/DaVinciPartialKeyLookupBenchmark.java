@@ -1,8 +1,8 @@
 package com.linkedin.venice.benchmark;
 
 import static com.linkedin.venice.client.store.predicate.PredicateBuilder.equalTo;
-import static com.linkedin.venice.integration.utils.ServiceFactory.getGenericAvroDaVinciClient;
-import static com.linkedin.venice.integration.utils.ServiceFactory.getVeniceCluster;
+import static com.linkedin.venice.services.ServiceFactory.getGenericAvroDaVinciClient;
+import static com.linkedin.venice.services.ServiceFactory.getVeniceCluster;
 
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
@@ -10,7 +10,7 @@ import com.linkedin.davinci.client.StorageClass;
 import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.client.store.predicate.Predicate;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
-import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.services.VeniceClusterWrapper;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;

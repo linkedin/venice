@@ -6,11 +6,11 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.LEADER_CONTROLLE
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.LeaderControllerResponse;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
-import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
-import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
-import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.services.KafkaBrokerWrapper;
+import com.linkedin.venice.services.ServiceFactory;
+import com.linkedin.venice.services.VeniceControllerCreateOptions;
+import com.linkedin.venice.services.VeniceControllerWrapper;
+import com.linkedin.venice.services.ZkServerWrapper;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;

@@ -2,8 +2,8 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.ZkClientFactory;
-import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.services.ServiceFactory;
+import com.linkedin.venice.services.ZkServerWrapper;
 import com.linkedin.venice.utils.HelixUtils;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.testng.Assert;

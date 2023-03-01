@@ -1,12 +1,12 @@
 package com.linkedin.venice.benchmark;
 
-import static com.linkedin.venice.integration.utils.ServiceFactory.getVeniceCluster;
+import static com.linkedin.venice.services.ServiceFactory.getVeniceCluster;
 
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
-import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.services.VeniceClusterWrapper;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;

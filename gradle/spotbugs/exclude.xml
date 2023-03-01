@@ -162,7 +162,7 @@
     <Or>
       <!--The change was intentionally introduced to fix a deadlock issue-->
       <Class name="com.linkedin.venice.client.store.AbstractAvroStoreClient"/>
-      <Class name="com.linkedin.venice.integration.utils.ZkServerWrapper">
+      <Class name="com.linkedin.venice.services.ZkServerWrapper">
         <Method name="internalStart"/>
       </Class>
       <!--Has TODO to track the fix of removing the sleep-->
@@ -377,7 +377,7 @@
     <!--The static field INSTANCE should only been accessible by the test main thread-->
     <Bug pattern="ST_WRITE_TO_STATIC_FROM_INSTANCE_METHOD"/>
     <Or>
-      <Class name="com.linkedin.venice.integration.utils.ZkServerWrapper"/>
+      <Class name="com.linkedin.venice.services.ZkServerWrapper"/>
       <Class name="com.linkedin.davinci.kafka.consumer.StoreIngestionTaskTest"/>
     </Or>
   </Match>

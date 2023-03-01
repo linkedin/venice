@@ -2,7 +2,7 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
-import com.linkedin.venice.integration.utils.D2TestUtils;
+import com.linkedin.venice.services.D2TestUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;

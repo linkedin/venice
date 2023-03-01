@@ -6,9 +6,6 @@ import static org.mockito.Mockito.mock;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
-import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -19,6 +16,9 @@ import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdap
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.SharedKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
+import com.linkedin.venice.services.KafkaBrokerWrapper;
+import com.linkedin.venice.services.ServiceFactory;
+import com.linkedin.venice.services.ZkServerWrapper;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;

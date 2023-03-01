@@ -5,10 +5,10 @@ import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_MAX_RECORDS_P
 import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
 
-import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
-import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.services.KafkaBrokerWrapper;
+import com.linkedin.venice.services.ServiceFactory;
+import com.linkedin.venice.services.ZkServerWrapper;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;

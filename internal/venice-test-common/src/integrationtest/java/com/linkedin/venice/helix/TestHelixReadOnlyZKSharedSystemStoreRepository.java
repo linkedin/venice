@@ -8,13 +8,13 @@ import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import com.linkedin.venice.common.VeniceSystemStoreType;
-import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.services.ServiceFactory;
+import com.linkedin.venice.services.ZkServerWrapper;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.locks.ClusterLockManager;

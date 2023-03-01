@@ -2,8 +2,8 @@ package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.venice.ConfigKeys.FREEZE_INGESTION_IF_READY_TO_SERVE_OR_LOCAL_DATA_EXISTS;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
-import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
-import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_VALUE_SCHEMA;
+import static com.linkedin.venice.services.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
+import static com.linkedin.venice.services.VeniceClusterWrapper.DEFAULT_VALUE_SCHEMA;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertThrows;
 
@@ -19,13 +19,13 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
-import com.linkedin.venice.integration.utils.DaVinciTestContext;
-import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
+import com.linkedin.venice.services.DaVinciTestContext;
+import com.linkedin.venice.services.ServiceFactory;
+import com.linkedin.venice.services.VeniceClusterWrapper;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;

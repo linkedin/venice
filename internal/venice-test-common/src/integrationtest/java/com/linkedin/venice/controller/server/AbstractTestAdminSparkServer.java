@@ -5,11 +5,11 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SY
 
 import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
-import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
-import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.services.ServiceFactory;
+import com.linkedin.venice.services.VeniceClusterWrapper;
+import com.linkedin.venice.services.VeniceControllerCreateOptions;
+import com.linkedin.venice.services.VeniceControllerWrapper;
+import com.linkedin.venice.services.ZkServerWrapper;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;

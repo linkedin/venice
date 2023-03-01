@@ -8,9 +8,9 @@ import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATI
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 
-import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.services.ServiceFactory;
+import com.linkedin.venice.services.VeniceClusterWrapper;
 import java.util.Properties;
 import org.testng.annotations.Test;
 

@@ -13,11 +13,11 @@ import static org.mockito.Mockito.mock;
 
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
-import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.services.D2TestUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;

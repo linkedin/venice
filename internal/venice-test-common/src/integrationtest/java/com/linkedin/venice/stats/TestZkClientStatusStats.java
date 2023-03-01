@@ -3,8 +3,8 @@ package com.linkedin.venice.stats;
 import static org.apache.zookeeper.Watcher.Event.KeeperState;
 
 import com.linkedin.venice.helix.ZkClientFactory;
-import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.services.ServiceFactory;
+import com.linkedin.venice.services.ZkServerWrapper;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;

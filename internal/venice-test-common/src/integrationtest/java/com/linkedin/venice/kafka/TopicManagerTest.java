@@ -12,9 +12,6 @@ import static org.mockito.Mockito.times;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
-import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
 import com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcherImpl;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
@@ -38,6 +35,9 @@ import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConf
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
+import com.linkedin.venice.services.KafkaBrokerWrapper;
+import com.linkedin.venice.services.ServiceFactory;
+import com.linkedin.venice.services.ZkServerWrapper;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestMockTime;

@@ -4,13 +4,13 @@ import static com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor.OFFLINE
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.ZkDataAccessException;
-import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.pushmonitor.PartitionStatus;
 import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
+import com.linkedin.venice.services.ServiceFactory;
+import com.linkedin.venice.services.ZkServerWrapper;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;

@@ -2,11 +2,11 @@ package com.linkedin.venice.kafka.ssl;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
-import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
-import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
-import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
-import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.services.KafkaBrokerWrapper;
+import com.linkedin.venice.services.ServiceFactory;
+import com.linkedin.venice.services.VeniceControllerCreateOptions;
+import com.linkedin.venice.services.VeniceControllerWrapper;
+import com.linkedin.venice.services.ZkServerWrapper;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
