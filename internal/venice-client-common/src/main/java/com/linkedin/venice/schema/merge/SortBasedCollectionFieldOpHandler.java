@@ -5,7 +5,6 @@ import com.linkedin.avro.fastserde.primitive.PrimitiveLongArrayList;
 import com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp;
 import com.linkedin.venice.utils.IndexedHashMap;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -351,6 +350,9 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
     validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.MAP, true); // Validate before modifying any state.
+    // Handle Delete on a map that is in the collection-merge mode.
+    final int originalPutOnlyPartLength = collectionFieldRmd.getPutOnlyPartLength();
+
     collectionFieldRmd.setTopLevelFieldTimestamp(deleteTimestamp);
     collectionFieldRmd.setTopLevelColoID(coloID);
     collectionFieldRmd.setPutOnlyPartLength(0); // No put-only part because it should be deleted completely.
@@ -359,9 +361,6 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       currValueRecord.put(fieldName, new IndexedHashMap<>(0));
       return UpdateResultStatus.COMPLETELY_UPDATED;
     }
-
-    // Handle Delete on a map that is in the collection-merge mode.
-    final int originalPutOnlyPartLength = collectionFieldRmd.getPutOnlyPartLength();
 
     // Step 1: Remove all deleted map keys and their deleted timestamps with smaller or equal timestamps.
     collectionFieldRmd.removeDeletionInfoWithTimestampsLowerOrEqualTo(deleteTimestamp);
@@ -1057,7 +1056,6 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
             incomingRequestTimestamp,
             currCollectionFieldRmd.getTopLevelColoID(),
             incomingRequestColoID);
-    LogManager.getLogger().info("DEBUGGING THREAD: " + Arrays.toString(Thread.currentThread().getStackTrace()));
     if (currCollectionFieldRmd.getTopLevelFieldTimestamp() > incomingRequestTimestamp) {
       return true;
 
