@@ -41,8 +41,9 @@ public class CollectionMergeTest {
     collectionTimestampBuilder.setPutOnlyPartLength(1);
 
     collectionTimestampBuilder.setActiveElementsTimestamps(Arrays.asList(2L, 3L, 4L));
-    collectionTimestampBuilder.setDeletedElementTimestamps(new LinkedList<>());
-    collectionTimestampBuilder.setDeletedElements(Schema.create(Schema.Type.LONG), new LinkedList<>());
+    collectionTimestampBuilder.setDeletedElementTimestamps(Arrays.asList(2L, 3L, 4L));
+    collectionTimestampBuilder
+        .setDeletedElements(Schema.create(Schema.Type.STRING), Arrays.asList("key5", "key6", "key7"));
     collectionTimestampBuilder.setCollectionTimestampSchema(RMD_TIMESTAMP_SCHEMA.getField(MAP_FIELD_NAME).schema());
     CollectionRmdTimestamp<String> collectionMetadata =
         new CollectionRmdTimestamp<>(collectionTimestampBuilder.build());
@@ -62,6 +63,9 @@ public class CollectionMergeTest {
     newEntries.put("key2", 2);
     newEntries.put("key3", 2);
     newEntries.put("key4", 2);
+    newEntries.put("key5", 2);
+    newEntries.put("key6", 2);
+    newEntries.put("key7", 2);
     List<String> toRemoveKeys = new LinkedList<>();
     handlerToTest.handleModifyMap(3L, collectionMetadata, currValueRecord, MAP_FIELD_NAME, newEntries, toRemoveKeys);
 
@@ -71,6 +75,7 @@ public class CollectionMergeTest {
     expectedMap.put("key2", 2);
     expectedMap.put("key3", 2);
     expectedMap.put("key4", 1);
+    expectedMap.put("key5", 2);
     Assert.assertEquals(updatedMap, expectedMap);
   }
 }
