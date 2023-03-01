@@ -4,7 +4,6 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.logging.log4j.LogManager;
 
 
 /**
@@ -47,7 +46,6 @@ abstract class PerFieldTimestampMergeRecordHelper implements MergeRecordHelper {
 
   private Object compareAndReturn(Object object1, Object object2, Schema schema) {
     final int compareResult = AvroCollectionElementComparator.INSTANCE.compare(object1, object2, schema);
-    LogManager.getLogger().info("DEBUGGING COMPARE {} {} {}", object1, object2, compareResult);
     if (compareResult == 0) {
       return object1;
     }

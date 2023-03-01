@@ -18,7 +18,6 @@ import java.util.function.Supplier;
 import javax.annotation.concurrent.ThreadSafe;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.logging.log4j.LogManager;
 
 
 @ThreadSafe
@@ -198,10 +197,6 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       GenericRecord currValueRecord,
       String fieldName) {
     if (ignoreIncomingUpdateRequest(putTimestamp, coloID, collectionFieldRmd)) {
-      LogManager.getLogger()
-          .info(
-              "DEBUGGING1: " + putTimestamp + " " + coloID + " " + collectionFieldRmd.getTopLevelFieldTimestamp() + " "
-                  + collectionFieldRmd.getTopLevelColoID());
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
     validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.MAP, true); // Validate before modifying any state.
@@ -210,7 +205,6 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
 
     // Current map will be updated.
     if (collectionFieldRmd.isInPutOnlyState()) {
-      LogManager.getLogger().info("FIELD {} PUT ONLY", fieldName);
       currValueRecord.put(fieldName, toPutMap);
       collectionFieldRmd.setPutOnlyPartLength(toPutMap.size());
       return UpdateResultStatus.COMPLETELY_UPDATED;
@@ -225,10 +219,6 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     currMap.forEach((key, value) -> currKeyValPairs.add(new KeyValPair(key, value)));
 
     final List<Long> activeTimestamps = collectionFieldRmd.getActiveElementTimestamps();
-    LogManager.getLogger()
-        .info(
-            "DEBUGGING OLD ENTRIES: " + currMap + " " + activeTimestamps + " " + putTimestamp + " "
-                + collectionFieldRmd.getTopLevelFieldTimestamp() + " " + collectionFieldRmd.getPutOnlyPartLength());
     // Below map contains only elements with timestamps that are strictly larger than the Put timestamp.
     final IndexedHashMap<KeyValPair, Long> activeEntriesToTsMap = Utils.createElementToActiveTsMap(
         currKeyValPairs,
@@ -236,7 +226,6 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
         collectionFieldRmd.getTopLevelFieldTimestamp(),
         putTimestamp,
         collectionFieldRmd.getPutOnlyPartLength());
-    LogManager.getLogger().info("DEBUGGING ENTRIES: " + activeEntriesToTsMap);
 
     final List<String> deletedKeys = collectionFieldRmd.getDeletedElements();
     final List<Long> deletedTimestamps = collectionFieldRmd.getDeletedElementTimestamps();
@@ -263,7 +252,6 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     // Step 2: Insert new put-only part map entries in the front.
     Map<String, Object> newMap = new IndexedHashMap<>();
     PrimitiveLongList newActiveTimestamps = new PrimitiveLongArrayList(activeEntriesToTsMap.size());
-    LogManager.getLogger().info("DEBUG NEW PUT ONLY MAP: " + toPutMap);
     collectionFieldRmd.setPutOnlyPartLength(toPutMap.size());
     // Add new entries for the put-only part.
     toPutMap.forEach(newMap::put);
@@ -281,6 +269,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     // Step 4: Set deleted keys and their deleted timestamps.
     List<String> newDeletedKeys = new ArrayList<>(deletedKeyToTsMap.size());
     PrimitiveLongList newDeletedTimestamps = new PrimitiveLongArrayList(deletedKeyToTsMap.size());
+    // TODO: Consider annotation / generic type.
     for (Map.Entry deleteKeyAndTs: deletedKeyToTsMap.entrySet()) {
       newDeletedKeys.add(deleteKeyAndTs.getKey().toString());
       newDeletedTimestamps.add((Long) deleteKeyAndTs.getValue());
@@ -851,6 +840,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     final IndexedHashMap<String, Long> deletedUtf8KeyToTsMap =
         Utils.createDeletedElementToTsMap(deletedKeys, deletedTimestamps, Long.MIN_VALUE);
     final IndexedHashMap<String, Long> deletedKeyToTsMap = new IndexedHashMap<>();
+    // TODO: Consider annotation / generic type.
     for (Map.Entry entry: deletedUtf8KeyToTsMap.entrySet()) {
       deletedKeyToTsMap.put(entry.getKey().toString(), (Long) entry.getValue());
     }
@@ -961,6 +951,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     // Step 4: Set new deleted keys and their deleted timestamps.
     final List<ElementAndTimestamp> newDeletedKeyAndTsList = new ArrayList<>(deletedKeyToTsMap.size());
 
+    // TODO: Consider annotation / generic type.
     // Keys in deletedKeyToTsMap are actually of type Utf-8 and not String
     for (Map.Entry entry: deletedKeyToTsMap.entrySet()) {
       newDeletedKeyAndTsList.add(new ElementAndTimestamp(entry.getKey().toString(), (Long) entry.getValue()));
@@ -1049,13 +1040,6 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       final long incomingRequestTimestamp,
       final int incomingRequestColoID,
       CollectionRmdTimestamp<?> currCollectionFieldRmd) {
-    LogManager.getLogger()
-        .info(
-            "DEBUGGING handle PUT list/map {} {} {} {}",
-            currCollectionFieldRmd.getTopLevelFieldTimestamp(),
-            incomingRequestTimestamp,
-            currCollectionFieldRmd.getTopLevelColoID(),
-            incomingRequestColoID);
     if (currCollectionFieldRmd.getTopLevelFieldTimestamp() > incomingRequestTimestamp) {
       return true;
 
