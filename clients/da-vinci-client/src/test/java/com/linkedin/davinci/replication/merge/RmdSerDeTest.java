@@ -48,7 +48,9 @@ public class RmdSerDeTest {
     Mockito.doReturn(rmdSchemaEntry)
         .when(schemaRepository)
         .getReplicationMetadataSchema(storeName, valueSchemaID, rmdVersionID);
-    RmdSerDe rmdSerDe = new RmdSerDe(schemaRepository, storeName, rmdVersionID);
+    MapKeyStringAnnotatedStoreSchemaCache mapKeyStringAnnotatedStoreSchemaCache =
+        new MapKeyStringAnnotatedStoreSchemaCache(storeName, schemaRepository);
+    RmdSerDe rmdSerDe = new RmdSerDe(mapKeyStringAnnotatedStoreSchemaCache, storeName, rmdVersionID);
 
     // Serialize this RMD record to bytes.
     Schema actualRmdSchema = rmdSerDe.getRmdSchema(valueSchemaID);

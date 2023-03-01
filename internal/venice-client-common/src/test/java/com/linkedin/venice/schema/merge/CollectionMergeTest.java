@@ -12,6 +12,7 @@ import java.util.Map;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.logging.log4j.LogManager;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -33,6 +34,8 @@ public class CollectionMergeTest {
 
   @Test
   public void testHandleCollectionMergeMapOp() {
+
+    LogManager.getLogger().info("DEBUGGING: " + RMD_TIMESTAMP_SCHEMA.toString(true));
     GenericRecord currValueRecord = new GenericData.Record(VALUE_SCHEMA);
     CollectionTimestampBuilder collectionTimestampBuilder =
         new CollectionTimestampBuilder(Schema.create(Schema.Type.LONG));

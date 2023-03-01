@@ -1,10 +1,12 @@
 package com.linkedin.davinci.replication.merge;
 
 import static com.linkedin.venice.schema.SchemaUtils.getAnnotatedStringMapDerivedSchemaEntry;
+import static com.linkedin.venice.schema.SchemaUtils.getAnnotatedStringMapRmdSchemaEntry;
 import static com.linkedin.venice.schema.SchemaUtils.getAnnotatedStringMapValueSchemaEntry;
 
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
@@ -24,6 +26,7 @@ public class MapKeyStringAnnotatedStoreSchemaCache {
   private final String storeName;
   private final Map<Integer, SchemaEntry> valueSchemaEntryMapCache = new VeniceConcurrentHashMap<>();
   private final Map<String, DerivedSchemaEntry> partialUpdateSchemaEntryMapCache = new VeniceConcurrentHashMap<>();
+  private final Map<String, RmdSchemaEntry> rmdSchemaEntryMapCache = new VeniceConcurrentHashMap<>();
 
   public MapKeyStringAnnotatedStoreSchemaCache(String storeName, ReadOnlySchemaRepository internalSchemaRepo) {
     this.storeName = storeName;
@@ -86,5 +89,18 @@ public class MapKeyStringAnnotatedStoreSchemaCache {
       }
       return getAnnotatedStringMapDerivedSchemaEntry(derivedSchemaEntry);
     });
+  }
+
+  public RmdSchemaEntry getRmdSchema(int valueSchemaId, int rmdSchemaProtocolId) {
+    String rmdSchemaId = valueSchemaId + "-" + rmdSchemaProtocolId;
+    return rmdSchemaEntryMapCache.computeIfAbsent(rmdSchemaId, k -> {
+      RmdSchemaEntry rmdSchemaEntry =
+          internalSchemaRepo.getReplicationMetadataSchema(storeName, valueSchemaId, rmdSchemaProtocolId);
+      if (rmdSchemaEntry == null) {
+        return null;
+      }
+      return getAnnotatedStringMapRmdSchemaEntry(rmdSchemaEntry);
+    });
+
   }
 }

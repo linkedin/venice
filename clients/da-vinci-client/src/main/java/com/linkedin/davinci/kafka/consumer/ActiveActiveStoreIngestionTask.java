@@ -7,6 +7,7 @@ import static com.linkedin.venice.VeniceConstants.REWIND_TIME_DECIDED_BY_SERVER;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
+import com.linkedin.davinci.replication.merge.MapKeyStringAnnotatedStoreSchemaCache;
 import com.linkedin.davinci.replication.merge.MergeConflictResolver;
 import com.linkedin.davinci.replication.merge.MergeConflictResolverFactory;
 import com.linkedin.davinci.replication.merge.MergeConflictResult;
@@ -124,9 +125,12 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         Math.min(storeVersionPartitionCount, consumerPoolSizePerKafkaCluster) * knownKafkaClusterNumber + 1;
     this.keyLevelLocksManager =
         Lazy.of(() -> new KeyLevelLocksManager(getVersionTopic().getName(), initialPoolSize, maxKeyLevelLocksPoolSize));
-    this.rmdSerDe = new RmdSerDe(builder.getSchemaRepo(), storeName, rmdProtocolVersionID);
+    MapKeyStringAnnotatedStoreSchemaCache annotatedReadOnlySchemaRepository =
+        new MapKeyStringAnnotatedStoreSchemaCache(storeName, schemaRepository);
+
+    this.rmdSerDe = new RmdSerDe(annotatedReadOnlySchemaRepository, storeName, rmdProtocolVersionID);
     this.mergeConflictResolver = MergeConflictResolverFactory.getInstance()
-        .createMergeConflictResolver(builder.getSchemaRepo(), rmdSerDe, getStoreName());
+        .createMergeConflictResolver(annotatedReadOnlySchemaRepository, rmdSerDe, getStoreName());
     this.remoteIngestionRepairService = builder.getRemoteIngestionRepairService();
   }
 

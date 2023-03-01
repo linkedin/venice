@@ -29,7 +29,9 @@ public class TestMergeBase {
   protected static final String storeName = "testStore";
   protected ValueAndDerivedSchemas schemaSet;
   protected ReadOnlySchemaRepository schemaRepository;
+  protected MapKeyStringAnnotatedStoreSchemaCache annotatedStoreSchemaCache;
   protected MergeConflictResolver mergeConflictResolver;
+  protected RmdSerDe rmdSerDe;
 
   @BeforeClass
   public void setUp() {
@@ -37,11 +39,10 @@ public class TestMergeBase {
     schemaSet = new ValueAndDerivedSchemas(storeName, 1, "avro/PartialUpdateWithMapField.avsc");
     setupSchemaRepoSchemaMock(schemaRepository, schemaSet);
     setupSchemaRepoSupersetSchemaMock(schemaRepository, schemaSet);
+    annotatedStoreSchemaCache = new MapKeyStringAnnotatedStoreSchemaCache(storeName, schemaRepository);
+    rmdSerDe = new RmdSerDe(annotatedStoreSchemaCache, storeName, RMD_SCHEMA_PROTOCOL_VERSION);
     mergeConflictResolver = MergeConflictResolverFactory.getInstance()
-        .createMergeConflictResolver(
-            schemaRepository,
-            new RmdSerDe(schemaRepository, storeName, RMD_SCHEMA_PROTOCOL_VERSION),
-            storeName);
+        .createMergeConflictResolver(annotatedStoreSchemaCache, rmdSerDe, storeName);
   }
 
   protected void setupSchemaRepoSchemaMock(
@@ -69,14 +70,19 @@ public class TestMergeBase {
         mergeConflictResolver.createPerFieldTimestampRecord(schemaSet.getRmdSchema(), initialTs, oldValueRecord);
     rmdRecord.put(RmdConstants.TIMESTAMP_FIELD_NAME, fieldTimestampsRecord);
     rmdRecord.put(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD, new ArrayList<>());
-    return rmdRecord;
+    return createRmdRecord(rmdRecord);
   }
 
   protected GenericRecord initiateValueLevelRmdRecord(long initialTs) {
     GenericRecord rmdRecord = new GenericData.Record(schemaSet.getRmdSchema());
     rmdRecord.put(RmdConstants.TIMESTAMP_FIELD_NAME, initialTs);
     rmdRecord.put(RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD, new ArrayList<>());
-    return rmdRecord;
+    return createRmdRecord(rmdRecord);
+  }
+
+  protected GenericRecord createRmdRecord(GenericRecord record) {
+    int valueSchema = schemaSet.getValueSchemaId();
+    return rmdSerDe.deserializeRmdBytes(valueSchema, valueSchema, rmdSerDe.serializeRmdRecord(valueSchema, record));
   }
 
   protected GenericRecord createValueRecord(Consumer<GenericRecord> recordConsumer) {

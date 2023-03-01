@@ -1,5 +1,6 @@
 package com.linkedin.venice.schema;
 
+import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.DELETED_ELEM_FIELD_NAME;
 import static org.apache.avro.Schema.Type.ARRAY;
 import static org.apache.avro.Schema.Type.MAP;
 import static org.apache.avro.Schema.Type.RECORD;
@@ -8,12 +9,15 @@ import static org.apache.avro.Schema.Type.UNION;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.schema.rmd.RmdConstants;
+import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import java.util.ArrayList;
 import java.util.List;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.logging.log4j.LogManager;
 
 
 public class SchemaUtils {
@@ -158,6 +162,21 @@ public class SchemaUtils {
     return replicatedSchema;
   }
 
+  public static Schema annotateStringMapInRmdSchema(Schema schema) {
+    // Create duplicate schema here in order not to create any side effect during annotation.
+    Schema replicatedSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schema.toString());
+    Schema fieldLevelTsSchema = replicatedSchema.getField(RmdConstants.TIMESTAMP_FIELD_NAME).schema().getTypes().get(1);
+    for (Schema.Field field: fieldLevelTsSchema.getFields()) {
+      if (!field.schema().isUnion() & field.schema().getType().equals(RECORD)) {
+        Schema.Field deletedElementField = field.schema().getField(DELETED_ELEM_FIELD_NAME);
+        if (deletedElementField != null && deletedElementField.schema().getElementType().getType().equals(STRING)) {
+          annotateStringArraySchema(deletedElementField.schema());
+        }
+      }
+    }
+    return replicatedSchema;
+  }
+
   /**
    * Create a new {@link SchemaEntry} for value schema annotation.
    * @param schemaEntry Input {@link SchemaEntry}, containing the value schema to be annotated.
@@ -182,6 +201,20 @@ public class SchemaUtils {
     }
     Schema annotatedSchema = annotateStringMapInPartialUpdateSchema(schemaEntry.getSchema());
     return new DerivedSchemaEntry(schemaEntry.getValueSchemaID(), schemaEntry.getId(), annotatedSchema);
+  }
+
+  public static RmdSchemaEntry getAnnotatedStringMapRmdSchemaEntry(RmdSchemaEntry schemaEntry) {
+    if (schemaEntry == null) {
+      return null;
+    }
+
+    Schema annotatedSchema = annotateStringMapInRmdSchema(schemaEntry.getSchema());
+    LogManager.getLogger()
+        .info(
+            "DEBUGGING: BEFORE: {}\n AFTER:{}\n",
+            schemaEntry.getSchema().toString(true),
+            annotatedSchema.toString(true));
+    return new RmdSchemaEntry(schemaEntry.getValueSchemaID(), schemaEntry.getId(), annotatedSchema);
   }
 
   private static void annotateMapSchema(Schema mapSchema) {

@@ -248,5 +248,4 @@ public class TestMergePut extends TestMergeBase {
         ((GenericRecord) updatedRmdTsRecord.get(INT_MAP_FIELD_NAME)).get(ACTIVE_ELEM_TS_FIELD_NAME),
         Collections.emptyList());
   }
-
 }

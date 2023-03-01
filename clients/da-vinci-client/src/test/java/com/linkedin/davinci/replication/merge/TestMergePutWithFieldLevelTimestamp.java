@@ -27,11 +27,13 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
     ReadOnlySchemaRepository schemaRepository = mock(ReadOnlySchemaRepository.class);
     doReturn(new SchemaEntry(1, userSchemaV1)).when(schemaRepository).getValueSchema(storeName, 1);
     doReturn(new SchemaEntry(2, userSchemaV2)).when(schemaRepository).getValueSchema(storeName, 2);
+    MapKeyStringAnnotatedStoreSchemaCache mapKeyStringAnnotatedStoreSchemaCache =
+        new MapKeyStringAnnotatedStoreSchemaCache(storeName, schemaRepository);
 
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
-            schemaRepository,
-            new RmdSerDe(schemaRepository, storeName, RMD_VERSION_ID),
+            mapKeyStringAnnotatedStoreSchemaCache,
+            new RmdSerDe(mapKeyStringAnnotatedStoreSchemaCache, storeName, RMD_VERSION_ID),
             storeName);
 
     Map<String, Long> fieldNameToTimestampMap = new HashMap<>();
@@ -128,11 +130,12 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
     newValueRecord.put("id", "456");
     newValueRecord.put("name", "Lebron");
     ByteBuffer newValueBytes = ByteBuffer.wrap(getSerializer(userSchemaV3).serialize(newValueRecord));
-
+    MapKeyStringAnnotatedStoreSchemaCache mapKeyStringAnnotatedStoreSchemaCache =
+        new MapKeyStringAnnotatedStoreSchemaCache(storeName, schemaRepository);
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
-            schemaRepository,
-            new RmdSerDe(schemaRepository, storeName, RMD_VERSION_ID),
+            mapKeyStringAnnotatedStoreSchemaCache,
+            new RmdSerDe(mapKeyStringAnnotatedStoreSchemaCache, storeName, RMD_VERSION_ID),
             storeName);
 
     MergeConflictResult result = mergeConflictResolver.put(
@@ -180,10 +183,12 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
     newValueRecord.put("weight", 250.0f);
     ByteBuffer newValueBytes = ByteBuffer.wrap(getSerializer(userSchemaV4).serialize(newValueRecord));
 
+    MapKeyStringAnnotatedStoreSchemaCache mapKeyStringAnnotatedStoreSchemaCache =
+        new MapKeyStringAnnotatedStoreSchemaCache(storeName, schemaRepository);
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
-            schemaRepository,
-            new RmdSerDe(schemaRepository, storeName, RMD_VERSION_ID),
+            mapKeyStringAnnotatedStoreSchemaCache,
+            new RmdSerDe(mapKeyStringAnnotatedStoreSchemaCache, storeName, RMD_VERSION_ID),
             storeName);
 
     MergeConflictResult result = mergeConflictResolver.put(
@@ -232,10 +237,12 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
     newValueRecord.put("weight", 250.0f); // New field
     ByteBuffer newValueBytes = ByteBuffer.wrap(getSerializer(userSchemaV5).serialize(newValueRecord));
 
+    MapKeyStringAnnotatedStoreSchemaCache mapKeyStringAnnotatedStoreSchemaCache =
+        new MapKeyStringAnnotatedStoreSchemaCache(storeName, schemaRepository);
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
-            schemaRepository,
-            new RmdSerDe(schemaRepository, storeName, RMD_VERSION_ID),
+            mapKeyStringAnnotatedStoreSchemaCache,
+            new RmdSerDe(mapKeyStringAnnotatedStoreSchemaCache, storeName, RMD_VERSION_ID),
             storeName);
 
     MergeConflictResult result = mergeConflictResolver.put(
@@ -284,11 +291,12 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
     newValueRecord.put("name", "Lebron");
     newValueRecord.put("weight", 230.0f); // Different field value
     ByteBuffer newValueBytes = ByteBuffer.wrap(getSerializer(userSchemaV4).serialize(newValueRecord));
-
+    MapKeyStringAnnotatedStoreSchemaCache mapKeyStringAnnotatedStoreSchemaCache =
+        new MapKeyStringAnnotatedStoreSchemaCache(storeName, schemaRepository);
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
-            schemaRepository,
-            new RmdSerDe(schemaRepository, storeName, RMD_VERSION_ID),
+            mapKeyStringAnnotatedStoreSchemaCache,
+            new RmdSerDe(mapKeyStringAnnotatedStoreSchemaCache, storeName, RMD_VERSION_ID),
             storeName);
 
     MergeConflictResult result = mergeConflictResolver.put(

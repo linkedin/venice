@@ -269,11 +269,10 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     // Step 4: Set deleted keys and their deleted timestamps.
     List<String> newDeletedKeys = new ArrayList<>(deletedKeyToTsMap.size());
     PrimitiveLongList newDeletedTimestamps = new PrimitiveLongArrayList(deletedKeyToTsMap.size());
-    // TODO: Consider annotation / generic type.
-    for (Map.Entry deleteKeyAndTs: deletedKeyToTsMap.entrySet()) {
-      newDeletedKeys.add(deleteKeyAndTs.getKey().toString());
-      newDeletedTimestamps.add((Long) deleteKeyAndTs.getValue());
-    }
+    deletedKeyToTsMap.forEach((key, ts) -> {
+      newDeletedKeys.add(key);
+      newDeletedTimestamps.add(ts);
+    });
 
     collectionFieldRmd.setDeletedElementsAndTimestamps(newDeletedKeys, newDeletedTimestamps);
 
@@ -845,13 +844,9 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
 
     final List<String> deletedKeys = collectionFieldRmd.getDeletedElements();
     final List<Long> deletedTimestamps = collectionFieldRmd.getDeletedElementTimestamps();
-    final IndexedHashMap<String, Long> deletedUtf8KeyToTsMap =
+    final IndexedHashMap<String, Long> deletedKeyToTsMap =
         Utils.createDeletedElementToTsMap(deletedKeys, deletedTimestamps, Long.MIN_VALUE);
-    final IndexedHashMap<String, Long> deletedKeyToTsMap = new IndexedHashMap<>();
-    // TODO: Consider annotation / generic type.
-    for (Map.Entry entry: deletedUtf8KeyToTsMap.entrySet()) {
-      deletedKeyToTsMap.put(entry.getKey().toString(), (Long) entry.getValue());
-    }
+
     boolean updated = false;
     int newPutOnlyPartLength = collectionFieldRmd.getPutOnlyPartLength();
     final long topLevelTimestamp = collectionFieldRmd.getTopLevelFieldTimestamp();
@@ -970,11 +965,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     // Step 4: Set new deleted keys and their deleted timestamps.
     final List<ElementAndTimestamp> newDeletedKeyAndTsList = new ArrayList<>(deletedKeyToTsMap.size());
 
-    // TODO: Consider annotation / generic type.
-    // Keys in deletedKeyToTsMap are actually of type Utf-8 and not String
-    for (Map.Entry entry: deletedKeyToTsMap.entrySet()) {
-      newDeletedKeyAndTsList.add(new ElementAndTimestamp(entry.getKey().toString(), (Long) entry.getValue()));
-    }
+    deletedKeyToTsMap.forEach((k, v) -> newDeletedKeyAndTsList.add(new ElementAndTimestamp(k, v)));
 
     // The element here is String (as deleted key). So, we can use a String comparator.
     sortElementAndTimestampList(newDeletedKeyAndTsList, Comparator.comparing(o -> ((String) o)));
