@@ -20,7 +20,9 @@ public enum VersionStatus {
   CREATED(5),
   // Version has been pushed to Venice and is ready to serve in some regions, but failed in other regions.
   // This version status only exists in parent.
-  PARTIALLY_ONLINE(6);
+  PARTIALLY_ONLINE(6),
+  // This version is killed.
+  KILLED(7);
 
   private final int value;
 
@@ -72,5 +74,12 @@ public enum VersionStatus {
    */
   public static boolean isBootstrapCompleted(VersionStatus status) {
     return status.equals(ONLINE) || status.equals(PUSHED);
+  }
+
+  /**
+   * Check if the version has been killed.
+   */
+  public static boolean isVersionKilled(VersionStatus status) {
+    return status == KILLED;
   }
 }

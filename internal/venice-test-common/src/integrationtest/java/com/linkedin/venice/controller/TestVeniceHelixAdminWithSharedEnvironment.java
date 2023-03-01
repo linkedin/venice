@@ -51,6 +51,7 @@ import com.linkedin.venice.pushmonitor.PushMonitor;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.MockTestStateModelFactory;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
@@ -66,6 +67,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
@@ -897,6 +899,106 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         }
       }
       return false;
+    });
+
+    stopParticipant(newNodeId);
+    delayParticipantJobCompletion(false);
+  }
+
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testRaceConditionFixForKillOfflinePushAndVersionSwap(boolean isKillOfflinePush) throws Exception {
+    String storeName =
+        String.format("testRaceConditionFixForKillOfflinePushAndVersionSwap_%s", String.valueOf(isKillOfflinePush));
+    final int partitionCount = 2;
+    final int replicaCount = 2;
+
+    // Start a new participant which would hang on STARTED state.
+    String newNodeId = "localhost_9900";
+    delayParticipantJobCompletion(true);
+
+    /**
+     * Use {@link MockTestStateModelFactory} and {@link MockTestStateModelFactory.OnlineOfflineStateModel} for its Helix state transition.
+     * It blocks on the state transition from OFFLINE_STATE to STANDBY_STATE.
+     * See {@link MockTestStateModelFactory.OnlineOfflineStateModel#onBecomeStandbyFromOffline}.
+     */
+    startParticipant(true, newNodeId);
+
+    veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, VALUE_SCHEMA);
+    // Verify that the newly created store has no version.
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+      Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName, storeName), Store.NON_EXISTING_VERSION);
+    });
+
+    Version version = veniceAdmin.incrementVersionIdempotent(
+        clusterName,
+        storeName,
+        Version.guidBasedDummyPushId(),
+        partitionCount,
+        replicaCount);
+
+    // Wait for Helix to be ready.
+    TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> {
+      PartitionAssignment partitionAssignment = veniceAdmin.getHelixVeniceClusterResources(clusterName)
+          .getRoutingDataRepository()
+          .getPartitionAssignments(version.kafkaTopicName());
+      if (partitionAssignment.getAssignedNumberOfPartitions() != partitionCount) {
+        return false;
+      }
+      for (int i = 0; i < partitionCount; i++) {
+        if (partitionAssignment.getPartition(i).getWorkingInstances().size() != partitionCount) {
+          return false;
+        }
+      }
+      return true;
+    });
+
+    OfflinePushStatusInfo pushStatusInfo =
+        veniceAdmin.getOffLinePushStatus(clusterName, Version.composeKafkaTopic(storeName, 1));
+
+    // Get current push status and verify that it is in the STARTED state, because of the blocking in state transition.
+    Assert.assertEquals(
+        pushStatusInfo.getExecutionStatus(),
+        ExecutionStatus.STARTED,
+        "Replica in server1 should hang on STANDBY");
+
+    // Kill the ongoing offline push job.
+    if (isKillOfflinePush) {
+      // Verify that duplicate and parallel kills can be handled correctly.
+      CompletableFuture<Void> future1 = CompletableFuture.runAsync(() -> {
+        veniceAdmin.killOfflinePush(clusterName, version.kafkaTopicName(), false);
+      });
+      CompletableFuture<Void> future2 = CompletableFuture.runAsync(() -> {
+        veniceAdmin.killOfflinePush(clusterName, version.kafkaTopicName(), false);
+      });
+      CompletableFuture.allOf(future1, future2).get();
+    }
+
+    // Resume the Helix state transition and set replica state to COMPLETE.
+    for (int i = 0; i < partitionCount; i++) {
+      for (Map.Entry<String, MockTestStateModelFactory> entry: stateModelFactoryByNodeID.entrySet()) {
+        MockTestStateModelFactory value = entry.getValue();
+        value.makeTransitionCompleted(version.kafkaTopicName(), i);
+      }
+    }
+
+    // Verify that pushjob can finish.
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+      OfflinePushStatusInfo info =
+          veniceAdmin.getOffLinePushStatus(clusterName, Version.composeKafkaTopic(storeName, 1));
+      Assert.assertTrue(info.getExecutionStatus().isTerminal(), "Offline push job cannot reach a terminal state");
+    });
+
+    /**
+     * Verify that version swap will depend on if {@link Admin#killOfflinePush(String, String, boolean)} has been called
+     * for this store version while the push job is still executing. If it has been killed, then version swap should not
+     * happen and the store's current version stays in NON_EXISTING_VERSION. Otherwise, current version would be set
+     * correctly.
+     */
+
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+      Assert.assertEquals(
+          veniceAdmin.getCurrentVersion(clusterName, storeName),
+          isKillOfflinePush ? Store.NON_EXISTING_VERSION : version.getNumber());
     });
 
     stopParticipant(newNodeId);

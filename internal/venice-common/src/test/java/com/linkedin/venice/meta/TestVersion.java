@@ -134,4 +134,10 @@ public class TestVersion {
     topic = "abc_v1_cc";
     Assert.assertEquals(Version.parseVersionFromKafkaTopicName(topic), version);
   }
+
+  @Test
+  public void testVersionStatus() {
+    Assert.assertTrue(VersionStatus.isVersionKilled(VersionStatus.KILLED));
+    Assert.assertFalse(VersionStatus.isVersionKilled(VersionStatus.STARTED));
+  }
 }

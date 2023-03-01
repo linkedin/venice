@@ -922,6 +922,21 @@ public abstract class AbstractPushMonitor
         newStatus = VersionStatus.PUSHED;
       }
 
+      /**
+       * The offline push job for this version has been killed by {@link com.linkedin.venice.controller.Admin#killOfflinePush(String, String, boolean)}.
+       * Abort the version swapping.
+       */
+
+      Optional<Version> version = store.getVersion(versionNumber);
+      if (version.isPresent() && VersionStatus.isBootstrapCompleted(newStatus)
+          && VersionStatus.isVersionKilled(version.get().getStatus())) {
+        LOGGER.warn(
+            "store: {} version: {} has been killed by killOfflinePush. Abort version swap",
+            store.getName(),
+            versionNumber);
+        return;
+      }
+
       store.updateVersionStatus(versionNumber, newStatus);
       LOGGER.info("Updated store: {} version: {} to status: {}", store.getName(), versionNumber, newStatus.toString());
       if (newStatus.equals(VersionStatus.ONLINE)) {
