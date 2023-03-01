@@ -8,7 +8,6 @@ import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.HealthCheckRequest;
 import com.linkedin.venice.listener.request.MetadataFetchRequest;
 import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
-import com.linkedin.venice.listener.request.RequestHelper;
 import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.meta.QueryAction;
@@ -20,6 +19,7 @@ import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
+import java.net.URI;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -155,7 +155,9 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
   }
 
   static QueryAction getQueryActionFromRequest(HttpRequest req) {
-    String[] requestParts = RequestHelper.getRequestParts(req.uri());
+    // Sometimes req.uri() gives a full uri (eg https://host:port/path) and sometimes it only gives a path
+    // Generating a URI lets us always take just the path.
+    String[] requestParts = URI.create(req.uri()).getPath().split("/");
     HttpMethod reqMethod = req.method();
     if ((!reqMethod.equals(HttpMethod.GET) && !reqMethod.equals(HttpMethod.POST)) || requestParts.length < 2) {
       String actions =
