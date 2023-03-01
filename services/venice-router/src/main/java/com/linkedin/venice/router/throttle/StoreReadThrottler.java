@@ -78,11 +78,11 @@ public class StoreReadThrottler {
     this.currentVersion = Version.parseVersionFromKafkaTopicName(partitionAssignment.getTopic());
     // Calculated the latest quota for each storage node.
     Map<String, Long> storageNodeQuotaMap = new HashMap<>();
-    long partitionQuota = Math.max(localQuota / partitionAssignment.getExpectedNumberOfPartitions(), 30);
+    long partitionQuota = Math.max(localQuota / partitionAssignment.getExpectedNumberOfPartitions(), 10);
     for (Partition partition: partitionAssignment.getAllPartitions()) {
       List<Instance> readyToServeInstances = partition.getReadyToServeInstances();
       for (Instance instance: readyToServeInstances) {
-        long replicaQuota = partitionQuota; // each partition can serve all partitions
+        long replicaQuota = Math.max(partitionQuota / readyToServeInstances.size(), 5);
         if (storageNodeQuotaMap.containsKey(instance.getNodeId())) {
           replicaQuota = storageNodeQuotaMap.get(instance.getNodeId()) + replicaQuota;
         }
