@@ -891,7 +891,18 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
             // Note that if the current active timestamp is equal to the modify timestamp, we compare value.
             Object currentValue = currMap.get(newKey);
             Object newValue = newKeyValue.getVal();
-            Schema mapValueSchema = currValueRecord.getSchema().getField(fieldName).schema().getValueType();
+            Schema fieldSchema = currValueRecord.getSchema().getField(fieldName).schema();
+            Schema mapValueSchema = null;
+            if (fieldSchema.isUnion()) {
+              for (Schema schema: fieldSchema.getTypes()) {
+                if (schema.getType().equals(Schema.Type.MAP)) {
+                  mapValueSchema = schema.getValueType();
+                }
+              }
+            } else {
+              mapValueSchema = fieldSchema.getValueType();
+            }
+
             if (AvroCollectionElementComparator.INSTANCE.compare(newValue, currentValue, mapValueSchema) > 0) {
               activeEntriesToTsMap.remove(newKeyValue);
               activeEntriesToTsMap.put(newKeyValue, modifyTimestamp);
