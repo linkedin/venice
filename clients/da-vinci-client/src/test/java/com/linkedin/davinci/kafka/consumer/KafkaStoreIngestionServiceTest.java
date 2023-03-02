@@ -2,9 +2,7 @@ package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_ZK_ADDRESS;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -24,6 +22,7 @@ import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.AbstractStorageEngineTest;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
 import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.meta.ClusterInfoProvider;
@@ -74,9 +73,10 @@ public abstract class KafkaStoreIngestionServiceTest {
   private ClusterInfoProvider mockClusterInfoProvider;
   private ReadOnlyStoreRepository mockMetadataRepo;
   private ReadOnlySchemaRepository mockSchemaRepo;
-  private RoutingDataRepository mockRoutingRepository;
+  private HelixCustomizedViewOfflinePushRepository mockCustomizedViewRepository;
   private HelixInstanceConfigRepository mockHelixInstanceConfigRepository;
   private ReadOnlyLiveClusterConfigRepository mockLiveClusterConfigRepo;
+  private RoutingDataRepository mockRoutingRepository;
   private StorageEngineBackedCompressorFactory compressorFactory;
 
   private KafkaStoreIngestionService kafkaStoreIngestionService;
@@ -89,8 +89,9 @@ public abstract class KafkaStoreIngestionServiceTest {
     mockClusterInfoProvider = mock(ClusterInfoProvider.class);
     mockMetadataRepo = mock(ReadOnlyStoreRepository.class);
     mockSchemaRepo = mock(ReadOnlySchemaRepository.class);
-    mockRoutingRepository = mock(RoutingDataRepository.class);
+    mockCustomizedViewRepository = mock(HelixCustomizedViewOfflinePushRepository.class);
     mockHelixInstanceConfigRepository = mock(HelixInstanceConfigRepository.class);
+    mockRoutingRepository = mock(RoutingDataRepository.class);
     mockLiveClusterConfigRepo = mock(ReadOnlyLiveClusterConfigRepository.class);
     compressorFactory = new StorageEngineBackedCompressorFactory(storageMetadataService);
 
@@ -145,6 +146,7 @@ public abstract class KafkaStoreIngestionServiceTest {
         mockClusterInfoProvider,
         mockMetadataRepo,
         mockSchemaRepo,
+        Optional.empty(),
         Optional.empty(),
         Optional.empty(),
         mockLiveClusterConfigRepo,
@@ -227,6 +229,7 @@ public abstract class KafkaStoreIngestionServiceTest {
         mockClusterInfoProvider,
         mockMetadataRepo,
         mockSchemaRepo,
+        Optional.empty(),
         Optional.empty(),
         Optional.empty(),
         mockLiveClusterConfigRepo,
@@ -315,6 +318,7 @@ public abstract class KafkaStoreIngestionServiceTest {
         mockSchemaRepo,
         Optional.empty(),
         Optional.empty(),
+        Optional.empty(),
         mockLiveClusterConfigRepo,
         new MetricsRepository(),
         Optional.empty(),
@@ -378,6 +382,7 @@ public abstract class KafkaStoreIngestionServiceTest {
         mockSchemaRepo,
         Optional.empty(),
         Optional.empty(),
+        Optional.empty(),
         mockLiveClusterConfigRepo,
         new MetricsRepository(),
         Optional.empty(),
@@ -436,8 +441,9 @@ public abstract class KafkaStoreIngestionServiceTest {
         mockClusterInfoProvider,
         mockMetadataRepo,
         mockSchemaRepo,
-        Optional.of(CompletableFuture.completedFuture(mockRoutingRepository)),
+        Optional.of(CompletableFuture.completedFuture(mockCustomizedViewRepository)),
         Optional.of(CompletableFuture.completedFuture(mockHelixInstanceConfigRepository)),
+        Optional.of(CompletableFuture.completedFuture(mockRoutingRepository)),
         mockLiveClusterConfigRepo,
         new MetricsRepository(),
         Optional.empty(),
@@ -461,19 +467,20 @@ public abstract class KafkaStoreIngestionServiceTest {
         ReadStrategy.ANY_OF_ONLINE,
         OfflinePushStrategy.WAIT_ALL_REPLICAS,
         1);
-    mockStore.addVersion(new VersionImpl(storeName, 1, "test-job-id"));
+    mockStore.addVersion(new VersionImpl(storeName, 0, "test-job-id"));
 
     ResourceAssignment resourceAssignment = new ResourceAssignment();
     resourceAssignment.setPartitionAssignment(topicName, null);
 
     PartitionAssignment partitionAssignment = new PartitionAssignment(topicName, 1);
     partitionAssignment.addPartition(new Partition(0, Collections.emptyMap()));
-
     doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeName);
     Mockito.when(mockSchemaRepo.getKeySchema(storeName)).thenReturn(new SchemaEntry(0, "{\"type\" : \"string\"}"));
     Mockito.when(mockSchemaRepo.getValueSchemas(storeName)).thenReturn(Collections.emptyList());
     Mockito.when(mockRoutingRepository.getResourceAssignment()).thenReturn(resourceAssignment);
     Mockito.when(mockRoutingRepository.getPartitionAssignments(topicName)).thenReturn(partitionAssignment);
+    Mockito.when(mockCustomizedViewRepository.getReplicaStates(eq(topicName), anyInt()))
+        .thenReturn(Collections.emptyList());
     Mockito.when(mockHelixInstanceConfigRepository.getInstanceGroupIdMapping()).thenReturn(Collections.emptyMap());
 
     MetadataResponse metadataResponse = kafkaStoreIngestionService.getMetadata(storeName);

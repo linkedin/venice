@@ -28,6 +28,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.AllowlistAccessor;
+import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
@@ -339,6 +340,14 @@ public class VeniceServer {
       return routingData;
     });
 
+    CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewFuture =
+        managerFuture.thenApply(manager -> {
+          HelixCustomizedViewOfflinePushRepository customizedView =
+              new HelixCustomizedViewOfflinePushRepository(manager);
+          customizedView.refresh();
+          return customizedView;
+        });
+
     CompletableFuture<HelixInstanceConfigRepository> helixInstanceFuture = managerFuture.thenApply(manager -> {
       HelixInstanceConfigRepository helixData = new HelixInstanceConfigRepository(manager, false);
       helixData.refresh();
@@ -353,8 +362,9 @@ public class VeniceServer {
         new StaticClusterInfoProvider(Collections.singleton(clusterConfig.getClusterName())),
         metadataRepo,
         schemaRepo,
-        Optional.of(routingRepositoryFuture),
+        Optional.of(customizedViewFuture),
         Optional.of(helixInstanceFuture),
+        Optional.of(routingRepositoryFuture),
         liveClusterConfigRepo,
         metricsRepository,
         kafkaMessageEnvelopeSchemaReader,

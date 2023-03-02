@@ -36,6 +36,10 @@ public class MetadataResponse {
     responseRecord.setValueSchemas(valueSchemas);
   }
 
+  public void setLatestSuperSetValueSchemaId(int latestSuperSetValueSchemaId) {
+    responseRecord.setLatestSuperSetValueSchemaId(latestSuperSetValueSchemaId);
+  }
+
   public void setRoutingInfo(Map<CharSequence, List<CharSequence>> routingInfo) {
     responseRecord.setRoutingInfo(routingInfo);
   }

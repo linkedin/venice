@@ -19,14 +19,6 @@
               "type": "int"
             },
             {
-              "name": "versions",
-              "doc": "List of all version numbers",
-              "type": {
-                "type": "array",
-                "items": "int"
-              }
-            },
-            {
               "name": "compressionStrategy",
               "doc": "The current version's compression strategy. 0 -> NO_OP, 1 -> GZIP, 2 -> ZSTD, 3 -> ZSTD_WITH_DICT",
               "type": {
@@ -83,6 +75,15 @@
           "type": "map",
           "values": "string"
         }
+      ],
+      "default": null
+    },
+    {
+      "name": "latestSuperSetValueSchemaId",
+      "doc": "Latest super set value schema ID",
+      "type": [
+        "null",
+        "int"
       ],
       "default": null
     },
