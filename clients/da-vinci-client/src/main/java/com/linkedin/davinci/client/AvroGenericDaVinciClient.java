@@ -600,10 +600,9 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V>, Avro
       D2ServiceDiscovery serviceDiscovery = new D2ServiceDiscovery();
       D2ServiceDiscoveryResponseV2 response = serviceDiscovery.find((D2TransportClient) client, getStoreName());
       logger.info(
-          "Venice service discovered, clusterName={}, zkAddress={}, kafkaZkAddress={}, kafkaBootstrapServers={}",
+          "Venice service discovered, clusterName={}, zkAddress={}, kafkaBootstrapServers={}",
           response.getCluster(),
           response.getZkAddress(),
-          response.getKafkaZkAddress(),
           response.getKafkaBootstrapServers());
       return response;
     } catch (Throwable e) {
