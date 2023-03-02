@@ -141,19 +141,21 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
           for (Object o: replicationCheckpointVector) {
             offsetVector.add((Long) o);
           }
-          currentVersionTempHighWatermarks.putIfAbsent(pubSubTopicPartition.getPartitionNumber(), offsetVector);
-          currentVersionTempHighWatermarks.computeIfPresent(pubSubTopicPartition.getPartitionNumber(), (k, v) -> {
+          int partitionId = pubSubTopicPartition.getPartitionNumber();
+          if (!currentVersionTempHighWatermarks.containsKey(partitionId)) {
+            currentVersionTempHighWatermarks.put(partitionId, offsetVector);
+          } else {
+            List<Long> previousHighWatermarks = currentVersionTempHighWatermarks.get(partitionId);
             for (int i = 0; i < offsetVector.size(); i++) {
-              if (i < v.size()) {
-                if (offsetVector.get(i) > v.get(i)) {
-                  v.set(i, offsetVector.get(i));
+              if (i < previousHighWatermarks.size()) {
+                if (offsetVector.get(i) > previousHighWatermarks.get(i)) {
+                  previousHighWatermarks.set(i, offsetVector.get(i));
                 }
               } else {
-                v.add(offsetVector.get(i));
+                previousHighWatermarks.add(offsetVector.get(i));
               }
             }
-            return v;
-          });
+          }
         }
         break;
       case DELETE:

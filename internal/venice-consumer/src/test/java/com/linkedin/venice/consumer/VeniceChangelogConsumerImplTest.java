@@ -56,7 +56,7 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
-public class VeniceChangeLogConsumerImplTest {
+public class VeniceChangelogConsumerImplTest {
   private String storeName;
   private RecordSerializer<String> keySerializer;
   private RecordSerializer<String> valueSerializer;

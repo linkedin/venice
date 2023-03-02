@@ -5,8 +5,7 @@ dependencies {
   implementation project (':clients:venice-thin-client')
   implementation libraries.kafkaClients
   implementation libraries.conscrypt
-  implementation libraries.zkclient
-  implementation libraries.helix
+  implementation libraries.log4j2api
 
   testImplementation project (':clients:venice-thin-client')
   testImplementation project (':internal:venice-test-common').sourceSets.integrationTest.output
