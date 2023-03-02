@@ -13,7 +13,7 @@ import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -51,7 +51,7 @@ public class TestStaleDataVisibility {
   private List<VeniceMultiClusterWrapper> childClusters;
   private List<List<VeniceControllerWrapper>> childControllers;
   private List<VeniceControllerWrapper> parentControllers;
-  private VeniceTwoLayerMultiColoMultiClusterWrapper multiColoMultiClusterWrapper;
+  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
 
   @BeforeClass
   public void setUp() {
@@ -59,7 +59,7 @@ public class TestStaleDataVisibility {
     serverProperties.setProperty(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1));
     Properties childControllerProperties = new Properties();
     childControllerProperties.setProperty(ConfigKeys.CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD, "true");
-    multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
+    multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
         NUMBER_OF_CLUSTERS,
         1,
@@ -72,11 +72,11 @@ public class TestStaleDataVisibility {
         Optional.of(new VeniceProperties(serverProperties)),
         false);
 
-    childClusters = multiColoMultiClusterWrapper.getChildRegions();
+    childClusters = multiRegionMultiClusterWrapper.getChildRegions();
     childControllers = childClusters.stream()
         .map(veniceClusterWrapper -> new ArrayList<>(veniceClusterWrapper.getControllers().values()))
         .collect(Collectors.toList());
-    parentControllers = multiColoMultiClusterWrapper.getParentControllers();
+    parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
 
     LOGGER.info(
         "parentControllers: {}",
@@ -97,7 +97,7 @@ public class TestStaleDataVisibility {
 
   @AfterClass
   public void cleanUp() {
-    multiColoMultiClusterWrapper.close();
+    multiRegionMultiClusterWrapper.close();
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -107,10 +107,11 @@ public class TestStaleDataVisibility {
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
-    String parentControllerUrls = multiColoMultiClusterWrapper.getControllerConnectString();
+    String parentControllerUrls = multiRegionMultiClusterWrapper.getControllerConnectString();
 
     // create a store via parent controller url
-    Properties props = IntegrationTestPushUtils.defaultVPJProps(multiColoMultiClusterWrapper, inputDirPath, storeName);
+    Properties props =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
     createStoreForJob(clusterName, recordSchema, props).close();
     try (ControllerClient controllerClient = new ControllerClient(clusterName, parentControllerUrls)) {
       String pushStatusStoreVersionName =
@@ -136,7 +137,7 @@ public class TestStaleDataVisibility {
 
       // get single child controller, empty push to it
       Properties props2 = IntegrationTestPushUtils
-          .defaultVPJProps(multiColoMultiClusterWrapper.getChildRegions().get(0), inputDirPath, storeName);
+          .defaultVPJProps(multiRegionMultiClusterWrapper.getChildRegions().get(0), inputDirPath, storeName);
       try (VenicePushJob job = new VenicePushJob("Test push job", props2)) {
         job.run();
       }

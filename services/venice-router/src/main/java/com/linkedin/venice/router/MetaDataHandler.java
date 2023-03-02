@@ -102,7 +102,6 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private final ReadOnlyStoreRepository storeRepository;
   private final String clusterName;
   private final String zkAddress;
-  private final String kafkaZkAddress;
   private final String kafkaBootstrapServers;
 
   public MetaDataHandler(
@@ -114,7 +113,6 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       Optional<HelixHybridStoreQuotaRepository> hybridStoreQuotaRepository,
       String clusterName,
       String zkAddress,
-      String kafkaZkAddress,
       String kafkaBootstrapServers) {
     super();
     this.routingDataRepository = routingDataRepository;
@@ -125,7 +123,6 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     this.storeRepository = storeRepository;
     this.clusterName = clusterName;
     this.zkAddress = zkAddress;
-    this.kafkaZkAddress = kafkaZkAddress;
     this.kafkaBootstrapServers = kafkaBootstrapServers;
   }
 
@@ -302,7 +299,6 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       responseObject.setName(config.get().getStoreName());
       responseObject.setD2Service(d2Service);
       responseObject.setZkAddress(zkAddress);
-      responseObject.setKafkaZkAddress(kafkaZkAddress);
       responseObject.setKafkaBootstrapServers(kafkaBootstrapServers);
       setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(responseObject), true, ctx);
     } else {

@@ -18,7 +18,6 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_QUOTA_UNORDERED_BYTES_P
 import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_QUOTA_UNORDERED_RECORDS_PER_SECOND;
 import static com.linkedin.venice.ConfigKeys.KAFKA_READ_CYCLE_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
-import static com.linkedin.venice.ConfigKeys.KAFKA_ZK_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.REFRESH_ATTEMPTS_FOR_ZK_RECONNECT;
 import static com.linkedin.venice.ConfigKeys.REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS;
@@ -60,7 +59,6 @@ public class VeniceClusterConfig {
   private final String zookeeperAddress;
   private final PersistenceType persistenceType;
   private final String kafkaBootstrapServers;
-  private final String kafkaZkAddress;
   private final long kafkaFetchQuotaTimeWindow;
   private final long kafkaFetchQuotaBytesPerSecond;
   private final long kafkaFetchQuotaRecordPerSecond;
@@ -110,8 +108,6 @@ public class VeniceClusterConfig {
     if (baseKafkaBootstrapServers == null || baseKafkaBootstrapServers.isEmpty()) {
       throw new ConfigurationException("kafkaBootstrapServers can't be empty");
     }
-
-    this.kafkaZkAddress = clusterProps.getString(KAFKA_ZK_ADDRESS);
 
     this.kafkaFetchQuotaTimeWindow =
         clusterProps.getLong(KAFKA_FETCH_QUOTA_TIME_WINDOW_MS, TimeUnit.SECONDS.toMillis(5));
@@ -262,10 +258,6 @@ public class VeniceClusterConfig {
 
   public String getKafkaBootstrapServers() {
     return kafkaBootstrapServers;
-  }
-
-  public String getKafkaZkAddress() {
-    return kafkaZkAddress;
   }
 
   public SecurityProtocol getKafkaSecurityProtocol(String kafkaBootstrapUrl) {

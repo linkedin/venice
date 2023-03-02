@@ -75,7 +75,6 @@ public class StoreBackendTest {
     VeniceProperties backendConfig = new PropertyBuilder().put(ConfigKeys.CLUSTER_NAME, "test-cluster")
         .put(ConfigKeys.ZOOKEEPER_ADDRESS, "test-zookeeper")
         .put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, "test-kafka")
-        .put(ConfigKeys.KAFKA_ZK_ADDRESS, "test-kafka-zookeeper")
         .put(ConfigKeys.DATA_BASE_PATH, baseDataPath.getAbsolutePath())
         .build();
 

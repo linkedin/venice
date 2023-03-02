@@ -49,7 +49,6 @@ import static com.linkedin.venice.Arg.KAFKA_TOPIC_LOG_COMPACTION_ENABLED;
 import static com.linkedin.venice.Arg.KAFKA_TOPIC_NAME;
 import static com.linkedin.venice.Arg.KAFKA_TOPIC_PARTITION;
 import static com.linkedin.venice.Arg.KAFKA_TOPIC_RETENTION_IN_MS;
-import static com.linkedin.venice.Arg.KAFKA_ZOOKEEPER_CONNECTION_URL;
 import static com.linkedin.venice.Arg.KEY;
 import static com.linkedin.venice.Arg.KEY_SCHEMA;
 import static com.linkedin.venice.Arg.LARGEST_USED_VERSION_NUMBER;
@@ -276,7 +275,7 @@ public enum Command {
   ),
   DELETE_KAFKA_TOPIC(
       "delete-kafka-topic", "Delete a Kafka topic directly (without interaction with the Venice Controller",
-      new Arg[] { KAFKA_BOOTSTRAP_SERVERS, KAFKA_ZOOKEEPER_CONNECTION_URL, KAFKA_TOPIC_NAME },
+      new Arg[] { KAFKA_BOOTSTRAP_SERVERS, KAFKA_TOPIC_NAME },
       new Arg[] { KAFKA_OPERATION_TIMEOUT, KAFKA_CONSUMER_CONFIG_FILE }
   ),
   DUMP_ADMIN_MESSAGES(

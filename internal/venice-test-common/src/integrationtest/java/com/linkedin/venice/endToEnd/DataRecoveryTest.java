@@ -42,7 +42,7 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.samza.VeniceSystemFactory;
@@ -73,7 +73,7 @@ public class DataRecoveryTest {
   private static final String[] CLUSTER_NAMES =
       IntStream.range(0, NUMBER_OF_CLUSTERS).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
 
-  private VeniceTwoLayerMultiColoMultiClusterWrapper multiColoMultiClusterWrapper;
+  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
   private List<VeniceMultiClusterWrapper> childDatacenters;
   private List<VeniceControllerWrapper> parentControllers;
   private String clusterName;
@@ -98,7 +98,7 @@ public class DataRecoveryTest {
     controllerProps.put(ALLOW_CLUSTER_WIPE, "true");
     controllerProps.put(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, "1000");
     controllerProps.put(MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE, "0");
-    multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
+    multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
         NUMBER_OF_CLUSTERS,
         1,
@@ -110,20 +110,20 @@ public class DataRecoveryTest {
         Optional.of(controllerProps),
         Optional.of(new VeniceProperties(serverProperties)),
         false);
-    childDatacenters = multiColoMultiClusterWrapper.getChildRegions();
-    parentControllers = multiColoMultiClusterWrapper.getParentControllers();
+    childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
+    parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
     clusterName = CLUSTER_NAMES[0];
   }
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    Utils.closeQuietlyWithErrorLogged(multiColoMultiClusterWrapper);
+    Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testStartDataRecoveryAPIs() {
     String storeName = Utils.getUniqueString("dataRecovery-store");
-    String parentControllerURLs = multiColoMultiClusterWrapper.getControllerConnectString();
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
 
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
         ControllerClient dc0Client =
@@ -178,7 +178,7 @@ public class DataRecoveryTest {
   @Test(timeOut = TEST_TIMEOUT)
   public void testBatchOnlyDataRecovery() throws Exception {
     String storeName = Utils.getUniqueString("dataRecovery-store-batch");
-    String parentControllerURLs = multiColoMultiClusterWrapper.getControllerConnectString();
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
         ControllerClient dc0Client =
             new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
@@ -252,7 +252,7 @@ public class DataRecoveryTest {
   @Test(timeOut = TEST_TIMEOUT * 2)
   public void testHybridAADataRecovery() throws Exception {
     String storeName = Utils.getUniqueString("dataRecovery-store-hybrid-AA");
-    String parentControllerURLs = multiColoMultiClusterWrapper.getControllerConnectString();
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
         ControllerClient dc0Client =
             new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
@@ -286,7 +286,7 @@ public class DataRecoveryTest {
       samzaConfig.put(configPrefix + VENICE_AGGREGATE, "false");
       samzaConfig.put(VENICE_CHILD_D2_ZK_HOSTS, childDatacenters.get(0).getZkServerWrapper().getAddress());
       samzaConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, D2_SERVICE_NAME);
-      samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, parentControllers.get(0).getKafkaZkAddress());
+      samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, parentControllers.get(0).getZkAddress());
       samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
       samzaConfig.put(DEPLOYMENT_ID, Utils.getUniqueString("venice-push-id"));
       samzaConfig.put(SSL_ENABLED, "false");

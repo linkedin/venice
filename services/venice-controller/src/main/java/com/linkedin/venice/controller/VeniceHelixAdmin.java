@@ -451,7 +451,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     this.topicManagerRepository = new TopicManagerRepository(
         getKafkaBootstrapServers(isSslToKafka()),
-        multiClusterConfigs.getKafkaZkAddress(),
         multiClusterConfigs.getTopicManagerKafkaOperationTimeOutMs(),
         multiClusterConfigs.getTopicDeletionStatusPollIntervalMs(),
         multiClusterConfigs.getKafkaMinLogCompactionLagInMs(),
@@ -2196,7 +2195,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             compressionDictionaryBuffer = EMPTY_PUSH_ZSTD_DICTIONARY;
           }
 
-          Pair<String, String> sourceKafkaBootstrapServersAndZk = null;
+          String sourceKafkaBootstrapServers = null;
 
           store = repository.getStore(storeName);
           strategy = store.getOffLinePushStrategy();
@@ -2250,8 +2249,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                */
               String sourceFabric =
                   getNativeReplicationSourceFabric(clusterName, store, sourceGridFabric, emergencySourceRegion);
-              sourceKafkaBootstrapServersAndZk = getNativeReplicationKafkaBootstrapServerAndZkAddress(sourceFabric);
-              String sourceKafkaBootstrapServers = sourceKafkaBootstrapServersAndZk.getFirst();
+              sourceKafkaBootstrapServers = getNativeReplicationKafkaBootstrapServerAddress(sourceFabric);
               if (sourceKafkaBootstrapServers == null) {
                 sourceKafkaBootstrapServers = getKafkaBootstrapServers(isSslToKafka());
               }
@@ -2317,17 +2315,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
            */
           if (multiClusterConfigs.isParent() && version.isNativeReplicationEnabled()
               && !version.getPushStreamSourceAddress().equals(getKafkaBootstrapServers(isSslToKafka()))) {
-            if (sourceKafkaBootstrapServersAndZk == null || sourceKafkaBootstrapServersAndZk.getFirst() == null
-                || sourceKafkaBootstrapServersAndZk.getSecond() == null) {
+            if (sourceKafkaBootstrapServers == null) {
               throw new VeniceException(
-                  "Parent controller should know the source Kafka bootstrap server url "
-                      + "and source Kafka ZK address for store: " + storeName + " and version: " + version.getNumber()
-                      + " in cluster: " + clusterName);
+                  "Parent controller should know the source Kafka bootstrap server url for store: " + storeName
+                      + " and version: " + version.getNumber() + " in cluster: " + clusterName);
             }
             createBatchTopics(
                 version,
                 pushType,
-                getTopicManager(sourceKafkaBootstrapServersAndZk),
+                getTopicManager(sourceKafkaBootstrapServers),
                 subPartitionCount,
                 clusterConfig,
                 useFastKafkaOperationTimeout);
@@ -3119,8 +3115,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     boolean allTopicsAreDeleted = true;
     Set<String> parentFabrics = multiClusterConfigs.getParentFabrics();
     for (String parentFabric: parentFabrics) {
-      Pair<String, String> kafkaUrlAndZk = getNativeReplicationKafkaBootstrapServerAndZkAddress(parentFabric);
-      allTopicsAreDeleted &= truncateKafkaTopic(getTopicManager(kafkaUrlAndZk), kafkaTopicName);
+      String kafkaBootstrapServerAddress = getNativeReplicationKafkaBootstrapServerAddress(parentFabric);
+      allTopicsAreDeleted &= truncateKafkaTopic(getTopicManager(kafkaBootstrapServerAddress), kafkaTopicName);
     }
     return allTopicsAreDeleted;
   }
@@ -3443,10 +3439,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (isParent()) {
           // RT might not exist in parent colo. Get RT partition count from a child colo.
           String childDatacenter = Utils.parseCommaSeparatedStringToList(clusterConfig.getChildDatacenters()).get(0);
-          topicManager = getTopicManager(
-              Pair.create(
-                  multiClusterConfigs.getChildDataCenterKafkaUrlMap().get(childDatacenter),
-                  multiClusterConfigs.getChildDataCenterKafkaZkMap().get(childDatacenter)));
+          topicManager = getTopicManager(multiClusterConfigs.getChildDataCenterKafkaUrlMap().get(childDatacenter));
         } else {
           topicManager = getTopicManager();
         }
@@ -5551,15 +5544,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * @return a pair of KafkaUrl and Zk for the given fabric.
+   * @return KafkaUrl for the given fabric.
    * @see ConfigKeys#CHILD_DATA_CENTER_KAFKA_URL_PREFIX
-   * @see ConfigKeys#CHILD_DATA_CENTER_KAFKA_ZK_PREFIX
    */
   @Override
-  public Pair<String, String> getNativeReplicationKafkaBootstrapServerAndZkAddress(String sourceFabric) {
-    return Pair.create(
-        multiClusterConfigs.getChildDataCenterKafkaUrlMap().get(sourceFabric),
-        multiClusterConfigs.getChildDataCenterKafkaZkMap().get(sourceFabric));
+  public String getNativeReplicationKafkaBootstrapServerAddress(String sourceFabric) {
+    return multiClusterConfigs.getChildDataCenterKafkaUrlMap().get(sourceFabric);
   }
 
   /**
@@ -5648,11 +5638,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * @see Admin#getTopicManager(Pair)
+   * @see Admin#getTopicManager(String)
    */
   @Override
-  public TopicManager getTopicManager(Pair<String, String> kafkaBootstrapServersAndZkAddress) {
-    return this.topicManagerRepository.getTopicManager(kafkaBootstrapServersAndZkAddress);
+  public TopicManager getTopicManager(String pubSubServerAddress) {
+    return this.topicManagerRepository.getTopicManager(pubSubServerAddress);
   }
 
   /**
@@ -7148,7 +7138,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   public Optional<String> getAggregateRealTimeTopicSource(String clusterName) {
     String sourceRegion = multiClusterConfigs.getControllerConfig(clusterName).getAggregateRealTimeSourceRegion();
     if (sourceRegion != null && sourceRegion.length() > 0) {
-      return Optional.of(getNativeReplicationKafkaBootstrapServerAndZkAddress(sourceRegion).getFirst());
+      return Optional.of(getNativeReplicationKafkaBootstrapServerAddress(sourceRegion));
     } else {
       return Optional.empty();
     }

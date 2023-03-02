@@ -4,7 +4,6 @@ import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_LINGER_MS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_ZK_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 
@@ -40,7 +39,6 @@ public class IntegrationTestUtils {
 
         // Kafka-related config
         .put(KAFKA_BOOTSTRAP_SERVERS, sslToKafka ? kafkaBrokerWrapper.getSSLAddress() : kafkaBrokerWrapper.getAddress())
-        .put(KAFKA_ZK_ADDRESS, kafkaBrokerWrapper.getZkAddress())
         .put(KAFKA_LINGER_MS, 0)
 
         // Other configs
