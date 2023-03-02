@@ -363,7 +363,7 @@ public class ServiceFactory {
     return getService(VeniceMultiClusterWrapper.SERVICE_NAME, VeniceMultiClusterWrapper.generateService(options));
   }
 
-  public static VeniceTwoLayerMultiColoMultiClusterWrapper getVeniceTwoLayerMultiColoMultiClusterWrapper(
+  public static VeniceTwoLayerMultiRegionMultiClusterWrapper getVeniceTwoLayerMultiRegionMultiClusterWrapper(
       int numberOfRegions,
       int numberOfClustersInEachRegion,
       int numberOfParentControllers,
@@ -371,8 +371,8 @@ public class ServiceFactory {
       int numberOfServers,
       int numberOfRouters) {
     return getService(
-        VeniceTwoLayerMultiColoMultiClusterWrapper.SERVICE_NAME,
-        VeniceTwoLayerMultiColoMultiClusterWrapper.generateService(
+        VeniceTwoLayerMultiRegionMultiClusterWrapper.SERVICE_NAME,
+        VeniceTwoLayerMultiRegionMultiClusterWrapper.generateService(
             numberOfRegions,
             numberOfClustersInEachRegion,
             numberOfParentControllers,
@@ -384,7 +384,7 @@ public class ServiceFactory {
             Optional.empty()));
   }
 
-  public static VeniceTwoLayerMultiColoMultiClusterWrapper getVeniceTwoLayerMultiColoMultiClusterWrapper(
+  public static VeniceTwoLayerMultiRegionMultiClusterWrapper getVeniceTwoLayerMultiRegionMultiClusterWrapper(
       int numberOfRegions,
       int numberOfClustersInEachRegion,
       int numberOfParentControllers,
@@ -396,8 +396,8 @@ public class ServiceFactory {
       Optional<Properties> childControllerProperties,
       Optional<VeniceProperties> serverProps) {
     return getService(
-        VeniceTwoLayerMultiColoMultiClusterWrapper.SERVICE_NAME,
-        VeniceTwoLayerMultiColoMultiClusterWrapper.generateService(
+        VeniceTwoLayerMultiRegionMultiClusterWrapper.SERVICE_NAME,
+        VeniceTwoLayerMultiRegionMultiClusterWrapper.generateService(
             numberOfRegions,
             numberOfClustersInEachRegion,
             numberOfParentControllers,
@@ -411,7 +411,7 @@ public class ServiceFactory {
             false));
   }
 
-  public static VeniceTwoLayerMultiColoMultiClusterWrapper getVeniceTwoLayerMultiColoMultiClusterWrapper(
+  public static VeniceTwoLayerMultiRegionMultiClusterWrapper getVeniceTwoLayerMultiRegionMultiClusterWrapper(
       int numberOfRegions,
       int numberOfClustersInEachRegion,
       int numberOfParentControllers,
@@ -424,8 +424,8 @@ public class ServiceFactory {
       Optional<VeniceProperties> serverProps,
       boolean forkServer) {
     return getService(
-        VeniceTwoLayerMultiColoMultiClusterWrapper.SERVICE_NAME,
-        VeniceTwoLayerMultiColoMultiClusterWrapper.generateService(
+        VeniceTwoLayerMultiRegionMultiClusterWrapper.SERVICE_NAME,
+        VeniceTwoLayerMultiRegionMultiClusterWrapper.generateService(
             numberOfRegions,
             numberOfClustersInEachRegion,
             numberOfParentControllers,

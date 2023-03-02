@@ -42,7 +42,7 @@ import com.linkedin.venice.integration.utils.DaVinciTestContext;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
-import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
@@ -89,7 +89,7 @@ public class TestStoreMigration {
   private static final boolean[] ABORT_MIGRATION_PROMPTS_OVERRIDE = { false, true, true };
   private static final Logger LOGGER = LogManager.getLogger(TestStoreMigration.class);
 
-  private VeniceTwoLayerMultiColoMultiClusterWrapper twoLayerMultiColoMultiClusterWrapper;
+  private VeniceTwoLayerMultiRegionMultiClusterWrapper twoLayerMultiColoMultiClusterWrapper;
   private VeniceMultiClusterWrapper multiClusterWrapper;
   private String srcClusterName;
   private String destClusterName;
@@ -124,7 +124,7 @@ public class TestStoreMigration {
 
     // 1 parent controller, 1 child colo, 2 clusters per child colo, 2 servers per cluster
     // RF=2 to test both leader and follower SNs
-    twoLayerMultiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
+    twoLayerMultiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         1,
         2,
         1,

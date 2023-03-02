@@ -62,7 +62,7 @@ import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
-import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Instance;
@@ -120,7 +120,7 @@ public class ActiveActiveReplicationForHybridTest {
 
   protected List<VeniceMultiClusterWrapper> childDatacenters;
   protected List<VeniceControllerWrapper> parentControllers;
-  protected VeniceTwoLayerMultiColoMultiClusterWrapper multiColoMultiClusterWrapper;
+  protected VeniceTwoLayerMultiRegionMultiClusterWrapper multiColoMultiClusterWrapper;
 
   private D2Client d2ClientForDC0Region;
   private Properties serverProperties;
@@ -152,7 +152,7 @@ public class ActiveActiveReplicationForHybridTest {
 
     controllerProps.put(LF_MODEL_DEPENDENCY_CHECK_DISABLED, true);
 
-    multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
+    multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
         NUMBER_OF_CLUSTERS,
         1,

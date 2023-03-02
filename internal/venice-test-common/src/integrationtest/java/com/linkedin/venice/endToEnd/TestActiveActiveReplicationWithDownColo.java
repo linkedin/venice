@@ -26,7 +26,7 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.utils.TestUtils;
@@ -63,7 +63,7 @@ public class TestActiveActiveReplicationWithDownColo {
 
   protected List<VeniceMultiClusterWrapper> childDatacenters;
   protected List<VeniceControllerWrapper> parentControllers;
-  protected VeniceTwoLayerMultiColoMultiClusterWrapper multiColoMultiClusterWrapper;
+  protected VeniceTwoLayerMultiRegionMultiClusterWrapper multiColoMultiClusterWrapper;
 
   public Map<String, String> getExtraServerProperties() {
     return Collections.emptyMap();
@@ -96,7 +96,7 @@ public class TestActiveActiveReplicationWithDownColo {
     controllerProps.put(PARENT_KAFKA_CLUSTER_FABRIC_LIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
 
     controllerProps.put(LF_MODEL_DEPENDENCY_CHECK_DISABLED, "true");
-    multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
+    multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
         NUMBER_OF_CLUSTERS,
         1,

@@ -33,7 +33,7 @@ import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.meta.Store;
@@ -94,7 +94,7 @@ public class IntegrationTestPushUtils {
   }
 
   public static Properties defaultVPJProps(
-      VeniceTwoLayerMultiColoMultiClusterWrapper multiColoMultiClusterWrapper,
+      VeniceTwoLayerMultiRegionMultiClusterWrapper multiColoMultiClusterWrapper,
       String inputDirPath,
       String storeName) {
     String parentColoZkAddress = multiColoMultiClusterWrapper.getZkServerWrapper().getAddress();

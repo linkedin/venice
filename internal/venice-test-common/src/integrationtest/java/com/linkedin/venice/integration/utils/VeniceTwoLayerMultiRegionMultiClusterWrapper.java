@@ -45,8 +45,8 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
-  private static final Logger LOGGER = LogManager.getLogger(VeniceTwoLayerMultiColoMultiClusterWrapper.class);
+public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper {
+  private static final Logger LOGGER = LogManager.getLogger(VeniceTwoLayerMultiRegionMultiClusterWrapper.class);
   public static final String SERVICE_NAME = "VeniceTwoLayerMultiCluster";
   private final String parentRegionName;
   private final List<String> childRegionNames;
@@ -56,7 +56,7 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
   private final ZkServerWrapper zkServerWrapper;
   private final KafkaBrokerWrapper parentKafkaBrokerWrapper;
 
-  VeniceTwoLayerMultiColoMultiClusterWrapper(
+  VeniceTwoLayerMultiRegionMultiClusterWrapper(
       File dataDirectory,
       ZkServerWrapper zkServerWrapper,
       KafkaBrokerWrapper parentKafkaBrokerWrapper,
@@ -74,7 +74,7 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
     this.clusterNames = childRegions.get(0).getClusterNames();
   }
 
-  static ServiceProvider<VeniceTwoLayerMultiColoMultiClusterWrapper> generateService(
+  static ServiceProvider<VeniceTwoLayerMultiRegionMultiClusterWrapper> generateService(
       int numberOfRegions,
       int numberOfClustersInEachRegion,
       int numberOfParentControllers,
@@ -98,7 +98,7 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
         false);
   }
 
-  static ServiceProvider<VeniceTwoLayerMultiColoMultiClusterWrapper> generateService(
+  static ServiceProvider<VeniceTwoLayerMultiRegionMultiClusterWrapper> generateService(
       int numberOfRegions,
       int numberOfClustersInEachRegion,
       int numberOfParentControllers,
@@ -261,7 +261,7 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
       final ZkServerWrapper finalZkServer = zkServer;
       final KafkaBrokerWrapper finalParentKafka = parentKafka;
 
-      return (serviceName) -> new VeniceTwoLayerMultiColoMultiClusterWrapper(
+      return (serviceName) -> new VeniceTwoLayerMultiRegionMultiClusterWrapper(
           null,
           finalZkServer,
           finalParentKafka,

@@ -23,7 +23,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
-import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -59,7 +59,7 @@ public class DaVinciClusterAgnosticTest {
           + "       {\"name\": \"field2\", \"type\": \"int\", \"default\": 0}" + "  ] " + " } ";
   private static final String FABRIC = "dc-0";
 
-  private VeniceTwoLayerMultiColoMultiClusterWrapper multiColoMultiClusterWrapper;
+  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiColoMultiClusterWrapper;
   private VeniceMultiClusterWrapper multiClusterVenice;
   private String[] clusterNames;
   private String parentControllerURLs;
@@ -70,7 +70,7 @@ public class DaVinciClusterAgnosticTest {
   @BeforeClass
   public void setUp() {
     Utils.thisIsLocalhost();
-    multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
+    multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         1,
         2,
         1,
