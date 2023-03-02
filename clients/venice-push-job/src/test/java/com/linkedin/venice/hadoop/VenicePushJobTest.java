@@ -230,7 +230,6 @@ public class VenicePushJobTest {
     storeInfo.setChunkingEnabled(false);
     storeInfo.setCompressionStrategy(CompressionStrategy.NO_OP);
     storeInfo.setWriteComputationEnabled(false);
-    storeInfo.setLeaderFollowerModelEnabled(false);
     storeInfo.setIncrementalPushEnabled(false);
 
     Version version = new VersionImpl(TEST_STORE, REPUSH_VERSION, TEST_PUSH);

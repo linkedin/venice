@@ -39,7 +39,6 @@ public class TestSystemStore {
             100,
             DataReplicationPolicy.NON_AGGREGATE,
             BufferReplayPolicy.REWIND_FROM_EOP));
-    zkSharedSystemStore.setLeaderFollowerModelEnabled(true);
     zkSharedSystemStore.setWriteComputationEnabled(true);
     zkSharedSystemStore.setPartitionCount(1);
     // Setup a regular Venice store
@@ -89,7 +88,6 @@ public class TestSystemStore {
     assertTrue(systemStore.isWriteComputationEnabled());
     assertFalse(systemStore.isReadComputationEnabled());
     assertEquals(systemStore.getBootstrapToOnlineTimeoutInHours(), 24);
-    assertTrue(systemStore.isLeaderFollowerModelEnabled());
     assertEquals(systemStore.getPushStreamSourceAddress(), "");
     assertFalse(systemStore.isNativeReplicationEnabled());
     assertEquals(systemStore.getBackupStrategy(), BackupStrategy.DELETE_ON_NEW_PUSH_START);
@@ -125,7 +123,6 @@ public class TestSystemStore {
     assertThrows(() -> systemStore.setWriteComputationEnabled(true));
     assertThrows(() -> systemStore.setReadComputationEnabled(true));
     assertThrows(() -> systemStore.setBootstrapToOnlineTimeoutInHours(12));
-    assertThrows(() -> systemStore.setLeaderFollowerModelEnabled(true));
     assertThrows(() -> systemStore.setPushStreamSourceAddress(""));
     assertThrows(() -> systemStore.setNativeReplicationEnabled(true));
     assertThrows(() -> systemStore.setBackupStrategy(BackupStrategy.KEEP_MIN_VERSIONS));
@@ -158,7 +155,6 @@ public class TestSystemStore {
     assertTrue(systemStore.containsVersion(1));
     Optional<Version> version = systemStore.getVersion(1);
     assertTrue(version.isPresent(), "Version 1 must be present");
-    assertTrue(version.get().isLeaderFollowerModelEnabled());
     systemStore.deleteVersion(1);
     assertFalse(systemStore.containsVersion(1));
   }

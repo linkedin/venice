@@ -870,15 +870,6 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.LIST_BOOTSTRAPPING_VERSIONS, newParams(), MultiVersionStatusResponse.class);
   }
 
-  public MultiStoreResponse listLFStores() {
-    return request(ControllerRoute.LIST_LF_STORES, newParams(), MultiStoreResponse.class);
-  }
-
-  public MultiStoreResponse enableLFModel(boolean isLFEnabled, String storeType) {
-    QueryParams params = newParams().add(STATUS, isLFEnabled).add(STORE_TYPE, storeType);
-    return request(ControllerRoute.ENABLE_LF_MODEL, params, MultiStoreResponse.class);
-  }
-
   public AclResponse updateAclForStore(String storeName, String accessPermissions) {
     QueryParams params = newParams().add(NAME, storeName).add(ACCESS_PERMISSION, accessPermissions);
     return request(ControllerRoute.UPDATE_ACL, params, AclResponse.class);

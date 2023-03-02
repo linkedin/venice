@@ -94,8 +94,7 @@ public interface HelixAdminClient {
       String clusterName,
       String kafkaTopic,
       int numberOfPartition,
-      int replicationFactor,
-      boolean isLeaderFollowerStateModel);
+      int replicationFactor);
 
   /**
    * Drop a resource from a cluster.

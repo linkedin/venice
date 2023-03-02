@@ -473,7 +473,6 @@ public class AdminExecutionTask implements Callable<Void> {
         .setWriteComputationEnabled(message.writeComputationEnabled)
         .setReadComputationEnabled(message.readComputationEnabled)
         .setBootstrapToOnlineTimeoutInHours(message.bootstrapToOnlineTimeoutInHours)
-        .setLeaderFollowerModel(message.leaderFollowerModelEnabled)
         .setBackupStrategy(BackupStrategy.fromInt(message.backupStrategy))
         .setAutoSchemaPushJobEnabled(message.schemaAutoRegisterFromPushJobEnabled)
         .setHybridStoreDiskQuotaEnabled(message.hybridStoreDiskQuotaEnabled)

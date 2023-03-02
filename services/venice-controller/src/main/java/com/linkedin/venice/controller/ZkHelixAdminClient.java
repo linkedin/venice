@@ -246,14 +246,13 @@ public class ZkHelixAdminClient implements HelixAdminClient {
       String clusterName,
       String kafkaTopic,
       int numberOfPartition,
-      int replicationFactor,
-      boolean isLeaderFollowerStateModel) {
+      int replicationFactor) {
     if (!helixAdmin.getResourcesInCluster(clusterName).contains(kafkaTopic)) {
       helixAdmin.addResource(
           clusterName,
           kafkaTopic,
           numberOfPartition,
-          isLeaderFollowerStateModel ? LeaderStandbySMD.name : VeniceStateModel.PARTITION_ONLINE_OFFLINE_STATE_MODEL,
+          LeaderStandbySMD.name,
           IdealState.RebalanceMode.FULL_AUTO.toString(),
           AutoRebalanceStrategy.class.getName());
       VeniceControllerClusterConfig config = multiClusterConfigs.getControllerConfig(clusterName);

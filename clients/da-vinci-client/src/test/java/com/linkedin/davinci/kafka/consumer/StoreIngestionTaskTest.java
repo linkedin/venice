@@ -751,9 +751,6 @@ public abstract class StoreIngestionTaskTest {
     version.setPartitionerConfig(partitionerConfig);
     doReturn(partitionerConfig).when(mockStore).getPartitionerConfig();
 
-    version.setLeaderFollowerModelEnabled(true);
-    doReturn(true).when(mockStore).isLeaderFollowerModelEnabled();
-
     version.setIncrementalPushEnabled(incrementalPushEnabled);
     doReturn(incrementalPushEnabled).when(mockStore).isIncrementalPushEnabled();
 
@@ -2969,7 +2966,6 @@ public abstract class StoreIngestionTaskTest {
     doReturn(false).when(mockStore).isHybridStoreDiskQuotaEnabled();
     doReturn(Optional.of(mockVersion)).when(mockStore).getVersion(1);
     doReturn(activeActive).when(mockVersion).isActiveActiveReplicationEnabled();
-    doReturn(!activeActive).when(mockVersion).isLeaderFollowerModelEnabled();
 
     Properties mockKafkaConsumerProperties = mock(Properties.class);
     doReturn("localhost").when(mockKafkaConsumerProperties)

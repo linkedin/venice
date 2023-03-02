@@ -125,18 +125,8 @@ public class VersionImpl implements Version {
   }
 
   @Override
-  public boolean isLeaderFollowerModelEnabled() {
-    return this.storeVersion.leaderFollowerModelEnabled;
-  }
-
-  @Override
   public boolean isNativeReplicationEnabled() {
     return this.storeVersion.nativeReplicationEnabled;
-  }
-
-  @Override
-  public void setLeaderFollowerModelEnabled(boolean leaderFollowerModelEnabled) {
-    this.storeVersion.leaderFollowerModelEnabled = leaderFollowerModelEnabled;
   }
 
   @Override
@@ -370,10 +360,10 @@ public class VersionImpl implements Version {
   public String toString() {
     return "Version{" + "storeName='" + getStoreName() + '\'' + ", number=" + getNumber() + ", createdTime="
         + getCreatedTime() + ", status=" + getStatus() + ", pushJobId='" + getPushJobId() + '\''
-        + ", compressionStrategy='" + getCompressionStrategy() + '\'' + ", leaderFollowerModelEnabled="
-        + isLeaderFollowerModelEnabled() + ", pushType=" + getPushType() + ", partitionCount=" + getPartitionCount()
-        + ", partitionerConfig=" + getPartitionerConfig() + ", nativeReplicationEnabled=" + isNativeReplicationEnabled()
-        + ", pushStreamSourceAddress=" + getPushStreamSourceAddress() + ", replicationFactor=" + getReplicationFactor()
+        + ", compressionStrategy='" + getCompressionStrategy() + '\'' + ", pushType=" + getPushType()
+        + ", partitionCount=" + getPartitionCount() + ", partitionerConfig=" + getPartitionerConfig()
+        + ", nativeReplicationEnabled=" + isNativeReplicationEnabled() + ", pushStreamSourceAddress="
+        + getPushStreamSourceAddress() + ", replicationFactor=" + getReplicationFactor()
         + ", nativeReplicationSourceFabric=" + getNativeReplicationSourceFabric() + ", incrementalPushEnabled="
         + isIncrementalPushEnabled() + ", useVersionLevelIncrementalPushEnabled="
         + isUseVersionLevelIncrementalPushEnabled() + ", hybridConfig=" + getHybridStoreConfig()
@@ -423,7 +413,6 @@ public class VersionImpl implements Version {
         getDataRecoveryVersionConfig());
     clonedVersion.setStatus(getStatus());
     clonedVersion.setCompressionStrategy(getCompressionStrategy());
-    clonedVersion.setLeaderFollowerModelEnabled(isLeaderFollowerModelEnabled());
     clonedVersion.setChunkingEnabled(isChunkingEnabled());
     clonedVersion.setRmdChunkingEnabled(isRmdChunkingEnabled());
     clonedVersion.setPushType(getPushType());
