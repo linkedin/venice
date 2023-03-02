@@ -1756,7 +1756,7 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public Map<String, Integer> getCurrentVersionsForMultiColos(String clusterName, String storeName) {
     Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
-    return getCurrentVersionForMultiColos(clusterName, storeName, controllerClients);
+    return getCurrentVersionForMultiRegions(clusterName, storeName, controllerClients);
   }
 
   /**
@@ -1778,7 +1778,8 @@ public class VeniceParentHelixAdmin implements Admin {
           response.getStore().getKafkaBrokerUrl());
     }
     // fabricName not present, get the largest version info among the child colos.
-    Map<String, Integer> currentVersionsMap = getCurrentVersionForMultiColos(clusterName, storeName, controllerClients);
+    Map<String, Integer> currentVersionsMap =
+        getCurrentVersionForMultiRegions(clusterName, storeName, controllerClients);
     int largestVersion = Integer.MIN_VALUE;
     String colo = null;
     for (Map.Entry<String, Integer> mapEntry: currentVersionsMap.entrySet()) {
@@ -1831,7 +1832,7 @@ public class VeniceParentHelixAdmin implements Admin {
     return Store.NON_EXISTING_VERSION;
   }
 
-  Map<String, Integer> getCurrentVersionForMultiColos(
+  Map<String, Integer> getCurrentVersionForMultiRegions(
       String clusterName,
       String storeName,
       Map<String, ControllerClient> controllerClients) {

@@ -1994,7 +1994,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   public void testGetCurrentVersionForMultiRegions() {
     int regionCount = 4;
     Map<String, ControllerClient> controllerClientMap = prepareForCurrentVersionTest(regionCount);
-    Map<String, Integer> result = parentAdmin.getCurrentVersionForMultiColos(clusterName, "test", controllerClientMap);
+    Map<String, Integer> result =
+        parentAdmin.getCurrentVersionForMultiRegions(clusterName, "test", controllerClientMap);
     Assert.assertEquals(result.size(), regionCount, "Should return the current versions for all regions.");
     for (int i = 0; i < regionCount; i++) {
       Assert.assertEquals(result.get("region" + i).intValue(), i);
@@ -2011,7 +2012,8 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(errorResponse).when(errorClient).getStore(anyString());
     controllerClientMap.put("region4", errorClient);
 
-    Map<String, Integer> result = parentAdmin.getCurrentVersionForMultiColos(clusterName, "test", controllerClientMap);
+    Map<String, Integer> result =
+        parentAdmin.getCurrentVersionForMultiRegions(clusterName, "test", controllerClientMap);
     Assert.assertEquals(result.size(), regionCount, "Should return the current versions for all regions.");
     for (int i = 0; i < regionCount - 1; i++) {
       Assert.assertEquals(result.get("region" + i).intValue(), i);
