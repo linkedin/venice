@@ -27,12 +27,12 @@ import org.apache.commons.lang3.Validate;
  */
 @Threadsafe
 public class RmdSerDe {
-  private final MapKeyStringAnnotatedStoreSchemaCache annotatedStoreSchemaCache;
+  private final StringAnnotatedStoreSchemaCache annotatedStoreSchemaCache;
   private final int rmdVersionId;
   private final Map<Integer, Schema> valueSchemaIdToRmdSchemaMap;
   private final Map<WriterReaderSchemaIDs, RecordDeserializer<GenericRecord>> schemaIdToDeserializerMap;
 
-  public RmdSerDe(MapKeyStringAnnotatedStoreSchemaCache annotatedStoreSchemaCache, int rmdVersionId) {
+  public RmdSerDe(StringAnnotatedStoreSchemaCache annotatedStoreSchemaCache, int rmdVersionId) {
     this.annotatedStoreSchemaCache = annotatedStoreSchemaCache;
     this.rmdVersionId = rmdVersionId;
     this.valueSchemaIdToRmdSchemaMap = new VeniceConcurrentHashMap<>();

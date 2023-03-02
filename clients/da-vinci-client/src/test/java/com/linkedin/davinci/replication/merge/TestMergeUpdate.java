@@ -154,6 +154,50 @@ public class TestMergeUpdate extends TestMergeBase {
   }
 
   @Test
+  public void testAddEntriesToList() {
+    GenericRecord partialUpdateRecord = new UpdateBuilderImpl(schemaSet.getUpdateSchema()).setElementsToAddToListField(
+        STRING_ARRAY_FIELD_NAME,
+        Arrays.asList("key1", "key2", "key3", "key4", "key5", "key6")).build();
+
+    GenericRecord oldValueRecord = createValueRecord(r -> {
+      r.put(REGULAR_FIELD_NAME, "defaultVenice");
+      r.put(STRING_ARRAY_FIELD_NAME, Arrays.asList("key1", "key2", "key3"));
+      r.put(INT_MAP_FIELD_NAME, new IndexedHashMap<>());
+    });
+    GenericRecord oldRmdRecord = initiateFieldLevelRmdRecord(oldValueRecord, 2);
+    GenericRecord timestampRecord = (GenericRecord) oldRmdRecord.get(RmdConstants.TIMESTAMP_FIELD_NAME);
+    GenericRecord fieldTsRecord = (GenericRecord) timestampRecord.get(STRING_ARRAY_FIELD_NAME);
+    fieldTsRecord.put(TOP_LEVEL_TS_FIELD_NAME, 1L);
+    fieldTsRecord.put(PUT_ONLY_PART_LENGTH_FIELD_NAME, 1);
+    fieldTsRecord.put(ACTIVE_ELEM_TS_FIELD_NAME, Arrays.asList(2L, 3L));
+    fieldTsRecord.put(DELETED_ELEM_FIELD_NAME, Arrays.asList("key4", "key5", "key6"));
+    fieldTsRecord.put(DELETED_ELEM_TS_FIELD_NAME, Arrays.asList(1L, 2L, 3L));
+
+    MergeConflictResult result = mergeConflictResolver.update(
+        Lazy.of(() -> serializeValueRecord(oldValueRecord)),
+        new RmdWithValueSchemaId(schemaSet.getValueSchemaId(), RMD_VERSION_ID, oldRmdRecord),
+        serializeUpdateRecord(partialUpdateRecord),
+        schemaSet.getValueSchemaId(),
+        schemaSet.getUpdateSchemaProtocolVersion(),
+        2L,
+        1L,
+        0,
+        0);
+
+    GenericRecord updatedValueRecord = deserializeValueRecord(result.getNewValue());
+    Assert.assertEquals(
+        updatedValueRecord.get(STRING_ARRAY_FIELD_NAME),
+        Arrays.asList(new Utf8("key1"), new Utf8("key2"), new Utf8("key3"), new Utf8("key4")));
+    GenericRecord updatedRmdTsRecord = (GenericRecord) result.getRmdRecord().get(RmdConstants.TIMESTAMP_FIELD_NAME);
+    GenericRecord updatedFieldTsRecord = (GenericRecord) updatedRmdTsRecord.get(STRING_ARRAY_FIELD_NAME);
+    Assert.assertEquals(updatedFieldTsRecord.get(TOP_LEVEL_TS_FIELD_NAME), 1L);
+    Assert.assertEquals(updatedFieldTsRecord.get(ACTIVE_ELEM_TS_FIELD_NAME), Arrays.asList(2L, 2L, 2L, 2L));
+    Assert.assertEquals(updatedFieldTsRecord.get(PUT_ONLY_PART_LENGTH_FIELD_NAME), 0);
+    Assert.assertEquals(updatedFieldTsRecord.get(DELETED_ELEM_FIELD_NAME), Arrays.asList("key5", "key6"));
+    fieldTsRecord.put(DELETED_ELEM_TS_FIELD_NAME, Arrays.asList(2L, 3L));
+  }
+
+  @Test
   public void testAddEntriesToMap() {
     IndexedHashMap<String, Integer> hashMap = new IndexedHashMap<>();
     hashMap.put("key1", 2);

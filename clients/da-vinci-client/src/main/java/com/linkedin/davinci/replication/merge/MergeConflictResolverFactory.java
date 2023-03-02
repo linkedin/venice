@@ -18,7 +18,7 @@ public class MergeConflictResolverFactory {
   }
 
   public MergeConflictResolver createMergeConflictResolver(
-      MapKeyStringAnnotatedStoreSchemaCache annotatedReadOnlySchemaRepository,
+      StringAnnotatedStoreSchemaCache annotatedReadOnlySchemaRepository,
       RmdSerDe rmdSerDe,
       String storeName) {
     MergeRecordHelper mergeRecordHelper = new CollectionTimestampMergeRecordHelper();

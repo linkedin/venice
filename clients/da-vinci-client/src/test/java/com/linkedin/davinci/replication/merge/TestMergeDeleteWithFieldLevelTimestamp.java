@@ -20,12 +20,12 @@ import org.testng.annotations.Test;
 public class TestMergeDeleteWithFieldLevelTimestamp extends TestMergeConflictResolver {
   @Test
   public void testDeleteIgnored() {
-    MapKeyStringAnnotatedStoreSchemaCache mapKeyStringAnnotatedStoreSchemaCache =
-        new MapKeyStringAnnotatedStoreSchemaCache(storeName, schemaRepository);
+    StringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
+        new StringAnnotatedStoreSchemaCache(storeName, schemaRepository);
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
-            mapKeyStringAnnotatedStoreSchemaCache,
-            new RmdSerDe(mapKeyStringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
+            stringAnnotatedStoreSchemaCache,
+            new RmdSerDe(stringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
             storeName);
 
     Map<String, Long> fieldNameToTimestampMap = new HashMap<>();
@@ -63,12 +63,12 @@ public class TestMergeDeleteWithFieldLevelTimestamp extends TestMergeConflictRes
     final ByteBuffer oldValueBytes = ByteBuffer.wrap(getSerializer(userSchemaV1).serialize(oldValueRecord));
     ReadOnlySchemaRepository schemaRepository = mock(ReadOnlySchemaRepository.class);
     doReturn(new SchemaEntry(1, userSchemaV1)).when(schemaRepository).getValueSchema(storeName, valueSchemaID);
-    MapKeyStringAnnotatedStoreSchemaCache mapKeyStringAnnotatedStoreSchemaCache =
-        new MapKeyStringAnnotatedStoreSchemaCache(storeName, schemaRepository);
+    StringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
+        new StringAnnotatedStoreSchemaCache(storeName, schemaRepository);
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
-            mapKeyStringAnnotatedStoreSchemaCache,
-            new RmdSerDe(mapKeyStringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
+            stringAnnotatedStoreSchemaCache,
+            new RmdSerDe(stringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
             storeName);
 
     // Case 1: Delete one field with the same delete timestamp.

@@ -1,8 +1,8 @@
 package com.linkedin.davinci.replication.merge;
 
-import static com.linkedin.venice.schema.SchemaUtils.getAnnotatedStringMapDerivedSchemaEntry;
-import static com.linkedin.venice.schema.SchemaUtils.getAnnotatedStringMapRmdSchemaEntry;
-import static com.linkedin.venice.schema.SchemaUtils.getAnnotatedStringMapValueSchemaEntry;
+import static com.linkedin.venice.schema.SchemaUtils.getAnnotatedDerivedSchemaEntry;
+import static com.linkedin.venice.schema.SchemaUtils.getAnnotatedRmdSchemaEntry;
+import static com.linkedin.venice.schema.SchemaUtils.getAnnotatedValueSchemaEntry;
 
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -21,14 +21,14 @@ import java.util.Map;
  * and partial update schema as they are the only usage in merge conflict resolver. Other operations are not supported
  * intentionally to avoid unexpected behavior.
  */
-public class MapKeyStringAnnotatedStoreSchemaCache {
+public class StringAnnotatedStoreSchemaCache {
   private final ReadOnlySchemaRepository internalSchemaRepo;
   private final String storeName;
   private final Map<Integer, SchemaEntry> valueSchemaEntryMapCache = new VeniceConcurrentHashMap<>();
   private final Map<String, DerivedSchemaEntry> partialUpdateSchemaEntryMapCache = new VeniceConcurrentHashMap<>();
   private final Map<String, RmdSchemaEntry> rmdSchemaEntryMapCache = new VeniceConcurrentHashMap<>();
 
-  public MapKeyStringAnnotatedStoreSchemaCache(String storeName, ReadOnlySchemaRepository internalSchemaRepo) {
+  public StringAnnotatedStoreSchemaCache(String storeName, ReadOnlySchemaRepository internalSchemaRepo) {
     this.storeName = storeName;
     this.internalSchemaRepo = internalSchemaRepo;
   }
@@ -43,7 +43,7 @@ public class MapKeyStringAnnotatedStoreSchemaCache {
       if (schemaEntry == null) {
         return null;
       }
-      return getAnnotatedStringMapValueSchemaEntry(schemaEntry);
+      return getAnnotatedValueSchemaEntry(schemaEntry);
     });
   }
 
@@ -57,7 +57,7 @@ public class MapKeyStringAnnotatedStoreSchemaCache {
       return null;
     }
     return valueSchemaEntryMapCache
-        .computeIfAbsent(schemaEntry.getId(), k -> getAnnotatedStringMapValueSchemaEntry(schemaEntry));
+        .computeIfAbsent(schemaEntry.getId(), k -> getAnnotatedValueSchemaEntry(schemaEntry));
   }
 
   /**
@@ -67,8 +67,8 @@ public class MapKeyStringAnnotatedStoreSchemaCache {
   public SchemaEntry getSupersetSchema() {
     SchemaEntry schemaEntry = internalSchemaRepo.getSupersetSchema(storeName);
     if (schemaEntry != null) {
-      SchemaEntry annotatedSchemaEntry = valueSchemaEntryMapCache
-          .computeIfAbsent(schemaEntry.getId(), k -> getAnnotatedStringMapValueSchemaEntry(schemaEntry));
+      SchemaEntry annotatedSchemaEntry =
+          valueSchemaEntryMapCache.computeIfAbsent(schemaEntry.getId(), k -> getAnnotatedValueSchemaEntry(schemaEntry));
       return annotatedSchemaEntry;
     } else {
       return null;
@@ -87,7 +87,7 @@ public class MapKeyStringAnnotatedStoreSchemaCache {
       if (derivedSchemaEntry == null) {
         return null;
       }
-      return getAnnotatedStringMapDerivedSchemaEntry(derivedSchemaEntry);
+      return getAnnotatedDerivedSchemaEntry(derivedSchemaEntry);
     });
   }
 
@@ -99,7 +99,7 @@ public class MapKeyStringAnnotatedStoreSchemaCache {
       if (rmdSchemaEntry == null) {
         return null;
       }
-      return getAnnotatedStringMapRmdSchemaEntry(rmdSchemaEntry);
+      return getAnnotatedRmdSchemaEntry(rmdSchemaEntry);
     });
 
   }

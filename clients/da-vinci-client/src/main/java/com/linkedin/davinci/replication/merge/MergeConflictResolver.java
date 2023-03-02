@@ -29,6 +29,7 @@ import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.lang3.Validate;
+import org.apache.logging.log4j.LogManager;
 
 
 /**
@@ -42,7 +43,7 @@ import org.apache.commons.lang3.Validate;
 @Threadsafe
 public class MergeConflictResolver {
   private final String storeName;
-  private final MapKeyStringAnnotatedStoreSchemaCache storeSchemaCache;
+  private final StringAnnotatedStoreSchemaCache storeSchemaCache;
   private final Function<Integer, GenericRecord> newRmdCreator;
   private final MergeGenericRecord mergeGenericRecord;
   private final MergeByteBuffer mergeByteBuffer;
@@ -50,7 +51,7 @@ public class MergeConflictResolver {
   private final RmdSerDe rmdSerde;
 
   MergeConflictResolver(
-      MapKeyStringAnnotatedStoreSchemaCache storeSchemaCache,
+      StringAnnotatedStoreSchemaCache storeSchemaCache,
       String storeName,
       Function<Integer, GenericRecord> newRmdCreator,
       MergeGenericRecord mergeGenericRecord,
@@ -543,6 +544,7 @@ public class MergeConflictResolver {
       oldValueSchemaID = supersetValueSchemaEntry.getId();
     }
     Schema oldValueSchema = getValueSchema(oldValueSchemaID);
+    LogManager.getLogger().info("DEBUGGING: " + oldValueSchema);
     ValueAndRmd<GenericRecord> updatedValueAndRmd = mergeGenericRecord.update(
         oldValueAndRmd,
         Lazy.of(() -> writeComputeRecord),

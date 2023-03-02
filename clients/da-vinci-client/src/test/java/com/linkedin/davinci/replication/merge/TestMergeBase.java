@@ -29,7 +29,7 @@ public class TestMergeBase {
   protected static final String storeName = "testStore";
   protected ValueAndDerivedSchemas schemaSet;
   protected ReadOnlySchemaRepository schemaRepository;
-  protected MapKeyStringAnnotatedStoreSchemaCache annotatedStoreSchemaCache;
+  protected StringAnnotatedStoreSchemaCache annotatedStoreSchemaCache;
   protected MergeConflictResolver mergeConflictResolver;
   protected RmdSerDe rmdSerDe;
 
@@ -39,7 +39,7 @@ public class TestMergeBase {
     schemaSet = new ValueAndDerivedSchemas(storeName, 1, "avro/PartialUpdateWithMapField.avsc");
     setupSchemaRepoSchemaMock(schemaRepository, schemaSet);
     setupSchemaRepoSupersetSchemaMock(schemaRepository, schemaSet);
-    annotatedStoreSchemaCache = new MapKeyStringAnnotatedStoreSchemaCache(storeName, schemaRepository);
+    annotatedStoreSchemaCache = new StringAnnotatedStoreSchemaCache(storeName, schemaRepository);
     rmdSerDe = new RmdSerDe(annotatedStoreSchemaCache, RMD_SCHEMA_PROTOCOL_VERSION);
     mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(annotatedStoreSchemaCache, rmdSerDe, storeName);

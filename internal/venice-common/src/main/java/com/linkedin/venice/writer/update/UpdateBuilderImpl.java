@@ -15,6 +15,7 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.lang3.Validate;
+import org.apache.logging.log4j.LogManager;
 
 
 @NotThreadsafe
@@ -178,7 +179,14 @@ public class UpdateBuilderImpl implements UpdateBuilder {
     if (updateRecord.get(listFieldName) != null) {
       return (GenericRecord) updateRecord.get(listFieldName);
     }
-    Schema listMergeRecordSchema = updateRecord.getSchema().getField(listFieldName).schema().getTypes().get(1);
+    Schema listMergeRecordSchema = null;
+    for (Schema unionBranchSchema: updateRecord.getSchema().getField(listFieldName).schema().getTypes()) {
+      LogManager.getLogger().info("DEBUGGING: " + unionBranchSchema.toString(true));
+      if (unionBranchSchema.getType().equals(Schema.Type.RECORD) && !unionBranchSchema.getFields().isEmpty()) {
+        listMergeRecordSchema = unionBranchSchema;
+        break;
+      }
+    }
     GenericRecord listMergeRecord = new GenericData.Record(listMergeRecordSchema);
     listMergeRecord.put(WriteComputeConstants.SET_UNION, Collections.emptyList());
     listMergeRecord.put(WriteComputeConstants.SET_DIFF, Collections.emptyList());
@@ -191,7 +199,13 @@ public class UpdateBuilderImpl implements UpdateBuilder {
     if (updateRecord.get(mapFieldName) != null) {
       return (GenericRecord) updateRecord.get(mapFieldName);
     }
-    Schema mapMergeRecordSchema = updateRecord.getSchema().getField(mapFieldName).schema().getTypes().get(1);
+    Schema mapMergeRecordSchema = null;
+    for (Schema unionBranchSchema: updateRecord.getSchema().getField(mapFieldName).schema().getTypes()) {
+      if (unionBranchSchema.getType().equals(Schema.Type.RECORD) && !unionBranchSchema.getFields().isEmpty()) {
+        mapMergeRecordSchema = unionBranchSchema;
+        break;
+      }
+    }
     GenericRecord mapMergeRecord = new GenericData.Record(mapMergeRecordSchema);
     mapMergeRecord.put(WriteComputeConstants.MAP_UNION, Collections.emptyMap());
     mapMergeRecord.put(WriteComputeConstants.MAP_DIFF, Collections.emptyList());

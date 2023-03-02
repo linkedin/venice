@@ -38,12 +38,12 @@ public class TestMergeWithValueLevelTimestamp extends TestMergeConflictResolver 
     newValueRecord.put("name", "name10");
     newValueRecord.put("age", 20);
 
-    MapKeyStringAnnotatedStoreSchemaCache mapKeyStringAnnotatedStoreSchemaCache =
-        new MapKeyStringAnnotatedStoreSchemaCache(storeName, schemaRepository);
+    StringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
+        new StringAnnotatedStoreSchemaCache(storeName, schemaRepository);
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
-            mapKeyStringAnnotatedStoreSchemaCache,
-            new RmdSerDe(mapKeyStringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
+            stringAnnotatedStoreSchemaCache,
+            new RmdSerDe(stringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
             storeName);
     ByteBuffer oldBB = serialize(oldValueRecord);
     ByteBuffer newBB = serialize(newValueRecord);
@@ -155,12 +155,12 @@ public class TestMergeWithValueLevelTimestamp extends TestMergeConflictResolver 
     timestampRecord.put(0, 20L);
     timestampRecord.put(1, new ArrayList<Long>());
 
-    MapKeyStringAnnotatedStoreSchemaCache mapKeyStringAnnotatedStoreSchemaCache =
-        new MapKeyStringAnnotatedStoreSchemaCache(storeName, schemaRepository);
+    StringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
+        new StringAnnotatedStoreSchemaCache(storeName, schemaRepository);
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
-            mapKeyStringAnnotatedStoreSchemaCache,
-            new RmdSerDe(mapKeyStringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
+            stringAnnotatedStoreSchemaCache,
+            new RmdSerDe(stringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
             storeName);
     // new MergeConflictResolver(schemaRepository, storeName, valueSchemaID -> new GenericData.Record(rmdSchemaV1));
 
@@ -227,12 +227,12 @@ public class TestMergeWithValueLevelTimestamp extends TestMergeConflictResolver 
       writeTs.add((long) (i + 15));
     }
 
-    MapKeyStringAnnotatedStoreSchemaCache mapKeyStringAnnotatedStoreSchemaCache =
-        new MapKeyStringAnnotatedStoreSchemaCache(storeName, schemaRepository);
+    StringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
+        new StringAnnotatedStoreSchemaCache(storeName, schemaRepository);
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
-            mapKeyStringAnnotatedStoreSchemaCache,
-            new RmdSerDe(mapKeyStringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
+            stringAnnotatedStoreSchemaCache,
+            new RmdSerDe(stringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
             storeName);
     // new MergeConflictResolver(schemaRepository, storeName, null);
     MergeConflictResult mergeConflictResult = null;

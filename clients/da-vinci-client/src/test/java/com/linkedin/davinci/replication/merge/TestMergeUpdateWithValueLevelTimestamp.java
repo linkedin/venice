@@ -1,6 +1,6 @@
 package com.linkedin.davinci.replication.merge;
 
-import static com.linkedin.venice.schema.SchemaUtils.annotateStringMapInValueSchema;
+import static com.linkedin.venice.schema.SchemaUtils.annotateValueSchema;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.ACTIVE_ELEM_TS_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.DELETED_ELEM_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.DELETED_ELEM_TS_FIELD_NAME;
@@ -62,13 +62,13 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
         .getValueSchema(storeName, oldValueSchemaId);
     doReturn(new SchemaEntry(oldValueSchemaId, personSchemaV1)).when(readOnlySchemaRepository)
         .getSupersetSchema(storeName);
-    MapKeyStringAnnotatedStoreSchemaCache mapKeyStringAnnotatedStoreSchemaCache =
-        new MapKeyStringAnnotatedStoreSchemaCache(storeName, readOnlySchemaRepository);
+    StringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
+        new StringAnnotatedStoreSchemaCache(storeName, readOnlySchemaRepository);
     // Update happens below
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
-            mapKeyStringAnnotatedStoreSchemaCache,
-            new RmdSerDe(mapKeyStringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
+            stringAnnotatedStoreSchemaCache,
+            new RmdSerDe(stringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
             storeName);
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
         Lazy.of(() -> null),
@@ -113,13 +113,13 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
         .getValueSchema(storeName, oldValueSchemaId);
     doReturn(new SchemaEntry(incomingValueSchemaId, personSchemaV2)).when(readOnlySchemaRepository)
         .getSupersetSchema(storeName);
-    MapKeyStringAnnotatedStoreSchemaCache mapKeyStringAnnotatedStoreSchemaCache =
-        new MapKeyStringAnnotatedStoreSchemaCache(storeName, readOnlySchemaRepository);
+    StringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
+        new StringAnnotatedStoreSchemaCache(storeName, readOnlySchemaRepository);
     // Update happens below
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
-            mapKeyStringAnnotatedStoreSchemaCache,
-            new RmdSerDe(mapKeyStringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
+            stringAnnotatedStoreSchemaCache,
+            new RmdSerDe(stringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
             storeName);
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
         Lazy.of(() -> null),
@@ -182,13 +182,13 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
     doReturn(new SchemaEntry(oldValueSchemaId, personSchemaV1)).when(readOnlySchemaRepository)
         .getSupersetSchema(storeName);
 
-    MapKeyStringAnnotatedStoreSchemaCache mapKeyStringAnnotatedStoreSchemaCache =
-        new MapKeyStringAnnotatedStoreSchemaCache(storeName, readOnlySchemaRepository);
+    StringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
+        new StringAnnotatedStoreSchemaCache(storeName, readOnlySchemaRepository);
     // Update happens below
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
-            mapKeyStringAnnotatedStoreSchemaCache,
-            new RmdSerDe(mapKeyStringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
+            stringAnnotatedStoreSchemaCache,
+            new RmdSerDe(stringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
             storeName);
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
         Lazy.of(() -> oldValueBytes),
@@ -292,13 +292,13 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
     doReturn(schemaEntry).when(readOnlySchemaRepository).getValueSchema(storeName, oldValueSchemaId);
     doReturn(schemaEntry).when(readOnlySchemaRepository).getSupersetSchema(storeName);
 
-    MapKeyStringAnnotatedStoreSchemaCache mapKeyStringAnnotatedStoreSchemaCache =
-        new MapKeyStringAnnotatedStoreSchemaCache(storeName, readOnlySchemaRepository);
+    StringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
+        new StringAnnotatedStoreSchemaCache(storeName, readOnlySchemaRepository);
     // Update happens below
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
-            mapKeyStringAnnotatedStoreSchemaCache,
-            new RmdSerDe(mapKeyStringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
+            stringAnnotatedStoreSchemaCache,
+            new RmdSerDe(stringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
             storeName);
 
     final int newColoID = 3;
@@ -357,7 +357,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
     Assert.assertNotNull(mergeConflictResult.getNewValue());
     ByteBuffer updatedValueBytes = mergeConflictResult.getNewValue();
     // Use annotated value schema to deserialize record and the map field will be keyed in Java String type.
-    Schema annotatedSchema = annotateStringMapInValueSchema(personSchemaV1);
+    Schema annotatedSchema = annotateValueSchema(personSchemaV1);
     GenericRecord updatedValueRecord =
         MapOrderingPreservingSerDeFactory.getDeserializer(annotatedSchema, annotatedSchema)
             .deserialize(updatedValueBytes.array());
@@ -457,13 +457,13 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
         .when(readOnlySchemaRepository)
         .getReplicationMetadataSchema(storeName, supersetValueSchemaId, RMD_VERSION_ID);
 
-    MapKeyStringAnnotatedStoreSchemaCache mapKeyStringAnnotatedStoreSchemaCache =
-        new MapKeyStringAnnotatedStoreSchemaCache(storeName, readOnlySchemaRepository);
+    StringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
+        new StringAnnotatedStoreSchemaCache(storeName, readOnlySchemaRepository);
     // Update happens below
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
-            mapKeyStringAnnotatedStoreSchemaCache,
-            new RmdSerDe(mapKeyStringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
+            stringAnnotatedStoreSchemaCache,
+            new RmdSerDe(stringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
             storeName);
     final int newValueColoID = 3;
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
@@ -604,13 +604,13 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
         .when(readOnlySchemaRepository)
         .getReplicationMetadataSchema(storeName, supersetValueSchemaId, RMD_VERSION_ID);
 
-    MapKeyStringAnnotatedStoreSchemaCache mapKeyStringAnnotatedStoreSchemaCache =
-        new MapKeyStringAnnotatedStoreSchemaCache(storeName, readOnlySchemaRepository);
+    StringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
+        new StringAnnotatedStoreSchemaCache(storeName, readOnlySchemaRepository);
     // Update happens below
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
-            mapKeyStringAnnotatedStoreSchemaCache,
-            new RmdSerDe(mapKeyStringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
+            stringAnnotatedStoreSchemaCache,
+            new RmdSerDe(stringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
             storeName);
     final int newValueColoID = 3;
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(

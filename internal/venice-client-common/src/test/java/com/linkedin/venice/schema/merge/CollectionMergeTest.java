@@ -1,6 +1,9 @@
 package com.linkedin.venice.schema.merge;
 
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import static com.linkedin.venice.schema.Utils.loadSchemaFileAsString;
+
+import com.linkedin.venice.schema.AvroSchemaParseUtils;
+import com.linkedin.venice.schema.rmd.RmdConstants;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp;
 import com.linkedin.venice.utils.IndexedHashMap;
@@ -12,30 +15,23 @@ import java.util.Map;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.logging.log4j.LogManager;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
 public class CollectionMergeTest {
-  /**
-   * A schema that contains a list field.
-   */
-  private static final Schema VALUE_SCHEMA = AvroCompatibilityHelper.parse(
-      "{" + "   \"type\" : \"record\"," + "   \"namespace\" : \"com.linkedin.avro\"," + "   \"name\" : \"TestRecord\","
-          + "   \"fields\" : ["
-          + "      { \"name\" : \"Items\" , \"type\" : {\"type\" : \"array\", \"items\" : \"int\"}, \"default\" : [] },"
-          + "      { \"name\" : \"PetNameToAge\" , \"type\" : [\"null\" , {\"type\" : \"map\", \"values\" : \"int\"}], \"default\" : null }"
-          + "   ]" + "}");
-  protected static final String LIST_FIELD_NAME = "Items";
-  protected static final String MAP_FIELD_NAME = "PetNameToAge";
-  private static final Schema RMD_TIMESTAMP_SCHEMA =
-      RmdSchemaGenerator.generateMetadataSchema(VALUE_SCHEMA).getField("timestamp").schema().getTypes().get(1);
+  private static final Schema VALUE_SCHEMA =
+      AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(loadSchemaFileAsString("testMergeSchema.avsc"));
+  protected static final String LIST_FIELD_NAME = "StringListField";
+  protected static final String MAP_FIELD_NAME = "NullableIntMapField";
+  private static final Schema RMD_TIMESTAMP_SCHEMA = RmdSchemaGenerator.generateMetadataSchema(VALUE_SCHEMA)
+      .getField(RmdConstants.TIMESTAMP_FIELD_NAME)
+      .schema()
+      .getTypes()
+      .get(1);
 
   @Test
   public void testHandleCollectionMergeMapOp() {
-
-    LogManager.getLogger().info("DEBUGGING: " + RMD_TIMESTAMP_SCHEMA.toString(true));
     GenericRecord currValueRecord = new GenericData.Record(VALUE_SCHEMA);
     CollectionTimestampBuilder collectionTimestampBuilder =
         new CollectionTimestampBuilder(Schema.create(Schema.Type.LONG));
@@ -81,4 +77,34 @@ public class CollectionMergeTest {
     expectedMap.put("key5", 2);
     Assert.assertEquals(updatedMap, expectedMap);
   }
+
+  @Test
+  public void testHandleCollectionMergeListOp() {
+    GenericRecord currValueRecord = new GenericData.Record(VALUE_SCHEMA);
+    CollectionTimestampBuilder collectionTimestampBuilder =
+        new CollectionTimestampBuilder(Schema.create(Schema.Type.STRING));
+    collectionTimestampBuilder.setTopLevelTimestamps(1L);
+    collectionTimestampBuilder.setTopLevelColoID(1);
+    collectionTimestampBuilder.setPutOnlyPartLength(1);
+    collectionTimestampBuilder.setActiveElementsTimestamps(Arrays.asList(2L, 3L));
+    collectionTimestampBuilder.setDeletedElementTimestamps(Arrays.asList(1L, 2L, 3L));
+    collectionTimestampBuilder
+        .setDeletedElements(Schema.create(Schema.Type.STRING), Arrays.asList("key4", "key5", "key6"));
+    collectionTimestampBuilder.setCollectionTimestampSchema(RMD_TIMESTAMP_SCHEMA.getField(LIST_FIELD_NAME).schema());
+    CollectionRmdTimestamp<Object> collectionMetadata =
+        new CollectionRmdTimestamp<>(collectionTimestampBuilder.build());
+    SortBasedCollectionFieldOpHandler handlerToTest =
+        new SortBasedCollectionFieldOpHandler(AvroCollectionElementComparator.INSTANCE);
+
+    // Test not-put-only state.
+    currValueRecord.put(LIST_FIELD_NAME, Arrays.asList("key1", "key2", "key3"));
+
+    List<Object> toAddItems = Arrays.asList("key1", "key2", "key3", "key4", "key5", "key6");
+    List<Object> toRemoveItems = new LinkedList<>();
+    handlerToTest.handleModifyList(2L, collectionMetadata, currValueRecord, LIST_FIELD_NAME, toAddItems, toRemoveItems);
+
+    List<String> updatedMap = (List<String>) currValueRecord.get(LIST_FIELD_NAME);
+    Assert.assertEquals(updatedMap, Arrays.asList("key1", "key2", "key3", "key4"));
+  }
+
 }
