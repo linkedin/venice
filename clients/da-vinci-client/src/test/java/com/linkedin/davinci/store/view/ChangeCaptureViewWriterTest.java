@@ -82,7 +82,7 @@ public class ChangeCaptureViewWriterTest {
     Store mockStore = Mockito.mock(Store.class);
     VeniceProperties props = new VeniceProperties();
     Object2IntMap<String> urlMappingMap = new Object2IntOpenHashMap<>();
-    // Add ID's to the colo's to name the sort order of the RMD
+    // Add ID's to the region's to name the sort order of the RMD
     urlMappingMap.put(LTX_1, 0);
     urlMappingMap.put(LVA_1, 1);
     urlMappingMap.put(LOR_1, 2);

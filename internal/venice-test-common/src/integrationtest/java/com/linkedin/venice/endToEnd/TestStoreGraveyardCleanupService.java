@@ -38,7 +38,7 @@ public class TestStoreGraveyardCleanupService {
 
   private List<VeniceMultiClusterWrapper> childDatacenters;
   private List<VeniceControllerWrapper> parentControllers;
-  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiColoMultiClusterWrapper;
+  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
 
   @BeforeClass
   public void setUp() {
@@ -50,7 +50,7 @@ public class TestStoreGraveyardCleanupService {
     parentControllerProperties.put(CONTROLLER_STORE_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MINUTES, 0);
     parentControllerProperties.put(CONTROLLER_STORE_GRAVEYARD_CLEANUP_DELAY_MINUTES, -1);
 
-    multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
+    multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
         NUMBER_OF_CLUSTERS,
         1,
@@ -63,13 +63,13 @@ public class TestStoreGraveyardCleanupService {
         Optional.of(new VeniceProperties(serverProperties)),
         false);
 
-    childDatacenters = multiColoMultiClusterWrapper.getChildRegions();
-    parentControllers = multiColoMultiClusterWrapper.getParentControllers();
+    childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
+    parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
   }
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    multiColoMultiClusterWrapper.close();
+    multiRegionMultiClusterWrapper.close();
   }
 
   @Test(timeOut = TEST_TIMEOUT)

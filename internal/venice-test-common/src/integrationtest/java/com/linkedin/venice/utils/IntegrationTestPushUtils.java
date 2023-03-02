@@ -58,12 +58,12 @@ import org.testng.Assert;
 
 public class IntegrationTestPushUtils {
   public static Properties defaultVPJProps(VeniceClusterWrapper veniceCluster, String inputDirPath, String storeName) {
-    Map<String, String> childColoNamesToZkAddress =
+    Map<String, String> childRegionNamesToZkAddress =
         Collections.singletonMap(veniceCluster.getRegionName(), veniceCluster.getZk().getAddress());
     return TestWriteUtils.defaultVPJPropsWithD2Routing(
         null,
         null,
-        childColoNamesToZkAddress,
+        childRegionNamesToZkAddress,
         VeniceControllerWrapper.PARENT_D2_SERVICE_NAME,
         VeniceControllerWrapper.D2_SERVICE_NAME,
         inputDirPath,
@@ -81,12 +81,12 @@ public class IntegrationTestPushUtils {
       VeniceMultiClusterWrapper veniceMultiCluster,
       String inputDirPath,
       String storeName) {
-    Map<String, String> childColoNamesToZkAddress = Collections
+    Map<String, String> childRegionNamesToZkAddress = Collections
         .singletonMap(veniceMultiCluster.getRegionName(), veniceMultiCluster.getZkServerWrapper().getAddress());
     return TestWriteUtils.defaultVPJPropsWithD2Routing(
         null,
         null,
-        childColoNamesToZkAddress,
+        childRegionNamesToZkAddress,
         VeniceControllerWrapper.PARENT_D2_SERVICE_NAME,
         VeniceControllerWrapper.D2_SERVICE_NAME,
         inputDirPath,
@@ -94,22 +94,22 @@ public class IntegrationTestPushUtils {
   }
 
   public static Properties defaultVPJProps(
-      VeniceTwoLayerMultiRegionMultiClusterWrapper multiColoMultiClusterWrapper,
+      VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper,
       String inputDirPath,
       String storeName) {
-    String parentColoZkAddress = multiColoMultiClusterWrapper.getZkServerWrapper().getAddress();
-    String parentColoName = multiColoMultiClusterWrapper.getParentRegionName();
+    String parentRegionZkAddress = multiRegionMultiClusterWrapper.getZkServerWrapper().getAddress();
+    String parentRegionName = multiRegionMultiClusterWrapper.getParentRegionName();
 
-    Map<String, String> childColoNamesToZkAddress = multiColoMultiClusterWrapper.getChildRegions()
+    Map<String, String> childRegionNamesToZkAddress = multiRegionMultiClusterWrapper.getChildRegions()
         .stream()
         .collect(
             Collectors.toMap(
-                veniceColo -> veniceColo.getRegionName(),
-                veniceColo -> veniceColo.getZkServerWrapper().getAddress()));
+                veniceRegion -> veniceRegion.getRegionName(),
+                veniceRegion -> veniceRegion.getZkServerWrapper().getAddress()));
     return TestWriteUtils.defaultVPJPropsWithD2Routing(
-        parentColoName,
-        parentColoZkAddress,
-        childColoNamesToZkAddress,
+        parentRegionName,
+        parentRegionZkAddress,
+        childRegionNamesToZkAddress,
         VeniceControllerWrapper.PARENT_D2_SERVICE_NAME,
         VeniceControllerWrapper.D2_SERVICE_NAME,
         inputDirPath,
@@ -269,11 +269,11 @@ public class IntegrationTestPushUtils {
       final String d2ZkHosts;
       boolean multiRegion = Boolean.parseBoolean(pushJobProps.get(MULTI_REGION).toString());
       if (multiRegion) {
-        String parentControllerColoName = pushJobProps.getProperty(PARENT_CONTROLLER_REGION_NAME);
-        d2ZkHosts = pushJobProps.getProperty(D2_ZK_HOSTS_PREFIX + parentControllerColoName);
+        String parentControllerRegionName = pushJobProps.getProperty(PARENT_CONTROLLER_REGION_NAME);
+        d2ZkHosts = pushJobProps.getProperty(D2_ZK_HOSTS_PREFIX + parentControllerRegionName);
       } else {
-        String childControllerColoName = pushJobProps.getProperty(SOURCE_GRID_FABRIC);
-        d2ZkHosts = pushJobProps.getProperty(D2_ZK_HOSTS_PREFIX + childControllerColoName);
+        String childControllerRegionName = pushJobProps.getProperty(SOURCE_GRID_FABRIC);
+        d2ZkHosts = pushJobProps.getProperty(D2_ZK_HOSTS_PREFIX + childControllerRegionName);
       }
       return D2ControllerClientFactory
           .getControllerClient(d2ServiceName, veniceClusterName, d2ZkHosts, Optional.empty());

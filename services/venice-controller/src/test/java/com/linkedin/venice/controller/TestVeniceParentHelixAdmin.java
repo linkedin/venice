@@ -1447,10 +1447,10 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       ControllerClient client = mock(ControllerClient.class);
       StoreResponse storeResponse = new StoreResponse();
       Store s = TestUtils.createTestStore("s" + i, "test", System.currentTimeMillis());
-      s.setCurrentVersion(i + 4); // child colo current versions 4,5,6
+      s.setCurrentVersion(i + 4); // child region current versions 4,5,6
       storeResponse.setStore(StoreInfo.fromStore(s));
       doReturn(storeResponse).when(client).getStore(anyString());
-      controllerClientMap.put("colo" + i, client);
+      controllerClientMap.put("region" + i, client);
     }
 
     doReturn(controllerClientMap).when(internalAdmin).getControllerClientMap(anyString());
@@ -1465,7 +1465,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     for (int i = 1; i <= 3; ++i) {
       Assert.assertFalse(capturedStore.containsVersion(i));
     }
-    // child colo current versions 4,5,6 are persisted
+    // child region current versions 4,5,6 are persisted
     for (int i = 4; i <= 6; ++i) {
       Assert.assertTrue(capturedStore.containsVersion(i));
     }
@@ -1808,7 +1808,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertEquals(
         updateStore.currentVersion,
         AdminConsumptionTask.IGNORED_CURRENT_VERSION,
-        "As we don't pass any current version into updateStore, a magic version number should be used to prevent current version being overrided in prod colo.");
+        "As we don't pass any current version into updateStore, a magic version number should be used to prevent current version being overrided in prod region.");
     Assert.assertNotNull(
         updateStore.hybridStoreConfig,
         "Hybrid store config should result in something not null in the avro object");
@@ -1991,48 +1991,48 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
-  public void testGetCurrentVersionForMultiColos() {
-    int coloCount = 4;
-    Map<String, ControllerClient> controllerClientMap = prepareForCurrentVersionTest(coloCount);
+  public void testGetCurrentVersionForMultiRegions() {
+    int regionCount = 4;
+    Map<String, ControllerClient> controllerClientMap = prepareForCurrentVersionTest(regionCount);
     Map<String, Integer> result = parentAdmin.getCurrentVersionForMultiColos(clusterName, "test", controllerClientMap);
-    Assert.assertEquals(result.size(), coloCount, "Should return the current versions for all colos.");
-    for (int i = 0; i < coloCount; i++) {
-      Assert.assertEquals(result.get("colo" + i).intValue(), i);
+    Assert.assertEquals(result.size(), regionCount, "Should return the current versions for all regions.");
+    for (int i = 0; i < regionCount; i++) {
+      Assert.assertEquals(result.get("region" + i).intValue(), i);
     }
   }
 
   @Test
-  public void testGetCurrentVersionForMultiColosWithError() {
-    int coloCount = 4;
-    Map<String, ControllerClient> controllerClientMap = prepareForCurrentVersionTest(coloCount - 1);
+  public void testGetCurrentVersionForMultiRegionsWithError() {
+    int regionCount = 4;
+    Map<String, ControllerClient> controllerClientMap = prepareForCurrentVersionTest(regionCount - 1);
     ControllerClient errorClient = mock(ControllerClient.class);
     StoreResponse errorResponse = new StoreResponse();
     errorResponse.setError("Error getting store for testing.");
     doReturn(errorResponse).when(errorClient).getStore(anyString());
-    controllerClientMap.put("colo4", errorClient);
+    controllerClientMap.put("region4", errorClient);
 
     Map<String, Integer> result = parentAdmin.getCurrentVersionForMultiColos(clusterName, "test", controllerClientMap);
-    Assert.assertEquals(result.size(), coloCount, "Should return the current versions for all colos.");
-    for (int i = 0; i < coloCount - 1; i++) {
-      Assert.assertEquals(result.get("colo" + i).intValue(), i);
+    Assert.assertEquals(result.size(), regionCount, "Should return the current versions for all regions.");
+    for (int i = 0; i < regionCount - 1; i++) {
+      Assert.assertEquals(result.get("region" + i).intValue(), i);
     }
     Assert.assertEquals(
-        result.get("colo4").intValue(),
+        result.get("region4").intValue(),
         AdminConsumptionTask.IGNORED_CURRENT_VERSION,
-        "Met an error while querying a current version from a colo, should return -1.");
+        "Met an error while querying a current version from a region, should return -1.");
   }
 
-  private Map<String, ControllerClient> prepareForCurrentVersionTest(int coloCount) {
+  private Map<String, ControllerClient> prepareForCurrentVersionTest(int regionCount) {
     Map<String, ControllerClient> controllerClientMap = new HashMap<>();
 
-    for (int i = 0; i < coloCount; i++) {
+    for (int i = 0; i < regionCount; i++) {
       ControllerClient client = mock(ControllerClient.class);
       StoreResponse storeResponse = new StoreResponse();
       Store s = TestUtils.createTestStore("s" + i, "test", System.currentTimeMillis());
       s.setCurrentVersion(i);
       storeResponse.setStore(StoreInfo.fromStore(s));
       doReturn(storeResponse).when(client).getStore(anyString());
-      controllerClientMap.put("colo" + i, client);
+      controllerClientMap.put("region" + i, client);
     }
     return controllerClientMap;
   }
@@ -2106,7 +2106,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertEquals(currentPush.get(), latestTopic);
     verify(mockParentAdmin, times(2)).getOffLinePushStatus(clusterName, latestTopic);
 
-    // When there is a regular topic and the job status is 'UNKNOWN' in some colo,
+    // When there is a regular topic and the job status is 'UNKNOWN' in some region,
     // but overall status is 'COMPLETED'
     Map<String, String> extraInfo = new HashMap<>();
     extraInfo.put("cluster1", ExecutionStatus.UNKNOWN.toString());
@@ -2118,7 +2118,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertFalse(currentPush.isPresent());
     verify(mockParentAdmin, times(7)).getOffLinePushStatus(clusterName, latestTopic);
 
-    // When there is a regular topic and the job status is 'UNKNOWN' in some colo,
+    // When there is a regular topic and the job status is 'UNKNOWN' in some region,
     // but overall status is 'PROGRESS'
     doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.PROGRESS, extraInfo)).when(mockParentAdmin)
         .getOffLinePushStatus(clusterName, latestTopic);
@@ -2127,7 +2127,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     Assert.assertEquals(currentPush.get(), latestTopic);
     verify(mockParentAdmin, times(12)).getOffLinePushStatus(clusterName, latestTopic);
 
-    // When there is a regular topic and the job status is 'UNKNOWN' in some colo for the first time,
+    // When there is a regular topic and the job status is 'UNKNOWN' in some region for the first time,
     // but overall status is 'PROGRESS'
     doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.PROGRESS, extraInfo)).when(mockParentAdmin)
         .getOffLinePushStatus(clusterName, latestTopic);
