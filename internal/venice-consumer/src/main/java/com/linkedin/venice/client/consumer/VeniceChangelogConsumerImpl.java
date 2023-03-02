@@ -1,10 +1,7 @@
 package com.linkedin.venice.client.consumer;
 
-import static com.linkedin.venice.schema.rmd.RmdConstants.*;
-
 import com.linkedin.venice.client.change.capture.protocol.RecordChangeEvent;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
-import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.validation.UnsupportedMessageTypeException;
@@ -26,7 +23,6 @@ import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
-import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.views.ChangeCaptureView;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -35,12 +31,11 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericData;
-import org.apache.avro.generic.GenericRecord;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -52,31 +47,27 @@ import org.apache.logging.log4j.Logger;
 
 public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsumer<K, V> {
   private static final Logger LOGGER = LogManager.getLogger(VeniceChangelogConsumerImpl.class);
-  private final String storeName;
-  private final Consumer<KafkaKey, KafkaMessageEnvelope> kafkaConsumer;
-  private String currentTopic;
   private final int partitionCount;
-  private final SchemaReader schemaReader;
+  protected final SchemaReader schemaReader;
   private final String viewClassName;
   private final Set<Integer> subscribedPartitions;
-
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
-  private final RecordDeserializer<K> keyDeserializer;
 
-  private final Map<Integer, List<Long>> currentVersionHighWatermarks = new HashMap<>();
-
+  protected final RecordDeserializer<K> keyDeserializer;
   private final D2ControllerClient d2ControllerClient;
-
-  private final ReplicationMetadataSchemaRepository replicationMetadataSchemaRepository;
-
-  private boolean isReadFromChangeCaptureTopic;
-
   private final RecordDeserializer<RecordChangeEvent> recordChangeDeserializer =
       FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(
           AvroProtocolDefinition.RECORD_CHANGE_EVENT.getCurrentProtocolVersionSchema(),
           RecordChangeEvent.class);
+  protected final ReplicationMetadataSchemaRepository replicationMetadataSchemaRepository;
 
-  private Map<Integer, List<Long>> currentVersionTempHighWatermarks = new HashMap<>();
+  protected final String storeName;
+  protected final int storeCurrentVersion;
+  protected final Consumer<KafkaKey, KafkaMessageEnvelope> kafkaConsumer;
+  protected String currentTopic;
+  protected Map<Integer, List<Long>> currentVersionTempHighWatermarks = new HashMap<>();
+  protected final Map<Integer, List<Long>> currentVersionHighWatermarks = new HashMap<>();
+  protected final int[] currentValuePayloadSize; // This is for recording current value payload.
 
   public VeniceChangelogConsumerImpl(
       ChangelogClientConfig changelogClientConfig,
@@ -90,25 +81,21 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
           "Failed to get store info for store: " + storeName + " with error: " + storeResponse.getError());
     }
     StoreInfo store = storeResponse.getStore();
-    int currentVersion = store.getCurrentVersion();
+    this.storeCurrentVersion = store.getCurrentVersion();
     this.partitionCount = store.getPartitionCount();
+    this.currentValuePayloadSize = new int[partitionCount];
     this.viewClassName = changelogClientConfig.getViewClassName();
-    if (viewClassName.equals(ChangeCaptureView.class.getCanonicalName())) {
-      this.currentTopic =
-          Version.composeKafkaTopic(storeName, currentVersion) + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX;
-      this.isReadFromChangeCaptureTopic = true;
-    } else {
-      this.currentTopic = Version.composeKafkaTopic(storeName, currentVersion);
-      this.isReadFromChangeCaptureTopic = false;
-    }
+    this.currentTopic =
+        Version.composeKafkaTopic(storeName, storeCurrentVersion) + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX;
     this.replicationMetadataSchemaRepository = new ReplicationMetadataSchemaRepository(d2ControllerClient);
     this.schemaReader = changelogClientConfig.getSchemaReader();
     this.subscribedPartitions = new HashSet<>();
     Schema keySchema = schemaReader.getKeySchema();
     this.keyDeserializer = FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(keySchema, keySchema);
     LOGGER.info(
-        "Start a change log consumer client for store: {}, with partition count: {} and view class: {} ",
+        "Start a change log consumer client for store: {}, current version: {}, with partition count: {} and view class: {} ",
         storeName,
+        storeCurrentVersion,
         partitionCount,
         viewClassName);
   }
@@ -141,7 +128,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   private List<TopicPartition> getPartitionListToSubscribe(
       Set<Integer> partitions,
       Set<TopicPartition> topicPartitionSet) {
-    List<TopicPartition> topicPartitionList = new ArrayList<>(topicPartitionSet);
+    List<TopicPartition> topicPartitionList = new ArrayList<>(topicPartitionSet.size());
     for (Integer partition: partitions) {
       TopicPartition topicPartition = new TopicPartition(currentTopic, partition);
       if (!topicPartitionSet.contains(topicPartition)) {
@@ -176,126 +163,73 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   }
 
   @Override
-  public Collection<PubSubMessage> poll(long timeoutInMs) {
-    List<PubSubMessage> pubSubMessages = new ArrayList<>();
+  public Collection<PubSubMessage<K, ChangeEvent<V>, Long>> poll(long timeoutInMs) {
+    List<PubSubMessage<K, ChangeEvent<V>, Long>> pubSubMessages = new ArrayList<>();
     ConsumerRecords<KafkaKey, KafkaMessageEnvelope> consumerRecords = kafkaConsumer.poll(timeoutInMs);
     for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord: consumerRecords) {
       PubSubTopicPartition pubSubTopicPartition = getPubSubTopicPartitionFromConsumerRecord(consumerRecord);
-      Long offset = consumerRecord.offset();
-      int payloadSize = consumerRecord.serializedKeySize() + consumerRecord.serializedValueSize();
-      long timestamp = consumerRecord.timestamp();
       if (consumerRecord.key().isControlMessage()) {
         ControlMessage controlMessage = (ControlMessage) consumerRecord.value().payloadUnion;
-        ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
-        // Stop processing messages from current version once we get version swap message.
-        if (controlMessageType.equals(ControlMessageType.VERSION_SWAP)) {
-          VersionSwap versionSwap = (VersionSwap) controlMessage.controlMessageUnion;
-          handleVersionControlMessage(versionSwap, pubSubTopicPartition);
-          return pubSubMessages;
-        } else if (controlMessageType.equals(ControlMessageType.END_OF_PUSH)) {
-          handleEndOfPushControlMessage(pubSubTopicPartition);
+        if (handleVersionSwapControlMessage(controlMessage, pubSubTopicPartition)) {
           return pubSubMessages;
         }
       } else {
-        byte[] keyBytes = consumerRecord.key().getKey();
-        K currentKey = keyDeserializer.deserialize(keyBytes);
-        if (isReadFromChangeCaptureTopic) {
-          MessageType messageType = MessageType.valueOf(consumerRecord.value());
-          if (messageType.equals(MessageType.PUT)) {
-            Put put = (Put) consumerRecord.value().payloadUnion;
-            byte[] valueBytes = put.putValue.array();
-            RecordChangeEvent recordChangeEvent = recordChangeDeserializer.deserialize(valueBytes);
-            if (!filterRecordByVersionSwapHighWatermarks(
-                recordChangeEvent.replicationCheckpointVector,
-                pubSubTopicPartition)) {
-              PubSubMessage<K, ChangeEvent<V>, Long> pubSubMessage = convertChangeEventToPubSubMessage(
-                  recordChangeEvent,
-                  currentKey,
-                  pubSubTopicPartition,
-                  offset,
-                  timestamp,
-                  payloadSize);
-              if (viewClassName.equals(ChangeCaptureView.class.getCanonicalName())) {
-                pubSubMessages.add(pubSubMessage);
-              } else {
-                pubSubMessages.add(
-                    new ImmutablePubSubMessage(
-                        pubSubMessage.getKey(),
-                        pubSubMessage.getValue().currentValue,
-                        pubSubTopicPartition,
-                        offset,
-                        timestamp,
-                        payloadSize));
-              }
-            }
-          } else {
-            throw new UnsupportedMessageTypeException(
-                "Unrecognized message type for change event message: " + messageType);
-          }
-        } else {
-          PubSubMessage<K, V, Long> pubSubMessage = convertRecordToPubSubMessage(
-              consumerRecord.value(),
-              currentKey,
-              pubSubTopicPartition,
-              offset,
-              timestamp,
-              payloadSize);
-          pubSubMessages.add(pubSubMessage);
-        }
+        Optional<PubSubMessage<K, ChangeEvent<V>, Long>> pubSubMessage =
+            convertConsumerRecordToPubSubChangeEventMessage(consumerRecord, pubSubTopicPartition);
+        pubSubMessage.ifPresent(pubSubMessages::add);
       }
     }
     return pubSubMessages;
   }
 
-  private PubSubMessage<K, V, Long> convertRecordToPubSubMessage(
-      KafkaMessageEnvelope kafkaMessageEnvelope,
-      K currentKey,
-      PubSubTopicPartition pubSubTopicPartition,
-      Long offset,
-      Long timestamp,
-      int payloadSize) {
-    MessageType messageType = MessageType.valueOf(kafkaMessageEnvelope.messageType);
-    V currentValue;
-    switch (messageType) {
-      case PUT:
-        Put put = (Put) kafkaMessageEnvelope.payloadUnion;
-        Schema valueSchema = schemaReader.getValueSchema(put.schemaId);
-        RecordDeserializer<V> valueDeserializer =
-            FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(valueSchema, valueSchema);
-        currentValue = valueDeserializer.deserialize(put.putValue);
-        MultiSchemaResponse.Schema replicationMetadataSchema = replicationMetadataSchemaRepository
-            .getReplicationMetadataSchemaById(storeName, put.replicationMetadataVersionId);
-        RecordDeserializer<GenericRecord> deserializer = SerializerDeserializerFactory
-            .getAvroGenericDeserializer(Schema.parse(replicationMetadataSchema.getSchemaStr()));
-        GenericRecord replicationMetadataRecord = deserializer.deserialize(put.replicationMetadataPayload);
-        GenericData.Array replicationCheckpointVector =
-            (GenericData.Array) replicationMetadataRecord.get(REPLICATION_CHECKPOINT_VECTOR_FIELD);
-        List<Long> offsetVector = new ArrayList<>();
-        for (int i = 0; i < replicationCheckpointVector.size(); i++) {
-          offsetVector.add((Long) replicationCheckpointVector.get(i));
-        }
-        currentVersionTempHighWatermarks.putIfAbsent(pubSubTopicPartition.getPartitionNumber(), offsetVector);
-        currentVersionTempHighWatermarks.computeIfPresent(pubSubTopicPartition.getPartitionNumber(), (k, v) -> {
-          for (int i = 0; i < offsetVector.size(); i++) {
-            if (i < v.size()) {
-              if (offsetVector.get(i) > v.get(i)) {
-                v.set(i, offsetVector.get(i));
-              }
-            } else {
-              v.add(offsetVector.get(i));
-            }
-          }
-          return v;
-        });
-        System.out.println(currentVersionTempHighWatermarks);
-        break;
-      case DELETE:
-        currentValue = null;
-        break;
-      default:
-        throw new UnsupportedMessageTypeException("Unrecognized message type " + messageType);
+  protected Optional<PubSubMessage<K, ChangeEvent<V>, Long>> convertConsumerRecordToPubSubChangeEventMessage(
+      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      PubSubTopicPartition pubSubTopicPartition) {
+    Optional<PubSubMessage<K, ChangeEvent<V>, Long>> pubSubMessage = Optional.empty();
+    Long offset = consumerRecord.offset();
+    long timestamp = consumerRecord.timestamp();
+    int payloadSize = consumerRecord.serializedKeySize() + consumerRecord.serializedValueSize();
+    byte[] keyBytes = consumerRecord.key().getKey();
+    K currentKey = keyDeserializer.deserialize(keyBytes);
+    MessageType messageType = MessageType.valueOf(consumerRecord.value());
+    if (messageType.equals(MessageType.PUT)) {
+      Put put = (Put) consumerRecord.value().payloadUnion;
+      byte[] valueBytes = put.putValue.array();
+      RecordChangeEvent recordChangeEvent = recordChangeDeserializer.deserialize(valueBytes);
+      if (!filterRecordByVersionSwapHighWatermarks(
+          recordChangeEvent.replicationCheckpointVector,
+          pubSubTopicPartition)) {
+        pubSubMessage = Optional.of(
+            convertChangeEventToPubSubMessage(
+                recordChangeEvent,
+                currentKey,
+                pubSubTopicPartition,
+                offset,
+                timestamp,
+                payloadSize));
+      }
+    } else {
+      throw new UnsupportedMessageTypeException("Unrecognized message type for change event message: " + messageType);
     }
-    return new ImmutablePubSubMessage<>(currentKey, currentValue, pubSubTopicPartition, offset, timestamp, payloadSize);
+    return pubSubMessage;
+  }
+
+  protected boolean handleVersionSwapControlMessage(
+      ControlMessage controlMessage,
+      PubSubTopicPartition pubSubTopicPartition) {
+    ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
+    if (controlMessageType.equals(ControlMessageType.VERSION_SWAP)) {
+      VersionSwap versionSwap = (VersionSwap) controlMessage.controlMessageUnion;
+      LOGGER.info(
+          "Obtain version swap message: {} and versions swap high watermarks: {}",
+          versionSwap,
+          versionSwap.getLocalHighWatermarks());
+      String newServingVersionTopic = versionSwap.newServingVersionTopic.toString();
+      currentVersionHighWatermarks.put(pubSubTopicPartition.getPartitionNumber(), versionSwap.getLocalHighWatermarks());
+      switchToNewTopic(newServingVersionTopic + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX);
+      return true;
+    }
+    return false;
   }
 
   private PubSubMessage<K, ChangeEvent<V>, Long> convertChangeEventToPubSubMessage(
@@ -307,6 +241,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       int payloadSize) {
     V currentValue = null;
     if (recordChangeEvent.currentValue != null && recordChangeEvent.currentValue.getSchemaId() > 0) {
+      currentValuePayloadSize[pubSubTopicPartition.getPartitionNumber()] =
+          recordChangeEvent.currentValue.getValue().array().length;
       currentValue = deserializeValueFromBytes(
           recordChangeEvent.currentValue.getValue(),
           recordChangeEvent.currentValue.getSchemaId());
@@ -352,19 +288,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     return false;
   }
 
-  private void handleVersionControlMessage(VersionSwap versionSwap, PubSubTopicPartition pubSubTopicPartition) {
-    LOGGER.info("Obtain version swap message: {}", versionSwap);
-    String newServingVersionTopic = versionSwap.newServingVersionTopic.toString();
-    currentVersionHighWatermarks
-        .computeIfAbsent(pubSubTopicPartition.getPartitionNumber(), k -> versionSwap.getLocalHighWatermarks());
-    if (isReadFromChangeCaptureTopic) {
-      switchToNewTopic(newServingVersionTopic + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX);
-    } else {
-      switchToNewTopic(newServingVersionTopic);
-    }
-  }
-
-  private void switchToNewTopic(String newTopic) {
+  protected void switchToNewTopic(String newTopic) {
     Set<Integer> partitions = new HashSet<>(subscribedPartitions);
     unsubscribe(subscribedPartitions);
     currentTopic = newTopic;
@@ -375,15 +299,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     }
   }
 
-  private void handleEndOfPushControlMessage(PubSubTopicPartition pubSubTopicPartition) {
-    isReadFromChangeCaptureTopic = true;
-    int partitionId = pubSubTopicPartition.getPartitionNumber();
-    currentVersionHighWatermarks.put(partitionId, currentVersionTempHighWatermarks.get(partitionId));
-    // Jump to change capture topic.
-    switchToNewTopic(currentTopic + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX);
-  }
-
-  private PubSubTopicPartition getPubSubTopicPartitionFromConsumerRecord(
+  protected PubSubTopicPartition getPubSubTopicPartitionFromConsumerRecord(
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord) {
     return new PubSubTopicPartitionImpl(
         pubSubTopicRepository.getTopic(consumerRecord.topic()),
@@ -394,23 +310,5 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   public void close() {
     this.unsubscribeAll();
     kafkaConsumer.close();
-  }
-
-  public static class ChangeEvent<T> {
-    private final T previousValue;
-    private final T currentValue;
-
-    public ChangeEvent(T previousValue, T currentValue) {
-      this.previousValue = previousValue;
-      this.currentValue = currentValue;
-    }
-
-    public T getPreviousValue() {
-      return previousValue;
-    }
-
-    public T getCurrentValue() {
-      return currentValue;
-    }
   }
 }

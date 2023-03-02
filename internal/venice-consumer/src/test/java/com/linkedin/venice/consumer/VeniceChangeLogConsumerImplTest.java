@@ -7,7 +7,9 @@ import static org.mockito.Mockito.verify;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.change.capture.protocol.RecordChangeEvent;
 import com.linkedin.venice.client.change.capture.protocol.ValueBytes;
+import com.linkedin.venice.client.consumer.ChangeEvent;
 import com.linkedin.venice.client.consumer.ChangelogClientConfig;
+import com.linkedin.venice.client.consumer.VeniceAfterImageConsumerImpl;
 import com.linkedin.venice.client.consumer.VeniceChangelogConsumerImpl;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
@@ -31,6 +33,7 @@ import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.views.ChangeCaptureView;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -39,6 +42,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -53,7 +57,7 @@ import org.testng.annotations.Test;
 
 
 public class VeniceChangeLogConsumerImplTest {
-  private String storeName = "test_store";
+  private String storeName;
   private RecordSerializer<String> keySerializer;
   private RecordSerializer<String> valueSerializer;
   private Schema rmdSchema;
@@ -61,6 +65,7 @@ public class VeniceChangeLogConsumerImplTest {
 
   @BeforeMethod
   public void setUp() {
+    storeName = Utils.getUniqueString();
     schemaReader = mock(SchemaReader.class);
     Schema keySchema = AvroCompatibilityHelper.parse("\"string\"");
     doReturn(keySchema).when(schemaReader).getKeySchema();
@@ -73,8 +78,7 @@ public class VeniceChangeLogConsumerImplTest {
   }
 
   @Test
-  public void testConsumeBeforeAndAfterImage() {
-
+  public void testConsumeBeforeAndAfterImage() throws ExecutionException, InterruptedException {
     D2ControllerClient d2ControllerClient = mock(D2ControllerClient.class);
     StoreResponse storeResponse = mock(StoreResponse.class);
     StoreInfo store = mock(StoreInfo.class);
@@ -83,7 +87,8 @@ public class VeniceChangeLogConsumerImplTest {
     doReturn(store).when(storeResponse).getStore();
     doReturn(storeResponse).when(d2ControllerClient).getStore(storeName);
 
-    Consumer<KafkaKey, KafkaMessageEnvelope> kafkaConsumer = mock(Consumer.class);
+    Consumer<KafkaKey, KafkaMessageEnvelope> mockKafkaConsumer = mock(Consumer.class);
+    doReturn(new HashSet<>()).when(mockKafkaConsumer).assignment();
     String newVersionTopic = Version.composeKafkaTopic(storeName, 2);
     String oldVersionTopic = Version.composeKafkaTopic(storeName, 1);
     String newChangeCaptureTopic = newVersionTopic + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX;
@@ -93,7 +98,7 @@ public class VeniceChangeLogConsumerImplTest {
     prepareChangeCaptureRecordsToBePolled(
         0,
         5,
-        kafkaConsumer,
+        mockKafkaConsumer,
         oldChangeCaptureTopic,
         partition,
         oldVersionTopic,
@@ -102,28 +107,28 @@ public class VeniceChangeLogConsumerImplTest {
         new ChangelogClientConfig<>().setD2ControllerClient(d2ControllerClient)
             .setSchemaReader(schemaReader)
             .setStoreName(storeName)
-            .setViewClassName(ChangeCaptureView.class.getCanonicalName());
-    VeniceChangelogConsumerImpl<String, String> veniceChangelogConsumer =
-        new VeniceChangelogConsumerImpl<>(changelogClientConfig, kafkaConsumer);
-    veniceChangelogConsumer.subscribe(new HashSet<>(Arrays.asList(0)));
-    verify(kafkaConsumer).assign(Arrays.asList(new TopicPartition(oldChangeCaptureTopic, 0)));
+            .setViewClassName(ChangeCaptureView.CHANGE_CAPTURE_VIEW_WRITER_CLASS_NAME);
+    VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
+        new VeniceChangelogConsumerImpl<>(changelogClientConfig, mockKafkaConsumer);
+    veniceChangelogConsumer.subscribe(new HashSet<>(Arrays.asList(0))).get();
+    verify(mockKafkaConsumer).assign(Arrays.asList(new TopicPartition(oldChangeCaptureTopic, 0)));
 
-    List<PubSubMessage> pubSubMessages = (List<PubSubMessage>) veniceChangelogConsumer.poll(100);
+    List<PubSubMessage<String, ChangeEvent<Utf8>, Long>> pubSubMessages =
+        (List<PubSubMessage<String, ChangeEvent<Utf8>, Long>>) veniceChangelogConsumer.poll(100);
     for (int i = 0; i < 5; i++) {
-      PubSubMessage pubSubMessage = pubSubMessages.get(i);
-      VeniceChangelogConsumerImpl.ChangeEvent<Utf8> changeEvent =
-          (VeniceChangelogConsumerImpl.ChangeEvent<Utf8>) pubSubMessage.getValue();
+      PubSubMessage<String, ChangeEvent<Utf8>, Long> pubSubMessage = pubSubMessages.get(i);
+      ChangeEvent<Utf8> changeEvent = pubSubMessage.getValue();
       Assert.assertEquals(changeEvent.getCurrentValue().toString(), "newValue" + i);
       Assert.assertEquals(changeEvent.getPreviousValue().toString(), "oldValue" + i);
     }
     // Verify version swap happened.
-    verify(kafkaConsumer).assign(Arrays.asList(new TopicPartition(newChangeCaptureTopic, 0)));
-    pubSubMessages = (List<PubSubMessage>) veniceChangelogConsumer.poll(100);
+    verify(mockKafkaConsumer).assign(Arrays.asList(new TopicPartition(newChangeCaptureTopic, 0)));
+    pubSubMessages = (List<PubSubMessage<String, ChangeEvent<Utf8>, Long>>) veniceChangelogConsumer.poll(100);
     Assert.assertTrue(pubSubMessages.isEmpty());
   }
 
   @Test
-  public void testConsumeAfterImage() {
+  public void testConsumeAfterImage() throws ExecutionException, InterruptedException {
     D2ControllerClient d2ControllerClient = mock(D2ControllerClient.class);
     StoreResponse storeResponse = mock(StoreResponse.class);
     StoreInfo store = mock(StoreInfo.class);
@@ -148,26 +153,27 @@ public class VeniceChangeLogConsumerImplTest {
             .setSchemaReader(schemaReader)
             .setStoreName(storeName)
             .setViewClassName("");
-    VeniceChangelogConsumerImpl<String, String> veniceChangelogConsumer =
-        new VeniceChangelogConsumerImpl<>(changelogClientConfig, kafkaConsumer);
-    veniceChangelogConsumer.subscribe(new HashSet<>(Arrays.asList(0)));
+    VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
+        new VeniceAfterImageConsumerImpl<>(changelogClientConfig, kafkaConsumer);
+    veniceChangelogConsumer.subscribe(new HashSet<>(Arrays.asList(0))).get();
     verify(kafkaConsumer).assign(Arrays.asList(new TopicPartition(oldVersionTopic, 0)));
 
-    List<PubSubMessage> pubSubMessages = (List<PubSubMessage>) veniceChangelogConsumer.poll(100);
+    List<PubSubMessage<String, ChangeEvent<Utf8>, Long>> pubSubMessages =
+        (List<PubSubMessage<String, ChangeEvent<Utf8>, Long>>) veniceChangelogConsumer.poll(100);
     for (int i = 0; i < 5; i++) {
-      PubSubMessage pubSubMessage = pubSubMessages.get(i);
-      Utf8 messageStr = (Utf8) pubSubMessage.getValue();
+      PubSubMessage<String, ChangeEvent<Utf8>, Long> pubSubMessage = pubSubMessages.get(i);
+      Utf8 messageStr = pubSubMessage.getValue().getCurrentValue();
       Assert.assertEquals(messageStr.toString(), "newValue" + i);
     }
     // Verify version swap from version topic to its corresponding change capture topic happened.
     verify(kafkaConsumer).assign(Arrays.asList(new TopicPartition(oldChangeCaptureTopic, 0)));
     prepareChangeCaptureRecordsToBePolled(0, 10, kafkaConsumer, oldChangeCaptureTopic, 0, oldVersionTopic, "");
-    pubSubMessages = (List<PubSubMessage>) veniceChangelogConsumer.poll(100);
+    pubSubMessages = (List<PubSubMessage<String, ChangeEvent<Utf8>, Long>>) veniceChangelogConsumer.poll(100);
     Assert.assertFalse(pubSubMessages.isEmpty());
     Assert.assertEquals(pubSubMessages.size(), 5);
     for (int i = 5; i < 10; i++) {
-      PubSubMessage pubSubMessage = pubSubMessages.get(i - 5);
-      Utf8 pubSubMessageValue = (Utf8) pubSubMessage.getValue();
+      PubSubMessage<String, ChangeEvent<Utf8>, Long> pubSubMessage = pubSubMessages.get(i - 5);
+      Utf8 pubSubMessageValue = pubSubMessage.getValue().getCurrentValue();
       Assert.assertEquals(pubSubMessageValue.toString(), "newValue" + i);
     }
   }
@@ -199,7 +205,7 @@ public class VeniceChangeLogConsumerImplTest {
               oldVersionTopic,
               newVersionTopic,
               partition,
-              Arrays.asList(5L, 5L)));
+              Arrays.asList(Long.valueOf(endIdx), Long.valueOf(endIdx))));
     }
     TopicPartition topicPartition = new TopicPartition(changeCaptureTopic, partition);
     consumerRecordsMap.put(topicPartition, consumerRecordList);
