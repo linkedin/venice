@@ -51,27 +51,15 @@ public class KafkaConsumerFactoryImpl extends KafkaClientFactory {
     return getKafkaAdminClass();
   }
 
-  /**
-   * @return the ZK address, or empty string if it was not specified
-   */
-  @Override
-  protected String getKafkaZkAddress() {
-    return veniceProperties.getString(ConfigKeys.KAFKA_ZK_ADDRESS, "");
-  }
-
   @Override
   public String getKafkaBootstrapServers() {
     return veniceProperties.getString(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
   }
 
   @Override
-  protected KafkaClientFactory clone(
-      String kafkaBootstrapServers,
-      String kafkaZkAddress,
-      Optional<MetricsParameters> metricsParameters) {
+  protected KafkaClientFactory clone(String kafkaBootstrapServers, Optional<MetricsParameters> metricsParameters) {
     Properties clonedProperties = this.veniceProperties.toProperties();
     clonedProperties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafkaBootstrapServers);
-    clonedProperties.setProperty(ConfigKeys.KAFKA_ZK_ADDRESS, kafkaZkAddress);
     return new KafkaConsumerFactoryImpl(new VeniceProperties(clonedProperties));
   }
 }

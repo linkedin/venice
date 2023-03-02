@@ -26,7 +26,7 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.utils.TestUtils;
@@ -49,8 +49,8 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 
 
-public class TestActiveActiveReplicationWithDownColo {
-  private static final Logger LOGGER = LogManager.getLogger(TestActiveActiveReplicationWithDownColo.class);
+public class TestActiveActiveReplicationWithDownRegion {
+  private static final Logger LOGGER = LogManager.getLogger(TestActiveActiveReplicationWithDownRegion.class);
 
   private static final int TEST_TIMEOUT = 90_000; // ms
   private static final int RECORDS_TO_POPULATE = 4;
@@ -63,7 +63,7 @@ public class TestActiveActiveReplicationWithDownColo {
 
   protected List<VeniceMultiClusterWrapper> childDatacenters;
   protected List<VeniceControllerWrapper> parentControllers;
-  protected VeniceTwoLayerMultiColoMultiClusterWrapper multiColoMultiClusterWrapper;
+  protected VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
 
   public Map<String, String> getExtraServerProperties() {
     return Collections.emptyMap();
@@ -96,7 +96,7 @@ public class TestActiveActiveReplicationWithDownColo {
     controllerProps.put(PARENT_KAFKA_CLUSTER_FABRIC_LIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
 
     controllerProps.put(LF_MODEL_DEPENDENCY_CHECK_DISABLED, "true");
-    multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
+    multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
         NUMBER_OF_CLUSTERS,
         1,
@@ -108,8 +108,8 @@ public class TestActiveActiveReplicationWithDownColo {
         Optional.of(controllerProps),
         Optional.of(new VeniceProperties(serverProperties)),
         false);
-    childDatacenters = multiColoMultiClusterWrapper.getChildRegions();
-    parentControllers = multiColoMultiClusterWrapper.getParentControllers();
+    childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
+    parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
   }
 
   @AfterClass(alwaysRun = true)
@@ -119,7 +119,7 @@ public class TestActiveActiveReplicationWithDownColo {
     // with how we handle processes that are closed are already.
     // KafkaAdminClient that bemoans it's lost broker for a long time before timing out and giving up (I think in the
     // controller).
-    multiColoMultiClusterWrapper.close();
+    multiRegionMultiClusterWrapper.close();
   }
 
   // TODO: This needs some work. It's very slow, and currently hangs on cleanup. We need to refactor how the cluster
@@ -131,20 +131,20 @@ public class TestActiveActiveReplicationWithDownColo {
   // @Test(timeOut = TEST_TIMEOUT)
   public void testDownedKafka() throws Exception {
     // These variable don't do anything other than to make it easy to find their values in the debugger so you can hook
-    // up ZooInspector and figure which colo is assigned where
-    int zkPort = multiColoMultiClusterWrapper.getZkServerWrapper().getPort();
-    int dc0Kafka = multiColoMultiClusterWrapper.getChildRegions().get(0).getKafkaBrokerWrapper().getPort();
-    int dc1kafka = multiColoMultiClusterWrapper.getChildRegions().get(1).getKafkaBrokerWrapper().getPort();
+    // up ZooInspector and figure which region is assigned where
+    int zkPort = multiRegionMultiClusterWrapper.getZkServerWrapper().getPort();
+    int dc0Kafka = multiRegionMultiClusterWrapper.getChildRegions().get(0).getKafkaBrokerWrapper().getPort();
+    int dc1kafka = multiRegionMultiClusterWrapper.getChildRegions().get(1).getKafkaBrokerWrapper().getPort();
 
     // Spotbug doesn't like unused variables. Given they are assigned for debugging purposes, print them out.
     LOGGER.info("zkPort: {}", zkPort);
     LOGGER.info("dc0Kafka: {}", dc0Kafka);
     LOGGER.info("dc1kafka: {}", dc1kafka);
 
-    // Create a store in all colos with A/A and hybrid enabled
+    // Create a store in all regions with A/A and hybrid enabled
     String clusterName = CLUSTER_NAMES[0];
     String storeName = Utils.getUniqueString("test-store");
-    String parentControllerUrls = multiColoMultiClusterWrapper.getControllerConnectString();
+    String parentControllerUrls = multiRegionMultiClusterWrapper.getControllerConnectString();
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrls)) {
       parentControllerClient.createNewStore(storeName, "owner", INT_SCHEMA, STRING_SCHEMA);
       TestUtils.updateStoreToHybrid(
@@ -158,7 +158,7 @@ public class TestActiveActiveReplicationWithDownColo {
       parentControllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L);
     }
 
-    // Verify that version 1 is created in all colos
+    // Verify that version 1 is created in all regions
     for (int i = 0; i < NUMBER_OF_CHILD_DATACENTERS; i++) {
       try (ControllerClient childControllerClient = new ControllerClient(
           clusterName,
@@ -171,8 +171,8 @@ public class TestActiveActiveReplicationWithDownColo {
       }
     }
 
-    // A store has been created with version 1 in all colos that is hybrid and A/A
-    // Now lets populate some data into dc-0 and verify that records replicate to all colos
+    // A store has been created with version 1 in all regions that is hybrid and A/A
+    // Now lets populate some data into dc-0 and verify that records replicate to all regions
     // Build a system producer that writes nearline to dc-0
     SystemProducer producerInDC0 = new VeniceSystemProducer(
         childDatacenters.get(0).getZkServerWrapper().getAddress(),
@@ -205,7 +205,7 @@ public class TestActiveActiveReplicationWithDownColo {
     // Build another one which will write some batch data
     SystemProducer batchProducer = new VeniceSystemProducer(
         childDatacenters.get(0).getZkServerWrapper().getAddress(),
-        multiColoMultiClusterWrapper.getZkServerWrapper().getAddress(),
+        multiRegionMultiClusterWrapper.getZkServerWrapper().getAddress(),
         PARENT_D2_SERVICE_NAME,
         storeName,
         Version.PushType.BATCH,
@@ -235,7 +235,7 @@ public class TestActiveActiveReplicationWithDownColo {
     }
     producerInDC1.stop();
 
-    // Validate keys have been written to all colos
+    // Validate keys have been written to all regions
     for (String cluster: CLUSTER_NAMES) {
       String routerUrl = childDatacenters.get(0).getClusters().get(cluster).getRandomRouterURL();
       try (AvroGenericStoreClient<Integer, Object> client = ClientFactory
@@ -257,11 +257,15 @@ public class TestActiveActiveReplicationWithDownColo {
     // suite that might expect a downed Kafka broker
 
     // Ok. So if we've gotten this far, everything is working. Neat. Now lets change that. We're going to kill the kafka
-    // broker in one of the colos, and then we're going to execute a new push. Here is what should happen. The new push
-    // should succeed in the OTHER colos and go live.
+    // broker in one of the regions, and then we're going to execute a new push. Here is what should happen. The new
+    // push
+    // should succeed in the OTHER regions and go live.
 
     // It's simple, we kill the kafka broker
-    multiColoMultiClusterWrapper.getChildRegions().get(NUMBER_OF_CHILD_DATACENTERS - 1).getKafkaBrokerWrapper().close();
+    multiRegionMultiClusterWrapper.getChildRegions()
+        .get(NUMBER_OF_CHILD_DATACENTERS - 1)
+        .getKafkaBrokerWrapper()
+        .close();
 
     // Execute a new push by writing some rows and sending an endOfPushMessage
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrls)) {
@@ -275,7 +279,7 @@ public class TestActiveActiveReplicationWithDownColo {
       parentControllerClient.writeEndOfPush(storeName, 2);
     }
 
-    // Let's verify from the other two colos
+    // Let's verify from the other two regions
     for (int i = 0; i < NUMBER_OF_CHILD_DATACENTERS - 1; i++) {
       try (ControllerClient childControllerClient = new ControllerClient(
           clusterName,

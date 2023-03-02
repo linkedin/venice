@@ -36,7 +36,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.samza.VeniceObjectWithTimestamp;
@@ -88,7 +88,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
 
   private List<VeniceMultiClusterWrapper> childDatacenters;
   private List<VeniceControllerWrapper> parentControllers;
-  private VeniceTwoLayerMultiColoMultiClusterWrapper multiColoMultiClusterWrapper;
+  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
   private ControllerClient parentControllerClient;
   private ControllerClient dc0Client;
   private ControllerClient dc1Client;
@@ -117,7 +117,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     controllerProps.put(NATIVE_REPLICATION_SOURCE_FABRIC, "dc-0");
     controllerProps.put(PARENT_KAFKA_CLUSTER_FABRIC_LIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
 
-    multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
+    multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
         NUMBER_OF_CLUSTERS,
         1,
@@ -130,8 +130,8 @@ public class WriteComputeWithActiveActiveReplicationTest {
         Optional.of(new VeniceProperties(serverProperties)),
         false);
 
-    parentControllers = multiColoMultiClusterWrapper.getParentControllers();
-    childDatacenters = multiColoMultiClusterWrapper.getChildRegions();
+    parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
+    childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
 
     String clusterName = CLUSTER_NAMES[0];
     String parentControllerURLs =
@@ -149,7 +149,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     Utils.closeQuietlyWithErrorLogged(parentControllerClient);
     Utils.closeQuietlyWithErrorLogged(dc0Client);
     Utils.closeQuietlyWithErrorLogged(dc1Client);
-    Utils.closeQuietlyWithErrorLogged(multiColoMultiClusterWrapper);
+    Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
   }
 
   @BeforeMethod
@@ -196,7 +196,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
       samzaConfig.put(DEPLOYMENT_ID, "dcId_" + dcId + "_" + storeName);
       samzaConfig.put(VENICE_CHILD_D2_ZK_HOSTS, childDataCenter.getZkServerWrapper().getAddress());
       samzaConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, D2_SERVICE_NAME);
-      samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, multiColoMultiClusterWrapper.getZkServerWrapper().getAddress());
+      samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, multiRegionMultiClusterWrapper.getZkServerWrapper().getAddress());
       samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
       samzaConfig.put(SSL_ENABLED, "false");
       VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null);

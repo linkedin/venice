@@ -25,7 +25,7 @@ import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -66,7 +66,7 @@ public class TestPushJobWithEmergencySourceRegionSelection {
 
   private List<VeniceMultiClusterWrapper> childDatacenters;
   private List<VeniceControllerWrapper> parentControllers;
-  private VeniceTwoLayerMultiColoMultiClusterWrapper multiColoMultiClusterWrapper;
+  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
 
   @DataProvider(name = "storeSize")
   public static Object[][] storeSize() {
@@ -94,7 +94,7 @@ public class TestPushJobWithEmergencySourceRegionSelection {
     controllerProps.put(LF_MODEL_DEPENDENCY_CHECK_DISABLED, "true");
     controllerProps.put(EMERGENCY_SOURCE_REGION, "dc-2");
 
-    multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
+    multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
         NUMBER_OF_CLUSTERS,
         1,
@@ -106,13 +106,13 @@ public class TestPushJobWithEmergencySourceRegionSelection {
         Optional.of(controllerProps),
         Optional.of(new VeniceProperties(serverProperties)),
         false);
-    childDatacenters = multiColoMultiClusterWrapper.getChildRegions();
-    parentControllers = multiColoMultiClusterWrapper.getParentControllers();
+    childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
+    parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
   }
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    multiColoMultiClusterWrapper.close();
+    multiRegionMultiClusterWrapper.close();
   }
 
   /**
@@ -126,8 +126,9 @@ public class TestPushJobWithEmergencySourceRegionSelection {
     Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, recordCount);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
-    String parentControllerUrls = multiColoMultiClusterWrapper.getControllerConnectString();
-    Properties props = IntegrationTestPushUtils.defaultVPJProps(multiColoMultiClusterWrapper, inputDirPath, storeName);
+    String parentControllerUrls = multiRegionMultiClusterWrapper.getControllerConnectString();
+    Properties props =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
     props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
     String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
     String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();

@@ -1756,7 +1756,7 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public Map<String, Integer> getCurrentVersionsForMultiColos(String clusterName, String storeName) {
     Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
-    return getCurrentVersionForMultiColos(clusterName, storeName, controllerClients);
+    return getCurrentVersionForMultiRegions(clusterName, storeName, controllerClients);
   }
 
   /**
@@ -1778,7 +1778,8 @@ public class VeniceParentHelixAdmin implements Admin {
           response.getStore().getKafkaBrokerUrl());
     }
     // fabricName not present, get the largest version info among the child colos.
-    Map<String, Integer> currentVersionsMap = getCurrentVersionForMultiColos(clusterName, storeName, controllerClients);
+    Map<String, Integer> currentVersionsMap =
+        getCurrentVersionForMultiRegions(clusterName, storeName, controllerClients);
     int largestVersion = Integer.MIN_VALUE;
     String colo = null;
     for (Map.Entry<String, Integer> mapEntry: currentVersionsMap.entrySet()) {
@@ -1831,7 +1832,7 @@ public class VeniceParentHelixAdmin implements Admin {
     return Store.NON_EXISTING_VERSION;
   }
 
-  Map<String, Integer> getCurrentVersionForMultiColos(
+  Map<String, Integer> getCurrentVersionForMultiRegions(
       String clusterName,
       String storeName,
       Map<String, ControllerClient> controllerClients) {
@@ -3499,11 +3500,11 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * @see VeniceHelixAdmin#getNativeReplicationKafkaBootstrapServerAndZkAddress(String)
+   * @see VeniceHelixAdmin#getNativeReplicationKafkaBootstrapServerAddress(String)
    */
   @Override
-  public Pair<String, String> getNativeReplicationKafkaBootstrapServerAndZkAddress(String sourceFabric) {
-    return getVeniceHelixAdmin().getNativeReplicationKafkaBootstrapServerAndZkAddress(sourceFabric);
+  public String getNativeReplicationKafkaBootstrapServerAddress(String sourceFabric) {
+    return getVeniceHelixAdmin().getNativeReplicationKafkaBootstrapServerAddress(sourceFabric);
   }
 
   /**
@@ -3544,11 +3545,11 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * @see VeniceHelixAdmin#getTopicManager(Pair)
+   * @see VeniceHelixAdmin#getTopicManager(String)
    */
   @Override
-  public TopicManager getTopicManager(Pair<String, String> kafkaBootstrapServersAndZkAddress) {
-    return getVeniceHelixAdmin().getTopicManager(kafkaBootstrapServersAndZkAddress);
+  public TopicManager getTopicManager(String pubSubServerAddress) {
+    return getVeniceHelixAdmin().getTopicManager(pubSubServerAddress);
   }
 
   /**

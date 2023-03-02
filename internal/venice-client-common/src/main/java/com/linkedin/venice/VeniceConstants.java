@@ -64,8 +64,6 @@ public class VeniceConstants {
 
   public static final String NATIVE_REPLICATION_DEFAULT_SOURCE_FABRIC = "prod-lva1";
 
-  public static final String SCALA_BASED_KAFKA_ADMIN_CLIENT_CLASS_NAME = "ScalaAdminUtils";
-
   public static final String ENVIRONMENT_CONFIG_KEY_FOR_REGION_NAME = "FABRIC";
 
   public static final String SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION = "com.linkedin.app.env";

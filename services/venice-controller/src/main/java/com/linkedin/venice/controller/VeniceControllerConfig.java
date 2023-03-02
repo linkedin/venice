@@ -18,7 +18,6 @@ import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_URL_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_WHITELIST;
 import static com.linkedin.venice.ConfigKeys.CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
-import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_ZK_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_DISCOVERY_D2_SERVICE;
 import static com.linkedin.venice.ConfigKeys.CONCURRENT_INIT_ROUTINES_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE;
@@ -157,7 +156,6 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final String kafkaWriteOnlyClass;
   private final String kafkaReadOnlyClass;
   private final Map<String, String> childDataCenterKafkaUrlMap;
-  private final Map<String, String> childDataCenterKafkaZkMap;
   private final boolean activeActiveEnabledOnController;
   private final Set<String> activeActiveRealTimeSourceFabrics;
   private final String nativeReplicationSourceFabric;
@@ -286,7 +284,6 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
           NATIVE_REPLICATION_FABRIC_WHITELIST,
           dataCenterAllowlist);
       this.childDataCenterKafkaUrlMap = parseChildDataCenterKafkaUrl(props, nativeReplicationSourceFabricAllowlist);
-      this.childDataCenterKafkaZkMap = parseChildDataCenterKafkaZk(props, nativeReplicationSourceFabricAllowlist);
     } else {
       this.parentFabrics = Collections.emptySet();
 
@@ -297,10 +294,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
           "");
       if (nativeReplicationSourceFabricAllowlist == null || nativeReplicationSourceFabricAllowlist.length() == 0) {
         this.childDataCenterKafkaUrlMap = Collections.emptyMap();
-        this.childDataCenterKafkaZkMap = Collections.emptyMap();
       } else {
         this.childDataCenterKafkaUrlMap = parseChildDataCenterKafkaUrl(props, nativeReplicationSourceFabricAllowlist);
-        this.childDataCenterKafkaZkMap = parseChildDataCenterKafkaZk(props, nativeReplicationSourceFabricAllowlist);
       }
     }
     this.nativeReplicationSourceFabric = props.getString(NATIVE_REPLICATION_SOURCE_FABRIC, "");
@@ -540,10 +535,6 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public Set<String> getActiveActiveRealTimeSourceFabrics() {
     return activeActiveRealTimeSourceFabrics;
-  }
-
-  public Map<String, String> getChildDataCenterKafkaZkMap() {
-    return childDataCenterKafkaZkMap;
   }
 
   public String getNativeReplicationSourceFabric() {
@@ -865,26 +856,6 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
         clusterPros,
         datacenterAllowlist,
         (m, k, v, e) -> m.putIfAbsent(k, v));
-  }
-
-  /**
-   * The config should follow the format below:
-   * $CHILD_DATA_CENTER_KAFKA_ZK_PREFIX.fabricName1=kafkaZk_in_fabric1
-   * $CHILD_DATA_CENTER_KAFKA_ZK_PREFIX.fabricName2=kafkaZk_in_fabric2
-   *
-   * This helper function will parse the config with above format and return a Map from data center to
-   * its Kafka zk address.
-   */
-  private static Map<String, String> parseChildDataCenterKafkaZk(
-      VeniceProperties clusterPros,
-      String datacenterAllowlist) {
-    return parseChildDataCenterToValue(
-        CHILD_DATA_CENTER_KAFKA_ZK_PREFIX,
-        clusterPros,
-        datacenterAllowlist,
-        (m, k, v, e) -> {
-          m.putIfAbsent(k, v);
-        });
   }
 
   private static Map<String, String> parseChildDataCenterToValue(

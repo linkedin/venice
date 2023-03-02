@@ -87,9 +87,8 @@ public class VeniceParentHelixAdminTest {
     properties.setProperty(TERMINAL_STATE_TOPIC_CHECK_DELAY_MS, String.valueOf(1000L));
     try (
         VeniceControllerWrapper parentController = ServiceFactory.getVeniceController(
-            new VeniceControllerCreateOptions.Builder(venice.getClusterName(), venice.getKafka())
+            new VeniceControllerCreateOptions.Builder(venice.getClusterName(), zkServerWrapper, venice.getKafka())
                 .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
-                .zkAddress(zkServerWrapper.getAddress())
                 .extraProperties(properties)
                 .build());
         ControllerClient parentControllerClient =
@@ -117,9 +116,8 @@ public class VeniceParentHelixAdminTest {
     properties.setProperty(REPLICATION_METADATA_VERSION_ID, String.valueOf(1));
     try (
         VeniceControllerWrapper parentControllerWrapper = ServiceFactory.getVeniceController(
-            new VeniceControllerCreateOptions.Builder(venice.getClusterName(), venice.getKafka())
+            new VeniceControllerCreateOptions.Builder(venice.getClusterName(), zkServerWrapper, venice.getKafka())
                 .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
-                .zkAddress(zkServerWrapper.getAddress())
                 .extraProperties(properties)
                 .build());
         ControllerClient parentControllerClient =
@@ -239,9 +237,8 @@ public class VeniceParentHelixAdminTest {
     properties.setProperty(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, String.valueOf(false));
     try (
         VeniceControllerWrapper parentController = ServiceFactory.getVeniceController(
-            new VeniceControllerCreateOptions.Builder(venice.getClusterName(), venice.getKafka())
+            new VeniceControllerCreateOptions.Builder(venice.getClusterName(), zkServerWrapper, venice.getKafka())
                 .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
-                .zkAddress(zkServerWrapper.getAddress())
                 .extraProperties(properties)
                 .build());
         ControllerClient parentControllerClient =
@@ -300,9 +297,8 @@ public class VeniceParentHelixAdminTest {
   @Test(timeOut = DEFAULT_TEST_TIMEOUT_MS)
   public void testHybridAndETLStoreConfig() {
     try (VeniceControllerWrapper parentControllerWrapper = ServiceFactory.getVeniceController(
-        new VeniceControllerCreateOptions.Builder(venice.getClusterName(), venice.getKafka())
+        new VeniceControllerCreateOptions.Builder(venice.getClusterName(), zkServerWrapper, venice.getKafka())
             .childControllers(new VeniceControllerWrapper[] { venice.getLeaderVeniceController() })
-            .zkAddress(zkServerWrapper.getAddress())
             .build())) {
       String controllerUrl = parentControllerWrapper.getControllerUrl();
 
@@ -398,14 +394,13 @@ public class VeniceParentHelixAdminTest {
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
         KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServer);
         VeniceControllerWrapper childControllerWrapper = ServiceFactory.getVeniceController(
-            new VeniceControllerCreateOptions.Builder(clusterName, kafkaBrokerWrapper)
+            new VeniceControllerCreateOptions.Builder(clusterName, zkServer, kafkaBrokerWrapper)
                 .sslToKafka(isControllerSslEnabled)
                 .build());
         ZkServerWrapper parentZk = ServiceFactory.getZkServer();
         VeniceControllerWrapper parentControllerWrapper = ServiceFactory.getVeniceController(
-            new VeniceControllerCreateOptions.Builder(clusterName, kafkaBrokerWrapper)
+            new VeniceControllerCreateOptions.Builder(clusterName, parentZk, kafkaBrokerWrapper)
                 .childControllers(new VeniceControllerWrapper[] { childControllerWrapper })
-                .zkAddress(parentZk.getAddress())
                 .extraProperties(properties)
                 .sslToKafka(isControllerSslEnabled)
                 .build())) {

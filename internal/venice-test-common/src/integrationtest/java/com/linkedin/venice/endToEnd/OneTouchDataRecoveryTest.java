@@ -11,7 +11,7 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestUtils;
@@ -46,7 +46,7 @@ public class OneTouchDataRecoveryTest {
   private static final int REPLICATION_FACTOR = 1;
   private static final String CLUSTER_NAME = "venice-cluster0";
 
-  private VeniceTwoLayerMultiColoMultiClusterWrapper multiColoMultiClusterWrapper;
+  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
   private List<VeniceMultiClusterWrapper> childDatacenters;
   private List<VeniceControllerWrapper> parentControllers;
 
@@ -56,7 +56,7 @@ public class OneTouchDataRecoveryTest {
     Properties serverProperties = new Properties();
     serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
 
-    multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
+    multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
         NUMBER_OF_CLUSTERS,
         NUMBER_OF_PARENT_CONTROLLERS,
@@ -69,13 +69,13 @@ public class OneTouchDataRecoveryTest {
         Optional.of(new VeniceProperties(serverProperties)),
         false);
 
-    childDatacenters = multiColoMultiClusterWrapper.getChildRegions();
-    parentControllers = multiColoMultiClusterWrapper.getParentControllers();
+    childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
+    parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
   }
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    Utils.closeQuietlyWithErrorLogged(multiColoMultiClusterWrapper);
+    Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
   }
 
   /**

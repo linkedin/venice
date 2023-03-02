@@ -7,7 +7,6 @@ import static com.linkedin.venice.ConfigKeys.HEARTBEAT_CYCLE;
 import static com.linkedin.venice.ConfigKeys.HEARTBEAT_TIMEOUT;
 import static com.linkedin.venice.ConfigKeys.HELIX_HYBRID_STORE_QUOTA_ENABLED;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_ZK_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.KEY_VALUE_PROFILING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
 import static com.linkedin.venice.ConfigKeys.LISTENER_SSL_PORT;
@@ -158,7 +157,6 @@ public class VeniceRouterConfig {
   private boolean keyValueProfilingEnabled;
   private long leakedFutureCleanupPollIntervalMs;
   private long leakedFutureCleanupThresholdMs;
-  private String kafkaZkAddress;
   private String kafkaBootstrapServers;
   private boolean idleConnectionToServerCleanupEnabled;
   private long idleConnectionToServerCleanupThresholdMins;
@@ -217,7 +215,6 @@ public class VeniceRouterConfig {
     port = props.getInt(LISTENER_PORT);
     sslPort = props.getInt(LISTENER_SSL_PORT);
     zkConnection = props.getString(ZOOKEEPER_ADDRESS);
-    kafkaZkAddress = props.getString(KAFKA_ZK_ADDRESS);
     kafkaBootstrapServers = props.getString(KAFKA_BOOTSTRAP_SERVERS);
     heartbeatTimeoutMs = props.getDouble(HEARTBEAT_TIMEOUT, TimeUnit.MINUTES.toMillis(1));
     heartbeatCycleMs = props.getLong(HEARTBEAT_CYCLE, TimeUnit.SECONDS.toMillis(5));
@@ -558,10 +555,6 @@ public class VeniceRouterConfig {
 
   public long getLeakedFutureCleanupThresholdMs() {
     return leakedFutureCleanupThresholdMs;
-  }
-
-  public String getKafkaZkAddress() {
-    return kafkaZkAddress;
   }
 
   public String getKafkaBootstrapServers() {

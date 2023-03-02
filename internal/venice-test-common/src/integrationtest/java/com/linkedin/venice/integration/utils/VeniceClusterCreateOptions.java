@@ -17,7 +17,7 @@ import java.util.Properties;
 
 public class VeniceClusterCreateOptions {
   private final String clusterName;
-  private final String coloName;
+  private final String regionName;
   private final Map<String, String> clusterToD2;
   private final int numberOfControllers;
   private final int numberOfServers;
@@ -40,7 +40,7 @@ public class VeniceClusterCreateOptions {
 
   private VeniceClusterCreateOptions(Builder builder) {
     this.clusterName = builder.clusterName;
-    this.coloName = builder.coloName;
+    this.regionName = builder.regionName;
     this.clusterToD2 = builder.clusterToD2;
     this.numberOfControllers = builder.numberOfControllers;
     this.numberOfServers = builder.numberOfServers;
@@ -66,8 +66,8 @@ public class VeniceClusterCreateOptions {
     return clusterName;
   }
 
-  public String getColoName() {
-    return coloName;
+  public String getRegionName() {
+    return regionName;
   }
 
   public Map<String, String> getClusterToD2() {
@@ -155,8 +155,8 @@ public class VeniceClusterCreateOptions {
         .append("standalone:")
         .append(standalone)
         .append(", ")
-        .append("coloName:")
-        .append(coloName)
+        .append("regionName:")
+        .append(regionName)
         .append(", ")
         .append("controllers:")
         .append(numberOfControllers)
@@ -216,7 +216,7 @@ public class VeniceClusterCreateOptions {
 
   public static class Builder {
     private String clusterName;
-    private String coloName = "";
+    private String regionName = "";
     private Map<String, String> clusterToD2 = null;
     private int numberOfControllers = DEFAULT_NUMBER_OF_CONTROLLERS;
     private int numberOfServers = DEFAULT_NUMBER_OF_SERVERS;
@@ -243,8 +243,8 @@ public class VeniceClusterCreateOptions {
       return this;
     }
 
-    public Builder coloName(String coloName) {
-      this.coloName = coloName;
+    public Builder regionName(String regionName) {
+      this.regionName = regionName;
       return this;
     }
 
@@ -348,8 +348,8 @@ public class VeniceClusterCreateOptions {
       if (clusterName == null) {
         clusterName = Utils.getUniqueString("venice-cluster");
       }
-      if (standalone && coloName == null) {
-        coloName = "";
+      if (standalone && regionName == null) {
+        regionName = "";
       }
       if (!isMinActiveReplicaSet) {
         minActiveReplica = replicationFactor - 1;
