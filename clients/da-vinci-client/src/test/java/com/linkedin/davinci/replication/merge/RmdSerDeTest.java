@@ -39,7 +39,6 @@ public class RmdSerDeTest {
     // Generate RMD schema and record from value schema.
     Schema valueSchema = AvroCompatibilityHelper.parse(VALUE_SCHEMA_STR);
     Schema rmdSchema = RmdSchemaGenerator.generateMetadataSchema(valueSchema);
-    GenericRecord rmd = createRmdWithCollectionTimestamp(rmdSchema);
 
     // Prepare the object under test, mocks, etc
     ReadOnlySchemaRepository schemaRepository = mock(ReadOnlySchemaRepository.class);
@@ -51,10 +50,13 @@ public class RmdSerDeTest {
     MapKeyStringAnnotatedStoreSchemaCache mapKeyStringAnnotatedStoreSchemaCache =
         new MapKeyStringAnnotatedStoreSchemaCache(storeName, schemaRepository);
     RmdSerDe rmdSerDe = new RmdSerDe(mapKeyStringAnnotatedStoreSchemaCache, rmdVersionID);
+    Schema annotateRmdSchema =
+        mapKeyStringAnnotatedStoreSchemaCache.getRmdSchema(valueSchemaID, rmdVersionID).getSchema();
+    GenericRecord rmd = createRmdWithCollectionTimestamp(annotateRmdSchema);
 
     // Serialize this RMD record to bytes.
     Schema actualRmdSchema = rmdSerDe.getRmdSchema(valueSchemaID);
-    Assert.assertEquals(actualRmdSchema, rmdSchema);
+    Assert.assertEquals(actualRmdSchema, annotateRmdSchema);
     ByteBuffer rmdBytes = rmdSerDe.serializeRmdRecord(valueSchemaID, rmd);
 
     // Prepend value schema ID to RMD bytes.
