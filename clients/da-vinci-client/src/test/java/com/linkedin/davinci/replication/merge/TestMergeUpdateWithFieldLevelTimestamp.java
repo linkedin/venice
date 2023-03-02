@@ -69,7 +69,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
     doReturn(new SchemaEntry(oldValueSchemaId, personSchemaV2)).when(readOnlySchemaRepository)
         .getSupersetSchema(storeName);
     MapKeyStringAnnotatedStoreSchemaCache mapKeyStringAnnotatedStoreSchemaCache =
-        new MapKeyStringAnnotatedStoreSchemaCache(storeName, schemaRepository);
+        new MapKeyStringAnnotatedStoreSchemaCache(storeName, readOnlySchemaRepository);
     // Update happens below
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
@@ -127,7 +127,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
     doReturn(new SchemaEntry(oldValueSchemaId, personSchemaV2)).when(readOnlySchemaRepository)
         .getSupersetSchema(storeName);
     MapKeyStringAnnotatedStoreSchemaCache mapKeyStringAnnotatedStoreSchemaCache =
-        new MapKeyStringAnnotatedStoreSchemaCache(storeName, schemaRepository);
+        new MapKeyStringAnnotatedStoreSchemaCache(storeName, readOnlySchemaRepository);
     // Update happens below
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
@@ -250,12 +250,11 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         .getDerivedSchema(storeName, incomingValueSchemaId, incomingWriteComputeSchemaId);
     doReturn(new SchemaEntry(oldValueSchemaId, personSchemaV1)).when(readOnlySchemaRepository)
         .getValueSchema(storeName, oldValueSchemaId);
-
     doReturn(new SchemaEntry(oldValueSchemaId, personSchemaV1)).when(readOnlySchemaRepository)
         .getSupersetSchema(storeName);
 
     MapKeyStringAnnotatedStoreSchemaCache mapKeyStringAnnotatedStoreSchemaCache =
-        new MapKeyStringAnnotatedStoreSchemaCache(storeName, schemaRepository);
+        new MapKeyStringAnnotatedStoreSchemaCache(storeName, readOnlySchemaRepository);
     // Update happens below
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(

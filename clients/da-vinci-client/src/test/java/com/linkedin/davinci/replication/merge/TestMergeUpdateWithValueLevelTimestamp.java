@@ -63,7 +63,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
     doReturn(new SchemaEntry(oldValueSchemaId, personSchemaV1)).when(readOnlySchemaRepository)
         .getSupersetSchema(storeName);
     MapKeyStringAnnotatedStoreSchemaCache mapKeyStringAnnotatedStoreSchemaCache =
-        new MapKeyStringAnnotatedStoreSchemaCache(storeName, schemaRepository);
+        new MapKeyStringAnnotatedStoreSchemaCache(storeName, readOnlySchemaRepository);
     // Update happens below
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
@@ -114,7 +114,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
     doReturn(new SchemaEntry(incomingValueSchemaId, personSchemaV2)).when(readOnlySchemaRepository)
         .getSupersetSchema(storeName);
     MapKeyStringAnnotatedStoreSchemaCache mapKeyStringAnnotatedStoreSchemaCache =
-        new MapKeyStringAnnotatedStoreSchemaCache(storeName, schemaRepository);
+        new MapKeyStringAnnotatedStoreSchemaCache(storeName, readOnlySchemaRepository);
     // Update happens below
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
@@ -183,7 +183,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
         .getSupersetSchema(storeName);
 
     MapKeyStringAnnotatedStoreSchemaCache mapKeyStringAnnotatedStoreSchemaCache =
-        new MapKeyStringAnnotatedStoreSchemaCache(storeName, schemaRepository);
+        new MapKeyStringAnnotatedStoreSchemaCache(storeName, readOnlySchemaRepository);
     // Update happens below
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
@@ -293,7 +293,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
     doReturn(schemaEntry).when(readOnlySchemaRepository).getSupersetSchema(storeName);
 
     MapKeyStringAnnotatedStoreSchemaCache mapKeyStringAnnotatedStoreSchemaCache =
-        new MapKeyStringAnnotatedStoreSchemaCache(storeName, schemaRepository);
+        new MapKeyStringAnnotatedStoreSchemaCache(storeName, readOnlySchemaRepository);
     // Update happens below
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
@@ -458,7 +458,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
         .getReplicationMetadataSchema(storeName, supersetValueSchemaId, RMD_VERSION_ID);
 
     MapKeyStringAnnotatedStoreSchemaCache mapKeyStringAnnotatedStoreSchemaCache =
-        new MapKeyStringAnnotatedStoreSchemaCache(storeName, schemaRepository);
+        new MapKeyStringAnnotatedStoreSchemaCache(storeName, readOnlySchemaRepository);
     // Update happens below
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
@@ -605,7 +605,7 @@ public class TestMergeUpdateWithValueLevelTimestamp extends TestMergeConflictRes
         .getReplicationMetadataSchema(storeName, supersetValueSchemaId, RMD_VERSION_ID);
 
     MapKeyStringAnnotatedStoreSchemaCache mapKeyStringAnnotatedStoreSchemaCache =
-        new MapKeyStringAnnotatedStoreSchemaCache(storeName, schemaRepository);
+        new MapKeyStringAnnotatedStoreSchemaCache(storeName, readOnlySchemaRepository);
     // Update happens below
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
