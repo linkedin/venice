@@ -848,7 +848,10 @@ public class ConfigKeys {
    */
   public static final String ROUTER_MAX_OUTGOING_CONNECTION = "router.max.outgoing.connection";
 
-  public static final String ROUTER_PER_STORE_THROTTLER_ENABLED = "router.per.store.throttler.enabled";
+  /**
+   * Enable per router per storage node throttler by distributing the store quota among the partitions and replicas.
+   */
+  public static final String ROUTER_PER_STORAGE_NODE_THROTTLER_ENABLED = "router.per.storage.node.throttler.enabled";
 
   /**
    * This config is used to bound the pending request.

@@ -866,10 +866,8 @@ public class RouterServer extends AbstractVeniceService {
           routersClusterManager,
           metadataRepository,
           routingDataRepository,
-          config.getMaxReadCapacityCu(),
           routerStats.getStatsByType(RequestType.SINGLE_GET),
-          config.getPerStorageNodeReadQuotaBuffer(),
-          config.getPerStoreRouterQuotaBuffer());
+          config);
 
       noopRequestThrottler = new NoopRouterThrottler(
           routersClusterManager,

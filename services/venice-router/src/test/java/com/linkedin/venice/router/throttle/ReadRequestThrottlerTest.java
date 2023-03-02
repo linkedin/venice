@@ -7,6 +7,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.Arrays;
@@ -26,12 +27,14 @@ public class ReadRequestThrottlerTest {
   private int routerCount;
   private ReadRequestThrottler throttler;
   private final static long maxCapacity = 400;
+  private VeniceRouterConfig routerConfig;
 
   @BeforeMethod
   public void setUp() {
     storeRepository = Mockito.mock(ReadOnlyStoreRepository.class);
     zkRoutersClusterManager = Mockito.mock(ZkRoutersClusterManager.class);
     routingDataRepository = Mockito.mock(RoutingDataRepository.class);
+    routerConfig = Mockito.mock(VeniceRouterConfig.class);
     totalQuota = 1000;
     routerCount = 5;
     store = TestUtils.createTestStore("testGetQuotaForStore", "test", System.currentTimeMillis());
@@ -44,6 +47,7 @@ public class ReadRequestThrottlerTest {
     Mockito.doReturn(true).when(zkRoutersClusterManager).isQuotaRebalanceEnabled();
     Mockito.doReturn(true).when(zkRoutersClusterManager).isThrottlingEnabled();
     Mockito.doReturn(true).when(zkRoutersClusterManager).isMaxCapacityProtectionEnabled();
+    Mockito.doReturn(true).when(routerConfig).isPerRouterStorageNodeThrottlerEnabled();
     stats = Mockito.mock(AggRouterHttpRequestStats.class);
     throttler = new ReadRequestThrottler(
         zkRoutersClusterManager,
@@ -54,7 +58,8 @@ public class ReadRequestThrottlerTest {
         0.0,
         0.0,
         1000,
-        1000);
+        1000,
+        true);
   }
 
   @Test
@@ -162,14 +167,11 @@ public class ReadRequestThrottlerTest {
     Mockito.doReturn(Arrays.asList(stores)).when(storeRepository).getAllStores();
     Mockito.doReturn(totalQuota).when(storeRepository).getTotalStoreReadQuota();
     Mockito.doReturn(routerCount).when(zkRoutersClusterManager).getLiveRoutersCount();
-    ReadRequestThrottler multiStoreThrottler = new ReadRequestThrottler(
-        zkRoutersClusterManager,
-        storeRepository,
-        routingDataRepository,
-        maxCapcity,
-        stats,
-        0.0,
-        0.0);
+    Mockito.doReturn(maxCapcity).when(routerConfig).getMaxRouterReadCapacityCu();
+    Mockito.doReturn(true).when(routerConfig).isPerRouterStorageNodeThrottlerEnabled();
+
+    ReadRequestThrottler multiStoreThrottler =
+        new ReadRequestThrottler(zkRoutersClusterManager, storeRepository, routingDataRepository, stats, routerConfig);
 
     for (int i = 0; i < storeCount; i++) {
       Assert.assertEquals(

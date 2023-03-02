@@ -96,7 +96,6 @@ public class VeniceDelegateMode extends ScatterGatherMode {
   private final VeniceMultiKeyRoutingStrategy multiKeyRoutingStrategy;
   private final ScatterGatherMode scatterGatherModeForMultiKeyRequest;
   private final RouterStats<AggRouterHttpRequestStats> routerStats;
-  private final boolean perRouterStoreThrottlerEnabled;
 
   public VeniceDelegateMode(
       VeniceRouterConfig config,
@@ -106,7 +105,6 @@ public class VeniceDelegateMode extends ScatterGatherMode {
     this.routerStats = routerStats;
     this.routeHttpRequestStats = routeHttpRequestStats;
     this.multiKeyRoutingStrategy = config.getMultiKeyRoutingStrategy();
-    this.perRouterStoreThrottlerEnabled = config.isPerRouterStoreThrottlerEnabled();
     switch (this.multiKeyRoutingStrategy) {
       case GROUP_BY_PRIMARY_HOST_ROUTING:
         this.scatterGatherModeForMultiKeyRequest = GROUP_BY_PRIMARY_HOST_MODE_FOR_MULTI_KEY_REQUEST;
@@ -286,7 +284,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
           readRequestThrottler.mayThrottleRead(
               storeName,
               keyCount * readRequestThrottler.getReadCapacity(),
-              perRouterStoreThrottlerEnabled ? null : veniceInstance.getNodeId());
+              veniceInstance.getNodeId());
         } catch (QuotaExceededException e) {
           /**
            * Exception thrown here won't go through {@link VeniceResponseAggregator}, and DDS lib will return an error response
