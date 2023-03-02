@@ -430,7 +430,7 @@ public class CreateVersion extends AbstractRoute {
       admin.getAggregateRealTimeTopicSource(clusterName).ifPresent(response::setKafkaBootstrapServers);
       return;
     } else if (!isAAEnabledInAllRegions) {
-      // When both AA is NOT enabled in all regions and native replication is disabled, don't do anything.
+      // When AA is not enabled in all regions and native replication is also disabled, don't do anything.
       return;
     }
 
