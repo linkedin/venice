@@ -9,12 +9,16 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_JOB_
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_SIZE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REQUEST_TOPIC;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.acl.DynamicAccessController;
@@ -157,23 +161,8 @@ public class CreateVersionTest {
     doCallRealMethod().when(request).queryParamOrDefault(any(), any());
     doReturn(true).when(accessClient).isAllowlistUsers(certificate, STORE_NAME, HTTP_GET);
 
-    Store store = new ZKStore(
-        STORE_NAME,
-        "abc@linkedin.com",
-        10,
-        PersistenceType.ROCKS_DB,
-        RoutingStrategy.CONSISTENT_HASH,
-        ReadStrategy.ANY_OF_ONLINE,
-        OfflinePushStrategy.WAIT_ALL_REPLICAS,
-        1);
+    Store store = getHybridTestStore();
     store.setIncrementalPushEnabled(true);
-    store.setHybridStoreConfig(
-        new HybridStoreConfigImpl(
-            0,
-            1,
-            HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
-            DataReplicationPolicy.NON_AGGREGATE,
-            BufferReplayPolicy.REWIND_FROM_EOP));
     doReturn(store).when(admin).getStore(CLUSTER_NAME, STORE_NAME);
 
     Version version = new VersionImpl(STORE_NAME, 1, JOB_ID);
@@ -194,18 +183,18 @@ public class CreateVersionTest {
             Optional.empty(),
             false);
 
-    Assert.assertTrue(store.isHybrid());
-    Assert.assertTrue(store.isIncrementalPushEnabled());
+    assertTrue(store.isHybrid());
+    assertTrue(store.isIncrementalPushEnabled());
 
     // Build a CreateVersion route.
     CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false);
     Route createVersionRoute = createVersion.requestTopicForPushing(admin);
 
     Object result = createVersionRoute.handle(request, response);
-    Assert.assertNotNull(result);
+    assertNotNull(result);
     VersionCreationResponse versionCreateResponse =
         OBJECT_MAPPER.readValue(result.toString(), VersionCreationResponse.class);
-    Assert.assertEquals(versionCreateResponse.getKafkaTopic(), "test_store_rt");
+    assertEquals(versionCreateResponse.getKafkaTopic(), "test_store_rt");
   }
 
   // A store should never end up in the state where inc-push is enabled but hybrid configs are not set, nevertheless
@@ -247,19 +236,90 @@ public class CreateVersionTest {
             false);
 
     Assert.assertFalse(store.isHybrid());
-    Assert.assertTrue(store.isIncrementalPushEnabled());
+    assertTrue(store.isIncrementalPushEnabled());
 
     // Build a CreateVersion route.
     CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false);
     Route createVersionRoute = createVersion.requestTopicForPushing(admin);
 
     Object result = createVersionRoute.handle(request, response);
-    Assert.assertNotNull(result);
+    assertNotNull(result);
     verify(response).status(org.apache.http.HttpStatus.SC_BAD_REQUEST);
     VersionCreationResponse versionCreateResponse =
         OBJECT_MAPPER.readValue(result.toString(), VersionCreationResponse.class);
-    Assert.assertTrue(versionCreateResponse.isError());
-    Assert.assertTrue(versionCreateResponse.getError().contains("which does not have hybrid mode enabled"));
+    assertTrue(versionCreateResponse.isError());
+    assertTrue(versionCreateResponse.getError().contains("which does not have hybrid mode enabled"));
     Assert.assertNull(versionCreateResponse.getKafkaTopic());
+  }
+
+  @Test
+  public void testRequestTopicForIncPushCanUseEmergencyRegionWhenItIsSet() throws Exception {
+    doReturn("default-src-region").when(admin).getKafkaBootstrapServers(anyBoolean());
+    doReturn(true).when(admin).whetherEnableBatchPushFromAdmin(STORE_NAME);
+    doReturn(true).when(admin).isParent();
+    doCallRealMethod().when(request).queryParamOrDefault(any(), any());
+    doReturn(true).when(accessClient).isAllowlistUsers(certificate, STORE_NAME, HTTP_GET);
+
+    Store store = getHybridTestStore();
+    store.setIncrementalPushEnabled(true);
+    doReturn(store).when(admin).getStore(CLUSTER_NAME, STORE_NAME);
+
+    Optional<String> emergencySrcRegion = Optional.of("dc-1");
+    store.setActiveActiveReplicationEnabled(true);
+    doReturn(true).when(admin).isActiveActiveReplicationEnabledInAllRegion(any(), any(), anyBoolean());
+    doReturn(emergencySrcRegion).when(admin).getEmergencySourceRegion();
+    doReturn("dc-1.kafka.venice.org").when(admin)
+        .getNativeReplicationKafkaBootstrapServerAddress(emergencySrcRegion.get());
+
+    Version version = new VersionImpl(STORE_NAME, 1, JOB_ID);
+    doReturn(version).when(admin)
+        .incrementVersionIdempotent(
+            CLUSTER_NAME,
+            STORE_NAME,
+            JOB_ID,
+            0,
+            0,
+            Version.PushType.INCREMENTAL,
+            false,
+            false,
+            null,
+            Optional.empty(),
+            Optional.of(certificate),
+            -1,
+            emergencySrcRegion,
+            false);
+
+    assertTrue(store.isHybrid());
+    assertTrue(store.isIncrementalPushEnabled());
+    assertTrue(admin.isParent());
+
+    // Build a CreateVersion route.
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false);
+    Route createVersionRoute = createVersion.requestTopicForPushing(admin);
+    Object result = createVersionRoute.handle(request, response);
+    assertNotNull(result);
+    VersionCreationResponse versionCreationResponse =
+        OBJECT_MAPPER.readValue(result.toString(), VersionCreationResponse.class);
+    assertEquals(versionCreationResponse.getKafkaBootstrapServers(), "dc-1.kafka.venice.org");
+  }
+
+  private Store getHybridTestStore() {
+    Store store = new ZKStore(
+        STORE_NAME,
+        "abc@linkedin.com",
+        10,
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_ALL_REPLICAS,
+        1);
+    store.setHybridStoreConfig(
+        new HybridStoreConfigImpl(
+            0,
+            1,
+            HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
+            DataReplicationPolicy.NON_AGGREGATE,
+            BufferReplayPolicy.REWIND_FROM_EOP));
+    return store;
   }
 }
