@@ -967,4 +967,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     stats.setAdminConsumptionOffsetLag(0L);
     stats.setMaxAdminConsumptionOffsetLag(0L);
   }
+
+  // Visible for testing
+  TopicManager getSourceKafkaClusterTopicManager() {
+    return sourceKafkaClusterTopicManager;
+  }
 }

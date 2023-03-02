@@ -2,6 +2,7 @@ package com.linkedin.venice.controller.server;
 
 import static com.linkedin.venice.HttpConstants.HTTP_GET;
 import static com.linkedin.venice.VeniceConstants.CONTROLLER_SSL_CERTIFICATE_ATTRIBUTE_NAME;
+import static com.linkedin.venice.controller.server.CreateVersion.overrideSourceRegionAddressForIncrementalPushJob;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HOSTNAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
@@ -24,6 +25,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
@@ -60,7 +62,6 @@ public class CreateVersionTest {
   private static final String CLUSTER_NAME = "test_cluster";
   private static final String STORE_NAME = "test_store";
   private static final String USER = "test_user";
-  private static final String IP = "0.0.0.0";
   private static final String JOB_ID = "push_1";
 
   private Admin admin;
@@ -254,24 +255,21 @@ public class CreateVersionTest {
 
   @Test
   public void testRequestTopicForIncPushCanUseEmergencyRegionWhenItIsSet() throws Exception {
-    doReturn("default-src-region").when(admin).getKafkaBootstrapServers(anyBoolean());
-    doReturn(true).when(admin).whetherEnableBatchPushFromAdmin(STORE_NAME);
-    doReturn(true).when(admin).isParent();
-    doCallRealMethod().when(request).queryParamOrDefault(any(), any());
-    doReturn(true).when(accessClient).isAllowlistUsers(certificate, STORE_NAME, HTTP_GET);
-
     Store store = getHybridTestStore();
     store.setIncrementalPushEnabled(true);
-    doReturn(store).when(admin).getStore(CLUSTER_NAME, STORE_NAME);
-
-    Optional<String> emergencySrcRegion = Optional.of("dc-1");
     store.setActiveActiveReplicationEnabled(true);
-    doReturn(true).when(admin).isActiveActiveReplicationEnabledInAllRegion(any(), any(), anyBoolean());
-    doReturn(emergencySrcRegion).when(admin).getEmergencySourceRegion();
-    doReturn("dc-1.kafka.venice.org").when(admin)
-        .getNativeReplicationKafkaBootstrapServerAddress(emergencySrcRegion.get());
-
     Version version = new VersionImpl(STORE_NAME, 1, JOB_ID);
+    Optional<String> emergencySrcRegion = Optional.of("dc-1");
+
+    doReturn(true).when(admin).whetherEnableBatchPushFromAdmin(STORE_NAME);
+    doReturn(true).when(admin).isParent();
+    doReturn(true).when(admin).isActiveActiveReplicationEnabledInAllRegion(any(), any(), anyBoolean());
+    doReturn(store).when(admin).getStore(CLUSTER_NAME, STORE_NAME);
+    doReturn("default-src.region.io").when(admin).getKafkaBootstrapServers(anyBoolean());
+    doReturn(emergencySrcRegion).when(admin).getEmergencySourceRegion();
+    doCallRealMethod().when(request).queryParamOrDefault(any(), any());
+    doReturn(true).when(accessClient).isAllowlistUsers(certificate, STORE_NAME, HTTP_GET);
+    doReturn("dc-1.region.io").when(admin).getNativeReplicationKafkaBootstrapServerAddress(emergencySrcRegion.get());
     doReturn(version).when(admin)
         .incrementVersionIdempotent(
             CLUSTER_NAME,
@@ -300,7 +298,7 @@ public class CreateVersionTest {
     assertNotNull(result);
     VersionCreationResponse versionCreationResponse =
         OBJECT_MAPPER.readValue(result.toString(), VersionCreationResponse.class);
-    assertEquals(versionCreationResponse.getKafkaBootstrapServers(), "dc-1.kafka.venice.org");
+    assertEquals(versionCreationResponse.getKafkaBootstrapServers(), "dc-1.region.io");
   }
 
   private Store getHybridTestStore() {
@@ -321,5 +319,78 @@ public class CreateVersionTest {
             DataReplicationPolicy.NON_AGGREGATE,
             BufferReplayPolicy.REWIND_FROM_EOP));
     return store;
+  }
+
+  @Test
+  public void testOverrideSourceRegionAddressForIncrementalPushJob() {
+    VersionCreationResponse creationResponse; // reset after every subtest
+
+    // AA-all-region is disabled and NR is enabled but AGG RT address is NOT set
+    creationResponse = new VersionCreationResponse();
+    creationResponse.setKafkaBootstrapServers("default.src.region.com");
+    doReturn(Optional.empty()).when(admin).getAggregateRealTimeTopicSource(CLUSTER_NAME);
+    overrideSourceRegionAddressForIncrementalPushJob(admin, creationResponse, CLUSTER_NAME, null, null, false, true);
+    assertEquals(creationResponse.getKafkaBootstrapServers(), "default.src.region.com");
+
+    // AA-all-region is disabled & NR is enabled * AGG RT address is set
+    creationResponse = new VersionCreationResponse();
+    creationResponse.setKafkaBootstrapServers("default.src.region.com");
+    doReturn(Optional.of("agg.rt.region.com")).when(admin).getAggregateRealTimeTopicSource(CLUSTER_NAME);
+    overrideSourceRegionAddressForIncrementalPushJob(admin, creationResponse, CLUSTER_NAME, null, null, false, true);
+    assertEquals(creationResponse.getKafkaBootstrapServers(), "agg.rt.region.com");
+
+    // AA-all-region and NR are disabled
+    creationResponse = new VersionCreationResponse();
+    creationResponse.setKafkaBootstrapServers("default.src.region.com");
+    overrideSourceRegionAddressForIncrementalPushJob(admin, creationResponse, CLUSTER_NAME, null, null, false, false);
+    assertEquals(creationResponse.getKafkaBootstrapServers(), "default.src.region.com");
+
+    // AA-all-region is enabled and NR is disabled
+    creationResponse = new VersionCreationResponse();
+    creationResponse.setKafkaBootstrapServers("default.src.region.com");
+    overrideSourceRegionAddressForIncrementalPushJob(admin, creationResponse, CLUSTER_NAME, null, null, true, false);
+    assertEquals(creationResponse.getKafkaBootstrapServers(), "default.src.region.com");
+
+    // AA-all-region and NR are enabled AND emergencySourceRegion and pushJobSourceGridFabric are null
+    creationResponse = new VersionCreationResponse();
+    creationResponse.setKafkaBootstrapServers("default.src.region.com");
+    overrideSourceRegionAddressForIncrementalPushJob(admin, creationResponse, CLUSTER_NAME, null, null, true, true);
+    assertEquals(creationResponse.getKafkaBootstrapServers(), "default.src.region.com");
+
+    // AA-all-region and NR are enabled AND emergencySourceRegion is not set but pushJobSourceGridFabric is provided
+    creationResponse = new VersionCreationResponse();
+    creationResponse.setKafkaBootstrapServers("default.src.region.com");
+    doReturn("vpj.src.region.com").when(admin).getNativeReplicationKafkaBootstrapServerAddress("dc-vpj");
+    overrideSourceRegionAddressForIncrementalPushJob(admin, creationResponse, CLUSTER_NAME, null, "dc-vpj", true, true);
+    assertEquals(creationResponse.getKafkaBootstrapServers(), "vpj.src.region.com");
+
+    // AA-all-region and NR are enabled AND emergencySourceRegion is set and pushJobSourceGridFabric is provided
+    creationResponse = new VersionCreationResponse();
+    creationResponse.setKafkaBootstrapServers("emergency.src.region.com");
+    doReturn("emergency.src.region.com").when(admin).getNativeReplicationKafkaBootstrapServerAddress("dc-e");
+    overrideSourceRegionAddressForIncrementalPushJob(
+        admin,
+        creationResponse,
+        CLUSTER_NAME,
+        "dc-e",
+        "dc-vpj",
+        true,
+        true);
+    assertEquals(creationResponse.getKafkaBootstrapServers(), "emergency.src.region.com");
+
+    // AA-all-region and NR are enabled AND emergencySourceRegion is set and pushJobSourceGridFabric is not provided
+    creationResponse = new VersionCreationResponse();
+    creationResponse.setKafkaBootstrapServers("emergency.src.region.com");
+    doReturn("emergency.src.region.com").when(admin).getNativeReplicationKafkaBootstrapServerAddress("dc-e");
+    overrideSourceRegionAddressForIncrementalPushJob(admin, creationResponse, CLUSTER_NAME, "dc-e", null, true, true);
+    assertEquals(creationResponse.getKafkaBootstrapServers(), "emergency.src.region.com");
+  }
+
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Failed to get the broker server URL for the source region: dc1")
+  public void testOverrideSourceRegionAddressForIncrementalPushJobWhenOverrideRegionAddressIsNotFound() {
+    VersionCreationResponse creationResponse = new VersionCreationResponse();
+    creationResponse.setKafkaBootstrapServers("default.src.region.com");
+    doReturn(null).when(admin).getNativeReplicationKafkaBootstrapServerAddress("dc1");
+    overrideSourceRegionAddressForIncrementalPushJob(admin, creationResponse, CLUSTER_NAME, "dc1", null, true, true);
   }
 }

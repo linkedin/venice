@@ -204,7 +204,7 @@ public class AdminConsumptionTaskTest {
 
   private AdminConsumptionTask getAdminConsumptionTask(PollStrategy pollStrategy, boolean isParent) {
     AdminConsumptionStats stats = mock(AdminConsumptionStats.class);
-    return getAdminConsumptionTask(pollStrategy, isParent, stats, 10000);
+    return getAdminConsumptionTask(pollStrategy, isParent, stats, 10000, false, null);
   }
 
   private AdminConsumptionTask getAdminConsumptionTask(
@@ -212,6 +212,16 @@ public class AdminConsumptionTaskTest {
       boolean isParent,
       AdminConsumptionStats stats,
       long adminConsumptionCycleTimeoutMs) {
+    return getAdminConsumptionTask(pollStrategy, isParent, stats, adminConsumptionCycleTimeoutMs, false, null);
+  }
+
+  private AdminConsumptionTask getAdminConsumptionTask(
+      PollStrategy pollStrategy,
+      boolean isParent,
+      AdminConsumptionStats stats,
+      long adminConsumptionCycleTimeoutMs,
+      boolean remoteConsumptionEnabled,
+      String remoteKafkaServerUrl) {
     MockInMemoryConsumer inMemoryKafkaConsumer =
         new MockInMemoryConsumer(inMemoryKafkaBroker, pollStrategy, mockKafkaConsumer);
 
@@ -224,8 +234,8 @@ public class AdminConsumptionTaskTest {
     return new AdminConsumptionTask(
         clusterName,
         inMemoryKafkaConsumer,
-        false,
-        Optional.empty(),
+        remoteConsumptionEnabled,
+        Optional.ofNullable(remoteKafkaServerUrl),
         admin,
         adminTopicMetadataAccessor,
         executionIdAccessor,
@@ -1421,5 +1431,20 @@ public class AdminConsumptionTaskTest {
     adminMessage.payloadUnion = addVersion;
     adminMessage.executionId = executionId;
     return adminOperationSerializer.serialize(adminMessage);
+  }
+
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Admin topic remote consumption is enabled but no config found for the source Kafka bootstrap server url")
+  public void testRemoteConsumptionEnabledButRemoteBootstrapUrlsAreMissing() {
+    AdminConsumptionStats stats = mock(AdminConsumptionStats.class);
+    getAdminConsumptionTask(new RandomPollStrategy(), true, stats, 0, true, null);
+  }
+
+  @Test
+  public void testRemoteConsumptionEnabledAndRemoteBootstrapUrlsAreGiven() {
+    AdminConsumptionStats stats = mock(AdminConsumptionStats.class);
+    TopicManager topicManager = mock(TopicManager.class);
+    doReturn(topicManager).when(admin).getTopicManager("remote.pubsub");
+    AdminConsumptionTask task = getAdminConsumptionTask(null, true, stats, 0, true, "remote.pubsub");
+    Assert.assertEquals(task.getSourceKafkaClusterTopicManager(), topicManager);
   }
 }
