@@ -872,6 +872,7 @@ public class VenicePushJob implements AutoCloseable {
     this.mapRedPartitionerClass = mapRedPartitionerClass;
   }
 
+  // Visible for testing
   protected void setValidateSchemaAndBuildDictMapperOutputReader(
       ValidateSchemaAndBuildDictMapperOutputReader validateSchemaAndBuildDictMapperOutputReader) throws Exception {
     this.validateSchemaAndBuildDictMapperOutputReader = validateSchemaAndBuildDictMapperOutputReader;
