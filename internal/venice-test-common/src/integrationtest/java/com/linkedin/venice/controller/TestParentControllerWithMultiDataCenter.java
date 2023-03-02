@@ -48,7 +48,7 @@ public class TestParentControllerWithMultiDataCenter {
                                                                                                          // ...];
 
   private List<VeniceMultiClusterWrapper> childDatacenters;
-  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiColoMultiClusterWrapper;
+  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
 
   private static final String BASIC_USER_SCHEMA_STRING_WITH_DEFAULT = "{" + "  \"namespace\" : \"example.avro\",  "
       + "  \"type\": \"record\",   " + "  \"name\": \"User\",     " + "  \"fields\": [           "
@@ -58,7 +58,7 @@ public class TestParentControllerWithMultiDataCenter {
   public void setUp() {
     Properties controllerProps = new Properties();
     controllerProps.put(DEFAULT_NUMBER_OF_PARTITION_FOR_HYBRID, 2);
-    multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
+    multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
         NUMBER_OF_CLUSTERS,
         1,
@@ -70,12 +70,12 @@ public class TestParentControllerWithMultiDataCenter {
         Optional.of(controllerProps),
         Optional.empty());
 
-    childDatacenters = multiColoMultiClusterWrapper.getChildRegions();
+    childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
   }
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    Utils.closeQuietlyWithErrorLogged(multiColoMultiClusterWrapper);
+    Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -83,7 +83,7 @@ public class TestParentControllerWithMultiDataCenter {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = Utils.getUniqueString("store");
 
-    String parentControllerURLs = multiColoMultiClusterWrapper.getControllerConnectString();
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
     try (ControllerClient parentControllerClient =
         ControllerClient.constructClusterControllerClient(clusterName, parentControllerURLs)) {
       /**
@@ -202,7 +202,7 @@ public class TestParentControllerWithMultiDataCenter {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = Utils.getUniqueString("store");
 
-    String parentControllerURLs = multiColoMultiClusterWrapper.getControllerConnectString();
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
     try (ControllerClient parentControllerClient =
         ControllerClient.constructClusterControllerClient(clusterName, parentControllerURLs)) {
       /**
@@ -329,7 +329,7 @@ public class TestParentControllerWithMultiDataCenter {
     Schema rmdSchema2 = RmdSchemaGenerator.generateMetadataSchema(valueRecordSchemaStr2, 1);
     Schema rmdSchema3 = RmdSchemaGenerator.generateMetadataSchema(valueRecordSchemaStr3, 1);
 
-    String parentControllerURLs = multiColoMultiClusterWrapper.getControllerConnectString();
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs)) {
       /**
        * Create a test store
@@ -425,7 +425,7 @@ public class TestParentControllerWithMultiDataCenter {
   public void testStoreRollbackToBackupVersion() {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = Utils.getUniqueString("testStoreRollbackToBackupVersion");
-    String parentControllerURLs = multiColoMultiClusterWrapper.getControllerConnectString();
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
         ControllerClient dc0Client =
             new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());

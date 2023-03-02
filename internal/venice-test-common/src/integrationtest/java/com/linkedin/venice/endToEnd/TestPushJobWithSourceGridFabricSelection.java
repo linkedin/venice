@@ -55,7 +55,7 @@ public class TestPushJobWithSourceGridFabricSelection {
   private String[] dcNames;
 
   private List<VeniceMultiClusterWrapper> childDatacenters;
-  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiColoMultiClusterWrapper;
+  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
 
   @DataProvider(name = "storeSize")
   public static Object[][] storeSize() {
@@ -77,7 +77,7 @@ public class TestPushJobWithSourceGridFabricSelection {
     controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 1000);
     controllerProps.put(LF_MODEL_DEPENDENCY_CHECK_DISABLED, "true");
 
-    multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
+    multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
         NUMBER_OF_CLUSTERS,
         1,
@@ -89,15 +89,15 @@ public class TestPushJobWithSourceGridFabricSelection {
         Optional.of(controllerProps),
         Optional.of(new VeniceProperties(serverProperties)),
         false);
-    childDatacenters = multiColoMultiClusterWrapper.getChildRegions();
-    parentControllerRegionName = multiColoMultiClusterWrapper.getParentRegionName() + ".parent";
-    clusterNames = multiColoMultiClusterWrapper.getClusterNames();
-    dcNames = multiColoMultiClusterWrapper.getChildRegionNames().toArray(new String[0]);
+    childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
+    parentControllerRegionName = multiRegionMultiClusterWrapper.getParentRegionName() + ".parent";
+    clusterNames = multiRegionMultiClusterWrapper.getClusterNames();
+    dcNames = multiRegionMultiClusterWrapper.getChildRegionNames().toArray(new String[0]);
   }
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    multiColoMultiClusterWrapper.close();
+    multiRegionMultiClusterWrapper.close();
   }
 
   /**
@@ -110,9 +110,10 @@ public class TestPushJobWithSourceGridFabricSelection {
     Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, recordCount);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
-    String parentControllerUrls = multiColoMultiClusterWrapper.getControllerConnectString();
+    String parentControllerUrls = multiRegionMultiClusterWrapper.getControllerConnectString();
 
-    // Enable NR in all colos and A/A in parent colo and 1 child colo only. The NR source fabric cluster level config is
+    // Enable NR in all regions and A/A in parent region and 1 child region only. The NR source fabric cluster level
+    // config is
     // dc-0 by default.
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrls)) {
       Assert.assertFalse(
@@ -132,7 +133,8 @@ public class TestPushJobWithSourceGridFabricSelection {
               .isError());
     }
 
-    Properties props = IntegrationTestPushUtils.defaultVPJProps(multiColoMultiClusterWrapper, inputDirPath, storeName);
+    Properties props =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
     props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
     props.put(SOURCE_GRID_FABRIC, dcNames[1]);
 
@@ -150,14 +152,14 @@ public class TestPushJobWithSourceGridFabricSelection {
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, updateStoreParams).close();
 
     // Start a batch push specifying SOURCE_GRID_FABRIC as dc-1. This should be ignored as A/A is not enabled in all
-    // colo.
+    // region.
     try (VenicePushJob job = new VenicePushJob("Test push job 1", props)) {
       job.run();
       // Verify the kafka URL being returned to the push job is the same as dc-0 kafka url.
       Assert.assertEquals(job.getKafkaUrl(), childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
     }
 
-    // Enable A/A in all colo now start another batch push. Verify the batch push source address is dc-1.
+    // Enable A/A in all regions now start another batch push. Verify the batch push source address is dc-1.
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrls)) {
       // Enable hybrid config, Leader/Follower state model and A/A replication policy
       Assert.assertFalse(

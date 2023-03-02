@@ -59,7 +59,7 @@ public class DaVinciClusterAgnosticTest {
           + "       {\"name\": \"field2\", \"type\": \"int\", \"default\": 0}" + "  ] " + " } ";
   private static final String FABRIC = "dc-0";
 
-  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiColoMultiClusterWrapper;
+  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
   private VeniceMultiClusterWrapper multiClusterVenice;
   private String[] clusterNames;
   private String parentControllerURLs;
@@ -70,7 +70,7 @@ public class DaVinciClusterAgnosticTest {
   @BeforeClass
   public void setUp() {
     Utils.thisIsLocalhost();
-    multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
+    multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         1,
         2,
         1,
@@ -82,9 +82,9 @@ public class DaVinciClusterAgnosticTest {
         Optional.empty(),
         Optional.empty(),
         false);
-    multiClusterVenice = multiColoMultiClusterWrapper.getChildRegions().get(0);
+    multiClusterVenice = multiRegionMultiClusterWrapper.getChildRegions().get(0);
     clusterNames = multiClusterVenice.getClusterNames();
-    parentControllerURLs = multiColoMultiClusterWrapper.getParentControllers()
+    parentControllerURLs = multiRegionMultiClusterWrapper.getParentControllers()
         .stream()
         .map(VeniceControllerWrapper::getControllerUrl)
         .collect(Collectors.joining(","));
@@ -92,7 +92,7 @@ public class DaVinciClusterAgnosticTest {
     for (String cluster: clusterNames) {
       try (ControllerClient controllerClient =
           new ControllerClient(cluster, multiClusterVenice.getControllerConnectString())) {
-        // Verify the participant store is up and running in child colo
+        // Verify the participant store is up and running in child region
         String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(cluster);
         TestUtils.waitForNonDeterministicPushCompletion(
             Version.composeKafkaTopic(participantStoreName, 1),
@@ -105,7 +105,7 @@ public class DaVinciClusterAgnosticTest {
 
   @AfterClass
   public void cleanUp() {
-    Utils.closeQuietlyWithErrorLogged(multiColoMultiClusterWrapper);
+    Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
   }
 
   @Test(timeOut = 180 * Time.MS_PER_SECOND)

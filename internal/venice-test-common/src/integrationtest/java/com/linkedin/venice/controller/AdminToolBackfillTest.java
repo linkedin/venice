@@ -39,7 +39,7 @@ public class AdminToolBackfillTest {
   private String[] clusterNames;
   private List<VeniceMultiClusterWrapper> childDatacenters;
 
-  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiColoMultiClusterWrapper;
+  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
 
   @BeforeClass
   public void setUp() {
@@ -48,7 +48,7 @@ public class AdminToolBackfillTest {
     parentControllerProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, "false");
     parentControllerProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, "false");
 
-    multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
+    multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
         NUMBER_OF_CLUSTERS,
         2,
@@ -60,13 +60,13 @@ public class AdminToolBackfillTest {
         Optional.empty(),
         Optional.empty(),
         false);
-    childDatacenters = multiColoMultiClusterWrapper.getChildRegions();
-    clusterNames = multiColoMultiClusterWrapper.getClusterNames();
+    childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
+    clusterNames = multiRegionMultiClusterWrapper.getClusterNames();
   }
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    multiColoMultiClusterWrapper.close();
+    multiRegionMultiClusterWrapper.close();
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -74,7 +74,7 @@ public class AdminToolBackfillTest {
     String clusterName = clusterNames[0];
     String testStoreName = Utils.getUniqueString("test-store");
 
-    String parentControllerUrls = multiColoMultiClusterWrapper.getControllerConnectString();
+    String parentControllerUrls = multiRegionMultiClusterWrapper.getControllerConnectString();
     ControllerClient parentControllerClient =
         ControllerClient.constructClusterControllerClient(clusterName, parentControllerUrls);
     ControllerClient dc0Client = ControllerClient
@@ -143,7 +143,7 @@ public class AdminToolBackfillTest {
     String clusterName = clusterNames[0];
     String testStoreName = Utils.getUniqueString("test-store");
 
-    String parentControllerUrls = multiColoMultiClusterWrapper.getControllerConnectString();
+    String parentControllerUrls = multiRegionMultiClusterWrapper.getControllerConnectString();
     ControllerClient parentControllerClient =
         ControllerClient.constructClusterControllerClient(clusterName, parentControllerUrls);
     ControllerClient dc0Client = ControllerClient
