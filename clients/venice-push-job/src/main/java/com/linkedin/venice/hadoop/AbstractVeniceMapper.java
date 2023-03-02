@@ -200,7 +200,7 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE> extends Abstr
 
   /**
    * A => {@link VenicePushJob#COMPRESSION_METRIC_COLLECTION_ENABLED} => if enabled, Compression metrics needs to be collected.
-   * check {@link VenicePushJob#reevaluateCompressionMetricCollectionEnabled} for more details. <br>
+   * check {@link VenicePushJob#evaluateCompressionMetricCollectionEnabled} for more details. <br>
    * B => {@link VenicePushJob#ZSTD_DICTIONARY_CREATION_REQUIRED} => Check {@link VenicePushJob#shouldBuildZstdCompressionDictionary}
    * for more details<br>
    * C => {@link VenicePushJob#ZSTD_DICTIONARY_CREATION_SUCCESS} => Whether Zstd Dictionary creation is a success.<br><br>
