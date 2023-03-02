@@ -297,4 +297,49 @@ public class TestMergeUpdate extends TestMergeBase {
     Assert.assertEquals(updatedFieldTsRecord.get(DELETED_ELEM_FIELD_NAME), Arrays.asList("key1", "key2", "key4"));
     Assert.assertEquals(updatedFieldTsRecord.get(DELETED_ELEM_TS_FIELD_NAME), Arrays.asList(2L, 2L, 2L));
   }
+
+  @Test
+  public void testRemoveEntriesFromList() {
+    GenericRecord partialUpdateRecord =
+        new UpdateBuilderImpl(schemaSet.getUpdateSchema()).setElementsToRemoveFromListField(
+            STRING_ARRAY_FIELD_NAME,
+            Arrays.asList("key1", "key2", "key3", "key4", "key5", "key6")).build();
+
+    GenericRecord oldValueRecord = createValueRecord(r -> {
+      r.put(REGULAR_FIELD_NAME, "defaultVenice");
+      r.put(STRING_ARRAY_FIELD_NAME, Arrays.asList("key1", "key2", "key3"));
+      r.put(INT_MAP_FIELD_NAME, new IndexedHashMap<>());
+    });
+    GenericRecord oldRmdRecord = initiateFieldLevelRmdRecord(oldValueRecord, 2);
+    GenericRecord timestampRecord = (GenericRecord) oldRmdRecord.get(RmdConstants.TIMESTAMP_FIELD_NAME);
+    GenericRecord fieldTsRecord = (GenericRecord) timestampRecord.get(STRING_ARRAY_FIELD_NAME);
+    fieldTsRecord.put(TOP_LEVEL_TS_FIELD_NAME, 1L);
+    fieldTsRecord.put(PUT_ONLY_PART_LENGTH_FIELD_NAME, 1);
+    fieldTsRecord.put(ACTIVE_ELEM_TS_FIELD_NAME, Arrays.asList(3L, 4L));
+    fieldTsRecord.put(DELETED_ELEM_FIELD_NAME, Arrays.asList("key4", "key5", "key6"));
+    fieldTsRecord.put(DELETED_ELEM_TS_FIELD_NAME, Arrays.asList(2L, 3L, 4L));
+
+    MergeConflictResult result = mergeConflictResolver.update(
+        Lazy.of(() -> serializeValueRecord(oldValueRecord)),
+        new RmdWithValueSchemaId(schemaSet.getValueSchemaId(), RMD_VERSION_ID, oldRmdRecord),
+        serializeUpdateRecord(partialUpdateRecord),
+        schemaSet.getValueSchemaId(),
+        schemaSet.getUpdateSchemaProtocolVersion(),
+        3L,
+        1L,
+        0,
+        0);
+
+    GenericRecord updatedValueRecord = deserializeValueRecord(result.getNewValue());
+    Assert.assertEquals(updatedValueRecord.get(STRING_ARRAY_FIELD_NAME), Collections.singletonList(new Utf8("key3")));
+    GenericRecord updatedRmdTsRecord = (GenericRecord) result.getRmdRecord().get(RmdConstants.TIMESTAMP_FIELD_NAME);
+    GenericRecord updatedFieldTsRecord = (GenericRecord) updatedRmdTsRecord.get(STRING_ARRAY_FIELD_NAME);
+    Assert.assertEquals(updatedFieldTsRecord.get(TOP_LEVEL_TS_FIELD_NAME), 1L);
+    Assert.assertEquals(updatedFieldTsRecord.get(ACTIVE_ELEM_TS_FIELD_NAME), Collections.singletonList(4L));
+    Assert.assertEquals(updatedFieldTsRecord.get(PUT_ONLY_PART_LENGTH_FIELD_NAME), 0);
+    Assert.assertEquals(
+        updatedFieldTsRecord.get(DELETED_ELEM_FIELD_NAME),
+        Arrays.asList("key1", "key2", "key4", "key5", "key6"));
+    Assert.assertEquals(updatedFieldTsRecord.get(DELETED_ELEM_TS_FIELD_NAME), Arrays.asList(3L, 3L, 3L, 3L, 4L));
+  }
 }

@@ -10,16 +10,16 @@ import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
+import org.apache.avro.util.Utf8;
 
 
 /**
- * This class is a wrapper schema repository class, which is only used by merge conflict resolver in A/A store ingestion
- * task. This class will annotate value schema and partial update schema so when performing Map collection merging,
- * Map field's key can be deserialized into String type and thus is comparable for DCR purpose. Without this wrapper or
- * user annotation, map fields will have key in UTF-8 type which is not comparable.
- * This wrapper class only implements retrieval of the value schema (including the latest value schema and superset schema)
- * and partial update schema as they are the only usage in merge conflict resolver. Other operations are not supported
- * intentionally to avoid unexpected behavior.
+ * This class serves as the annotated schema cache for merge conflict resolution purpose in Active/Active replication.
+ * String in Avro string array and map key will be deserialized into {@link org.apache.avro.util.Utf8} instead of Java
+ * String and this will result in incorrect and inefficient processing during collection merge operations.
+ * This class wraps schema repository and annotates value schema, update schema, superset schema and RMD schema to be
+ * used by {@link MergeConflictResolver} and {@link RmdSerDe} only. The {@link MergeConflictResolver} will process all
+ * string array and map field in Java string correctly and no internal {@link Utf8#toString()} is needed.
  */
 public class StringAnnotatedStoreSchemaCache {
   private final ReadOnlySchemaRepository internalSchemaRepo;
@@ -34,8 +34,8 @@ public class StringAnnotatedStoreSchemaCache {
   }
 
   /**
-   * Retrieve value schema of a store and annotate its map fields. The annotation will only be done once in the repository's
-   * lifetime as the result is cached.
+   * Retrieve value schema and annotate its top-level string array and map fields.
+   * The annotation will only be done once in the repository's lifetime as the result is cached.
    */
   public SchemaEntry getValueSchema(int id) {
     return valueSchemaEntryMapCache.computeIfAbsent(id, k -> {
@@ -48,8 +48,8 @@ public class StringAnnotatedStoreSchemaCache {
   }
 
   /**
-   * Retrieve the superset schema (if exists) or the latest value schema of a store and annotate its map fields.
-   * The annotation will be done once for each superset or latest value schema as it will be cached for future usage.
+   * Retrieve the superset schema (if exists) or the latest value schema and return corresponding annotated value schema.
+   * The annotation will only be done once in the repository's lifetime as the result is cached.
    */
   public SchemaEntry getSupersetOrLatestValueSchema() {
     SchemaEntry schemaEntry = internalSchemaRepo.getSupersetOrLatestValueSchema(storeName);
@@ -61,8 +61,8 @@ public class StringAnnotatedStoreSchemaCache {
   }
 
   /**
-   * Retrieve the superset schema (if exists) and annotate its map fields.
-   * The annotation will be done once for each superset schema as it will be cached for future usage.
+   * Retrieve the superset schema (if exists) and return corresponding annotated value schema.
+   * The annotation will only be done once in the repository's lifetime as the result is cached.
    */
   public SchemaEntry getSupersetSchema() {
     SchemaEntry schemaEntry = internalSchemaRepo.getSupersetSchema(storeName);
@@ -76,7 +76,7 @@ public class StringAnnotatedStoreSchemaCache {
   }
 
   /**
-   * Retrieve partial update schema of a store and annotate its map fields.
+   * Retrieve update schema and annotate top-level string array and map field's field update and collection merge operations.
    * The annotation will only be done once in the repository's lifetime as the result is cached.
    */
   public DerivedSchemaEntry getDerivedSchema(int valueSchemaId, int partialUpdateProtocolId) {
@@ -91,6 +91,10 @@ public class StringAnnotatedStoreSchemaCache {
     });
   }
 
+  /**
+   * Retrieve RMD schema and annotate map field and string array field's deleted elements list field.
+   * The annotation will only be done once in the repository's lifetime as the result is cached.
+   */
   public RmdSchemaEntry getRmdSchema(int valueSchemaId, int rmdSchemaProtocolId) {
     String rmdSchemaId = valueSchemaId + "-" + rmdSchemaProtocolId;
     return rmdSchemaEntryMapCache.computeIfAbsent(rmdSchemaId, k -> {

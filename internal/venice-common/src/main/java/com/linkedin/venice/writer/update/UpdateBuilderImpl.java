@@ -15,7 +15,6 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.lang3.Validate;
-import org.apache.logging.log4j.LogManager;
 
 
 @NotThreadsafe
@@ -181,7 +180,6 @@ public class UpdateBuilderImpl implements UpdateBuilder {
     }
     Schema listMergeRecordSchema = null;
     for (Schema unionBranchSchema: updateRecord.getSchema().getField(listFieldName).schema().getTypes()) {
-      LogManager.getLogger().info("DEBUGGING: " + unionBranchSchema.toString(true));
       if (unionBranchSchema.getType().equals(Schema.Type.RECORD) && !unionBranchSchema.getFields().isEmpty()) {
         listMergeRecordSchema = unionBranchSchema;
         break;

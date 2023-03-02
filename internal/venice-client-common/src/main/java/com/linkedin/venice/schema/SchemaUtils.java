@@ -111,7 +111,7 @@ public class SchemaUtils {
   }
 
   /**
-   * Annotate all the top-level map field of the input schema to use Java String as key.
+   * Annotate all the top-level map field and string array field of the input schema to use Java String as key.
    * @param schema the input value schema to be annotated.
    * @return Annotated value schema.
    */
@@ -133,8 +133,8 @@ public class SchemaUtils {
   }
 
   /**
-   * Annotate all the top-level map field of the partial update schema to use Java String as key. This method will make
-   * sure field update and collection merging operations of a top-level map field are annotated.
+   * Annotate all the top-level map field and string array of the update schema to use Java String as key.
+   * This method will make sure field update and collection merging operations of these fields are annotated.
    * @param schema the input update schema to be annotated.
    * @return Annotated update schema.
    */
@@ -167,6 +167,12 @@ public class SchemaUtils {
     return replicatedSchema;
   }
 
+  /**
+   * Annotate all the top-level map and string array's deleted elements field of the RMD schema to use Java String as key.
+   * This method will make sure deleted elements field of these fields are annotated.
+   * @param schema the input update schema to be annotated.
+   * @return Annotated update schema.
+   */
   public static Schema annotateRmdSchema(Schema schema) {
     // Create duplicate schema here in order not to create any side effect during annotation.
     Schema replicatedSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schema.toString());
