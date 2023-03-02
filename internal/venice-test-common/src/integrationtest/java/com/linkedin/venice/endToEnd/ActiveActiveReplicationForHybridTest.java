@@ -120,7 +120,7 @@ public class ActiveActiveReplicationForHybridTest {
 
   protected List<VeniceMultiClusterWrapper> childDatacenters;
   protected List<VeniceControllerWrapper> parentControllers;
-  protected VeniceTwoLayerMultiRegionMultiClusterWrapper multiColoMultiClusterWrapper;
+  protected VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
 
   private D2Client d2ClientForDC0Region;
   private Properties serverProperties;
@@ -152,7 +152,7 @@ public class ActiveActiveReplicationForHybridTest {
 
     controllerProps.put(LF_MODEL_DEPENDENCY_CHECK_DISABLED, true);
 
-    multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
+    multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
         NUMBER_OF_CLUSTERS,
         1,
@@ -164,8 +164,8 @@ public class ActiveActiveReplicationForHybridTest {
         Optional.of(controllerProps),
         Optional.of(new VeniceProperties(serverProperties)),
         false);
-    childDatacenters = multiColoMultiClusterWrapper.getChildRegions();
-    parentControllers = multiColoMultiClusterWrapper.getParentControllers();
+    childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
+    parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
 
     // Set up a d2 client for DC0 region
     d2ClientForDC0Region = new D2ClientBuilder().setZkHosts(childDatacenters.get(0).getZkServerWrapper().getAddress())
@@ -193,7 +193,7 @@ public class ActiveActiveReplicationForHybridTest {
     Utils.closeQuietlyWithErrorLogged(dc0Client);
     Utils.closeQuietlyWithErrorLogged(dc1Client);
     Utils.closeQuietlyWithErrorLogged(dc2Client);
-    Utils.closeQuietlyWithErrorLogged(multiColoMultiClusterWrapper);
+    Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -373,7 +373,7 @@ public class ActiveActiveReplicationForHybridTest {
       assertTrue(controllerResponse instanceof JobStatusQueryResponse);
       JobStatusQueryResponse jobStatusQueryResponse = (JobStatusQueryResponse) controllerResponse;
       int versionNumber = jobStatusQueryResponse.getVersion();
-      // Wait for push to complete in all colos
+      // Wait for push to complete in all regions
       waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
         for (ControllerClient controllerClient: dcControllerClientList) {
           StoreResponse storeResponse = assertCommand(controllerClient.getStore(storeName));
@@ -384,8 +384,8 @@ public class ActiveActiveReplicationForHybridTest {
       // disable the purging of transientRecord buffer using reflection.
       if (useTransientRecordCache) {
         String topicName = Version.composeKafkaTopic(storeName, versionNumber);
-        for (VeniceMultiClusterWrapper veniceColo: multiColoMultiClusterWrapper.getChildRegions()) {
-          VeniceClusterWrapper veniceCluster = veniceColo.getClusters().get(clusterName);
+        for (VeniceMultiClusterWrapper veniceRegion: multiRegionMultiClusterWrapper.getChildRegions()) {
+          VeniceClusterWrapper veniceCluster = veniceRegion.getClusters().get(clusterName);
           for (VeniceServerWrapper veniceServerWrapper: veniceCluster.getVeniceServers()) {
             StoreIngestionTaskBackdoor.setPurgeTransientRecordBuffer(veniceServerWrapper, topicName, false);
           }
@@ -408,7 +408,7 @@ public class ActiveActiveReplicationForHybridTest {
           samzaConfig.put(configPrefix + VENICE_AGGREGATE, "false");
           samzaConfig.put(VENICE_CHILD_D2_ZK_HOSTS, childDataCenter.getZkServerWrapper().getAddress());
           samzaConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, D2_SERVICE_NAME);
-          samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, multiColoMultiClusterWrapper.getZkServerWrapper().getAddress());
+          samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, multiRegionMultiClusterWrapper.getZkServerWrapper().getAddress());
           samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
           samzaConfig.put(DEPLOYMENT_ID, Utils.getUniqueString("venice-push-id"));
           samzaConfig.put(SSL_ENABLED, "false");
