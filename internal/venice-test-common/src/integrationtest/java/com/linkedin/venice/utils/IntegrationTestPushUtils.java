@@ -59,7 +59,7 @@ import org.testng.Assert;
 public class IntegrationTestPushUtils {
   public static Properties defaultVPJProps(VeniceClusterWrapper veniceCluster, String inputDirPath, String storeName) {
     Map<String, String> childColoNamesToZkAddress =
-        Collections.singletonMap(veniceCluster.getColoName(), veniceCluster.getZk().getAddress());
+        Collections.singletonMap(veniceCluster.getRegionName(), veniceCluster.getZk().getAddress());
     return TestWriteUtils.defaultVPJPropsWithD2Routing(
         null,
         null,

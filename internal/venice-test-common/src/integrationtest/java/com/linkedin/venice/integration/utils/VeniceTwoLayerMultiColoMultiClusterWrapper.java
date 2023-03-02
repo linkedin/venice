@@ -75,8 +75,8 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
   }
 
   static ServiceProvider<VeniceTwoLayerMultiColoMultiClusterWrapper> generateService(
-      int numberOfColos,
-      int numberOfClustersInEachColo,
+      int numberOfRegions,
+      int numberOfClustersInEachRegion,
       int numberOfParentControllers,
       int numberOfControllers,
       int numberOfServers,
@@ -85,8 +85,8 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
       Optional<VeniceProperties> parentControllerProperties,
       Optional<VeniceProperties> serverProperties) {
     return generateService(
-        numberOfColos,
-        numberOfClustersInEachColo,
+        numberOfRegions,
+        numberOfClustersInEachRegion,
         numberOfParentControllers,
         numberOfControllers,
         numberOfServers,
@@ -99,8 +99,8 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
   }
 
   static ServiceProvider<VeniceTwoLayerMultiColoMultiClusterWrapper> generateService(
-      int numberOfColos,
-      int numberOfClustersInEachColo,
+      int numberOfRegions,
+      int numberOfClustersInEachRegion,
       int numberOfParentControllers,
       int numberOfControllers,
       int numberOfServers,
@@ -110,12 +110,12 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
       Optional<Properties> childControllerPropertiesOverride,
       Optional<VeniceProperties> serverProperties,
       boolean forkServer) {
-    String parentColoName = VeniceControllerWrapper.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
+    String parentRegionName = VeniceControllerWrapper.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
     final List<VeniceControllerWrapper> parentControllers = new ArrayList<>(numberOfParentControllers);
-    final List<VeniceMultiClusterWrapper> multiClusters = new ArrayList<>(numberOfColos);
+    final List<VeniceMultiClusterWrapper> multiClusters = new ArrayList<>(numberOfRegions);
 
     /**
-     * Enable participant system store by default in a two-layer multi-colo set-up
+     * Enable participant system store by default in a two-layer multi-region set-up
      */
     Properties defaultParentControllerProps = new Properties();
     defaultParentControllerProps.setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
@@ -133,33 +133,33 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
       Properties parentControllerProps = parentControllerPropertiesOverride.isPresent()
           ? parentControllerPropertiesOverride.get().getPropertiesCopy()
           : new Properties();
-      /** Enable participant system store by default in a two-layer multi-colo set-up */
+      /** Enable participant system store by default in a two-layer multi-region set-up */
       parentControllerProps.setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
       parentControllerPropertiesOverride = Optional.of(new VeniceProperties(parentControllerProps));
 
       Map<String, String> clusterToD2 = new HashMap<>();
-      String[] clusterNames = new String[numberOfClustersInEachColo];
-      for (int i = 0; i < numberOfClustersInEachColo; i++) {
+      String[] clusterNames = new String[numberOfClustersInEachRegion];
+      for (int i = 0; i < numberOfClustersInEachRegion; i++) {
         String clusterName = "venice-cluster" + i;
         clusterNames[i] = clusterName;
         String d2ServiceName = "venice-" + i;
         clusterToD2.put(clusterName, d2ServiceName);
       }
-      List<String> childColoNames = new ArrayList<>(numberOfColos);
+      List<String> childRegionName = new ArrayList<>(numberOfRegions);
 
-      for (int i = 0; i < numberOfColos; i++) {
-        childColoNames.add("dc-" + i);
+      for (int i = 0; i < numberOfRegions; i++) {
+        childRegionName.add("dc-" + i);
       }
 
-      String childColoList = String.join(",", childColoNames);
+      String childRegionList = String.join(",", childRegionName);
 
       /**
        * Need to build Zk servers and Kafka brokers first since they are building blocks of a Venice cluster. In other
        * words, building the remaining part of a Venice cluster sometimes requires knowledge of all Kafka brokers/clusters
        * and or Zookeeper servers.
        */
-      Map<String, ZkServerWrapper> zkServerByColoName = new HashMap<>(childColoNames.size());
-      Map<String, KafkaBrokerWrapper> kafkaBrokerByColoName = new HashMap<>(childColoNames.size());
+      Map<String, ZkServerWrapper> zkServerByRegionName = new HashMap<>(childRegionName.size());
+      Map<String, KafkaBrokerWrapper> kafkaBrokerByRegionName = new HashMap<>(childRegionName.size());
 
       defaultParentControllerProps.put(ENABLE_NATIVE_REPLICATION_FOR_BATCH_ONLY, true);
       defaultParentControllerProps.put(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY, true);
@@ -168,34 +168,34 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
       defaultParentControllerProps.put(ENABLE_NATIVE_REPLICATION_FOR_HYBRID, true);
       defaultParentControllerProps.put(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID, true);
       defaultParentControllerProps
-          .put(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_BATCH_ONLY_STORES, childColoNames.get(0));
+          .put(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_BATCH_ONLY_STORES, childRegionName.get(0));
       defaultParentControllerProps
-          .put(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_HYBRID_STORES, childColoNames.get(0));
+          .put(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_HYBRID_STORES, childRegionName.get(0));
       defaultParentControllerProps
-          .put(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES, childColoNames.get(0));
-      defaultParentControllerProps.put(AGGREGATE_REAL_TIME_SOURCE_REGION, parentColoName);
-      defaultParentControllerProps.put(NATIVE_REPLICATION_FABRIC_ALLOWLIST, childColoList + "," + parentColoName);
+          .put(NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES, childRegionName.get(0));
+      defaultParentControllerProps.put(AGGREGATE_REAL_TIME_SOURCE_REGION, parentRegionName);
+      defaultParentControllerProps.put(NATIVE_REPLICATION_FABRIC_ALLOWLIST, childRegionList + "," + parentRegionName);
 
       final Properties finalParentControllerProperties = new Properties();
       finalParentControllerProperties.putAll(defaultParentControllerProps);
       parentControllerPropertiesOverride.ifPresent(p -> finalParentControllerProperties.putAll(p.getPropertiesCopy()));
 
       Properties nativeReplicationRequiredChildControllerProps = new Properties();
-      nativeReplicationRequiredChildControllerProps.put(ADMIN_TOPIC_SOURCE_REGION, parentColoName);
-      nativeReplicationRequiredChildControllerProps.put(PARENT_KAFKA_CLUSTER_FABRIC_LIST, parentColoName);
+      nativeReplicationRequiredChildControllerProps.put(ADMIN_TOPIC_SOURCE_REGION, parentRegionName);
+      nativeReplicationRequiredChildControllerProps.put(PARENT_KAFKA_CLUSTER_FABRIC_LIST, parentRegionName);
       nativeReplicationRequiredChildControllerProps
-          .put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + parentColoName, parentKafka.getAddress());
-      for (String coloName: childColoNames) {
+          .put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + parentRegionName, parentKafka.getAddress());
+      for (String regionName: childRegionName) {
         ZkServerWrapper zkServerWrapper = ServiceFactory.getZkServer();
         KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServerWrapper);
         allKafkaBrokers.add(kafkaBrokerWrapper);
-        zkServerByColoName.put(coloName, zkServerWrapper);
-        kafkaBrokerByColoName.put(coloName, kafkaBrokerWrapper);
+        zkServerByRegionName.put(regionName, zkServerWrapper);
+        kafkaBrokerByRegionName.put(regionName, kafkaBrokerWrapper);
         nativeReplicationRequiredChildControllerProps
-            .put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + coloName, kafkaBrokerWrapper.getAddress());
+            .put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + regionName, kafkaBrokerWrapper.getAddress());
       }
       Properties activeActiveRequiredChildControllerProps = new Properties();
-      activeActiveRequiredChildControllerProps.put(ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST, childColoList);
+      activeActiveRequiredChildControllerProps.put(ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST, childRegionList);
 
       Properties defaultChildControllerProps = new Properties();
       defaultChildControllerProps.putAll(finalParentControllerProperties);
@@ -210,26 +210,26 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
       childControllerPropertiesOverride.ifPresent(finalChildControllerProperties::putAll);
 
       Map<String, Map<String, String>> kafkaClusterMap =
-          addKafkaClusterIDMappingToServerConfigs(serverProperties, childColoNames, allKafkaBrokers);
+          addKafkaClusterIDMappingToServerConfigs(serverProperties, childRegionName, allKafkaBrokers);
 
       VeniceMultiClusterCreateOptions.Builder builder =
-          new VeniceMultiClusterCreateOptions.Builder(numberOfClustersInEachColo)
+          new VeniceMultiClusterCreateOptions.Builder(numberOfClustersInEachRegion)
               .numberOfControllers(numberOfControllers)
               .numberOfServers(numberOfServers)
               .numberOfRouters(numberOfRouters)
               .replicationFactor(replicationFactor)
               .randomizeClusterName(false)
-              .multiColoSetup(true)
+              .multiRegionSetup(true)
               .childControllerProperties(finalChildControllerProperties)
               .veniceProperties(serverProperties.orElse(null))
               .forkServer(forkServer)
               .kafkaClusterMap(kafkaClusterMap);
       // Create multi-clusters
-      for (int i = 0; i < numberOfColos; i++) {
-        String coloName = childColoNames.get(i);
-        builder.coloName(coloName)
-            .kafkaBrokerWrapper(kafkaBrokerByColoName.get(coloName))
-            .zkServerWrapper(zkServerByColoName.get(coloName));
+      for (int i = 0; i < numberOfRegions; i++) {
+        String regionName = childRegionName.get(i);
+        builder.regionName(regionName)
+            .kafkaBrokerWrapper(kafkaBrokerByRegionName.get(regionName))
+            .zkServerWrapper(zkServerByRegionName.get(regionName));
         VeniceMultiClusterWrapper multiClusterWrapper = ServiceFactory.getVeniceMultiClusterWrapper(builder.build());
         multiClusters.add(multiClusterWrapper);
       }
@@ -267,8 +267,8 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
           finalParentKafka,
           multiClusters,
           parentControllers,
-          parentColoName,
-          childColoNames);
+          parentRegionName,
+          childRegionName);
     } catch (Exception e) {
       parentControllers.forEach(IOUtils::closeQuietly);
       multiClusters.forEach(IOUtils::closeQuietly);
@@ -280,7 +280,7 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
 
   private static Map<String, Map<String, String>> addKafkaClusterIDMappingToServerConfigs(
       Optional<VeniceProperties> serverProperties,
-      List<String> coloNames,
+      List<String> regionNames,
       List<KafkaBrokerWrapper> kafkaBrokers) {
     if (serverProperties.isPresent()) {
       SecurityProtocol baseSecurityProtocol = SecurityProtocol
@@ -288,10 +288,10 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
       Map<String, Map<String, String>> kafkaClusterMap = new HashMap<>();
 
       Map<String, String> mapping;
-      for (int i = 1; i <= coloNames.size(); i++) {
+      for (int i = 1; i <= regionNames.size(); i++) {
         mapping = new HashMap<>();
         int clusterId = i - 1;
-        mapping.put(KAFKA_CLUSTER_MAP_KEY_NAME, coloNames.get(clusterId));
+        mapping.put(KAFKA_CLUSTER_MAP_KEY_NAME, regionNames.get(clusterId));
         SecurityProtocol securityProtocol = baseSecurityProtocol;
         if (clusterId > 0) {
           // Testing mixed security on any 2-layer setup with 2 or more DCs.

@@ -148,14 +148,14 @@ public class ServiceFactory {
   }
 
   public static VeniceServerWrapper getVeniceServer(
-      String coloName,
+      String regionName,
       String clusterName,
       KafkaBrokerWrapper kafkaBrokerWrapper,
       String zkAddress,
       Properties featureProperties,
       Properties configProperties) {
     return getVeniceServer(
-        coloName,
+        regionName,
         clusterName,
         kafkaBrokerWrapper,
         zkAddress,
@@ -167,7 +167,7 @@ public class ServiceFactory {
   }
 
   public static VeniceServerWrapper getVeniceServer(
-      String coloName,
+      String regionName,
       String clusterName,
       KafkaBrokerWrapper kafkaBrokerWrapper,
       String zkAddress,
@@ -181,7 +181,7 @@ public class ServiceFactory {
     return getStatefulService(
         VeniceServerWrapper.SERVICE_NAME,
         VeniceServerWrapper.generateService(
-            coloName,
+            regionName,
             clusterName,
             zkAddress,
             kafkaBrokerWrapper,
@@ -193,7 +193,7 @@ public class ServiceFactory {
   }
 
   static VeniceRouterWrapper getVeniceRouter(
-      String coloName,
+      String regionName,
       String clusterName,
       ZkServerWrapper zkServerWrapper,
       KafkaBrokerWrapper kafkaBrokerWrapper,
@@ -203,7 +203,7 @@ public class ServiceFactory {
     return getService(
         VeniceRouterWrapper.SERVICE_NAME,
         VeniceRouterWrapper.generateService(
-            coloName,
+            regionName,
             clusterName,
             zkServerWrapper,
             kafkaBrokerWrapper,
@@ -364,8 +364,8 @@ public class ServiceFactory {
   }
 
   public static VeniceTwoLayerMultiColoMultiClusterWrapper getVeniceTwoLayerMultiColoMultiClusterWrapper(
-      int numberOfColos,
-      int numberOfClustersInEachColo,
+      int numberOfRegions,
+      int numberOfClustersInEachRegion,
       int numberOfParentControllers,
       int numberOfControllers,
       int numberOfServers,
@@ -373,8 +373,8 @@ public class ServiceFactory {
     return getService(
         VeniceTwoLayerMultiColoMultiClusterWrapper.SERVICE_NAME,
         VeniceTwoLayerMultiColoMultiClusterWrapper.generateService(
-            numberOfColos,
-            numberOfClustersInEachColo,
+            numberOfRegions,
+            numberOfClustersInEachRegion,
             numberOfParentControllers,
             numberOfControllers,
             numberOfServers,
@@ -385,8 +385,8 @@ public class ServiceFactory {
   }
 
   public static VeniceTwoLayerMultiColoMultiClusterWrapper getVeniceTwoLayerMultiColoMultiClusterWrapper(
-      int numberOfColos,
-      int numberOfClustersInEachColo,
+      int numberOfRegions,
+      int numberOfClustersInEachRegion,
       int numberOfParentControllers,
       int numberOfControllers,
       int numberOfServers,
@@ -398,8 +398,8 @@ public class ServiceFactory {
     return getService(
         VeniceTwoLayerMultiColoMultiClusterWrapper.SERVICE_NAME,
         VeniceTwoLayerMultiColoMultiClusterWrapper.generateService(
-            numberOfColos,
-            numberOfClustersInEachColo,
+            numberOfRegions,
+            numberOfClustersInEachRegion,
             numberOfParentControllers,
             numberOfControllers,
             numberOfServers,
@@ -412,8 +412,8 @@ public class ServiceFactory {
   }
 
   public static VeniceTwoLayerMultiColoMultiClusterWrapper getVeniceTwoLayerMultiColoMultiClusterWrapper(
-      int numberOfColos,
-      int numberOfClustersInEachColo,
+      int numberOfRegions,
+      int numberOfClustersInEachRegion,
       int numberOfParentControllers,
       int numberOfControllers,
       int numberOfServers,
@@ -426,8 +426,8 @@ public class ServiceFactory {
     return getService(
         VeniceTwoLayerMultiColoMultiClusterWrapper.SERVICE_NAME,
         VeniceTwoLayerMultiColoMultiClusterWrapper.generateService(
-            numberOfColos,
-            numberOfClustersInEachColo,
+            numberOfRegions,
+            numberOfClustersInEachRegion,
             numberOfParentControllers,
             numberOfControllers,
             numberOfServers,

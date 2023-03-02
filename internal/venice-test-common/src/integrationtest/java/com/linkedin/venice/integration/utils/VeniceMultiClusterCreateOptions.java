@@ -15,7 +15,7 @@ import java.util.Properties;
 
 
 public class VeniceMultiClusterCreateOptions {
-  private final String coloName;
+  private final String regionName;
   private final int numberOfClusters;
   private final int numberOfControllers;
   private final int numberOfServers;
@@ -28,7 +28,7 @@ public class VeniceMultiClusterCreateOptions {
   private final boolean enableAutoJoinAllowlist;
   private final boolean sslToStorageNodes;
   private final boolean randomizeClusterName;
-  private final boolean multiColoSetup;
+  private final boolean multiRegionSetup;
   private final boolean forkServer;
   private final Map<String, Map<String, String>> kafkaClusterMap;
   private final ZkServerWrapper zkServerWrapper;
@@ -36,8 +36,8 @@ public class VeniceMultiClusterCreateOptions {
   private final Properties childControllerProperties;
   private final VeniceProperties veniceProperties;
 
-  public String getColoName() {
-    return coloName;
+  public String getRegionName() {
+    return regionName;
   }
 
   public int getNumberOfClusters() {
@@ -88,8 +88,8 @@ public class VeniceMultiClusterCreateOptions {
     return randomizeClusterName;
   }
 
-  public boolean isMultiColoSetup() {
-    return multiColoSetup;
+  public boolean isMultiRegionSetup() {
+    return multiRegionSetup;
   }
 
   public boolean isForkServer() {
@@ -119,8 +119,8 @@ public class VeniceMultiClusterCreateOptions {
   @Override
   public String toString() {
     return new StringBuilder().append("VeniceMultiClusterCreateOptions - ")
-        .append("coloName:")
-        .append(coloName)
+        .append("regionName:")
+        .append(regionName)
         .append(", ")
         .append("clusters:")
         .append(numberOfClusters)
@@ -158,8 +158,8 @@ public class VeniceMultiClusterCreateOptions {
         .append("forkServer:")
         .append(forkServer)
         .append(", ")
-        .append("multiColoSetup:")
-        .append(multiColoSetup)
+        .append("multiRegionSetup:")
+        .append(multiRegionSetup)
         .append(", ")
         .append("randomizeClusterName:")
         .append(randomizeClusterName)
@@ -183,7 +183,7 @@ public class VeniceMultiClusterCreateOptions {
   }
 
   public VeniceMultiClusterCreateOptions(Builder builder) {
-    coloName = builder.coloName;
+    regionName = builder.regionName;
     numberOfClusters = builder.numberOfClusters;
     numberOfControllers = builder.numberOfControllers;
     numberOfServers = builder.numberOfServers;
@@ -196,7 +196,7 @@ public class VeniceMultiClusterCreateOptions {
     minActiveReplica = builder.minActiveReplica;
     sslToStorageNodes = builder.sslToStorageNodes;
     randomizeClusterName = builder.randomizeClusterName;
-    multiColoSetup = builder.multiColoSetup;
+    multiRegionSetup = builder.multiRegionSetup;
     zkServerWrapper = builder.zkServerWrapper;
     kafkaBrokerWrapper = builder.kafkaBrokerWrapper;
     childControllerProperties = builder.childControllerProperties;
@@ -206,7 +206,7 @@ public class VeniceMultiClusterCreateOptions {
   }
 
   public static class Builder {
-    private String coloName = "";
+    private String regionName = "";
     private final int numberOfClusters;
     private int numberOfControllers = DEFAULT_NUMBER_OF_CONTROLLERS;
     private int numberOfServers = DEFAULT_NUMBER_OF_SERVERS;
@@ -219,7 +219,7 @@ public class VeniceMultiClusterCreateOptions {
     private boolean enableAutoJoinAllowlist = false;
     private boolean sslToStorageNodes = DEFAULT_SSL_TO_STORAGE_NODES;
     private boolean randomizeClusterName = true;
-    private boolean multiColoSetup = false;
+    private boolean multiRegionSetup = false;
     private boolean forkServer = false;
     private boolean isMinActiveReplicaSet = false;
     private Map<String, Map<String, String>> kafkaClusterMap;
@@ -232,8 +232,8 @@ public class VeniceMultiClusterCreateOptions {
       this.numberOfClusters = numberOfClusters;
     }
 
-    public Builder coloName(String coloName) {
-      this.coloName = coloName;
+    public Builder regionName(String regionName) {
+      this.regionName = regionName;
       return this;
     }
 
@@ -293,8 +293,8 @@ public class VeniceMultiClusterCreateOptions {
       return this;
     }
 
-    public Builder multiColoSetup(boolean multiColoSetup) {
-      this.multiColoSetup = multiColoSetup;
+    public Builder multiRegionSetup(boolean multiRegionSetup) {
+      this.multiRegionSetup = multiRegionSetup;
       return this;
     }
 

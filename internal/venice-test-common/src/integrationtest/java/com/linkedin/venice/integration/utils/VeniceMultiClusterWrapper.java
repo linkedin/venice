@@ -28,7 +28,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
   private final KafkaBrokerWrapper kafkaBrokerWrapper;
   private final Map<String, String> clusterToD2;
   private final D2Client clientConfigD2Client;
-  private final String coloName;
+  private final String regionName;
 
   VeniceMultiClusterWrapper(
       File dataDirectory,
@@ -38,7 +38,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       Map<Integer, VeniceControllerWrapper> controllers,
       Map<String, String> clusterToD2,
       D2Client clientConfigD2Client,
-      String coloName) {
+      String regionName) {
     super(SERVICE_NAME, dataDirectory);
     this.zkServerWrapper = zkServerWrapper;
     this.kafkaBrokerWrapper = kafkaBrokerWrapper;
@@ -46,7 +46,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
     this.clusters = clusters;
     this.clusterToD2 = clusterToD2;
     this.clientConfigD2Client = clientConfigD2Client;
-    this.coloName = coloName;
+    this.regionName = regionName;
   }
 
   static ServiceProvider<VeniceMultiClusterWrapper> generateService(VeniceMultiClusterCreateOptions options) {
@@ -74,13 +74,13 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
 
       // Create controllers for multi-cluster
       Properties controllerProperties = options.getChildControllerProperties();
-      if (options.isMultiColoSetup()
+      if (options.isMultiRegionSetup()
           && !controllerProperties.containsKey(CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD)) {
-        // In multi-colo setup, we don't allow batch push to each individual child colo, but just parent colo
+        // In multi-region setup, we don't allow batch push to each individual child region, but just parent region
         controllerProperties.put(CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD, "false");
       }
-      if (options.getColoName() != null) {
-        controllerProperties.setProperty(LOCAL_REGION_NAME, options.getColoName());
+      if (options.getRegionName() != null) {
+        controllerProperties.setProperty(LOCAL_REGION_NAME, options.getRegionName());
       }
 
       // Setup D2 for controller
@@ -98,7 +98,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
               .setD2Client(clientConfigD2Client));
       VeniceControllerCreateOptions controllerCreateOptions =
           new VeniceControllerCreateOptions.Builder(clusterNames, zkServerWrapper, kafkaBrokerWrapper)
-              .coloName(options.getColoName())
+              .regionName(options.getRegionName())
               .replicationFactor(options.getReplicationFactor())
               .partitionSize(options.getPartitionSize())
               .rebalanceDelayMs(options.getRebalanceDelayMs())
@@ -117,7 +117,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       extraProperties.put(SYSTEM_SCHEMA_CLUSTER_NAME, clusterNames[0]);
       extraProperties.putAll(KafkaSSLUtils.getLocalCommonKafkaSSLConfig());
       VeniceClusterCreateOptions.Builder vccBuilder =
-          new VeniceClusterCreateOptions.Builder().coloName(options.getColoName())
+          new VeniceClusterCreateOptions.Builder().regionName(options.getRegionName())
               .standalone(false)
               .zkServerWrapper(zkServerWrapper)
               .kafkaBrokerWrapper(kafkaBrokerWrapper)
@@ -158,7 +158,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
           controllerMap,
           clusterToD2,
           clientConfigD2Client,
-          options.getColoName());
+          options.getRegionName());
     } catch (Exception e) {
       controllerMap.values().forEach(Utils::closeQuietlyWithErrorLogged);
       clusterWrapperMap.values().forEach(Utils::closeQuietlyWithErrorLogged);
@@ -180,7 +180,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
 
   @Override
   public String getComponentTagForLogging() {
-    return new StringBuilder(getComponentTagPrefix(coloName)).append(getServiceName()).toString();
+    return new StringBuilder(getComponentTagPrefix(regionName)).append(getServiceName()).toString();
   }
 
   @Override
@@ -281,6 +281,6 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
   }
 
   public String getRegionName() {
-    return coloName;
+    return regionName;
   }
 }

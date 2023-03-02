@@ -31,7 +31,7 @@ public class VeniceControllerCreateOptions {
   private final KafkaBrokerWrapper kafkaBroker;
   private final Properties extraProperties;
   private final AuthorizerService authorizerService;
-  private final String coloName;
+  private final String regionName;
 
   private VeniceControllerCreateOptions(Builder builder) {
     sslToKafka = builder.sslToKafka;
@@ -48,13 +48,13 @@ public class VeniceControllerCreateOptions {
     extraProperties = builder.extraProperties;
     authorizerService = builder.authorizerService;
     isParent = builder.childControllers != null && builder.childControllers.length != 0;
-    coloName = builder.coloName;
+    regionName = builder.regionName;
   }
 
   @Override
   public String toString() {
-    return new StringBuilder().append("coloName:")
-        .append(coloName)
+    return new StringBuilder().append("regionName:")
+        .append(regionName)
         .append(", ")
         .append("isParent:")
         .append(isParent)
@@ -163,8 +163,8 @@ public class VeniceControllerCreateOptions {
     return authorizerService;
   }
 
-  public String getColoName() {
-    return coloName;
+  public String getRegionName() {
+    return regionName;
   }
 
   public static class Builder {
@@ -182,7 +182,7 @@ public class VeniceControllerCreateOptions {
     private VeniceControllerWrapper[] childControllers = null;
     private Properties extraProperties = new Properties();
     private AuthorizerService authorizerService;
-    private String coloName = "";
+    private String regionName = "";
 
     public Builder(String[] clusterNames, ZkServerWrapper zkServer, KafkaBrokerWrapper kafkaBroker) {
       this.clusterNames = Objects.requireNonNull(clusterNames, "clusterNames cannot be null when creating controller");
@@ -246,8 +246,8 @@ public class VeniceControllerCreateOptions {
       return this;
     }
 
-    public Builder coloName(String coloName) {
-      this.coloName = coloName;
+    public Builder regionName(String regionName) {
+      this.regionName = regionName;
       return this;
     }
 
