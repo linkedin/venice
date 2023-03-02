@@ -83,7 +83,7 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
         zkRoutersManager,
         storeRepository,
         routingDataRepository,
-        routerConfig.getMaxRouterReadCapacityCu(),
+        routerConfig.getMaxReadCapacityCu(),
         stats,
         routerConfig.getPerStorageNodeReadQuotaBuffer(),
         routerConfig.getPerStoreRouterQuotaBuffer(),
