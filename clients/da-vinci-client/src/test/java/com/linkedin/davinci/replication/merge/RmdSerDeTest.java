@@ -50,7 +50,7 @@ public class RmdSerDeTest {
         .getReplicationMetadataSchema(storeName, valueSchemaID, rmdVersionID);
     MapKeyStringAnnotatedStoreSchemaCache mapKeyStringAnnotatedStoreSchemaCache =
         new MapKeyStringAnnotatedStoreSchemaCache(storeName, schemaRepository);
-    RmdSerDe rmdSerDe = new RmdSerDe(mapKeyStringAnnotatedStoreSchemaCache, storeName, rmdVersionID);
+    RmdSerDe rmdSerDe = new RmdSerDe(mapKeyStringAnnotatedStoreSchemaCache, rmdVersionID);
 
     // Serialize this RMD record to bytes.
     Schema actualRmdSchema = rmdSerDe.getRmdSchema(valueSchemaID);

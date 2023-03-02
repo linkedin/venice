@@ -152,7 +152,7 @@ public class PartialUpdateTest {
     when(schemaRepo.getValueSchema(storeName, 1)).thenReturn(new SchemaEntry(1, valueSchema));
     MapKeyStringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
         new MapKeyStringAnnotatedStoreSchemaCache(storeName, schemaRepo);
-    RmdSerDe rmdSerDe = new RmdSerDe(stringAnnotatedStoreSchemaCache, storeName, 1);
+    RmdSerDe rmdSerDe = new RmdSerDe(stringAnnotatedStoreSchemaCache, 1);
 
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
       assertCommand(

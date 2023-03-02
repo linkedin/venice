@@ -166,7 +166,8 @@ public class SchemaUtils {
     Schema replicatedSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schema.toString());
     Schema fieldLevelTsSchema = replicatedSchema.getField(RmdConstants.TIMESTAMP_FIELD_NAME).schema().getTypes().get(1);
     for (Schema.Field field: fieldLevelTsSchema.getFields()) {
-      if (!field.schema().isUnion() & field.schema().getType().equals(RECORD)) {
+      // For current RMD schema structure, there will be no union, adding this just for defensive coding.
+      if (!field.schema().isUnion() && field.schema().getType().equals(RECORD)) {
         Schema.Field deletedElementField = field.schema().getField(DELETED_ELEM_FIELD_NAME);
         if (deletedElementField != null && deletedElementField.schema().getElementType().getType().equals(STRING)) {
           annotateStringArraySchema(deletedElementField.schema());

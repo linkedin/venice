@@ -128,7 +128,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     MapKeyStringAnnotatedStoreSchemaCache annotatedReadOnlySchemaRepository =
         new MapKeyStringAnnotatedStoreSchemaCache(storeName, schemaRepository);
 
-    this.rmdSerDe = new RmdSerDe(annotatedReadOnlySchemaRepository, storeName, rmdProtocolVersionID);
+    this.rmdSerDe = new RmdSerDe(annotatedReadOnlySchemaRepository, rmdProtocolVersionID);
     this.mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(annotatedReadOnlySchemaRepository, rmdSerDe, getStoreName());
     this.remoteIngestionRepairService = builder.getRemoteIngestionRepairService();

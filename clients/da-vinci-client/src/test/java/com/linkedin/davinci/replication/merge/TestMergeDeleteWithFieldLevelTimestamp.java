@@ -25,7 +25,7 @@ public class TestMergeDeleteWithFieldLevelTimestamp extends TestMergeConflictRes
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
             mapKeyStringAnnotatedStoreSchemaCache,
-            new RmdSerDe(mapKeyStringAnnotatedStoreSchemaCache, storeName, RMD_VERSION_ID),
+            new RmdSerDe(mapKeyStringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
             storeName);
 
     Map<String, Long> fieldNameToTimestampMap = new HashMap<>();
@@ -68,7 +68,7 @@ public class TestMergeDeleteWithFieldLevelTimestamp extends TestMergeConflictRes
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
             mapKeyStringAnnotatedStoreSchemaCache,
-            new RmdSerDe(mapKeyStringAnnotatedStoreSchemaCache, storeName, RMD_VERSION_ID),
+            new RmdSerDe(mapKeyStringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
             storeName);
 
     // Case 1: Delete one field with the same delete timestamp.

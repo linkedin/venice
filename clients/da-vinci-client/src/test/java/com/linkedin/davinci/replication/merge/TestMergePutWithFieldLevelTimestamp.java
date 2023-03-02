@@ -33,7 +33,7 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
             mapKeyStringAnnotatedStoreSchemaCache,
-            new RmdSerDe(mapKeyStringAnnotatedStoreSchemaCache, storeName, RMD_VERSION_ID),
+            new RmdSerDe(mapKeyStringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
             storeName);
 
     Map<String, Long> fieldNameToTimestampMap = new HashMap<>();
@@ -135,7 +135,7 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
             mapKeyStringAnnotatedStoreSchemaCache,
-            new RmdSerDe(mapKeyStringAnnotatedStoreSchemaCache, storeName, RMD_VERSION_ID),
+            new RmdSerDe(mapKeyStringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
             storeName);
 
     MergeConflictResult result = mergeConflictResolver.put(
@@ -188,7 +188,7 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
             mapKeyStringAnnotatedStoreSchemaCache,
-            new RmdSerDe(mapKeyStringAnnotatedStoreSchemaCache, storeName, RMD_VERSION_ID),
+            new RmdSerDe(mapKeyStringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
             storeName);
 
     MergeConflictResult result = mergeConflictResolver.put(
@@ -242,7 +242,7 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
             mapKeyStringAnnotatedStoreSchemaCache,
-            new RmdSerDe(mapKeyStringAnnotatedStoreSchemaCache, storeName, RMD_VERSION_ID),
+            new RmdSerDe(mapKeyStringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
             storeName);
 
     MergeConflictResult result = mergeConflictResolver.put(
@@ -296,7 +296,7 @@ public class TestMergePutWithFieldLevelTimestamp extends TestMergeConflictResolv
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
             mapKeyStringAnnotatedStoreSchemaCache,
-            new RmdSerDe(mapKeyStringAnnotatedStoreSchemaCache, storeName, RMD_VERSION_ID),
+            new RmdSerDe(mapKeyStringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
             storeName);
 
     MergeConflictResult result = mergeConflictResolver.put(

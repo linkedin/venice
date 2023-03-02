@@ -40,7 +40,7 @@ public class TestMergeBase {
     setupSchemaRepoSchemaMock(schemaRepository, schemaSet);
     setupSchemaRepoSupersetSchemaMock(schemaRepository, schemaSet);
     annotatedStoreSchemaCache = new MapKeyStringAnnotatedStoreSchemaCache(storeName, schemaRepository);
-    rmdSerDe = new RmdSerDe(annotatedStoreSchemaCache, storeName, RMD_SCHEMA_PROTOCOL_VERSION);
+    rmdSerDe = new RmdSerDe(annotatedStoreSchemaCache, RMD_SCHEMA_PROTOCOL_VERSION);
     mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(annotatedStoreSchemaCache, rmdSerDe, storeName);
   }

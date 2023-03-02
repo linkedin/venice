@@ -74,7 +74,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
             mapKeyStringAnnotatedStoreSchemaCache,
-            new RmdSerDe(mapKeyStringAnnotatedStoreSchemaCache, storeName, RMD_VERSION_ID),
+            new RmdSerDe(mapKeyStringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
             storeName);
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
         Lazy.of(() -> null),
@@ -132,7 +132,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
             mapKeyStringAnnotatedStoreSchemaCache,
-            new RmdSerDe(mapKeyStringAnnotatedStoreSchemaCache, storeName, RMD_VERSION_ID),
+            new RmdSerDe(mapKeyStringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
             storeName);
 
     GenericRecord updateFieldPartialUpdateRecord1 = SchemaUtils.createGenericRecord(writeComputeSchema);
@@ -260,7 +260,7 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
             mapKeyStringAnnotatedStoreSchemaCache,
-            new RmdSerDe(mapKeyStringAnnotatedStoreSchemaCache, storeName, RMD_VERSION_ID),
+            new RmdSerDe(mapKeyStringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
             storeName);
 
     final int newColoID = 3;
