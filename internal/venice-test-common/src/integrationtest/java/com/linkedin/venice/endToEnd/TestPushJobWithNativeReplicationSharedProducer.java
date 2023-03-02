@@ -63,7 +63,7 @@ public class TestPushJobWithNativeReplicationSharedProducer {
   // ["venice-cluster0", "venice-cluster1", ...];
 
   private List<VeniceMultiClusterWrapper> childDatacenters;
-  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiColoMultiClusterWrapper;
+  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
 
   @DataProvider(name = "storeSize")
   public static Object[][] storeSize() {
@@ -91,7 +91,7 @@ public class TestPushJobWithNativeReplicationSharedProducer {
 
     Properties controllerProps = new Properties();
     controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 1000);
-    multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
+    multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
         NUMBER_OF_CLUSTERS,
         1,
@@ -103,12 +103,12 @@ public class TestPushJobWithNativeReplicationSharedProducer {
         Optional.of(controllerProps),
         Optional.of(new VeniceProperties(serverProperties)),
         false);
-    childDatacenters = multiColoMultiClusterWrapper.getChildRegions();
+    childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
   }
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    multiColoMultiClusterWrapper.close();
+    multiRegionMultiClusterWrapper.close();
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "storeSize")
@@ -121,7 +121,7 @@ public class TestPushJobWithNativeReplicationSharedProducer {
 
     String clusterName = CLUSTER_NAMES[0];
     File inputDir = getTempDataDirectory();
-    String parentControllerUrls = multiColoMultiClusterWrapper.getControllerConnectString();
+    String parentControllerUrls = multiRegionMultiClusterWrapper.getControllerConnectString();
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
 
     try {
@@ -129,7 +129,7 @@ public class TestPushJobWithNativeReplicationSharedProducer {
         String storeName = Utils.getUniqueString("store");
         storeNames[i] = storeName;
         Properties props =
-            IntegrationTestPushUtils.defaultVPJProps(multiColoMultiClusterWrapper, inputDirPath, storeName);
+            IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
         storeProps[i] = props;
         props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
 

@@ -52,17 +52,17 @@ public class TestWritePathComputation {
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testFeatureFlagMultipleDC() {
-    try (VeniceTwoLayerMultiRegionMultiClusterWrapper twoLayerMultiColoMultiClusterWrapper =
+    try (VeniceTwoLayerMultiRegionMultiClusterWrapper twoLayerMultiRegionMultiClusterWrapper =
         ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(1, 1, 1, 1, 1, 0)) {
 
-      VeniceMultiClusterWrapper multiCluster = twoLayerMultiColoMultiClusterWrapper.getChildRegions().get(0);
-      VeniceControllerWrapper parentController = twoLayerMultiColoMultiClusterWrapper.getParentControllers().get(0);
+      VeniceMultiClusterWrapper multiCluster = twoLayerMultiRegionMultiClusterWrapper.getChildRegions().get(0);
+      VeniceControllerWrapper parentController = twoLayerMultiRegionMultiClusterWrapper.getParentControllers().get(0);
       String clusterName = multiCluster.getClusterNames()[0];
       String storeName = "test-store0";
 
       // Create store
       Admin parentAdmin =
-          twoLayerMultiColoMultiClusterWrapper.getLeaderParentControllerWithRetries(clusterName).getVeniceAdmin();
+          twoLayerMultiRegionMultiClusterWrapper.getLeaderParentControllerWithRetries(clusterName).getVeniceAdmin();
       Admin childAdmin = multiCluster.getLeaderController(clusterName, GET_LEADER_CONTROLLER_TIMEOUT).getVeniceAdmin();
       parentAdmin.createStore(clusterName, storeName, "tester", "\"string\"", "\"string\"");
       TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {

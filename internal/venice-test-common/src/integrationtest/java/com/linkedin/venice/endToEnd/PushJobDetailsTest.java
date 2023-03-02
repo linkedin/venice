@@ -72,8 +72,8 @@ import org.testng.annotations.Test;
 public class PushJobDetailsTest {
   private final Map<Integer, Schema> schemaVersionMap = new HashMap<>();
   private final static int latestSchemaId = 2;
-  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiColoMultiClusterWrapper;
-  private VeniceClusterWrapper childColoClusterWrapper;
+  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
+  private VeniceClusterWrapper childRegionClusterWrapper;
   private ControllerClient controllerClient;
   private ControllerClient parentControllerClient;
   private Schema recordSchema;
@@ -100,7 +100,7 @@ public class PushJobDetailsTest {
                                                                                                               // tests
     parentControllerProperties.setProperty(ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_ALL_STORES, "true");
 
-    multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
+    multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         1,
         1,
         1,
@@ -112,14 +112,14 @@ public class PushJobDetailsTest {
         Optional.empty(),
         Optional.of(new VeniceProperties(serverProperties)),
         false);
-    String clusterName = multiColoMultiClusterWrapper.getClusterNames()[0];
+    String clusterName = multiRegionMultiClusterWrapper.getClusterNames()[0];
 
-    VeniceMultiClusterWrapper childColoMultiClusterWrapper = multiColoMultiClusterWrapper.getChildRegions().get(0);
-    childColoClusterWrapper = childColoMultiClusterWrapper.getClusters().get(clusterName);
+    VeniceMultiClusterWrapper childRegionMultiClusterWrapper = multiRegionMultiClusterWrapper.getChildRegions().get(0);
+    childRegionClusterWrapper = childRegionMultiClusterWrapper.getClusters().get(clusterName);
 
-    controllerClient = new ControllerClient(clusterName, childColoMultiClusterWrapper.getControllerConnectString());
+    controllerClient = new ControllerClient(clusterName, childRegionMultiClusterWrapper.getControllerConnectString());
     parentControllerClient =
-        new ControllerClient(clusterName, multiColoMultiClusterWrapper.getControllerConnectString());
+        new ControllerClient(clusterName, multiRegionMultiClusterWrapper.getControllerConnectString());
     TestUtils.waitForNonDeterministicPushCompletion(
         Version.composeKafkaTopic(VeniceSystemStoreUtils.getPushJobDetailsStoreName(), 1),
         controllerClient,
@@ -136,7 +136,7 @@ public class PushJobDetailsTest {
   @AfterClass
   public void cleanUp() {
     Utils.closeQuietlyWithErrorLogged(parentControllerClient);
-    Utils.closeQuietlyWithErrorLogged(multiColoMultiClusterWrapper);
+    Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
   }
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
@@ -151,7 +151,7 @@ public class PushJobDetailsTest {
     // hadoop job client cannot fetch counters properly.
     parentControllerClient
         .updateStore(testStoreName, new UpdateStoreQueryParams().setStorageQuotaInByte(-1).setPartitionCount(2));
-    Properties pushJobProps = defaultVPJProps(multiColoMultiClusterWrapper, inputDirPath, testStoreName);
+    Properties pushJobProps = defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, testStoreName);
     pushJobProps.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, String.valueOf(true));
     try (VenicePushJob testPushJob = new VenicePushJob("test-push-job-details-job", pushJobProps)) {
       testPushJob.run();
@@ -162,7 +162,7 @@ public class PushJobDetailsTest {
         ClientFactory.getAndStartSpecificAvroClient(
             ClientConfig
                 .defaultSpecificClientConfig(VeniceSystemStoreUtils.getPushJobDetailsStoreName(), PushJobDetails.class)
-                .setVeniceURL(childColoClusterWrapper.getRandomRouterURL()))) {
+                .setVeniceURL(childRegionClusterWrapper.getRandomRouterURL()))) {
       PushJobStatusRecordKey key = new PushJobStatusRecordKey();
       key.storeName = testStoreName;
       key.versionNumber = 1;
@@ -176,7 +176,7 @@ public class PushJobDetailsTest {
       PushJobDetails value = client.get(key).get();
       assertEquals(
           value.clusterName.toString(),
-          childColoClusterWrapper.getClusterName(),
+          childRegionClusterWrapper.getClusterName(),
           "Unexpected cluster name from push job details");
       assertTrue(value.reportTimestamp > 0, "Push job details report timestamp is missing");
       List<Integer> expectedStatuses = Arrays.asList(
@@ -192,13 +192,13 @@ public class PushJobDetailsTest {
         assertEquals(value.overallStatus.get(i).status, (int) expectedStatuses.get(i));
         assertTrue(value.overallStatus.get(i).timestamp > 0, "Timestamp for status tuple is missing");
       }
-      assertFalse(value.coloStatus.isEmpty(), "Colo status shouldn't be empty");
+      assertFalse(value.coloStatus.isEmpty(), "Region status shouldn't be empty");
       for (List<PushJobDetailsStatusTuple> tuple: value.coloStatus.values()) {
         assertEquals(
             tuple.get(tuple.size() - 1).status,
             PushJobDetailsStatus.COMPLETED.getValue(),
-            "Latest status for every colo should be COMPLETED");
-        assertTrue(tuple.get(tuple.size() - 1).timestamp > 0, "Timestamp for colo status tuple is missing");
+            "Latest status for every region should be COMPLETED");
+        assertTrue(tuple.get(tuple.size() - 1).timestamp > 0, "Timestamp for region status tuple is missing");
       }
       assertTrue(value.jobDurationInMs > 0);
       assertTrue(value.totalNumberOfRecords > 0);
@@ -214,7 +214,7 @@ public class PushJobDetailsTest {
     // Verify records (note, records 1-100 have been pushed)
     try (AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(testStoreName)
-            .setVeniceURL(childColoClusterWrapper.getRandomRouterURL()))) {
+            .setVeniceURL(childRegionClusterWrapper.getRandomRouterURL()))) {
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
         try {
           for (int i = 1; i < 100; i++) {
@@ -241,7 +241,7 @@ public class PushJobDetailsTest {
         recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString());
     // hadoop job client cannot fetch counters properly and should fail the job
     parentControllerClient.updateStore(testStoreName, new UpdateStoreQueryParams().setStorageQuotaInByte(0));
-    Properties pushJobProps = defaultVPJProps(multiColoMultiClusterWrapper, inputDirPath, testStoreName);
+    Properties pushJobProps = defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, testStoreName);
     pushJobProps.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, String.valueOf(true));
     try (VenicePushJob testPushJob = new VenicePushJob("test-push-job-details-job", pushJobProps)) {
       assertThrows(VeniceException.class, testPushJob::run);
@@ -250,7 +250,7 @@ public class PushJobDetailsTest {
         ClientFactory.getAndStartSpecificAvroClient(
             ClientConfig
                 .defaultSpecificClientConfig(VeniceSystemStoreUtils.getPushJobDetailsStoreName(), PushJobDetails.class)
-                .setVeniceURL(childColoClusterWrapper.getRandomRouterURL()))) {
+                .setVeniceURL(childRegionClusterWrapper.getRandomRouterURL()))) {
       PushJobStatusRecordKey key = new PushJobStatusRecordKey();
       key.storeName = testStoreName;
       key.versionNumber = 1;

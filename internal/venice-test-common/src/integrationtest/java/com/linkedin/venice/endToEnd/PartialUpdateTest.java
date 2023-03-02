@@ -100,7 +100,7 @@ public class PartialUpdateTest {
   private static final int TEST_TIMEOUT_MS = 120_000;
   private static final String CLUSTER_NAME = "venice-cluster0";
 
-  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiColoMultiClusterWrapper;
+  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
   private VeniceControllerWrapper parentController;
   private List<VeniceMultiClusterWrapper> childDatacenters;
 
@@ -109,7 +109,7 @@ public class PartialUpdateTest {
     Properties serverProperties = new Properties();
     Properties controllerProps = new Properties();
     controllerProps.put(ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, false);
-    this.multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
+    this.multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
         NUMBER_OF_CLUSTERS,
         1,
@@ -121,8 +121,8 @@ public class PartialUpdateTest {
         Optional.of(new Properties(controllerProps)),
         Optional.of(new VeniceProperties(serverProperties)),
         false);
-    this.childDatacenters = multiColoMultiClusterWrapper.getChildRegions();
-    List<VeniceControllerWrapper> parentControllers = multiColoMultiClusterWrapper.getParentControllers();
+    this.childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
+    List<VeniceControllerWrapper> parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
     if (parentControllers.size() != 1) {
       throw new IllegalStateException("Expect only one parent controller. Got: " + parentControllers.size());
     }
@@ -232,7 +232,7 @@ public class PartialUpdateTest {
 
       // Perform one time repush to make sure repush can handle RMD chunks data correctly.
       Properties props =
-          IntegrationTestPushUtils.defaultVPJProps(multiColoMultiClusterWrapper, "dummyInputPath", storeName);
+          IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, "dummyInputPath", storeName);
       props.setProperty(SOURCE_KAFKA, "true");
       props.setProperty(KAFKA_INPUT_BROKER_URL, veniceCluster.getKafka().getAddress());
       props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
@@ -316,7 +316,7 @@ public class PartialUpdateTest {
       String kafkaTopic,
       String key,
       Consumer<RmdWithValueSchemaId> rmdDataValidationFlow) {
-    for (VeniceServerWrapper serverWrapper: multiColoMultiClusterWrapper.getChildRegions()
+    for (VeniceServerWrapper serverWrapper: multiRegionMultiClusterWrapper.getChildRegions()
         .get(0)
         .getClusters()
         .get("venice-cluster0")
@@ -462,7 +462,7 @@ public class PartialUpdateTest {
       Schema recordSchema = writeSimpleAvroFileWithStringToRecordSchema(inputDir, true);
       VeniceClusterWrapper veniceClusterWrapper = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
       Properties vpjProperties =
-          IntegrationTestPushUtils.defaultVPJProps(multiColoMultiClusterWrapper, inputDirPath, storeName);
+          IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
       try (ControllerClient controllerClient = new ControllerClient(CLUSTER_NAME, parentControllerURL);
           AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
               ClientConfig.defaultGenericClientConfig(storeName)
@@ -683,7 +683,7 @@ public class PartialUpdateTest {
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    Utils.closeQuietlyWithErrorLogged(multiColoMultiClusterWrapper);
+    Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
   }
 
   private byte[] serializeStringKeyToByteArray(String key) {

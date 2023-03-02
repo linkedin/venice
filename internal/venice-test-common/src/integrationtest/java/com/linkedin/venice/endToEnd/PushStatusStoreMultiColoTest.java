@@ -63,7 +63,7 @@ public class PushStatusStoreMultiColoTest {
   private List<VeniceMultiClusterWrapper> childDatacenters;
   private List<VeniceControllerWrapper> parentControllers;
 
-  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiColoMultiClusterWrapper;
+  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
 
   @BeforeClass
   public void setUp() {
@@ -77,7 +77,7 @@ public class PushStatusStoreMultiColoTest {
     extraProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, String.valueOf(true));
     extraProperties.setProperty(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, String.valueOf(true));
 
-    multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
+    multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
         NUMBER_OF_CLUSTERS,
         NUMBER_OF_PARENT_CONTROLLERS,
@@ -89,8 +89,8 @@ public class PushStatusStoreMultiColoTest {
         Optional.of(extraProperties),
         Optional.empty(),
         false);
-    childDatacenters = multiColoMultiClusterWrapper.getChildRegions();
-    parentControllers = multiColoMultiClusterWrapper.getParentControllers();
+    childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
+    parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
 
     String[] clusterNames = childDatacenters.get(0).getClusterNames();
     cluster = childDatacenters.get(0).getClusters().get(clusterNames[0]);
@@ -109,7 +109,7 @@ public class PushStatusStoreMultiColoTest {
     Utils.closeQuietlyWithErrorLogged(reader);
     D2ClientUtils.shutdownClient(d2Client);
     Utils.closeQuietlyWithErrorLogged(parentControllerClient);
-    Utils.closeQuietlyWithErrorLogged(multiColoMultiClusterWrapper);
+    Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
   }
 
   public void setUpStore() {

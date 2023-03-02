@@ -52,7 +52,7 @@ public class TestMultiDataCenterAdminOperations {
   private List<VeniceMultiClusterWrapper> childClusters;
   private List<List<VeniceControllerWrapper>> childControllers;
   private List<VeniceControllerWrapper> parentControllers;
-  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiColoMultiClusterWrapper;
+  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
 
   private final byte[] emptyKeyBytes = new byte[] { 'a' };
 
@@ -60,7 +60,7 @@ public class TestMultiDataCenterAdminOperations {
   public void setUp() {
     Properties serverProperties = new Properties();
     serverProperties.setProperty(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1));
-    multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
+    multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
         NUMBER_OF_CLUSTERS,
         1,
@@ -73,11 +73,11 @@ public class TestMultiDataCenterAdminOperations {
         Optional.of(new VeniceProperties(serverProperties)),
         false);
 
-    childClusters = multiColoMultiClusterWrapper.getChildRegions();
+    childClusters = multiRegionMultiClusterWrapper.getChildRegions();
     childControllers = childClusters.stream()
         .map(veniceClusterWrapper -> new ArrayList<>(veniceClusterWrapper.getControllers().values()))
         .collect(Collectors.toList());
-    parentControllers = multiColoMultiClusterWrapper.getParentControllers();
+    parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
 
     LOGGER.info(
         "parentControllers: {}",
@@ -98,14 +98,14 @@ public class TestMultiDataCenterAdminOperations {
 
   @AfterClass
   public void cleanUp() {
-    multiColoMultiClusterWrapper.close();
+    multiRegionMultiClusterWrapper.close();
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testHybridConfigPartitionerConfigConflict() {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = Utils.getUniqueString("store");
-    String parentControllerUrl = multiColoMultiClusterWrapper.getControllerConnectString();
+    String parentControllerUrl = multiRegionMultiClusterWrapper.getControllerConnectString();
 
     // Create store first
     ControllerClient controllerClient = new ControllerClient(clusterName, parentControllerUrl);
@@ -142,7 +142,7 @@ public class TestMultiDataCenterAdminOperations {
   public void testFailedAdminMessages() {
     String clusterName = CLUSTER_NAMES[0];
     VeniceControllerWrapper parentController =
-        multiColoMultiClusterWrapper.getLeaderParentControllerWithRetries(clusterName);
+        multiRegionMultiClusterWrapper.getLeaderParentControllerWithRetries(clusterName);
     Admin admin = parentController.getVeniceAdmin();
     VeniceWriterFactory veniceWriterFactory = admin.getVeniceWriterFactory();
     VeniceWriter<byte[], byte[], byte[]> veniceWriter =
@@ -159,7 +159,7 @@ public class TestMultiDataCenterAdminOperations {
     controllersToTest.add(parentController);
     childControllers.forEach(controllerList -> controllersToTest.add(controllerList.get(0)));
 
-    // Check if all colos received the bad admin message
+    // Check if all regions received the bad admin message
     TestUtils.waitForNonDeterministicCompletion(60, TimeUnit.SECONDS, () -> {
       for (VeniceControllerWrapper controller: controllersToTest) {
         AdminConsumerService adminConsumerService = controller.getAdminConsumerServiceByCluster(clusterName);
