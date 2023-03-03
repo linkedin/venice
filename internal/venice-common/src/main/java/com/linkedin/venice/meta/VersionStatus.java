@@ -50,7 +50,7 @@ public enum VersionStatus {
    * @return true if it can be deleted immediately, false otherwise
    */
   public static boolean canDelete(VersionStatus status) {
-    return ERROR == status;
+    return status == ERROR || status == KILLED;
   }
 
   /**

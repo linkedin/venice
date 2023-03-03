@@ -293,18 +293,19 @@ public abstract class AbstractStore implements Store {
     List<Version> versionsToDelete = new ArrayList<>();
 
     /**
-     * The current version need not be the last largest version (eg we rolled back to a earlier version).
+     * The current version need not be the last largest version (e.g. we rolled back to an earlier version).
      * The versions which can be deleted are:
      *     a) ONLINE versions except the current version given we preserve numVersionsToPreserve versions.
      *     b) ERROR version (ideally should not be there as AbstractPushmonitor#handleErrorPush deletes those)
      *     c) STARTED versions if its not the last one and the store is not migrating.
+     *     d) KILLED versions by {@link org.apache.kafka.clients.admin.Admin#killOfflinePush} api.
      */
     for (int i = lastElementIndex; i >= 0; i--) {
       Version version = versions.get(i);
 
       if (version.getNumber() == getCurrentVersion()) { // currentVersion is always preserved
         curNumVersionsToPreserve--;
-      } else if (VersionStatus.canDelete(version.getStatus())) { // ERROR versions are always deleted
+      } else if (VersionStatus.canDelete(version.getStatus())) { // ERROR and KILLED versions are always deleted.
         versionsToDelete.add(version);
       } else if (VersionStatus.ONLINE.equals(version.getStatus())) {
         if (curNumVersionsToPreserve > 0) { // keep the minimum number of version to preserve

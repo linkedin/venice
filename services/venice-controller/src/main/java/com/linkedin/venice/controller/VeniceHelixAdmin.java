@@ -5936,16 +5936,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           return;
         }
 
-        if (version.isPresent() && VersionStatus.isVersionKilled(version.get().getStatus())) {
-          LOGGER.info("Resource: {} has been updated to KILLED previously, so kill job will be skipped", kafkaTopic);
-          return;
-        }
+        if (version.isPresent()) {
+          if (VersionStatus.isVersionKilled(version.get().getStatus())) {
+            LOGGER.info("Resource: {} has been updated to KILLED previously, so kill job will be skipped", kafkaTopic);
+            return;
+          }
 
-        // Update version status to KILLED on ZkNode.
-        ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
-        Store store = repository.getStore(storeName);
-        store.updateVersionStatus(version.get().getNumber(), VersionStatus.KILLED);
-        repository.updateStore(store);
+          // Update version status to KILLED on ZkNode.
+          ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
+          Store store = repository.getStore(storeName);
+          store.updateVersionStatus(version.get().getNumber(), VersionStatus.KILLED);
+          repository.updateStore(store);
+        }
       }
     }
 
