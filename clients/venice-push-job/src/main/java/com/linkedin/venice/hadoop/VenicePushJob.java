@@ -1421,15 +1421,15 @@ public class VenicePushJob implements AutoCloseable {
       return false;
     }
 
+    if (!inputFileHasRecords) {
+      LOGGER.info("No compression related metrics will be generated as there are no records");
+      return false;
+    }
+
     if (pushJobSetting.isSourceKafka) {
       // repush from kafka: This is already checked before calling this function.
       // This is a defensive check.
       LOGGER.info("No compression related metrics will be generated as the push type is repush");
-      return false;
-    }
-
-    if (!inputFileHasRecords) {
-      LOGGER.info("No compression related metrics will be generated as there are no records");
       return false;
     }
 
