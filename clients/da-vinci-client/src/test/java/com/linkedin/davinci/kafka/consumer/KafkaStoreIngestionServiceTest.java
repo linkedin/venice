@@ -148,7 +148,6 @@ public abstract class KafkaStoreIngestionServiceTest {
         mockSchemaRepo,
         Optional.empty(),
         Optional.empty(),
-        Optional.empty(),
         mockLiveClusterConfigRepo,
         new MetricsRepository(),
         Optional.empty(),
@@ -229,7 +228,6 @@ public abstract class KafkaStoreIngestionServiceTest {
         mockClusterInfoProvider,
         mockMetadataRepo,
         mockSchemaRepo,
-        Optional.empty(),
         Optional.empty(),
         Optional.empty(),
         mockLiveClusterConfigRepo,
@@ -318,7 +316,6 @@ public abstract class KafkaStoreIngestionServiceTest {
         mockSchemaRepo,
         Optional.empty(),
         Optional.empty(),
-        Optional.empty(),
         mockLiveClusterConfigRepo,
         new MetricsRepository(),
         Optional.empty(),
@@ -382,7 +379,6 @@ public abstract class KafkaStoreIngestionServiceTest {
         mockSchemaRepo,
         Optional.empty(),
         Optional.empty(),
-        Optional.empty(),
         mockLiveClusterConfigRepo,
         new MetricsRepository(),
         Optional.empty(),
@@ -443,7 +439,6 @@ public abstract class KafkaStoreIngestionServiceTest {
         mockSchemaRepo,
         Optional.of(CompletableFuture.completedFuture(mockCustomizedViewRepository)),
         Optional.of(CompletableFuture.completedFuture(mockHelixInstanceConfigRepository)),
-        Optional.of(CompletableFuture.completedFuture(mockRoutingRepository)),
         mockLiveClusterConfigRepo,
         new MetricsRepository(),
         Optional.empty(),
@@ -477,8 +472,8 @@ public abstract class KafkaStoreIngestionServiceTest {
     doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeName);
     Mockito.when(mockSchemaRepo.getKeySchema(storeName)).thenReturn(new SchemaEntry(0, "{\"type\" : \"string\"}"));
     Mockito.when(mockSchemaRepo.getValueSchemas(storeName)).thenReturn(Collections.emptyList());
-    Mockito.when(mockRoutingRepository.getResourceAssignment()).thenReturn(resourceAssignment);
-    Mockito.when(mockRoutingRepository.getPartitionAssignments(topicName)).thenReturn(partitionAssignment);
+    Mockito.when(mockCustomizedViewRepository.getResourceAssignment()).thenReturn(resourceAssignment);
+    Mockito.when(mockCustomizedViewRepository.getPartitionAssignments(topicName)).thenReturn(partitionAssignment);
     Mockito.when(mockCustomizedViewRepository.getReplicaStates(eq(topicName), anyInt()))
         .thenReturn(Collections.emptyList());
     Mockito.when(mockHelixInstanceConfigRepository.getInstanceGroupIdMapping()).thenReturn(Collections.emptyMap());

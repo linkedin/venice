@@ -48,7 +48,6 @@ import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.ReadOnlyLiveClusterConfigRepository;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.ServerAdminAction;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
@@ -137,7 +136,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final ReadOnlySchemaRepository schemaRepo;
 
   private HelixCustomizedViewOfflinePushRepository customizedViewRepository;
-  private RoutingDataRepository routingRepository;
 
   private HelixInstanceConfigRepository helixInstanceConfigRepository;
 
@@ -204,7 +202,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       ReadOnlySchemaRepository schemaRepo,
       Optional<CompletableFuture<HelixCustomizedViewOfflinePushRepository>> customizedViewFuture,
       Optional<CompletableFuture<HelixInstanceConfigRepository>> helixInstanceFuture,
-      Optional<CompletableFuture<RoutingDataRepository>> routingRepositoryFuture,
       ReadOnlyLiveClusterConfigRepository liveClusterConfigRepository,
       MetricsRepository metricsRepository,
       Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader,
@@ -231,7 +228,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     customizedViewFuture.ifPresent(future -> future.thenApply(cv -> this.customizedViewRepository = cv));
     helixInstanceFuture.ifPresent(future -> future.thenApply(helix -> this.helixInstanceConfigRepository = helix));
-    routingRepositoryFuture.ifPresent(future -> future.thenApply(routing -> this.routingRepository = routing));
 
     VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
     ServerKafkaClientFactory veniceConsumerFactory = new ServerKafkaClientFactory(
@@ -1115,9 +1111,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       int latestSuperSetValueSchemaId = store.getLatestSuperSetValueSchemaId();
 
       Map<CharSequence, List<CharSequence>> routingInfo = new HashMap<>();
-      for (String resource: routingRepository.getResourceAssignment().getAssignedResources()) {
+      for (String resource: customizedViewRepository.getResourceAssignment().getAssignedResources()) {
         if (resource.endsWith("v" + store.getCurrentVersion())) {
-          for (Partition partition: routingRepository.getPartitionAssignments(resource).getAllPartitions()) {
+          for (Partition partition: customizedViewRepository.getPartitionAssignments(resource).getAllPartitions()) {
             List<CharSequence> instances = new ArrayList<>();
             for (ReplicaState replicaState: customizedViewRepository.getReplicaStates(resource, partition.getId())) {
               if (replicaState.getVenicePushStatus().equals(ExecutionStatus.COMPLETED.name())) {

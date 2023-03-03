@@ -364,7 +364,6 @@ public class VeniceServer {
         schemaRepo,
         Optional.of(customizedViewFuture),
         Optional.of(helixInstanceFuture),
-        Optional.of(routingRepositoryFuture),
         liveClusterConfigRepo,
         metricsRepository,
         kafkaMessageEnvelopeSchemaReader,
