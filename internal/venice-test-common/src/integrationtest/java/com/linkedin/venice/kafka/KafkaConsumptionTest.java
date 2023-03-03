@@ -87,7 +87,7 @@ public class KafkaConsumptionTest {
 
   private PubSubTopic getTopic() {
     String callingFunction = Thread.currentThread().getStackTrace()[2].getMethodName();
-    PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Utils.getUniqueString(callingFunction) + "_v1");
+    PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Utils.getUniqueTopicString(callingFunction));
     int partitions = 1;
     int replicas = 1;
     topicManager.createTopic(versionTopic, partitions, replicas, false);

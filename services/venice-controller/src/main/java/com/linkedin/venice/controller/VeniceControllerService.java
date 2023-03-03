@@ -52,9 +52,9 @@ public class VeniceControllerService extends AbstractVeniceService {
       D2Client d2Client,
       Optional<ClientConfig> routerClientConfig,
       Optional<ICProvider> icProvider,
-      Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator) {
+      Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator,
+      PubSubTopicRepository pubSubTopicRepository) {
     this.multiClusterConfigs = multiClusterConfigs;
-    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     VeniceHelixAdmin internalAdmin = new VeniceHelixAdmin(
         multiClusterConfigs,
         metricsRepository,

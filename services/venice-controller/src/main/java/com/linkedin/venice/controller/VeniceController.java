@@ -14,6 +14,7 @@ import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentControll
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
@@ -55,6 +56,7 @@ public class VeniceController {
   private final Optional<ICProvider> icProvider;
   private final Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator;
   private static final String CONTROLLER_SERVICE_NAME = "venice-controller";
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   /**
    * This constructor is being used in integration test.
@@ -151,7 +153,8 @@ public class VeniceController {
         d2Client,
         routerClientConfig,
         icProvider,
-        externalSupersetSchemaGenerator);
+        externalSupersetSchemaGenerator,
+        pubSubTopicRepository);
 
     adminServer = new AdminSparkServer(
         // no need to pass the hostname, we are binding to all the addresses
@@ -166,7 +169,8 @@ public class VeniceController {
         multiClusterConfigs.getDisabledRoutes(),
         multiClusterConfigs.getCommonConfig().getJettyConfigOverrides(),
         // TODO: Builder pattern or just pass the config object here?
-        multiClusterConfigs.getCommonConfig().isDisableParentRequestTopicForStreamPushes());
+        multiClusterConfigs.getCommonConfig().isDisableParentRequestTopicForStreamPushes(),
+        pubSubTopicRepository);
     if (sslEnabled) {
       /**
        * SSL enabled AdminSparkServer uses a different port number than the regular service.
@@ -182,13 +186,15 @@ public class VeniceController {
           accessController,
           multiClusterConfigs.getDisabledRoutes(),
           multiClusterConfigs.getCommonConfig().getJettyConfigOverrides(),
-          multiClusterConfigs.getCommonConfig().isDisableParentRequestTopicForStreamPushes());
+          multiClusterConfigs.getCommonConfig().isDisableParentRequestTopicForStreamPushes(),
+          pubSubTopicRepository);
     }
     storeBackupVersionCleanupService = Optional.empty();
     storeGraveyardCleanupService = Optional.empty();
     Admin admin = controllerService.getVeniceHelixAdmin();
     if (multiClusterConfigs.isParent()) {
-      topicCleanupService = new TopicCleanupServiceForParentController(admin, multiClusterConfigs);
+      topicCleanupService =
+          new TopicCleanupServiceForParentController(admin, multiClusterConfigs, pubSubTopicRepository);
       if (!(admin instanceof VeniceParentHelixAdmin)) {
         throw new VeniceException(
             "'VeniceParentHelixAdmin' is expected of the returned 'Admin' from 'VeniceControllerService#getVeniceHelixAdmin' in parent mode");
@@ -197,7 +203,7 @@ public class VeniceController {
           Optional.of(new StoreGraveyardCleanupService((VeniceParentHelixAdmin) admin, multiClusterConfigs));
       LOGGER.info("StoreGraveyardCleanupService is enabled");
     } else {
-      topicCleanupService = new TopicCleanupService(admin, multiClusterConfigs);
+      topicCleanupService = new TopicCleanupService(admin, multiClusterConfigs, pubSubTopicRepository);
       if (!(admin instanceof VeniceHelixAdmin)) {
         throw new VeniceException(
             "'VeniceHelixAdmin' is expected of the returned 'Admin' from 'VeniceControllerService#getVeniceHelixAdmin' in child mode");

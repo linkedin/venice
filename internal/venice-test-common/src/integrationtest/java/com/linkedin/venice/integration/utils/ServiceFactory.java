@@ -17,6 +17,7 @@ import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReflectUtils;
@@ -165,7 +166,8 @@ public class ServiceFactory {
           Optional.empty(),
           bannedRoutes,
           null,
-          false);
+          false,
+          new PubSubTopicRepository()); // Change this.
       server.start();
       return server;
     });

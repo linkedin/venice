@@ -30,10 +30,14 @@ import spark.Route;
 
 
 public class ControllerRoutes extends AbstractRoute {
-  private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  private final PubSubTopicRepository pubSubTopicRepository;
 
-  public ControllerRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
+  public ControllerRoutes(
+      boolean sslEnabled,
+      Optional<DynamicAccessController> accessController,
+      PubSubTopicRepository pubSubTopicRepository) {
     super(sslEnabled, accessController);
+    this.pubSubTopicRepository = pubSubTopicRepository;
   }
 
   /**

@@ -86,7 +86,7 @@ public class VeniceWriterTest {
       int numberOfThreads,
       java.util.function.Consumer<VeniceWriter<KafkaKey, byte[], byte[]>> veniceWriterTask)
       throws ExecutionException, InterruptedException {
-    String topicName = Utils.getUniqueString("topic-for-vw-thread-safety");
+    String topicName = Utils.getUniqueTopicString("topic-for-vw-thread-safety");
     int partitionCount = 1;
     PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(topicName);
     topicManager.createTopic(pubSubTopic, partitionCount, 1, true);

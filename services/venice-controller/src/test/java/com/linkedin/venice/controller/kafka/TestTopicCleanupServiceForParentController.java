@@ -31,7 +31,7 @@ public class TestTopicCleanupServiceForParentController {
     VeniceControllerMultiClusterConfig config = mock(VeniceControllerMultiClusterConfig.class);
     doReturn(1000l).when(config).getTopicCleanupSleepIntervalBetweenTopicListFetchMs();
     doReturn(2).when(config).getTopicCleanupDelayFactor();
-    topicCleanupService = new TopicCleanupServiceForParentController(admin, config);
+    topicCleanupService = new TopicCleanupServiceForParentController(admin, config, pubSubTopicRepository);
   }
 
   @Test

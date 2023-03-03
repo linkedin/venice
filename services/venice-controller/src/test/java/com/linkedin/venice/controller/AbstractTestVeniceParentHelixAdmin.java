@@ -25,6 +25,7 @@ import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -75,9 +76,10 @@ public class AbstractTestVeniceParentHelixAdmin {
 
   public void setupInternalMocks() {
     topicManager = mock(TopicManager.class);
-    doReturn(new HashSet<String>(Arrays.asList(topicName))).when(topicManager).listTopics();
-    Map<String, Long> topicRetentions = new HashMap<>();
-    topicRetentions.put(topicName, Long.MAX_VALUE);
+    PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(topicName);
+    doReturn(new HashSet<>(Arrays.asList(pubSubTopic))).when(topicManager).listTopics();
+    Map<PubSubTopic, Long> topicRetentions = new HashMap<>();
+    topicRetentions.put(pubSubTopic, Long.MAX_VALUE);
     doReturn(topicRetentions).when(topicManager).getAllTopicRetentions();
     doReturn(true).when(topicManager).containsTopicAndAllPartitionsAreOnline(pubSubTopicRepository.getTopic(topicName));
 

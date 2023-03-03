@@ -3,6 +3,7 @@ package com.linkedin.venice.controller.kafka;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import java.util.HashMap;
 import java.util.Map;
@@ -20,8 +21,11 @@ public class TopicCleanupServiceForParentController extends TopicCleanupService 
   private static final Logger LOGGER = LogManager.getLogger(TopicCleanupServiceForParentController.class);
   private static final Map<String, Integer> storeToCountdownForDeletion = new HashMap<>();
 
-  public TopicCleanupServiceForParentController(Admin admin, VeniceControllerMultiClusterConfig multiClusterConfigs) {
-    super(admin, multiClusterConfigs);
+  public TopicCleanupServiceForParentController(
+      Admin admin,
+      VeniceControllerMultiClusterConfig multiClusterConfigs,
+      PubSubTopicRepository pubSubTopicRepository) {
+    super(admin, multiClusterConfigs, pubSubTopicRepository);
   }
 
   @Override

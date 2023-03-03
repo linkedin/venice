@@ -56,7 +56,7 @@ public class TestTopicCleanupServiceForMultiKafkaClusters {
     doReturn(kafkaClusterServerUrl2).when(topicManager2).getKafkaBootstrapServers();
     doReturn(topicManager2).when(admin).getTopicManager(kafkaClusterServerUrl2);
 
-    topicCleanupService = new TopicCleanupServiceForParentController(admin, config);
+    topicCleanupService = new TopicCleanupServiceForParentController(admin, config, pubSubTopicRepository);
   }
 
   @Test
