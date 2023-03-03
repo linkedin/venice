@@ -78,7 +78,6 @@ import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -244,10 +243,8 @@ public class TestActiveActiveIngestion {
 
     // Validate change events for version 1.
     Map<String, ChangeEvent<Utf8>> polledChangeEvents = new HashMap<>();
-    String changeCaptureTopicV1 =
-        Version.composeKafkaTopic(storeName, 1) + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX;
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer, changeCaptureTopicV1);
+      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       Assert.assertTrue(polledChangeEvents.size() == 21);
       for (int i = 0; i < 10; i++) {
         String key = Integer.toString(i);
@@ -339,14 +336,10 @@ public class TestActiveActiveIngestion {
     // Validate changed events for version 2.
     polledChangeEvents.clear();
     Map<String, Utf8> polledAfterImageEvents = new HashMap<>();
-    String versionTopicV2 = Version.composeKafkaTopic(storeName, 2);
-    String changeCaptureTopicV2 =
-        Version.composeKafkaTopic(storeName, 2) + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX;
-    Set<String> afterImageRelatedTopics = new HashSet<>(Arrays.asList(versionTopicV2, changeCaptureTopicV2));
     // As records keys from VPJ start from 1, real-time produced records' key starts from 0, the message with key as 0
     // is new message.
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer, changeCaptureTopicV2);
+      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       String deleteWithRmdKey = Integer.toString(deleteWithRmdKeyIndex);
       String persistWithRmdKey = Integer.toString(deleteWithRmdKeyIndex + 1);
       Assert.assertNull(polledChangeEvents.get(deleteWithRmdKey));
@@ -384,19 +377,13 @@ public class TestActiveActiveIngestion {
 
     // Validate changed events for version 3.
     polledChangeEvents.clear();
-    String changeCaptureTopicV3 =
-        Version.composeKafkaTopic(storeName, 3) + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX;
-    afterImageRelatedTopics.add(changeCaptureTopicV3);
     AtomicInteger totalPolledAfterImageMessages = new AtomicInteger();
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer, changeCaptureTopicV3);
+      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       // Filter previous 21 messages.
       Assert.assertEquals(polledChangeEvents.size(), 20);
-      totalPolledAfterImageMessages.addAndGet(
-          pollAfterImageEventsFromChangeCaptureConsumer(
-              polledAfterImageEvents,
-              veniceAfterImageConsumer,
-              afterImageRelatedTopics));
+      totalPolledAfterImageMessages
+          .addAndGet(pollAfterImageEventsFromChangeCaptureConsumer(polledAfterImageEvents, veniceAfterImageConsumer));
       // keys (0-100), 1000, and 1001, the total would be 103.
       Assert.assertEquals(polledAfterImageEvents.size(), 103);
       // After image consumer consumed 3 different topics: v2, v2_cc and v3_cc.
@@ -469,10 +456,8 @@ public class TestActiveActiveIngestion {
 
     // Since nothing is produced, so changed events generated.
     polledChangeEvents.clear();
-    String changeCaptureTopicV4 =
-        Version.composeKafkaTopic(storeName, 4) + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX;
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, true, () -> {
-      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer, changeCaptureTopicV4);
+      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       Assert.assertEquals(polledChangeEvents.size(), 0);
     });
 
@@ -503,31 +488,25 @@ public class TestActiveActiveIngestion {
 
   private void pollChangeEventsFromChangeCaptureConsumer(
       Map<String, ChangeEvent<Utf8>> polledChangeEvents,
-      VeniceChangelogConsumer veniceChangelogConsumer,
-      String expectedVersionTopic) {
+      VeniceChangelogConsumer veniceChangelogConsumer) {
     Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, Long>> pubSubMessages = veniceChangelogConsumer.poll(100);
     for (PubSubMessage<Utf8, ChangeEvent<Utf8>, Long> pubSubMessage: pubSubMessages) {
-      if (pubSubMessage.getTopicPartition().getPubSubTopic().getName().equals(expectedVersionTopic)) {
-        ChangeEvent<Utf8> changeEvent = pubSubMessage.getValue();
-        String key = pubSubMessage.getKey().toString();
-        polledChangeEvents.put(key, changeEvent);
-      }
+      ChangeEvent<Utf8> changeEvent = pubSubMessage.getValue();
+      String key = pubSubMessage.getKey().toString();
+      polledChangeEvents.put(key, changeEvent);
     }
   }
 
   private int pollAfterImageEventsFromChangeCaptureConsumer(
       Map<String, Utf8> polledChangeEvents,
-      VeniceChangelogConsumer veniceChangelogConsumer,
-      Set<String> expectedVersionTopics) {
+      VeniceChangelogConsumer veniceChangelogConsumer) {
     int polledMessagesNum = 0;
     Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, Long>> pubSubMessages = veniceChangelogConsumer.poll(100);
     for (PubSubMessage<Utf8, ChangeEvent<Utf8>, Long> pubSubMessage: pubSubMessages) {
-      if (expectedVersionTopics.contains(pubSubMessage.getTopicPartition().getPubSubTopic().getName())) {
-        Utf8 afterImageEvent = pubSubMessage.getValue().getCurrentValue();
-        String key = pubSubMessage.getKey().toString();
-        polledChangeEvents.put(key, afterImageEvent);
-        polledMessagesNum++;
-      }
+      Utf8 afterImageEvent = pubSubMessage.getValue().getCurrentValue();
+      String key = pubSubMessage.getKey().toString();
+      polledChangeEvents.put(key, afterImageEvent);
+      polledMessagesNum++;
     }
     return polledMessagesNum;
   }
