@@ -1092,15 +1092,16 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     try {
       Store store = metadataRepo.getStoreOrThrow(storeName);
 
+      Version version = store.getVersion(store.getCurrentVersion()).get();
       Map<CharSequence, CharSequence> partitionerParams =
-          new HashMap<>(store.getPartitionerConfig().getPartitionerParams());
+          new HashMap<>(version.getPartitionerConfig().getPartitionerParams());
       VersionProperties versionProperties = new VersionProperties(
           store.getCurrentVersion(),
-          store.getVersion(store.getCurrentVersion()).get().getCompressionStrategy().getValue(),
-          store.getPartitionCount(),
-          store.getPartitionerConfig().getPartitionerClass(),
+          version.getCompressionStrategy().getValue(),
+          version.getPartitionCount(),
+          version.getPartitionerConfig().getPartitionerClass(),
           partitionerParams,
-          store.getPartitionerConfig().getAmplificationFactor());
+          version.getPartitionerConfig().getAmplificationFactor());
 
       Map<CharSequence, CharSequence> keySchema = Collections.singletonMap(
           String.valueOf(schemaRepo.getKeySchema(storeName).getId()),
