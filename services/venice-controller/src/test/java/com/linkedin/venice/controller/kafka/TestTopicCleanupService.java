@@ -32,6 +32,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import org.apache.kafka.common.PartitionInfo;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -60,7 +61,7 @@ public class TestTopicCleanupService {
     doReturn(0L).when(config).getTopicCleanupSleepIntervalBetweenTopicListFetchMs();
     doReturn(1).when(config).getMinNumberOfUnusedKafkaTopicsToPreserve();
     doReturn(1).when(admin).getMinNumberOfUnusedKafkaTopicsToPreserve();
-    topicCleanupService = new TopicCleanupService(admin, config);
+    topicCleanupService = new TopicCleanupService(admin, config, pubSubTopicRepository);
   }
 
   @AfterMethod
@@ -100,7 +101,10 @@ public class TestTopicCleanupService {
     topicRetentions1.put(pubSubTopicRepository.getTopic("store1_v4"), HIGH_RETENTION_POLICY);
     List<String> expectedResult1 = Arrays.asList("store1_v1", "store1_v2");
     List<String> actualResult1 = TopicCleanupService
-        .extractVersionTopicsToCleanup(admin, topicRetentions1, admin.getMinNumberOfUnusedKafkaTopicsToPreserve(), 0);
+        .extractVersionTopicsToCleanup(admin, topicRetentions1, admin.getMinNumberOfUnusedKafkaTopicsToPreserve(), 0)
+        .stream()
+        .map(PubSubTopic::getName)
+        .collect(Collectors.toList());
     actualResult1.sort(String::compareTo);
     Assert.assertEquals(actualResult1, expectedResult1);
 
@@ -111,7 +115,10 @@ public class TestTopicCleanupService {
     topicRetentions2.put(pubSubTopicRepository.getTopic("store1_v4"), LOW_RETENTION_POLICY);
     List<String> expectedResult2 = Arrays.asList("store1_v3", "store1_v4");
     List<String> actualResult2 = TopicCleanupService
-        .extractVersionTopicsToCleanup(admin, topicRetentions2, admin.getMinNumberOfUnusedKafkaTopicsToPreserve(), 0);
+        .extractVersionTopicsToCleanup(admin, topicRetentions2, admin.getMinNumberOfUnusedKafkaTopicsToPreserve(), 0)
+        .stream()
+        .map(PubSubTopic::getName)
+        .collect(Collectors.toList());
     actualResult2.sort(String::compareTo);
     Assert.assertEquals(actualResult2, expectedResult2);
 
@@ -122,7 +129,10 @@ public class TestTopicCleanupService {
     topicRetentions3.put(pubSubTopicRepository.getTopic("store1_v4"), HIGH_RETENTION_POLICY);
     List<String> expectedResult3 = Arrays.asList("store1_v1", "store1_v3");
     List<String> actualResult3 = TopicCleanupService
-        .extractVersionTopicsToCleanup(admin, topicRetentions3, admin.getMinNumberOfUnusedKafkaTopicsToPreserve(), 0);
+        .extractVersionTopicsToCleanup(admin, topicRetentions3, admin.getMinNumberOfUnusedKafkaTopicsToPreserve(), 0)
+        .stream()
+        .map(PubSubTopic::getName)
+        .collect(Collectors.toList());
     actualResult3.sort(String::compareTo);
     Assert.assertEquals(actualResult3, expectedResult3);
 
@@ -134,7 +144,10 @@ public class TestTopicCleanupService {
     topicRetentions4.put(pubSubTopicRepository.getTopic("existent_store_v4"), LOW_RETENTION_POLICY);
     List<String> expectedResult4 = Arrays.asList("existent_store_v1", "existent_store_v2", "existent_store_v3");
     List<String> actualResult4 = TopicCleanupService
-        .extractVersionTopicsToCleanup(admin, topicRetentions4, admin.getMinNumberOfUnusedKafkaTopicsToPreserve(), 0);
+        .extractVersionTopicsToCleanup(admin, topicRetentions4, admin.getMinNumberOfUnusedKafkaTopicsToPreserve(), 0)
+        .stream()
+        .map(PubSubTopic::getName)
+        .collect(Collectors.toList());
     actualResult4.sort(String::compareTo);
     Assert.assertEquals(actualResult4, expectedResult4);
   }
@@ -296,14 +309,14 @@ public class TestTopicCleanupService {
   @Test
   public void testCleanupReplicaStatusesFromMetaSystemStoreInParent() {
     doReturn(true).when(admin).isParent();
-    String versionTopic = Version.composeKafkaTopic("test", 1);
+    PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic("test", 1));
     assertFalse(topicCleanupService.cleanupReplicaStatusesFromMetaSystemStore(versionTopic));
   }
 
   @Test
   public void testCleanupReplicaStatusesFromMetaSystemStoreWithRTTopic() {
     doReturn(false).when(admin).isParent();
-    String rtTopic = Version.composeRealTimeTopic("test");
+    PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic("test"));
     assertFalse(topicCleanupService.cleanupReplicaStatusesFromMetaSystemStore(rtTopic));
   }
 
@@ -313,7 +326,7 @@ public class TestTopicCleanupService {
     String storeName = Utils.getUniqueString("test_store");
     doReturn(Optional.of(new StoreConfig(storeName))).when(storeConfigRepository).getStoreConfig(storeName);
     int version = 1;
-    String versionTopic = Version.composeKafkaTopic(storeName, version);
+    PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, version));
     HelixReadOnlyStoreConfigRepository repository = mock(HelixReadOnlyStoreConfigRepository.class);
     StoreConfig storeConfig = new StoreConfig(storeName);
     String cluster = "test_cluster";
@@ -358,7 +371,7 @@ public class TestTopicCleanupService {
     MetaStoreWriter metaStoreWriter = mock(MetaStoreWriter.class);
     doReturn(metaStoreWriter).when(admin).getMetaStoreWriter();
 
-    assertTrue(topicCleanupService.cleanupReplicaStatusesFromMetaSystemStore(versionTopic.getName()));
+    assertTrue(topicCleanupService.cleanupReplicaStatusesFromMetaSystemStore(versionTopic));
     for (int i = 0; i < partitionCnt; ++i) {
       verify(metaStoreWriter).deleteStoreReplicaStatus(cluster, storeName, version, i);
     }
@@ -378,8 +391,8 @@ public class TestTopicCleanupService {
     doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(1000);
     doReturn(false).when(admin).isResourceStillAlive(anyString());
 
-    List<String> deletableTopics = TopicCleanupService.extractVersionTopicsToCleanup(admin, topicRetentions, 2, 0);
+    List<PubSubTopic> deletableTopics = TopicCleanupService.extractVersionTopicsToCleanup(admin, topicRetentions, 2, 0);
     assertEquals(deletableTopics.size(), 1, "There should only be one deletable topic");
-    assertTrue(deletableTopics.contains(Version.composeKafkaTopic(storeName, 1)));
+    assertTrue(deletableTopics.contains(pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 1))));
   }
 }

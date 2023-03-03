@@ -71,8 +71,8 @@ public class PubSubSharedProducerAdapterFactoryTest {
    */
   @Test(timeOut = 60000)
   public void testSharedProducerWithNonExistingTopic() throws Exception {
-    PubSubTopic existingTopic = pubSubTopicRepository.getTopic("test-topic-1");
-    String nonExistingTopic = "test-topic-2";
+    PubSubTopic existingTopic = pubSubTopicRepository.getTopic("test-topic-1_v1");
+    String nonExistingTopic = "test-topic-2_v1";
     topicManager.createTopic(existingTopic, 1, 1, true);
 
     SharedKafkaProducerAdapterFactory sharedKafkaProducerAdapterFactory = null;

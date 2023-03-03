@@ -70,7 +70,7 @@ public class MetaStoreWriter implements Closeable {
   private final HelixReadOnlyZKSharedSchemaRepository zkSharedSchemaRepository;
   private int derivedComputeSchemaId = -1;
 
-  private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  private final PubSubTopicRepository pubSubTopicRepository;
 
   public MetaStoreWriter(
       TopicManager topicManager,

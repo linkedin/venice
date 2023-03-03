@@ -110,6 +110,7 @@ import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Utils;
@@ -161,6 +162,7 @@ public class AdminSparkServer extends AbstractVeniceService {
   private final List<ControllerRoute> disabledRoutes;
 
   private final boolean disableParentRequestTopicForStreamPushes;
+  private final PubSubTopicRepository pubSubTopicRepository;
 
   public AdminSparkServer(
       int port,
@@ -173,7 +175,8 @@ public class AdminSparkServer extends AbstractVeniceService {
       Optional<DynamicAccessController> accessController,
       List<ControllerRoute> disabledRoutes,
       VeniceProperties jettyConfigOverrides,
-      boolean disableParentRequestTopicForStreamPushes) {
+      boolean disableParentRequestTopicForStreamPushes,
+      PubSubTopicRepository pubSubTopicRepository) {
     this.port = port;
     this.enforceSSL = enforceSSL;
     this.sslEnabled = sslConfig.isPresent();
@@ -196,6 +199,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService = Service.ignite();
     this.disabledRoutes = disabledRoutes;
     this.disableParentRequestTopicForStreamPushes = disableParentRequestTopicForStreamPushes;
+    this.pubSubTopicRepository = pubSubTopicRepository;
   }
 
   @Override
@@ -268,8 +272,8 @@ public class AdminSparkServer extends AbstractVeniceService {
     });
 
     // Build all different routes
-    ControllerRoutes controllerRoutes = new ControllerRoutes(sslEnabled, accessController);
-    StoresRoutes storesRoutes = new StoresRoutes(sslEnabled, accessController);
+    ControllerRoutes controllerRoutes = new ControllerRoutes(sslEnabled, accessController, pubSubTopicRepository);
+    StoresRoutes storesRoutes = new StoresRoutes(sslEnabled, accessController, pubSubTopicRepository);
     JobRoutes jobRoutes = new JobRoutes(sslEnabled, accessController);
     SkipAdminRoute skipAdminRoute = new SkipAdminRoute(sslEnabled, accessController);
     CreateVersion createVersion = new CreateVersion(

@@ -4,6 +4,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -20,7 +21,7 @@ public class CachedKafkaMetadataGetterTest {
     CachedKafkaMetadataGetter cachedKafkaMetadataGetter = new CachedKafkaMetadataGetter(1000);
     CachedKafkaMetadataGetter.KafkaMetadataCacheKey key = new CachedKafkaMetadataGetter.KafkaMetadataCacheKey(
         "server",
-        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic("topic"), 1));
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(Utils.getUniqueTopicString("topic")), 1));
     Map<CachedKafkaMetadataGetter.KafkaMetadataCacheKey, CachedKafkaMetadataGetter.ValueAndExpiryTime<Long>> offsetCache =
         new VeniceConcurrentHashMap<>();
     CachedKafkaMetadataGetter.ValueAndExpiryTime<Long> valueCache =

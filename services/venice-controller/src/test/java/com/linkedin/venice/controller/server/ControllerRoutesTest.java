@@ -10,6 +10,7 @@ import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.LeaderControllerResponse;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.util.Optional;
 import org.testng.Assert;
@@ -26,6 +27,8 @@ public class ControllerRoutesTest {
   private static final int TEST_PORT = 2181;
   private static final int TEST_SSL_PORT = 2182;
 
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+
   @Test
   public void testGetLeaderController() throws Exception {
     Admin mockAdmin = mock(VeniceParentHelixAdmin.class);
@@ -36,7 +39,8 @@ public class ControllerRoutesTest {
     Request request = mock(Request.class);
     doReturn(TEST_CLUSTER).when(request).queryParams(eq(ControllerApiConstants.CLUSTER));
 
-    Route leaderControllerRoute = new ControllerRoutes(false, Optional.empty()).getLeaderController(mockAdmin);
+    Route leaderControllerRoute =
+        new ControllerRoutes(false, Optional.empty(), pubSubTopicRepository).getLeaderController(mockAdmin);
     LeaderControllerResponse leaderControllerResponse = ObjectMapperFactory.getInstance()
         .readValue(
             leaderControllerRoute.handle(request, mock(Response.class)).toString(),
@@ -45,7 +49,8 @@ public class ControllerRoutesTest {
     Assert.assertEquals(leaderControllerResponse.getUrl(), "http://" + TEST_HOST + ":" + TEST_PORT);
     Assert.assertEquals(leaderControllerResponse.getSecureUrl(), "https://" + TEST_HOST + ":" + TEST_SSL_PORT);
 
-    Route leaderControllerSslRoute = new ControllerRoutes(true, Optional.empty()).getLeaderController(mockAdmin);
+    Route leaderControllerSslRoute =
+        new ControllerRoutes(true, Optional.empty(), pubSubTopicRepository).getLeaderController(mockAdmin);
     LeaderControllerResponse leaderControllerResponseSsl = ObjectMapperFactory.getInstance()
         .readValue(
             leaderControllerSslRoute.handle(request, mock(Response.class)).toString(),

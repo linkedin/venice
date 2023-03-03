@@ -106,10 +106,14 @@ import spark.Route;
 
 
 public class StoresRoutes extends AbstractRoute {
-  private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  private final PubSubTopicRepository pubSubTopicRepository;
 
-  public StoresRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
+  public StoresRoutes(
+      boolean sslEnabled,
+      Optional<DynamicAccessController> accessController,
+      PubSubTopicRepository pubSubTopicRepository) {
     super(sslEnabled, accessController);
+    this.pubSubTopicRepository = pubSubTopicRepository;
   }
 
   /**
@@ -813,10 +817,11 @@ public class StoresRoutes extends AbstractRoute {
               }
               topicsWithRetention.remove(realTimeTopic);
             }
-            List<String> deletableTopicsForThisStore = TopicCleanupService
+            List<PubSubTopic> deletableTopicsForThisStore = TopicCleanupService
                 .extractVersionTopicsToCleanup(admin, topicsWithRetention, minNumberOfUnusedKafkaTopicsToPreserve, 0);
             if (!deletableTopicsForThisStore.isEmpty()) {
-              deletableTopicsList.addAll(deletableTopicsForThisStore);
+              deletableTopicsList
+                  .addAll(deletableTopicsForThisStore.stream().map(t -> t.getName()).collect(Collectors.toList()));
             }
           });
           veniceResponse.setTopics(deletableTopicsList);

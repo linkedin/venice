@@ -1176,6 +1176,7 @@ public class VeniceParentHelixAdmin implements Admin {
     List<PubSubTopic> outputList = new ArrayList<>();
     TopicManager topicManager = getTopicManager();
     Set<PubSubTopic> topics = topicManager.listTopics();
+    System.out.println(topics.stream().collect(Collectors.toList()).get(0));
     String storeNameForCurrentTopic;
     for (PubSubTopic topic: topics) {
       if (AdminTopicUtils.isAdminTopic(topic.getName()) || AdminTopicUtils.isKafkaInternalTopic(topic.getName())

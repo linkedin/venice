@@ -50,9 +50,9 @@ public class VeniceControllerService extends AbstractVeniceService {
       Optional<AuthorizerService> authorizerService,
       D2Client d2Client,
       Optional<ClientConfig> routerClientConfig,
-      Optional<ICProvider> icProvider) {
+      Optional<ICProvider> icProvider,
+      PubSubTopicRepository pubSubTopicRepository) {
     this.multiClusterConfigs = multiClusterConfigs;
-    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     VeniceHelixAdmin internalAdmin = new VeniceHelixAdmin(
         multiClusterConfigs,
         metricsRepository,

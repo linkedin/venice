@@ -21,6 +21,7 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.views.ChangeCaptureView;
 import java.io.Closeable;
 import java.io.File;
 import java.io.FileInputStream;
@@ -533,17 +534,22 @@ public class Utils {
     return String.format("%s_%x_%x", prefix, System.nanoTime(), ThreadLocalRandom.current().nextInt());
   }
 
-  public static String getUniqueTopicStr(String prefix) {
+  public static String getUniqueTopicString(String prefix) {
     int typesNum = PubSubTopicType.values().length;
-    PubSubTopicType pubSubTopicType = PubSubTopicType.values()[ThreadLocalRandom.current().nextInt() % typesNum];
+    int pubSubTopicTypeIndex = Math.abs(ThreadLocalRandom.current().nextInt() % typesNum);
+    PubSubTopicType pubSubTopicType = PubSubTopicType.values()[pubSubTopicTypeIndex];
+    int version = Math.abs(ThreadLocalRandom.current().nextInt() % typesNum);
     if (pubSubTopicType.equals(PubSubTopicType.REALTIME_TOPIC)) {
       return getUniqueString(prefix) + Version.REAL_TIME_TOPIC_SUFFIX;
     } else if (pubSubTopicType.equals(PubSubTopicType.REPROCESSING_TOPIC)) {
-      return getUniqueString(prefix) + Version.STREAM_REPROCESSING_TOPIC_SUFFIX;
+      return getUniqueString(prefix) + Version.VERSION_SEPARATOR + (version) + Version.STREAM_REPROCESSING_TOPIC_SUFFIX;
     } else if (pubSubTopicType.equals(PubSubTopicType.VERSION_TOPIC)) {
-      return getUniqueString(prefix) + Version.VERSION_SEPARATOR + (ThreadLocalRandom.current().nextInt() % typesNum);
+      return getUniqueString(prefix) + Version.VERSION_SEPARATOR + (version);
     } else if (pubSubTopicType.equals(PubSubTopicType.ADMIN_TOPIC)) {
       return pubSubTopicType.ADMIN_TOPIC_PREFIX + getUniqueString(prefix);
+    } else if (pubSubTopicType.equals(PubSubTopicType.VIEW_TOPIC)) {
+      return getUniqueString(prefix) + Version.VERSION_SEPARATOR + (version)
+          + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX;
     } else {
       throw new VeniceException("Unsupported topic type for: " + pubSubTopicType);
     }
