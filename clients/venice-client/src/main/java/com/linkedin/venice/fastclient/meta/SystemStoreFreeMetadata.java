@@ -112,30 +112,8 @@ public class SystemStoreFreeMetadata extends AbstractStoreMetadata {
 
   @Override
   public VeniceCompressor getCompressor(CompressionStrategy compressionStrategy, int version) {
-    if (compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
-      String resourceName = getResourceName(version);
-      VeniceCompressor compressor = compressorFactory.getVersionSpecificCompressor(resourceName);
-      if (compressor == null) {
-        ByteBuffer dictionary = versionZstdDictionaryMap.get(version);
-        if (dictionary == null) {
-          throw new VeniceClientException(
-              String.format(
-                  "No dictionary available for decompressing zstd payload for store %s version %d ",
-                  storeName,
-                  version));
-        } else {
-          compressor = compressorFactory
-              .createVersionSpecificCompressorIfNotExist(compressionStrategy, resourceName, dictionary.array());
-        }
-      }
-      return compressor;
-    } else {
-      return compressorFactory.getCompressor(compressionStrategy);
-    }
-  }
-
-  private String getResourceName(int version) {
-    return storeName + "_v" + version;
+    return CompressionDictionaryHelper
+        .getCompressor(compressionStrategy, compressorFactory, versionZstdDictionaryMap, version, storeName);
   }
 
   @Override
@@ -341,23 +319,13 @@ public class SystemStoreFreeMetadata extends AbstractStoreMetadata {
     CompletableFuture<TransportClientResponse> compressionDictionaryFuture = new CompletableFuture<>();
     String url = serviceName + "/" + QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/" + version;
 
-    LOGGER.info("Fetching compression dictionary for version {} from URL {} ", version, url);
-    r2TransportClient.get(url).whenComplete((response, throwable) -> {
-      if (throwable != null) {
-        String message = String.format(
-            "Problem fetching zstd compression dictionary from URL:%s for store:%s , version:%d",
-            url,
-            storeName,
-            version);
-        LOGGER.warn(message, throwable);
-        compressionDictionaryFuture.completeExceptionally(throwable);
-      } else {
-        byte[] dictionary = response.getBody();
-        versionZstdDictionaryMap.put(version, ByteBuffer.wrap(dictionary));
-        compressionDictionaryFuture.complete(response);
-      }
-    });
-    return compressionDictionaryFuture;
+    return CompressionDictionaryHelper.performFetchRequest(
+        compressionDictionaryFuture,
+        r2TransportClient,
+        versionZstdDictionaryMap,
+        url,
+        version,
+        storeName);
   }
 
   @Override
