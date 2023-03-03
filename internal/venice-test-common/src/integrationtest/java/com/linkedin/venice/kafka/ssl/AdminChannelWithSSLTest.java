@@ -28,7 +28,7 @@ public class AdminChannelWithSSLTest {
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
         KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServer);
         VeniceControllerWrapper childControllerWrapper = ServiceFactory.getVeniceController(
-            new VeniceControllerCreateOptions.Builder(clusterName, kafkaBrokerWrapper).replicationFactor(1)
+            new VeniceControllerCreateOptions.Builder(clusterName, zkServer, kafkaBrokerWrapper).replicationFactor(1)
                 .partitionSize(10)
                 .rebalanceDelayMs(0)
                 .minActiveReplica(1)
@@ -37,7 +37,7 @@ public class AdminChannelWithSSLTest {
         ZkServerWrapper parentZk = ServiceFactory.getZkServer();
 
         VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceController(
-            new VeniceControllerCreateOptions.Builder(clusterName, kafkaBrokerWrapper).zkAddress(parentZk.getAddress())
+            new VeniceControllerCreateOptions.Builder(clusterName, parentZk, kafkaBrokerWrapper)
                 .childControllers(new VeniceControllerWrapper[] { childControllerWrapper })
                 .sslToKafka(true)
                 .build())) {

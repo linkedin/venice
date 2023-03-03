@@ -59,7 +59,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Instance;
@@ -69,6 +69,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.status.BatchJobHeartbeatConfigs;
@@ -124,11 +125,12 @@ public class TestPushJobWithNativeReplication {
   private final String DEFAULT_NATIVE_REPLICATION_SOURCE = "dc-0";
 
   private static final String VPJ_HEARTBEAT_STORE_CLUSTER = CLUSTER_NAMES[0]; // "venice-cluster0"
-  private static final String VPJ_HEARTBEAT_STORE_NAME = "venice_system_store_BATCH_JOB_HEARTBEAT";
+  private static final String VPJ_HEARTBEAT_STORE_NAME =
+      AvroProtocolDefinition.BATCH_JOB_HEARTBEAT.getSystemStoreName();
 
   private List<VeniceMultiClusterWrapper> childDatacenters;
   private List<VeniceControllerWrapper> parentControllers;
-  private VeniceTwoLayerMultiColoMultiClusterWrapper multiColoMultiClusterWrapper;
+  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
 
   @DataProvider(name = "storeSize")
   public static Object[][] storeSize() {
@@ -157,7 +159,7 @@ public class TestPushJobWithNativeReplication {
     controllerProps.put(BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG.getConfigName(), true);
     controllerProps.put(ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_ALL_STORES, true);
 
-    multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
+    multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
         NUMBER_OF_CLUSTERS,
         1,
@@ -169,13 +171,13 @@ public class TestPushJobWithNativeReplication {
         Optional.of(controllerProps),
         Optional.of(new VeniceProperties(serverProperties)),
         false);
-    childDatacenters = multiColoMultiClusterWrapper.getChildRegions();
-    parentControllers = multiColoMultiClusterWrapper.getParentControllers();
+    childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
+    parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
   }
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    Utils.closeQuietlyWithErrorLogged(multiColoMultiClusterWrapper);
+    Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "storeSize")
@@ -314,7 +316,7 @@ public class TestPushJobWithNativeReplication {
           // Setup meta system store for Da Vinci usage.
           TestUtils.createMetaSystemStore(parentControllerClient, storeName, Optional.of(LOGGER));
 
-          // Test Da-vinci client is able to consume from NR colo which is consuming remotely
+          // Test Da-vinci client is able to consume from NR region which is consuming remotely
           VeniceMultiClusterWrapper childDataCenter = childDatacenters.get(1);
 
           try (DaVinciClient<String, Object> daVinciClient = ServiceFactory.getGenericAvroDaVinciClientWithRetries(
@@ -363,7 +365,7 @@ public class TestPushJobWithNativeReplication {
           samzaConfig.put(configPrefix + VENICE_AGGREGATE, "true");
           samzaConfig.put(VENICE_CHILD_D2_ZK_HOSTS, childDatacenters.get(0).getZkServerWrapper().getAddress());
           samzaConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, D2_SERVICE_NAME);
-          samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, multiColoMultiClusterWrapper.getZkServerWrapper().getAddress());
+          samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, multiRegionMultiClusterWrapper.getZkServerWrapper().getAddress());
           samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
           samzaConfig.put(DEPLOYMENT_ID, Utils.getUniqueString("venice-push-id"));
           samzaConfig.put(SSL_ENABLED, "false");
@@ -372,10 +374,10 @@ public class TestPushJobWithNativeReplication {
               factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
             veniceProducer.start();
 
-            // Verify the kafka URL being returned to Samza is the same as parent colo kafka url.
+            // Verify the kafka URL being returned to Samza is the same as parent region kafka url.
             Assert.assertEquals(
                 veniceProducer.getKafkaBootstrapServers(),
-                multiColoMultiClusterWrapper.getParentKafkaBrokerWrapper().getAddress());
+                multiRegionMultiClusterWrapper.getParentKafkaBrokerWrapper().getAddress());
 
             for (int i = 1; i <= 10; i++) {
               sendStreamingRecord(veniceProducer, storeName, i);
@@ -439,7 +441,7 @@ public class TestPushJobWithNativeReplication {
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "storeSize")
-  public void testNativeReplicationForHeartbeatSystemStores(int recordCount, int partitionCount) throws Exception {
+  public void testActiveActiveForHeartbeatSystemStores(int recordCount, int partitionCount) throws Exception {
     motherOfAllTests(
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(partitionCount)
             .setIncrementalPushEnabled(true),
@@ -447,7 +449,6 @@ public class TestPushJobWithNativeReplication {
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
           // Enable VPJ to send liveness heartbeat.
           props.put(BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG.getConfigName(), true);
-          props.put(BatchJobHeartbeatConfigs.HEARTBEAT_STORE_NAME_CONFIG.getConfigName(), VPJ_HEARTBEAT_STORE_NAME);
           // Prevent heartbeat from being deleted when the VPJ run finishes.
           props.put(BatchJobHeartbeatConfigs.HEARTBEAT_LAST_HEARTBEAT_IS_DELETE_CONFIG.getConfigName(), false);
 
@@ -456,11 +457,6 @@ public class TestPushJobWithNativeReplication {
                   new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
               ControllerClient dc1Client =
                   new ControllerClient(clusterName, childDatacenters.get(1).getControllerConnectString())) {
-            TestWriteUtils.updateStore(
-                VPJ_HEARTBEAT_STORE_NAME,
-                parentControllerClient,
-                new UpdateStoreQueryParams().setLeaderFollowerModel(true).setNativeReplicationEnabled(true));
-
             // verify the update store command has taken effect before starting the push job.
             NativeReplicationTestUtils
                 .verifyDCConfigNativeRepl(Arrays.asList(dc0Client, dc1Client), VPJ_HEARTBEAT_STORE_NAME, true);
@@ -724,7 +720,7 @@ public class TestPushJobWithNativeReplication {
             props.setProperty(SOURCE_KAFKA, "true");
             props.setProperty(
                 KAFKA_INPUT_BROKER_URL,
-                multiColoMultiClusterWrapper.getParentKafkaBrokerWrapper().getAddress());
+                multiRegionMultiClusterWrapper.getParentKafkaBrokerWrapper().getAddress());
             props.setProperty(KAFKA_INPUT_MAX_RECORDS_PER_MAPPER, "5");
             props.setProperty(VeniceWriter.ENABLE_CHUNKING, "false");
             props.setProperty(KAFKA_INPUT_TOPIC, Version.composeKafkaTopic(storeName, 1));
@@ -807,8 +803,8 @@ public class TestPushJobWithNativeReplication {
   }
 
   @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Failed to create new store version.*", timeOut = TEST_TIMEOUT)
-  public void testPushDirectlyToChildColo() throws IOException {
-    // In multi-colo setup, the batch push to child controller should be disabled.
+  public void testPushDirectlyToChildRegion() throws IOException {
+    // In multi-region setup, the batch push to child controller should be disabled.
     String clusterName = CLUSTER_NAMES[0];
     File inputDir = getTempDataDirectory();
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
@@ -881,10 +877,11 @@ public class TestPushJobWithNativeReplication {
       NativeReplicationTest test) throws Exception {
     String clusterName = CLUSTER_NAMES[0];
     File inputDir = getTempDataDirectory();
-    String parentControllerUrls = multiColoMultiClusterWrapper.getControllerConnectString();
+    String parentControllerUrls = multiRegionMultiClusterWrapper.getControllerConnectString();
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = Utils.getUniqueString("store");
-    Properties props = IntegrationTestPushUtils.defaultVPJProps(multiColoMultiClusterWrapper, inputDirPath, storeName);
+    Properties props =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
     props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
 
     UpdateStoreQueryParams updateStoreParams = updateStoreParamsTransformer

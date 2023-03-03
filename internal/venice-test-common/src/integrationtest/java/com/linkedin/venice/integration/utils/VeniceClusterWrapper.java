@@ -97,7 +97,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   public static final String FORKED_PROCESS_ZK_ADDRESS = "zkAddress";
   public static final int NUM_RECORDS = 1_000_000;
 
-  private final String coloName;
+  private final String regionName;
   private final String clusterName;
   private final boolean standalone;
   private final ZkServerWrapper zkServerWrapper;
@@ -134,7 +134,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       new HashSet<>(Arrays.asList(hybridRequiredSystemStores));
 
   VeniceClusterWrapper(
-      String coloName,
+      String regionName,
       String clusterName,
       boolean standalone,
       ZkServerWrapper zkServerWrapper,
@@ -151,7 +151,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       Map<String, String> clusterToD2) {
 
     super(SERVICE_NAME, null);
-    this.coloName = coloName;
+    this.regionName = regionName;
     this.standalone = standalone;
     this.clusterName = clusterName;
     this.zkServerWrapper = zkServerWrapper;
@@ -207,7 +207,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         }
 
         VeniceControllerWrapper veniceControllerWrapper = ServiceFactory.getVeniceController(
-            new VeniceControllerCreateOptions.Builder(options.getClusterName(), kafkaBrokerWrapper)
+            new VeniceControllerCreateOptions.Builder(options.getClusterName(), zkServerWrapper, kafkaBrokerWrapper)
                 .replicationFactor(options.getReplicationFactor())
                 .partitionSize(options.getPartitionSize())
                 .rebalanceDelayMs(options.getRebalanceDelayMs())
@@ -215,12 +215,12 @@ public class VeniceClusterWrapper extends ProcessWrapper {
                 .clusterToD2(clusterToD2)
                 .sslToKafka(options.isSslToKafka())
                 .d2Enabled(true)
-                .coloName(options.getColoName())
+                .regionName(options.getRegionName())
                 .extraProperties(options.getExtraProperties())
                 .build());
         LOGGER.info(
             "[{}][{}] Created child controller on port {}",
-            options.getColoName(),
+            options.getRegionName(),
             options.getClusterName(),
             veniceControllerWrapper.getPort());
         veniceControllerWrappers.put(veniceControllerWrapper.getPort(), veniceControllerWrapper);
@@ -228,7 +228,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
       for (int i = 0; i < options.getNumberOfRouters(); i++) {
         VeniceRouterWrapper veniceRouterWrapper = ServiceFactory.getVeniceRouter(
-            options.getColoName(),
+            options.getRegionName(),
             options.getClusterName(),
             zkServerWrapper,
             kafkaBrokerWrapper,
@@ -237,7 +237,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
             options.getExtraProperties());
         LOGGER.info(
             "[{}][{}] Created router on port {}",
-            options.getColoName(),
+            options.getRegionName(),
             options.getClusterName(),
             veniceRouterWrapper.getPort());
         veniceRouterWrappers.put(veniceRouterWrapper.getPort(), veniceRouterWrapper);
@@ -258,11 +258,11 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         featureProperties.setProperty(SERVER_ENABLE_KAFKA_OPENSSL, Boolean.toString(options.isKafkaOpenSSLEnabled()));
 
         String serverName = "";
-        if (!options.getColoName().isEmpty() && !options.getClusterName().isEmpty()) {
-          serverName = options.getColoName() + ":" + options.getClusterName() + ":sn-" + i;
+        if (!options.getRegionName().isEmpty() && !options.getClusterName().isEmpty()) {
+          serverName = options.getRegionName() + ":" + options.getClusterName() + ":sn-" + i;
         }
         VeniceServerWrapper veniceServerWrapper = ServiceFactory.getVeniceServer(
-            options.getColoName(),
+            options.getRegionName(),
             options.getClusterName(),
             kafkaBrokerWrapper,
             zkAddress,
@@ -273,7 +273,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
             options.getKafkaClusterMap());
         LOGGER.info(
             "[{}][{}] Created server on port {}",
-            options.getColoName(),
+            options.getRegionName(),
             options.getClusterName(),
             veniceServerWrapper.getPort());
         veniceServerWrappers.put(veniceServerWrapper.getPort(), veniceServerWrapper);
@@ -290,7 +290,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         VeniceClusterWrapper veniceClusterWrapper = null;
         try {
           veniceClusterWrapper = new VeniceClusterWrapper(
-              options.getColoName(),
+              options.getRegionName(),
               options.getClusterName(),
               options.isStandalone(),
               finalZkServerWrapper,
@@ -434,7 +434,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
   @Override
   public String getComponentTagForLogging() {
-    return new StringBuilder(getComponentTagPrefix(coloName)).append(getComponentTagPrefix(getClusterName()))
+    return new StringBuilder(getComponentTagPrefix(regionName)).append(getComponentTagPrefix(getClusterName()))
         .append(getServiceName())
         .toString();
   }
@@ -517,7 +517,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
   public VeniceControllerWrapper addVeniceController(Properties properties) {
     VeniceControllerWrapper veniceControllerWrapper = ServiceFactory.getVeniceController(
-        new VeniceControllerCreateOptions.Builder(clusterName, kafkaBrokerWrapper).coloName(coloName)
+        new VeniceControllerCreateOptions.Builder(clusterName, zkServerWrapper, kafkaBrokerWrapper)
+            .regionName(regionName)
             .replicationFactor(defaultReplicaFactor)
             .partitionSize(defaultPartitionSize)
             .rebalanceDelayMs(defaultDelayToRebalanceMS)
@@ -542,7 +543,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
   public VeniceRouterWrapper addVeniceRouter(Properties properties) {
     VeniceRouterWrapper veniceRouterWrapper = ServiceFactory.getVeniceRouter(
-        coloName,
+        regionName,
         clusterName,
         zkServerWrapper,
         kafkaBrokerWrapper,
@@ -567,10 +568,10 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     featureProperties.setProperty(SERVER_ENABLE_SERVER_ALLOW_LIST, Boolean.toString(enableAllowlist));
     featureProperties.setProperty(SERVER_IS_AUTO_JOIN, Boolean.toString(enableAutoJoinAllowList));
     VeniceServerWrapper veniceServerWrapper = ServiceFactory.getVeniceServer(
-        coloName,
+        regionName,
         clusterName,
         kafkaBrokerWrapper,
-        getKafka().getZkAddress(),
+        zkServerWrapper.getAddress(),
         featureProperties,
         new Properties());
     synchronized (this) {
@@ -587,10 +588,10 @@ public class VeniceClusterWrapper extends ProcessWrapper {
    */
   public VeniceServerWrapper addVeniceServer(Properties properties) {
     VeniceServerWrapper veniceServerWrapper = ServiceFactory.getVeniceServer(
-        coloName,
+        regionName,
         clusterName,
         kafkaBrokerWrapper,
-        getKafka().getZkAddress(),
+        zkServerWrapper.getAddress(),
         new Properties(),
         properties);
     synchronized (this) {
@@ -601,10 +602,10 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
   public VeniceServerWrapper addVeniceServer(Properties featureProperties, Properties configProperties) {
     VeniceServerWrapper veniceServerWrapper = ServiceFactory.getVeniceServer(
-        coloName,
+        regionName,
         clusterName,
         kafkaBrokerWrapper,
-        getKafka().getZkAddress(),
+        zkServerWrapper.getAddress(),
         featureProperties,
         configProperties);
     synchronized (this) {
@@ -1054,7 +1055,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     }
   }
 
-  public String getColoName() {
-    return coloName;
+  public String getRegionName() {
+    return regionName;
   }
 }

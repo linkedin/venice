@@ -9,6 +9,7 @@ import java.util.Properties;
 public class NoOpPushJobHeartbeatSenderFactory implements PushJobHeartbeatSenderFactory {
   @Override
   public PushJobHeartbeatSender createHeartbeatSender(
+      String kafkaUrl,
       VeniceProperties properties,
       ControllerClient controllerClient,
       Optional<Properties> sslProperties) {

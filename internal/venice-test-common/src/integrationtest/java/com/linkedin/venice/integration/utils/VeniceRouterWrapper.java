@@ -3,7 +3,6 @@ package com.linkedin.venice.integration.utils;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_D2;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_ZK_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
 import static com.linkedin.venice.ConfigKeys.LISTENER_SSL_PORT;
 import static com.linkedin.venice.ConfigKeys.MAX_READ_CAPACITY;
@@ -58,10 +57,10 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
   private RouterServer service;
   private final String d2ClusterName;
   private final String clusterDiscoveryD2ClusterName;
-  private final String coloName;
+  private final String regionName;
 
   VeniceRouterWrapper(
-      String coloName,
+      String regionName,
       String serviceName,
       File dataDirectory,
       RouterServer service,
@@ -75,11 +74,11 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
     this.zkAddress = zkAddress;
     this.d2ClusterName = d2ClusterName;
     this.clusterDiscoveryD2ClusterName = clusterDiscoveryD2ClusterName;
-    this.coloName = coloName;
+    this.regionName = regionName;
   }
 
   static StatefulServiceProvider<VeniceRouterWrapper> generateService(
-      String coloName,
+      String regionName,
       String clusterName,
       ZkServerWrapper zkServerWrapper,
       KafkaBrokerWrapper kafkaBrokerWrapper,
@@ -105,7 +104,6 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
           .put(LISTENER_PORT, port)
           .put(LISTENER_SSL_PORT, sslPort)
           .put(ZOOKEEPER_ADDRESS, zkAddress)
-          .put(KAFKA_ZK_ADDRESS, kafkaBrokerWrapper.getZkAddress())
           .put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getAddress())
           .put(SSL_TO_STORAGE_NODES, sslToStorageNodes)
           .put(CLUSTER_TO_D2, TestUtils.getClusterToD2String(finalClusterToD2))
@@ -145,7 +143,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
           Optional.empty(),
           Optional.of(SslUtils.getVeniceLocalSslFactory()));
       return new VeniceRouterWrapper(
-          coloName,
+          regionName,
           serviceName,
           dataDirectory,
           router,
@@ -205,7 +203,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
 
   @Override
   public String getComponentTagForLogging() {
-    return new StringBuilder(getComponentTagPrefix(coloName)).append(super.getComponentTagForLogging()).toString();
+    return new StringBuilder(getComponentTagPrefix(regionName)).append(super.getComponentTagForLogging()).toString();
   }
 
   public HelixBaseRoutingRepository getRoutingDataRepository() {

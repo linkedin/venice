@@ -76,6 +76,11 @@ class DefaultPushJobHeartbeatSender implements PushJobHeartbeatSender {
     this.sendDeleteAsLasHeartbeat = sendDeleteAsLasHeartbeat;
   }
 
+  // For test purpose.
+  VeniceWriter<byte[], byte[], byte[]> getVeniceWriter() {
+    return veniceWriter;
+  }
+
   private int getSchemaIdForSchemaOrFail(Schema expectedSchema, Map<Integer, Schema> valueSchemasById) {
     for (Map.Entry<Integer, Schema> schemaIdAndSchema: valueSchemasById.entrySet()) {
       if (Objects.equals(expectedSchema, schemaIdAndSchema.getValue())) {

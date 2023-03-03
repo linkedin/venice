@@ -221,7 +221,6 @@ public class ConfigKeys {
    *
    * Ignored if {@value KAFKA_REPLICATION_FACTOR} is present.
    */
-  public static final String KAFKA_ZK_ADDRESS = "kafka.zk.address";
   public static final String DEFAULT_READ_STRATEGY = "default.read.strategy";
   public static final String DEFAULT_OFFLINE_PUSH_STRATEGY = "default.offline.push.strategy";
   public static final String DEFAULT_ROUTING_STRATEGY = "default.routing.strategy";
@@ -1080,12 +1079,6 @@ public class ConfigKeys {
    * Kafka url in all fabrics for native replication.
    */
   public static final String CHILD_DATA_CENTER_KAFKA_URL_PREFIX = "child.data.center.kafka.url";
-
-  /**
-   * Config prefix for Kafka zk address in all child fabrics; parent controllers need to know the
-   * Kafka zk in all fabrics for native replication.
-   */
-  public static final String CHILD_DATA_CENTER_KAFKA_ZK_PREFIX = "child.data.center.kafka.zk";
 
   /**
    * D2 Service name for the child controllers in local datacenter

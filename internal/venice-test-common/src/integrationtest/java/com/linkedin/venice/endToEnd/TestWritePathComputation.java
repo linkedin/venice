@@ -8,7 +8,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import java.util.concurrent.TimeUnit;
@@ -52,17 +52,17 @@ public class TestWritePathComputation {
 
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testFeatureFlagMultipleDC() {
-    try (VeniceTwoLayerMultiColoMultiClusterWrapper twoLayerMultiColoMultiClusterWrapper =
-        ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(1, 1, 1, 1, 1, 0)) {
+    try (VeniceTwoLayerMultiRegionMultiClusterWrapper twoLayerMultiRegionMultiClusterWrapper =
+        ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(1, 1, 1, 1, 1, 0)) {
 
-      VeniceMultiClusterWrapper multiCluster = twoLayerMultiColoMultiClusterWrapper.getChildRegions().get(0);
-      VeniceControllerWrapper parentController = twoLayerMultiColoMultiClusterWrapper.getParentControllers().get(0);
+      VeniceMultiClusterWrapper multiCluster = twoLayerMultiRegionMultiClusterWrapper.getChildRegions().get(0);
+      VeniceControllerWrapper parentController = twoLayerMultiRegionMultiClusterWrapper.getParentControllers().get(0);
       String clusterName = multiCluster.getClusterNames()[0];
       String storeName = "test-store0";
 
       // Create store
       Admin parentAdmin =
-          twoLayerMultiColoMultiClusterWrapper.getLeaderParentControllerWithRetries(clusterName).getVeniceAdmin();
+          twoLayerMultiRegionMultiClusterWrapper.getLeaderParentControllerWithRetries(clusterName).getVeniceAdmin();
       Admin childAdmin = multiCluster.getLeaderController(clusterName, GET_LEADER_CONTROLLER_TIMEOUT).getVeniceAdmin();
       parentAdmin.createStore(clusterName, storeName, "tester", "\"string\"", "\"string\"");
       TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
