@@ -1830,4 +1830,11 @@ public class ConfigKeys {
    * Turn off the config in where access to routers is not feasible.
    */
   public static final String VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION = "validate.venice.internal.schema.version";
+
+  /**
+   * Config to control the maximum number of fields per method in a fast-avro generated deserializer. Can be useful if
+   * the JIT limit of 8 KB of bytecode is reached. An alternative is to use the -XX:-DontCompileHugeMethods JVM flag
+   * but that can have other side effects, so it may not be preferred.
+   */
+  public static final String FAST_AVRO_FIELD_LIMIT_PER_METHOD = "fast.avro.field.limit.per.method";
 }
