@@ -1,5 +1,6 @@
 package com.linkedin.venice.server;
 
+import com.linkedin.avro.fastserde.FastDeserializerGeneratorAccessor;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceClusterConfig;
 import com.linkedin.davinci.config.VeniceConfigLoader;
@@ -201,6 +202,10 @@ public class VeniceServer {
     List<AbstractVeniceService> services = new ArrayList<>();
 
     VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
+
+    // Doing this at the very beginning, before any services get started, in case they leverage Fast-Avro
+    FastDeserializerGeneratorAccessor.setFieldsPerPopulationMethod(serverConfig.getFastAvroFieldLimitPerMethod());
+
     // Create jvm metrics object
     jvmStats = new VeniceJVMStats(metricsRepository, "VeniceJVMStats");
 
