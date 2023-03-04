@@ -30,6 +30,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
@@ -59,6 +60,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
@@ -88,6 +90,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
@@ -117,6 +120,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
@@ -146,6 +150,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
@@ -175,6 +180,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
@@ -204,6 +210,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
@@ -233,6 +240,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
@@ -262,6 +270,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
@@ -291,6 +300,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
@@ -320,6 +330,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
@@ -349,6 +360,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
@@ -378,6 +390,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
@@ -407,6 +420,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
@@ -436,6 +450,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
@@ -465,6 +480,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
@@ -494,6 +510,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
@@ -523,6 +540,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
@@ -552,6 +570,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
@@ -581,6 +600,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
@@ -611,6 +631,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
