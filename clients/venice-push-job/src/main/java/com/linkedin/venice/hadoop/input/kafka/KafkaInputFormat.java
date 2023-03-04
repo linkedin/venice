@@ -61,6 +61,10 @@ public class KafkaInputFormat implements InputFormat<KafkaInputMapperKey, KafkaI
           "Invalid " + KAFKA_INPUT_MAX_RECORDS_PER_MAPPER + " value [" + maxRecordsPerSplit + "]");
     }
 
+    return getSplitsByRecordsPerSplit(job, maxRecordsPerSplit);
+  }
+
+  public InputSplit[] getSplitsByRecordsPerSplit(JobConf job, long maxRecordsPerSplit) {
     Map<TopicPartition, Long> latestOffsets = getLatestOffsets(job);
     List<InputSplit> splits = new LinkedList<>();
     latestOffsets.forEach((topicPartition, end) -> {

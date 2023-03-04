@@ -49,6 +49,7 @@ public class VPJSSLUtils {
     Properties sslWriterProperties =
         sslConfigurator.setupSSLConfig(newSslProperties, UserCredentialsFactory.getUserCredentialsFromTokenFile());
     newSslProperties.putAll(sslWriterProperties);
+    newSslProperties.put(SSL_CONFIGURATOR_CLASS_CONFIG, sslConfigurator.getClass().getName());
     return newSslProperties;
   }
 

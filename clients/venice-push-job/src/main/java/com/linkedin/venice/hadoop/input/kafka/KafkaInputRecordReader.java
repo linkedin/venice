@@ -202,13 +202,15 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
                 "Unexpected '" + messageType + "' message from Kafka topic partition: " + topicPartition
                     + " with offset: " + pubSubMessage.getOffset());
         }
-        MRJobCounterHelper.incrTotalPutOrDeleteRecordCount(reporter, 1);
-        long recordCount = MRJobCounterHelper.getTotalPutOrDeleteRecordsCount(reporter);
-        if (recordCount % LOG_RECORD_INTERVAL == 0) {
-          LOGGER.info(
-              "KafkaInputRecordReader for TopicPartition: {} has processed {} records",
-              this.topicPartition,
-              recordCount);
+        if (reporter != null && !reporter.equals(Reporter.NULL)) {
+          MRJobCounterHelper.incrTotalPutOrDeleteRecordCount(reporter, 1);
+          long recordCount = MRJobCounterHelper.getTotalPutOrDeleteRecordsCount(reporter);
+          if (recordCount % LOG_RECORD_INTERVAL == 0) {
+            LOGGER.info(
+                "KafkaInputRecordReader for TopicPartition: {} has processed {} records",
+                this.topicPartition,
+                recordCount);
+          }
         }
         return true;
       } else {
