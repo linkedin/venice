@@ -29,7 +29,6 @@ import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.lang3.Validate;
-import org.apache.logging.log4j.LogManager;
 
 
 /**
@@ -544,7 +543,6 @@ public class MergeConflictResolver {
       oldValueSchemaID = supersetValueSchemaEntry.getId();
     }
     Schema oldValueSchema = getValueSchema(oldValueSchemaID);
-    LogManager.getLogger().info("DEBUGGING: " + oldValueSchema);
     ValueAndRmd<GenericRecord> updatedValueAndRmd = mergeGenericRecord.update(
         oldValueAndRmd,
         Lazy.of(() -> writeComputeRecord),

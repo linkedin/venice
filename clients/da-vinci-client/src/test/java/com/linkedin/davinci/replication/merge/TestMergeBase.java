@@ -10,8 +10,10 @@ import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.avro.MapOrderingPreservingSerDeFactory;
+import com.linkedin.venice.utils.IndexedHashMap;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.function.Consumer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -89,6 +91,14 @@ public class TestMergeBase {
     GenericRecord oldValueRecord = new GenericData.Record(schemaSet.getValueSchema());
     recordConsumer.accept(oldValueRecord);
     return oldValueRecord;
+  }
+
+  protected GenericRecord createDefaultValueRecord() {
+    return createValueRecord(r -> {
+      r.put(REGULAR_FIELD_NAME, "defaultVenice");
+      r.put(STRING_ARRAY_FIELD_NAME, Collections.emptyList());
+      r.put(INT_MAP_FIELD_NAME, new IndexedHashMap<>());
+    });
   }
 
   protected void setRegularFieldTimestamp(GenericRecord rmdRecord, long timestamp) {

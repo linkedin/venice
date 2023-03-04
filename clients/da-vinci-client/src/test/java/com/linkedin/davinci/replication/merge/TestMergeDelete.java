@@ -17,6 +17,11 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
+/**
+ * This class aims to test merge logic on {@link com.linkedin.venice.kafka.protocol.Delete}.
+ * It contains tests to check delete handling logic under different settings.
+ * TODO: Merge {@link TestMergeDeleteWithFieldLevelTimestamp}
+ */
 public class TestMergeDelete extends TestMergeBase {
   @Test
   public void testFullDelete() {

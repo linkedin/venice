@@ -344,7 +344,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.MAP, true); // Validate before modifying any state.
     // Handle Delete on a map that is in the collection-merge mode.
     final int originalPutOnlyPartLength = collectionFieldRmd.getPutOnlyPartLength();
-
+    final long originalTopLevelFieldTimestamp = collectionFieldRmd.getTopLevelFieldTimestamp();
     collectionFieldRmd.setTopLevelFieldTimestamp(deleteTimestamp);
     collectionFieldRmd.setTopLevelColoID(coloID);
     collectionFieldRmd.setPutOnlyPartLength(0); // No put-only part because it should be deleted completely.
@@ -365,6 +365,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     final int remainingEntriesStartIdx = originalPutOnlyPartLength + removedActiveTimestampsCount;
     if (remainingEntriesStartIdx == 0) {
       // This indicates no put only item exists prior to DELETE operation and also no active items are removed.
+      collectionFieldRmd.setTopLevelFieldTimestamp(originalTopLevelFieldTimestamp);
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
     Map<String, Object> remainingMap = new IndexedHashMap<>();

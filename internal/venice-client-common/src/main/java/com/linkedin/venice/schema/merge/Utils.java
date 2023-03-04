@@ -42,7 +42,7 @@ class Utils {
     IndexedHashMap<T, Long> elementToTimestampMap = new IndexedHashMap<>();
     int idx = 0;
     for (long deletedTimestamp: deletedTimestamps) {
-      if (deletedTimestamp >= minTimestamp) {
+      if (deletedTimestamp > minTimestamp) {
         elementToTimestampMap.put(deletedElements.get(idx), deletedTimestamp);
       }
       idx++;

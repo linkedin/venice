@@ -16,6 +16,11 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
+/**
+ * This class aims to test merge logic on {@link com.linkedin.venice.kafka.protocol.Put}.
+ * It contains tests to check put handling logic under different settings.
+ * TODO: Merge {@link TestMergePutWithFieldLevelTimestamp}
+ */
 public class TestMergePut extends TestMergeBase {
   @Test
   public void testPutResultsInFullRecordUpdate() {
