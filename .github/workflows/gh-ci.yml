@@ -20,7 +20,7 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v3
         with:
@@ -41,7 +41,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -Pspotallbugs clean check -x spotlessCheck -x test -x integrationTest -x jacocoTestCoverageVerification"
+          arguments: "--continue --no-daemon -DmaxParallelForks=2 --parallel -Pspotallbugs clean check -x spotlessCheck -x test -x integrationTest -x jacocoTestCoverageVerification"
 
   UnitTestsAndCodeCoverage:
     strategy:
@@ -50,7 +50,7 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v3
         with:
@@ -71,7 +71,37 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "jacocoTestCoverageVerification diffCoverage --continue"
+          arguments: "-DmaxParallelForks=2  --parallel -x :internal:venice-avro-compatibility-test:test jacocoTestCoverageVerification diffCoverage --continue"
+
+  AvroCompatibilityTests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        jdk: [11]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          java-version: ${{ matrix.jdk }}
+          distribution: 'microsoft'
+          cache: 'gradle'
+      - shell: bash
+        run: |
+          git remote set-head origin --auto
+          git remote add upstream https://github.com/linkedin/venice
+          git fetch upstream
+      - name: Validate Gradle wrapper
+        uses: gradle/wrapper-validation-action@v1
+      - name: Build with Gradle
+        uses: gradle/gradle-build-action@v2
+        with:
+          arguments: "-DmaxParallelForks=2 --parallel :internal:venice-avro-compatibility-test:test --continue"
 
   IntegrationTestsA:
     strategy:
@@ -80,7 +110,7 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 120
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v3
         with:
@@ -101,7 +131,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestA"
+          arguments: "--continue --no-daemon -DforkEvery=0 -DmaxParallelForks=1 integrationTestA"
 
   IntegrationTestsB:
     strategy:
@@ -110,7 +140,7 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 120
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v3
         with:
@@ -131,7 +161,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestB"
+          arguments: "--continue --no-daemon -DforkEvery=0 -DmaxParallelForks=1 integrationTestB"
 
   IntegrationTestsC:
     strategy:
@@ -140,7 +170,7 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 120
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v3
         with:
@@ -161,7 +191,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestC"
+          arguments: "--continue --no-daemon -DforkEvery=0 -DmaxParallelForks=1 integrationTestC"
 
   IntegrationTestsD:
     strategy:
@@ -170,7 +200,7 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 120
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v3
         with:
@@ -191,7 +221,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestD"
+          arguments: "--continue --no-daemon -DforkEvery=0 -DmaxParallelForks=1 integrationTestD"
 
   IntegrationTestsE:
     strategy:
@@ -200,7 +230,7 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 120
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v3
         with:
@@ -221,7 +251,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestE"
+          arguments: "--continue --no-daemon -DforkEvery=0 -DmaxParallelForks=1 integrationTestE"
 
   IntegrationTestsF:
     strategy:
@@ -230,7 +260,7 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 120
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v3
         with:
@@ -251,7 +281,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestF"
+          arguments: "--continue --no-daemon -DforkEvery=0 -DmaxParallelForks=1 integrationTestF"
 
   IntegrationTestsG:
     strategy:
@@ -260,7 +290,7 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 120
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v3
         with:
@@ -281,7 +311,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestG"
+          arguments: "--continue --no-daemon -DforkEvery=0 -DmaxParallelForks=1 integrationTestG"
 
   IntegrationTestsH:
     strategy:
@@ -290,7 +320,7 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 120
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v3
         with:
@@ -311,7 +341,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestH"
+          arguments: "--continue --no-daemon -DforkEvery=0 -DmaxParallelForks=1 integrationTestH"
 
   IntegrationTestsI:
     strategy:
@@ -320,7 +350,7 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 120
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v3
         with:
@@ -341,7 +371,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestI"
+          arguments: "--continue --no-daemon -DforkEvery=0 -DmaxParallelForks=1 integrationTestI"
 
   IntegrationTestsJ:
     strategy:
@@ -350,7 +380,7 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 120
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v3
         with:
@@ -371,7 +401,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestJ"
+          arguments: "--continue --no-daemon -DforkEvery=0 -DmaxParallelForks=1 integrationTestJ"
 
   IntegrationTestsK:
     strategy:
@@ -380,7 +410,7 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 120
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v3
         with:
@@ -401,7 +431,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestK"
+          arguments: "--continue --no-daemon -DforkEvery=0 -DmaxParallelForks=1 integrationTestK"
 
   IntegrationTestsL:
     strategy:
@@ -410,7 +440,7 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 120
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v3
         with:
@@ -431,7 +461,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestL"
+          arguments: "--continue --no-daemon -DforkEvery=0 -DmaxParallelForks=1 integrationTestL"
 
   IntegrationTestsM:
     strategy:
@@ -440,7 +470,7 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 120
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v3
         with:
@@ -461,7 +491,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestM"
+          arguments: "--continue --no-daemon -DforkEvery=0 -DmaxParallelForks=1 integrationTestM"
 
   IntegrationTestsN:
     strategy:
@@ -470,7 +500,7 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 120
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v3
         with:
@@ -491,7 +521,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestN"
+          arguments: "--continue --no-daemon -DforkEvery=0 -DmaxParallelForks=1 integrationTestN"
 
   IntegrationTestsO:
     strategy:
@@ -500,7 +530,7 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 120
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v3
         with:
@@ -521,7 +551,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestO"
+          arguments: "--continue --no-daemon -DforkEvery=0 -DmaxParallelForks=1 integrationTestO"
 
   IntegrationTestsP:
     strategy:
@@ -530,7 +560,7 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 120
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v3
         with:
@@ -551,7 +581,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestP"
+          arguments: "--continue --no-daemon -DforkEvery=0 -DmaxParallelForks=1 integrationTestP"
 
   IntegrationTestsQ:
     strategy:
@@ -560,7 +590,7 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 120
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v3
         with:
@@ -581,7 +611,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestQ"
+          arguments: "--continue --no-daemon -DforkEvery=0 -DmaxParallelForks=1 integrationTestQ"
 
   IntegrationTestsZ:
     strategy:
@@ -590,7 +620,7 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 120
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v3
         with:
@@ -611,7 +641,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestZ"
+          arguments: "--continue --no-daemon -DforkEvery=0 -DmaxParallelForks=1 integrationTestZ"
 
   DummyStep:
     strategy:
@@ -620,7 +650,7 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    needs: [StaticAnalysis, UnitTestsAndCodeCoverage, IntegrationTestsA, IntegrationTestsB, IntegrationTestsC, IntegrationTestsD, IntegrationTestsE, IntegrationTestsF, IntegrationTestsG, IntegrationTestsH, IntegrationTestsI, IntegrationTestsJ, IntegrationTestsK, IntegrationTestsL, IntegrationTestsM, IntegrationTestsN, IntegrationTestsO, IntegrationTestsP, IntegrationTestsQ, IntegrationTestsZ]
+    needs: [StaticAnalysis, UnitTestsAndCodeCoverage, AvroCompatibilityTests, IntegrationTestsA, IntegrationTestsB, IntegrationTestsC, IntegrationTestsD, IntegrationTestsE, IntegrationTestsF, IntegrationTestsG, IntegrationTestsH, IntegrationTestsI, IntegrationTestsJ, IntegrationTestsK, IntegrationTestsL, IntegrationTestsM, IntegrationTestsN, IntegrationTestsO, IntegrationTestsP, IntegrationTestsQ, IntegrationTestsZ]
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
