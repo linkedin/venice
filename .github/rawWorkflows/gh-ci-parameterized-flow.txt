@@ -28,3 +28,11 @@
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "$GradleArguments"
+      - name: Upload test logs on failure
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ github.job }}.logs
+          path: internal/venice-test-common/build/test-results/*/TEST-*.xml
+          retention-days: 30
+

@@ -167,6 +167,10 @@ integrationTestBuckets.each { name, patterns ->
       }
     }
     configure integrationTestConfigs
+    useTestNG {
+      excludeGroups 'flaky'
+      listeners = ['com.linkedin.venice.testng.VeniceTestListener']
+    }
   }
 }
 
@@ -178,7 +182,12 @@ task integrationTestZ(type: Test) {
       }
     }
   }
+
   configure integrationTestConfigs
+  useTestNG {
+    excludeGroups 'flaky'
+    listeners = ['com.linkedin.venice.testng.VeniceTestListener']
+  }
 }
 
 task generateGHCI() {
@@ -287,6 +296,7 @@ ext {
   jacocoCoverageThreshold = 0.00
   diffCoverageThreshold = 0.00
 }
+
 
 publishing {
   publications {
