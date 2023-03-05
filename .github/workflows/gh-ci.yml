@@ -131,7 +131,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=0 -DmaxParallelForks=1 integrationTestA"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestA"
 
   IntegrationTestsB:
     strategy:
@@ -161,7 +161,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=0 -DmaxParallelForks=1 integrationTestB"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestB"
 
   IntegrationTestsC:
     strategy:
@@ -191,7 +191,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=0 -DmaxParallelForks=1 integrationTestC"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestC"
 
   IntegrationTestsD:
     strategy:
@@ -221,7 +221,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=0 -DmaxParallelForks=1 integrationTestD"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestD"
 
   IntegrationTestsE:
     strategy:
@@ -251,7 +251,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=0 -DmaxParallelForks=1 integrationTestE"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestE"
 
   IntegrationTestsF:
     strategy:
@@ -281,7 +281,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=0 -DmaxParallelForks=1 integrationTestF"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestF"
 
   IntegrationTestsG:
     strategy:
@@ -311,7 +311,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=0 -DmaxParallelForks=1 integrationTestG"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestG"
 
   IntegrationTestsH:
     strategy:
@@ -341,7 +341,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=0 -DmaxParallelForks=1 integrationTestH"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestH"
 
   IntegrationTestsI:
     strategy:
@@ -371,7 +371,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=0 -DmaxParallelForks=1 integrationTestI"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestI"
 
   IntegrationTestsJ:
     strategy:
@@ -401,7 +401,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=0 -DmaxParallelForks=1 integrationTestJ"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestJ"
 
   IntegrationTestsK:
     strategy:
@@ -431,7 +431,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=0 -DmaxParallelForks=1 integrationTestK"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestK"
 
   IntegrationTestsL:
     strategy:
@@ -461,7 +461,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=0 -DmaxParallelForks=1 integrationTestL"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestL"
 
   IntegrationTestsM:
     strategy:
@@ -491,7 +491,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=0 -DmaxParallelForks=1 integrationTestM"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestM"
 
   IntegrationTestsN:
     strategy:
@@ -521,7 +521,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=0 -DmaxParallelForks=1 integrationTestN"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestN"
 
   IntegrationTestsO:
     strategy:
@@ -551,7 +551,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=0 -DmaxParallelForks=1 integrationTestO"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestO"
 
   IntegrationTestsP:
     strategy:
@@ -581,7 +581,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=0 -DmaxParallelForks=1 integrationTestP"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestP"
 
   IntegrationTestsQ:
     strategy:
@@ -611,7 +611,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=0 -DmaxParallelForks=1 integrationTestQ"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestQ"
 
   IntegrationTestsZ:
     strategy:
@@ -641,7 +641,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=0 -DmaxParallelForks=1 integrationTestZ"
+          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestZ"
 
   DummyStep:
     strategy:

@@ -219,7 +219,7 @@ task generateGHCI() {
   appendToGHCI(paramFileContent, targetFilePath, avroCompatibilityTests, 15, avroCompatibilityFlowGradleArgs)
   jobs << avroCompatibilityTests
 
-  def integTestGradleArgs = common + "-DforkEvery=0 -DmaxParallelForks=1 integrationTest"
+  def integTestGradleArgs = common + "-DforkEvery=1 -DmaxParallelForks=1 integrationTest"
   integrationTestBuckets.each { name, patterns ->
     def flowName = "IntegrationTests" + name
     jobs << flowName
