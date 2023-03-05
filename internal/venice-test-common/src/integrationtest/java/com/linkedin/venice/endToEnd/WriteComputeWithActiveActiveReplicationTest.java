@@ -1137,10 +1137,10 @@ public class WriteComputeWithActiveActiveReplicationTest {
     verifyFLMRecord(storeName, dc0RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
     verifyFLMRecord(storeName, dc1RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
 
-    // The deleted element with the same timestamp should not be added back with PartialPut
+    // The deleted element with the same timestamp should be added back with PartialPut
     ubV1 = new UpdateBuilderImpl(wcSchemaV1);
     ubV1.setNewFieldValue(INT_ARRAY_FIELD, Arrays.asList(66, 99));
-    expectedArrayFieldVal = Arrays.asList(99);
+    expectedArrayFieldVal = Arrays.asList(66, 99);
     timestampedOp = new VeniceObjectWithTimestamp(ubV1.build(), 4);
     sendStreamingRecord(systemProducerMap.get(childDatacenters.get(0)), storeName, key2, timestampedOp);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
