@@ -104,6 +104,7 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   boolean isNativeReplicationEnabled();
 
+  @Deprecated
   default void setLeaderFollowerModelEnabled(boolean leaderFollowerModelEnabled) {
   }
 

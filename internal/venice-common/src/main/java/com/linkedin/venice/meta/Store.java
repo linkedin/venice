@@ -252,6 +252,7 @@ public interface Store {
     return true;
   }
 
+  @Deprecated
   default void setLeaderFollowerModelEnabled(boolean leaderFollowerModelEnabled) {
   }
 
