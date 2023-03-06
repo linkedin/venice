@@ -23,6 +23,7 @@ import com.linkedin.venice.controllerapi.StorageEngineOverheadRatioResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.hadoop.output.avro.ValidateSchemaAndBuildDictMapperOutput;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -31,6 +32,7 @@ import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -42,6 +44,7 @@ import java.util.Properties;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.apache.hadoop.mapred.Counters;
+import org.apache.hadoop.mapred.JobID;
 import org.apache.hadoop.mapred.RunningJob;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -61,54 +64,253 @@ public class TestVenicePushJobCheckpoints {
       + "    \"name\": \"Type1\",\n" + "    \"fields\": [\n" + "        {\n" + "            \"name\": \"something\",\n"
       + "            \"type\": \"string\"\n" + "        }\n" + "    ]\n" + "}";
 
-  @Test(expectedExceptions = { VeniceException.class })
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Storage quota exceeded.*")
   public void testHandleQuotaExceeded() throws Exception {
     testHandleErrorsInCounter(
         Arrays.asList(
-            new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 1001), // Quota exceeded
+            // Quota exceeded
+            new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 1001),
             new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0),
             new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0),
-            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT), // All
-                                                                                                              // reducers
-                                                                                                              // closed
-            new MockCounterInfo(
-                MRJobCounterHelper.MAPPER_NUM_RECORDS_SUCCESSFULLY_PROCESSED_GROUP_COUNTER_NAME,
-                NUMBER_OF_FILES_TO_READ_AND_BUILD_DICT_COUNT + 1), // Number of Processed files in
-                                                                   // ValidateSchemaAndBuildDictMapper
-            new MockCounterInfo(MRJobCounterHelper.MAPPER_ZSTD_DICT_TRAIN_SUCCESS_GROUP_COUNTER_NAME, 1) // Dictionary
-                                                                                                         // building
-                                                                                                         // succeeded if
-                                                                                                         // enabled
-        ),
+            // All reducers closed
+            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT)),
         Arrays.asList(
             VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
             VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
             VenicePushJob.PushJobCheckpoints.QUOTA_EXCEEDED),
         properties -> {
-          properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, "false");
           properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, "false");
+          properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, "false");
         });
   }
 
-  @Test(expectedExceptions = { VeniceException.class })
+  /**
+   * Similar to {@link #testHandleQuotaExceeded}. Some counters and checkpoints changes here.
+   */
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Storage quota exceeded.*")
+  public void testHandleQuotaExceededWithMapperToBuildDict() throws Exception {
+    testHandleErrorsInCounter(
+        Arrays.asList(
+            // Quota exceeded
+            new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 1001),
+            new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0),
+            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0),
+            // All reducers closed
+            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT),
+            // ValidateSchemaAndBuildDictMapper related counters below:
+            // Number of Processed files
+            new MockCounterInfo(
+                MRJobCounterHelper.MAPPER_NUM_RECORDS_SUCCESSFULLY_PROCESSED_GROUP_COUNTER_NAME,
+                NUMBER_OF_FILES_TO_READ_AND_BUILD_DICT_COUNT + 1)),
+        Arrays.asList(
+            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+            VenicePushJob.PushJobCheckpoints.VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB_COMPLETED,
+            VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
+            VenicePushJob.PushJobCheckpoints.QUOTA_EXCEEDED),
+        properties -> {
+          properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, "true");
+          properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, "false");
+        });
+  }
+
+  /**
+   * Similar to {@link #testHandleQuotaExceeded}. Some counters and checkpoints changes here.
+   */
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Storage quota exceeded.*")
+  public void testHandleQuotaExceededWithCompressionCollectionEnabled() throws Exception {
+    testHandleErrorsInCounter(
+        Arrays.asList(
+            // Quota exceeded
+            new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 1001),
+            new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0),
+            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0),
+            // All reducers closed
+            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT),
+            // ValidateSchemaAndBuildDictMapper related counters below
+            // Number of Processed files
+            new MockCounterInfo(
+                MRJobCounterHelper.MAPPER_NUM_RECORDS_SUCCESSFULLY_PROCESSED_GROUP_COUNTER_NAME,
+                NUMBER_OF_FILES_TO_READ_AND_BUILD_DICT_COUNT + 1),
+            // Dictionary building succeeded if enabled
+            new MockCounterInfo(MRJobCounterHelper.MAPPER_ZSTD_DICT_TRAIN_SUCCESS_GROUP_COUNTER_NAME, 1)),
+        Arrays.asList(
+            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+            VenicePushJob.PushJobCheckpoints.VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB_COMPLETED,
+            VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
+            VenicePushJob.PushJobCheckpoints.QUOTA_EXCEEDED),
+        properties -> {
+          properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, "false");
+          properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, "true");
+        });
+  }
+
+  /**
+   * Similar to {@link #testHandleQuotaExceededWithCompressionCollectionEnabled}, but USE_MAPPER_TO_BUILD_DICTIONARY to true.
+   * It shouldn't make any difference as COMPRESSION_METRIC_COLLECTION_ENABLED being true will force enable USE_MAPPER_TO_BUILD_DICTIONARY too.
+   */
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Storage quota exceeded.*")
+  public void testHandleQuotaExceededWithCompressionCollectionEnabledV1() throws Exception {
+    testHandleErrorsInCounter(
+        Arrays.asList(
+            // Quota exceeded
+            new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 1001),
+            new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0),
+            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0),
+            // All reducers closed
+            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT),
+            // ValidateSchemaAndBuildDictMapper related counters below
+            // Number of Processed files
+            new MockCounterInfo(
+                MRJobCounterHelper.MAPPER_NUM_RECORDS_SUCCESSFULLY_PROCESSED_GROUP_COUNTER_NAME,
+                NUMBER_OF_FILES_TO_READ_AND_BUILD_DICT_COUNT + 1),
+            // Dictionary building succeeded if enabled
+            new MockCounterInfo(MRJobCounterHelper.MAPPER_ZSTD_DICT_TRAIN_SUCCESS_GROUP_COUNTER_NAME, 1)),
+        Arrays.asList(
+            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+            VenicePushJob.PushJobCheckpoints.VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB_COMPLETED,
+            VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
+            VenicePushJob.PushJobCheckpoints.QUOTA_EXCEEDED),
+        properties -> {
+          properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, "true");
+          properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, "true");
+        });
+  }
+
+  @Test
+  public void testWithNoMapperToBuildDictionary() throws Exception {
+    testHandleErrorsInCounter(
+        Arrays.asList(
+            new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 1),
+            new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0),
+            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0),
+            // All reducers closed
+            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT)),
+        Arrays.asList(
+            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+            VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
+            VenicePushJob.PushJobCheckpoints.MAP_REDUCE_JOB_COMPLETED,
+            VenicePushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED),
+        properties -> {
+          properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, "false");
+          properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, "false");
+        });
+  }
+
+  @Test
+  public void testWithMapperToBuildDictionary() throws Exception {
+    testHandleErrorsInCounter(
+        Arrays.asList(
+            new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 1),
+            new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0),
+            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0),
+            // All reducers closed
+            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT),
+            // ValidateSchemaAndBuildDictMapper related counters below
+            // Number of Processed files
+            new MockCounterInfo(
+                MRJobCounterHelper.MAPPER_NUM_RECORDS_SUCCESSFULLY_PROCESSED_GROUP_COUNTER_NAME,
+                NUMBER_OF_FILES_TO_READ_AND_BUILD_DICT_COUNT + 1)),
+        Arrays.asList(
+            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+            VenicePushJob.PushJobCheckpoints.VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB_COMPLETED,
+            VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
+            VenicePushJob.PushJobCheckpoints.MAP_REDUCE_JOB_COMPLETED,
+            VenicePushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED),
+        properties -> {
+          properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, "true");
+          properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, "false");
+        });
+  }
+
+  @Test
+  public void testWithCompressionCollectionDisabled() throws Exception {
+    testHandleErrorsInCounter(
+        Arrays.asList(
+            new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 1),
+            new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0),
+            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0),
+            // All reducers closed
+            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT)),
+        Arrays.asList(
+            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+            VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
+            VenicePushJob.PushJobCheckpoints.MAP_REDUCE_JOB_COMPLETED,
+            VenicePushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED),
+        properties -> {
+          properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, "false");
+          properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, "false");
+        });
+  }
+
+  @Test
+  public void testWithCompressionCollectionEnabled() throws Exception {
+    testHandleErrorsInCounter(
+        Arrays.asList(
+            new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 1),
+            new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0),
+            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0),
+            // All reducers closed
+            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT),
+            // ValidateSchemaAndBuildDictMapper related counters below
+            // Number of Processed files
+            new MockCounterInfo(
+                MRJobCounterHelper.MAPPER_NUM_RECORDS_SUCCESSFULLY_PROCESSED_GROUP_COUNTER_NAME,
+                NUMBER_OF_FILES_TO_READ_AND_BUILD_DICT_COUNT + 1),
+            // Dictionary building succeeded if enabled
+            new MockCounterInfo(MRJobCounterHelper.MAPPER_ZSTD_DICT_TRAIN_SUCCESS_GROUP_COUNTER_NAME, 1)),
+        Arrays.asList(
+            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+            VenicePushJob.PushJobCheckpoints.VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB_COMPLETED,
+            VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
+            VenicePushJob.PushJobCheckpoints.MAP_REDUCE_JOB_COMPLETED,
+            VenicePushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED),
+        properties -> {
+          properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, "false");
+          properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, "true");
+        });
+  }
+
+  /**
+   * Similar to {@link #testWithCompressionCollectionEnabled}, but USE_MAPPER_TO_BUILD_DICTIONARY to true.
+   * It shouldn't make any difference as COMPRESSION_METRIC_COLLECTION_ENABLED being true will force enable USE_MAPPER_TO_BUILD_DICTIONARY too.
+   */
+  @Test
+  public void testWithCompressionCollectionEnabledV1() throws Exception {
+    testHandleErrorsInCounter(
+        Arrays.asList(
+            new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 1),
+            new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0),
+            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0),
+            // All reducers closed
+            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT),
+            // ValidateSchemaAndBuildDictMapper related counters below
+            // Number of Processed files
+            new MockCounterInfo(
+                MRJobCounterHelper.MAPPER_NUM_RECORDS_SUCCESSFULLY_PROCESSED_GROUP_COUNTER_NAME,
+                NUMBER_OF_FILES_TO_READ_AND_BUILD_DICT_COUNT + 1),
+            // Dictionary building succeeded if enabled
+            new MockCounterInfo(MRJobCounterHelper.MAPPER_ZSTD_DICT_TRAIN_SUCCESS_GROUP_COUNTER_NAME, 1)),
+        Arrays.asList(
+            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+            VenicePushJob.PushJobCheckpoints.VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB_COMPLETED,
+            VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
+            VenicePushJob.PushJobCheckpoints.MAP_REDUCE_JOB_COMPLETED,
+            VenicePushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED),
+        properties -> {
+          properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, "true");
+          properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, "true");
+        });
+  }
+
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Insufficient ACLs to write to the store")
   public void testHandleWriteAclFailed() throws Exception {
     testHandleErrorsInCounter(
         Arrays.asList(
             new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 1),
             new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 1), // Write ACL failed
             new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0),
-            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT), // All
-                                                                                                              // reducers
-                                                                                                              // closed
-            new MockCounterInfo(
-                MRJobCounterHelper.MAPPER_NUM_RECORDS_SUCCESSFULLY_PROCESSED_GROUP_COUNTER_NAME,
-                NUMBER_OF_FILES_TO_READ_AND_BUILD_DICT_COUNT + 1), // Number of Processed files in
-                                                                   // ValidateSchemaAndBuildDictMapper
-            new MockCounterInfo(MRJobCounterHelper.MAPPER_ZSTD_DICT_TRAIN_SUCCESS_GROUP_COUNTER_NAME, 1) // Dictionary
-                                                                                                         // building
-                                                                                                         // succeeded if
-                                                                                                         // enabled
-        ),
+            // All reducers closed
+            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT)),
         Arrays.asList(
             VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
             VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
@@ -119,27 +321,16 @@ public class TestVenicePushJobCheckpoints {
         });
   }
 
-  @Test(expectedExceptions = { VeniceException.class })
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Input data has at least 1 keys that appear more than once.*")
   public void testHandleDuplicatedKeyWithDistinctValue() throws Exception {
     testHandleErrorsInCounter(
         Arrays.asList(
             new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 1),
             new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0),
-            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 1), // Duplicated key
-                                                                                                       // with distinct
-                                                                                                       // value
-            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT), // All
-                                                                                                              // reducers
-                                                                                                              // closed
-            new MockCounterInfo(
-                MRJobCounterHelper.MAPPER_NUM_RECORDS_SUCCESSFULLY_PROCESSED_GROUP_COUNTER_NAME,
-                NUMBER_OF_FILES_TO_READ_AND_BUILD_DICT_COUNT + 1), // Number of Processed files in
-                                                                   // ValidateSchemaAndBuildDictMapper
-            new MockCounterInfo(MRJobCounterHelper.MAPPER_ZSTD_DICT_TRAIN_SUCCESS_GROUP_COUNTER_NAME, 1) // Dictionary
-                                                                                                         // building
-                                                                                                         // succeeded if
-                                                                                                         // enabled
-        ),
+            // Duplicated key with distinct value
+            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 1),
+            // All reducers closed
+            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT)),
         Arrays.asList(
             VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
             VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
@@ -150,31 +341,20 @@ public class TestVenicePushJobCheckpoints {
         });
   }
 
-  // TODO This passes if thrown VeniceException for any reasons, not specifically for ZeroClosedReducers.
-  @Test(expectedExceptions = { VeniceException.class })
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*reducer job closed count \\(0\\).*")
   public void testHandleZeroClosedReducersFailure() throws Exception {
     testHandleErrorsInCounter(
         Arrays.asList(
-            new MockCounterInfo(MRJobCounterHelper.MAPPER_SPRAY_ALL_PARTITIONS_TRIGGERED_COUNT_NAME, 1), // Spray all
-                                                                                                         // partitions
-                                                                                                         // gets
-                                                                                                         // triggered
-            new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 1), // Quota not exceeded
-            new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0), // No authorization error
-            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0), // No duplicated
-                                                                                                       // key with
-                                                                                                       // distinct value
-            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, 0), // No reducers at all
-                                                                                                // closed
-            new MockCounterInfo(
-                MRJobCounterHelper.MAPPER_NUM_RECORDS_SUCCESSFULLY_PROCESSED_GROUP_COUNTER_NAME,
-                NUMBER_OF_FILES_TO_READ_AND_BUILD_DICT_COUNT + 1), // Number of Processed files in
-                                                                   // ValidateSchemaAndBuildDictMapper
-            new MockCounterInfo(MRJobCounterHelper.MAPPER_ZSTD_DICT_TRAIN_SUCCESS_GROUP_COUNTER_NAME, 1) // Dictionary
-                                                                                                         // building
-                                                                                                         // succeeded if
-                                                                                                         // enabled
-        ),
+            // Spray all partitions gets triggered
+            new MockCounterInfo(MRJobCounterHelper.MAPPER_SPRAY_ALL_PARTITIONS_TRIGGERED_COUNT_NAME, 1),
+            // Quota not exceeded
+            new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 1),
+            // No authorization error
+            new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0),
+            // No duplicated key with distinct value
+            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0),
+            // No reducers at all closed
+            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, 0)),
         Arrays.asList(
             VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
             VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
@@ -186,31 +366,20 @@ public class TestVenicePushJobCheckpoints {
         });
   }
 
-  @Test(expectedExceptions = {
-      VeniceException.class }, expectedExceptionsMessageRegExp = "MR job counter is not reliable.*")
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "MR job counter is not reliable.*")
   public void testUnreliableMapReduceCounter() throws Exception {
     testHandleErrorsInCounter(
         Arrays.asList(
-            new MockCounterInfo(MRJobCounterHelper.MAPPER_SPRAY_ALL_PARTITIONS_TRIGGERED_COUNT_NAME, 1), // Spray all
-                                                                                                         // partitions
-                                                                                                         // gets
-                                                                                                         // triggered
-            new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 0), // Quota not exceeded
-            new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0), // No authorization error
-            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0), // No duplicated
-                                                                                                       // key with
-                                                                                                       // distinct value
-            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, 0), // No reducers at all
-                                                                                                // closed
-            new MockCounterInfo(
-                MRJobCounterHelper.MAPPER_NUM_RECORDS_SUCCESSFULLY_PROCESSED_GROUP_COUNTER_NAME,
-                NUMBER_OF_FILES_TO_READ_AND_BUILD_DICT_COUNT + 1), // Number of Processed files in
-                                                                   // ValidateSchemaAndBuildDictMapper
-            new MockCounterInfo(MRJobCounterHelper.MAPPER_ZSTD_DICT_TRAIN_SUCCESS_GROUP_COUNTER_NAME, 1) // Dictionary
-                                                                                                         // building
-                                                                                                         // succeeded if
-                                                                                                         // enabled
-        ),
+            // Spray all partitions gets triggered
+            new MockCounterInfo(MRJobCounterHelper.MAPPER_SPRAY_ALL_PARTITIONS_TRIGGERED_COUNT_NAME, 1),
+            // Quota not exceeded
+            new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 0),
+            // No authorization error
+            new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0),
+            // No duplicated key with distinct value
+            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0),
+            // No reducers at all closed
+            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, 0)),
         Arrays.asList(
             VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
             VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
@@ -228,22 +397,14 @@ public class TestVenicePushJobCheckpoints {
   public void testHandleZeroClosedReducersWithNoRecordInputDataFile() throws Exception {
     testHandleErrorsInCounter(
         Arrays.asList(
-            new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 0), // No quota not exceeded
-            new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0), // No authorization error
-            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0), // No duplicated
-                                                                                                       // key with
-                                                                                                       // distinct value
-            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, 0), // No reducers at all
-                                                                                                // closed
-            new MockCounterInfo(
-                MRJobCounterHelper.MAPPER_NUM_RECORDS_SUCCESSFULLY_PROCESSED_GROUP_COUNTER_NAME,
-                NUMBER_OF_FILES_TO_READ_AND_BUILD_DICT_COUNT + 1), // Number of Processed files in
-                                                                   // ValidateSchemaAndBuildDictMapper
-            new MockCounterInfo(MRJobCounterHelper.MAPPER_ZSTD_DICT_TRAIN_SUCCESS_GROUP_COUNTER_NAME, 1) // Dictionary
-                                                                                                         // building
-                                                                                                         // succeeded if
-                                                                                                         // enabled
-        ),
+            // No quota not exceeded
+            new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 0),
+            // No authorization error
+            new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0),
+            // No duplicated key with distinct value
+            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0),
+            // No reducers at all closed
+            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, 0)),
         Arrays.asList(
             VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
             VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
@@ -259,49 +420,34 @@ public class TestVenicePushJobCheckpoints {
         });
   }
 
-  @Test(expectedExceptions = { IllegalArgumentException.class })
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "The input data file size is expected to be positive. Got: 0")
   public void testInitInputDataInfoWithIllegalSize() {
     PushJobSchemaInfo pushJobSchemaInfo = new PushJobSchemaInfo();
     // Input file size cannot be zero.
     new InputDataInfoProvider.InputDataInfo(pushJobSchemaInfo, 0, 1, false, System.currentTimeMillis());
   }
 
-  @Test(expectedExceptions = { IllegalArgumentException.class })
+  @Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "The Number of Input files is expected to be positive. Got: 0")
   public void testInitInputDataInfoWithIllegalNumInputFiles() {
     PushJobSchemaInfo pushJobSchemaInfo = new PushJobSchemaInfo();
     // Input file size cannot be zero.
     new InputDataInfoProvider.InputDataInfo(pushJobSchemaInfo, 10L, 0, false, System.currentTimeMillis());
   }
 
-  @Test(expectedExceptions = { VeniceException.class })
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*reducer job closed count \\(9\\).*")
   public void testHandleInsufficientClosedReducersFailure() throws Exception {
     testHandleErrorsInCounter(
         Arrays.asList(
-            new MockCounterInfo(MRJobCounterHelper.MAPPER_SPRAY_ALL_PARTITIONS_TRIGGERED_COUNT_NAME, 1), // Spray all
-                                                                                                         // partitions
-                                                                                                         // gets
-                                                                                                         // triggered
-            new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 1), // Quota not exceeded
-            new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0), // No authorization error
-            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0), // No duplicated
-                                                                                                       // key with
-                                                                                                       // distinct value
-            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT - 1), // Some
-                                                                                                                  // but
-                                                                                                                  // not
-                                                                                                                  // all
-                                                                                                                  // reducers
-                                                                                                                  // closed
-
-            new MockCounterInfo(
-                MRJobCounterHelper.MAPPER_NUM_RECORDS_SUCCESSFULLY_PROCESSED_GROUP_COUNTER_NAME,
-                NUMBER_OF_FILES_TO_READ_AND_BUILD_DICT_COUNT + 1), // Number of Processed files in
-                                                                   // ValidateSchemaAndBuildDictMapper
-            new MockCounterInfo(MRJobCounterHelper.MAPPER_ZSTD_DICT_TRAIN_SUCCESS_GROUP_COUNTER_NAME, 1) // Dictionary
-                                                                                                         // building
-                                                                                                         // succeeded if
-                                                                                                         // enabled
-        ),
+            // Spray all partitions gets triggered
+            new MockCounterInfo(MRJobCounterHelper.MAPPER_SPRAY_ALL_PARTITIONS_TRIGGERED_COUNT_NAME, 1),
+            // Quota not exceeded
+            new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 1),
+            // No authorization error
+            new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0),
+            // No duplicated key with distinct value
+            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0),
+            // Some but not all reducers closed
+            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT - 1)),
         Arrays.asList(
             VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
             VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
@@ -317,31 +463,16 @@ public class TestVenicePushJobCheckpoints {
                                                                                                                         // workflow
     testHandleErrorsInCounter(
         Arrays.asList(
-            new MockCounterInfo(MRJobCounterHelper.MAPPER_SPRAY_ALL_PARTITIONS_TRIGGERED_COUNT_NAME, 0), // Spray all
-                                                                                                         // partitions
-                                                                                                         // isn't
-                                                                                                         // triggered
-            new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 1), // Quota not exceeded
-            new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0), // No authorization error
-            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0), // No duplicated
-                                                                                                       // key with
-                                                                                                       // distinct value
-            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT - 1), // Some
-                                                                                                                  // but
-                                                                                                                  // not
-                                                                                                                  // all
-                                                                                                                  // reducers
-                                                                                                                  // closed
-
-            new MockCounterInfo(
-                MRJobCounterHelper.MAPPER_NUM_RECORDS_SUCCESSFULLY_PROCESSED_GROUP_COUNTER_NAME,
-                NUMBER_OF_FILES_TO_READ_AND_BUILD_DICT_COUNT + 1), // Number of Processed files in
-                                                                   // ValidateSchemaAndBuildDictMapper
-            new MockCounterInfo(MRJobCounterHelper.MAPPER_ZSTD_DICT_TRAIN_SUCCESS_GROUP_COUNTER_NAME, 1) // Dictionary
-                                                                                                         // building
-                                                                                                         // succeeded if
-                                                                                                         // enabled
-        ),
+            // Spray all partitions isn't triggered
+            new MockCounterInfo(MRJobCounterHelper.MAPPER_SPRAY_ALL_PARTITIONS_TRIGGERED_COUNT_NAME, 0),
+            // Quota not exceeded
+            new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 1),
+            // No authorization error
+            new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0),
+            // No duplicated key with distinct value
+            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0),
+            // Some but not all reducers closed
+            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT - 1)),
         Arrays.asList(
             VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
             VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
@@ -357,23 +488,14 @@ public class TestVenicePushJobCheckpoints {
   public void testHandleNoErrorInCounters() throws Exception { // Successful workflow
     testHandleErrorsInCounter(
         Arrays.asList(
-            new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 1), // Quota not exceeded
-            new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0), // No authorization error
-            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0), // No duplicated
-                                                                                                       // key with
-                                                                                                       // distinct value
-            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT), // All
-                                                                                                              // reducers
-                                                                                                              // closed
-            new MockCounterInfo(
-                MRJobCounterHelper.MAPPER_NUM_RECORDS_SUCCESSFULLY_PROCESSED_GROUP_COUNTER_NAME,
-                NUMBER_OF_FILES_TO_READ_AND_BUILD_DICT_COUNT + 1), // Number of Processed files in
-                                                                   // ValidateSchemaAndBuildDictMapper
-            new MockCounterInfo(MRJobCounterHelper.MAPPER_ZSTD_DICT_TRAIN_SUCCESS_GROUP_COUNTER_NAME, 1) // Dictionary
-                                                                                                         // building
-                                                                                                         // succeeded if
-                                                                                                         // enabled
-        ),
+            // Quota not exceeded
+            new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 1),
+            // No authorization error
+            new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0),
+            // No duplicated key with distinct value
+            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0),
+            // All reducers closed
+            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT)),
         Arrays.asList(
             VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
             VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
@@ -482,6 +604,12 @@ public class TestVenicePushJobCheckpoints {
       venicePushJob.setVeniceWriter(createVeniceWriterMock());
       SentPushJobDetailsTrackerImpl pushJobDetailsTracker = new SentPushJobDetailsTrackerImpl();
       venicePushJob.setSentPushJobDetailsTracker(pushJobDetailsTracker);
+      try {
+        venicePushJob
+            .setValidateSchemaAndBuildDictMapperOutputReader(getValidateSchemaAndBuildDictMapperOutputReaderMock());
+      } catch (Exception e) {
+        e.printStackTrace();
+      }
 
       try {
         venicePushJob.run();
@@ -523,6 +651,15 @@ public class TestVenicePushJobCheckpoints {
     props.setProperty(VenicePushJob.SSL_KEY_PASSWORD_PROPERTY_NAME, "test");
     props.setProperty(VenicePushJob.PUSH_JOB_STATUS_UPLOAD_ENABLE, "true");
     return props;
+  }
+
+  private ValidateSchemaAndBuildDictMapperOutputReader getValidateSchemaAndBuildDictMapperOutputReaderMock() {
+    ValidateSchemaAndBuildDictMapperOutputReader validateSchemaAndBuildDictMapperOutputReader =
+        mock(ValidateSchemaAndBuildDictMapperOutputReader.class);
+    ValidateSchemaAndBuildDictMapperOutput output =
+        new ValidateSchemaAndBuildDictMapperOutput(10L, ByteBuffer.wrap("Test".getBytes()));
+    when(validateSchemaAndBuildDictMapperOutputReader.getOutput()).thenReturn(output);
+    return validateSchemaAndBuildDictMapperOutputReader;
   }
 
   private InputDataInfoProvider getInputDataInfoProviderMock(
@@ -642,6 +779,9 @@ public class TestVenicePushJobCheckpoints {
       when(counters.getGroup(mockCounterInfo.getGroupName())).thenReturn(group);
     }
     when(runningJob.getCounters()).thenReturn(counters);
+    JobID jobID = mock(JobID.class);
+    when(jobID.toString()).thenReturn("temp");
+    when(runningJob.getID()).thenReturn(jobID);
     JobClientWrapper jobClientWrapper = mock(JobClientWrapper.class);
     when(jobClientWrapper.runJobWithConfig(any())).thenReturn(runningJob);
     return jobClientWrapper;
