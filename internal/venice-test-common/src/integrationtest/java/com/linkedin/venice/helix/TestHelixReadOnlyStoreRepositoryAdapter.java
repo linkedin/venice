@@ -77,7 +77,6 @@ public class TestHelixReadOnlyStoreRepositoryAdapter {
     // Create zk shared store first
     Store zkSharedStore = TestUtils
         .createTestStore(newRepositorySupportedSystemStoreType.getZkSharedStoreName(), "test_system_store_owner", 1);
-    zkSharedStore.setLeaderFollowerModelEnabled(true);
     zkSharedStore.setBatchGetLimit(1);
     zkSharedStore.setReadComputationEnabled(false);
     writeRepo.addStore(zkSharedStore);
@@ -135,7 +134,6 @@ public class TestHelixReadOnlyStoreRepositoryAdapter {
       assertTrue(
           metadataSystemStore instanceof SystemStore,
           "The returned store should be an instance of 'SystemStore'");
-      assertTrue(metadataSystemStore.isLeaderFollowerModelEnabled());
     });
   }
 

@@ -432,7 +432,6 @@ public class DaVinciClientTest {
     String storeName = Utils.getUniqueString("store");
     String storeName2 = createStoreWithMetaSystemStore(KEY_COUNT);
     Consumer<UpdateStoreQueryParams> paramsConsumer = params -> params.setAmplificationFactor(amplificationFactor)
-        .setLeaderFollowerModel(true)
         .setPartitionCount(partitionCount)
         .setPartitionerClass(ConstantVenicePartitioner.class.getName())
         .setPartitionerParams(
@@ -549,7 +548,6 @@ public class DaVinciClientTest {
     // Convert it to hybrid
     Consumer<UpdateStoreQueryParams> paramsConsumer =
         params -> params.setPartitionerClass(ConstantVenicePartitioner.class.getName())
-            .setLeaderFollowerModel(true)
             .setPartitionCount(partitionCount)
             .setAmplificationFactor(amplificationFactor)
             .setPartitionerParams(
@@ -616,7 +614,6 @@ public class DaVinciClientTest {
     String storeName = Utils.getUniqueString("store");
     Consumer<UpdateStoreQueryParams> paramsConsumer =
         params -> params.setPartitionerClass(ConstantVenicePartitioner.class.getName())
-            .setLeaderFollowerModel(true)
             .setPartitionCount(partitionCount)
             .setAmplificationFactor(amplificationFactor)
             .setPartitionerParams(
@@ -920,8 +917,7 @@ public class DaVinciClientTest {
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "CompressionStrategy")
   public void testReadCompressedData(CompressionStrategy compressionStrategy) throws Exception {
     String storeName = Utils.getUniqueString("batch-store");
-    Consumer<UpdateStoreQueryParams> paramsConsumer =
-        params -> params.setLeaderFollowerModel(true).setCompressionStrategy(compressionStrategy);
+    Consumer<UpdateStoreQueryParams> paramsConsumer = params -> params.setCompressionStrategy(compressionStrategy);
     setUpStore(storeName, paramsConsumer, properties -> {});
     try (DaVinciClient<Object, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster)) {
       client.subscribeAll().get();

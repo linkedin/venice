@@ -101,9 +101,7 @@ public class OneTouchDataRecoveryTest {
           parentControllerCli
               .updateStore(
                   storeName,
-                  new UpdateStoreQueryParams().setLeaderFollowerModel(true)
-                      .setNativeReplicationEnabled(true)
-                      .setPartitionCount(1))
+                  new UpdateStoreQueryParams().setNativeReplicationEnabled(true).setPartitionCount(1))
               .isError());
       TestUtils.verifyDCConfigNativeAndActiveRepl(dc0Client, storeName, true, false);
       TestUtils.verifyDCConfigNativeAndActiveRepl(dc1Client, storeName, true, false);

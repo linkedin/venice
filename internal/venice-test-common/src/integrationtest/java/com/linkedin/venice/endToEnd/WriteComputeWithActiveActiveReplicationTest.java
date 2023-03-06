@@ -218,7 +218,6 @@ public class WriteComputeWithActiveActiveReplicationTest {
     assertCommand(parentControllerClient.createNewStore(storeName, "owner", KEY_SCHEMA_STR, valueSchemaV1.toString()));
     UpdateStoreQueryParams params = new UpdateStoreQueryParams().setNativeReplicationEnabled(true)
         .setActiveActiveReplicationEnabled(true)
-        .setLeaderFollowerModel(true)
         .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
         .setChunkingEnabled(false)
         .setIncrementalPushEnabled(true)
@@ -456,7 +455,6 @@ public class WriteComputeWithActiveActiveReplicationTest {
     assertCommand(parentControllerClient.createNewStore(storeName, "owner", KEY_SCHEMA_STR, valueSchemaV1.toString()));
     UpdateStoreQueryParams params = new UpdateStoreQueryParams().setNativeReplicationEnabled(true)
         .setActiveActiveReplicationEnabled(true)
-        .setLeaderFollowerModel(true)
         .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
         .setChunkingEnabled(false)
         .setIncrementalPushEnabled(true)
@@ -867,7 +865,6 @@ public class WriteComputeWithActiveActiveReplicationTest {
     assertCommand(parentControllerClient.createNewStore(storeName, "owner", KEY_SCHEMA_STR, valueSchemaV1.toString()));
     UpdateStoreQueryParams params = new UpdateStoreQueryParams().setNativeReplicationEnabled(true)
         .setActiveActiveReplicationEnabled(true)
-        .setLeaderFollowerModel(true)
         .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
         .setChunkingEnabled(false)
         .setIncrementalPushEnabled(true)

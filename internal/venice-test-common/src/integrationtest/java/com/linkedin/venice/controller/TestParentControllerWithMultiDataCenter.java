@@ -107,7 +107,6 @@ public class TestParentControllerWithMultiDataCenter {
               .setHybridBufferReplayPolicy(expectedHybridBufferReplayPolicy)
               .setChunkingEnabled(true)
               .setRmdChunkingEnabled(true)
-              .setLeaderFollowerModel(true) // Enable L/F to update amplification factor.
               .setAmplificationFactor(2);
 
       TestWriteUtils.updateStore(storeName, parentControllerClient, updateStoreParams);
@@ -135,7 +134,6 @@ public class TestParentControllerWithMultiDataCenter {
           Assert.assertEquals(storeInfo.getHybridStoreConfig().getRewindTimeInSeconds(), expectedHybridRewindSeconds);
           Assert
               .assertEquals(storeInfo.getHybridStoreConfig().getBufferReplayPolicy(), expectedHybridBufferReplayPolicy);
-          Assert.assertTrue(storeInfo.isLeaderFollowerModelEnabled());
           Assert.assertNotNull(storeInfo.getPartitionerConfig());
           Assert.assertEquals(storeInfo.getPartitionerConfig().getAmplificationFactor(), 2);
           Assert.assertTrue(storeInfo.isChunkingEnabled());
@@ -217,17 +215,14 @@ public class TestParentControllerWithMultiDataCenter {
       /**
        * Send UpdateStore to child controller in the first data center; update 3 configs:
        * 1. Storage quota set to 9527;
-       * 2. L/F set to true;
-       * 3. NR set to true.
+       * 2. NR set to true.
        */
       long expectedStorageQuotaInDC0 = 9527;
-      boolean expectedLeaderFollowerConfigInDC0 = true;
       boolean expectedNativeReplicationConfigInDC0 = true;
       ControllerClient dc0Client =
           new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
       UpdateStoreQueryParams updateStoreParams =
           new UpdateStoreQueryParams().setStorageQuotaInByte(expectedStorageQuotaInDC0)
-              .setLeaderFollowerModel(expectedLeaderFollowerConfigInDC0)
               .setNativeReplicationEnabled(expectedNativeReplicationConfigInDC0);
       TestWriteUtils.updateStore(storeName, dc0Client, updateStoreParams);
 
@@ -236,7 +231,6 @@ public class TestParentControllerWithMultiDataCenter {
         Assert.assertFalse(storeResponse.isError());
         StoreInfo storeInfo = storeResponse.getStore();
         Assert.assertEquals(storeInfo.getStorageQuotaInByte(), expectedStorageQuotaInDC0);
-        Assert.assertEquals(storeInfo.isLeaderFollowerModelEnabled(), expectedLeaderFollowerConfigInDC0);
         Assert.assertEquals(storeInfo.isNativeReplicationEnabled(), expectedNativeReplicationConfigInDC0);
       });
 
@@ -262,7 +256,6 @@ public class TestParentControllerWithMultiDataCenter {
          * so the below 3 configs in DC0 should remain unchanged.
          */
         Assert.assertEquals(storeInfo.getStorageQuotaInByte(), expectedStorageQuotaInDC0);
-        Assert.assertEquals(storeInfo.isLeaderFollowerModelEnabled(), expectedLeaderFollowerConfigInDC0);
         Assert.assertEquals(storeInfo.isNativeReplicationEnabled(), expectedNativeReplicationConfigInDC0);
       });
 
@@ -278,7 +271,6 @@ public class TestParentControllerWithMultiDataCenter {
        */
       StoreInfo parentStoreInfo = parentStoreResponse.getStore();
       long storageQuotaInParent = parentStoreInfo.getStorageQuotaInByte();
-      boolean leaderFollowerModelInParent = parentStoreInfo.isLeaderFollowerModelEnabled();
       boolean nativeReplicationInParent = parentStoreInfo.isNativeReplicationEnabled();
 
       /**
@@ -302,7 +294,6 @@ public class TestParentControllerWithMultiDataCenter {
          * Store configs in child datacenter should be identical to the store configs in parent
          */
         Assert.assertEquals(storeInfo.getStorageQuotaInByte(), storageQuotaInParent);
-        Assert.assertEquals(storeInfo.isLeaderFollowerModelEnabled(), leaderFollowerModelInParent);
         Assert.assertEquals(storeInfo.isNativeReplicationEnabled(), nativeReplicationInParent);
       });
 
@@ -345,9 +336,8 @@ public class TestParentControllerWithMultiDataCenter {
       Assert.assertFalse(schemaResponse2.isError(), "addValeSchema returned error: " + schemaResponse2.getError());
 
       // Enable AA on store
-      UpdateStoreQueryParams updateStoreToEnableAARepl = new UpdateStoreQueryParams().setLeaderFollowerModel(true)
-          .setNativeReplicationEnabled(true)
-          .setActiveActiveReplicationEnabled(true);
+      UpdateStoreQueryParams updateStoreToEnableAARepl =
+          new UpdateStoreQueryParams().setNativeReplicationEnabled(true).setActiveActiveReplicationEnabled(true);
       TestWriteUtils.updateStore(storeName, parentControllerClient, updateStoreToEnableAARepl);
       /**
        * Test Active/Active replication config enablement generates the active active metadata schema.
@@ -358,8 +348,6 @@ public class TestParentControllerWithMultiDataCenter {
           StoreResponse storeResponse = dc0Client.getStore(storeName);
           Assert.assertFalse(storeResponse.isError());
           StoreInfo storeInfo = storeResponse.getStore();
-
-          Assert.assertTrue(storeInfo.isLeaderFollowerModelEnabled());
           Assert.assertTrue(storeInfo.isActiveActiveReplicationEnabled());
         });
 
@@ -404,7 +392,6 @@ public class TestParentControllerWithMultiDataCenter {
           List<Version> versions = storeInfo.getVersions();
           Assert.assertNotNull(versions);
           Assert.assertEquals(versions.size(), 1);
-          Assert.assertTrue(versions.get(0).isLeaderFollowerModelEnabled());
           Assert.assertTrue(versions.get(0).isActiveActiveReplicationEnabled());
           Assert.assertEquals(versions.get(0).getRmdVersionId(), 1);
         });

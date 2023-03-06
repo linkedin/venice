@@ -81,9 +81,8 @@ public class TestAdminSparkServerWithMultiServers {
     NewStoreResponse newStoreResponse =
         controllerClient.createNewStore(nativeReplicationEnabledStore, "test", "\"string\"", "\"string\"");
     Assert.assertFalse(newStoreResponse.isError());
-    ControllerResponse updateStoreResponse = controllerClient.updateStore(
-        nativeReplicationEnabledStore,
-        new UpdateStoreQueryParams().setLeaderFollowerModel(true).setNativeReplicationEnabled(true));
+    ControllerResponse updateStoreResponse = controllerClient
+        .updateStore(nativeReplicationEnabledStore, new UpdateStoreQueryParams().setNativeReplicationEnabled(true));
     Assert.assertFalse(updateStoreResponse.isError());
 
     // Add a store with incremental push enabled
@@ -110,12 +109,6 @@ public class TestAdminSparkServerWithMultiServers {
     Assert.assertFalse(multiStoreResponse.isError());
     Assert.assertEquals(multiStoreResponse.getStores().length, 1);
     Assert.assertEquals(multiStoreResponse.getStores()[0], incrementalPushEnabledStore);
-
-    // List stores that have leader/follower mode enabled (all of them!)
-    multiStoreResponse =
-        controllerClient.queryStoreList(false, Optional.of("leaderFollowerModelEnabled"), Optional.of("true"));
-    Assert.assertFalse(multiStoreResponse.isError());
-    Assert.assertEquals(multiStoreResponse.getStores().length, controllerClient.listLFStores().getStores().length);
 
     // Add a store with hybrid config enabled and the DataReplicationPolicy is non-aggregate
     String hybridNonAggregateStore = Utils.getUniqueString("hybrid-non-aggregate");

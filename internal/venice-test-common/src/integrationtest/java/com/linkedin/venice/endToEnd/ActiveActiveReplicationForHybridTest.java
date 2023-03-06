@@ -4,7 +4,6 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLA
 import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
-import static com.linkedin.venice.ConfigKeys.LF_MODEL_DEPENDENCY_CHECK_DISABLED;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC;
 import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
@@ -149,9 +148,6 @@ public class ActiveActiveReplicationForHybridTest {
     controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 1000);
     controllerProps.put(NATIVE_REPLICATION_SOURCE_FABRIC, "dc-0");
     controllerProps.put(PARENT_KAFKA_CLUSTER_FABRIC_LIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
-
-    controllerProps.put(LF_MODEL_DEPENDENCY_CHECK_DISABLED, true);
-
     multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
         NUMBER_OF_CLUSTERS,
@@ -209,27 +205,19 @@ public class ActiveActiveReplicationForHybridTest {
       createAndVerifyStoreInAllRegions(storeName4, parentControllerClient, dcControllerClientList);
 
       assertCommand(
-          parentControllerClient.updateStore(storeName1, new UpdateStoreQueryParams().setLeaderFollowerModel(true)));
-
-      assertCommand(
           parentControllerClient.updateStore(
               storeName2,
-              new UpdateStoreQueryParams().setLeaderFollowerModel(true)
-                  .setHybridRewindSeconds(10)
+              new UpdateStoreQueryParams().setHybridRewindSeconds(10)
                   .setHybridOffsetLagThreshold(2)
                   .setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE)));
 
       assertCommand(
           parentControllerClient.updateStore(
               storeName3,
-              new UpdateStoreQueryParams().setLeaderFollowerModel(true)
-                  .setHybridRewindSeconds(10)
-                  .setHybridOffsetLagThreshold(2)));
+              new UpdateStoreQueryParams().setHybridRewindSeconds(10).setHybridOffsetLagThreshold(2)));
 
       assertCommand(
-          parentControllerClient.updateStore(
-              storeName4,
-              new UpdateStoreQueryParams().setIncrementalPushEnabled(true).setLeaderFollowerModel(true)));
+          parentControllerClient.updateStore(storeName4, new UpdateStoreQueryParams().setIncrementalPushEnabled(true)));
 
       // Test batch
       assertCommand(

@@ -23,7 +23,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_ST
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_OVERHEAD_BYPASS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.LEADER_FOLLOWER_MODEL_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MIGRATION_DUPLICATE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_SOURCE_FABRIC;
@@ -110,7 +109,6 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setHybridStoreDiskQuotaEnabled(srcStore.isHybridStoreDiskQuotaEnabled())
             .setIncrementalPushEnabled(srcStore.isIncrementalPushEnabled())
             .setLargestUsedVersionNumber(srcStore.getLargestUsedVersionNumber())
-            .setLeaderFollowerModel(srcStore.isLeaderFollowerModelEnabled())
             .setNativeReplicationEnabled(srcStore.isNativeReplicationEnabled())
             .setNativeReplicationSourceFabric(srcStore.getNativeReplicationSourceFabric())
             .setNumVersionsToPreserve(srcStore.getNumVersionsToPreserve())
@@ -448,10 +446,6 @@ public class UpdateStoreQueryParams extends QueryParams {
     return getInteger(BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS);
   }
 
-  public UpdateStoreQueryParams setLeaderFollowerModel(boolean leaderFollowerModelEnabled) {
-    return putBoolean(LEADER_FOLLOWER_MODEL_ENABLED, leaderFollowerModelEnabled);
-  }
-
   public UpdateStoreQueryParams setNativeReplicationEnabled(boolean nativeReplicationEnabled) {
     return putBoolean(NATIVE_REPLICATION_ENABLED, nativeReplicationEnabled);
   }
@@ -466,10 +460,6 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public UpdateStoreQueryParams setPushStreamSourceAddress(String pushStreamSourceAddress) {
     return putString(PUSH_STREAM_SOURCE_ADDRESS, pushStreamSourceAddress);
-  }
-
-  public Optional<Boolean> getLeaderFollowerModelEnabled() {
-    return getBoolean(LEADER_FOLLOWER_MODEL_ENABLED);
   }
 
   public UpdateStoreQueryParams setAutoSchemaPushJobEnabled(boolean autoSchemaPushJobEnabled) {

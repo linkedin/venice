@@ -477,8 +477,6 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
 
     veniceAdmin.setBootstrapToOnlineTimeoutInHours(clusterName, storeName, 48);
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getBootstrapToOnlineTimeoutInHours(), 48);
-    veniceAdmin.setLeaderFollowerModelEnabled(clusterName, storeName, true);
-    Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).isLeaderFollowerModelEnabled());
 
     veniceAdmin.setHybridStoreDiskQuotaEnabled(clusterName, storeName, true);
     Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).isHybridStoreDiskQuotaEnabled());
@@ -1529,11 +1527,9 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Store store = veniceAdmin.getStore(clusterName, storeName);
     // Check all default setting in store level config
     Assert.assertFalse(store.isChunkingEnabled());
-    Assert.assertTrue(store.isLeaderFollowerModelEnabled());
     Assert.assertEquals(store.getCompressionStrategy(), CompressionStrategy.NO_OP);
     // Check all setting in the existing version
     Assert.assertFalse(store.getVersion(existingVersion.getNumber()).get().isChunkingEnabled());
-    Assert.assertTrue(store.getVersion(existingVersion.getNumber()).get().isLeaderFollowerModelEnabled());
     Assert.assertEquals(
         store.getVersion(existingVersion.getNumber()).get().getCompressionStrategy(),
         CompressionStrategy.NO_OP);
@@ -1548,16 +1544,6 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertTrue(store.isChunkingEnabled());
     // Existing version config should not be updated!
     Assert.assertFalse(store.getVersion(existingVersion.getNumber()).get().isChunkingEnabled());
-
-    /**
-     * Enable leader/follower for the store.
-     */
-    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setLeaderFollowerModel(true));
-    store = veniceAdmin.getStore(clusterName, storeName);
-    // Store level config should be updated
-    Assert.assertTrue(store.isLeaderFollowerModelEnabled());
-    // Existing version config should not be updated!
-    Assert.assertTrue(store.getVersion(existingVersion.getNumber()).get().isLeaderFollowerModelEnabled());
 
     /**
      * Enable compression.
@@ -1589,12 +1575,9 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     String pushJobId1 = "test-push-job-id-1";
     veniceAdmin.createStore(clusterName, storeName, "test-owner", KEY_SCHEMA, VALUE_SCHEMA);
     /**
-     * Enable L/F and native replication.
+     * Enable native replication.
      */
-    veniceAdmin.updateStore(
-        clusterName,
-        storeName,
-        new UpdateStoreQueryParams().setLeaderFollowerModel(true).setNativeReplicationEnabled(true));
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setNativeReplicationEnabled(true));
 
     /**
      * Add version 1 without remote Kafka bootstrap servers.
@@ -1748,10 +1731,8 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     /**
      * Enable L/F and Active/Active replication
      */
-    veniceAdmin.updateStore(
-        clusterName,
-        storeName,
-        new UpdateStoreQueryParams().setLeaderFollowerModel(true).setActiveActiveReplicationEnabled(true));
+    veniceAdmin
+        .updateStore(clusterName, storeName, new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true));
 
     /**
      * Add version 1

@@ -525,7 +525,6 @@ public class VenicePushJob implements AutoCloseable {
     long storeStorageQuota;
     boolean isSchemaAutoRegisterFromPushJobEnabled;
     CompressionStrategy compressionStrategy;
-    boolean isLeaderFollowerModelEnabled;
     boolean isWriteComputeEnabled;
     boolean isIncrementalPushEnabled;
     Version sourceKafkaInputVersionInfo;
@@ -2197,7 +2196,6 @@ public class VenicePushJob implements AutoCloseable {
     storeSetting.isRmdChunkingEnabled = storeResponse.getStore().isRmdChunkingEnabled();
     storeSetting.compressionStrategy = storeResponse.getStore().getCompressionStrategy();
     storeSetting.isWriteComputeEnabled = storeResponse.getStore().isWriteComputationEnabled();
-    storeSetting.isLeaderFollowerModelEnabled = storeResponse.getStore().isLeaderFollowerModelEnabled();
     storeSetting.isIncrementalPushEnabled = storeResponse.getStore().isIncrementalPushEnabled();
     storeSetting.storeRewindTimeInSeconds = DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
 
@@ -2226,9 +2224,6 @@ public class VenicePushJob implements AutoCloseable {
         by the controller for topic switch.
        */
       setting.sendControlMessagesDirectly = false;
-      if (!storeSetting.isLeaderFollowerModelEnabled) {
-        throw new VeniceException("Leader follower mode needs to be enabled for write compute.");
-      }
     }
 
     storeSetting.keySchema = getKeySchemaFromController(controllerClient, setting.controllerRetries, setting.storeName);
