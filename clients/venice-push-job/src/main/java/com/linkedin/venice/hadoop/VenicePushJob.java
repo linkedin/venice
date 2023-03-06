@@ -155,18 +155,36 @@ public class VenicePushJob implements AutoCloseable {
   public static final String ETL_VALUE_SCHEMA_TRANSFORMATION = "etl.value.schema.transformation";
 
   /**
-   *  Enabling/Disabling the feature to collect extra metrics wrt compression ratios
-   *  as some stores might disable this feature. Even if disabled, the code flow will
-   *  follow the new code of using a mapper to validate schema, etc.
+   *  Config to enable/disable the feature to collect extra metrics wrt compression.
+   *  Enabling this collects metrics for all compression strategies regardless of
+   *  the configured compression strategy. This means: zstd dictionary will be
+   *  created even if {@link CompressionStrategy#ZSTD_WITH_DICT} is not the configured
+   *  store compression strategy (refer {@link #shouldBuildZstdCompressionDictionary})
+   *  <br><br>
+   *
+   *  This config also gets evaluated in {@link #evaluateCompressionMetricCollectionEnabled}
+   *  <br><br>
+   *
+   *  Enabling this feature force enables {@link #USE_MAPPER_TO_BUILD_DICTIONARY}.
    */
   public static final String COMPRESSION_METRIC_COLLECTION_ENABLED = "compression.metric.collection.enabled";
   public static final boolean DEFAULT_COMPRESSION_METRIC_COLLECTION_ENABLED = false;
 
   /**
-   * Temporary flag to enable/disable the code changes until the flow of using mapper
-   * to validate schema and build dictionary is stable. This will be force enabled
-   * if COMPRESSION_METRIC_COLLECTION_ENABLED is enabled and the plan is to make this
-   * enabled by default and clean up remaining code once this becomes stable.
+   * Config to enable/disable using mapper to do the below which are currently done in VPJ driver <br>
+   * 1. validate schema, <br>
+   * 2. collect the input data size <br>
+   * 3. build dictionary (if needed: refer {@link #shouldBuildZstdCompressionDictionary}) <br><br>
+   *
+   * This new mapper was added because the sample collection for Zstd dictionary is currently
+   * in-memory and to help play around with the sample size and also to support future enhancements
+   * if needed. <br><br>
+   *
+   * Currently, this will be force enabled if {@link #COMPRESSION_METRIC_COLLECTION_ENABLED} is
+   * enabled and the plan is to make this enabled by default and clean up remaining code once
+   * this becomes stable to make the flow similar for all cases. But needs to be discussed further
+   * on "using a mapper when not really needed (if no dictionary needed or the sample size is small)"
+   * vs "having 2 different flows to manage/test".
    */
   public static final String USE_MAPPER_TO_BUILD_DICTIONARY = "use.mapper.to.build.dictionary";
   public static final boolean DEFAULT_USE_MAPPER_TO_BUILD_DICTIONARY = false;
@@ -407,6 +425,7 @@ public class VenicePushJob implements AutoCloseable {
   // Job config for regular push job
   protected JobConf jobConf = new JobConf();
   protected InputDataInfoProvider inputDataInfoProvider;
+  private ValidateSchemaAndBuildDictMapperOutputReader validateSchemaAndBuildDictMapperOutputReader;
   // Total input data size, which is used to talk to controller to decide whether we have enough quota or not
   private long inputFileDataSize;
   private String inputDirectory;
@@ -455,8 +474,9 @@ public class VenicePushJob implements AutoCloseable {
     boolean suppressEndOfPushMessage;
     boolean deferVersionSwap;
     boolean extendedSchemaValidityCheckEnabled;
+    /** Refer {@link #COMPRESSION_METRIC_COLLECTION_ENABLED} **/
     boolean compressionMetricCollectionEnabled;
-    // temporary flag to host the code to use mapper to validate schema and build dictionary
+    /** Refer {@link #USE_MAPPER_TO_BUILD_DICTIONARY} **/
     boolean useMapperToBuildDict;
     String useMapperToBuildDictOutputPath;
     boolean repushTTLEnabled;
@@ -862,6 +882,12 @@ public class VenicePushJob implements AutoCloseable {
     this.mapRedPartitionerClass = mapRedPartitionerClass;
   }
 
+  // Visible for testing
+  protected void setValidateSchemaAndBuildDictMapperOutputReader(
+      ValidateSchemaAndBuildDictMapperOutputReader validateSchemaAndBuildDictMapperOutputReader) throws Exception {
+    this.validateSchemaAndBuildDictMapperOutputReader = validateSchemaAndBuildDictMapperOutputReader;
+  }
+
   /**
    * @throws VeniceException
    */
@@ -940,7 +966,7 @@ public class VenicePushJob implements AutoCloseable {
             storeSetting.isSchemaAutoRegisterFromPushJobEnabled);
 
         pushJobSetting.compressionMetricCollectionEnabled =
-            reevaluateCompressionMetricCollectionEnabled(pushJobSetting, inputFileHasRecords);
+            evaluateCompressionMetricCollectionEnabled(pushJobSetting, inputFileHasRecords);
         isZstdDictCreationRequired =
             shouldBuildZstdCompressionDictionary(pushJobSetting, storeSetting, inputFileHasRecords);
         if (pushJobSetting.useMapperToBuildDict) {
@@ -1323,7 +1349,7 @@ public class VenicePushJob implements AutoCloseable {
     String outputDir = validateSchemaAndBuildDictMapperOutputDirectory;
     String outputAvroFile = getValidateSchemaAndBuildDictionaryOutputFileName(mrJobId);
     try (ValidateSchemaAndBuildDictMapperOutputReader outputReader =
-        new ValidateSchemaAndBuildDictMapperOutputReader(outputDir, outputAvroFile)) {
+        getValidateSchemaAndBuildDictMapperOutputReader(outputDir, outputAvroFile)) {
       validateSchemaAndBuildDictMapperOutput = outputReader.getOutput();
     }
     inputFileDataSize = validateSchemaAndBuildDictMapperOutput.getInputFileDataSize() * INPUT_DATA_SIZE_FACTOR;
@@ -1348,7 +1374,8 @@ public class VenicePushJob implements AutoCloseable {
 
   /**
    * This functions decides whether Zstd compression dictionary needs to be trained or not,
-   * based on the type of push, configs and whether there are any input records or not.
+   * based on the type of push, configs and whether there are any input records or not, or
+   * whether {@link PushJobSetting#compressionMetricCollectionEnabled} is enabled or not.
    */
   protected static boolean shouldBuildZstdCompressionDictionary(
       PushJobSetting pushJobSetting,
@@ -1388,12 +1415,12 @@ public class VenicePushJob implements AutoCloseable {
   }
 
   /**
-   * This functions reevaluates the config {@link PushJobSetting#compressionMetricCollectionEnabled}
+   * This functions evaluates the config {@link PushJobSetting#compressionMetricCollectionEnabled}
    * based on the input data and other configs as an initial filter to disable this config for cases
    * where we won't be able to collect this information or where it doesn't make sense to collect this
    * information. eg: When there are no data or for Incremental push.
    */
-  protected static boolean reevaluateCompressionMetricCollectionEnabled(
+  protected static boolean evaluateCompressionMetricCollectionEnabled(
       PushJobSetting pushJobSetting,
       boolean inputFileHasRecords) {
     if (!pushJobSetting.compressionMetricCollectionEnabled) {
@@ -1401,15 +1428,15 @@ public class VenicePushJob implements AutoCloseable {
       return false;
     }
 
+    if (!inputFileHasRecords) {
+      LOGGER.info("No compression related metrics will be generated as there are no records");
+      return false;
+    }
+
     if (pushJobSetting.isSourceKafka) {
       // repush from kafka: This is already checked before calling this function.
       // This is a defensive check.
       LOGGER.info("No compression related metrics will be generated as the push type is repush");
-      return false;
-    }
-
-    if (!inputFileHasRecords) {
-      LOGGER.info("No compression related metrics will be generated as there are no records");
       return false;
     }
 
@@ -1569,6 +1596,16 @@ public class VenicePushJob implements AutoCloseable {
       inputDataInfoProvider = new DefaultInputDataInfoProvider(storeSetting, pushJobSetting, props);
     }
     return inputDataInfoProvider;
+  }
+
+  protected ValidateSchemaAndBuildDictMapperOutputReader getValidateSchemaAndBuildDictMapperOutputReader(
+      String outputDir,
+      String fileName) throws Exception {
+    if (validateSchemaAndBuildDictMapperOutputReader == null) {
+      validateSchemaAndBuildDictMapperOutputReader =
+          new ValidateSchemaAndBuildDictMapperOutputReader(outputDir, fileName);
+    }
+    return validateSchemaAndBuildDictMapperOutputReader;
   }
 
   /**
