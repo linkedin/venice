@@ -29,7 +29,7 @@
         with:
           arguments: "$GradleArguments"
       - name: Upload test logs on failure
-        if: ${{ failure() }}
+        if: failure() && startsWith(github.job, 'IntegrationTest')
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}.logs
