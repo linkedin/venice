@@ -28,7 +28,6 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.SSLConfig;
-import com.linkedin.venice.VeniceStateModel;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -5389,11 +5388,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         "Cluster creation: {} completed, auto join to true. Delayed rebalance time: {}ms",
         clusterName,
         delayedTime);
-
-    admin.addStateModelDef(
-        clusterName,
-        VeniceStateModel.PARTITION_ONLINE_OFFLINE_STATE_MODEL,
-        VeniceStateModel.getDefinition());
     admin.addStateModelDef(clusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
 
     admin.addResource(

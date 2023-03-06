@@ -1,6 +1,5 @@
 package com.linkedin.venice.controller;
 
-import com.linkedin.venice.VeniceStateModel;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.helix.ZkClientFactory;
@@ -131,10 +130,6 @@ public class ZkHelixAdminClient implements HelixAdminClient {
           throw new VeniceRetriableException("Failed to create Helix cluster, will retry");
         }
         updateClusterConfigs(clusterName, helixClusterProperties);
-        helixAdmin.addStateModelDef(
-            clusterName,
-            VeniceStateModel.PARTITION_ONLINE_OFFLINE_STATE_MODEL,
-            VeniceStateModel.getDefinition());
         helixAdmin.addStateModelDef(clusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
         if (isControllerInAzureFabric) {
           helixAdmin.addCloudConfig(clusterName, cloudConfigBuilder.build());
@@ -239,7 +234,7 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   }
 
   /**
-   * @see HelixAdminClient#createVeniceStorageClusterResources(String, String, int, int, boolean)
+   * @see HelixAdminClient#createVeniceStorageClusterResources(String, String, int, int)
    */
   @Override
   public void createVeniceStorageClusterResources(
