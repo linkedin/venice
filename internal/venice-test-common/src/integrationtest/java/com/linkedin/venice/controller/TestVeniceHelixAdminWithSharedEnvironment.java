@@ -979,6 +979,17 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
       }
     }
 
+    // Verify that pushjob is removed when isKillOfflinePush is set and is terminated when unset.
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+      OfflinePushStatusInfo info =
+          veniceAdmin.getOffLinePushStatus(clusterName, Version.composeKafkaTopic(storeName, version.getNumber()));
+      if (isKillOfflinePush) {
+        Assert.assertEquals(info.getExecutionStatus(), ExecutionStatus.NOT_CREATED);
+      } else {
+        Assert.assertTrue(info.getExecutionStatus().isTerminal(), "Offline push job cannot reach a terminal state");
+      }
+    });
+
     /**
      * Verify that version swap will depend on if {@link Admin#killOfflinePush(String, String, boolean)} has been called
      * for this store version while the push job is still executing. If it has been killed, then version swap should not
