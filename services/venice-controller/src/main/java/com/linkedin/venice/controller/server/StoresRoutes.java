@@ -32,7 +32,6 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.CONFIGURE_NATIVE
 import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_ALL_VERSIONS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_KAFKA_TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_STORE;
-import static com.linkedin.venice.controllerapi.ControllerRoute.ENABLE_LF_MODEL;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ENABLE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.FUTURE_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_DELETABLE_STORE_TOPICS;
@@ -40,7 +39,6 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.GET_REGION_PUSH_
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_REPUSH_INFO;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_STALE_STORES_IN_CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerRoute.GET_STORES_IN_CLUSTER;
-import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_LF_STORES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_STORES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_STORE_PUSH_INFO;
 import static com.linkedin.venice.controllerapi.ControllerRoute.MIGRATE_STORE;
@@ -99,7 +97,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.http.HttpStatus;
 import spark.Request;
@@ -695,96 +692,6 @@ public class StoresRoutes extends AbstractRoute {
         veniceResponse.setCluster(request.queryParams(CLUSTER));
         veniceResponse.setName(request.queryParams(NAME));
         veniceResponse.setStorageEngineOverheadRatio(admin.getStorageEngineOverheadRatio(request.queryParams(CLUSTER)));
-      }
-    };
-  }
-
-  /**
-   * No ACL check; any user can try to list stores.
-   */
-  public Route getLFModelStores(Admin admin) {
-    return new VeniceRouteHandler<MultiStoreResponse>(MultiStoreResponse.class) {
-      @Override
-      public void internalHandle(Request request, MultiStoreResponse veniceResponse) {
-        AdminSparkServer.validateParams(request, LIST_LF_STORES.getParams(), admin);
-        veniceResponse.setCluster(request.queryParams(CLUSTER));
-        veniceResponse.setName(request.queryParams(NAME));
-
-        List<String> lFEnabledStores = admin.getAllStores(veniceResponse.getCluster())
-            .stream()
-            // Skip all the system stores
-            .filter(store -> (store.isLeaderFollowerModelEnabled() && !store.isSystemStore()))
-            .map(Store::getName)
-            .collect(Collectors.toList());
-
-        veniceResponse.setStores(lFEnabledStores.toArray(new String[lFEnabledStores.size()]));
-
-      }
-    };
-  }
-
-  /**
-   * @see Admin#enableLeaderFollowerModelLocally(String, String, boolean)
-   */
-  public Route enableLFModelForStores(Admin admin) {
-    return new VeniceRouteHandler<MultiStoreResponse>(MultiStoreResponse.class) {
-      @Override
-      public void internalHandle(Request request, MultiStoreResponse veniceResponse) {
-        // Only allow allowlist users to run this command
-        if (!checkIsAllowListUser(request, veniceResponse, () -> isAllowListUser(request))) {
-          return;
-        }
-
-        AdminSparkServer.validateParams(request, ENABLE_LF_MODEL.getParams(), admin);
-        veniceResponse.setName(request.queryParams(NAME));
-
-        String storeType = request.queryParams(STORE_TYPE);
-
-        String cluster = request.queryParams(CLUSTER);
-
-        List<Store> storeCandidates;
-        VeniceUserStoreType userStoreType = VeniceUserStoreType.valueOf(storeType.toUpperCase());
-        switch (userStoreType) {
-          case BATCH_ONLY:
-            storeCandidates = admin.getAllStores(cluster)
-                .stream()
-                .filter(store -> (!store.isHybrid() && !store.isIncrementalPushEnabled()))
-                .collect(Collectors.toList());
-            break;
-          case HYBRID_ONLY:
-            storeCandidates = admin.getAllStores(cluster)
-                .stream()
-                .filter(store -> (store.isHybrid() && !store.isIncrementalPushEnabled()))
-                .collect(Collectors.toList());
-            break;
-          case INCREMENTAL_PUSH:
-            storeCandidates = admin.getAllStores(cluster)
-                .stream()
-                .filter(Store::isIncrementalPushEnabled)
-                .collect(Collectors.toList());
-            break;
-          case HYBRID_OR_INCREMENTAL:
-            storeCandidates = admin.getAllStores(cluster)
-                .stream()
-                .filter(store -> (store.isHybrid() || store.isIncrementalPushEnabled()))
-                .collect(Collectors.toList());
-            break;
-          case ALL:
-            storeCandidates = admin.getAllStores(cluster);
-            break;
-          default:
-            throw new VeniceException("Unsupported store type." + storeType);
-        }
-
-        // filter out all the system stores
-        storeCandidates = storeCandidates.stream().filter(store -> !store.isSystemStore()).collect(Collectors.toList());
-
-        boolean isLFEnabled = Utils.parseBooleanFromString(request.queryParams(STATUS), "isLFEnabled");
-        storeCandidates.forEach(store -> admin.enableLeaderFollowerModelLocally(cluster, store.getName(), isLFEnabled));
-
-        veniceResponse.setCluster(cluster);
-
-        veniceResponse.setStores(storeCandidates.stream().map(Store::getName).toArray(String[]::new));
       }
     };
   }

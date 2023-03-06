@@ -30,6 +30,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
@@ -40,7 +41,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -Pspotallbugs clean check -x spotlessCheck -x test -x integrationTest -x jacocoTestCoverageVerification"
+          arguments: "--continue --no-daemon -DmaxParallelForks=2 --parallel -Pspotallbugs clean check -x spotlessCheck -x test -x integrationTest -x jacocoTestCoverageVerification"
 
   UnitTestsAndCodeCoverage:
     strategy:
@@ -59,6 +60,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
@@ -69,7 +71,37 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "jacocoTestCoverageVerification diffCoverage --continue"
+          arguments: "-DmaxParallelForks=2  --parallel -x :internal:venice-avro-compatibility-test:test jacocoTestCoverageVerification diffCoverage --continue"
+
+  AvroCompatibilityTests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        jdk: [11]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          java-version: ${{ matrix.jdk }}
+          distribution: 'microsoft'
+          cache: 'gradle'
+      - shell: bash
+        run: |
+          git remote set-head origin --auto
+          git remote add upstream https://github.com/linkedin/venice
+          git fetch upstream
+      - name: Validate Gradle wrapper
+        uses: gradle/wrapper-validation-action@v1
+      - name: Build with Gradle
+        uses: gradle/gradle-build-action@v2
+        with:
+          arguments: "-DmaxParallelForks=2 --parallel :internal:venice-avro-compatibility-test:test --continue"
 
   IntegrationTestsA:
     strategy:
@@ -88,6 +120,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
@@ -117,6 +150,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
@@ -146,6 +180,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
@@ -175,6 +210,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
@@ -204,6 +240,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
@@ -233,6 +270,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
@@ -262,6 +300,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
@@ -291,6 +330,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
@@ -320,6 +360,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
@@ -349,6 +390,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
@@ -378,6 +420,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
@@ -407,6 +450,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
@@ -436,6 +480,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
@@ -465,6 +510,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
@@ -494,6 +540,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
@@ -523,6 +570,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
@@ -552,6 +600,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
@@ -581,6 +630,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
@@ -600,7 +650,7 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    needs: [StaticAnalysis, UnitTestsAndCodeCoverage, IntegrationTestsA, IntegrationTestsB, IntegrationTestsC, IntegrationTestsD, IntegrationTestsE, IntegrationTestsF, IntegrationTestsG, IntegrationTestsH, IntegrationTestsI, IntegrationTestsJ, IntegrationTestsK, IntegrationTestsL, IntegrationTestsM, IntegrationTestsN, IntegrationTestsO, IntegrationTestsP, IntegrationTestsQ, IntegrationTestsZ]
+    needs: [StaticAnalysis, UnitTestsAndCodeCoverage, AvroCompatibilityTests, IntegrationTestsA, IntegrationTestsB, IntegrationTestsC, IntegrationTestsD, IntegrationTestsE, IntegrationTestsF, IntegrationTestsG, IntegrationTestsH, IntegrationTestsI, IntegrationTestsJ, IntegrationTestsK, IntegrationTestsL, IntegrationTestsM, IntegrationTestsN, IntegrationTestsO, IntegrationTestsP, IntegrationTestsQ, IntegrationTestsZ]
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
@@ -611,6 +661,7 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto

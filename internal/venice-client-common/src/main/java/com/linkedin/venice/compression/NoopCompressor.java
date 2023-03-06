@@ -24,6 +24,11 @@ public class NoopCompressor extends VeniceCompressor {
   }
 
   @Override
+  public int hashCode() {
+    return super.hashCode();
+  }
+
+  @Override
   public ByteBuffer decompress(ByteBuffer data) throws IOException {
     return data;
   }
@@ -36,5 +41,13 @@ public class NoopCompressor extends VeniceCompressor {
   @Override
   public InputStream decompress(InputStream inputStream) throws IOException {
     return inputStream;
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (o == this) {
+      return true;
+    }
+    return o != null && o instanceof NoopCompressor;
   }
 }

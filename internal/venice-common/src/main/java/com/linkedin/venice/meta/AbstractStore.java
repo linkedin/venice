@@ -151,9 +151,6 @@ public abstract class AbstractStore implements Store {
       // update version compression type
       version.setCompressionStrategy(getCompressionStrategy());
 
-      // update version Helix state model
-      version.setLeaderFollowerModelEnabled(isLeaderFollowerModelEnabled());
-
       version.setChunkingEnabled(isChunkingEnabled());
       version.setRmdChunkingEnabled(isRmdChunkingEnabled());
 

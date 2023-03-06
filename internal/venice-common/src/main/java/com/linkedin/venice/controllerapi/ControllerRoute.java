@@ -38,7 +38,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOP
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_RETENTION_IN_MS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KEY_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.LEADER_FOLLOWER_MODEL_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LOCKED_STORAGE_NODE_IDS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NUM_VERSIONS_TO_PRESERVE;
@@ -122,10 +121,10 @@ public enum ControllerRoute {
       OFFSET_LAG_TO_GO_ONLINE, ACCESS_CONTROLLED, COMPRESSION_STRATEGY, CLIENT_DECOMPRESSION_ENABLED, CHUNKING_ENABLED,
       RMD_CHUNKING_ENABLED, SINGLE_GET_ROUTER_CACHE_ENABLED, BATCH_GET_ROUTER_CACHE_ENABLED, BATCH_GET_LIMIT,
       NUM_VERSIONS_TO_PRESERVE, WRITE_COMPUTATION_ENABLED, REPLICATION_METADATA_PROTOCOL_VERSION_ID,
-      READ_COMPUTATION_ENABLED, LEADER_FOLLOWER_MODEL_ENABLED, BACKUP_STRATEGY,
-      AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED, INCREMENTAL_PUSH_ENABLED, BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS,
-      HYBRID_STORE_DISK_QUOTA_ENABLED, REGULAR_VERSION_ETL_ENABLED, FUTURE_VERSION_ETL_ENABLED,
-      ETLED_PROXY_USER_ACCOUNT, DISABLE_META_STORE, DISABLE_DAVINCI_PUSH_STATUS_STORE, PERSONA_NAME
+      READ_COMPUTATION_ENABLED, BACKUP_STRATEGY, AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED, INCREMENTAL_PUSH_ENABLED,
+      BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS, HYBRID_STORE_DISK_QUOTA_ENABLED, REGULAR_VERSION_ETL_ENABLED,
+      FUTURE_VERSION_ETL_ENABLED, ETLED_PROXY_USER_ACCOUNT, DISABLE_META_STORE, DISABLE_DAVINCI_PUSH_STATUS_STORE,
+      PERSONA_NAME
   ), SET_VERSION("/set_version", HttpMethod.POST, Arrays.asList(NAME, VERSION)),
   ROLLBACK_TO_BACKUP_VERSION("/rollback_to_backup_version", HttpMethod.POST, Collections.singletonList(NAME)),
   ENABLE_STORE("/enable_store", HttpMethod.POST, Arrays.asList(NAME, OPERATION, STATUS)), // status "true" or "false",
@@ -206,11 +205,6 @@ public enum ControllerRoute {
   ),
 
   ADD_VERSION("/add_version", HttpMethod.POST, Arrays.asList(NAME, PUSH_JOB_ID, VERSION, PARTITION_COUNT)),
-
-  LIST_LF_STORES("/list_lf_stores", HttpMethod.GET, Collections.emptyList()),
-
-  ENABLE_LF_MODEL("/enable_lf_model", HttpMethod.POST, Arrays.asList(STORE_TYPE, STATUS)),
-
   FUTURE_VERSION("/list_future_versions", HttpMethod.GET, Arrays.asList(CLUSTER, NAME)),
   SET_TOPIC_COMPACTION("/set_topic_compaction", HttpMethod.POST, Arrays.asList(TOPIC, TOPIC_COMPACTION_POLICY)),
   UPDATE_ACL("/update_acl", HttpMethod.POST, Arrays.asList(CLUSTER, NAME, ACCESS_PERMISSION)),

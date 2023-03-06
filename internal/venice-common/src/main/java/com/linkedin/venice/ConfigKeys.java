@@ -181,37 +181,6 @@ public class ConfigKeys {
       "enable.active.active.replication.as.default.for.incremental.push.store";
 
   /**
-   * Controller level config to disable the dependency that L/F mode must be enabled before turning on native replication.
-   * This may be set to TRUE in parent controller only, and must always be set to FALSE in child controller.
-   * Default value is FALSE.
-   */
-  public static final String LF_MODEL_DEPENDENCY_CHECK_DISABLED = "lf.model.dependency.check.disabled";
-
-  /**
-   * Sets the default for whether or not leader follower is enabled or not for a hybrid store.
-   */
-  public static final String ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_HYBRID_STORES =
-      "enable.leader.follower.as.default.for.hybrid.stores";
-
-  /**
-   * Sets the default for whether or not leader follower is enabled or not for an incremental push store.
-   */
-  public static final String ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES =
-      "enable.leader.follower.as.default.for.incremental.push.stores";
-
-  /**
-   * Sets the default for whether or not leader follower is enabled or not for a batch-only store.
-   */
-  public static final String ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_BATCH_ONLY_STORES =
-      "enable.leader.follower.as.default.for.batch.only.stores";
-
-  /**
-   * Sets the default for whether or not leader follower is enabled or not for a venice store.
-   */
-  public static final String ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_ALL_STORES =
-      "enable.leader.follower.as.default.for.all.stores";
-
-  /**
    * Sets the default for whether or not do schema validation for all stores
    */
   public static final String CONTROLLER_SCHEMA_VALIDATION_ENABLED = "controller.schema.validation.enabled";

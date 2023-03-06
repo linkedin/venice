@@ -109,7 +109,6 @@ public class PushStatusStoreTest {
         controllerClient.updateStore(
             storeName,
             new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
-                .setLeaderFollowerModel(true)
                 .setPartitionCount(PARTITION_COUNT)
                 .setAmplificationFactor(1)
                 .setIncrementalPushEnabled(true)));

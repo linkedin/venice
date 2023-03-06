@@ -31,6 +31,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.apache.hadoop.mapred.JobConf;
+import org.apache.hadoop.mapred.Reporter;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -80,7 +81,7 @@ public class KafkaInputRecordReaderTest {
 
     KafkaInputSplit split = new KafkaInputSplit(topic, 0, 0, 102);
     try (KafkaInputRecordReader reader =
-        new KafkaInputRecordReader(split, conf, null, consumer, pubSubTopicRepository)) {
+        new KafkaInputRecordReader(split, conf, Reporter.NULL, consumer, pubSubTopicRepository)) {
       for (int i = 0; i < numRecord; ++i) {
         KafkaInputMapperKey key = new KafkaInputMapperKey();
         KafkaInputMapperValue value = new KafkaInputMapperValue();

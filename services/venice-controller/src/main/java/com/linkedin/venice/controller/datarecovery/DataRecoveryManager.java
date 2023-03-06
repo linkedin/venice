@@ -79,8 +79,6 @@ public class DataRecoveryManager implements Closeable {
     if (store == null) {
       throw new VeniceNoStoreException(storeName, clusterName);
     }
-    // L/F and NR are required for data recovery.
-    dataRecoveryVersion.setLeaderFollowerModelEnabled(store.isLeaderFollowerModelEnabled());
     dataRecoveryVersion.setNativeReplicationEnabled(store.isNativeReplicationEnabled());
     dataRecoveryVersion.setNativeReplicationSourceFabric(sourceFabric);
     dataRecoveryVersion.setDataRecoveryVersionConfig(new DataRecoveryVersionConfigImpl(sourceFabric, false));
@@ -138,9 +136,6 @@ public class DataRecoveryManager implements Closeable {
     }
     if (store.isMigrating()) {
       throw new VeniceException("Data recovery is not allowed during store migration");
-    }
-    if (!store.isLeaderFollowerModelEnabled()) {
-      throw new VeniceException("Leader follower model is required for data recovery");
     }
     if (!store.isNativeReplicationEnabled()) {
       throw new VeniceException("Native replication is required for data recovery");

@@ -1,5 +1,15 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.hadoop.VenicePushJob.COMPRESSION_STRATEGY;
+import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_BROKER_URL;
+import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY;
+import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_TOPIC;
+import static com.linkedin.venice.hadoop.VenicePushJob.TOPIC_PROP;
+
+import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.CompressorFactory;
+import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.FilterChain;
 import com.linkedin.venice.hadoop.MRJobCounterHelper;
@@ -13,16 +23,21 @@ import com.linkedin.venice.hadoop.input.kafka.ttl.VeniceChunkedPayloadTTLFilter;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Iterator;
+import java.util.Properties;
 import javax.annotation.Nonnull;
 import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.Reporter;
+import org.apache.kafka.clients.CommonClientConfigs;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -30,6 +45,7 @@ import org.apache.hadoop.mapred.Reporter;
  * entry according to the associated offset, and produce it to Kafka.
  */
 public class VeniceKafkaInputReducer extends VeniceReducer {
+  private static final Logger LOGGER = LogManager.getLogger(VeniceKafkaInputReducer.class);
   private static final OptimizedBinaryDecoderFactory OPTIMIZED_BINARY_DECODER_FACTORY =
       OptimizedBinaryDecoderFactory.defaultFactory();
   private static final RecordDeserializer<KafkaInputMapperKey> KAFKA_INPUT_MAPPER_KEY_AVRO_SPECIFIC_DESERIALIZER =
@@ -43,10 +59,78 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
 
   protected FilterChain<ChunkAssembler.ValueBytesAndSchemaId> veniceFilterChain;
 
+  private CompressorFactory compressorFactory;
+  private VeniceCompressor sourceVersionCompressor;
+  private VeniceCompressor destVersionCompressor;
+  private boolean passThrough = false;
+
   @Override
   protected void configureTask(VeniceProperties props, JobConf job) {
     super.configureTask(props, job);
     this.veniceFilterChain = initFilterChain(props);
+
+    compressorFactory = new CompressorFactory();
+    sourceVersionCompressor = getCompressor(
+        CompressionStrategy.valueOf(job.get(KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY)),
+        job.get(KAFKA_INPUT_BROKER_URL),
+        job.get(KAFKA_INPUT_TOPIC),
+        props);
+    destVersionCompressor = getCompressor(
+        CompressionStrategy.valueOf(job.get(COMPRESSION_STRATEGY)),
+        job.get(KAFKA_BOOTSTRAP_SERVERS),
+        job.get(TOPIC_PROP),
+        props);
+    passThrough = sourceVersionCompressor.equals(destVersionCompressor);
+    if (passThrough) {
+      LOGGER.info(
+          "{} will do pass-through since both source version and"
+              + " dest version are using the same compressor with compression strategy: {}",
+          this.getClass().getSimpleName(),
+          sourceVersionCompressor.getClass().getSimpleName());
+    }
+  }
+
+  // For testing only
+  protected void setSourceVersionCompressor(VeniceCompressor compressor) {
+    this.sourceVersionCompressor = compressor;
+    this.passThrough = this.sourceVersionCompressor.equals(destVersionCompressor);
+  }
+
+  // For testing only
+  protected void setDestVersionCompressor(VeniceCompressor compressor) {
+    this.destVersionCompressor = compressor;
+    this.passThrough = this.destVersionCompressor.equals(sourceVersionCompressor);
+  }
+
+  private VeniceCompressor getCompressor(
+      CompressionStrategy strategy,
+      String kafkaUrl,
+      String topic,
+      VeniceProperties properties) {
+    if (strategy.equals(CompressionStrategy.ZSTD_WITH_DICT)) {
+      Properties props = properties.toProperties();
+      props.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafkaUrl);
+      ByteBuffer dict = DictionaryUtils.readDictionaryFromKafka(topic, new VeniceProperties(props));
+      return compressorFactory
+          .createVersionSpecificCompressorIfNotExist(strategy, topic, ByteUtils.extractByteArray(dict));
+    } else {
+      return compressorFactory.getCompressor(strategy);
+    }
+  }
+
+  protected byte[] compress(byte[] valueBytesFromSourceVersion) {
+    if (valueBytesFromSourceVersion == null || passThrough) {
+      return valueBytesFromSourceVersion;
+    }
+    try {
+      // Decompress and then re-compress
+      ByteBuffer decompressedValue =
+          sourceVersionCompressor.decompress(valueBytesFromSourceVersion, 0, valueBytesFromSourceVersion.length);
+      ByteBuffer reCompressedValue = destVersionCompressor.compress(decompressedValue, 0);
+      return ByteUtils.extractByteArray(reCompressedValue);
+    } catch (IOException e) {
+      throw new VeniceException("Failed to re-compress object", e);
+    }
   }
 
   /**
@@ -87,6 +171,7 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
   public void close() throws IOException {
     super.close();
     Utils.closeQuietlyWithErrorLogged(veniceFilterChain);
+    Utils.closeQuietlyWithErrorLogged(compressorFactory);
   }
 
   private interface MessageExtractor {
@@ -107,7 +192,7 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
       if (value.getReplicationMetadataPayload().remaining() == 0) {
         return new VeniceWriterMessage(
             keyBytes,
-            value.getBytes(),
+            compress(value.getBytes()),
             value.getSchemaID(),
             getCallback(),
             isEnableWriteCompute(),
@@ -115,7 +200,7 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
       }
       return new VeniceWriterMessage(
           keyBytes,
-          value.getBytes(),
+          compress(value.getBytes()),
           value.getSchemaID(),
           value.getReplicationMetadataVersionId(),
           value.getReplicationMetadataPayload(),
@@ -156,7 +241,7 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
     if (latestMapperValue.replicationMetadataPayload.remaining() != 0) {
       return new VeniceWriterMessage(
           keyBytes,
-          valueBytes,
+          compress(valueBytes),
           latestMapperValue.schemaId,
           latestMapperValue.replicationMetadataVersionId,
           latestMapperValue.replicationMetadataPayload,
@@ -166,7 +251,7 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
     }
     return new VeniceWriterMessage(
         keyBytes,
-        valueBytes,
+        compress(valueBytes),
         latestMapperValue.schemaId,
         getCallback(),
         isEnableWriteCompute(),

@@ -146,14 +146,6 @@ public class CreateVersion extends AbstractRoute {
           }
         }
 
-        if (!store.isLeaderFollowerModelEnabled() && store.getPartitionerConfig() != null
-            && store.getPartitionerConfig().getAmplificationFactor() != 1) {
-          throw new VeniceHttpException(
-              HttpStatus.SC_BAD_REQUEST,
-              "amplificationFactor can only be specified " + "when leaderFollower enabled",
-              ErrorType.BAD_REQUEST);
-        }
-
         String pushTypeString = request.queryParams(PUSH_TYPE);
         PushType pushType;
         try {

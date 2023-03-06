@@ -361,7 +361,6 @@ public class PartialUpdateTest {
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
               .setCompressionStrategy(CompressionStrategy.NO_OP)
               .setWriteComputationEnabled(true)
-              .setLeaderFollowerModel(true)
               .setHybridRewindSeconds(10L)
               .setHybridOffsetLagThreshold(2L);
       ControllerResponse updateStoreResponse =
@@ -476,7 +475,6 @@ public class PartialUpdateTest {
             storeName,
             new UpdateStoreQueryParams().setHybridRewindSeconds(streamingRewindSeconds)
                 .setHybridOffsetLagThreshold(streamingMessageLag)
-                .setLeaderFollowerModel(true)
                 .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
                 .setChunkingEnabled(true)
                 .setCompressionStrategy(compressionStrategy)

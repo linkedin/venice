@@ -39,10 +39,8 @@ import org.apache.logging.log4j.Logger;
  * 2. A behavior registry that defines what participant should do during transitions before
  * moving to next state.
  *
- * Currently, we support 2 kinds of participant model.
- * 1. PartitionOnlineOfflineModel. Check out {@literal VeniceStateModel} for model definition
- * 2. LeaderStandbyModel. Check out {@link LeaderStandbySMD} for model definition and
- * {@link LeaderFollowerPartitionStateModel} for behavior registry.
+ * Currently, we support LeaderStandbyModel participant model. Check out {@link LeaderStandbySMD} for model
+ * definition and {@link LeaderFollowerPartitionStateModel} for behavior registry.
  */
 public abstract class AbstractPartitionStateModel extends StateModel {
   protected final Logger logger = LogManager.getLogger(getClass());

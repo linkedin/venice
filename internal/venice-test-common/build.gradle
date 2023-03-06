@@ -204,14 +204,20 @@ task generateGHCI() {
   def jobs = []
 
   def common = "--continue --no-daemon "
-  def staticAnalysisFlowGradleArgs = common + "-Pspotallbugs clean check -x spotlessCheck -x test -x integrationTest -x jacocoTestCoverageVerification"
-
+  def staticAnalysisFlowGradleArgs = common + "-DmaxParallelForks=2 --parallel -Pspotallbugs clean check -x spotlessCheck -x test -x integrationTest -x jacocoTestCoverageVerification"
   def staticAnalysis = "StaticAnalysis"
   appendToGHCI(paramFileContent, targetFilePath, staticAnalysis, 20, staticAnalysisFlowGradleArgs)
   jobs << staticAnalysis
+
   def unitTestsAndCodeCoverage = "UnitTestsAndCodeCoverage"
-  appendToGHCI(paramFileContent, targetFilePath, unitTestsAndCodeCoverage, 60, "jacocoTestCoverageVerification diffCoverage --continue")
+  def unitTestsFlowGradleArgs = "-DmaxParallelForks=2  --parallel -x :internal:venice-avro-compatibility-test:test jacocoTestCoverageVerification diffCoverage --continue"
+  appendToGHCI(paramFileContent, targetFilePath, unitTestsAndCodeCoverage, 60, unitTestsFlowGradleArgs)
   jobs << unitTestsAndCodeCoverage
+
+  def avroCompatibilityTests = "AvroCompatibilityTests"
+  def avroCompatibilityFlowGradleArgs = "-DmaxParallelForks=2 --parallel :internal:venice-avro-compatibility-test:test --continue"
+  appendToGHCI(paramFileContent, targetFilePath, avroCompatibilityTests, 60, avroCompatibilityFlowGradleArgs)
+  jobs << avroCompatibilityTests
 
   def integTestGradleArgs = common + "-DforkEvery=1 -DmaxParallelForks=1 integrationTest"
   integrationTestBuckets.each { name, patterns ->

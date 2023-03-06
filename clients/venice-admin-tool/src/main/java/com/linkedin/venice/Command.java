@@ -52,7 +52,6 @@ import static com.linkedin.venice.Arg.KAFKA_TOPIC_RETENTION_IN_MS;
 import static com.linkedin.venice.Arg.KEY;
 import static com.linkedin.venice.Arg.KEY_SCHEMA;
 import static com.linkedin.venice.Arg.LARGEST_USED_VERSION_NUMBER;
-import static com.linkedin.venice.Arg.LEADER_FOLLOWER_MODEL_ENABLED;
 import static com.linkedin.venice.Arg.MESSAGE_COUNT;
 import static com.linkedin.venice.Arg.MIGRATION_PUSH_STRATEGY;
 import static com.linkedin.venice.Arg.NATIVE_REPLICATION_ENABLED;
@@ -207,10 +206,9 @@ public enum Command {
           HYBRID_REWIND_SECONDS, HYBRID_OFFSET_LAG, HYBRID_TIME_LAG, HYBRID_DATA_REPLICATION_POLICY,
           HYBRID_BUFFER_REPLAY_POLICY, ACCESS_CONTROL, COMPRESSION_STRATEGY, CLIENT_DECOMPRESSION_ENABLED,
           CHUNKING_ENABLED, RMD_CHUNKING_ENABLED, BATCH_GET_LIMIT, NUM_VERSIONS_TO_PRESERVE, WRITE_COMPUTATION_ENABLED,
-          READ_COMPUTATION_ENABLED, LEADER_FOLLOWER_MODEL_ENABLED, BACKUP_STRATEGY,
-          AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED, INCREMENTAL_PUSH_ENABLED, BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOUR,
-          HYBRID_STORE_DISK_QUOTA_ENABLED, REGULAR_VERSION_ETL_ENABLED, FUTURE_VERSION_ETL_ENABLED,
-          ETLED_PROXY_USER_ACCOUNT, NATIVE_REPLICATION_ENABLED, PUSH_STREAM_SOURCE_ADDRESS,
+          READ_COMPUTATION_ENABLED, BACKUP_STRATEGY, AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED, INCREMENTAL_PUSH_ENABLED,
+          BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOUR, HYBRID_STORE_DISK_QUOTA_ENABLED, REGULAR_VERSION_ETL_ENABLED,
+          FUTURE_VERSION_ETL_ENABLED, ETLED_PROXY_USER_ACCOUNT, NATIVE_REPLICATION_ENABLED, PUSH_STREAM_SOURCE_ADDRESS,
           BACKUP_VERSION_RETENTION_DAY, REPLICATION_FACTOR, NATIVE_REPLICATION_SOURCE_FABRIC, REPLICATE_ALL_CONFIGS,
           ACTIVE_ACTIVE_REPLICATION_ENABLED, REGIONS_FILTER, DISABLE_META_STORE, DISABLE_DAVINCI_PUSH_STATUS_STORE,
           STORAGE_PERSONA, STORE_VIEW_CONFIGS }
@@ -321,14 +319,6 @@ public enum Command {
   SEND_END_OF_PUSH(
       "send-end-of-push", "Send this message after Samza reprocessing job to close offline batch push",
       new Arg[] { URL, CLUSTER, STORE, VERSION }
-  ), LIST_LF_STORES("list-lf-stores", "list all stores that use leader/follower model", new Arg[] { URL, CLUSTER }),
-  ENABLE_LF_MODEL(
-      "enable-lf-model", "enable leader/follower model for certain stores based on the param",
-      new Arg[] { URL, CLUSTER, STORE_TYPE }
-  ),
-  DISABLE_LF_MODEL(
-      "disable-lf-model", "disable leader/follower model for certain stores based on the param",
-      new Arg[] { URL, CLUSTER, STORE_TYPE }
   ),
   NEW_STORE_ACL(
       "new-store-acl", "Create a new store with ACL permissions set",
