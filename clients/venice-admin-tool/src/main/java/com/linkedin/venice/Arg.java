@@ -118,10 +118,6 @@ public enum Arg {
   BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOUR(
       "bootstrap-to-online-timeout", "btot", true,
       "Set the maximum number of hours allowed for the store to transition from bootstrap to online"
-  ),
-  LEADER_FOLLOWER_MODEL_ENABLED(
-      "leader-follower-model-enabled", "lf", true,
-      "whether or not to use L/F Helix transition model for upcoming version"
   ), SKIP_DIV("skip-div", "div", true, "Whether or not to only skip DIV for skip admin"),
   BACKUP_STRATEGY(
       "backup-strategy", "bus", true,

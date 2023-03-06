@@ -1033,8 +1033,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         TestUtils.assertCommand(
             client.updateStore(
                 storeName,
-                new UpdateStoreQueryParams().setLeaderFollowerModel(true)
-                    .setPartitionCount(numberOfPartitions)
+                new UpdateStoreQueryParams().setPartitionCount(numberOfPartitions)
                     .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)));
       }
 

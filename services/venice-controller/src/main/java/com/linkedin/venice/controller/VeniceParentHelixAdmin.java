@@ -23,7 +23,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.FUTURE_VE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_DISK_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.LEADER_FOLLOWER_MODEL_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MIGRATION_DUPLICATE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_SOURCE_FABRIC;
@@ -2162,26 +2161,6 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * Expectation for this API: Also send out an admin message to admin channel.
-   */
-  @Override
-  public void setLeaderFollowerModelEnabled(String clusterName, String storeName, boolean leaderFollowerModelEnabled) {
-    // place holder
-    // will add it in the following RB
-  }
-
-  /**
-   * Only change the configs in parent; do not send it to admin channel.
-   */
-  @Override
-  public void enableLeaderFollowerModelLocally(
-      String clusterName,
-      String storeName,
-      boolean leaderFollowerModelEnabled) {
-    getVeniceHelixAdmin().setLeaderFollowerModelEnabled(clusterName, storeName, leaderFollowerModelEnabled);
-  }
-
-  /**
    * Update a target store properties by first applying the provided deltas and then sending
    * {@link AdminMessageType#UPDATE_STORE UPDATE_STORE} admin message.
    * @param clusterName name of the Venice cluster.
@@ -2221,7 +2200,6 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Integer> replicationMetadataVersionID = params.getReplicationMetadataVersionID();
       Optional<Boolean> readComputationEnabled = params.getReadComputationEnabled();
       Optional<Integer> bootstrapToOnlineTimeoutInHours = params.getBootstrapToOnlineTimeoutInHours();
-      Optional<Boolean> leaderFollowerModelEnabled = params.getLeaderFollowerModelEnabled();
       Optional<BackupStrategy> backupStrategy = params.getBackupStrategy();
       Optional<Boolean> autoSchemaRegisterPushJobEnabled = params.getAutoSchemaRegisterPushJobEnabled();
       Optional<Boolean> hybridStoreDiskQuotaEnabled = params.getHybridStoreDiskQuotaEnabled();
@@ -2279,11 +2257,6 @@ public class VeniceParentHelixAdmin implements Admin {
        * TODO: We should build an UpdateStoreHelper that takes current store config and update command as input, and
        *       return whether the update command is valid.
        */
-      validateNativeReplicationEnableConfigs(
-          nativeReplicationEnabled,
-          leaderFollowerModelEnabled,
-          currStore,
-          clusterName);
       validateActiveActiveReplicationEnableConfigs(activeActiveReplicationEnabled, nativeReplicationEnabled, currStore);
 
       setStore.nativeReplicationEnabled =
@@ -2456,9 +2429,7 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.bootstrapToOnlineTimeoutInHours = bootstrapToOnlineTimeoutInHours
           .map(addToUpdatedConfigList(updatedConfigsList, BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS))
           .orElseGet(currStore::getBootstrapToOnlineTimeoutInHours);
-      setStore.leaderFollowerModelEnabled =
-          leaderFollowerModelEnabled.map(addToUpdatedConfigList(updatedConfigsList, LEADER_FOLLOWER_MODEL_ENABLED))
-              .orElseGet(currStore::isLeaderFollowerModelEnabled);
+      setStore.leaderFollowerModelEnabled = true; // do not mess up during upgrades
       setStore.backupStrategy = (backupStrategy.map(addToUpdatedConfigList(updatedConfigsList, BACKUP_STRATEGY))
           .orElse(currStore.getBackupStrategy())).ordinal();
 
@@ -2659,30 +2630,6 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public void updateClusterConfig(String clusterName, UpdateClusterConfigQueryParams params) {
     getVeniceHelixAdmin().updateClusterConfig(clusterName, params);
-  }
-
-  private void validateNativeReplicationEnableConfigs(
-      Optional<Boolean> nativeReplicationEnabledOptional,
-      Optional<Boolean> leaderFollowerModelEnabled,
-      Store store,
-      String clusterName) {
-    final boolean nativeReplicationEnabled = nativeReplicationEnabledOptional.orElse(false);
-    if (!nativeReplicationEnabled) {
-      return;
-    }
-
-    final boolean isLeaderFollowerModelEnabled =
-        (!leaderFollowerModelEnabled.isPresent() && store.isLeaderFollowerModelEnabled())
-            || (leaderFollowerModelEnabled.isPresent() && leaderFollowerModelEnabled.get());
-    final boolean isLfModelDependencyCheckDisabled = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName)
-        .getConfig()
-        .isLfModelDependencyCheckDisabled();
-    if (!isLeaderFollowerModelEnabled && !isLfModelDependencyCheckDisabled) {
-      throw new VeniceHttpException(
-          HttpStatus.SC_BAD_REQUEST,
-          "Native Replication cannot be enabled for store " + store.getName() + " since it's not on L/F state model",
-          ErrorType.INVALID_CONFIG);
-    }
   }
 
   private void validateActiveActiveReplicationEnableConfigs(

@@ -16,7 +16,6 @@ import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SEND_CONCURRENT_DELET
 import static com.linkedin.venice.ConfigKeys.UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 
-import com.linkedin.venice.VeniceStateModel;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
@@ -43,6 +42,7 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import org.apache.helix.model.LeaderStandbySMD;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -145,7 +145,7 @@ class AbstractTestVeniceHelixAdmin {
   }
 
   void startParticipant(boolean isDelay, String nodeId) throws Exception {
-    startParticipant(isDelay, nodeId, VeniceStateModel.PARTITION_LEADER_FOLLOWER_STATE_MODEL);
+    startParticipant(isDelay, nodeId, LeaderStandbySMD.name);
   }
 
   void startParticipant(boolean isDelay, String nodeId, String stateModel) throws Exception {

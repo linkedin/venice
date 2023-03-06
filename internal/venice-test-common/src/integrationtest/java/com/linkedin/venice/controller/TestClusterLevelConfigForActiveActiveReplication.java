@@ -3,7 +3,6 @@ package com.linkedin.venice.controller;
 import static com.linkedin.venice.ConfigKeys.ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY_STORE;
 import static com.linkedin.venice.ConfigKeys.ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID_STORE;
 import static com.linkedin.venice.ConfigKeys.ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORE;
-import static com.linkedin.venice.ConfigKeys.ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_ALL_STORES;
 import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
 import static com.linkedin.venice.controller.VeniceHelixAdmin.VERSION_ID_UNSET;
@@ -79,9 +78,6 @@ public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTe
 
     // Version 1 should exist.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeNameHybrid).getVersions().size(), 1);
-    // L/F should be enabled by cluster-level config
-    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeNameHybrid).isLeaderFollowerModelEnabled(), true);
-
     // Check store level active active is enabled or not
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeNameHybrid).isActiveActiveReplicationEnabled(), false);
     veniceAdmin.updateStore(
@@ -126,8 +122,6 @@ public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTe
 
     // Version 1 should exist.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeNameIncremental).getVersions().size(), 1);
-    // L/F should be enabled by cluster-level config
-    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeNameIncremental).isLeaderFollowerModelEnabled(), true);
 
     // Check store level active active is enabled or not
     veniceAdmin.setIncrementalPushEnabled(clusterName, storeNameIncremental, false);
@@ -174,8 +168,6 @@ public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTe
 
     // Version 1 should exist.
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeNameBatchOnly).getVersions().size(), 1);
-    // L/F should be enabled by cluster-level config
-    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeNameBatchOnly).isLeaderFollowerModelEnabled(), true);
 
     // Store level active active should be enabled since this store is a batch-only store by default
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeNameBatchOnly).isActiveActiveReplicationEnabled(), true);
@@ -248,8 +240,6 @@ public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTe
       boolean enableActiveActiveForIncrementalPush,
       boolean enableActiveActiveForBatchOnly) throws IOException {
     Properties props = super.getControllerProperties(clusterName);
-    // enable L/F mode for all stores through cluster-level config
-    props.setProperty(ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_ALL_STORES, "true");
     props.setProperty(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY, "true");
     // enable active active replication for hybrid stores stores through cluster-level config
     props.setProperty(

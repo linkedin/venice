@@ -268,7 +268,7 @@ public class TestHybrid {
    *
    *                       If this test succeeds with {@param multiDivStream} set to true, but fails with it set to false,
    *                       then there is a regression in the DIV partial segment tolerance after EOP.
-   * @param chunkingEnabled Whether chunking should be enabled (only supported in {@param isLeaderFollowerModelEnabled} is true).
+   * @param chunkingEnabled Whether chunking should be enabled.
    */
   @Test(dataProvider = "testPermutations", timeOut = 180 * Time.MS_PER_SECOND, groups = { "flaky" })
   public void testHybridEndToEnd(boolean multiDivStream, boolean chunkingEnabled, BufferReplayPolicy bufferReplayPolicy)
@@ -723,13 +723,10 @@ public class TestHybrid {
       admin.createStore(clusterName, storeName1, "tester", "\"string\"", "\"string\"");
       admin.createStore(clusterName, storeName2, "tester", "\"string\"", "\"string\"");
       UpdateStoreQueryParams storeSettings = new UpdateStoreQueryParams().setHybridRewindSeconds(streamingRewindSeconds)
-          .setHybridOffsetLagThreshold(streamingMessageLag)
-          .setLeaderFollowerModel(true);
+          .setHybridOffsetLagThreshold(streamingMessageLag);
       admin.updateStore(clusterName, storeName1, storeSettings);
       admin.updateStore(clusterName, storeName2, storeSettings);
       veniceClusterWrapper.getVeniceRouters().get(0).refresh();
-      Assert.assertTrue(admin.getStore(clusterName, storeName1).isLeaderFollowerModelEnabled());
-      Assert.assertTrue(admin.getStore(clusterName, storeName2).isLeaderFollowerModelEnabled());
       Assert.assertFalse(admin.getStore(clusterName, storeName1).containsVersion(1));
       Assert.assertEquals(admin.getStore(clusterName, storeName1).getCurrentVersion(), 0);
       Assert.assertFalse(admin.getStore(clusterName, storeName2).containsVersion(1));
@@ -813,8 +810,7 @@ public class TestHybrid {
           storeName,
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
               .setHybridRewindSeconds(streamingRewindSeconds)
-              .setHybridOffsetLagThreshold(streamingMessageLag)
-              .setLeaderFollowerModel(true));
+              .setHybridOffsetLagThreshold(streamingMessageLag));
 
       // Create a new version, and do an empty push for that version
       VersionCreationResponse vcr = TestUtils
@@ -929,8 +925,7 @@ public class TestHybrid {
           storeName,
           new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
               .setHybridRewindSeconds(25L)
-              .setHybridOffsetLagThreshold(1L)
-              .setLeaderFollowerModel(true));
+              .setHybridOffsetLagThreshold(1L));
 
       // Create a new version, and do an empty push for that version
       controllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L);
@@ -1018,8 +1013,7 @@ public class TestHybrid {
         // set hybridRewindSecond to a big number so following versions won't ignore old records in RT
         .setHybridRewindSeconds(2000000)
         .setHybridOffsetLagThreshold(10)
-        .setPartitionCount(partitionCount)
-        .setLeaderFollowerModel(true);
+        .setPartitionCount(partitionCount);
     String storeName = Utils.getUniqueString("store");
     cluster.useControllerClient(client -> {
       client.createNewStore(storeName, "owner", DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA);
@@ -1067,8 +1061,7 @@ public class TestHybrid {
         // set hybridRewindSecond to a big number so following versions won't ignore old records in RT
         .setHybridRewindSeconds(2000000)
         .setHybridOffsetLagThreshold(0)
-        .setPartitionCount(2)
-        .setLeaderFollowerModel(true);
+        .setPartitionCount(2);
     String storeName = Utils.getUniqueString("store");
     sharedVenice.useControllerClient(client -> {
       client.createNewStore(storeName, "owner", DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA);
@@ -1407,7 +1400,6 @@ public class TestHybrid {
           storeName,
           new UpdateStoreQueryParams().setHybridRewindSeconds(streamingRewindSeconds)
               .setHybridOffsetLagThreshold(streamingMessageLag)
-              .setLeaderFollowerModel(true)
               .setPartitionCount(1));
       Assert.assertFalse(response.isError());
       // Do an VPJ push normally to make sure everything is working fine.
@@ -1533,8 +1525,7 @@ public class TestHybrid {
     VeniceClusterWrapper cluster = enableIngestionIsolation ? ingestionIsolationEnabledSharedVenice : sharedVenice;
     UpdateStoreQueryParams params = new UpdateStoreQueryParams().setPartitionCount(partitionCount)
         .setReplicationFactor(replicationFactor)
-        .setAmplificationFactor(amplificationFactor)
-        .setLeaderFollowerModel(leaderFollowerEnabled);
+        .setAmplificationFactor(amplificationFactor);
     String storeName = Utils.getUniqueString("store");
 
     try (ControllerClient controllerClient =
@@ -1551,9 +1542,6 @@ public class TestHybrid {
             storeResponse.getStore().getPartitionerConfig().getAmplificationFactor(),
             amplificationFactor,
             "Amplification factor has not been set to the expected value of '" + amplificationFactor + "'.");
-        Assert.assertTrue(
-            storeResponse.getStore().isLeaderFollowerModelEnabled(),
-            "Leader/Follower has not been set to the expected value of '" + true + "'.");
       });
 
       cluster.createVersion(
@@ -1638,8 +1626,7 @@ public class TestHybrid {
           // set hybridRewindSecond to a big number so following versions won't ignore old records in RT
           .setHybridRewindSeconds(2000000)
           .setHybridOffsetLagThreshold(10)
-          .setPartitionCount(partitionCount)
-          .setLeaderFollowerModel(true);
+          .setPartitionCount(partitionCount);
       String storeName = Utils.getUniqueString("store");
       cluster.useControllerClient(client -> {
         client.createNewStore(storeName, "owner", DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA);

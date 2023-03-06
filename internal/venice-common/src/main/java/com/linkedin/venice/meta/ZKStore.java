@@ -133,6 +133,8 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     this.storeProperties.etlConfig = new ETLStoreConfigImpl().dataModel();
     this.storeProperties.latestVersionPromoteToCurrentTimestamp = System.currentTimeMillis();
 
+    this.storeProperties.leaderFollowerModelEnabled = true;
+
     setupVersionSupplier(new StoreVersionSupplier() {
       @Override
       public List<StoreVersion> getForUpdate() {
@@ -153,6 +155,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
       throw new VeniceException("Invalid store name: " + storeProperties.name.toString());
     }
     this.storeProperties = storeProperties;
+    this.storeProperties.leaderFollowerModelEnabled = true;
     setupVersionSupplier(new StoreVersionSupplier() {
       @Override
       public List<StoreVersion> getForUpdate() {
@@ -200,7 +203,6 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setWriteComputationEnabled(store.isWriteComputationEnabled());
     setReadComputationEnabled(store.isReadComputationEnabled());
     setBootstrapToOnlineTimeoutInHours(store.getBootstrapToOnlineTimeoutInHours());
-    setLeaderFollowerModelEnabled(store.isLeaderFollowerModelEnabled());
     setNativeReplicationEnabled(store.isNativeReplicationEnabled());
     setBackupStrategy(store.getBackupStrategy());
     setSchemaAutoRegisterFromPushJobEnabled(store.isSchemaAutoRegisterFromPushJobEnabled());
@@ -599,16 +601,6 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @Override
   public void setBootstrapToOnlineTimeoutInHours(int bootstrapToOnlineTimeoutInHours) {
     this.storeProperties.bootstrapToOnlineTimeoutInHours = bootstrapToOnlineTimeoutInHours;
-  }
-
-  @Override
-  public boolean isLeaderFollowerModelEnabled() {
-    return this.storeProperties.leaderFollowerModelEnabled;
-  }
-
-  @Override
-  public void setLeaderFollowerModelEnabled(boolean leaderFollowerModelEnabled) {
-    this.storeProperties.leaderFollowerModelEnabled = leaderFollowerModelEnabled;
   }
 
   @Override

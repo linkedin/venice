@@ -515,7 +515,6 @@ public abstract class TestBatch {
           },
           new UpdateStoreQueryParams().setAmplificationFactor(2)
               .setIncrementalPushEnabled(true)
-              .setLeaderFollowerModel(true)
               .setChunkingEnabled(true)
               .setHybridOffsetLagThreshold(10)
               .setHybridRewindSeconds(0));
@@ -554,20 +553,6 @@ public abstract class TestBatch {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void testLeaderFollowerStateModel() throws Exception {
-    testBatchStore(
-        inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithUserSchema(inputDir, false)),
-        properties -> {},
-        (avroClient, vsonClient, metricsRepository) -> {
-          // test single get
-          for (int i = 1; i <= 100; i++) {
-            Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
-          }
-        },
-        new UpdateStoreQueryParams().setLeaderFollowerModel(true));
-  }
-
-  @Test(timeOut = TEST_TIMEOUT)
   public void testMetaStoreSchemaValidation() throws Exception {
     String storeName = testBatchStore(
         inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithUserSchema(inputDir, false)),
@@ -579,7 +564,7 @@ public abstract class TestBatch {
           }
         },
         null,
-        new UpdateStoreQueryParams().setLeaderFollowerModel(true),
+        new UpdateStoreQueryParams(),
         false,
         true);
 
@@ -631,8 +616,7 @@ public abstract class TestBatch {
         inputDir -> new KeyAndValueSchemas(writeSimpleAvroFileWithUserSchema(inputDir, false)),
         properties -> {},
         validator,
-        new UpdateStoreQueryParams().setLeaderFollowerModel(true)
-            .setActiveActiveReplicationEnabled(true)
+        new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
             .setHybridRewindSeconds(5)
             .setHybridOffsetLagThreshold(2)
             .setNativeReplicationEnabled(true));

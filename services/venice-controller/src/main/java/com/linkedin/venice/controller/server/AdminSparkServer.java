@@ -25,7 +25,6 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_OLD_VERSI
 import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_STORAGE_PERSONA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.EMPTY_PUSH;
-import static com.linkedin.venice.controllerapi.ControllerRoute.ENABLE_LF_MODEL;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ENABLE_MAX_CAPACITY_PROTECTION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ENABLE_QUOTA_REBALANCED;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ENABLE_STORE;
@@ -61,7 +60,6 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.LAST_SUCCEED_EXE
 import static com.linkedin.venice.controllerapi.ControllerRoute.LEADER_CONTROLLER;
 import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_BOOTSTRAPPING_VERSIONS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_CHILD_CLUSTERS;
-import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_LF_STORES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_NODES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_REPLICAS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_STORES;
@@ -390,9 +388,6 @@ public class AdminSparkServer extends AbstractVeniceService {
 
     httpService.post(UPLOAD_PUSH_JOB_STATUS.getPath(), jobRoutes.uploadPushJobStatus(admin));
     httpService.post(SEND_PUSH_JOB_DETAILS.getPath(), jobRoutes.sendPushJobDetails(admin));
-
-    httpService.get(LIST_LF_STORES.getPath(), storesRoutes.getLFModelStores(admin));
-    httpService.post(ENABLE_LF_MODEL.getPath(), storesRoutes.enableLFModelForStores(admin));
     httpService.post(
         CONFIGURE_NATIVE_REPLICATION_FOR_CLUSTER.getPath(),
         storesRoutes.enableNativeReplicationForCluster(admin));

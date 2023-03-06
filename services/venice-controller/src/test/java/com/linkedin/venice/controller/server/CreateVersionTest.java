@@ -16,7 +16,6 @@ import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
@@ -30,8 +29,6 @@ import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.OfflinePushStrategy;
-import com.linkedin.venice.meta.PartitionerConfig;
-import com.linkedin.venice.meta.PartitionerConfigImpl;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
@@ -138,22 +135,6 @@ public class CreateVersionTest {
       createVersionRoute.handle(request, response);
       verify(response).status(org.apache.http.HttpStatus.SC_FORBIDDEN);
     }
-  }
-
-  @Test
-  public void testCreateVersionWithAmplificationFactorAndLeaderFollowerNotEnabled() throws Exception {
-    Store store = mock(Store.class);
-    PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
-    partitionerConfig.setAmplificationFactor(2);
-
-    when(store.isLeaderFollowerModelEnabled()).thenReturn(false);
-    when(store.getPartitionerConfig()).thenReturn(partitionerConfig);
-    when(admin.getStore(any(), any())).thenReturn(store);
-
-    CreateVersion createVersion = new CreateVersion(false, Optional.empty(), false, false);
-    Route createVersionRoute = createVersion.requestTopicForPushing(admin);
-    createVersionRoute.handle(request, response);
-    verify(response).status(org.apache.http.HttpStatus.SC_BAD_REQUEST);
   }
 
   @Test(description = "requestTopicForPushing should return an RT topic when store is hybrid and inc-push is enabled")

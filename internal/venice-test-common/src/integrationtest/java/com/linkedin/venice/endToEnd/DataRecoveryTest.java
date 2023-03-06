@@ -4,7 +4,6 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLA
 import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ALLOW_CLUSTER_WIPE;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
-import static com.linkedin.venice.ConfigKeys.LF_MODEL_DEPENDENCY_CHECK_DISABLED;
 import static com.linkedin.venice.ConfigKeys.MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC;
 import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
@@ -93,8 +92,6 @@ public class DataRecoveryTest {
     controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 1000);
     controllerProps.put(NATIVE_REPLICATION_SOURCE_FABRIC, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
     controllerProps.put(PARENT_KAFKA_CLUSTER_FABRIC_LIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
-
-    controllerProps.put(LF_MODEL_DEPENDENCY_CHECK_DISABLED, "true");
     controllerProps.put(ALLOW_CLUSTER_WIPE, "true");
     controllerProps.put(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, "1000");
     controllerProps.put(MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE, "0");
@@ -136,8 +133,7 @@ public class DataRecoveryTest {
           parentControllerClient
               .updateStore(
                   storeName,
-                  new UpdateStoreQueryParams().setLeaderFollowerModel(true)
-                      .setHybridRewindSeconds(10)
+                  new UpdateStoreQueryParams().setHybridRewindSeconds(10)
                       .setHybridOffsetLagThreshold(2)
                       .setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE)
                       .setNativeReplicationEnabled(true)
@@ -190,9 +186,7 @@ public class DataRecoveryTest {
           parentControllerClient
               .updateStore(
                   storeName,
-                  new UpdateStoreQueryParams().setLeaderFollowerModel(true)
-                      .setNativeReplicationEnabled(true)
-                      .setPartitionCount(1))
+                  new UpdateStoreQueryParams().setNativeReplicationEnabled(true).setPartitionCount(1))
               .isError());
       TestUtils.verifyDCConfigNativeAndActiveRepl(dc0Client, storeName, true, false);
       TestUtils.verifyDCConfigNativeAndActiveRepl(dc1Client, storeName, true, false);
@@ -264,8 +258,7 @@ public class DataRecoveryTest {
           parentControllerClient
               .updateStore(
                   storeName,
-                  new UpdateStoreQueryParams().setLeaderFollowerModel(true)
-                      .setHybridRewindSeconds(10)
+                  new UpdateStoreQueryParams().setHybridRewindSeconds(10)
                       .setHybridOffsetLagThreshold(2)
                       .setHybridDataReplicationPolicy(DataReplicationPolicy.ACTIVE_ACTIVE)
                       .setNativeReplicationEnabled(true)

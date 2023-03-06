@@ -405,16 +405,6 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
-  public boolean isLeaderFollowerModelEnabled() {
-    return zkSharedStore.isLeaderFollowerModelEnabled();
-  }
-
-  @Override
-  public void setLeaderFollowerModelEnabled(boolean leaderFollowerModelEnabled) {
-    throwUnsupportedOperationException("setLeaderFollowerModelEnabled");
-  }
-
-  @Override
   public String getPushStreamSourceAddress() {
     return zkSharedStore.getPushStreamSourceAddress();
   }

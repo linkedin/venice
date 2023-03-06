@@ -402,15 +402,6 @@ public class AdminTool {
         case SEND_END_OF_PUSH:
           sendEndOfPush(cmd);
           break;
-        case LIST_LF_STORES:
-          listLFStores(cmd);
-          break;
-        case ENABLE_LF_MODEL:
-          enableLFModel(cmd);
-          break;
-        case DISABLE_LF_MODEL:
-          disableLFModel(cmd);
-          break;
         case NEW_STORE_ACL:
           createNewStoreWithAcl(cmd);
           break;
@@ -928,7 +919,6 @@ public class AdminTool {
         Arg.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOUR,
         p -> params.setBootstrapToOnlineTimeoutInHours(p),
         argSet);
-    booleanParam(cmd, Arg.LEADER_FOLLOWER_MODEL_ENABLED, p -> params.setLeaderFollowerModel(p), argSet);
     genericParam(cmd, Arg.BACKUP_STRATEGY, s -> BackupStrategy.valueOf(s), p -> params.setBackupStrategy(p), argSet);
     booleanParam(cmd, Arg.AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED, p -> params.setAutoSchemaPushJobEnabled(p), argSet);
     booleanParam(cmd, Arg.HYBRID_STORE_DISK_QUOTA_ENABLED, p -> params.setHybridStoreDiskQuotaEnabled(p), argSet);
@@ -1839,25 +1829,6 @@ public class AdminTool {
     }
 
     ControllerResponse response = controllerClient.writeEndOfPush(storeName, intVersion);
-    printObject(response);
-  }
-
-  private static void listLFStores(CommandLine cmd) {
-    MultiStoreResponse response = controllerClient.listLFStores();
-    printObject(response);
-  }
-
-  private static void enableLFModel(CommandLine cmd) {
-    String storeType = getRequiredArgument(cmd, Arg.STORE_TYPE);
-
-    MultiStoreResponse response = controllerClient.enableLFModel(true, storeType);
-    printObject(response);
-  }
-
-  private static void disableLFModel(CommandLine cmd) {
-    String storeType = getRequiredArgument(cmd, Arg.STORE_TYPE);
-
-    MultiStoreResponse response = controllerClient.enableLFModel(false, storeType);
     printObject(response);
   }
 
