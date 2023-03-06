@@ -59,13 +59,8 @@ public class VersionImpl implements Version {
     this.storeVersion.storeName = storeName;
     this.storeVersion.number = number;
     this.storeVersion.createdTime = createdTime;
-    this.storeVersion.pushJobId = pushJobId == null ? Version.numberBasedDummyPushId(number) : pushJobId; // for
-                                                                                                          // deserializing
-                                                                                                          // old
-                                                                                                          // Versions
-                                                                                                          // that didn't
-                                                                                                          // get an
-                                                                                                          // pushJobId
+    // for deserializing old Versions that didn't get an pushJobId
+    this.storeVersion.pushJobId = pushJobId == null ? Version.numberBasedDummyPushId(number) : pushJobId;
     this.storeVersion.partitionCount = partitionCount;
     if (partitionerConfig != null) {
       this.storeVersion.partitionerConfig = partitionerConfig.dataModel();
@@ -73,7 +68,7 @@ public class VersionImpl implements Version {
     if (dataRecoveryVersionConfig != null) {
       this.storeVersion.dataRecoveryConfig = dataRecoveryVersionConfig.dataModel();
     }
-
+    this.storeVersion.leaderFollowerModelEnabled = true;
     this.kafkaTopicName = Version.composeKafkaTopic(storeName, number);
   }
 

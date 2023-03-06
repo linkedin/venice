@@ -248,6 +248,13 @@ public interface Store {
 
   void setBootstrapToOnlineTimeoutInHours(int bootstrapToOnlineTimeoutInHours);
 
+  default boolean isLeaderFollowerModelEnabled() {
+    return true;
+  }
+
+  default void setLeaderFollowerModelEnabled(boolean leaderFollowerModelEnabled) {
+  }
+
   String getPushStreamSourceAddress();
 
   void setPushStreamSourceAddress(String sourceAddress);

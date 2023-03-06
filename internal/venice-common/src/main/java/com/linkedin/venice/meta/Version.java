@@ -98,7 +98,14 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   void setCompressionStrategy(CompressionStrategy compressionStrategy);
 
+  default boolean isLeaderFollowerModelEnabled() {
+    return true;
+  }
+
   boolean isNativeReplicationEnabled();
+
+  default void setLeaderFollowerModelEnabled(boolean leaderFollowerModelEnabled) {
+  }
 
   void setNativeReplicationEnabled(boolean nativeReplicationEnabled);
 

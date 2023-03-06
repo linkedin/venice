@@ -133,6 +133,8 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     this.storeProperties.etlConfig = new ETLStoreConfigImpl().dataModel();
     this.storeProperties.latestVersionPromoteToCurrentTimestamp = System.currentTimeMillis();
 
+    this.storeProperties.leaderFollowerModelEnabled = true;
+
     setupVersionSupplier(new StoreVersionSupplier() {
       @Override
       public List<StoreVersion> getForUpdate() {
@@ -153,6 +155,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
       throw new VeniceException("Invalid store name: " + storeProperties.name.toString());
     }
     this.storeProperties = storeProperties;
+    this.storeProperties.leaderFollowerModelEnabled = true;
     setupVersionSupplier(new StoreVersionSupplier() {
       @Override
       public List<StoreVersion> getForUpdate() {
