@@ -164,7 +164,7 @@ public class VeniceServer {
         storeAccessController,
         clientConfigForConsumer,
         icProvider,
-        null);
+        new ArrayList<>());
   }
 
   /**
@@ -581,11 +581,9 @@ public class VeniceServer {
       service.start();
     }
 
-    if (serviceDiscoveryAnnouncers != null) {
-      for (ServiceDiscoveryAnnouncer serviceDiscoveryAnnouncer: serviceDiscoveryAnnouncers) {
-        LOGGER.info("Registering to service discovery: {}", serviceDiscoveryAnnouncer);
-        serviceDiscoveryAnnouncer.register();
-      }
+    for (ServiceDiscoveryAnnouncer serviceDiscoveryAnnouncer: serviceDiscoveryAnnouncers) {
+      LOGGER.info("Registering to service discovery: {}", serviceDiscoveryAnnouncer);
+      serviceDiscoveryAnnouncer.register();
     }
 
     LOGGER.info("Startup completed in {} ms.", (System.currentTimeMillis() - start));
@@ -608,14 +606,12 @@ public class VeniceServer {
         LOGGER.info("The server has been already stopped, ignoring reattempt.");
         return;
       }
-      if (serviceDiscoveryAnnouncers != null) {
-        for (ServiceDiscoveryAnnouncer serviceDiscoveryAnnouncer: serviceDiscoveryAnnouncers) {
-          LOGGER.info("Unregistering from service discovery: {}", serviceDiscoveryAnnouncer);
-          try {
-            serviceDiscoveryAnnouncer.unregister();
-          } catch (RuntimeException e) {
-            LOGGER.error("Service discovery announcer {} failed to unregister properly", serviceDiscoveryAnnouncer, e);
-          }
+      for (ServiceDiscoveryAnnouncer serviceDiscoveryAnnouncer: serviceDiscoveryAnnouncers) {
+        LOGGER.info("Unregistering from service discovery: {}", serviceDiscoveryAnnouncer);
+        try {
+          serviceDiscoveryAnnouncer.unregister();
+        } catch (RuntimeException e) {
+          LOGGER.error("Service discovery announcer {} failed to unregister properly", serviceDiscoveryAnnouncer, e);
         }
       }
 

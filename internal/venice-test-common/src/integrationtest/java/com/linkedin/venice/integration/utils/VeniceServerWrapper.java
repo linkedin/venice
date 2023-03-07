@@ -12,6 +12,7 @@ import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
 import static com.linkedin.venice.ConfigKeys.MAX_ONLINE_OFFLINE_STATE_TRANSITION_THREAD_NUMBER;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
+import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP2_INBOUND_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_FULL_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_KAFKA_OPENSSL;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_APPLICATION_PORT;
@@ -30,6 +31,7 @@ import com.linkedin.venice.helix.AllowlistAccessor;
 import com.linkedin.venice.helix.ZkAllowlistAccessor;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.server.VeniceServer;
+import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
 import com.linkedin.venice.tehuti.MetricsAware;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.KafkaSSLUtils;
@@ -65,7 +67,8 @@ import org.apache.logging.log4j.Logger;
 public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware {
   private static final Logger LOGGER = LogManager.getLogger(VeniceServerWrapper.class);
   public static final String SERVICE_NAME = "VeniceServer";
-
+  public static final String CLUSTER_DISCOVERY_D2_SERVICE_NAME =
+      ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME + "_test";
   /**
    *  Possible config options which are not included in {@link com.linkedin.venice.ConfigKeys}.
     */
@@ -187,6 +190,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
 
       // Generate server.properties in config directory
       int listenPort = Utils.getFreePort();
+      int sslPort = Utils.getFreePort();
       int ingestionIsolationApplicationPort = Utils.getFreePort();
       int ingestionIsolationServicePort = Utils.getFreePort();
       PropertyBuilder serverPropsBuilder = new PropertyBuilder().put(LISTENER_PORT, listenPort)
@@ -225,28 +229,38 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       // generate the kafka cluster map in config directory
       VeniceConfigLoader.storeKafkaClusterMap(configDirectory, kafkaClusterMap);
 
+      String d2ServiceName = D2TestUtils.getRouterD2ServiceName(null, clusterName);
+
+      VeniceProperties serverProperties = serverPropsBuilder.build();
+      boolean https = serverProperties.getBoolean(ROUTER_HTTP2_INBOUND_ENABLED, false);
+      String httpURI = "http://localhost:" + listenPort;
+      String httpsURI = "https://localhost:" + sslPort;
+      List<ServiceDiscoveryAnnouncer> d2Servers = new ArrayList<>();
+      String d2ClusterName = D2TestUtils.setupD2Config(zkAddress, https, d2ServiceName);
+      d2Servers.addAll(D2TestUtils.getD2ServersForRouter(zkAddress, d2ClusterName, httpURI, httpsURI));
+      String clusterDiscoveryD2ClusterName =
+          D2TestUtils.setupD2Config(zkAddress, https, CLUSTER_DISCOVERY_D2_SERVICE_NAME);
+      d2Servers.addAll(D2TestUtils.getD2ServersForRouter(zkAddress, clusterDiscoveryD2ClusterName, httpURI, httpsURI));
+
+      VeniceConfigLoader veniceConfigLoader =
+          VeniceConfigLoader.loadFromConfigDirectory(configDirectory.getAbsolutePath());
+      Optional<SSLFactory> sslFactory = Optional.empty();
+      if (ssl) {
+        sslFactory = Optional.of(SslUtils.getVeniceLocalSslFactory());
+      }
+      TestVeniceServer server = new TestVeniceServer(
+          veniceConfigLoader,
+          new MetricsRepository(),
+          sslFactory,
+          Optional.empty(),
+          consumerClientConfig,
+          d2Servers);
+
       if (!forkServer) {
-        VeniceConfigLoader veniceConfigLoader =
-            VeniceConfigLoader.loadFromConfigDirectory(configDirectory.getAbsolutePath());
-
         if (enableServerAllowlist && isAutoJoin) {
-          joinClusterAllowlist(
-              veniceConfigLoader.getVeniceClusterConfig().getZookeeperAddress(),
-              clusterName,
-              listenPort);
+          joinClusterAllowlist(zkAddress, clusterName, listenPort);
         }
 
-        Optional<SSLFactory> sslFactory = Optional.empty();
-        if (ssl) {
-          sslFactory = Optional.of(SslUtils.getVeniceLocalSslFactory());
-        }
-
-        TestVeniceServer server = new TestVeniceServer(
-            veniceConfigLoader,
-            new MetricsRepository(),
-            sslFactory,
-            Optional.empty(),
-            consumerClientConfig);
         return new VeniceServerWrapper(
             serviceName,
             dataDirectory,
@@ -257,10 +271,10 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
             sslFactory,
             regionName);
       } else {
-        VeniceServerWrapper veniceServerWrapper = new VeniceServerWrapper(
+        return new VeniceServerWrapper(
             serviceName,
             dataDirectory,
-            null,
+            server,
             serverProps,
             null,
             consumerClientConfig,
@@ -274,7 +288,6 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
             isAutoJoin,
             serverName,
             regionName);
-        return veniceServerWrapper;
       }
     };
   }

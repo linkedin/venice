@@ -4,14 +4,20 @@ import static com.linkedin.venice.integration.utils.VeniceServerWrapper.SERVER_E
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.SERVER_IS_AUTO_JOIN;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.davinci.storage.StorageEngineRepository;
+import com.linkedin.r2.message.rest.RestRequest;
+import com.linkedin.r2.message.rest.RestRequestBuilder;
+import com.linkedin.r2.message.rest.RestResponse;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.httpclient.HttpClientUtils;
+import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.TestVeniceServer;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
+import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
@@ -23,6 +29,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Field;
+import java.net.URI;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -172,7 +179,7 @@ public class VeniceServerTest {
 
     try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, servers, 0, replicationFactor);
         CloseableHttpAsyncClient client =
-            HttpClientUtils.getMinimalHttpClient(1, 1, Optional.of(SslUtils.getVeniceLocalSslFactory()));) {
+            HttpClientUtils.getMinimalHttpClient(1, 1, Optional.of(SslUtils.getVeniceLocalSslFactory()))) {
 
       HelixAdmin admin = new ZKHelixAdmin(cluster.getZk().getAddress());
 
@@ -207,8 +214,9 @@ public class VeniceServerTest {
       client.start();
 
       for (int i = 0; i < servers; i++) {
-        HttpGet httpsRequest =
-            new HttpGet("http://" + cluster.getVeniceServers().get(i).getAddress() + "/metadata/" + storeName);
+        HttpGet httpsRequest = new HttpGet(
+            "http://" + cluster.getVeniceServers().get(i).getAddress() + "/"
+                + QueryAction.METADATA.toString().toLowerCase() + "/" + storeName);
         HttpResponse httpsResponse = client.execute(httpsRequest, null).get();
         Assert.assertEquals(httpsResponse.getStatusLine().getStatusCode(), 200);
 
@@ -252,6 +260,45 @@ public class VeniceServerTest {
           }
         }
       }
+    }
+  }
+
+  @Test
+  public void testVeniceServerWithHttpD2() throws Exception {
+    testVeniceServerWithD2(false);
+  }
+
+  @Test
+  public void testVeniceServerWithHttpsD2() throws Exception {
+    testVeniceServerWithD2(true);
+  }
+
+  public void testVeniceServerWithD2(boolean https) throws Exception {
+    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 1, 0)) {
+      String storeName = Utils.getUniqueString("testVeniceServerWithD2");
+
+      VeniceServerWrapper server = cluster.getVeniceServers().get(0);
+      server.getVeniceServer()
+          .getStorageService()
+          .openStoreForNewPartition(
+              server.getVeniceServer().getConfigLoader().getStoreConfig(storeName),
+              1,
+              () -> null);
+
+      D2Client d2Client;
+      if (https) {
+        d2Client = D2TestUtils.getAndStartHttpsD2Client(cluster.getZk().getAddress());
+      } else {
+        d2Client = D2TestUtils.getAndStartD2Client(cluster.getZk().getAddress());
+      }
+
+      URI requestUri = URI.create(
+          "d2://" + VeniceServerWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME + "/"
+              + QueryAction.METADATA.toString().toLowerCase() + "/" + storeName);
+      RestRequest request = new RestRequestBuilder(requestUri).setMethod("get").build();
+      RestResponse response = d2Client.restRequest(request).get();
+
+      Assert.assertEquals(response.getStatus(), HttpStatus.SC_OK);
     }
   }
 }
