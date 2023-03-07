@@ -6,6 +6,7 @@ import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
 import com.linkedin.venice.listener.request.DictionaryFetchRequest;
 import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.HealthCheckRequest;
+import com.linkedin.venice.listener.request.MetadataFetchRequest;
 import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
 import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
@@ -19,8 +20,10 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
 import java.net.URI;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 
 /**
@@ -116,6 +119,11 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
           statsHandler.setStoreName(adminRequest.getStoreName());
           ctx.fireChannelRead(adminRequest);
           break;
+        case METADATA:
+          MetadataFetchRequest metadataFetchRequest = MetadataFetchRequest.parseGetHttpRequest(req);
+          statsHandler.setStoreName(metadataFetchRequest.getStoreName());
+          ctx.fireChannelRead(metadataFetchRequest);
+          break;
         default:
           throw new VeniceException("Unrecognized query action");
       }
@@ -152,18 +160,22 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
     String[] requestParts = URI.create(req.uri()).getPath().split("/");
     HttpMethod reqMethod = req.method();
     if ((!reqMethod.equals(HttpMethod.GET) && !reqMethod.equals(HttpMethod.POST)) || requestParts.length < 2) {
+      String actions =
+          Arrays.stream(QueryAction.values()).map(e -> e.toString().toLowerCase()).collect(Collectors.joining(", "));
       throw new VeniceException(
-          "Only able to parse GET or POST requests for actions: storage, health, compute, dictionary, admin. "
-              + "Cannot parse request for: " + req.uri());
+          "Only able to parse GET or POST requests for actions: " + actions + ". " + "Cannot parse request for: "
+              + req.uri());
     }
 
     try {
       return QueryAction.valueOf(requestParts[1].toUpperCase());
-    } catch (IllegalArgumentException e) {
+    } catch (IllegalArgumentException illegalArgumentException) {
+      String actions =
+          Arrays.stream(QueryAction.values()).map(e -> e.toString().toLowerCase()).collect(Collectors.joining(", "));
       throw new VeniceException(
-          "Only able to parse GET or POST requests for actions: storage, health, compute, dictionary, admin. "
-              + "Cannot support action: " + requestParts[1],
-          e);
+          "Only able to parse GET or POST requests for actions: " + actions + ". " + "Cannot support action: "
+              + requestParts[1],
+          illegalArgumentException);
     }
   }
 }

@@ -3,6 +3,7 @@ package com.linkedin.venice.helix;
 import com.linkedin.venice.VeniceResource;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,7 +32,7 @@ public class HelixInstanceConfigRepository implements VeniceResource, InstanceCo
   private final PropertyKey.Builder keyBuilder;
   private final String virtualGroupFieldName;
 
-  private Map<String, Integer> instanceGroupIdMapping = new VeniceConcurrentHashMap<>();
+  private Map<String, Integer> instanceGroupIdMapping = Collections.emptyMap();
   private int groupCount = 1;
   /**
    * This field is used to record the unknown instance call in {@link #getInstanceGroupId}.
@@ -89,6 +90,10 @@ public class HelixInstanceConfigRepository implements VeniceResource, InstanceCo
     return groupId;
   }
 
+  public Map<String, Integer> getInstanceGroupIdMapping() {
+    return instanceGroupIdMapping;
+  }
+
   public int getGroupCount() {
     return groupCount;
   }
@@ -120,7 +125,7 @@ public class HelixInstanceConfigRepository implements VeniceResource, InstanceCo
         newInstanceGroupIdMapping.put(instanceConfig.getId(), currentGroupId);
       }
     }
-    instanceGroupIdMapping = newInstanceGroupIdMapping;
+    instanceGroupIdMapping = Collections.unmodifiableMap(newInstanceGroupIdMapping);
     groupCount = groupIdCnt.get();
     LOGGER.info("New instance group id mapping: {}.", instanceGroupIdMapping);
     LOGGER.info("The total number of groups: {}.", groupCount);
