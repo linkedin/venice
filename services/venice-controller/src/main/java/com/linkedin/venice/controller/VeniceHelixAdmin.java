@@ -4937,6 +4937,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       } else {
         instancesStatusesMap.put(instance, InstanceStatus.DISCONNECTED.toString());
       }
+      Map<String, List<String>> disabledPartitions = helixAdminClient.getDisabledPartitionsMap(clusterName, instance);
+      for (Map.Entry<String, List<String>> entry: disabledPartitions.entrySet()) {
+        helixAdminClient.enablePartition(true, clusterName, instance, entry.getKey(), entry.getValue());
+        LOGGER.info(
+            "Enabled disabled replica of resource {}, partitions {} in cluster {}",
+            entry.getKey(),
+            entry.getValue(),
+            clusterName);
+      }
     }
     return instancesStatusesMap;
   }
