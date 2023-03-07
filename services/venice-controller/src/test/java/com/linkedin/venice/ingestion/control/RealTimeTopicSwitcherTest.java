@@ -187,7 +187,7 @@ public class RealTimeTopicSwitcherTest {
     realTimeTopicSwitcher.transmitVersionSwapMessage(mockStore, 2, 3);
     verify(mockWriterFactory, times(2)).createVeniceWriter(vwOptionsArgumentCaptor.capture());
     VeniceWriterOptions capturedVwo = vwOptionsArgumentCaptor.getValue();
-    Assert.assertEquals(capturedVwo.getTopicName(), realTimeTopic);
+    Assert.assertEquals(capturedVwo.getTopicName(), realTimeTopic.getName());
 
     ArgumentCaptor<String> oldVersionCaptor = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> newVersionCaptor = ArgumentCaptor.forClass(String.class);

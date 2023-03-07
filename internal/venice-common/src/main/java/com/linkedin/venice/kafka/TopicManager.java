@@ -11,6 +11,7 @@ import com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcher;
 import com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcherFactory;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -35,7 +36,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.apache.kafka.clients.consumer.Consumer;
-import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.config.TopicConfig;
 import org.apache.kafka.common.errors.InvalidReplicationFactorException;
 import org.apache.kafka.common.errors.TopicExistsException;
@@ -148,8 +148,7 @@ public class TopicManager implements Closeable {
         kafkaClientFactory.clone(kafkaClientFactory.getKafkaBootstrapServers(), metricsForPartitionOffsetFetcher),
         kafkaReadOnlyAdmin,
         kafkaOperationTimeoutMs,
-        optionalMetricsRepository,
-        pubSubTopicRepository);
+        optionalMetricsRepository);
   }
 
   // This constructor is used mostly for testing purpose
@@ -281,6 +280,7 @@ public class TopicManager implements Closeable {
 
     logger.info("Creating topic: {} partitions: {} replication: {}", topicName, numPartitions, replication);
     Properties topicProperties = new Properties();
+    // TODO: move these Kafka related configs out of this class.
     topicProperties.put(TopicConfig.RETENTION_MS_CONFIG, Long.toString(retentionTimeMs));
     if (logCompaction) {
       topicProperties.put(TopicConfig.CLEANUP_POLICY_CONFIG, TopicConfig.CLEANUP_POLICY_COMPACT);
@@ -346,7 +346,7 @@ public class TopicManager implements Closeable {
   }
 
   public int getReplicationFactor(PubSubTopic topicName) {
-    return partitionsFor(topicName).iterator().next().replicas().length;
+    return partitionsFor(topicName).iterator().next().replicasNum();
   }
 
   /**
@@ -602,12 +602,6 @@ public class TopicManager implements Closeable {
           consumerRecreationInterval = MAX_CONSUMER_RECREATION_INTERVAL;
         }
       }
-      // TODO: consider removing this check since in Java admin client, if deleteTopic() returns, it means the topic is
-      // really gone.
-      if (isTopicFullyDeleted(topicName, closeAndRecreateConsumer)) {
-        logger.info("Topic: {} has been deleted after polling {} times", topicName, current);
-        return;
-      }
     }
     throw new VeniceOperationAgainstKafkaTimedOut(
         "Failed to delete kafka topic: " + topicName + " after " + kafkaOperationTimeoutMs + " ms (" + current
@@ -706,7 +700,7 @@ public class TopicManager implements Closeable {
     if (!containsTopic(topic)) {
       return false;
     }
-    List<PartitionInfo> partitionInfoList = partitionOffsetFetcher.partitionsFor(topic);
+    List<PubSubTopicPartitionInfo> partitionInfoList = partitionOffsetFetcher.partitionsFor(topic);
     if (partitionInfoList == null) {
       logger.warn("getConsumer().partitionsFor() returned null for topic: {}", topic);
       return false;
@@ -725,7 +719,7 @@ public class TopicManager implements Closeable {
     }
 
     boolean allPartitionsHaveAnInSyncReplica =
-        partitionInfoList.stream().allMatch(partitionInfo -> partitionInfo.inSyncReplicas().length > 0);
+        partitionInfoList.stream().allMatch(PubSubTopicPartitionInfo::hasInSyncReplicas);
     if (allPartitionsHaveAnInSyncReplica) {
       logger.trace("The following topic has the at least one in-sync replica for each partition: {}", topic);
     } else {
@@ -735,40 +729,6 @@ public class TopicManager implements Closeable {
           Arrays.toString(partitionInfoList.toArray()));
     }
     return allPartitionsHaveAnInSyncReplica;
-  }
-
-  /**
-   * This is an extensive check to verify that a topic is fully cleaned up.
-   *
-   * @return true if the topic exists neither in ZK nor in the brokers
-   *         false if the topic exists fully or partially
-   */
-  private synchronized boolean isTopicFullyDeleted(PubSubTopic topic, boolean closeAndRecreateConsumer) {
-    if (containsTopic(topic)) {
-      logger.info("containsTopicInKafkaZK() returned true, meaning that the ZK path still exists for topic: {}", topic);
-      return false;
-    }
-
-    List<PartitionInfo> partitionInfoList =
-        getRawBytesConsumer(closeAndRecreateConsumer).partitionsFor(topic.getName());
-    if (partitionInfoList == null) {
-      logger.trace("getConsumer().partitionsFor() returned null for topic: {}", topic);
-      return true;
-    }
-
-    boolean noPartitionStillHasAnyReplica =
-        partitionInfoList.stream().noneMatch(partitionInfo -> partitionInfo.replicas().length > 0);
-    if (noPartitionStillHasAnyReplica) {
-      logger.trace(
-          "getConsumer().partitionsFor() returned no partitionInfo still containing a replica for topic: {}",
-          topic);
-    } else {
-      logger.info(
-          "The following topic still has at least one replica in at least one partition: {}, partitionInfoList: {}",
-          topic,
-          Arrays.toString(partitionInfoList.toArray()));
-    }
-    return noPartitionStillHasAnyReplica;
   }
 
   /**
@@ -800,31 +760,12 @@ public class TopicManager implements Closeable {
   }
 
   /**
-   * Get a list of {@link PartitionInfo} objects for the specified topic.
+   * Get a list of {@link PubSubTopicPartitionInfo} objects for the specified topic.
    * @param topic
    * @return
    */
-  public List<PartitionInfo> partitionsFor(PubSubTopic topic) {
+  public List<PubSubTopicPartitionInfo> partitionsFor(PubSubTopic topic) {
     return partitionOffsetFetcher.partitionsFor(topic);
-  }
-
-  /**
-   * @deprecated this is only used by {@link #isTopicFullyDeleted(PubSubTopic, boolean)} in cases where the
-   *             ScalaAdminUtils is used. We should deprecate
-   *             both the Scala admin as well as this function, so please do not proliferate its usage
-   *             in new code paths.
-   * TODO: remove the usage of this raw consumer.
-   */
-  @Deprecated
-  private synchronized Consumer<byte[], byte[]> getRawBytesConsumer(boolean closeAndRecreate) {
-    if (this.kafkaRawBytesConsumer == null) {
-      this.kafkaRawBytesConsumer = kafkaClientFactory.getRawBytesKafkaConsumer();
-    } else if (closeAndRecreate) {
-      this.kafkaRawBytesConsumer.close(kafkaOperationTimeoutMs, TimeUnit.MILLISECONDS);
-      this.kafkaRawBytesConsumer = kafkaClientFactory.getRawBytesKafkaConsumer();
-      logger.info("Closed and recreated consumer.");
-    }
-    return this.kafkaRawBytesConsumer;
   }
 
   public String getKafkaBootstrapServers() {

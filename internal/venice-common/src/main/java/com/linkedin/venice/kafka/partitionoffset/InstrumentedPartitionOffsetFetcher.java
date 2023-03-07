@@ -1,5 +1,6 @@
 package com.linkedin.venice.kafka.partitionoffset;
 
+import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Time;
@@ -8,7 +9,6 @@ import it.unimi.dsi.fastutil.ints.Int2LongMap;
 import java.util.List;
 import javax.annotation.Nonnull;
 import org.apache.commons.lang.Validate;
-import org.apache.kafka.common.PartitionInfo;
 
 
 public class InstrumentedPartitionOffsetFetcher implements PartitionOffsetFetcher {
@@ -79,9 +79,9 @@ public class InstrumentedPartitionOffsetFetcher implements PartitionOffsetFetche
   }
 
   @Override
-  public List<PartitionInfo> partitionsFor(PubSubTopic topic) {
+  public List<PubSubTopicPartitionInfo> partitionsFor(PubSubTopic topic) {
     final long startTimeMs = time.getMilliseconds();
-    List<PartitionInfo> res = partitionOffsetFetcher.partitionsFor(topic);
+    List<PubSubTopicPartitionInfo> res = partitionOffsetFetcher.partitionsFor(topic);
     stats.recordLatency(
         PartitionOffsetFetcherStats.OCCURRENCE_LATENCY_SENSOR_TYPE.PARTITIONS_FOR,
         Utils.calculateDurationMs(time, startTimeMs));

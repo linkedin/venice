@@ -85,7 +85,7 @@ public class RealTimeTopicSwitcher {
       List<String> remoteKafkaUrls) throws TopicException {
     String errorPrefix = "Cannot send TopicSwitch into '" + topicWhereToSendTheTopicSwitch
         + "' instructing to switch to '" + realTimeTopic + "' because";
-    if (realTimeTopic.getName().equals(topicWhereToSendTheTopicSwitch)) {
+    if (realTimeTopic.equals(topicWhereToSendTheTopicSwitch)) {
       throw new DuplicateTopicException(errorPrefix + " they are the same topic.");
     }
     if (!getTopicManager().containsTopicAndAllPartitionsAreOnline(realTimeTopic)) {

@@ -40,8 +40,7 @@ public class PartitionOffsetFetcherTest {
         kafkaClientFactory,
         Lazy.of(() -> kafkaClientFactory.getKafkaAdminClient(Optional.empty(), pubSubTopicRepository)),
         1 * Time.MS_PER_SECOND,
-        Optional.empty(),
-        pubSubTopicRepository)) {
+        Optional.empty())) {
       String topic = Utils.getUniqueString("topic") + "_v1";
       PubSubTopicPartition pubSubTopicPartition =
           new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), 0);

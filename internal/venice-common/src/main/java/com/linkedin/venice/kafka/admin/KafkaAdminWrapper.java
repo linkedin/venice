@@ -2,22 +2,22 @@ package com.linkedin.venice.kafka.admin;
 
 import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.RetryUtils;
 import java.io.Closeable;
 import java.time.Duration;
-import java.util.Arrays;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.Future;
-import org.apache.kafka.clients.admin.TopicDescription;
-import org.apache.kafka.common.errors.TimeoutException;
 
 
 /**
@@ -87,8 +87,7 @@ public interface KafkaAdminWrapper extends Closeable {
         defaultMaxDuration);
   }
 
-  List<Class<? extends Throwable>> RETRIABLE_EXCEPTIONS =
-      Collections.unmodifiableList(Arrays.asList(VeniceRetriableException.class, TimeoutException.class));
+  List<Class<? extends Throwable>> getRetriableExceptions();
 
   default boolean containsTopicWithExpectationAndRetry(
       PubSubTopic topic,
@@ -110,7 +109,7 @@ public interface KafkaAdminWrapper extends Closeable {
               "Retrying containsTopic check to get expected result: " + expectedResult + " for topic " + topic);
         }
         return expectedResult;
-      }, maxAttempts, initialBackoff, maxBackoff, maxDuration, RETRIABLE_EXCEPTIONS);
+      }, maxAttempts, initialBackoff, maxBackoff, maxDuration, getRetriableExceptions());
     } catch (VeniceRetriableException e) {
       return !expectedResult; // Eventually still not get the expected result
     }
@@ -137,7 +136,7 @@ public interface KafkaAdminWrapper extends Closeable {
                   + pubSubTopicPartition);
         }
         return expectedResult;
-      }, maxAttempts, initialBackoff, maxBackoff, maxDuration, RETRIABLE_EXCEPTIONS);
+      }, maxAttempts, initialBackoff, maxBackoff, maxDuration, getRetriableExceptions());
     } catch (VeniceRetriableException e) {
       return !expectedResult; // Eventually still not get the expected result
     }
@@ -149,5 +148,21 @@ public interface KafkaAdminWrapper extends Closeable {
 
   String getClassName();
 
-  Map<PubSubTopic, Future<TopicDescription>> describeTopics(Collection<PubSubTopic> topicNames);
+  Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp, Duration timeout);
+
+  Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp);
+
+  Long beginningOffset(PubSubTopicPartition partition, Duration timeout);
+
+  Map<PubSubTopicPartition, Long> endOffsets(Collection<PubSubTopicPartition> partitions, Duration timeout);
+
+  Long endOffset(PubSubTopicPartition pubSubTopicPartition);
+
+  List<PubSubTopicPartitionInfo> partitionsFor(PubSubTopic topic);
+
+  Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> poll(long timeoutMs);
+
+  void assign(Collection<PubSubTopicPartition> partitions);
+
+  void seek(PubSubTopicPartition partition, long offset);
 }
