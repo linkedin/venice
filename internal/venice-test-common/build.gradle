@@ -219,7 +219,7 @@ task generateGHCI() {
   jobs << staticAnalysis
 
   def unitTestsAndCodeCoverage = "UnitTestsAndCodeCoverage"
-  def unitTestsFlowGradleArgs = "-DmaxParallelForks=2  --parallel -x :internal:venice-avro-compatibility-test:test jacocoTestCoverageVerification diffCoverage --continue"
+  def unitTestsFlowGradleArgs = "-x :internal:venice-avro-compatibility-test:test jacocoTestCoverageVerification diffCoverage --continue"
   appendToGHCI(paramFileContent, targetFilePath, unitTestsAndCodeCoverage, 60, unitTestsFlowGradleArgs)
   jobs << unitTestsAndCodeCoverage
 
