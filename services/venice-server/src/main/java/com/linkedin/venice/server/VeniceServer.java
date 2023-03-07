@@ -29,7 +29,9 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.AllowlistAccessor;
+import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixExternalViewRepository;
+import com.linkedin.venice.helix.HelixInstanceConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.ZkAllowlistAccessor;
@@ -333,6 +335,30 @@ public class VeniceServer {
         new RemoteIngestionRepairService(serverConfig.getRemoteIngestionRepairSleepInterval());
     services.add(remoteIngestionRepairService);
 
+    // HelixParticipationService below creates a Helix manager and connects asynchronously below. The listener service
+    // needs a routing data repository that relies on a connected helix manager. So we pass the listener service a
+    // future that will be completed with a routing data repository once the manager connects.
+    CompletableFuture<SafeHelixManager> managerFuture = new CompletableFuture<>();
+    CompletableFuture<RoutingDataRepository> routingRepositoryFuture = managerFuture.thenApply(manager -> {
+      RoutingDataRepository routingData = new HelixExternalViewRepository(manager);
+      routingData.refresh();
+      return routingData;
+    });
+
+    CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewFuture =
+        managerFuture.thenApply(manager -> {
+          HelixCustomizedViewOfflinePushRepository customizedView =
+              new HelixCustomizedViewOfflinePushRepository(manager);
+          customizedView.refresh();
+          return customizedView;
+        });
+
+    CompletableFuture<HelixInstanceConfigRepository> helixInstanceFuture = managerFuture.thenApply(manager -> {
+      HelixInstanceConfigRepository helixData = new HelixInstanceConfigRepository(manager, false);
+      helixData.refresh();
+      return helixData;
+    });
+
     // create and add KafkaSimpleConsumerService
     this.kafkaStoreIngestionService = new KafkaStoreIngestionService(
         storageService.getStorageEngineRepository(),
@@ -341,6 +367,8 @@ public class VeniceServer {
         new StaticClusterInfoProvider(Collections.singleton(clusterConfig.getClusterName())),
         metadataRepo,
         schemaRepo,
+        Optional.of(customizedViewFuture),
+        Optional.of(helixInstanceFuture),
         liveClusterConfigRepo,
         metricsRepository,
         kafkaMessageEnvelopeSchemaReader,
@@ -364,17 +392,6 @@ public class VeniceServer {
     services.add(diskHealthCheckService);
     // create stats for disk health check service
     new DiskHealthStats(metricsRepository, diskHealthCheckService, "disk_health_check_service");
-
-    // HelixParticipationService below creates a Helix manager and connects asynchronously below. The listener service
-    // needs a routing data repository that relies on a connected helix manager. So we pass the listener service a
-    // future
-    // that will be completed with a routing data repository once the manager connects.
-    CompletableFuture<SafeHelixManager> managerFuture = new CompletableFuture<>();
-    CompletableFuture<RoutingDataRepository> routingRepositoryFuture = managerFuture.thenApply(manager -> {
-      RoutingDataRepository routingData = new HelixExternalViewRepository(manager);
-      routingData.refresh();
-      return routingData;
-    });
 
     final Optional<ResourceReadUsageTracker> resourceReadUsageTracker;
     if (serverConfig.isOptimizeDatabaseForBackupVersionEnabled()) {
