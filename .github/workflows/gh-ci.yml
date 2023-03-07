@@ -42,21 +42,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DmaxParallelForks=2 --parallel -Pspotallbugs clean check -x spotlessCheck -x test -x integrationTest -x jacocoTestCoverageVerification"
-      - name: Package build artifacts
+      - name: Package Build Artifacts
         shell: bash
         run: |
-          mkdir artifacts
-          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          mv artifacts ${{ github.job }}-artifacts
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Logs
+      - name: Upload Build Artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}-artifacts
+          name: ${{ github.job }}
           path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
-
 
   UnitTestsAndCodeCoverage:
     strategy:
@@ -87,21 +85,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "-DmaxParallelForks=2  --parallel -x :internal:venice-avro-compatibility-test:test jacocoTestCoverageVerification diffCoverage --continue"
-      - name: Package build artifacts
+      - name: Package Build Artifacts
         shell: bash
         run: |
-          mkdir artifacts
-          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          mv artifacts ${{ github.job }}-artifacts
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Logs
+      - name: Upload Build Artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}-artifacts
+          name: ${{ github.job }}
           path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
-
 
   AvroCompatibilityTests:
     strategy:
@@ -132,21 +128,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "-DmaxParallelForks=2 --parallel :internal:venice-avro-compatibility-test:test --continue"
-      - name: Package build artifacts
+      - name: Package Build Artifacts
         shell: bash
         run: |
-          mkdir artifacts
-          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          mv artifacts ${{ github.job }}-artifacts
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Logs
+      - name: Upload Build Artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}-artifacts
+          name: ${{ github.job }}
           path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
-
 
   IntegrationTestsA:
     strategy:
@@ -177,21 +171,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestA"
-      - name: Package build artifacts
+      - name: Package Build Artifacts
         shell: bash
         run: |
-          mkdir artifacts
-          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          mv artifacts ${{ github.job }}-artifacts
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Logs
+      - name: Upload Build Artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}-artifacts
+          name: ${{ github.job }}
           path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
-
 
   IntegrationTestsB:
     strategy:
@@ -222,21 +214,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestB"
-      - name: Package build artifacts
+      - name: Package Build Artifacts
         shell: bash
         run: |
-          mkdir artifacts
-          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          mv artifacts ${{ github.job }}-artifacts
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Logs
+      - name: Upload Build Artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}-artifacts
+          name: ${{ github.job }}
           path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
-
 
   IntegrationTestsC:
     strategy:
@@ -267,21 +257,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestC"
-      - name: Package build artifacts
+      - name: Package Build Artifacts
         shell: bash
         run: |
-          mkdir artifacts
-          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          mv artifacts ${{ github.job }}-artifacts
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Logs
+      - name: Upload Build Artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}-artifacts
+          name: ${{ github.job }}
           path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
-
 
   IntegrationTestsD:
     strategy:
@@ -312,21 +300,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestD"
-      - name: Package build artifacts
+      - name: Package Build Artifacts
         shell: bash
         run: |
-          mkdir artifacts
-          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          mv artifacts ${{ github.job }}-artifacts
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Logs
+      - name: Upload Build Artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}-artifacts
+          name: ${{ github.job }}
           path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
-
 
   IntegrationTestsE:
     strategy:
@@ -357,21 +343,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestE"
-      - name: Package build artifacts
+      - name: Package Build Artifacts
         shell: bash
         run: |
-          mkdir artifacts
-          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          mv artifacts ${{ github.job }}-artifacts
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Logs
+      - name: Upload Build Artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}-artifacts
+          name: ${{ github.job }}
           path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
-
 
   IntegrationTestsF:
     strategy:
@@ -402,21 +386,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestF"
-      - name: Package build artifacts
+      - name: Package Build Artifacts
         shell: bash
         run: |
-          mkdir artifacts
-          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          mv artifacts ${{ github.job }}-artifacts
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Logs
+      - name: Upload Build Artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}-artifacts
+          name: ${{ github.job }}
           path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
-
 
   IntegrationTestsG:
     strategy:
@@ -447,21 +429,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestG"
-      - name: Package build artifacts
+      - name: Package Build Artifacts
         shell: bash
         run: |
-          mkdir artifacts
-          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          mv artifacts ${{ github.job }}-artifacts
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Logs
+      - name: Upload Build Artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}-artifacts
+          name: ${{ github.job }}
           path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
-
 
   IntegrationTestsH:
     strategy:
@@ -492,21 +472,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestH"
-      - name: Package build artifacts
+      - name: Package Build Artifacts
         shell: bash
         run: |
-          mkdir artifacts
-          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          mv artifacts ${{ github.job }}-artifacts
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Logs
+      - name: Upload Build Artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}-artifacts
+          name: ${{ github.job }}
           path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
-
 
   IntegrationTestsI:
     strategy:
@@ -537,21 +515,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestI"
-      - name: Package build artifacts
+      - name: Package Build Artifacts
         shell: bash
         run: |
-          mkdir artifacts
-          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          mv artifacts ${{ github.job }}-artifacts
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Logs
+      - name: Upload Build Artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}-artifacts
+          name: ${{ github.job }}
           path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
-
 
   IntegrationTestsJ:
     strategy:
@@ -582,21 +558,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestJ"
-      - name: Package build artifacts
+      - name: Package Build Artifacts
         shell: bash
         run: |
-          mkdir artifacts
-          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          mv artifacts ${{ github.job }}-artifacts
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Logs
+      - name: Upload Build Artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}-artifacts
+          name: ${{ github.job }}
           path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
-
 
   IntegrationTestsK:
     strategy:
@@ -627,21 +601,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestK"
-      - name: Package build artifacts
+      - name: Package Build Artifacts
         shell: bash
         run: |
-          mkdir artifacts
-          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          mv artifacts ${{ github.job }}-artifacts
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Logs
+      - name: Upload Build Artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}-artifacts
+          name: ${{ github.job }}
           path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
-
 
   IntegrationTestsL:
     strategy:
@@ -672,21 +644,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestL"
-      - name: Package build artifacts
+      - name: Package Build Artifacts
         shell: bash
         run: |
-          mkdir artifacts
-          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          mv artifacts ${{ github.job }}-artifacts
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Logs
+      - name: Upload Build Artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}-artifacts
+          name: ${{ github.job }}
           path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
-
 
   IntegrationTestsM:
     strategy:
@@ -717,21 +687,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestM"
-      - name: Package build artifacts
+      - name: Package Build Artifacts
         shell: bash
         run: |
-          mkdir artifacts
-          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          mv artifacts ${{ github.job }}-artifacts
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Logs
+      - name: Upload Build Artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}-artifacts
+          name: ${{ github.job }}
           path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
-
 
   IntegrationTestsN:
     strategy:
@@ -762,21 +730,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestN"
-      - name: Package build artifacts
+      - name: Package Build Artifacts
         shell: bash
         run: |
-          mkdir artifacts
-          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          mv artifacts ${{ github.job }}-artifacts
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Logs
+      - name: Upload Build Artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}-artifacts
+          name: ${{ github.job }}
           path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
-
 
   IntegrationTestsO:
     strategy:
@@ -807,21 +773,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestO"
-      - name: Package build artifacts
+      - name: Package Build Artifacts
         shell: bash
         run: |
-          mkdir artifacts
-          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          mv artifacts ${{ github.job }}-artifacts
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Logs
+      - name: Upload Build Artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}-artifacts
+          name: ${{ github.job }}
           path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
-
 
   IntegrationTestsP:
     strategy:
@@ -852,21 +816,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestP"
-      - name: Package build artifacts
+      - name: Package Build Artifacts
         shell: bash
         run: |
-          mkdir artifacts
-          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          mv artifacts ${{ github.job }}-artifacts
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Logs
+      - name: Upload Build Artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}-artifacts
+          name: ${{ github.job }}
           path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
-
 
   IntegrationTestsQ:
     strategy:
@@ -897,21 +859,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestQ"
-      - name: Package build artifacts
+      - name: Package Build Artifacts
         shell: bash
         run: |
-          mkdir artifacts
-          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          mv artifacts ${{ github.job }}-artifacts
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Logs
+      - name: Upload Build Artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}-artifacts
+          name: ${{ github.job }}
           path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
-
 
   IntegrationTestsZ:
     strategy:
@@ -942,21 +902,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestZ"
-      - name: Package build artifacts
+      - name: Package Build Artifacts
         shell: bash
         run: |
-          mkdir artifacts
-          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          mv artifacts ${{ github.job }}-artifacts
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Logs
+      - name: Upload Build Artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}-artifacts
+          name: ${{ github.job }}
           path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
-
 
   DummyStep:
     strategy:
@@ -988,19 +946,17 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "clean"
-      - name: Package build artifacts
+      - name: Package Build Artifacts
         shell: bash
         run: |
-          mkdir artifacts
-          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
-          mv artifacts ${{ github.job }}-artifacts
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
-      - name: Upload Logs
+      - name: Upload Build Artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}-artifacts
+          name: ${{ github.job }}
           path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
-
 
