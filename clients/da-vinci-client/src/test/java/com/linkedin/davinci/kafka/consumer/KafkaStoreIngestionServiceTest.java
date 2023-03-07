@@ -36,7 +36,6 @@ import com.linkedin.venice.meta.ReadOnlyLiveClusterConfigRepository;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.ReadStrategy;
-import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -78,7 +77,6 @@ public abstract class KafkaStoreIngestionServiceTest {
   private HelixCustomizedViewOfflinePushRepository mockCustomizedViewRepository;
   private HelixInstanceConfigRepository mockHelixInstanceConfigRepository;
   private ReadOnlyLiveClusterConfigRepository mockLiveClusterConfigRepo;
-  private RoutingDataRepository mockRoutingRepository;
   private StorageEngineBackedCompressorFactory compressorFactory;
 
   private KafkaStoreIngestionService kafkaStoreIngestionService;
@@ -93,7 +91,6 @@ public abstract class KafkaStoreIngestionServiceTest {
     mockSchemaRepo = mock(ReadOnlySchemaRepository.class);
     mockCustomizedViewRepository = mock(HelixCustomizedViewOfflinePushRepository.class);
     mockHelixInstanceConfigRepository = mock(HelixInstanceConfigRepository.class);
-    mockRoutingRepository = mock(RoutingDataRepository.class);
     mockLiveClusterConfigRepo = mock(ReadOnlyLiveClusterConfigRepository.class);
     compressorFactory = new StorageEngineBackedCompressorFactory(storageMetadataService);
 
