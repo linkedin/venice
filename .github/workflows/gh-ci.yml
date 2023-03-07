@@ -30,17 +30,33 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -Pspotallbugs clean check -x spotlessCheck -x test -x integrationTest -x jacocoTestCoverageVerification"
+          arguments: "--continue --no-daemon -DmaxParallelForks=2 --parallel -Pspotallbugs clean check -x spotlessCheck -x test -x integrationTest -x jacocoTestCoverageVerification"
+      - name: Package Build Artifacts
+        if: success() || failure()
+        shell: bash
+        run: |
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Build Artifacts
+        if: success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ github.job }}
+          path: ${{ github.job }}-artifacts.tar.gz
+          retention-days: 30
 
   UnitTestsAndCodeCoverage:
     strategy:
@@ -59,17 +75,78 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
-          arguments: "jacocoTestCoverageVerification diffCoverage --continue"
+          arguments: "-DmaxParallelForks=2  --parallel -x :internal:venice-avro-compatibility-test:test jacocoTestCoverageVerification diffCoverage --continue"
+      - name: Package Build Artifacts
+        if: success() || failure()
+        shell: bash
+        run: |
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Build Artifacts
+        if: success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ github.job }}
+          path: ${{ github.job }}-artifacts.tar.gz
+          retention-days: 30
+
+  AvroCompatibilityTests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        jdk: [11]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          java-version: ${{ matrix.jdk }}
+          distribution: 'microsoft'
+          cache: 'gradle'
+      - shell: bash
+        run: |
+          git remote set-head origin --auto
+          git remote add upstream https://github.com/linkedin/venice
+          git fetch upstream
+      - name: Validate Gradle wrapper
+        uses: gradle/wrapper-validation-action@v1
+      - name: Build with Gradle
+        uses: gradle/gradle-build-action@v2
+        with:
+          arguments: "-DmaxParallelForks=2 --parallel :internal:venice-avro-compatibility-test:test --continue"
+      - name: Package Build Artifacts
+        if: success() || failure()
+        shell: bash
+        run: |
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Build Artifacts
+        if: success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ github.job }}
+          path: ${{ github.job }}-artifacts.tar.gz
+          retention-days: 30
 
   IntegrationTestsA:
     strategy:
@@ -88,17 +165,33 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestA"
+      - name: Package Build Artifacts
+        if: success() || failure()
+        shell: bash
+        run: |
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Build Artifacts
+        if: success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ github.job }}
+          path: ${{ github.job }}-artifacts.tar.gz
+          retention-days: 30
 
   IntegrationTestsB:
     strategy:
@@ -117,17 +210,33 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestB"
+      - name: Package Build Artifacts
+        if: success() || failure()
+        shell: bash
+        run: |
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Build Artifacts
+        if: success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ github.job }}
+          path: ${{ github.job }}-artifacts.tar.gz
+          retention-days: 30
 
   IntegrationTestsC:
     strategy:
@@ -146,17 +255,33 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestC"
+      - name: Package Build Artifacts
+        if: success() || failure()
+        shell: bash
+        run: |
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Build Artifacts
+        if: success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ github.job }}
+          path: ${{ github.job }}-artifacts.tar.gz
+          retention-days: 30
 
   IntegrationTestsD:
     strategy:
@@ -175,17 +300,33 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestD"
+      - name: Package Build Artifacts
+        if: success() || failure()
+        shell: bash
+        run: |
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Build Artifacts
+        if: success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ github.job }}
+          path: ${{ github.job }}-artifacts.tar.gz
+          retention-days: 30
 
   IntegrationTestsE:
     strategy:
@@ -204,17 +345,33 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestE"
+      - name: Package Build Artifacts
+        if: success() || failure()
+        shell: bash
+        run: |
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Build Artifacts
+        if: success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ github.job }}
+          path: ${{ github.job }}-artifacts.tar.gz
+          retention-days: 30
 
   IntegrationTestsF:
     strategy:
@@ -233,17 +390,33 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestF"
+      - name: Package Build Artifacts
+        if: success() || failure()
+        shell: bash
+        run: |
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Build Artifacts
+        if: success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ github.job }}
+          path: ${{ github.job }}-artifacts.tar.gz
+          retention-days: 30
 
   IntegrationTestsG:
     strategy:
@@ -262,17 +435,33 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestG"
+      - name: Package Build Artifacts
+        if: success() || failure()
+        shell: bash
+        run: |
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Build Artifacts
+        if: success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ github.job }}
+          path: ${{ github.job }}-artifacts.tar.gz
+          retention-days: 30
 
   IntegrationTestsH:
     strategy:
@@ -291,17 +480,33 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestH"
+      - name: Package Build Artifacts
+        if: success() || failure()
+        shell: bash
+        run: |
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Build Artifacts
+        if: success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ github.job }}
+          path: ${{ github.job }}-artifacts.tar.gz
+          retention-days: 30
 
   IntegrationTestsI:
     strategy:
@@ -320,17 +525,33 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestI"
+      - name: Package Build Artifacts
+        if: success() || failure()
+        shell: bash
+        run: |
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Build Artifacts
+        if: success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ github.job }}
+          path: ${{ github.job }}-artifacts.tar.gz
+          retention-days: 30
 
   IntegrationTestsJ:
     strategy:
@@ -349,17 +570,33 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestJ"
+      - name: Package Build Artifacts
+        if: success() || failure()
+        shell: bash
+        run: |
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Build Artifacts
+        if: success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ github.job }}
+          path: ${{ github.job }}-artifacts.tar.gz
+          retention-days: 30
 
   IntegrationTestsK:
     strategy:
@@ -378,17 +615,33 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestK"
+      - name: Package Build Artifacts
+        if: success() || failure()
+        shell: bash
+        run: |
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Build Artifacts
+        if: success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ github.job }}
+          path: ${{ github.job }}-artifacts.tar.gz
+          retention-days: 30
 
   IntegrationTestsL:
     strategy:
@@ -407,17 +660,33 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestL"
+      - name: Package Build Artifacts
+        if: success() || failure()
+        shell: bash
+        run: |
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Build Artifacts
+        if: success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ github.job }}
+          path: ${{ github.job }}-artifacts.tar.gz
+          retention-days: 30
 
   IntegrationTestsM:
     strategy:
@@ -436,17 +705,33 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestM"
+      - name: Package Build Artifacts
+        if: success() || failure()
+        shell: bash
+        run: |
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Build Artifacts
+        if: success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ github.job }}
+          path: ${{ github.job }}-artifacts.tar.gz
+          retention-days: 30
 
   IntegrationTestsN:
     strategy:
@@ -465,17 +750,33 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestN"
+      - name: Package Build Artifacts
+        if: success() || failure()
+        shell: bash
+        run: |
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Build Artifacts
+        if: success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ github.job }}
+          path: ${{ github.job }}-artifacts.tar.gz
+          retention-days: 30
 
   IntegrationTestsO:
     strategy:
@@ -494,17 +795,33 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestO"
+      - name: Package Build Artifacts
+        if: success() || failure()
+        shell: bash
+        run: |
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Build Artifacts
+        if: success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ github.job }}
+          path: ${{ github.job }}-artifacts.tar.gz
+          retention-days: 30
 
   IntegrationTestsP:
     strategy:
@@ -523,17 +840,33 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestP"
+      - name: Package Build Artifacts
+        if: success() || failure()
+        shell: bash
+        run: |
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Build Artifacts
+        if: success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ github.job }}
+          path: ${{ github.job }}-artifacts.tar.gz
+          retention-days: 30
 
   IntegrationTestsQ:
     strategy:
@@ -552,17 +885,33 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestQ"
+      - name: Package Build Artifacts
+        if: success() || failure()
+        shell: bash
+        run: |
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Build Artifacts
+        if: success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ github.job }}
+          path: ${{ github.job }}-artifacts.tar.gz
+          retention-days: 30
 
   IntegrationTestsZ:
     strategy:
@@ -581,17 +930,33 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestZ"
+      - name: Package Build Artifacts
+        if: success() || failure()
+        shell: bash
+        run: |
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Build Artifacts
+        if: success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ github.job }}
+          path: ${{ github.job }}-artifacts.tar.gz
+          retention-days: 30
 
   DummyStep:
     strategy:
@@ -600,7 +965,7 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    needs: [StaticAnalysis, UnitTestsAndCodeCoverage, IntegrationTestsA, IntegrationTestsB, IntegrationTestsC, IntegrationTestsD, IntegrationTestsE, IntegrationTestsF, IntegrationTestsG, IntegrationTestsH, IntegrationTestsI, IntegrationTestsJ, IntegrationTestsK, IntegrationTestsL, IntegrationTestsM, IntegrationTestsN, IntegrationTestsO, IntegrationTestsP, IntegrationTestsQ, IntegrationTestsZ]
+    needs: [StaticAnalysis, UnitTestsAndCodeCoverage, AvroCompatibilityTests, IntegrationTestsA, IntegrationTestsB, IntegrationTestsC, IntegrationTestsD, IntegrationTestsE, IntegrationTestsF, IntegrationTestsG, IntegrationTestsH, IntegrationTestsI, IntegrationTestsJ, IntegrationTestsK, IntegrationTestsL, IntegrationTestsM, IntegrationTestsN, IntegrationTestsO, IntegrationTestsP, IntegrationTestsQ, IntegrationTestsZ]
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3
@@ -611,15 +976,31 @@ jobs:
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
           arguments: "clean"
+      - name: Package Build Artifacts
+        if: success() || failure()
+        shell: bash
+        run: |
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Build Artifacts
+        if: success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ github.job }}
+          path: ${{ github.job }}-artifacts.tar.gz
+          retention-days: 30
 

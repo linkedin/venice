@@ -60,19 +60,21 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.SegmentStatus;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.DataReplicationPolicy;
-import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.InMemoryOffsetManager;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubProduceResult;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -85,10 +87,10 @@ import com.linkedin.venice.unit.kafka.consumer.poll.ArbitraryOrderingPollStrateg
 import com.linkedin.venice.unit.kafka.consumer.poll.CompositePollStrategy;
 import com.linkedin.venice.unit.kafka.consumer.poll.FilteringPollStrategy;
 import com.linkedin.venice.unit.kafka.consumer.poll.PollStrategy;
+import com.linkedin.venice.unit.kafka.consumer.poll.PubSubTopicPartitionOffset;
 import com.linkedin.venice.unit.kafka.consumer.poll.RandomPollStrategy;
-import com.linkedin.venice.unit.kafka.producer.MockInMemoryProducer;
+import com.linkedin.venice.unit.kafka.producer.MockInMemoryProducerAdapter;
 import com.linkedin.venice.utils.DataProviderUtils;
-import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -115,9 +117,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.function.Supplier;
-import org.apache.kafka.clients.producer.RecordMetadata;
-import org.apache.kafka.common.TopicPartition;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -136,6 +135,8 @@ public class AdminConsumptionTaskTest {
   private static final byte[] emptyKeyBytes = new byte[] { 'a' };
   private final AdminOperationSerializer adminOperationSerializer = new AdminOperationSerializer();
 
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+
   private static final String storeName = Utils.getUniqueString("test_store");
   private static final String storeTopicName = storeName + "_v1";
   private static final String owner = "test_owner";
@@ -143,7 +144,7 @@ public class AdminConsumptionTaskTest {
   private static final String valueSchema = "\"string\"";
 
   // Objects will be used by each test method
-  private KafkaConsumerWrapper mockKafkaConsumer;
+  private PubSubConsumer mockKafkaConsumer;
   private VeniceHelixAdmin admin;
   private OffsetManager offsetManager;
   private AdminTopicMetadataAccessor adminTopicMetadataAccessor;
@@ -162,7 +163,7 @@ public class AdminConsumptionTaskTest {
     veniceWriter = getVeniceWriter(inMemoryKafkaBroker);
     executionIdAccessor = new InMemoryExecutionIdAccessor();
 
-    mockKafkaConsumer = mock(KafkaConsumerWrapper.class);
+    mockKafkaConsumer = mock(PubSubConsumer.class);
 
     admin = mock(VeniceHelixAdmin.class);
     // By default, current controller is the leader controller
@@ -195,15 +196,15 @@ public class AdminConsumptionTaskTest {
             .setPartitioner(new SimplePartitioner())
             .setTime(SystemTime.INSTANCE)
             .build();
-    return new TestVeniceWriter(
+    return new VeniceWriter(
         veniceWriterOptions,
         new VeniceProperties(props),
-        () -> new MockInMemoryProducer(inMemoryKafkaBroker));
+        new MockInMemoryProducerAdapter(inMemoryKafkaBroker));
   }
 
   private AdminConsumptionTask getAdminConsumptionTask(PollStrategy pollStrategy, boolean isParent) {
     AdminConsumptionStats stats = mock(AdminConsumptionStats.class);
-    return getAdminConsumptionTask(pollStrategy, isParent, stats, 10000);
+    return getAdminConsumptionTask(pollStrategy, isParent, stats, 10000, false, null);
   }
 
   private AdminConsumptionTask getAdminConsumptionTask(
@@ -211,6 +212,16 @@ public class AdminConsumptionTaskTest {
       boolean isParent,
       AdminConsumptionStats stats,
       long adminConsumptionCycleTimeoutMs) {
+    return getAdminConsumptionTask(pollStrategy, isParent, stats, adminConsumptionCycleTimeoutMs, false, null);
+  }
+
+  private AdminConsumptionTask getAdminConsumptionTask(
+      PollStrategy pollStrategy,
+      boolean isParent,
+      AdminConsumptionStats stats,
+      long adminConsumptionCycleTimeoutMs,
+      boolean remoteConsumptionEnabled,
+      String remoteKafkaServerUrl) {
     MockInMemoryConsumer inMemoryKafkaConsumer =
         new MockInMemoryConsumer(inMemoryKafkaBroker, pollStrategy, mockKafkaConsumer);
 
@@ -223,9 +234,8 @@ public class AdminConsumptionTaskTest {
     return new AdminConsumptionTask(
         clusterName,
         inMemoryKafkaConsumer,
-        false,
-        Optional.empty(),
-        Optional.empty(),
+        remoteConsumptionEnabled,
+        Optional.ofNullable(remoteKafkaServerUrl),
         admin,
         adminTopicMetadataAccessor,
         executionIdAccessor,
@@ -239,8 +249,11 @@ public class AdminConsumptionTaskTest {
         pubSubMessageDeserializer);
   }
 
-  private Pair<TopicPartition, Long> getTopicPartitionOffsetPair(RecordMetadata recordMetadata) {
-    return new Pair<>(new TopicPartition(recordMetadata.topic(), recordMetadata.partition()), recordMetadata.offset());
+  private PubSubTopicPartitionOffset getTopicPartitionOffsetPair(PubSubProduceResult produceResult) {
+    PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(
+        pubSubTopicRepository.getTopic(produceResult.getTopic()),
+        produceResult.getPartition());
+    return new PubSubTopicPartitionOffset(pubSubTopicPartition, produceResult.getOffset());
   }
 
   private long getLastOffset(String clusterName) {
@@ -259,7 +272,7 @@ public class AdminConsumptionTaskTest {
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false);
     executor.submit(task);
     verify(admin, timeout(TIMEOUT).atLeastOnce()).isLeaderControllerFor(clusterName);
-    verify(mockKafkaConsumer, never()).subscribe(any(), anyInt(), anyLong());
+    verify(mockKafkaConsumer, never()).subscribe(any(), anyLong());
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
@@ -297,10 +310,10 @@ public class AdminConsumptionTaskTest {
     if (isParent) {
       verify(topicManager, timeout(TIMEOUT))
           .createTopic(AdminTopicUtils.getTopicNameFromClusterName(clusterName), 1, 1, true, false, Optional.empty());
-      verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyInt(), anyLong());
+      verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyLong());
     } else {
       verify(topicManager, never()).createTopic(anyString(), anyInt(), anyInt(), anyBoolean(), anyBoolean(), any());
-      verify(mockKafkaConsumer, never()).subscribe(any(), anyInt(), anyLong());
+      verify(mockKafkaConsumer, never()).subscribe(any(), anyLong());
     }
     task.close();
     executor.shutdown();
@@ -333,8 +346,8 @@ public class AdminConsumptionTaskTest {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
     verify(admin, timeout(TIMEOUT).atLeastOnce()).isLeaderControllerFor(clusterName);
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyInt(), anyLong());
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any(), anyInt());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyLong());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any());
     verify(admin, timeout(TIMEOUT)).createStore(clusterName, storeName, owner, keySchema, valueSchema, false);
     verify(admin, timeout(TIMEOUT)).killOfflinePush(clusterName, storeTopicName, false);
   }
@@ -364,20 +377,20 @@ public class AdminConsumptionTaskTest {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
     verify(admin, timeout(TIMEOUT).atLeastOnce()).isLeaderControllerFor(clusterName);
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyInt(), anyLong());
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any(), anyInt());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyLong());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any());
     verify(admin, timeout(TIMEOUT).times(2)).createStore(clusterName, storeName, owner, keySchema, valueSchema, false);
   }
 
   @Test(timeOut = TIMEOUT)
   public void testDelegateExceptionSetsFailingOffset() throws ExecutionException, InterruptedException, IOException {
     long failingOffset =
-        ((RecordMetadata) veniceWriter
+        ((PubSubProduceResult) veniceWriter
             .put(
                 emptyKeyBytes,
                 getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1),
                 AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
-            .get()).offset();
+            .get()).getOffset();
     AdminConsumptionStats mockStats = mock(AdminConsumptionStats.class);
     doThrow(StringIndexOutOfBoundsException.class).when(mockStats).recordAdminMessageDelegateLatency(anyDouble());
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false, mockStats, 10000);
@@ -459,8 +472,8 @@ public class AdminConsumptionTaskTest {
 
   @Test(timeOut = TIMEOUT)
   public void testRunWithDuplicateMessagesWithSameOffset() throws Exception {
-    RecordMetadata killJobMetadata =
-        (RecordMetadata) veniceWriter
+    PubSubProduceResult killJobMetadata =
+        (PubSubProduceResult) veniceWriter
             .put(
                 emptyKeyBytes,
                 getKillOfflinePushJobMessage(clusterName, storeTopicName, 1),
@@ -475,7 +488,7 @@ public class AdminConsumptionTaskTest {
 
     Queue<AbstractPollStrategy> pollStrategies = new LinkedList<>();
     pollStrategies.add(new RandomPollStrategy());
-    Queue<Pair<TopicPartition, Long>> pollDeliveryOrder = new LinkedList<>();
+    Queue<PubSubTopicPartitionOffset> pollDeliveryOrder = new LinkedList<>();
     pollDeliveryOrder.add(getTopicPartitionOffsetPair(killJobMetadata));
     pollStrategies.add(new ArbitraryOrderingPollStrategy(pollDeliveryOrder));
     PollStrategy pollStrategy = new CompositePollStrategy(pollStrategies);
@@ -495,8 +508,8 @@ public class AdminConsumptionTaskTest {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
     verify(admin, timeout(TIMEOUT).atLeastOnce()).isLeaderControllerFor(clusterName);
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyInt(), anyLong());
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any(), anyInt());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyLong());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any());
     verify(admin, timeout(TIMEOUT)).createStore(clusterName, storeName, owner, keySchema, valueSchema, false);
   }
 
@@ -531,8 +544,8 @@ public class AdminConsumptionTaskTest {
     OffsetRecord offsetRecord = getOffsetRecordByOffsetAndSeqNum(firstAdminMessageOffset, firstAdminMessageSeqNum);
     offsetManager.put(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, offsetRecord);
 
-    RecordMetadata killJobMetadata =
-        (RecordMetadata) veniceWriter
+    PubSubProduceResult killJobMetadata =
+        (PubSubProduceResult) veniceWriter
             .put(
                 emptyKeyBytes,
                 getKillOfflinePushJobMessage(clusterName, storeTopicName, 1),
@@ -545,7 +558,7 @@ public class AdminConsumptionTaskTest {
             AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
         .get();
 
-    Queue<Pair<TopicPartition, Long>> pollDeliveryOrder = new LinkedList<>();
+    Queue<PubSubTopicPartitionOffset> pollDeliveryOrder = new LinkedList<>();
     pollDeliveryOrder.add(getTopicPartitionOffsetPair(killJobMetadata));
     PollStrategy pollStrategy = new ArbitraryOrderingPollStrategy(pollDeliveryOrder);
 
@@ -564,8 +577,8 @@ public class AdminConsumptionTaskTest {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
     verify(admin, timeout(TIMEOUT).atLeastOnce()).isLeaderControllerFor(clusterName);
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyInt(), anyLong());
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any(), anyInt());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyLong());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any());
     verify(admin, timeout(TIMEOUT)).createStore(clusterName, storeName, owner, keySchema, valueSchema, false);
     // Kill message is before persisted offset
     verify(admin, never()).killOfflinePush(clusterName, storeTopicName, false);
@@ -581,19 +594,24 @@ public class AdminConsumptionTaskTest {
         getStoreCreationMessage(clusterName, storeName1, owner, keySchema, valueSchema, 1),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     long offsetToSkip =
-        ((RecordMetadata) veniceWriter
+        ((PubSubProduceResult) veniceWriter
             .put(
                 emptyKeyBytes,
                 getStoreCreationMessage(clusterName, storeName2, owner, keySchema, valueSchema, 2),
                 AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
-            .get()).offset();
+            .get()).getOffset();
     veniceWriter.put(
         emptyKeyBytes,
         getStoreCreationMessage(clusterName, storeName3, owner, keySchema, valueSchema, 3),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
-    Set<Pair<TopicPartition, Long>> set = new HashSet<>();
-    set.add(new Pair(new TopicPartition(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID), offsetToSkip - 1));
+    Set<PubSubTopicPartitionOffset> set = new HashSet<>();
+    set.add(
+        new PubSubTopicPartitionOffset(
+            new PubSubTopicPartitionImpl(
+                pubSubTopicRepository.getTopic(topicName),
+                AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
+            offsetToSkip - 1));
     PollStrategy pollStrategy = new FilteringPollStrategy(new RandomPollStrategy(false), set);
 
     // The stores don't exist
@@ -623,8 +641,8 @@ public class AdminConsumptionTaskTest {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
     verify(stats, atLeastOnce()).recordAdminTopicDIVErrorReportCount();
     verify(admin, atLeastOnce()).isLeaderControllerFor(clusterName);
-    verify(mockKafkaConsumer, times(1)).subscribe(any(), anyInt(), anyLong());
-    verify(mockKafkaConsumer, times(1)).unSubscribe(any(), anyInt());
+    verify(mockKafkaConsumer, times(1)).subscribe(any(), anyLong());
+    verify(mockKafkaConsumer, times(1)).unSubscribe(any());
     verify(admin, times(1)).createStore(clusterName, storeName1, owner, keySchema, valueSchema, false);
     verify(admin, never()).createStore(clusterName, storeName2, owner, keySchema, valueSchema, false);
     verify(admin, never()).createStore(clusterName, storeName3, owner, keySchema, valueSchema, false);
@@ -678,13 +696,13 @@ public class AdminConsumptionTaskTest {
     String storeName3 = "test_store3";
 
     VeniceWriter oldVeniceWriter = getVeniceWriter(inMemoryKafkaBroker);
-    Future<RecordMetadata> metadataForStoreName0Future = oldVeniceWriter.put(
+    Future<PubSubProduceResult> metadataForStoreName0Future = oldVeniceWriter.put(
         emptyKeyBytes,
         getStoreCreationMessage(clusterName, storeName0, owner, keySchema, valueSchema, 1),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     adminTopicMetadataAccessor.updateMetadata(
         clusterName,
-        AdminTopicMetadataAccessor.generateMetadataMap(metadataForStoreName0Future.get().offset(), -1, 1));
+        AdminTopicMetadataAccessor.generateMetadataMap(metadataForStoreName0Future.get().getOffset(), -1, 1));
 
     // Write a message with a skipped execution id but a different producer metadata.
     veniceWriter.put(
@@ -748,8 +766,8 @@ public class AdminConsumptionTaskTest {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
     verify(admin, timeout(TIMEOUT).atLeastOnce()).isLeaderControllerFor(clusterName);
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyInt(), anyLong());
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any(), anyInt());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyLong());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any());
     verify(admin, timeout(TIMEOUT)).createStore(clusterName, storeName, owner, keySchema, valueSchema, false);
   }
 
@@ -783,8 +801,8 @@ public class AdminConsumptionTaskTest {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
     verify(admin, timeout(TIMEOUT).atLeastOnce()).isLeaderControllerFor(clusterName);
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyInt(), anyLong());
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any(), anyInt());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyLong());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any());
 
     verify(admin, never()).createStore(clusterName, storeName1, owner, keySchema, valueSchema, false);
     verify(admin, atLeastOnce()).createStore(clusterName, storeName2, owner, keySchema, valueSchema, false);
@@ -809,8 +827,8 @@ public class AdminConsumptionTaskTest {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
     verify(admin, timeout(TIMEOUT).atLeastOnce()).isLeaderControllerFor(clusterName);
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyInt(), anyLong());
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any(), anyInt());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyLong());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any());
     verify(admin, never()).killOfflinePush(clusterName, storeTopicName, false);
   }
 
@@ -870,7 +888,6 @@ public class AdminConsumptionTaskTest {
     setStore.enableWrites = enableWrites;
     setStore.accessControlled = accessControlled;
     setStore.incrementalPushEnabled = true;
-    setStore.incrementalPushPolicy = IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME.getValue();
     setStore.isMigrating = storeMigration;
     setStore.writeComputationEnabled = writeComputationEnabled;
     setStore.readComputationEnabled = computationEnabled;
@@ -1019,8 +1036,8 @@ public class AdminConsumptionTaskTest {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
     verify(admin, timeout(TIMEOUT).atLeastOnce()).isLeaderControllerFor(clusterName);
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyInt(), anyLong());
-    verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any(), anyInt());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).subscribe(any(), anyLong());
+    verify(mockKafkaConsumer, timeout(TIMEOUT)).unSubscribe(any());
 
     verify(admin, atLeastOnce()).createStore(clusterName, storeName1, owner, keySchema, valueSchema, false);
     verify(admin, times(1)).createStore(clusterName, storeName2, owner, keySchema, valueSchema, false);
@@ -1054,11 +1071,11 @@ public class AdminConsumptionTaskTest {
         emptyKeyBytes,
         getKillOfflinePushJobMessage(clusterName, storeTopicName, 3L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    Future<RecordMetadata> future = veniceWriter.put(
+    Future<PubSubProduceResult> future = veniceWriter.put(
         emptyKeyBytes,
         getKillOfflinePushJobMessage(clusterName, storeTopicName, 4L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    long offset = future.get(TIMEOUT, TimeUnit.MILLISECONDS).offset();
+    long offset = future.get(TIMEOUT, TimeUnit.MILLISECONDS).getOffset();
     Map<String, Long> newMetadata = AdminTopicMetadataAccessor.generateMetadataMap(offset, -1, 4L);
     adminTopicMetadataAccessor.updateMetadata(clusterName, newMetadata);
     executionIdAccessor.updateLastSucceededExecutionIdMap(clusterName, storeName, 4L);
@@ -1088,12 +1105,12 @@ public class AdminConsumptionTaskTest {
         getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     long failingOffset =
-        ((RecordMetadata) veniceWriter
+        ((PubSubProduceResult) veniceWriter
             .put(
                 emptyKeyBytes,
                 getAddVersionMessage(clusterName, storeName, mockPushJobId, 1, 1, 2L),
                 AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
-            .get()).offset();
+            .get()).getOffset();
     veniceWriter.put(
         emptyKeyBytes,
         getKillOfflinePushJobMessage(clusterName, storeTopicName, 3L),
@@ -1150,11 +1167,11 @@ public class AdminConsumptionTaskTest {
         emptyKeyBytes,
         getKillOfflinePushJobMessage(clusterName, storeTopicName, 2L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    Future<RecordMetadata> future = veniceWriter.put(
+    Future<PubSubProduceResult> future = veniceWriter.put(
         emptyKeyBytes,
         getKillOfflinePushJobMessage(clusterName, storeTopicName, 3L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    final long offset = future.get(TIMEOUT, TimeUnit.MILLISECONDS).offset();
+    final long offset = future.get(TIMEOUT, TimeUnit.MILLISECONDS).getOffset();
     OffsetRecord offsetRecord = offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
     offsetRecord.setCheckpointLocalVersionTopicOffset(offset);
     offsetManager.put(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, offsetRecord);
@@ -1178,7 +1195,7 @@ public class AdminConsumptionTaskTest {
         emptyKeyBytes,
         getKillOfflinePushJobMessage(clusterName, storeTopicName, 5L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    final long latestOffset = future.get(TIMEOUT, TimeUnit.MILLISECONDS).offset();
+    final long latestOffset = future.get(TIMEOUT, TimeUnit.MILLISECONDS).getOffset();
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
@@ -1206,18 +1223,23 @@ public class AdminConsumptionTaskTest {
         getKillOfflinePushJobMessage(clusterName, storeTopicName, 3L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     // New admin messages should fail with DIV error
-    Future<RecordMetadata> future = veniceWriter.put(
+    Future<PubSubProduceResult> future = veniceWriter.put(
         emptyKeyBytes,
         getKillOfflinePushJobMessage(clusterName, storeTopicName, 4L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    long offset = future.get(TIMEOUT, TimeUnit.MILLISECONDS).offset();
+    long offset = future.get(TIMEOUT, TimeUnit.MILLISECONDS).getOffset();
     veniceWriter.put(
         emptyKeyBytes,
         getKillOfflinePushJobMessage(clusterName, storeTopicName, 5L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     // We need to actually create a gap in producer metadata too in order to craft a valid DIV exception.
-    Set<Pair<TopicPartition, Long>> set = new HashSet<>();
-    set.add(new Pair(new TopicPartition(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID), 2L));
+    Set<PubSubTopicPartitionOffset> set = new HashSet<>();
+    set.add(
+        new PubSubTopicPartitionOffset(
+            new PubSubTopicPartitionImpl(
+                pubSubTopicRepository.getTopic(topicName),
+                AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
+            2L));
     PollStrategy pollStrategy = new FilteringPollStrategy(new RandomPollStrategy(false), set);
     AdminConsumptionTask task = getAdminConsumptionTask(pollStrategy, false);
     executor.submit(task);
@@ -1261,11 +1283,11 @@ public class AdminConsumptionTaskTest {
             -1,
             1,
             false);
-    Future<RecordMetadata> future = veniceWriter.put(
+    Future<PubSubProduceResult> future = veniceWriter.put(
         emptyKeyBytes,
         getAddVersionMessage(clusterName, storeName, mockPushJobId, versionNumber, numberOfPartitions, 1L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    long offset = future.get(TIMEOUT, TimeUnit.MILLISECONDS).offset();
+    long offset = future.get(TIMEOUT, TimeUnit.MILLISECONDS).getOffset();
     TestUtils.waitForNonDeterministicAssertion(
         TIMEOUT,
         TimeUnit.MILLISECONDS,
@@ -1411,13 +1433,18 @@ public class AdminConsumptionTaskTest {
     return adminOperationSerializer.serialize(adminMessage);
   }
 
-  /**
-   * Used for test only. As the CTOR of VeniceWriter is protected, so the only way to create an instance is extend it
-   * and create an instance of this sub-class.
-   */
-  private static class TestVeniceWriter<K, V> extends VeniceWriter {
-    protected TestVeniceWriter(VeniceWriterOptions veniceWriterOptions, VeniceProperties props, Supplier supplier) {
-      super(veniceWriterOptions, props, supplier);
-    }
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Admin topic remote consumption is enabled but no config found for the source Kafka bootstrap server url")
+  public void testRemoteConsumptionEnabledButRemoteBootstrapUrlsAreMissing() {
+    AdminConsumptionStats stats = mock(AdminConsumptionStats.class);
+    getAdminConsumptionTask(new RandomPollStrategy(), true, stats, 0, true, null);
+  }
+
+  @Test
+  public void testRemoteConsumptionEnabledAndRemoteBootstrapUrlsAreGiven() {
+    AdminConsumptionStats stats = mock(AdminConsumptionStats.class);
+    TopicManager topicManager = mock(TopicManager.class);
+    doReturn(topicManager).when(admin).getTopicManager("remote.pubsub");
+    AdminConsumptionTask task = getAdminConsumptionTask(null, true, stats, 0, true, "remote.pubsub");
+    Assert.assertEquals(task.getSourceKafkaClusterTopicManager(), topicManager);
   }
 }

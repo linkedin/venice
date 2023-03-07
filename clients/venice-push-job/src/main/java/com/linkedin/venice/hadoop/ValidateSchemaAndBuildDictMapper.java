@@ -12,6 +12,7 @@ import static com.linkedin.venice.hadoop.VenicePushJob.PushJobSetting;
 import static com.linkedin.venice.hadoop.VenicePushJob.StoreSetting;
 import static com.linkedin.venice.hadoop.VenicePushJob.USE_MAPPER_TO_BUILD_DICTIONARY;
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.ZSTD_DICTIONARY_CREATION_REQUIRED;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.etl.ETLValueSchemaTransformation;
@@ -52,7 +53,7 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
   protected InputDataInfoProvider.InputDataInfo inputDataInfo;
   protected PushJobSetting pushJobSetting = new PushJobSetting();
   protected StoreSetting storeSetting = new StoreSetting();
-  protected boolean buildDictionary;
+  protected boolean isZstdDictCreationRequired;
   protected boolean hasReportedFailure = false;
   private FileStatus[] fileStatuses = null;
   private FileSystem fileSystem = null;
@@ -134,7 +135,7 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
     if (inputDataInfo.getSchemaInfo().isAvro()) {
       LOGGER.info("Detected Avro input format.");
       Pair<Schema, Schema> newSchema =
-          inputDataInfoProvider.getAvroFileHeader(fileSystem, fileStatus.getPath(), buildDictionary);
+          inputDataInfoProvider.getAvroFileHeader(fileSystem, fileStatus.getPath(), isZstdDictCreationRequired);
       if (!newSchema.equals(inputDataInfo.getSchemaInfo().getAvroSchema())) {
         MRJobCounterHelper.incrMapperSchemaInconsistencyFailureCount(reporter, 1);
         LOGGER.error(
@@ -148,7 +149,7 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
     } else {
       LOGGER.info("Detected Vson input format, will convert to Avro automatically.");
       Pair<VsonSchema, VsonSchema> newSchema =
-          inputDataInfoProvider.getVsonFileHeader(fileSystem, fileStatus.getPath(), buildDictionary);
+          inputDataInfoProvider.getVsonFileHeader(fileSystem, fileStatus.getPath(), isZstdDictCreationRequired);
       if (!newSchema.equals(inputDataInfo.getSchemaInfo().getVsonSchema())) {
         MRJobCounterHelper.incrMapperSchemaInconsistencyFailureCount(reporter, 1);
         LOGGER.error(
@@ -175,16 +176,16 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
     // 1. Init the record
     ValidateSchemaAndBuildDictMapperOutput mapperOutputRecord = new ValidateSchemaAndBuildDictMapperOutput();
 
-    // 2. append inputFileDataSize (Mandatory entry)
+    // 2. Populate inputFileDataSize (Mandatory entry)
     mapperOutputRecord.put(KEY_INPUT_FILE_DATA_SIZE, inputFileDataSize);
 
     try {
-      // 3. append zstd compression dictionary (optional entry): If dictionary building is enabled and
+      // 3. Populate zstd compression dictionary (optional entry): If dictionary building is enabled and
       // if there are any input records: build dictionary from the data collected so far and append it
-      if (buildDictionary) {
+      if (isZstdDictCreationRequired) {
         if (inputDataInfo.hasRecords()) {
           LOGGER.info(
-              "Creating ZSTD compression dictionary using {}  bytes of samples",
+              "Creating ZSTD compression dictionary using {} bytes of samples",
               inputDataInfoProvider.pushJobZstdConfig.getFilledSize());
           ByteBuffer compressionDictionary;
           try {
@@ -204,13 +205,10 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
           LOGGER.info("No compression dictionary is generated as the input data doesn't contain any records");
         }
       } else {
-        LOGGER.info(
-            "No compression dictionary is generated with the strategy {} and compressionMetricCollectionEnabled is {}",
-            storeSetting.compressionStrategy,
-            (pushJobSetting.compressionMetricCollectionEnabled ? "Enabled" : "Disabled"));
+        LOGGER.info("No compression dictionary is generated");
       }
     } finally {
-      // 4. collect(persist) the appended output so far
+      // 4. collect(persist) the populated output so far
       output.collect(new AvroWrapper<>(mapperOutputRecord), NullWritable.get());
     }
     return true;
@@ -253,7 +251,7 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
       return;
     }
 
-    if (buildDictionary) {
+    if (isZstdDictCreationRequired) {
       inputDataInfoProvider.initZstdConfig(inputDataInfo.getNumInputFiles());
     }
 
@@ -276,15 +274,14 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
 
     pushJobSetting.storeName = props.getString(VENICE_STORE_NAME_PROP);
     pushJobSetting.isIncrementalPush = props.getBoolean(INCREMENTAL_PUSH);
-    pushJobSetting.compressionMetricCollectionEnabled = props.getBoolean(COMPRESSION_METRIC_COLLECTION_ENABLED);
-    pushJobSetting.useMapperToBuildDict = props.getBoolean(USE_MAPPER_TO_BUILD_DICTIONARY);
     pushJobSetting.etlValueSchemaTransformation = ETLValueSchemaTransformation
         .valueOf(props.getString(ETL_VALUE_SCHEMA_TRANSFORMATION, ETLValueSchemaTransformation.NONE.name()));
     storeSetting.compressionStrategy = CompressionStrategy.valueOf(props.getString(COMPRESSION_STRATEGY));
     // Getting the original modified time from driver
     inputModificationTime = props.getLong(INPUT_PATH_LAST_MODIFIED_TIME);
-
-    buildDictionary = VenicePushJob.shouldBuildDictionary(pushJobSetting, storeSetting);
+    pushJobSetting.useMapperToBuildDict = props.getBoolean(USE_MAPPER_TO_BUILD_DICTIONARY);
+    pushJobSetting.compressionMetricCollectionEnabled = props.getBoolean(COMPRESSION_METRIC_COLLECTION_ENABLED);
+    isZstdDictCreationRequired = props.getBoolean(ZSTD_DICTIONARY_CREATION_REQUIRED);
 
     try {
       initInputData(job, props);

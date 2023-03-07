@@ -58,22 +58,19 @@ public class AdminConsumptionTaskIntegrationTest {
       topicManager.createTopic(adminTopic, 1, 1, true);
       String storeName = "test-store";
       try (
-          VeniceControllerWrapper controller =
-              ServiceFactory.getVeniceController(new VeniceControllerCreateOptions.Builder(clusterName, kafka).build());
+          VeniceControllerWrapper controller = ServiceFactory
+              .getVeniceController(new VeniceControllerCreateOptions.Builder(clusterName, zkServer, kafka).build());
           VeniceWriter<byte[], byte[], byte[]> writer =
               TestUtils.getVeniceWriterFactory(kafka.getAddress()).createBasicVeniceWriter(adminTopic)) {
-        byte[] message = getStoreCreationMessage(clusterName, storeName, owner, "invalid_key_schema", valueSchema, 1); // This
-                                                                                                                       // name
-                                                                                                                       // is
-                                                                                                                       // special
+        byte[] message = getStoreCreationMessage(clusterName, storeName, owner, "invalid_key_schema", valueSchema, 1);
         long badOffset = writer.put(new byte[0], message, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
             .get()
-            .offset();
+            .getOffset();
 
         byte[] goodMessage = getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 2);
         writer.put(new byte[0], goodMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
-        Thread.sleep(5000); // Non deterministic, but whatever. This should never fail.
+        Thread.sleep(5000); // Non-deterministic, but whatever. This should never fail.
         Assert.assertFalse(controller.getVeniceAdmin().hasStore(clusterName, storeName));
 
         try (ControllerClient controllerClient = new ControllerClient(clusterName, controller.getControllerUrl())) {

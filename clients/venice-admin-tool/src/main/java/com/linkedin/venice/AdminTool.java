@@ -56,6 +56,8 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
+import com.linkedin.venice.datarecovery.DataRecoveryClient;
+import com.linkedin.venice.datarecovery.StoreRepushCommand;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixSchemaAccessor;
@@ -400,15 +402,6 @@ public class AdminTool {
         case SEND_END_OF_PUSH:
           sendEndOfPush(cmd);
           break;
-        case LIST_LF_STORES:
-          listLFStores(cmd);
-          break;
-        case ENABLE_LF_MODEL:
-          enableLFModel(cmd);
-          break;
-        case DISABLE_LF_MODEL:
-          disableLFModel(cmd);
-          break;
         case NEW_STORE_ACL:
           createNewStoreWithAcl(cmd);
           break;
@@ -495,6 +488,9 @@ public class AdminTool {
           break;
         case CLEANUP_INSTANCE_CUSTOMIZED_STATES:
           cleanupInstanceCustomizedStates(cmd);
+          break;
+        case EXECUTE_DATA_RECOVERY:
+          executeDataRecovery(cmd);
           break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
@@ -602,6 +598,27 @@ public class AdminTool {
     printObject(keySchema);
     MultiSchemaResponse valueSchemas = controllerClient.getAllValueSchema(store);
     printObject(valueSchemas);
+  }
+
+  private static void executeDataRecovery(CommandLine cmd) {
+    String recoveryCommand = getRequiredArgument(cmd, Arg.RECOVERY_COMMAND);
+    String sourceFabric = getRequiredArgument(cmd, Arg.SOURCE_FABRIC);
+    String stores = getRequiredArgument(cmd, Arg.STORES);
+
+    String extraCommandArgs = getOptionalArgument(cmd, Arg.EXTRA_COMMAND_ARGS);
+    boolean isDebuggingEnabled = cmd.hasOption(Arg.DEBUG.toString());
+
+    StoreRepushCommand.Params cmdParams = new StoreRepushCommand.Params();
+    cmdParams.setCommand(recoveryCommand);
+    cmdParams.setSourceFabric(sourceFabric);
+    if (extraCommandArgs != null) {
+      cmdParams.setExtraCommandArgs(extraCommandArgs);
+    }
+    cmdParams.setDebug(isDebuggingEnabled);
+
+    DataRecoveryClient dataRecoveryClient = new DataRecoveryClient();
+    DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(stores);
+    dataRecoveryClient.execute(params, cmdParams);
   }
 
   private static void createNewStore(CommandLine cmd) throws Exception {
@@ -902,7 +919,6 @@ public class AdminTool {
         Arg.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOUR,
         p -> params.setBootstrapToOnlineTimeoutInHours(p),
         argSet);
-    booleanParam(cmd, Arg.LEADER_FOLLOWER_MODEL_ENABLED, p -> params.setLeaderFollowerModel(p), argSet);
     genericParam(cmd, Arg.BACKUP_STRATEGY, s -> BackupStrategy.valueOf(s), p -> params.setBackupStrategy(p), argSet);
     booleanParam(cmd, Arg.AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED, p -> params.setAutoSchemaPushJobEnabled(p), argSet);
     booleanParam(cmd, Arg.HYBRID_STORE_DISK_QUOTA_ENABLED, p -> params.setHybridStoreDiskQuotaEnabled(p), argSet);
@@ -1215,14 +1231,10 @@ public class AdminTool {
   private static void deleteKafkaTopic(CommandLine cmd) throws Exception {
     long startTime = System.currentTimeMillis();
     String kafkaBootstrapServer = getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS);
-    String zkConnectionString = getRequiredArgument(cmd, Arg.KAFKA_ZOOKEEPER_CONNECTION_URL);
     Properties properties = loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
     properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafkaBootstrapServer);
-    properties.put(ConfigKeys.KAFKA_ZK_ADDRESS, zkConnectionString);
     VeniceProperties veniceProperties = new VeniceProperties(properties);
     KafkaClientFactory kafkaClientFactory = new KafkaConsumerFactoryImpl(veniceProperties);
-    int zkSessionTimeoutMs = 30 * Time.MS_PER_SECOND;
-    int zkConnectionTimeoutMs = 60 * Time.MS_PER_SECOND;
     int kafkaTimeOut = 30 * Time.MS_PER_SECOND;
     int topicDeletionStatusPollingInterval = 2 * Time.MS_PER_SECOND;
     if (cmd.hasOption(Arg.KAFKA_OPERATION_TIMEOUT.toString())) {
@@ -1817,25 +1829,6 @@ public class AdminTool {
     }
 
     ControllerResponse response = controllerClient.writeEndOfPush(storeName, intVersion);
-    printObject(response);
-  }
-
-  private static void listLFStores(CommandLine cmd) {
-    MultiStoreResponse response = controllerClient.listLFStores();
-    printObject(response);
-  }
-
-  private static void enableLFModel(CommandLine cmd) {
-    String storeType = getRequiredArgument(cmd, Arg.STORE_TYPE);
-
-    MultiStoreResponse response = controllerClient.enableLFModel(true, storeType);
-    printObject(response);
-  }
-
-  private static void disableLFModel(CommandLine cmd) {
-    String storeType = getRequiredArgument(cmd, Arg.STORE_TYPE);
-
-    MultiStoreResponse response = controllerClient.enableLFModel(false, storeType);
     printObject(response);
   }
 

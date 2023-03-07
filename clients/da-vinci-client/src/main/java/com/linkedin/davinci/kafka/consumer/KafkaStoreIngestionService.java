@@ -15,6 +15,7 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.listener.response.AdminResponse;
+import com.linkedin.davinci.listener.response.MetadataResponse;
 import com.linkedin.davinci.notifier.LogNotifier;
 import com.linkedin.davinci.notifier.MetaSystemStoreReplicaStatusNotifier;
 import com.linkedin.davinci.notifier.PartitionPushStatusNotifier;
@@ -33,6 +34,8 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
+import com.linkedin.venice.helix.HelixInstanceConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.kafka.KafkaClientFactory.MetricsParameters;
 import com.linkedin.venice.kafka.TopicManagerRepository;
@@ -41,6 +44,7 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.meta.ClusterInfoProvider;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.ReadOnlyLiveClusterConfigRepository;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -49,17 +53,23 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.metadata.response.VersionProperties;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
+import com.linkedin.venice.pubsub.adapter.kafka.producer.SharedKafkaProducerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.routerapi.ReplicaState;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
-import com.linkedin.venice.stats.KafkaClientStats;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ComplementSet;
@@ -70,13 +80,9 @@ import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ResourceAutoClosableLockManager;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
-import com.linkedin.venice.writer.ApacheKafkaProducer;
-import com.linkedin.venice.writer.KafkaProducerWrapper;
-import com.linkedin.venice.writer.SharedKafkaProducerService;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
@@ -91,6 +97,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
@@ -125,6 +132,12 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final StorageMetadataService storageMetadataService;
 
   private final ReadOnlyStoreRepository metadataRepo;
+
+  private final ReadOnlySchemaRepository schemaRepo;
+
+  private HelixCustomizedViewOfflinePushRepository customizedViewRepository;
+
+  private HelixInstanceConfigRepository helixInstanceConfigRepository;
 
   private final AggHostLevelIngestionStats hostLevelIngestionStats;
 
@@ -170,7 +183,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   // source. This could be a view of the data, or in our case a cache, or both potentially.
   private final Optional<ObjectCacheBackend> cacheBackend;
 
-  private final SharedKafkaProducerService sharedKafkaProducerService;
+  private final PubSubProducerAdapterFactory producerAdapterFactory;
 
   private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
 
@@ -187,6 +200,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       ClusterInfoProvider clusterInfoProvider,
       ReadOnlyStoreRepository metadataRepo,
       ReadOnlySchemaRepository schemaRepo,
+      Optional<CompletableFuture<HelixCustomizedViewOfflinePushRepository>> customizedViewFuture,
+      Optional<CompletableFuture<HelixInstanceConfigRepository>> helixInstanceFuture,
       ReadOnlyLiveClusterConfigRepository liveClusterConfigRepository,
       MetricsRepository metricsRepository,
       Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader,
@@ -202,6 +217,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     this.cacheBackend = cacheBackend;
     this.storageMetadataService = storageMetadataService;
     this.metadataRepo = metadataRepo;
+    this.schemaRepo = schemaRepo;
     this.topicNameToIngestionTaskMap = new ConcurrentSkipListMap<>();
     this.veniceConfigLoader = veniceConfigLoader;
     this.isIsolatedIngestion = isIsolatedIngestion;
@@ -209,6 +225,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     this.compressorFactory = compressorFactory;
     // Each topic that has any partition ingested by this class has its own lock.
     this.topicLockManager = new ResourceAutoClosableLockManager<>(ReentrantLock::new);
+
+    customizedViewFuture.ifPresent(future -> future.thenApply(cv -> this.customizedViewRepository = cv));
+    helixInstanceFuture.ifPresent(future -> future.thenApply(helix -> this.helixInstanceConfigRepository = helix));
 
     VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
     ServerKafkaClientFactory veniceConsumerFactory = new ServerKafkaClientFactory(
@@ -244,34 +263,25 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       veniceWriterProperties.put(KAFKA_LINGER_MS, DEFAULT_KAFKA_LINGER_MS);
     }
 
-    if (serverConfig.isSharedKafkaProducerEnabled()) {
-      sharedKafkaProducerService = new SharedKafkaProducerService(
-          veniceWriterProperties,
-          serverConfig.getSharedProducerPoolSizePerKafkaCluster(),
-          new SharedKafkaProducerService.KafkaProducerSupplier() {
-            @Override
-            public KafkaProducerWrapper getNewProducer(VeniceProperties props) {
-              return new ApacheKafkaProducer(props);
-            }
-          },
-          metricsRepository,
-          serverConfig.getKafkaProducerMetrics());
-    } else {
-      sharedKafkaProducerService = null;
-    }
+    // TODO: Once we start testing with other PubSub systems, we'll inject corresponding systems
+    // PubSubProducerAdapterFactory
     LOGGER.info(
         "Shared kafka producer service is {}",
         serverConfig.isSharedKafkaProducerEnabled() ? "enabled" : "disabled");
+    if (serverConfig.isSharedKafkaProducerEnabled()) {
+      producerAdapterFactory = new SharedKafkaProducerAdapterFactory(
+          veniceWriterProperties,
+          serverConfig.getSharedProducerPoolSizePerKafkaCluster(),
+          new ApacheKafkaProducerAdapterFactory(),
+          metricsRepository,
+          serverConfig.getKafkaProducerMetrics());
+    } else {
+      producerAdapterFactory = new ApacheKafkaProducerAdapterFactory();
+    }
 
     VeniceWriterFactory veniceWriterFactory =
-        new VeniceWriterFactory(veniceWriterProperties, Optional.ofNullable(sharedKafkaProducerService));
+        new VeniceWriterFactory(veniceWriterProperties, producerAdapterFactory, metricsRepository);
     VeniceWriterFactory veniceWriterFactoryForMetaStoreWriter = new VeniceWriterFactory(veniceWriterProperties);
-
-    // Create Kafka client stats
-    KafkaClientStats.registerKafkaClientStats(
-        metricsRepository,
-        "KafkaClientStats",
-        Optional.ofNullable(sharedKafkaProducerService));
 
     EventThrottler bandwidthThrottler = new EventThrottler(
         serverConfig.getKafkaFetchQuotaBytesPerSecond(),
@@ -284,20 +294,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         serverConfig.getKafkaFetchQuotaRecordPerSecond(),
         serverConfig.getKafkaFetchQuotaTimeWindow(),
         "kafka_consumption_records_count",
-        false,
-        EventThrottler.BLOCK_STRATEGY);
-
-    EventThrottler unorderedBandwidthThrottler = new EventThrottler(
-        serverConfig.getKafkaFetchQuotaUnorderedBytesPerSecond(),
-        serverConfig.getKafkaFetchQuotaTimeWindow(),
-        "kafka_consumption_unordered_bandwidth",
-        false,
-        EventThrottler.BLOCK_STRATEGY);
-
-    EventThrottler unorderedRecordsThrottler = new EventThrottler(
-        serverConfig.getKafkaFetchQuotaUnorderedRecordPerSecond(),
-        serverConfig.getKafkaFetchQuotaTimeWindow(),
-        "kafka_consumption_unordered_records_count",
         false,
         EventThrottler.BLOCK_STRATEGY);
 
@@ -327,13 +323,11 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     this.topicManagerRepository = new TopicManagerRepository(
         veniceConsumerFactory.getKafkaBootstrapServers(),
-        veniceConsumerFactory.getKafkaZkAddress(),
         veniceConsumerFactory,
         metricsRepository);
 
     this.topicManagerRepositoryJavaBased = new TopicManagerRepository(
         veniceConsumerFactory.getKafkaBootstrapServers(),
-        veniceConsumerFactory.getKafkaZkAddress(),
         veniceConsumerJavaBasedFactory,
         metricsRepository);
 
@@ -465,10 +459,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setStorageEngineRepository(storageEngineRepository)
         .setStorageMetadataService(storageMetadataService)
         .setLeaderFollowerNotifiersQueue(leaderFollowerNotifiers)
-        .setBandwidthThrottler(bandwidthThrottler)
-        .setRecordsThrottler(recordsThrottler)
-        .setUnorderedBandwidthThrottler(unorderedBandwidthThrottler)
-        .setUnorderedRecordsThrottler(unorderedRecordsThrottler)
         .setSchemaRepository(schemaRepo)
         .setMetadataRepository(metadataRepo)
         .setTopicManagerRepository(topicManagerRepository)
@@ -526,9 +516,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     storeBufferService.start();
     if (aggKafkaConsumerService != null) {
       aggKafkaConsumerService.start();
-    }
-    if (sharedKafkaProducerService != null) {
-      sharedKafkaProducerService.start();
     }
     if (participantStoreConsumptionTask != null) {
       participantStoreConsumerExecutorService =
@@ -620,7 +607,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     kafkaMessageEnvelopeSchemaReader.ifPresent(Utils::closeQuietlyWithErrorLogged);
 
     // close it the very end to make sure all ingestion task have released the shared producers.
-    Utils.closeQuietlyWithErrorLogged(sharedKafkaProducerService);
+    Utils.closeQuietlyWithErrorLogged(producerAdapterFactory);
 
     // close drainer service at the very end as it does not depend on any other service.
     Utils.closeQuietlyWithErrorLogged(storeBufferService);
@@ -851,14 +838,14 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       int sleepSeconds,
       int numRetries) {
     String topicName = veniceStore.getStoreVersionName();
-    if (isPartitionConsuming(veniceStore, partitionId)) {
+    if (isPartitionConsuming(topicName, partitionId)) {
       stopConsumption(veniceStore, partitionId);
       try {
         long startTimeInMs = System.currentTimeMillis();
         for (int i = 0; i < numRetries; i++) {
-          if (!isPartitionConsuming(veniceStore, partitionId)) {
+          if (!isPartitionConsuming(topicName, partitionId)) {
             LOGGER.info(
-                "Partition: {} of topic: {} has stopped consumption in {}ms.",
+                "Partition: {} of topic: {} has stopped consumption in {} ms.",
                 partitionId,
                 topicName,
                 LatencyUtils.getElapsedTimeInMs(startTimeInMs));
@@ -963,8 +950,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   @Override
-  public boolean isPartitionConsuming(VeniceStoreVersionConfig veniceStore, int partitionId) {
-    final String topic = veniceStore.getStoreVersionName();
+  public boolean isPartitionConsuming(String topic, int partitionId) {
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topic)) {
       StoreIngestionTask ingestionTask = topicNameToIngestionTaskMap.get(topic);
       return ingestionTask != null && ingestionTask.isRunning() && ingestionTask.isPartitionConsuming(partitionId);
@@ -1084,6 +1070,74 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       LOGGER.warn(msg);
       response.setMessage(msg);
     }
+    return response;
+  }
+
+  /**
+   * Return the metadata information for the given store. The data is retrieved from its respective repositories which
+   * originate from the VeniceServer.
+   * @param storeName
+   * @return {@link MetadataResponse} object that holds all the information required for answering a server metadata
+   * fetch request.
+   */
+  @Override
+  public MetadataResponse getMetadata(String storeName) {
+    MetadataResponse response = new MetadataResponse();
+    try {
+      Store store = metadataRepo.getStoreOrThrow(storeName);
+
+      Version version = store.getVersion(store.getCurrentVersion()).get();
+      Map<CharSequence, CharSequence> partitionerParams =
+          new HashMap<>(version.getPartitionerConfig().getPartitionerParams());
+      VersionProperties versionProperties = new VersionProperties(
+          store.getCurrentVersion(),
+          version.getCompressionStrategy().getValue(),
+          version.getPartitionCount(),
+          version.getPartitionerConfig().getPartitionerClass(),
+          partitionerParams,
+          version.getPartitionerConfig().getAmplificationFactor());
+
+      Map<CharSequence, CharSequence> keySchema = Collections.singletonMap(
+          String.valueOf(schemaRepo.getKeySchema(storeName).getId()),
+          schemaRepo.getKeySchema(storeName).getSchema().toString());
+      Map<CharSequence, CharSequence> valueSchemas = new HashMap<>();
+      for (SchemaEntry schemaEntry: schemaRepo.getValueSchemas(storeName)) {
+        String valueSchemaStr = schemaEntry.getSchema().toString();
+        int valueSchemaId = schemaRepo.getValueSchemaId(storeName, valueSchemaStr);
+        valueSchemas.put(String.valueOf(valueSchemaId), valueSchemaStr);
+      }
+      int latestSuperSetValueSchemaId = store.getLatestSuperSetValueSchemaId();
+
+      Map<CharSequence, List<CharSequence>> routingInfo = new HashMap<>();
+      for (String resource: customizedViewRepository.getResourceAssignment().getAssignedResources()) {
+        if (resource.endsWith("v" + store.getCurrentVersion())) {
+          for (Partition partition: customizedViewRepository.getPartitionAssignments(resource).getAllPartitions()) {
+            List<CharSequence> instances = new ArrayList<>();
+            for (ReplicaState replicaState: customizedViewRepository.getReplicaStates(resource, partition.getId())) {
+              if (replicaState.getVenicePushStatus().equals(ExecutionStatus.COMPLETED.name())) {
+                instances.add(replicaState.getParticipantId());
+              }
+            }
+            routingInfo.put(String.valueOf(partition.getId()), instances);
+          }
+        }
+      }
+
+      Map<CharSequence, Integer> helixGroupInfo =
+          new HashMap<>(helixInstanceConfigRepository.getInstanceGroupIdMapping());
+
+      response.setVersionMetadata(versionProperties);
+      response.setKeySchema(keySchema);
+      response.setValueSchemas(valueSchemas);
+      response.setLatestSuperSetValueSchemaId(latestSuperSetValueSchemaId);
+      response.setRoutingInfo(routingInfo);
+      response.setHelixGroupInfo(helixGroupInfo);
+    } catch (VeniceNoStoreException e) {
+      LOGGER.warn("Store {} not found in metadataRepo.", storeName);
+      response.setMessage("Store \"" + storeName + "\" not found");
+      response.setError(true);
+    }
+
     return response;
   }
 

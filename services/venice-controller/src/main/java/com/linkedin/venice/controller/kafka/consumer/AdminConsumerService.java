@@ -8,8 +8,8 @@ import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.KafkaClientFactory.MetricsParameters;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
@@ -34,7 +34,6 @@ public class AdminConsumerService extends AbstractVeniceService {
   private final MetricsRepository metricsRepository;
   private final boolean remoteConsumptionEnabled;
   private final Optional<String> remoteKafkaServerUrl;
-  private final Optional<String> remoteKafkaZkAddress;
   // Only support single cluster right now
   private AdminConsumptionTask consumerTask;
   private final ThreadFactory threadFactory = new DaemonThreadFactory("AdminTopicConsumer");
@@ -62,19 +61,16 @@ public class AdminConsumerService extends AbstractVeniceService {
     if (remoteConsumptionEnabled) {
       String adminTopicSourceRegion = config.getAdminTopicSourceRegion();
       remoteKafkaServerUrl = Optional.of(config.getChildDataCenterKafkaUrlMap().get(adminTopicSourceRegion));
-      remoteKafkaZkAddress = Optional.of(config.getChildDataCenterKafkaZkMap().get(adminTopicSourceRegion));
       Optional<MetricsParameters> metricsParameters = Optional.of(
           new MetricsParameters(
               admin.getVeniceConsumerFactory().getClass(),
               this.getClass(),
               cluster + "_" + remoteKafkaServerUrl.get(),
               metricsRepository));
-      this.consumerFactory = admin.getVeniceConsumerFactory()
-          .clone(remoteKafkaServerUrl.get(), remoteKafkaZkAddress.get(), metricsParameters);
+      this.consumerFactory = admin.getVeniceConsumerFactory().clone(remoteKafkaServerUrl.get(), metricsParameters);
     } else {
       this.consumerFactory = admin.getVeniceConsumerFactory();
       remoteKafkaServerUrl = Optional.empty();
-      remoteKafkaZkAddress = Optional.empty();
     }
   }
 
@@ -107,7 +103,6 @@ public class AdminConsumerService extends AbstractVeniceService {
         createKafkaConsumer(clusterName),
         this.remoteConsumptionEnabled,
         remoteKafkaServerUrl,
-        remoteKafkaZkAddress,
         admin,
         adminTopicMetadataAccessor,
         admin.getExecutionIdAccessor(),
@@ -205,7 +200,7 @@ public class AdminConsumerService extends AbstractVeniceService {
     }
   }
 
-  private KafkaConsumerWrapper createKafkaConsumer(String clusterName) {
+  private PubSubConsumer createKafkaConsumer(String clusterName) {
     Properties kafkaConsumerProperties = new Properties();
     /**
      * {@link ConsumerConfig.CLIENT_ID_CONFIG} can be used to identify different consumers while checking Kafka related metrics.
@@ -218,6 +213,6 @@ public class AdminConsumerService extends AbstractVeniceService {
      */
     kafkaConsumerProperties.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
 
-    return consumerFactory.getConsumer(kafkaConsumerProperties);
+    return consumerFactory.getConsumer(kafkaConsumerProperties, pubSubMessageDeserializer);
   }
 }

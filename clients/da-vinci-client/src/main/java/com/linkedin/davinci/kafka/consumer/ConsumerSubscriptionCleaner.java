@@ -1,5 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Time;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
 import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
@@ -8,7 +9,6 @@ import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.IntConsumer;
 import java.util.function.Supplier;
-import org.apache.kafka.common.TopicPartition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -44,11 +44,11 @@ public class ConsumerSubscriptionCleaner {
 
   private final TopicExistenceChecker topicExistenceChecker;
 
-  private final Supplier<Set<TopicPartition>> currentAssignmentSupplier;
+  private final Supplier<Set<PubSubTopicPartition>> currentAssignmentSupplier;
 
   private final IntConsumer recordNumberOfTopicsToUnsub;
 
-  private final Consumer<Set<TopicPartition>> batchUnsubscribeFunction;
+  private final Consumer<Set<PubSubTopicPartition>> batchUnsubscribeFunction;
 
   private final Time time;
 
@@ -64,9 +64,9 @@ public class ConsumerSubscriptionCleaner {
       long nonExistingTopicCleanupDelayMS,
       int sanitizeTopicSubscriptionAfterPollTimes,
       TopicExistenceChecker topicExistenceChecker,
-      Supplier<Set<TopicPartition>> assignmentSupplier,
+      Supplier<Set<PubSubTopicPartition>> assignmentSupplier,
       IntConsumer recordNumberOfTopicsToUnsub,
-      Consumer<Set<TopicPartition>> batchUnsubscribeFunction,
+      Consumer<Set<PubSubTopicPartition>> batchUnsubscribeFunction,
       Time time) {
     this.nonExistingTopicCleanupDelayMS = nonExistingTopicCleanupDelayMS;
     this.sanitizeTopicSubscriptionAfterPollTimes = sanitizeTopicSubscriptionAfterPollTimes;
@@ -82,7 +82,8 @@ public class ConsumerSubscriptionCleaner {
    * This function is used to detect whether there is any subscription to the non-existing topics.
    * If yes, this function will remove the topic partition subscriptions to these non-existing topics.
    */
-  Set<TopicPartition> getTopicPartitionsToUnsubscribe(Set<TopicPartition> returnSetOfTopicPartitionsToUnsub) {
+  Set<PubSubTopicPartition> getTopicPartitionsToUnsubscribe(
+      Set<PubSubTopicPartition> returnSetOfTopicPartitionsToUnsub) {
     returnSetOfTopicPartitionsToUnsub.clear();
     if (++pollTimesSinceLastSanitization < sanitizeTopicSubscriptionAfterPollTimes) {
       /**
@@ -97,14 +98,14 @@ public class ConsumerSubscriptionCleaner {
     pollTimesSinceLastSanitization = 0;
 
     // Get the subscriptions
-    Set<TopicPartition> currentAssignment = currentAssignmentSupplier.get();
+    Set<PubSubTopicPartition> currentAssignment = currentAssignmentSupplier.get();
     if (currentAssignment.isEmpty()) {
       return returnSetOfTopicPartitionsToUnsub;
     }
     Set<String> nonExistingTopics = new HashSet<>();
     long currentTimestamp = time.getMilliseconds();
-    for (TopicPartition tp: currentAssignment) {
-      String topic = tp.topic();
+    for (PubSubTopicPartition pubSubTopicPartition: currentAssignment) {
+      String topic = pubSubTopicPartition.getPubSubTopic().getName();
       boolean isExistingTopic = topicExistenceChecker.checkTopicExists(topic);
       if (!isExistingTopic) {
         nonExistingTopics.add(topic);
@@ -156,12 +157,12 @@ public class ConsumerSubscriptionCleaner {
     recordNumberOfTopicsToUnsub.accept(topicsToUnsubscribe.size());
 
     // Get the current subscription for this topic and unsubscribe them
-    Set<TopicPartition> newAssignment = new HashSet<>();
-    for (TopicPartition topicPartition: currentAssignment) {
-      if (topicsToUnsubscribe.contains(topicPartition.topic())) {
-        returnSetOfTopicPartitionsToUnsub.add(topicPartition);
+    Set<PubSubTopicPartition> newAssignment = new HashSet<>();
+    for (PubSubTopicPartition pubSubTopicPartition: currentAssignment) {
+      if (topicsToUnsubscribe.contains(pubSubTopicPartition.getPubSubTopic().getName())) {
+        returnSetOfTopicPartitionsToUnsub.add(pubSubTopicPartition);
       } else {
-        newAssignment.add(topicPartition);
+        newAssignment.add(pubSubTopicPartition);
       }
     }
     if (newAssignment.size() != currentAssignment.size()) {
@@ -171,12 +172,12 @@ public class ConsumerSubscriptionCleaner {
     return returnSetOfTopicPartitionsToUnsub;
   }
 
-  void unsubscribe(Set<TopicPartition> toRemove) {
+  void unsubscribe(Set<PubSubTopicPartition> toRemove) {
     if (toRemove.isEmpty()) {
       return;
     }
-    Set<TopicPartition> currentAssignment = currentAssignmentSupplier.get();
-    Set<TopicPartition> newAssignment = new HashSet<>(currentAssignment);
+    Set<PubSubTopicPartition> currentAssignment = currentAssignmentSupplier.get();
+    Set<PubSubTopicPartition> newAssignment = new HashSet<>(currentAssignment);
     newAssignment.removeAll(toRemove);
     if (newAssignment.size() == currentAssignment.size()) {
       // nothing changed.

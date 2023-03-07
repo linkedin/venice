@@ -129,8 +129,8 @@ public class DualReadAvroGenericStoreClient<K, V> extends DelegatingAvroStoreCli
   }
 
   /**
-   * TODO both super.get(key) and get(ctx,key) fetches non map for vson for the first request.
-   * Needs to be investigated */
+   * TODO both super.get(key) and super.get(ctx,key) fetches non map for vsonClient for the first request.
+   *  Needs to be investigated */
   @Override
   protected CompletableFuture<V> get(GetRequestContext requestContext, K key) throws VeniceClientException {
     return dualExecute(() -> super.get(requestContext, key), () -> thinClient.get(key), clientStatsForSingleGet);

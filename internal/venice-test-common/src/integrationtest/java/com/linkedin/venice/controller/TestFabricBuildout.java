@@ -2,7 +2,6 @@ package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.ConfigKeys.ALLOW_CLUSTER_WIPE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD;
-import static com.linkedin.venice.ConfigKeys.ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_ALL_STORES;
 import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 
@@ -18,7 +17,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
@@ -44,18 +43,17 @@ public class TestFabricBuildout {
 
   private List<VeniceMultiClusterWrapper> childDatacenters;
   private List<VeniceControllerWrapper> parentControllers;
-  private VeniceTwoLayerMultiColoMultiClusterWrapper multiColoMultiClusterWrapper;
+  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
 
   @BeforeClass
   public void setUp() {
     Properties childControllerProperties = new Properties();
     childControllerProperties.setProperty(CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD, "true");
     childControllerProperties.setProperty(ALLOW_CLUSTER_WIPE, "true");
-    childControllerProperties.setProperty(ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_ALL_STORES, "true");
     childControllerProperties.setProperty(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY, "true");
     Properties serverProperties = new Properties();
     serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
-    multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
+    multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
         NUMBER_OF_CLUSTERS,
         1,
@@ -68,16 +66,16 @@ public class TestFabricBuildout {
         Optional.of(new VeniceProperties(serverProperties)),
         false);
 
-    childDatacenters = multiColoMultiClusterWrapper.getChildRegions();
-    parentControllers = multiColoMultiClusterWrapper.getParentControllers();
+    childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
+    parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
 
-    clusterNames = multiColoMultiClusterWrapper.getClusterNames();
-    dcNames = multiColoMultiClusterWrapper.getChildRegionNames().toArray(new String[0]);
+    clusterNames = multiRegionMultiClusterWrapper.getClusterNames();
+    dcNames = multiRegionMultiClusterWrapper.getChildRegionNames().toArray(new String[0]);
   }
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    multiColoMultiClusterWrapper.close();
+    multiRegionMultiClusterWrapper.close();
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -86,14 +84,14 @@ public class TestFabricBuildout {
     String storeName = Utils.getUniqueString("store");
 
     // Test the admin channel
-    String parentControllerUrls = multiColoMultiClusterWrapper.getControllerConnectString();
+    String parentControllerUrls = multiRegionMultiClusterWrapper.getControllerConnectString();
 
     try (
         ControllerClient parentControllerClient =
             ControllerClient.constructClusterControllerClient(clusterName, parentControllerUrls);
         ControllerClient dc0Client = ControllerClient
             .constructClusterControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString())) {
-      // Create a test store only in dc0 colo
+      // Create a test store only in dc0 region
       NewStoreResponse newStoreResponse = dc0Client.retryableRequest(
           3,
           c -> c.createNewStore(storeName, "", "\"string\"", TestWriteUtils.USER_SCHEMA_STRING_SIMPLE_WITH_DEFAULT));
@@ -163,7 +161,7 @@ public class TestFabricBuildout {
   @Test(timeOut = TEST_TIMEOUT)
   public void testCompareStore() {
     String clusterName = clusterNames[0];
-    String parentControllerUrls = multiColoMultiClusterWrapper.getControllerConnectString();
+    String parentControllerUrls = multiRegionMultiClusterWrapper.getControllerConnectString();
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrls);
         ControllerClient childControllerClient0 =
             new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());

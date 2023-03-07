@@ -323,18 +323,8 @@ public class ReadOnlyStore implements Store {
     }
 
     @Override
-    public boolean isLeaderFollowerModelEnabled() {
-      return this.delegate.isLeaderFollowerModelEnabled();
-    }
-
-    @Override
     public boolean isNativeReplicationEnabled() {
       return this.delegate.isNativeReplicationEnabled();
-    }
-
-    @Override
-    public void setLeaderFollowerModelEnabled(boolean leaderFollowerModelEnabled) {
-      throw new UnsupportedOperationException();
     }
 
     @Override
@@ -428,16 +418,6 @@ public class ReadOnlyStore implements Store {
 
     @Override
     public void setVersionSwapDeferred(boolean versionSwapDeferred) {
-      throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public IncrementalPushPolicy getIncrementalPushPolicy() {
-      return IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME;
-    }
-
-    @Override
-    public void setIncrementalPushPolicy(IncrementalPushPolicy incrementalPushPolicy) {
       throw new UnsupportedOperationException();
     }
 
@@ -989,16 +969,6 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
-  public boolean isLeaderFollowerModelEnabled() {
-    return this.delegate.isLeaderFollowerModelEnabled();
-  }
-
-  @Override
-  public void setLeaderFollowerModelEnabled(boolean leaderFollowerModelEnabled) {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
   public String getPushStreamSourceAddress() {
     return this.delegate.getPushStreamSourceAddress();
   }
@@ -1099,16 +1069,6 @@ public class ReadOnlyStore implements Store {
 
   @Override
   public void setStoreMetaSystemStoreEnabled(boolean storeMetaSystemStoreEnabled) {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
-  public IncrementalPushPolicy getIncrementalPushPolicy() {
-    return IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME;
-  }
-
-  @Override
-  public void setIncrementalPushPolicy(IncrementalPushPolicy incrementalPushPolicy) {
     throw new UnsupportedOperationException();
   }
 

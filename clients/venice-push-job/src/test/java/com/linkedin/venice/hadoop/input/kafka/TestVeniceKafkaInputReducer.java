@@ -1,5 +1,7 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
+import static com.linkedin.venice.hadoop.VenicePushJob.COMPRESSION_STRATEGY;
+import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY;
 import static com.linkedin.venice.hadoop.VenicePushJob.REPUSH_TTL_IN_SECONDS;
 import static com.linkedin.venice.hadoop.VenicePushJob.REPUSH_TTL_POLICY;
 import static com.linkedin.venice.hadoop.VenicePushJob.RMD_SCHEMA_DIR;
@@ -10,6 +12,9 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 
+import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.GzipCompressor;
+import com.linkedin.venice.compression.NoopCompressor;
 import com.linkedin.venice.hadoop.AbstractVeniceFilter;
 import com.linkedin.venice.hadoop.FilterChain;
 import com.linkedin.venice.hadoop.VeniceReducer;
@@ -64,6 +69,8 @@ public class TestVeniceKafkaInputReducer {
     keyWritable.set(serializedMapperKey, 0, serializedMapperKey.length);
     VeniceKafkaInputReducer reducer = new VeniceKafkaInputReducer();
     reducer.setChunkingEnabled(isChunkingEnabled);
+    reducer.setSourceVersionCompressor(new NoopCompressor());
+    reducer.setDestVersionCompressor(new NoopCompressor());
     /**
      * Construct a list of values, which contain only 'PUT'.
      */
@@ -185,6 +192,23 @@ public class TestVeniceKafkaInputReducer {
   private JobConf getTestJobConf() {
     JobConf conf = new JobConf();
     conf.set(MAP_REDUCE_JOB_ID_PROP, "job_200707121733_0003");
+    conf.set(KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.name());
+    conf.set(COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.name());
     return conf;
+  }
+
+  @Test
+  public void testCompress() {
+    final byte[] testValue = "abc".getBytes();
+    VeniceKafkaInputReducer reducer = new VeniceKafkaInputReducer();
+    reducer.setSourceVersionCompressor(new NoopCompressor());
+    reducer.setDestVersionCompressor(new NoopCompressor());
+
+    Assert.assertNull(reducer.compress(null));
+    Assert.assertEquals(reducer.compress(testValue), testValue);
+
+    // Setup different compressor
+    reducer.setDestVersionCompressor(new GzipCompressor());
+    Assert.assertNotEquals(reducer.compress(testValue), testValue);
   }
 }

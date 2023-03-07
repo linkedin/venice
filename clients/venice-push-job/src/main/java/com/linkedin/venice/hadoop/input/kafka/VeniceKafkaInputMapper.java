@@ -52,8 +52,7 @@ public class VeniceKafkaInputMapper extends AbstractVeniceMapper<KafkaInputMappe
   @Override
   protected void configureTask(VeniceProperties props, JobConf job) {
     /**
-     * Do nothing but create the filter for {@link KafkaInputFormat} for now, and if we need to support compression rebuild during re-push,
-     * this function needs to be changed.
+     * Do nothing but create the filter for {@link KafkaInputFormat}.
      */
     this.veniceFilterChain = getFilterChain(props);
   }

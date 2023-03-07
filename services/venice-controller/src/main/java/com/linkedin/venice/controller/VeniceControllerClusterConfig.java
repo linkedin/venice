@@ -25,10 +25,6 @@ import static com.linkedin.venice.ConfigKeys.ENABLE_ACTIVE_ACTIVE_REPLICATION_AS
 import static com.linkedin.venice.ConfigKeys.ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORE;
 import static com.linkedin.venice.ConfigKeys.ENABLE_HYBRID_PUSH_SSL_ALLOWLIST;
 import static com.linkedin.venice.ConfigKeys.ENABLE_HYBRID_PUSH_SSL_WHITELIST;
-import static com.linkedin.venice.ConfigKeys.ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_ALL_STORES;
-import static com.linkedin.venice.ConfigKeys.ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_BATCH_ONLY_STORES;
-import static com.linkedin.venice.ConfigKeys.ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_HYBRID_STORES;
-import static com.linkedin.venice.ConfigKeys.ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES;
 import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY;
 import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID;
 import static com.linkedin.venice.ConfigKeys.ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH;
@@ -49,9 +45,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_LOG_COMPACTION_LAG_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR_RT_TOPICS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
-import static com.linkedin.venice.ConfigKeys.KAFKA_ZK_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.LEAKED_PUSH_STATUS_CLEAN_UP_SERVICE_SLEEP_INTERVAL_MS;
-import static com.linkedin.venice.ConfigKeys.LF_MODEL_DEPENDENCY_CHECK_DISABLED;
 import static com.linkedin.venice.ConfigKeys.MIN_ACTIVE_REPLICA;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_BATCH_ONLY_STORES;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_HYBRID_STORES;
@@ -195,33 +189,6 @@ public class VeniceControllerClusterConfig {
   private boolean activeActiveReplicationEnabledAsDefaultForIncremental;
 
   /**
-   * When this option is set to true, we will not check if leader follower mode has been enabled at cluster level or store level.
-   * Just enabling native replication should be good enough to turn a cluster or store NR enabled. This should be set to false
-   * at child controller and true in parent controller.
-   */
-  private boolean lfModelDependencyCheckDisabled;
-
-  /**
-   * When this option is enabled, all new hybrid stores will have leader follower enabled.
-   */
-  private boolean leaderFollowerEnabledForHybridStores;
-
-  /**
-   * When this option is enabled, all new incremental push stores will have leader follower enabled.
-   */
-  private boolean leaderFollowerEnabledForIncrementalPushStores;
-
-  /**
-   * When this option is enabled, all new batch-only stores will have leader/follower state model enabled.
-   */
-  private boolean leaderFollowerEnabledForBatchOnlyStores;
-
-  /**
-   * When this option is enabled, all new stores will have leader follower enabled.
-   */
-  private boolean leaderFollowerEnabledForAllStores;
-
-  /**
    * When this option is enabled, new schema registration will validate the schema against all existing store value schemas.
    */
   private boolean controllerSchemaValidationEnabled;
@@ -256,11 +223,6 @@ public class VeniceControllerClusterConfig {
   private boolean kafkaLogCompactionForHybridStores;
   private boolean kafkaLogCompactionForIncrementalPushStores;
   private long kafkaMinLogCompactionLagInMs;
-
-  /**
-   * Address of zookeeper that kafka used. It may be different from what Helix used.
-   */
-  private String kafkaZkAddress;
 
   /**
    * Alg used by helix to decide the mapping between replicas and nodes.
@@ -305,7 +267,6 @@ public class VeniceControllerClusterConfig {
     clusterName = props.getString(CLUSTER_NAME);
     zkAddress = props.getString(ZOOKEEPER_ADDRESS);
     controllerName = props.getString(CONTROLLER_NAME);
-    kafkaZkAddress = props.getString(KAFKA_ZK_ADDRESS);
     kafkaReplicationFactor = props.getInt(KAFKA_REPLICATION_FACTOR, DEFAULT_KAFKA_REPLICATION_FACTOR);
     kafkaReplicationFactorRTTopics = props.getInt(KAFKA_REPLICATION_FACTOR_RT_TOPICS, kafkaReplicationFactor);
     minInSyncReplicas = props.getOptionalInt(KAFKA_MIN_IN_SYNC_REPLICAS);
@@ -372,39 +333,7 @@ public class VeniceControllerClusterConfig {
         props.getBoolean(ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_HYBRID_STORE, false);
     activeActiveReplicationEnabledAsDefaultForIncremental =
         props.getBoolean(ENABLE_ACTIVE_ACTIVE_REPLICATION_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORE, false);
-    leaderFollowerEnabledForHybridStores = props.getBoolean(ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_HYBRID_STORES, false);
-    leaderFollowerEnabledForIncrementalPushStores =
-        props.getBoolean(ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES, false);
-    leaderFollowerEnabledForBatchOnlyStores =
-        props.getBoolean(ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_BATCH_ONLY_STORES, false);
-    leaderFollowerEnabledForAllStores = props.getBoolean(ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_ALL_STORES, true);
     controllerSchemaValidationEnabled = props.getBoolean(CONTROLLER_SCHEMA_VALIDATION_ENABLED, true);
-    lfModelDependencyCheckDisabled = props.getBoolean(LF_MODEL_DEPENDENCY_CHECK_DISABLED, false);
-
-    if (!leaderFollowerEnabledForAllStores && !lfModelDependencyCheckDisabled
-        && (nativeReplicationEnabledAsDefaultForBatchOnly || nativeReplicationEnabledAsDefaultForIncremental
-            || nativeReplicationEnabledAsDefaultForHybrid)) {
-      LOGGER.error(
-          "Cannot enable native replication when leader follower is not enabled for all stores. Will revert "
-              + "the cluster-level native replication flags to false");
-      nativeReplicationEnabledForBatchOnly = false;
-      nativeReplicationEnabledAsDefaultForBatchOnly = false;
-      nativeReplicationEnabledForIncremental = false;
-      nativeReplicationEnabledAsDefaultForIncremental = false;
-      nativeReplicationEnabledForHybrid = false;
-      nativeReplicationEnabledAsDefaultForHybrid = false;
-    }
-
-    if (!leaderFollowerEnabledForAllStores && !lfModelDependencyCheckDisabled
-        && (activeActiveReplicationEnabledAsDefaultForHybrid || activeActiveReplicationEnabledAsDefaultForIncremental
-            || activeActiveReplicationEnabledAsDefaultForBatchOnly)) {
-      LOGGER.error(
-          "Cannot enable active-active replication when leader follower is not enabled for all stores. Will revert "
-              + "the cluster-level active-active replication flags to false");
-      activeActiveReplicationEnabledAsDefaultForHybrid = false;
-      activeActiveReplicationEnabledAsDefaultForIncremental = false;
-      activeActiveReplicationEnabledAsDefaultForBatchOnly = false;
-    }
 
     clusterToD2Map = props.getMap(CLUSTER_TO_D2);
     this.sslToKafka = props.getBoolean(SSL_TO_KAFKA, false);
@@ -482,10 +411,6 @@ public class VeniceControllerClusterConfig {
 
   public String getControllerName() {
     return controllerName;
-  }
-
-  public String getKafkaZkAddress() {
-    return kafkaZkAddress;
   }
 
   public PersistenceType getPersistenceType() {
@@ -674,26 +599,6 @@ public class VeniceControllerClusterConfig {
 
   public boolean isActiveActiveReplicationEnabledAsDefaultForIncremental() {
     return activeActiveReplicationEnabledAsDefaultForIncremental;
-  }
-
-  public boolean isLfModelDependencyCheckDisabled() {
-    return lfModelDependencyCheckDisabled;
-  }
-
-  public boolean isLeaderFollowerEnabledForHybridStores() {
-    return leaderFollowerEnabledForHybridStores || leaderFollowerEnabledForAllStores;
-  }
-
-  public boolean isLeaderFollowerEnabledForIncrementalPushStores() {
-    return leaderFollowerEnabledForIncrementalPushStores || leaderFollowerEnabledForAllStores;
-  }
-
-  public boolean isLeaderFollowerEnabledForBatchOnlyStores() {
-    return leaderFollowerEnabledForBatchOnlyStores || leaderFollowerEnabledForAllStores;
-  }
-
-  public boolean isLeaderFollowerEnabledForAllStores() {
-    return leaderFollowerEnabledForAllStores;
   }
 
   public boolean isControllerSchemaValidationEnabled() {

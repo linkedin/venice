@@ -91,7 +91,7 @@ public class KafkaSSLUtils {
    * @param properties
    * @return whether Kafka SSL is enabled or not
    */
-  public static boolean validateAndCopyKafakaSSLConfig(VeniceProperties veniceProperties, Properties properties) {
+  public static boolean validateAndCopyKafkaSSLConfig(VeniceProperties veniceProperties, Properties properties) {
     if (!veniceProperties.containsKey(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG)) {
       // No security protocol specified
       return false;

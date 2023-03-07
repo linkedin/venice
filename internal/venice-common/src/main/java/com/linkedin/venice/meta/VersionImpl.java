@@ -59,13 +59,8 @@ public class VersionImpl implements Version {
     this.storeVersion.storeName = storeName;
     this.storeVersion.number = number;
     this.storeVersion.createdTime = createdTime;
-    this.storeVersion.pushJobId = pushJobId == null ? Version.numberBasedDummyPushId(number) : pushJobId; // for
-                                                                                                          // deserializing
-                                                                                                          // old
-                                                                                                          // Versions
-                                                                                                          // that didn't
-                                                                                                          // get an
-                                                                                                          // pushJobId
+    // for deserializing old Versions that didn't get an pushJobId
+    this.storeVersion.pushJobId = pushJobId == null ? Version.numberBasedDummyPushId(number) : pushJobId;
     this.storeVersion.partitionCount = partitionCount;
     if (partitionerConfig != null) {
       this.storeVersion.partitionerConfig = partitionerConfig.dataModel();
@@ -73,7 +68,7 @@ public class VersionImpl implements Version {
     if (dataRecoveryVersionConfig != null) {
       this.storeVersion.dataRecoveryConfig = dataRecoveryVersionConfig.dataModel();
     }
-
+    this.storeVersion.leaderFollowerModelEnabled = true;
     this.kafkaTopicName = Version.composeKafkaTopic(storeName, number);
   }
 
@@ -125,18 +120,8 @@ public class VersionImpl implements Version {
   }
 
   @Override
-  public boolean isLeaderFollowerModelEnabled() {
-    return this.storeVersion.leaderFollowerModelEnabled;
-  }
-
-  @Override
   public boolean isNativeReplicationEnabled() {
     return this.storeVersion.nativeReplicationEnabled;
-  }
-
-  @Override
-  public void setLeaderFollowerModelEnabled(boolean leaderFollowerModelEnabled) {
-    this.storeVersion.leaderFollowerModelEnabled = leaderFollowerModelEnabled;
   }
 
   @Override
@@ -232,16 +217,6 @@ public class VersionImpl implements Version {
   @Override
   public void setVersionSwapDeferred(boolean deferVersionSwap) {
     this.storeVersion.deferVersionSwap = deferVersionSwap;
-  }
-
-  @Override
-  public IncrementalPushPolicy getIncrementalPushPolicy() {
-    return IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME;
-  }
-
-  @Override
-  public void setIncrementalPushPolicy(IncrementalPushPolicy incrementalPushPolicy) {
-    this.storeVersion.incrementalPushPolicy = IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME.getValue();
   }
 
   @Override
@@ -380,10 +355,10 @@ public class VersionImpl implements Version {
   public String toString() {
     return "Version{" + "storeName='" + getStoreName() + '\'' + ", number=" + getNumber() + ", createdTime="
         + getCreatedTime() + ", status=" + getStatus() + ", pushJobId='" + getPushJobId() + '\''
-        + ", compressionStrategy='" + getCompressionStrategy() + '\'' + ", leaderFollowerModelEnabled="
-        + isLeaderFollowerModelEnabled() + ", pushType=" + getPushType() + ", partitionCount=" + getPartitionCount()
-        + ", partitionerConfig=" + getPartitionerConfig() + ", nativeReplicationEnabled=" + isNativeReplicationEnabled()
-        + ", pushStreamSourceAddress=" + getPushStreamSourceAddress() + ", replicationFactor=" + getReplicationFactor()
+        + ", compressionStrategy='" + getCompressionStrategy() + '\'' + ", pushType=" + getPushType()
+        + ", partitionCount=" + getPartitionCount() + ", partitionerConfig=" + getPartitionerConfig()
+        + ", nativeReplicationEnabled=" + isNativeReplicationEnabled() + ", pushStreamSourceAddress="
+        + getPushStreamSourceAddress() + ", replicationFactor=" + getReplicationFactor()
         + ", nativeReplicationSourceFabric=" + getNativeReplicationSourceFabric() + ", incrementalPushEnabled="
         + isIncrementalPushEnabled() + ", useVersionLevelIncrementalPushEnabled="
         + isUseVersionLevelIncrementalPushEnabled() + ", hybridConfig=" + getHybridStoreConfig()
@@ -433,13 +408,11 @@ public class VersionImpl implements Version {
         getDataRecoveryVersionConfig());
     clonedVersion.setStatus(getStatus());
     clonedVersion.setCompressionStrategy(getCompressionStrategy());
-    clonedVersion.setLeaderFollowerModelEnabled(isLeaderFollowerModelEnabled());
     clonedVersion.setChunkingEnabled(isChunkingEnabled());
     clonedVersion.setRmdChunkingEnabled(isRmdChunkingEnabled());
     clonedVersion.setPushType(getPushType());
     clonedVersion.setNativeReplicationEnabled(isNativeReplicationEnabled());
     clonedVersion.setPushStreamSourceAddress(getPushStreamSourceAddress());
-    clonedVersion.setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME);
     clonedVersion.setReplicationFactor(getReplicationFactor());
     clonedVersion.setNativeReplicationSourceFabric(getNativeReplicationSourceFabric());
     clonedVersion.setIncrementalPushEnabled(isIncrementalPushEnabled());

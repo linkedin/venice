@@ -5,27 +5,30 @@ import com.linkedin.venice.client.store.QueryTool;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumer;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
-import com.linkedin.venice.serialization.KafkaKeySerializer;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
+import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
-import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
+import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import org.apache.avro.Schema;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.common.TopicPartition;
@@ -102,10 +105,17 @@ public class TopicMessageFinder {
 
     consumerProps.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     consumerProps.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
+    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+    PubSubTopicPartition assignedPubSubTopicPartition =
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(topic), assignedPartition);
+
+    KafkaPubSubMessageDeserializer kafkaPubSubMessageDeserializer = new KafkaPubSubMessageDeserializer(
+        new OptimizedKafkaValueSerializer(),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
     consume(
-        new ApacheKafkaConsumer(consumerProps),
-        topic,
-        assignedPartition,
+        new ApacheKafkaConsumer(consumerProps, kafkaPubSubMessageDeserializer),
+        assignedPubSubTopicPartition,
         startOffset,
         endOffset,
         progressInterval,
@@ -114,45 +124,42 @@ public class TopicMessageFinder {
 
   /** For unit tests */
   static void consume(
-      KafkaConsumerWrapper c,
-      String topic,
-      int assignedPartition,
+      PubSubConsumer c,
+      PubSubTopicPartition assignedPubSubTopicPartition,
       long startOffset,
       long endOffset,
       long progressInterval,
       byte[] serializedKey) {
-    try (KafkaConsumerWrapper consumer = c) {
+    try (PubSubConsumer consumer = c) {
       long recordCnt = 0;
       long lastReportRecordCnt = 0;
-      consumer.subscribe(topic, assignedPartition, startOffset);
+      consumer.subscribe(assignedPubSubTopicPartition, startOffset);
       boolean done = false;
-      KafkaKeySerializer keySerializer = new KafkaKeySerializer();
-      KafkaValueSerializer valueSerializer = new OptimizedKafkaValueSerializer();
       while (!done) {
-        ConsumerRecords<byte[], byte[]> records = consumer.poll(10000);
-        if (records.isEmpty()) {
+        Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messages =
+            consumer.poll(10000);
+        if (messages.isEmpty()) {
           break;
         }
         long lastRecordTimestamp = 0;
-        for (ConsumerRecord<byte[], byte[]> record: records) {
-          if (record.offset() >= endOffset) {
+        for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record: messages.get(assignedPubSubTopicPartition)) {
+          if (record.getOffset() >= endOffset) {
             done = true;
             break;
           }
-          KafkaKey kafkaKey = keySerializer.deserialize(null, record.key());
+          KafkaKey kafkaKey = record.getKey();
           if (Arrays.equals(kafkaKey.getKey(), serializedKey)) {
-            KafkaMessageEnvelope value = valueSerializer.deserialize(null, record.value());
-            LOGGER.info("Offset: {}, Value: {}", record.offset(), value.toString());
+            KafkaMessageEnvelope value = record.getValue();
+            LOGGER.info("Offset: {}, Value: {}", record.getOffset(), value.toString());
           }
-          lastRecordTimestamp = record.timestamp();
+          lastRecordTimestamp = record.getPubSubMessageTime();
+          recordCnt++;
         }
-        recordCnt += records.count();
         if (recordCnt - lastReportRecordCnt >= progressInterval) {
           LOGGER.info(
-              "Consumed {} messages from topic: {}, partition: {}, and last consumed timestamp: {}",
+              "Consumed {} messages from topic partition: {}, and last consumed timestamp: {}",
               recordCnt,
-              topic,
-              assignedPartition,
+              assignedPubSubTopicPartition,
               new Date(lastRecordTimestamp));
           lastReportRecordCnt = recordCnt;
         }

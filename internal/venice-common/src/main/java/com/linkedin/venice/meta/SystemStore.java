@@ -126,6 +126,7 @@ public class SystemStore extends AbstractStore {
 
   @Override
   public void setCurrentVersion(int currentVersion) {
+    setLatestVersionPromoteToCurrentTimestamp(System.currentTimeMillis());
     setCurrentVersionWithoutCheck(currentVersion);
   }
 
@@ -404,16 +405,6 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
-  public boolean isLeaderFollowerModelEnabled() {
-    return zkSharedStore.isLeaderFollowerModelEnabled();
-  }
-
-  @Override
-  public void setLeaderFollowerModelEnabled(boolean leaderFollowerModelEnabled) {
-    throwUnsupportedOperationException("setLeaderFollowerModelEnabled");
-  }
-
-  @Override
   public String getPushStreamSourceAddress() {
     return zkSharedStore.getPushStreamSourceAddress();
   }
@@ -513,16 +504,6 @@ public class SystemStore extends AbstractStore {
   @Override
   public void setStoreMetaSystemStoreEnabled(boolean storeMetaSystemStoreEnabled) {
     throwUnsupportedOperationException("setStoreMetaSystemStoreEnabled");
-  }
-
-  @Override
-  public IncrementalPushPolicy getIncrementalPushPolicy() {
-    return IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME;
-  }
-
-  @Override
-  public void setIncrementalPushPolicy(IncrementalPushPolicy incrementalPushPolicy) {
-    throwUnsupportedOperationException("setIncrementalPushPolicy");
   }
 
   @Override

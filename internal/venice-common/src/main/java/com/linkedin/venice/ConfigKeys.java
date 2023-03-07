@@ -1,7 +1,6 @@
 package com.linkedin.venice;
 
-import com.linkedin.venice.writer.ApacheKafkaProducer;
-import org.apache.kafka.clients.producer.ProducerConfig;
+import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 
 
 public class ConfigKeys {
@@ -27,15 +26,19 @@ public class ConfigKeys {
   // store specific properties
   public static final String PERSISTENCE_TYPE = "persistence.type";
 
-  public static final String KAFKA_BOOTSTRAP_SERVERS = "kafka.bootstrap.servers";
-  public static final String SSL_KAFKA_BOOTSTRAP_SERVERS = "ssl.kafka.bootstrap.servers";
+  public static final String KAFKA_CONFIG_PREFIX = ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX;
+  public static final String KAFKA_BOOTSTRAP_SERVERS = ApacheKafkaProducerConfig.KAFKA_BOOTSTRAP_SERVERS;
+  public static final String SSL_KAFKA_BOOTSTRAP_SERVERS = ApacheKafkaProducerConfig.SSL_KAFKA_BOOTSTRAP_SERVERS;
+  public static final String KAFKA_LINGER_MS = ApacheKafkaProducerConfig.KAFKA_LINGER_MS;
+  public static final String KAFKA_BATCH_SIZE = ApacheKafkaProducerConfig.KAFKA_BATCH_SIZE;
+  public static final String KAFKA_PRODUCER_REQUEST_TIMEOUT_MS =
+      ApacheKafkaProducerConfig.KAFKA_PRODUCER_REQUEST_TIMEOUT_MS;
+  public static final String KAFKA_PRODUCER_RETRIES_CONFIG = ApacheKafkaProducerConfig.KAFKA_PRODUCER_RETRIES_CONFIG;
+  public static final String KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS =
+      ApacheKafkaProducerConfig.KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS;
   public static final String KAFKA_ADMIN_GET_TOPIC_CONFIG_MAX_RETRY_TIME_SEC =
       "kafka.admin.get.topic.config.max.retry.sec";
 
-  public static final String KAFKA_LINGER_MS =
-      ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX + ProducerConfig.LINGER_MS_CONFIG;
-  public static final String KAFKA_BATCH_SIZE =
-      ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX + ProducerConfig.BATCH_SIZE_CONFIG;
   /**
    * The time window used by the consumption throttler. Throttler will sum the requests during the time window and
    * compare with the quota accumulated in the time window to see whether the usage exceeds quota or not.
@@ -178,37 +181,6 @@ public class ConfigKeys {
       "enable.active.active.replication.as.default.for.incremental.push.store";
 
   /**
-   * Controller level config to disable the dependency that L/F mode must be enabled before turning on native replication.
-   * This may be set to TRUE in parent controller only, and must always be set to FALSE in child controller.
-   * Default value is FALSE.
-   */
-  public static final String LF_MODEL_DEPENDENCY_CHECK_DISABLED = "lf.model.dependency.check.disabled";
-
-  /**
-   * Sets the default for whether or not leader follower is enabled or not for a hybrid store.
-   */
-  public static final String ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_HYBRID_STORES =
-      "enable.leader.follower.as.default.for.hybrid.stores";
-
-  /**
-   * Sets the default for whether or not leader follower is enabled or not for an incremental push store.
-   */
-  public static final String ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_INCREMENTAL_PUSH_STORES =
-      "enable.leader.follower.as.default.for.incremental.push.stores";
-
-  /**
-   * Sets the default for whether or not leader follower is enabled or not for a batch-only store.
-   */
-  public static final String ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_BATCH_ONLY_STORES =
-      "enable.leader.follower.as.default.for.batch.only.stores";
-
-  /**
-   * Sets the default for whether or not leader follower is enabled or not for a venice store.
-   */
-  public static final String ENABLE_LEADER_FOLLOWER_AS_DEFAULT_FOR_ALL_STORES =
-      "enable.leader.follower.as.default.for.all.stores";
-
-  /**
    * Sets the default for whether or not do schema validation for all stores
    */
   public static final String CONTROLLER_SCHEMA_VALIDATION_ENABLED = "controller.schema.validation.enabled";
@@ -218,7 +190,6 @@ public class ConfigKeys {
    *
    * Ignored if {@value KAFKA_REPLICATION_FACTOR} is present.
    */
-  public static final String KAFKA_ZK_ADDRESS = "kafka.zk.address";
   public static final String DEFAULT_READ_STRATEGY = "default.read.strategy";
   public static final String DEFAULT_OFFLINE_PUSH_STRATEGY = "default.offline.push.strategy";
   public static final String DEFAULT_ROUTING_STRATEGY = "default.routing.strategy";
@@ -382,7 +353,7 @@ public class ConfigKeys {
   public static final String SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS =
       "server.netty.graceful.shutdown.period.seconds";
   public static final String SERVER_NETTY_WORKER_THREADS = "server.netty.worker.threads";
-  public static final String SSL_TO_KAFKA = "ssl.to.kakfa";
+  public static final String SSL_TO_KAFKA = ApacheKafkaProducerConfig.SSL_TO_KAFKA;
   public static final String SERVER_COMPUTE_THREAD_NUM = "server.compute.thread.num";
   public static final String HYBRID_QUOTA_ENFORCEMENT_ENABLED = "server.hybrid.quota.enforcement.enabled";
   public static final String SERVER_DATABASE_MEMORY_STATS_ENABLED = "server.database.memory.stats.enabled";
@@ -1077,12 +1048,6 @@ public class ConfigKeys {
    * Kafka url in all fabrics for native replication.
    */
   public static final String CHILD_DATA_CENTER_KAFKA_URL_PREFIX = "child.data.center.kafka.url";
-
-  /**
-   * Config prefix for Kafka zk address in all child fabrics; parent controllers need to know the
-   * Kafka zk in all fabrics for native replication.
-   */
-  public static final String CHILD_DATA_CENTER_KAFKA_ZK_PREFIX = "child.data.center.kafka.zk";
 
   /**
    * D2 Service name for the child controllers in local datacenter
@@ -1834,4 +1799,11 @@ public class ConfigKeys {
    * Turn off the config in where access to routers is not feasible.
    */
   public static final String VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION = "validate.venice.internal.schema.version";
+
+  /**
+   * Config to control the maximum number of fields per method in a fast-avro generated deserializer. Can be useful if
+   * the JIT limit of 8 KB of bytecode is reached. An alternative is to use the -XX:-DontCompileHugeMethods JVM flag
+   * but that can have other side effects, so it may not be preferred.
+   */
+  public static final String FAST_AVRO_FIELD_LIMIT_PER_METHOD = "fast.avro.field.limit.per.method";
 }

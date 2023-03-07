@@ -65,6 +65,10 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
+/**
+ * This class contains only end-to-end/integration tests for VenicePushJob
+ */
+
 public class TestVenicePushJob {
   private static final int TEST_TIMEOUT = 60 * Time.MS_PER_SECOND;
 
@@ -441,7 +445,6 @@ public class TestVenicePushJob {
 
     // disable WriteCompute in store
     params.setWriteComputationEnabled(false);
-    params.setLeaderFollowerModel(true);
     params.setIncrementalPushEnabled(true);
 
     controllerClient.createNewStoreWithParameters(storeName, "owner", "\"string\"", "\"string\"", params);
@@ -469,7 +472,6 @@ public class TestVenicePushJob {
 
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
     params.setWriteComputationEnabled(true);
-    params.setLeaderFollowerModel(true);
     params.setIncrementalPushEnabled(false);
 
     controllerClient.createNewStoreWithParameters(storeName, "owner", "\"string\"", "\"string\"", params);
@@ -564,8 +566,7 @@ public class TestVenicePushJob {
             storeName,
             new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
                 .setPartitionCount(2)
-                .setIncrementalPushEnabled(true)
-                .setLeaderFollowerModel(true)));
+                .setIncrementalPushEnabled(true)));
     Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
 
     // create a batch version.
@@ -635,8 +636,7 @@ public class TestVenicePushJob {
             new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
                 .setPartitionCount(2)
                 .setIncrementalPushEnabled(true)
-                .setWriteComputationEnabled(true)
-                .setLeaderFollowerModel(true)));
+                .setWriteComputationEnabled(true)));
     Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
     props.setProperty(SEND_CONTROL_MESSAGES_DIRECTLY, "true");
     // create a batch version.

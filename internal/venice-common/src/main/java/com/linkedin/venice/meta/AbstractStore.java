@@ -151,9 +151,6 @@ public abstract class AbstractStore implements Store {
       // update version compression type
       version.setCompressionStrategy(getCompressionStrategy());
 
-      // update version Helix state model
-      version.setLeaderFollowerModelEnabled(isLeaderFollowerModelEnabled());
-
       version.setChunkingEnabled(isChunkingEnabled());
       version.setRmdChunkingEnabled(isRmdChunkingEnabled());
 
@@ -163,9 +160,6 @@ public abstract class AbstractStore implements Store {
       }
 
       version.setNativeReplicationEnabled(isNativeReplicationEnabled());
-
-      // TODO(sumane): Kept for interop with venice-server and should be removed in inc push cleanup phase-II
-      version.setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME);
 
       version.setReplicationFactor(getReplicationFactor());
 

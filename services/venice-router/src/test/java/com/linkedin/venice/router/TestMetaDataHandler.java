@@ -67,7 +67,6 @@ import org.testng.annotations.Test;
 
 public class TestMetaDataHandler {
   private static final String ZK_ADDRESS = "localhost:1234";
-  private static final String KAFKA_ZK_ADDRESS = "localhost:1234";
   private static final String KAFKA_BOOTSTRAP_SERVERS = "localhost:1234";
   private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
   private final HelixHybridStoreQuotaRepository hybridStoreQuotaRepository =
@@ -136,7 +135,6 @@ public class TestMetaDataHandler {
         Optional.of(hybridStoreQuotaRepository),
         "test-cluster",
         ZK_ADDRESS,
-        KAFKA_ZK_ADDRESS,
         KAFKA_BOOTSTRAP_SERVERS);
     handler.channelRead0(ctx, httpRequest);
     ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
@@ -642,7 +640,6 @@ public class TestMetaDataHandler {
         Optional.of(hybridStoreQuotaRepository),
         clusterName,
         ZK_ADDRESS,
-        KAFKA_ZK_ADDRESS,
         KAFKA_BOOTSTRAP_SERVERS);
     handler.channelRead0(ctx, httpRequest);
     // '/storage' request should be handled by upstream, instead of current MetaDataHandler

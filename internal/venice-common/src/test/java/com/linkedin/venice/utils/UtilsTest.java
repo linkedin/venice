@@ -7,7 +7,11 @@ import com.linkedin.venice.exceptions.VeniceException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import org.testng.Assert;
@@ -132,5 +136,22 @@ public class UtilsTest {
     Assert.assertFalse(Utils.directoryExists(nonExistingPath.toString()));
     Files.delete(directoryPath);
     Files.delete(filePath);
+  }
+
+  @Test
+  public void testIterateOnMapOfLists() throws Exception {
+    Map<String, List<Integer>> mapOfLists = new HashMap<>();
+    mapOfLists.put("list1", new ArrayList<>());
+    mapOfLists.put("list2", Arrays.asList(1, 2, 3));
+    mapOfLists.put("list3", Arrays.asList(4, 5));
+    mapOfLists.put("list4", Arrays.asList(6));
+    List<Integer> expectedValues = Arrays.asList(1, 2, 3, 4, 5, 6);
+    List<Integer> actualValues = new ArrayList<>();
+    Iterator<Integer> iterator = Utils.iterateOnMapOfLists(mapOfLists);
+    while (iterator.hasNext()) {
+      actualValues.add(iterator.next());
+    }
+    actualValues.sort(Integer::compareTo);
+    assertEquals(expectedValues, actualValues);
   }
 }

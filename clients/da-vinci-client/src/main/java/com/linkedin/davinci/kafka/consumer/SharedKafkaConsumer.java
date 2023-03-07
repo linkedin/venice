@@ -3,36 +3,42 @@ package com.linkedin.davinci.kafka.consumer;
 import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.IntSupplier;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.common.TopicPartition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
 /**
- * This class is a synchronized version of {@link KafkaConsumerWrapper}.
+ * This class is a synchronized version of {@link PubSubConsumer}.
  *
- * In addition to the existing API of {@link KafkaConsumerWrapper}, this class also adds specific functions used by
- * {@link KafkaConsumerService}, notably: {@link #subscribe(String, TopicPartition, long)} which keeps track of the
+ * In addition to the existing API of {@link PubSubConsumer}, this class also adds specific functions used by
+ * {@link KafkaConsumerService}, notably: {@link #subscribe(PubSubTopic, PubSubTopicPartition, long)} which keeps track of the
  * mapping of which TopicPartition is used by which version-topic.
  *
  * It also provides some callbacks used by the {@link KafkaConsumerService} to react to certain changes, in a way that
  * minimizes bidirectional coupling as much as possible.
+ * TODO: Rename this class to SharedPubSubConsumer
  */
-class SharedKafkaConsumer implements KafkaConsumerWrapper {
+class SharedKafkaConsumer implements PubSubConsumer {
   private static final Logger LOGGER = LogManager.getLogger(SharedKafkaConsumer.class);
 
-  protected final KafkaConsumerWrapper delegate;
+  protected final PubSubConsumer delegate;
 
   private final KafkaConsumerServiceStats stats;
 
@@ -58,14 +64,14 @@ class SharedKafkaConsumer implements KafkaConsumerWrapper {
    * regressions where we would end up using this consumer to subscribe to a given topic-partition on behalf
    * of multiple version-topics.
    */
-  private final VeniceConcurrentHashMap<TopicPartition, String> subscribedTopicPartitionToVersionTopic =
+  private final VeniceConcurrentHashMap<PubSubTopicPartition, PubSubTopic> subscribedTopicPartitionToVersionTopic =
       new VeniceConcurrentHashMap();
 
   /**
    * This cached assignment is for performance optimization purpose since {@link #hasSubscription} could be invoked frequently.
    * This set should be unmodifiable.
    */
-  private Set<TopicPartition> currentAssignment;
+  private Set<PubSubTopicPartition> currentAssignment;
 
   /**
    * an ever increasing count of number of time poll has been invoked.
@@ -73,7 +79,7 @@ class SharedKafkaConsumer implements KafkaConsumerWrapper {
   private volatile long pollTimes = 0;
 
   public SharedKafkaConsumer(
-      KafkaConsumerWrapper delegate,
+      PubSubConsumer delegate,
       KafkaConsumerServiceStats stats,
       Runnable assignmentChangeListener,
       UnsubscriptionListener unsubscriptionListener) {
@@ -81,7 +87,7 @@ class SharedKafkaConsumer implements KafkaConsumerWrapper {
   }
 
   SharedKafkaConsumer(
-      KafkaConsumerWrapper delegate,
+      PubSubConsumer delegate,
       KafkaConsumerServiceStats stats,
       Runnable assignmentChangeListener,
       UnsubscriptionListener unsubscriptionListener,
@@ -99,10 +105,10 @@ class SharedKafkaConsumer implements KafkaConsumerWrapper {
    * Listeners may use this callback to clean up lingering state they may be holding about a consumer.
    */
   interface UnsubscriptionListener {
-    void call(SharedKafkaConsumer consumer, TopicPartition topicPartition);
+    void call(SharedKafkaConsumer consumer, PubSubTopicPartition pubSubTopicPartition);
   }
 
-  protected synchronized void updateCurrentAssignment(Set<TopicPartition> newAssignment) {
+  protected synchronized void updateCurrentAssignment(Set<PubSubTopicPartition> newAssignment) {
     final long updateCurrentAssignmentStartTime = System.currentTimeMillis();
     currentAssignmentSize.set(newAssignment.size());
     currentAssignment = Collections.unmodifiableSet(newAssignment);
@@ -111,15 +117,19 @@ class SharedKafkaConsumer implements KafkaConsumerWrapper {
   }
 
   @Override
-  public synchronized void subscribe(String topic, int partition, long lastReadOffset) {
+  public synchronized void subscribe(PubSubTopicPartition pubSubTopicPartition, long lastReadOffset) {
     throw new VeniceException(
         this.getClass().getSimpleName() + " does not support subscribe without specifying a version-topic.");
   }
 
-  synchronized void subscribe(String versionTopic, TopicPartition topicPartitionToSubscribe, long lastReadOffset) {
+  synchronized void subscribe(
+      PubSubTopic versionTopic,
+      PubSubTopicPartition topicPartitionToSubscribe,
+      long lastReadOffset) {
     long delegateSubscribeStartTime = System.currentTimeMillis();
-    this.delegate.subscribe(topicPartitionToSubscribe.topic(), topicPartitionToSubscribe.partition(), lastReadOffset);
-    String previousVersionTopic = subscribedTopicPartitionToVersionTopic.put(topicPartitionToSubscribe, versionTopic);
+    this.delegate.subscribe(topicPartitionToSubscribe, lastReadOffset);
+    PubSubTopic previousVersionTopic =
+        subscribedTopicPartitionToVersionTopic.put(topicPartitionToSubscribe, versionTopic);
     if (previousVersionTopic != null && !previousVersionTopic.equals(versionTopic)) {
       throw new IllegalStateException(
           "A shared consumer cannot be used to subscribe to the same topic-partition by different VTs!"
@@ -137,25 +147,24 @@ class SharedKafkaConsumer implements KafkaConsumerWrapper {
    * invocation of {@link SharedKafkaConsumer#poll(long)} achieves the above objective.
    */
   @Override
-  public synchronized void unSubscribe(String topic, int partition) {
+  public synchronized void unSubscribe(PubSubTopicPartition pubSubTopicPartition) {
     unSubscribeAction(() -> {
-      this.delegate.unSubscribe(topic, partition);
-      TopicPartition topicPartition = new TopicPartition(topic, partition);
-      subscribedTopicPartitionToVersionTopic.remove(topicPartition);
-      unsubscriptionListener.call(this, topicPartition);
+      this.delegate.unSubscribe(pubSubTopicPartition);
+      subscribedTopicPartitionToVersionTopic.remove(pubSubTopicPartition);
+      unsubscriptionListener.call(this, pubSubTopicPartition);
       return 1;
     });
   }
 
   @Override
-  public synchronized void batchUnsubscribe(Set<TopicPartition> topicPartitionSet) {
+  public synchronized void batchUnsubscribe(Set<PubSubTopicPartition> pubSubTopicPartitionSet) {
     unSubscribeAction(() -> {
-      this.delegate.batchUnsubscribe(topicPartitionSet);
-      for (TopicPartition topicPartition: topicPartitionSet) {
-        subscribedTopicPartitionToVersionTopic.remove(topicPartition);
-        unsubscriptionListener.call(this, topicPartition);
+      this.delegate.batchUnsubscribe(pubSubTopicPartitionSet);
+      for (PubSubTopicPartition pubSubTopicPartition: pubSubTopicPartitionSet) {
+        subscribedTopicPartitionToVersionTopic.remove(pubSubTopicPartition);
+        unsubscriptionListener.call(this, pubSubTopicPartition);
       }
-      return topicPartitionSet.size();
+      return pubSubTopicPartitionSet.size();
     });
   }
 
@@ -203,8 +212,9 @@ class SharedKafkaConsumer implements KafkaConsumerWrapper {
   }
 
   @Override
-  public synchronized void resetOffset(String topic, int partition) throws UnsubscribedTopicPartitionException {
-    this.delegate.resetOffset(topic, partition);
+  public synchronized void resetOffset(PubSubTopicPartition pubSubTopicPartition)
+      throws UnsubscribedTopicPartitionException {
+    this.delegate.resetOffset(pubSubTopicPartition);
   }
 
   @Override
@@ -214,7 +224,8 @@ class SharedKafkaConsumer implements KafkaConsumerWrapper {
   }
 
   @Override
-  public synchronized ConsumerRecords<byte[], byte[]> poll(long timeoutMs) {
+  public synchronized Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> poll(
+      long timeoutMs) {
     /**
      * Always invoke this method no matter whether the consumer have subscription or not. Therefore we could notify any
      * waiter who might be waiting for a invocation of poll to happen even if the consumer does not have subscription
@@ -234,7 +245,7 @@ class SharedKafkaConsumer implements KafkaConsumerWrapper {
         // TODO: removing this sleep inside the poll with synchronization, this sleep should be added by the logic
         // calling this poll method.
         Thread.sleep(timeoutMs);
-        return ConsumerRecords.empty();
+        return Collections.emptyMap();
       }
     } catch (InterruptedException e) {
       throw new VeniceException("Shared Consumer poll sleep got interrupted", e);
@@ -249,22 +260,22 @@ class SharedKafkaConsumer implements KafkaConsumerWrapper {
   }
 
   @Override
-  public boolean hasSubscription(String topic, int partition) {
-    return currentAssignment.contains(new TopicPartition(topic, partition));
+  public boolean hasSubscription(PubSubTopicPartition pubSubTopicPartition) {
+    return currentAssignment.contains(pubSubTopicPartition);
   }
 
   @Override
-  public synchronized void pause(String topic, int partition) {
-    this.delegate.pause(topic, partition);
+  public synchronized void pause(PubSubTopicPartition pubSubTopicPartition) {
+    this.delegate.pause(pubSubTopicPartition);
   }
 
   @Override
-  public synchronized void resume(String topic, int partition) {
-    this.delegate.resume(topic, partition);
+  public synchronized void resume(PubSubTopicPartition pubSubTopicPartition) {
+    this.delegate.resume(pubSubTopicPartition);
   }
 
   @Override
-  public synchronized Set<TopicPartition> getAssignment() {
+  public synchronized Set<PubSubTopicPartition> getAssignment() {
     return currentAssignment; // The assignment set is unmodifiable
   }
 
@@ -273,18 +284,18 @@ class SharedKafkaConsumer implements KafkaConsumerWrapper {
   }
 
   // Visible for testing
-  synchronized void setCurrentAssignment(Set<TopicPartition> assignment) {
+  synchronized void setCurrentAssignment(Set<PubSubTopicPartition> assignment) {
     this.currentAssignment = assignment;
     this.currentAssignmentSize.set(assignment.size());
   }
 
   @Override
-  public long getOffsetLag(String topic, int partition) {
-    return delegate.getOffsetLag(topic, partition);
+  public long getOffsetLag(PubSubTopicPartition pubSubTopicPartition) {
+    return delegate.getOffsetLag(pubSubTopicPartition);
   }
 
   @Override
-  public long getLatestOffset(String topic, int partition) {
-    return delegate.getLatestOffset(topic, partition);
+  public long getLatestOffset(PubSubTopicPartition pubSubTopicPartition) {
+    return delegate.getLatestOffset(pubSubTopicPartition);
   }
 }

@@ -98,11 +98,15 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
 
   void setCompressionStrategy(CompressionStrategy compressionStrategy);
 
-  boolean isLeaderFollowerModelEnabled();
+  default boolean isLeaderFollowerModelEnabled() {
+    return true;
+  }
 
   boolean isNativeReplicationEnabled();
 
-  void setLeaderFollowerModelEnabled(boolean leaderFollowerModelEnabled);
+  @Deprecated
+  default void setLeaderFollowerModelEnabled(boolean leaderFollowerModelEnabled) {
+  }
 
   void setNativeReplicationEnabled(boolean nativeReplicationEnabled);
 
@@ -139,11 +143,6 @@ public interface Version extends Comparable<Version>, DataModelBackedStructure<S
   boolean isVersionSwapDeferred();
 
   void setVersionSwapDeferred(boolean versionSwapDeferred);
-
-  // TODO(sumane): Kept for interop; should be removed in inc push cleanup Phase-II
-  IncrementalPushPolicy getIncrementalPushPolicy();
-
-  void setIncrementalPushPolicy(IncrementalPushPolicy incrementalPushPolicy);
 
   int getReplicationFactor();
 

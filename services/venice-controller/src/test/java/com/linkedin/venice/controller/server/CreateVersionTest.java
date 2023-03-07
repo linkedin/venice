@@ -2,6 +2,7 @@ package com.linkedin.venice.controller.server;
 
 import static com.linkedin.venice.HttpConstants.HTTP_GET;
 import static com.linkedin.venice.VeniceConstants.CONTROLLER_SSL_CERTIFICATE_ATTRIBUTE_NAME;
+import static com.linkedin.venice.controller.server.CreateVersion.overrideSourceRegionAddressForIncrementalPushJob;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HOSTNAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
@@ -9,23 +10,25 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_JOB_
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_TYPE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_SIZE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.REQUEST_TOPIC;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.OfflinePushStrategy;
-import com.linkedin.venice.meta.PartitionerConfig;
-import com.linkedin.venice.meta.PartitionerConfigImpl;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
@@ -56,7 +59,6 @@ public class CreateVersionTest {
   private static final String CLUSTER_NAME = "test_cluster";
   private static final String STORE_NAME = "test_store";
   private static final String USER = "test_user";
-  private static final String IP = "0.0.0.0";
   private static final String JOB_ID = "push_1";
 
   private Admin admin;
@@ -135,45 +137,14 @@ public class CreateVersionTest {
     }
   }
 
-  @Test
-  public void testCreateVersionWithAmplificationFactorAndLeaderFollowerNotEnabled() throws Exception {
-    Store store = mock(Store.class);
-    PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
-    partitionerConfig.setAmplificationFactor(2);
-
-    when(store.isLeaderFollowerModelEnabled()).thenReturn(false);
-    when(store.getPartitionerConfig()).thenReturn(partitionerConfig);
-    when(admin.getStore(any(), any())).thenReturn(store);
-
-    CreateVersion createVersion = new CreateVersion(false, Optional.empty(), false, false);
-    Route createVersionRoute = createVersion.requestTopicForPushing(admin);
-    createVersionRoute.handle(request, response);
-    verify(response).status(org.apache.http.HttpStatus.SC_BAD_REQUEST);
-  }
-
   @Test(description = "requestTopicForPushing should return an RT topic when store is hybrid and inc-push is enabled")
   public void testRequestTopicForIncPushReturnsRTTopicWhenStoreIsHybridAndIncPushIsEnabled() throws Exception {
     doReturn(true).when(admin).whetherEnableBatchPushFromAdmin(STORE_NAME);
     doCallRealMethod().when(request).queryParamOrDefault(any(), any());
     doReturn(true).when(accessClient).isAllowlistUsers(certificate, STORE_NAME, HTTP_GET);
 
-    Store store = new ZKStore(
-        STORE_NAME,
-        "abc@linkedin.com",
-        10,
-        PersistenceType.ROCKS_DB,
-        RoutingStrategy.CONSISTENT_HASH,
-        ReadStrategy.ANY_OF_ONLINE,
-        OfflinePushStrategy.WAIT_ALL_REPLICAS,
-        1);
+    Store store = getHybridTestStore();
     store.setIncrementalPushEnabled(true);
-    store.setHybridStoreConfig(
-        new HybridStoreConfigImpl(
-            0,
-            1,
-            HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
-            DataReplicationPolicy.NON_AGGREGATE,
-            BufferReplayPolicy.REWIND_FROM_EOP));
     doReturn(store).when(admin).getStore(CLUSTER_NAME, STORE_NAME);
 
     Version version = new VersionImpl(STORE_NAME, 1, JOB_ID);
@@ -194,18 +165,18 @@ public class CreateVersionTest {
             Optional.empty(),
             false);
 
-    Assert.assertTrue(store.isHybrid());
-    Assert.assertTrue(store.isIncrementalPushEnabled());
+    assertTrue(store.isHybrid());
+    assertTrue(store.isIncrementalPushEnabled());
 
     // Build a CreateVersion route.
     CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false);
     Route createVersionRoute = createVersion.requestTopicForPushing(admin);
 
     Object result = createVersionRoute.handle(request, response);
-    Assert.assertNotNull(result);
+    assertNotNull(result);
     VersionCreationResponse versionCreateResponse =
         OBJECT_MAPPER.readValue(result.toString(), VersionCreationResponse.class);
-    Assert.assertEquals(versionCreateResponse.getKafkaTopic(), "test_store_rt");
+    assertEquals(versionCreateResponse.getKafkaTopic(), "test_store_rt");
   }
 
   // A store should never end up in the state where inc-push is enabled but hybrid configs are not set, nevertheless
@@ -247,19 +218,160 @@ public class CreateVersionTest {
             false);
 
     Assert.assertFalse(store.isHybrid());
-    Assert.assertTrue(store.isIncrementalPushEnabled());
+    assertTrue(store.isIncrementalPushEnabled());
 
     // Build a CreateVersion route.
     CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false);
     Route createVersionRoute = createVersion.requestTopicForPushing(admin);
 
     Object result = createVersionRoute.handle(request, response);
-    Assert.assertNotNull(result);
+    assertNotNull(result);
     verify(response).status(org.apache.http.HttpStatus.SC_BAD_REQUEST);
     VersionCreationResponse versionCreateResponse =
         OBJECT_MAPPER.readValue(result.toString(), VersionCreationResponse.class);
-    Assert.assertTrue(versionCreateResponse.isError());
-    Assert.assertTrue(versionCreateResponse.getError().contains("which does not have hybrid mode enabled"));
+    assertTrue(versionCreateResponse.isError());
+    assertTrue(versionCreateResponse.getError().contains("which does not have hybrid mode enabled"));
     Assert.assertNull(versionCreateResponse.getKafkaTopic());
+  }
+
+  @Test
+  public void testRequestTopicForIncPushCanUseEmergencyRegionWhenItIsSet() throws Exception {
+    Store store = getHybridTestStore();
+    store.setIncrementalPushEnabled(true);
+    store.setActiveActiveReplicationEnabled(true);
+    Version version = new VersionImpl(STORE_NAME, 1, JOB_ID);
+    Optional<String> emergencySrcRegion = Optional.of("dc-1");
+
+    doReturn(true).when(admin).whetherEnableBatchPushFromAdmin(STORE_NAME);
+    doReturn(true).when(admin).isParent();
+    doReturn(true).when(admin).isActiveActiveReplicationEnabledInAllRegion(any(), any(), anyBoolean());
+    doReturn(store).when(admin).getStore(CLUSTER_NAME, STORE_NAME);
+    doReturn("default-src.region.io").when(admin).getKafkaBootstrapServers(anyBoolean());
+    doReturn(emergencySrcRegion).when(admin).getEmergencySourceRegion();
+    doCallRealMethod().when(request).queryParamOrDefault(any(), any());
+    doReturn(true).when(accessClient).isAllowlistUsers(certificate, STORE_NAME, HTTP_GET);
+    doReturn("dc-1.region.io").when(admin).getNativeReplicationKafkaBootstrapServerAddress(emergencySrcRegion.get());
+    doReturn(version).when(admin)
+        .incrementVersionIdempotent(
+            CLUSTER_NAME,
+            STORE_NAME,
+            JOB_ID,
+            0,
+            0,
+            Version.PushType.INCREMENTAL,
+            false,
+            false,
+            null,
+            Optional.empty(),
+            Optional.of(certificate),
+            -1,
+            emergencySrcRegion,
+            false);
+
+    assertTrue(store.isHybrid());
+    assertTrue(store.isIncrementalPushEnabled());
+    assertTrue(admin.isParent());
+
+    // Build a CreateVersion route.
+    CreateVersion createVersion = new CreateVersion(true, Optional.of(accessClient), false, false);
+    Route createVersionRoute = createVersion.requestTopicForPushing(admin);
+    Object result = createVersionRoute.handle(request, response);
+    assertNotNull(result);
+    VersionCreationResponse versionCreationResponse =
+        OBJECT_MAPPER.readValue(result.toString(), VersionCreationResponse.class);
+    assertEquals(versionCreationResponse.getKafkaBootstrapServers(), "dc-1.region.io");
+  }
+
+  private Store getHybridTestStore() {
+    Store store = new ZKStore(
+        STORE_NAME,
+        "abc@linkedin.com",
+        10,
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_ALL_REPLICAS,
+        1);
+    store.setHybridStoreConfig(
+        new HybridStoreConfigImpl(
+            0,
+            1,
+            HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
+            DataReplicationPolicy.NON_AGGREGATE,
+            BufferReplayPolicy.REWIND_FROM_EOP));
+    return store;
+  }
+
+  @Test
+  public void testOverrideSourceRegionAddressForIncrementalPushJob() {
+    VersionCreationResponse creationResponse; // reset after every subtest
+
+    // AA-all-region is disabled and NR is enabled but AGG RT address is NOT set
+    creationResponse = new VersionCreationResponse();
+    creationResponse.setKafkaBootstrapServers("default.src.region.com");
+    doReturn(Optional.empty()).when(admin).getAggregateRealTimeTopicSource(CLUSTER_NAME);
+    overrideSourceRegionAddressForIncrementalPushJob(admin, creationResponse, CLUSTER_NAME, null, null, false, true);
+    assertEquals(creationResponse.getKafkaBootstrapServers(), "default.src.region.com");
+
+    // AA-all-region is disabled & NR is enabled * AGG RT address is set
+    creationResponse = new VersionCreationResponse();
+    creationResponse.setKafkaBootstrapServers("default.src.region.com");
+    doReturn(Optional.of("agg.rt.region.com")).when(admin).getAggregateRealTimeTopicSource(CLUSTER_NAME);
+    overrideSourceRegionAddressForIncrementalPushJob(admin, creationResponse, CLUSTER_NAME, null, null, false, true);
+    assertEquals(creationResponse.getKafkaBootstrapServers(), "agg.rt.region.com");
+
+    // AA-all-region and NR are disabled
+    creationResponse = new VersionCreationResponse();
+    creationResponse.setKafkaBootstrapServers("default.src.region.com");
+    overrideSourceRegionAddressForIncrementalPushJob(admin, creationResponse, CLUSTER_NAME, null, null, false, false);
+    assertEquals(creationResponse.getKafkaBootstrapServers(), "default.src.region.com");
+
+    // AA-all-region is enabled and NR is disabled
+    creationResponse = new VersionCreationResponse();
+    creationResponse.setKafkaBootstrapServers("default.src.region.com");
+    overrideSourceRegionAddressForIncrementalPushJob(admin, creationResponse, CLUSTER_NAME, null, null, true, false);
+    assertEquals(creationResponse.getKafkaBootstrapServers(), "default.src.region.com");
+
+    // AA-all-region and NR are enabled AND emergencySourceRegion and pushJobSourceGridFabric are null
+    creationResponse = new VersionCreationResponse();
+    creationResponse.setKafkaBootstrapServers("default.src.region.com");
+    overrideSourceRegionAddressForIncrementalPushJob(admin, creationResponse, CLUSTER_NAME, null, null, true, true);
+    assertEquals(creationResponse.getKafkaBootstrapServers(), "default.src.region.com");
+
+    // AA-all-region and NR are enabled AND emergencySourceRegion is not set but pushJobSourceGridFabric is provided
+    creationResponse = new VersionCreationResponse();
+    creationResponse.setKafkaBootstrapServers("default.src.region.com");
+    doReturn("vpj.src.region.com").when(admin).getNativeReplicationKafkaBootstrapServerAddress("dc-vpj");
+    overrideSourceRegionAddressForIncrementalPushJob(admin, creationResponse, CLUSTER_NAME, null, "dc-vpj", true, true);
+    assertEquals(creationResponse.getKafkaBootstrapServers(), "vpj.src.region.com");
+
+    // AA-all-region and NR are enabled AND emergencySourceRegion is set and pushJobSourceGridFabric is provided
+    creationResponse = new VersionCreationResponse();
+    creationResponse.setKafkaBootstrapServers("emergency.src.region.com");
+    doReturn("emergency.src.region.com").when(admin).getNativeReplicationKafkaBootstrapServerAddress("dc-e");
+    overrideSourceRegionAddressForIncrementalPushJob(
+        admin,
+        creationResponse,
+        CLUSTER_NAME,
+        "dc-e",
+        "dc-vpj",
+        true,
+        true);
+    assertEquals(creationResponse.getKafkaBootstrapServers(), "emergency.src.region.com");
+
+    // AA-all-region and NR are enabled AND emergencySourceRegion is set and pushJobSourceGridFabric is not provided
+    creationResponse = new VersionCreationResponse();
+    creationResponse.setKafkaBootstrapServers("emergency.src.region.com");
+    doReturn("emergency.src.region.com").when(admin).getNativeReplicationKafkaBootstrapServerAddress("dc-e");
+    overrideSourceRegionAddressForIncrementalPushJob(admin, creationResponse, CLUSTER_NAME, "dc-e", null, true, true);
+    assertEquals(creationResponse.getKafkaBootstrapServers(), "emergency.src.region.com");
+  }
+
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Failed to get the broker server URL for the source region: dc1")
+  public void testOverrideSourceRegionAddressForIncrementalPushJobWhenOverrideRegionAddressIsNotFound() {
+    VersionCreationResponse creationResponse = new VersionCreationResponse();
+    creationResponse.setKafkaBootstrapServers("default.src.region.com");
+    doReturn(null).when(admin).getNativeReplicationKafkaBootstrapServerAddress("dc1");
+    overrideSourceRegionAddressForIncrementalPushJob(admin, creationResponse, CLUSTER_NAME, "dc1", null, true, true);
   }
 }

@@ -1,7 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_ZK_ADDRESS;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.kafka.KafkaClientFactory;
@@ -40,13 +39,9 @@ public class ServerJavaKafkaClientFactory extends ServerKafkaClientFactory {
   }
 
   @Override
-  protected KafkaClientFactory clone(
-      String kafkaBootstrapServers,
-      String kafkaZkAddress,
-      Optional<MetricsParameters> metricsParameters) {
+  protected KafkaClientFactory clone(String kafkaBootstrapServers, Optional<MetricsParameters> metricsParameters) {
     Properties clonedProperties = this.serverConfig.getClusterProperties().toProperties();
     clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers);
-    clonedProperties.setProperty(KAFKA_ZK_ADDRESS, kafkaZkAddress);
     return new ServerJavaKafkaClientFactory(
         new VeniceServerConfig(new VeniceProperties(clonedProperties), serverConfig.getKafkaClusterMap()),
         kafkaMessageEnvelopeSchemaReader,

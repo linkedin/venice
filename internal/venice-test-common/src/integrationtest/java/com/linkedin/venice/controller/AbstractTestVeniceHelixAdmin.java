@@ -11,13 +11,11 @@ import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_PARTITION_SIZE;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
-import static com.linkedin.venice.ConfigKeys.KAFKA_ZK_ADDRESS;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS;
 import static com.linkedin.venice.ConfigKeys.UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 
-import com.linkedin.venice.VeniceStateModel;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
@@ -44,6 +42,7 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import org.apache.helix.model.LeaderStandbySMD;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -68,10 +67,7 @@ class AbstractTestVeniceHelixAdmin {
   String clusterName;
   String storeOwner = "Doge of Venice";
   VeniceControllerConfig controllerConfig;
-
   String zkAddress;
-  String kafkaZkAddress;
-
   ZkServerWrapper zkServerWrapper;
   private ZkServerWrapper kafkaZkServer;
   KafkaBrokerWrapper kafkaBrokerWrapper;
@@ -97,7 +93,6 @@ class AbstractTestVeniceHelixAdmin {
     zkAddress = zkServerWrapper.getAddress();
     kafkaZkServer = ServiceFactory.getZkServer();
     kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(kafkaZkServer);
-    kafkaZkAddress = kafkaBrokerWrapper.getZkAddress();
     clusterName = Utils.getUniqueString("test-cluster");
     Properties properties = getControllerProperties(clusterName);
     if (!createParticipantStore) {
@@ -150,7 +145,7 @@ class AbstractTestVeniceHelixAdmin {
   }
 
   void startParticipant(boolean isDelay, String nodeId) throws Exception {
-    startParticipant(isDelay, nodeId, VeniceStateModel.PARTITION_LEADER_FOLLOWER_STATE_MODEL);
+    startParticipant(isDelay, nodeId, LeaderStandbySMD.name);
   }
 
   void startParticipant(boolean isDelay, String nodeId, String stateModel) throws Exception {
@@ -197,7 +192,6 @@ class AbstractTestVeniceHelixAdmin {
 
   Properties getControllerProperties(String clusterName) throws IOException {
     Properties properties = TestUtils.getPropertiesForControllerConfig();
-    properties.put(KAFKA_ZK_ADDRESS, kafkaZkAddress);
     properties.put(KAFKA_REPLICATION_FACTOR, 1);
     properties.put(ZOOKEEPER_ADDRESS, zkAddress);
     properties.put(CLUSTER_NAME, clusterName);

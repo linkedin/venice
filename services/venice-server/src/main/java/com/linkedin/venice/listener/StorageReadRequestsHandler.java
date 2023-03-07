@@ -4,6 +4,7 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.listener.response.AdminResponse;
+import com.linkedin.davinci.listener.response.MetadataResponse;
 import com.linkedin.davinci.listener.response.ReadResponse;
 import com.linkedin.davinci.storage.DiskHealthCheckService;
 import com.linkedin.davinci.storage.MetadataRetriever;
@@ -31,6 +32,7 @@ import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
 import com.linkedin.venice.listener.request.DictionaryFetchRequest;
 import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.HealthCheckRequest;
+import com.linkedin.venice.listener.request.MetadataFetchRequest;
 import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
 import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.listener.response.BinaryResponse;
@@ -310,6 +312,9 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
       context.writeAndFlush(response);
     } else if (message instanceof AdminRequest) {
       AdminResponse response = handleServerAdminRequest((AdminRequest) message);
+      context.writeAndFlush(response);
+    } else if (message instanceof MetadataFetchRequest) {
+      MetadataResponse response = handleMetadataFetchRequest((MetadataFetchRequest) message);
       context.writeAndFlush(response);
     } else {
       context.writeAndFlush(
@@ -625,6 +630,11 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     ByteBuffer dictionary = metadataRetriever.getStoreVersionCompressionDictionary(topic);
 
     return new BinaryResponse(dictionary);
+  }
+
+  private MetadataResponse handleMetadataFetchRequest(MetadataFetchRequest request) {
+    String storeName = request.getStoreName();
+    return metadataRetriever.getMetadata(storeName);
   }
 
   private void clearFieldsInReusedRecord(GenericRecord record, Schema schema) {

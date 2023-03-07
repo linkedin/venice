@@ -135,4 +135,32 @@ public class TestVeniceCompressor {
   private enum SourceDataType {
     DIRECT_BYTE_BUFFER, NON_DIRECT_BYTE_BUFFER, BYTE_ARRAY
   }
+
+  @Test
+  public void testCompressorEqual() {
+    VeniceCompressor[] compressors1 = new VeniceCompressor[] { new NoopCompressor(), new GzipCompressor(),
+        new ZstdWithDictCompressor("abc".getBytes(), Zstd.maxCompressionLevel()),
+        new ZstdWithDictCompressor("def".getBytes(), Zstd.maxCompressionLevel()) };
+    VeniceCompressor[] compressors2 = new VeniceCompressor[] { new NoopCompressor(), new GzipCompressor(),
+        new ZstdWithDictCompressor("abc".getBytes(), Zstd.maxCompressionLevel()),
+        new ZstdWithDictCompressor("def".getBytes(), Zstd.maxCompressionLevel()) };
+    for (int i = 0; i < compressors1.length; ++i) {
+      for (int j = 0; j < compressors1.length; ++j) {
+        if (i == j) {
+          Assert.assertEquals(compressors1[i], compressors1[j]);
+        } else {
+          Assert.assertNotEquals(compressors1[i], compressors1[j]);
+        }
+      }
+    }
+    for (int i = 0; i < compressors1.length; ++i) {
+      for (int j = 0; j < compressors2.length; ++j) {
+        if (i == j) {
+          Assert.assertEquals(compressors1[i], compressors2[j]);
+        } else {
+          Assert.assertNotEquals(compressors1[i], compressors2[j]);
+        }
+      }
+    }
+  }
 }

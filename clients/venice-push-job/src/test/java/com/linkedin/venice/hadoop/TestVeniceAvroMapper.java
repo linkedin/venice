@@ -1,7 +1,11 @@
 package com.linkedin.venice.hadoop;
 
+import static com.linkedin.venice.hadoop.VenicePushJob.COMPRESSION_METRIC_COLLECTION_ENABLED;
+import static com.linkedin.venice.hadoop.VenicePushJob.COMPRESSION_STRATEGY;
 import static com.linkedin.venice.hadoop.VenicePushJob.STORAGE_ENGINE_OVERHEAD_RATIO;
 import static com.linkedin.venice.hadoop.VenicePushJob.STORAGE_QUOTA_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.ZSTD_DICTIONARY_CREATION_REQUIRED;
+import static com.linkedin.venice.hadoop.VenicePushJob.ZSTD_DICTIONARY_CREATION_SUCCESS;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.anyString;
@@ -12,6 +16,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -33,18 +38,25 @@ import org.testng.annotations.Test;
 
 
 public class TestVeniceAvroMapper extends AbstractTestVeniceMapper<VeniceAvroMapper> {
+  private static long keySize = 16L;
+  private static long uncompressedValueSize = 18L;
+  private static long gzipCompressedValueSize = 34L;
+  private static long zstdCompressedValueSize = 27L;
+
   protected VeniceAvroMapper newMapper() {
-    return new VeniceAvroMapper();
+    return new TestVeniceAvroMapperClass();
   }
 
   @Test(dataProvider = MAPPER_PARAMS_DATA_PROVIDER)
   public void testConfigure(int numReducers, int taskId) {
     JobConf job = setupJobConf(numReducers, taskId);
-    VeniceAvroMapper mapper = new VeniceAvroMapper();
-    try {
-      mapper.configure(job);
-    } catch (Exception e) {
-      Assert.fail("VeniceAvroMapper#configure should not throw any exception when all the required props are there");
+    try (VeniceAvroMapper mapper = new VeniceAvroMapper()) {
+      try {
+        mapper.configure(job);
+      } catch (Exception e) {
+        Assert.fail(
+            "VeniceAvroMapper#configure should not throw any exception when all the required props are there\n" + e);
+      }
     }
   }
 
@@ -52,8 +64,9 @@ public class TestVeniceAvroMapper extends AbstractTestVeniceMapper<VeniceAvroMap
   public void testConfigureWithMissingProps() {
     JobConf job = setupJobConf();
     job.unset(VenicePushJob.TOPIC_PROP);
-    VeniceAvroMapper mapper = new VeniceAvroMapper();
-    mapper.configure(job);
+    try (VeniceAvroMapper mapper = new VeniceAvroMapper()) {
+      mapper.configure(job);
+    }
   }
 
   @Test(dataProvider = MAPPER_PARAMS_DATA_PROVIDER)
@@ -63,29 +76,32 @@ public class TestVeniceAvroMapper extends AbstractTestVeniceMapper<VeniceAvroMap
     AvroWrapper<IndexedRecord> wrapper = getAvroWrapper(keyFieldValue, valueFieldValue);
     OutputCollector<BytesWritable, BytesWritable> output = mock(OutputCollector.class);
 
-    VeniceAvroMapper mapper = getMapper(numReducers, taskId);
-    mapper.map(wrapper, NullWritable.get(), output, null);
+    try (VeniceAvroMapper mapper = getMapper(numReducers, taskId)) {
+      mapper.map(wrapper, NullWritable.get(), output, null);
 
-    ArgumentCaptor<BytesWritable> keyCaptor = ArgumentCaptor.forClass(BytesWritable.class);
-    ArgumentCaptor<BytesWritable> valueCaptor = ArgumentCaptor.forClass(BytesWritable.class);
+      ArgumentCaptor<BytesWritable> keyCaptor = ArgumentCaptor.forClass(BytesWritable.class);
+      ArgumentCaptor<BytesWritable> valueCaptor = ArgumentCaptor.forClass(BytesWritable.class);
 
-    verify(output, times(getNumberOfCollectorInvocationForFirstMapInvocation(numReducers, taskId)))
-        .collect(keyCaptor.capture(), valueCaptor.capture());
-    Assert.assertTrue(getHexString(keyCaptor.getValue().copyBytes()).endsWith(getHexString(keyFieldValue.getBytes())));
-    Assert.assertTrue(
-        getHexString(valueCaptor.getValue().copyBytes()).endsWith(getHexString(valueFieldValue.getBytes())));
+      verify(output, times(getNumberOfCollectorInvocationForFirstMapInvocation(numReducers, taskId)))
+          .collect(keyCaptor.capture(), valueCaptor.capture());
+      Assert
+          .assertTrue(getHexString(keyCaptor.getValue().copyBytes()).endsWith(getHexString(keyFieldValue.getBytes())));
+      Assert.assertTrue(
+          getHexString(valueCaptor.getValue().copyBytes()).endsWith(getHexString(valueFieldValue.getBytes())));
 
-    /** Subsequent calls should trigger just one call to the {@link OutputCollector}, no matter the task ID */
-    final String keyFieldValue2 = "key_field_value_2";
-    final String valueFieldValue2 = "value_field_value_2";
-    AvroWrapper<IndexedRecord> wrapper2 = getAvroWrapper(keyFieldValue2, valueFieldValue2);
-    OutputCollector<BytesWritable, BytesWritable> output2 = mock(OutputCollector.class);
+      /** Subsequent calls should trigger just one call to the {@link OutputCollector}, no matter the task ID */
+      final String keyFieldValue2 = "key_field_value_2";
+      final String valueFieldValue2 = "value_field_value_2";
+      AvroWrapper<IndexedRecord> wrapper2 = getAvroWrapper(keyFieldValue2, valueFieldValue2);
+      OutputCollector<BytesWritable, BytesWritable> output2 = mock(OutputCollector.class);
 
-    mapper.map(wrapper2, NullWritable.get(), output2, null);
-    verify(output2).collect(keyCaptor.capture(), valueCaptor.capture());
-    Assert.assertTrue(getHexString(keyCaptor.getValue().copyBytes()).endsWith(getHexString(keyFieldValue2.getBytes())));
-    Assert.assertTrue(
-        getHexString(valueCaptor.getValue().copyBytes()).endsWith(getHexString(valueFieldValue2.getBytes())));
+      mapper.map(wrapper2, NullWritable.get(), output2, null);
+      verify(output2).collect(keyCaptor.capture(), valueCaptor.capture());
+      Assert
+          .assertTrue(getHexString(keyCaptor.getValue().copyBytes()).endsWith(getHexString(keyFieldValue2.getBytes())));
+      Assert.assertTrue(
+          getHexString(valueCaptor.getValue().copyBytes()).endsWith(getHexString(valueFieldValue2.getBytes())));
+    }
   }
 
   @Test(expectedExceptions = VeniceException.class, dataProvider = MAPPER_PARAMS_DATA_PROVIDER)
@@ -94,8 +110,9 @@ public class TestVeniceAvroMapper extends AbstractTestVeniceMapper<VeniceAvroMap
     AvroWrapper<IndexedRecord> wrapper = getAvroWrapper(null, valueFieldValue);
     OutputCollector<BytesWritable, BytesWritable> output = mock(OutputCollector.class);
 
-    VeniceAvroMapper mapper = getMapper(numReducers, taskId);
-    mapper.map(wrapper, NullWritable.get(), output, null);
+    try (VeniceAvroMapper mapper = getMapper(numReducers, taskId)) {
+      mapper.map(wrapper, NullWritable.get(), output, null);
+    }
   }
 
   @Test(dataProvider = MAPPER_PARAMS_DATA_PROVIDER)
@@ -104,11 +121,12 @@ public class TestVeniceAvroMapper extends AbstractTestVeniceMapper<VeniceAvroMap
     AvroWrapper<IndexedRecord> wrapper = getAvroWrapper(keyFieldValue, null);
     OutputCollector<BytesWritable, BytesWritable> output = mock(OutputCollector.class);
 
-    VeniceAvroMapper mapper = getMapper(numReducers, taskId);
-    mapper.map(wrapper, NullWritable.get(), output, mock(Reporter.class));
+    try (VeniceAvroMapper mapper = getMapper(numReducers, taskId)) {
+      mapper.map(wrapper, NullWritable.get(), output, mock(Reporter.class));
 
-    verify(output, times(getNumberOfCollectorInvocationForFirstMapInvocation(numReducers, taskId) - 1))
-        .collect(Mockito.any(), Mockito.any());
+      verify(output, times(getNumberOfCollectorInvocationForFirstMapInvocation(numReducers, taskId) - 1))
+          .collect(Mockito.any(), Mockito.any());
+    }
   }
 
   @Test(dataProvider = MAPPER_PARAMS_DATA_PROVIDER)
@@ -119,33 +137,34 @@ public class TestVeniceAvroMapper extends AbstractTestVeniceMapper<VeniceAvroMap
     OutputCollector<BytesWritable, BytesWritable> output = mock(OutputCollector.class);
     Reporter mockReporter = createMockReporterWithCount(1L);
 
-    VeniceAvroMapper mapper = getMapper(numReducers, taskId, mapperJobConfig -> {
+    try (VeniceAvroMapper mapper = getMapper(numReducers, taskId, mapperJobConfig -> {
       mapperJobConfig.set(STORAGE_QUOTA_PROP, "18"); // With this setup, storage quota should be exceeded
       mapperJobConfig.set(STORAGE_ENGINE_OVERHEAD_RATIO, "1.5");
-    });
-    mapper.map(wrapper, NullWritable.get(), output, mockReporter);
+    })) {
+      mapper.map(wrapper, NullWritable.get(), output, mockReporter);
 
-    verify(mockReporter, times(1)).incrCounter(
-        eq(MRJobCounterHelper.TOTAL_UNCOMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
-        eq(MRJobCounterHelper.TOTAL_UNCOMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
-        eq(18L));
+      verify(mockReporter, times(1)).incrCounter(
+          eq(MRJobCounterHelper.TOTAL_UNCOMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+          eq(MRJobCounterHelper.TOTAL_UNCOMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+          eq(18L));
 
-    // Expect no authorization error
-    verify(mockReporter, never()).incrCounter(
-        eq(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME.getGroupName()),
-        eq(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME.getCounterName()),
-        anyLong());
-    // Even with exceeded quota, the mapper should still count key and value sizes in bytes and output
-    verify(mockReporter, times(1)).incrCounter(
-        eq(MRJobCounterHelper.TOTAL_KEY_SIZE_GROUP_COUNTER_NAME.getGroupName()),
-        eq(MRJobCounterHelper.TOTAL_KEY_SIZE_GROUP_COUNTER_NAME.getCounterName()),
-        anyLong());
-    verify(mockReporter, times(1)).incrCounter(
-        eq(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
-        eq(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
-        anyLong());
-    verify(output, times(getNumberOfCollectorInvocationForFirstMapInvocation(numReducers, taskId)))
-        .collect(any(), any());
+      // Expect no authorization error
+      verify(mockReporter, never()).incrCounter(
+          eq(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME.getGroupName()),
+          eq(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME.getCounterName()),
+          anyLong());
+      // Even with exceeded quota, the mapper should still count key and value sizes in bytes and output
+      verify(mockReporter, times(1)).incrCounter(
+          eq(MRJobCounterHelper.TOTAL_KEY_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+          eq(MRJobCounterHelper.TOTAL_KEY_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+          anyLong());
+      verify(mockReporter, times(1)).incrCounter(
+          eq(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+          eq(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+          anyLong());
+      verify(output, times(getNumberOfCollectorInvocationForFirstMapInvocation(numReducers, taskId)))
+          .collect(any(), any());
+    }
   }
 
   @Test(dataProvider = MAPPER_PARAMS_DATA_PROVIDER)
@@ -156,34 +175,292 @@ public class TestVeniceAvroMapper extends AbstractTestVeniceMapper<VeniceAvroMap
     OutputCollector<BytesWritable, BytesWritable> output = mock(OutputCollector.class);
     Reporter mockReporter = createMockReporterWithCount(1L);
 
-    VeniceAvroMapper mapper = getMapper(numReducers, taskId, mapperJobConfig -> {
+    try (VeniceAvroMapper mapper = getMapper(numReducers, taskId, mapperJobConfig -> {
       mapperJobConfig.set(STORAGE_QUOTA_PROP, "100"); // With this setup, storage quota should not exceeded
       mapperJobConfig.set(STORAGE_ENGINE_OVERHEAD_RATIO, "1.5");
-    });
-    mapper.map(wrapper, NullWritable.get(), output, mockReporter);
+    })) {
+      mapper.map(wrapper, NullWritable.get(), output, mockReporter);
 
-    verify(mockReporter, times(1)).incrCounter(
-        eq(MRJobCounterHelper.TOTAL_UNCOMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
-        eq(MRJobCounterHelper.TOTAL_UNCOMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
-        eq(18L));
+      verify(mockReporter, times(1)).incrCounter(
+          eq(MRJobCounterHelper.TOTAL_KEY_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+          eq(MRJobCounterHelper.TOTAL_KEY_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+          eq(keySize));
 
-    // Not write ACL failure
-    verify(mockReporter, never()).incrCounter(
-        eq(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME.getGroupName()),
-        eq(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME.getCounterName()),
-        anyLong());
-    // Expect reporter to record these counters due to no early termination
-    verify(mockReporter, times(1)).incrCounter(
-        eq(MRJobCounterHelper.TOTAL_KEY_SIZE_GROUP_COUNTER_NAME.getGroupName()),
-        eq(MRJobCounterHelper.TOTAL_KEY_SIZE_GROUP_COUNTER_NAME.getCounterName()),
-        anyLong());
-    verify(mockReporter, times(1)).incrCounter(
-        eq(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
-        eq(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
-        anyLong());
-    // Expect the output collect to collect output due to no early termination
-    verify(output, times(getNumberOfCollectorInvocationForFirstMapInvocation(numReducers, taskId)))
-        .collect(any(), any());
+      verify(mockReporter, times(1)).incrCounter(
+          eq(MRJobCounterHelper.TOTAL_UNCOMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+          eq(MRJobCounterHelper.TOTAL_UNCOMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+          eq(uncompressedValueSize));
+
+      // No compression: so same as uncompressed value
+      verify(mockReporter, times(1)).incrCounter(
+          eq(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+          eq(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+          eq(uncompressedValueSize));
+
+      // compressionMetricCollectionEnabled not enabled, so the below 2 should not be incremented
+      verify(mockReporter, never()).incrCounter(
+          eq(MRJobCounterHelper.TOTAL_GZIP_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+          eq(MRJobCounterHelper.TOTAL_GZIP_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+          anyLong());
+
+      verify(mockReporter, never()).incrCounter(
+          eq(MRJobCounterHelper.TOTAL_ZSTD_WITH_DICT_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+          eq(MRJobCounterHelper.TOTAL_ZSTD_WITH_DICT_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+          anyLong());
+
+      // Not write ACL failure
+      verify(mockReporter, never()).incrCounter(
+          eq(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME.getGroupName()),
+          eq(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME.getCounterName()),
+          anyLong());
+
+      // Expect the output collect to collect output due to no early termination
+      verify(output, times(getNumberOfCollectorInvocationForFirstMapInvocation(numReducers, taskId)))
+          .collect(any(), any());
+    }
+  }
+
+  @Test
+  public void testMapWithCompressionMetricCollectionEnabledButDictCreationFail() throws IOException {
+    final String keyFieldValue = "key_field_value";
+    final String valueFieldValue = "value_field_value";
+    AvroWrapper<IndexedRecord> wrapper = getAvroWrapper(keyFieldValue, valueFieldValue);
+    OutputCollector<BytesWritable, BytesWritable> output = mock(OutputCollector.class);
+    Reporter mockReporter = createMockReporterWithCount(1L);
+
+    // No need of reducers to test these metrics
+    int numReducers = 0;
+    int taskId = 0;
+
+    try (VeniceAvroMapper mapper = getMapper(numReducers, taskId, mapperJobConfig -> {
+      mapperJobConfig.set(COMPRESSION_METRIC_COLLECTION_ENABLED, "true");
+      mapperJobConfig.set(ZSTD_DICTIONARY_CREATION_REQUIRED, "true");
+      mapperJobConfig.set(ZSTD_DICTIONARY_CREATION_SUCCESS, "false");
+    })) {
+      mapper.map(wrapper, NullWritable.get(), output, mockReporter);
+
+      verify(mockReporter, times(1)).incrCounter(
+          eq(MRJobCounterHelper.TOTAL_KEY_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+          eq(MRJobCounterHelper.TOTAL_KEY_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+          eq(keySize));
+
+      verify(mockReporter, times(1)).incrCounter(
+          eq(MRJobCounterHelper.TOTAL_UNCOMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+          eq(MRJobCounterHelper.TOTAL_UNCOMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+          eq(uncompressedValueSize));
+
+      // No compression: so same as uncompressed value
+      verify(mockReporter, times(1)).incrCounter(
+          eq(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+          eq(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+          eq(uncompressedValueSize));
+
+      // compressionMetricCollectionEnabled is enabled, but zstd dict creation failed
+      verify(mockReporter, times(1)).incrCounter(
+          eq(MRJobCounterHelper.TOTAL_GZIP_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+          eq(MRJobCounterHelper.TOTAL_GZIP_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+          eq(gzipCompressedValueSize));
+
+      verify(mockReporter, never()).incrCounter(
+          eq(MRJobCounterHelper.TOTAL_ZSTD_WITH_DICT_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+          eq(MRJobCounterHelper.TOTAL_ZSTD_WITH_DICT_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+          anyLong());
+    }
+  }
+
+  @Test
+  public void testMapWithCompressionMetricCollectionEnabled() throws IOException {
+    final String keyFieldValue = "key_field_value";
+    final String valueFieldValue = "value_field_value";
+    AvroWrapper<IndexedRecord> wrapper = getAvroWrapper(keyFieldValue, valueFieldValue);
+    OutputCollector<BytesWritable, BytesWritable> output = mock(OutputCollector.class);
+    Reporter mockReporter = createMockReporterWithCount(1L);
+
+    // No need of reducers to test these metrics
+    int numReducers = 0;
+    int taskId = 0;
+
+    try (VeniceAvroMapper mapper = getMapper(numReducers, taskId, mapperJobConfig -> {
+      mapperJobConfig.set(COMPRESSION_METRIC_COLLECTION_ENABLED, "true");
+      mapperJobConfig.set(ZSTD_DICTIONARY_CREATION_REQUIRED, "true");
+      mapperJobConfig.set(ZSTD_DICTIONARY_CREATION_SUCCESS, "true");
+    })) {
+      mapper.map(wrapper, NullWritable.get(), output, mockReporter);
+
+      verify(mockReporter, times(1)).incrCounter(
+          eq(MRJobCounterHelper.TOTAL_KEY_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+          eq(MRJobCounterHelper.TOTAL_KEY_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+          eq(keySize));
+
+      verify(mockReporter, times(1)).incrCounter(
+          eq(MRJobCounterHelper.TOTAL_UNCOMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+          eq(MRJobCounterHelper.TOTAL_UNCOMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+          eq(uncompressedValueSize));
+
+      // No compression: so same as uncompressed value
+      verify(mockReporter, times(1)).incrCounter(
+          eq(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+          eq(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+          eq(uncompressedValueSize));
+
+      // compressionMetricCollectionEnabled is enabled
+      verify(mockReporter, times(1)).incrCounter(
+          eq(MRJobCounterHelper.TOTAL_GZIP_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+          eq(MRJobCounterHelper.TOTAL_GZIP_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+          eq(gzipCompressedValueSize));
+
+      verify(mockReporter, times(1)).incrCounter(
+          eq(MRJobCounterHelper.TOTAL_ZSTD_WITH_DICT_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+          eq(MRJobCounterHelper.TOTAL_ZSTD_WITH_DICT_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+          eq(zstdCompressedValueSize));
+    }
+  }
+
+  @Test
+  public void testMapWithCompressionMetricCollectionEnabledWithGzipCompression() throws IOException {
+    final String keyFieldValue = "key_field_value";
+    final String valueFieldValue = "value_field_value";
+    AvroWrapper<IndexedRecord> wrapper = getAvroWrapper(keyFieldValue, valueFieldValue);
+    OutputCollector<BytesWritable, BytesWritable> output = mock(OutputCollector.class);
+    Reporter mockReporter = createMockReporterWithCount(1L);
+
+    // No need of reducers to test these metrics
+    int numReducers = 0;
+    int taskId = 0;
+
+    try (VeniceAvroMapper mapper = getMapper(numReducers, taskId, mapperJobConfig -> {
+      mapperJobConfig.set(COMPRESSION_METRIC_COLLECTION_ENABLED, "true");
+      mapperJobConfig.set(ZSTD_DICTIONARY_CREATION_REQUIRED, "true");
+      mapperJobConfig.set(ZSTD_DICTIONARY_CREATION_SUCCESS, "true");
+      mapperJobConfig.set(COMPRESSION_STRATEGY, CompressionStrategy.GZIP.toString());
+    })) {
+      mapper.map(wrapper, NullWritable.get(), output, mockReporter);
+
+      verify(mockReporter, times(1)).incrCounter(
+          eq(MRJobCounterHelper.TOTAL_KEY_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+          eq(MRJobCounterHelper.TOTAL_KEY_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+          eq(keySize));
+
+      verify(mockReporter, times(1)).incrCounter(
+          eq(MRJobCounterHelper.TOTAL_UNCOMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+          eq(MRJobCounterHelper.TOTAL_UNCOMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+          eq(uncompressedValueSize));
+
+      // Gzip compression enabled
+      verify(mockReporter, times(1)).incrCounter(
+          eq(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+          eq(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+          eq(gzipCompressedValueSize));
+
+      // compressionMetricCollectionEnabled is enabled
+      verify(mockReporter, times(1)).incrCounter(
+          eq(MRJobCounterHelper.TOTAL_GZIP_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+          eq(MRJobCounterHelper.TOTAL_GZIP_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+          eq(gzipCompressedValueSize));
+
+      verify(mockReporter, times(1)).incrCounter(
+          eq(MRJobCounterHelper.TOTAL_ZSTD_WITH_DICT_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+          eq(MRJobCounterHelper.TOTAL_ZSTD_WITH_DICT_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+          eq(zstdCompressedValueSize));
+    }
+  }
+
+  @Test
+  public void testMapWithCompressionMetricCollectionEnabledWithZstdCompression() throws IOException {
+    final String keyFieldValue = "key_field_value";
+    final String valueFieldValue = "value_field_value";
+    AvroWrapper<IndexedRecord> wrapper = getAvroWrapper(keyFieldValue, valueFieldValue);
+    OutputCollector<BytesWritable, BytesWritable> output = mock(OutputCollector.class);
+    Reporter mockReporter = createMockReporterWithCount(1L);
+
+    // No need of reducers to test these metrics
+    int numReducers = 0;
+    int taskId = 0;
+
+    try (VeniceAvroMapper mapper = getMapper(numReducers, taskId, mapperJobConfig -> {
+      mapperJobConfig.set(COMPRESSION_METRIC_COLLECTION_ENABLED, "true");
+      mapperJobConfig.set(ZSTD_DICTIONARY_CREATION_REQUIRED, "true");
+      mapperJobConfig.set(ZSTD_DICTIONARY_CREATION_SUCCESS, "true");
+      mapperJobConfig.set(COMPRESSION_STRATEGY, CompressionStrategy.ZSTD_WITH_DICT.toString());
+    })) {
+      mapper.map(wrapper, NullWritable.get(), output, mockReporter);
+
+      verify(mockReporter, times(1)).incrCounter(
+          eq(MRJobCounterHelper.TOTAL_KEY_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+          eq(MRJobCounterHelper.TOTAL_KEY_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+          eq(keySize));
+
+      verify(mockReporter, times(1)).incrCounter(
+          eq(MRJobCounterHelper.TOTAL_UNCOMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+          eq(MRJobCounterHelper.TOTAL_UNCOMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+          eq(uncompressedValueSize));
+
+      // Zstd compression enabled
+      verify(mockReporter, times(1)).incrCounter(
+          eq(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+          eq(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+          eq(zstdCompressedValueSize));
+
+      // compressionMetricCollectionEnabled is enabled
+      verify(mockReporter, times(1)).incrCounter(
+          eq(MRJobCounterHelper.TOTAL_GZIP_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+          eq(MRJobCounterHelper.TOTAL_GZIP_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+          eq(gzipCompressedValueSize));
+
+      verify(mockReporter, times(1)).incrCounter(
+          eq(MRJobCounterHelper.TOTAL_ZSTD_WITH_DICT_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+          eq(MRJobCounterHelper.TOTAL_ZSTD_WITH_DICT_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+          eq(zstdCompressedValueSize));
+    }
+  }
+
+  @Test
+  public void testMapWithCompressionMetricCollectionNotEnabledWithZstdCompression() throws IOException {
+    final String keyFieldValue = "key_field_value";
+    final String valueFieldValue = "value_field_value";
+    AvroWrapper<IndexedRecord> wrapper = getAvroWrapper(keyFieldValue, valueFieldValue);
+    OutputCollector<BytesWritable, BytesWritable> output = mock(OutputCollector.class);
+    Reporter mockReporter = createMockReporterWithCount(1L);
+
+    // No need of reducers to test these metrics
+    int numReducers = 0;
+    int taskId = 0;
+
+    try (VeniceAvroMapper mapper = getMapper(numReducers, taskId, mapperJobConfig -> {
+      mapperJobConfig.set(COMPRESSION_METRIC_COLLECTION_ENABLED, "false");
+      mapperJobConfig.set(ZSTD_DICTIONARY_CREATION_REQUIRED, "true");
+      mapperJobConfig.set(ZSTD_DICTIONARY_CREATION_SUCCESS, "true");
+      mapperJobConfig.set(COMPRESSION_STRATEGY, CompressionStrategy.ZSTD_WITH_DICT.toString());
+    })) {
+      mapper.map(wrapper, NullWritable.get(), output, mockReporter);
+
+      verify(mockReporter, times(1)).incrCounter(
+          eq(MRJobCounterHelper.TOTAL_KEY_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+          eq(MRJobCounterHelper.TOTAL_KEY_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+          eq(keySize));
+
+      verify(mockReporter, times(1)).incrCounter(
+          eq(MRJobCounterHelper.TOTAL_UNCOMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+          eq(MRJobCounterHelper.TOTAL_UNCOMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+          eq(uncompressedValueSize));
+
+      // Zstd compression enabled
+      verify(mockReporter, times(1)).incrCounter(
+          eq(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+          eq(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+          eq(zstdCompressedValueSize));
+
+      // compressionMetricCollectionEnabled is not enabled
+      verify(mockReporter, never()).incrCounter(
+          eq(MRJobCounterHelper.TOTAL_GZIP_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+          eq(MRJobCounterHelper.TOTAL_GZIP_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+          anyLong());
+
+      verify(mockReporter, never()).incrCounter(
+          eq(MRJobCounterHelper.TOTAL_ZSTD_WITH_DICT_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getGroupName()),
+          eq(MRJobCounterHelper.TOTAL_ZSTD_WITH_DICT_COMPRESSED_VALUE_SIZE_GROUP_COUNTER_NAME.getCounterName()),
+          anyLong());
+    }
   }
 
   @Test(expectedExceptions = UnsupportedOperationException.class)

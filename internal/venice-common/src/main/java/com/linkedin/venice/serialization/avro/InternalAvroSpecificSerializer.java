@@ -169,7 +169,6 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
     protocolSchemaMap.forEach((protocolVersion, protocolSchema) -> cacheDatumReader(protocolVersion, protocolSchema));
 
     this.writer = new SpecificDatumWriter(protocolDef.schema);
-
     this.newSchemaEncountered = newSchemaEncountered;
   }
 

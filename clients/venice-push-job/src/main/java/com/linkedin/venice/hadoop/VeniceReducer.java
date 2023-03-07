@@ -19,6 +19,8 @@ import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.pubsub.api.PubSubProduceResult;
+import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.utils.ByteUtils;
@@ -39,7 +41,6 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Iterator;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -61,8 +62,6 @@ import org.apache.hadoop.mapred.Reducer;
 import org.apache.hadoop.mapred.Reporter;
 import org.apache.hadoop.mapred.RunningJob;
 import org.apache.hadoop.util.Progressable;
-import org.apache.kafka.clients.producer.Callback;
-import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -92,7 +91,7 @@ public class VeniceReducer extends AbstractMapReduceTask
         byte[] keyBytes,
         byte[] valueBytes,
         int valueSchemaId,
-        Callback callback,
+        PubSubProducerCallback callback,
         boolean enableWriteCompute,
         int derivedValueSchemaId) {
       this(keyBytes, valueBytes, valueSchemaId, -1, null, callback, enableWriteCompute, derivedValueSchemaId);
@@ -104,7 +103,7 @@ public class VeniceReducer extends AbstractMapReduceTask
         int valueSchemaId,
         int rmdVersionId,
         ByteBuffer rmdPayload,
-        Callback callback,
+        PubSubProducerCallback callback,
         boolean enableWriteCompute,
         int derivedValueSchemaId) {
       this.keyBytes = keyBytes;
@@ -181,7 +180,7 @@ public class VeniceReducer extends AbstractMapReduceTask
    * IMPORTANT: Noticed that this callback is reused in different messages, do not put information that is coupled with
    *            each message inside this callback.
    */
-  protected KafkaMessageCallback callback = null;
+  protected ReducerProduceCallback callback = null;
   private Reporter previousReporter = null;
   /**
    * This doesn't need to be atomic since {@link #reduce(BytesWritable, Iterator, OutputCollector, Reporter)} will be called sequentially.
@@ -214,7 +213,7 @@ public class VeniceReducer extends AbstractMapReduceTask
       OutputCollector<BytesWritable, BytesWritable> output,
       Reporter reporter) {
     if (updatePreviousReporter(reporter)) {
-      callback = new KafkaMessageCallback(reporter);
+      callback = new ReducerProduceCallback(reporter);
     }
     final long timeOfLastReduceFunctionStartInNS = System.nanoTime();
     if (timeOfLastReduceFunctionEndInNS > 0) {
@@ -245,7 +244,7 @@ public class VeniceReducer extends AbstractMapReduceTask
     updateExecutionTimeStatus(timeOfLastReduceFunctionStartInNS);
   }
 
-  protected Callback getCallback() {
+  protected PubSubProducerCallback getCallback() {
     return callback;
   }
 
@@ -401,7 +400,6 @@ public class VeniceReducer extends AbstractMapReduceTask
             .setRmdChunkingEnabled(rmdChunkingEnabled)
             .setTime(SystemTime.INSTANCE)
             .setPartitioner(partitioner)
-            .setPartitionCount(Optional.empty())
             .build();
     return veniceWriterFactoryFactory.createVeniceWriter(options);
   }
@@ -578,22 +576,22 @@ public class VeniceReducer extends AbstractMapReduceTask
     this.exceedQuota = exceedQuota;
   }
 
-  protected class KafkaMessageCallback implements Callback {
+  protected class ReducerProduceCallback implements PubSubProducerCallback {
     private final Reporter reporter;
 
-    public KafkaMessageCallback(Reporter reporter) {
+    public ReducerProduceCallback(Reporter reporter) {
       this.reporter = reporter;
     }
 
     @Override
-    public void onCompletion(RecordMetadata recordMetadata, Exception e) {
+    public void onCompletion(PubSubProduceResult produceResult, Exception e) {
       if (e != null) {
         messageErrored.incrementAndGet();
         LOGGER.error("Exception thrown in send message callback. ", e);
         sendException = e;
       } else {
         messageCompleted.incrementAndGet();
-        int partition = recordMetadata.partition();
+        int partition = produceResult.getPartition();
         partitionSet.add(partition);
         if (partition != getTaskId()) {
           // Reducer input and output are not aligned!

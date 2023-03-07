@@ -49,7 +49,6 @@ import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManagerRepository;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.Instance;
@@ -68,17 +67,17 @@ import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
+import com.linkedin.venice.pubsub.adapter.kafka.producer.SharedKafkaProducerAdapterFactory;
+import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
-import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.serializer.AvroSerializer;
-import com.linkedin.venice.throttle.EventThrottler;
-import com.linkedin.venice.writer.ApacheKafkaProducer;
-import com.linkedin.venice.writer.SharedKafkaProducerService;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -180,8 +179,7 @@ public class TestUtils {
       Optional<Boolean> enableChunking) {
     UpdateStoreQueryParams params = new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
         .setHybridRewindSeconds(25L)
-        .setHybridOffsetLagThreshold(1L)
-        .setLeaderFollowerModel(true);
+        .setHybridOffsetLagThreshold(1L);
 
     enableNativeReplication.ifPresent(params::setNativeReplicationEnabled);
     enableActiveActiveReplication.ifPresent(params::setActiveActiveReplicationEnabled);
@@ -373,11 +371,9 @@ public class TestUtils {
       compressor = new NoopCompressor();
     }
     try (VeniceWriter<byte[], byte[], byte[]> writer = writerFactory.createVeniceWriter(
-        kafkaTopic,
-        new DefaultSerializer(),
-        new DefaultSerializer(),
-        partitionCount,
-        venicePartitioner)) {
+        new VeniceWriterOptions.Builder(kafkaTopic).setPartitionCount(partitionCount)
+            .setPartitioner(venicePartitioner)
+            .build())) {
       writer.broadcastStartOfPush(
           false,
           false,
@@ -413,11 +409,11 @@ public class TestUtils {
       Stream<Map.Entry> batchData) {
 
     try (VeniceWriter<Object, Object, byte[]> writer = writerFactory.createVeniceWriter(
-        kafkaTopic,
-        new VeniceAvroKafkaSerializer(keySchema),
-        new VeniceAvroKafkaSerializer(valueSchema),
-        partitionCount,
-        venicePartitioner)) {
+        new VeniceWriterOptions.Builder(kafkaTopic).setKeySerializer(new VeniceAvroKafkaSerializer(keySchema))
+            .setValueSerializer(new VeniceAvroKafkaSerializer(valueSchema))
+            .setPartitionCount(partitionCount)
+            .setPartitioner(venicePartitioner)
+            .build())) {
       writer.broadcastStartOfPush(Collections.emptyMap());
 
       LinkedList<Future> putFutures = new LinkedList<>();
@@ -561,13 +557,13 @@ public class TestUtils {
     return new VeniceWriterFactory(factoryProperties);
   }
 
-  public static SharedKafkaProducerService getSharedKafkaProducerService(Properties properties) {
+  public static SharedKafkaProducerAdapterFactory getSharedKafkaProducerService(Properties properties) {
     Properties factoryProperties = new Properties();
     factoryProperties.putAll(properties);
-    return new SharedKafkaProducerService(
+    return new SharedKafkaProducerAdapterFactory(
         factoryProperties,
         1,
-        ApacheKafkaProducer::new,
+        new ApacheKafkaProducerAdapterFactory(),
         new MetricsRepository(),
         new HashSet<>(
             Arrays.asList(
@@ -581,10 +577,13 @@ public class TestUtils {
 
   public static VeniceWriterFactory getVeniceWriterFactoryWithSharedProducer(
       Properties properties,
-      Optional<SharedKafkaProducerService> sharedKafkaProducerService) {
+      SharedKafkaProducerAdapterFactory sharedKafkaProducerAdapterFactory) {
     Properties factoryProperties = new Properties();
     factoryProperties.putAll(properties);
-    return new VeniceWriterFactory(factoryProperties, sharedKafkaProducerService);
+    return new VeniceWriterFactory(
+        factoryProperties,
+        sharedKafkaProducerAdapterFactory,
+        sharedKafkaProducerAdapterFactory.getMetricsRepository());
   }
 
   public static Store getRandomStore() {
@@ -687,8 +686,8 @@ public class TestUtils {
     doReturn(true).when(mockVeniceProperties).isEmpty();
     doReturn(mockVeniceProperties).when(mockVeniceServerConfig).getKafkaConsumerConfigsForLocalConsumption();
     KafkaClientFactory mockKafkaClientFactory = mock(KafkaClientFactory.class);
-    KafkaConsumerWrapper mockKafkaConsumerWrapper = mock(KafkaConsumerWrapper.class);
-    doReturn(mockKafkaConsumerWrapper).when(mockKafkaClientFactory).getConsumer(any());
+    PubSubConsumer pubSubConsumer = mock(PubSubConsumer.class);
+    doReturn(pubSubConsumer).when(mockKafkaClientFactory).getConsumer(any(), any());
 
     StorageEngineRepository mockStorageEngineRepository = mock(StorageEngineRepository.class);
     doReturn(mock(AbstractStorageEngine.class)).when(mockStorageEngineRepository).getLocalStorageEngine(anyString());
@@ -716,9 +715,6 @@ public class TestUtils {
 
     version.setPartitionerConfig(partitionerConfig);
     doReturn(partitionerConfig).when(mockStore).getPartitionerConfig();
-
-    version.setLeaderFollowerModelEnabled(true);
-    doReturn(true).when(mockStore).isLeaderFollowerModelEnabled();
 
     version.setIncrementalPushEnabled(false);
     doReturn(false).when(mockStore).isIncrementalPushEnabled();
@@ -748,10 +744,6 @@ public class TestUtils {
         .setStorageEngineRepository(mockStorageEngineRepository)
         .setStorageMetadataService(mockStorageMetadataService)
         .setLeaderFollowerNotifiersQueue(new ArrayDeque<>())
-        .setBandwidthThrottler(mock(EventThrottler.class))
-        .setRecordsThrottler(mock(EventThrottler.class))
-        .setUnorderedBandwidthThrottler(mock(EventThrottler.class))
-        .setUnorderedRecordsThrottler(mock(EventThrottler.class))
         .setSchemaRepository(mock(ReadOnlySchemaRepository.class))
         .setMetadataRepository(mockReadOnlyStoreRepository)
         .setTopicManagerRepository(mock(TopicManagerRepository.class))

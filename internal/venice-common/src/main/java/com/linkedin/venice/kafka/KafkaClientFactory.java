@@ -7,9 +7,10 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.kafka.admin.InstrumentedKafkaAdmin;
 import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
 import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumer;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
+import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
@@ -35,6 +36,7 @@ public abstract class KafkaClientFactory {
   private static final Logger LOGGER = LogManager.getLogger(KafkaClientFactory.class);
 
   protected final Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader;
+
   private final Optional<MetricsParameters> metricsParameters;
 
   protected KafkaClientFactory() {
@@ -53,14 +55,15 @@ public abstract class KafkaClientFactory {
     return metricsParameters;
   }
 
-  public KafkaConsumerWrapper getConsumer(Properties props) {
+  public PubSubConsumer getConsumer(Properties props, KafkaPubSubMessageDeserializer kafkaPubSubMessageDeserializer) {
     props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
-
+    Properties propertiesWithSSL = setupSSL(props);
     return new ApacheKafkaConsumer(
-        getKafkaConsumer(props),
+        getKafkaConsumer(propertiesWithSSL),
         new VeniceProperties(props),
-        isKafkaConsumerOffsetCollectionEnabled());
+        isKafkaConsumerOffsetCollectionEnabled(),
+        kafkaPubSubMessageDeserializer);
   }
 
   public Consumer<byte[], byte[]> getRawBytesKafkaConsumer() {
@@ -114,7 +117,6 @@ public abstract class KafkaClientFactory {
     KafkaAdminWrapper adminWrapper =
         ReflectUtils.callConstructor(ReflectUtils.loadClass(kafkaAdminClientClass), new Class[0], new Object[0]);
     Properties properties = setupSSL(new Properties());
-    properties.setProperty(ConfigKeys.KAFKA_ZK_ADDRESS, getKafkaZkAddress());
     if (!properties.contains(ConfigKeys.KAFKA_ADMIN_GET_TOPIC_CONFIG_MAX_RETRY_TIME_SEC)) {
       properties.put(
           ConfigKeys.KAFKA_ADMIN_GET_TOPIC_CONFIG_MAX_RETRY_TIME_SEC,
@@ -183,13 +185,10 @@ public abstract class KafkaClientFactory {
    */
   abstract protected String getReadOnlyAdminClass();
 
-  abstract protected String getKafkaZkAddress();
-
   public abstract String getKafkaBootstrapServers();
 
   abstract protected KafkaClientFactory clone(
       String kafkaBootstrapServers,
-      String kafkaZkAddress,
       Optional<MetricsParameters> metricsParameters);
 
   public static class MetricsParameters {

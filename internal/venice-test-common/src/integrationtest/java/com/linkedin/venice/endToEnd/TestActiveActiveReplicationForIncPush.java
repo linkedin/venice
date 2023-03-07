@@ -3,7 +3,6 @@ package com.linkedin.venice.endToEnd;
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
-import static com.linkedin.venice.ConfigKeys.LF_MODEL_DEPENDENCY_CHECK_DISABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER;
@@ -20,7 +19,7 @@ import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -51,11 +50,11 @@ public class TestActiveActiveReplicationForIncPush {
   private static final int NUMBER_OF_CHILD_DATACENTERS = 3;
   private static final int NUMBER_OF_CLUSTERS = 1;
   private String[] clusterNames;
-  private String parentColoName;
+  private String parentRegionName;
   private String[] dcNames;
 
   private List<VeniceMultiClusterWrapper> childDatacenters;
-  private VeniceTwoLayerMultiColoMultiClusterWrapper multiColoMultiClusterWrapper;
+  private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
 
   KafkaBrokerWrapper veniceParentDefaultKafka;
 
@@ -76,10 +75,9 @@ public class TestActiveActiveReplicationForIncPush {
 
     Properties controllerProps = new Properties();
     controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 1000);
-    controllerProps.put(LF_MODEL_DEPENDENCY_CHECK_DISABLED, "true");
     controllerProps.put(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, "true");
 
-    multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
+    multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
         NUMBER_OF_CLUSTERS,
         1,
@@ -91,22 +89,22 @@ public class TestActiveActiveReplicationForIncPush {
         Optional.of(controllerProps),
         Optional.of(new VeniceProperties(serverProperties)),
         false);
-    childDatacenters = multiColoMultiClusterWrapper.getChildRegions();
-    clusterNames = multiColoMultiClusterWrapper.getClusterNames();
-    parentColoName = multiColoMultiClusterWrapper.getParentRegionName();
-    dcNames = multiColoMultiClusterWrapper.getChildRegionNames().toArray(new String[0]);
+    childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
+    clusterNames = multiRegionMultiClusterWrapper.getClusterNames();
+    parentRegionName = multiRegionMultiClusterWrapper.getParentRegionName();
+    dcNames = multiRegionMultiClusterWrapper.getChildRegionNames().toArray(new String[0]);
 
-    veniceParentDefaultKafka = multiColoMultiClusterWrapper.getParentKafkaBrokerWrapper();
+    veniceParentDefaultKafka = multiRegionMultiClusterWrapper.getParentKafkaBrokerWrapper();
   }
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    multiColoMultiClusterWrapper.close();
+    multiRegionMultiClusterWrapper.close();
   }
 
   /**
-   * The purpose of this test is to verify that incremental push with RT policy succeeds when A/A is enabled in all colos.
-   * And also incremental push can push to the closes kafka cluster from the grid using the SOURCE_GRID_CONFIG.
+   * The purpose of this test is to verify that incremental push with RT policy succeeds when A/A is enabled in all
+   * regions. And also incremental push can push to the closes kafka cluster from the grid using the SOURCE_GRID_CONFIG.
    */
   @Test(timeOut = TEST_TIMEOUT)
   public void testAAReplicationForIncrementalPushToRT() throws Exception {
@@ -115,7 +113,7 @@ public class TestActiveActiveReplicationForIncPush {
     File inputDirInc1 = getTempDataDirectory();
     File inputDirInc2 = getTempDataDirectory();
 
-    String parentControllerUrls = multiColoMultiClusterWrapper.getControllerConnectString();
+    String parentControllerUrls = multiRegionMultiClusterWrapper.getControllerConnectString();
     String inputDirPathBatch = "file:" + inputDirBatch.getAbsolutePath();
     String inputDirPathInc1 = "file:" + inputDirInc1.getAbsolutePath();
     String inputDirPathInc2 = "file:" + inputDirInc2.getAbsolutePath();
@@ -127,13 +125,13 @@ public class TestActiveActiveReplicationForIncPush {
         ControllerClient dc2ControllerClient = new ControllerClient(clusterName, connectionString.apply(2))) {
       String storeName = Utils.getUniqueString("store");
       Properties propsBatch =
-          IntegrationTestPushUtils.defaultVPJProps(multiColoMultiClusterWrapper, inputDirPathBatch, storeName);
+          IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPathBatch, storeName);
       propsBatch.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
       Properties propsInc1 =
-          IntegrationTestPushUtils.defaultVPJProps(multiColoMultiClusterWrapper, inputDirPathInc1, storeName);
+          IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPathInc1, storeName);
       propsInc1.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
       Properties propsInc2 =
-          IntegrationTestPushUtils.defaultVPJProps(multiColoMultiClusterWrapper, inputDirPathInc2, storeName);
+          IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPathInc2, storeName);
       propsInc2.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
 
       Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithUserSchema(inputDirBatch, true, 100);
@@ -156,7 +154,6 @@ public class TestActiveActiveReplicationForIncPush {
               .setHybridOffsetLagThreshold(TEST_TIMEOUT / 2)
               .setHybridRewindSeconds(2L)
               .setIncrementalPushEnabled(true)
-              .setLeaderFollowerModel(true)
               .setNativeReplicationEnabled(true)
               .setNativeReplicationSourceFabric("dc-2");
       TestUtils.assertCommand(parentControllerClient.updateStore(storeName, updateStoreParams));
@@ -167,7 +164,7 @@ public class TestActiveActiveReplicationForIncPush {
       LOGGER.info("KafkaURL {}:{}", dcNames[0], childDatacenters.get(0).getKafkaBrokerWrapper().getAddress());
       LOGGER.info("KafkaURL {}:{}", dcNames[1], childDatacenters.get(1).getKafkaBrokerWrapper().getAddress());
       LOGGER.info("KafkaURL {}:{}", dcNames[2], childDatacenters.get(2).getKafkaBrokerWrapper().getAddress());
-      LOGGER.info("KafkaURL {}:{}", parentColoName, veniceParentDefaultKafka.getAddress());
+      LOGGER.info("KafkaURL {}:{}", parentRegionName, veniceParentDefaultKafka.getAddress());
 
       // Turn on A/A in parent to trigger auto replication metadata schema registration
       TestWriteUtils.updateStore(storeName, parentControllerClient, enableAARepl);

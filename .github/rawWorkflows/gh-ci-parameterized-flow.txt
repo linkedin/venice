@@ -16,14 +16,30 @@
         with:
           java-version: ${{ matrix.jdk }}
           distribution: 'microsoft'
+          cache: 'gradle'
       - shell: bash
         run: |
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
       - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@e6e38bacfdf1a337459f332974bb2327a31aaf4b
+        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
-        uses: gradle/gradle-build-action@67421db6bd0bf253fb4bd25b31ebb98943c375e1
+        uses: gradle/gradle-build-action@v2
         with:
           arguments: "$GradleArguments"
+      - name: Package Build Artifacts
+        if: success() || failure()
+        shell: bash
+        run: |
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Build Artifacts
+        if: success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ github.job }}
+          path: ${{ github.job }}-artifacts.tar.gz
+          retention-days: 30

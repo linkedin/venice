@@ -123,7 +123,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     int maxKeyLevelLocksPoolSize =
         Math.min(storeVersionPartitionCount, consumerPoolSizePerKafkaCluster) * knownKafkaClusterNumber + 1;
     this.keyLevelLocksManager =
-        Lazy.of(() -> new KeyLevelLocksManager(getVersionTopic(), initialPoolSize, maxKeyLevelLocksPoolSize));
+        Lazy.of(() -> new KeyLevelLocksManager(getVersionTopic().getName(), initialPoolSize, maxKeyLevelLocksPoolSize));
     this.rmdSerDe = new RmdSerDe(builder.getSchemaRepo(), storeName, rmdProtocolVersionID);
     this.mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(builder.getSchemaRepo(), rmdSerDe, getStoreName());
@@ -668,6 +668,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   protected void startConsumingAsLeader(PartitionConsumptionState partitionConsumptionState) {
     final int partition = partitionConsumptionState.getPartition();
     final OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
+    final PubSubTopic leaderTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
 
     /**
      * Note that this function is called after the new leader has waited for 5 minutes of inactivity on the local VT topic.
@@ -676,15 +677,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
      */
     if (shouldNewLeaderSwitchToRemoteConsumption(partitionConsumptionState)) {
       partitionConsumptionState.setConsumeRemotely(true);
-      LOGGER.info(
-          "{} enabled remote consumption from topic {} partition {}",
-          consumerTaskId,
-          offsetRecord.getLeaderTopic(),
-          partition);
+      LOGGER.info("{} enabled remote consumption from topic {} partition {}", consumerTaskId, leaderTopic, partition);
     }
 
     partitionConsumptionState.setLeaderFollowerState(LEADER);
-    final PubSubTopic leaderTopic = offsetRecord.getLeaderTopic(pubSubTopicRepository);
     Set<String> leaderSourceKafkaURLs = getConsumptionSourceKafkaAddress(partitionConsumptionState);
     Map<String, Long> leaderOffsetByKafkaURL = new HashMap<>(leaderSourceKafkaURLs.size());
     leaderSourceKafkaURLs.forEach(
@@ -708,7 +704,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     LOGGER.info(
         "{}, as a leader, started consuming from topic {} partition {} with offset by Kafka URL mapping {}",
         consumerTaskId,
-        offsetRecord.getLeaderTopic(),
+        leaderTopic,
         partition,
         leaderOffsetByKafkaURL);
   }
@@ -746,7 +742,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     }
 
     final int partition = partitionConsumptionState.getPartition();
-    final String currentLeaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic();
+    final PubSubTopic currentLeaderTopic =
+        partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
     final String newSourceTopicName = topicSwitch.sourceTopicName.toString();
     final PubSubTopicPartition sourceTopicPartition = partitionConsumptionState.getSourceTopicPartition(newSourceTopic);
     Map<String, Long> upstreamOffsetsByKafkaURLs = new HashMap<>(topicSwitch.sourceKafkaServers.size());
@@ -898,7 +895,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
      */
     if (isLeader(partitionConsumptionState) && !amplificationFactorAdapter.isLeaderSubPartition(partition)) {
       LOGGER.info("SubPartition: {} is demoted from LEADER to STANDBY.", partitionConsumptionState.getPartition());
-      String currentLeaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic();
+      PubSubTopic currentLeaderTopic =
+          partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository);
       consumerUnSubscribe(currentLeaderTopic, partitionConsumptionState);
 
       waitForLastLeaderPersistFuture(
@@ -1152,7 +1150,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           // Consumer might not existed after the consumption state is created, but before attaching the corresponding
           // consumer.
           long offsetLagOptional =
-              getPartitionOffsetLag(kafkaSourceAddress, currentLeaderTopic.getName(), pcs.getUserPartition());
+              getPartitionOffsetLag(kafkaSourceAddress, currentLeaderTopic, pcs.getUserPartition());
           if (offsetLagOptional >= 0) {
             return offsetLagOptional;
           }
@@ -1210,7 +1208,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         } catch (Exception e) {
           LOGGER.error(
               "Failed to measure RT offset lag for topic {} partition id {} in {}",
-              partitionConsumptionState.getOffsetRecord().getLeaderTopic(),
+              partitionConsumptionState.getOffsetRecord().getLeaderTopic(pubSubTopicRepository),
               partitionConsumptionState.getPartition(),
               sourceRealTimeTopicKafkaURL,
               e);

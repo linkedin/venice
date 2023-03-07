@@ -13,7 +13,8 @@ public enum Arg {
   CLUSTER("cluster", "c", true, "Name of Venice cluster"),
   CLUSTER_SRC("cluster-src", "cs", true, "Store migration original Venice cluster name"),
   CLUSTER_DEST("cluster-dest", "cd", true, "Store migration destination Venice cluster name"),
-  STORE("store", "s", true, "Name of Venice store"), VERSION("version", "v", true, "Active store version number"),
+  STORE("store", "s", true, "Name of Venice store"), STORES("stores", "sts", true, "Name of a group of Venice stores"),
+  VERSION("version", "v", true, "Active store version number"),
   LARGEST_USED_VERSION_NUMBER(
       "largest-used-version", "luv", true, "Largest used store version number (whether active or not)"
   ), PUSH_ID("push-id", "pid", true, "Push Id"),
@@ -91,22 +92,10 @@ public enum Arg {
   ), BATCH_GET_LIMIT("batch-get-limit", "bgl", true, "Key number limit inside one batch-get request"),
   NUM_VERSIONS_TO_PRESERVE("num-versions-to-preserve", "nvp", true, "Number of version that store should preserve."),
   KAFKA_BOOTSTRAP_SERVERS("kafka-bootstrap-servers", "kbs", true, "Kafka bootstrap server URL(s)"),
-  KAFKA_BOOTSTRAP_SERVERS_DESTINATION(
-      "kafka-bootstrap-servers-dest", "kbd", true, "Kafka bootstrap server URL(s) for the destination cluster"
-  ), KAFKA_ZOOKEEPER_CONNECTION_URL("kafka-zk-url", "kzu", true, "Kafka's Zookeeper URL(s)"),
-  KAFKA_ZOOKEEPER_CONNECTION_URL_SOURCE(
-      "kafka-zk-url-source", "kzs", true, "Kafka's Zookeeper URL(s) for the source cluster"
-  ),
-  KAFKA_ZOOKEEPER_CONNECTION_URL_DESTINATION(
-      "kafka-zk-url-dest", "kzd", true, "Kafka's Zookeeper URL(s) for the destination cluster"
-  ), KAFKA_TOPIC_ALLOWLIST("kafka-topic-allowlist", "kta", true, "Kafka topic allowlist"),
   KAFKA_TOPIC_NAME("kafka-topic-name", "ktn", true, "Kafka topic name"),
   KAFKA_TOPIC_PARTITION("kafka-topic-partition", "ktp", true, "Kafka topic partition number"),
   KAFKA_CONSUMER_CONFIG_FILE(
       "kafka-conumer-config-file", "kcc", true, "Configuration file for SSL (optional, if plain-text is available)"
-  ),
-  KAFKA_PRODUCER_CONFIG_FILE(
-      "kafka-producer-config-file", "kpc", true, "Configuration file for SSL (optional, if plain-text is available)"
   ),
   KAFKA_OPERATION_TIMEOUT(
       "kafka-operation-timeout", "kot", true, "Timeout in seconds for Kafka operations (default: 30 sec)"
@@ -129,10 +118,6 @@ public enum Arg {
   BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOUR(
       "bootstrap-to-online-timeout", "btot", true,
       "Set the maximum number of hours allowed for the store to transition from bootstrap to online"
-  ),
-  LEADER_FOLLOWER_MODEL_ENABLED(
-      "leader-follower-model-enabled", "lf", true,
-      "whether or not to use L/F Helix transition model for upcoming version"
   ), SKIP_DIV("skip-div", "div", true, "Whether or not to only skip DIV for skip admin"),
   BACKUP_STRATEGY(
       "backup-strategy", "bus", true,
@@ -176,7 +161,6 @@ public enum Arg {
   FABRIC_B("fabric-b", "fb", true, "The name of the second fabric in store comparison."),
   SOURCE_FABRIC("source-fabric", "sf", true, "The fabric where metadata/data copy over starts from"),
   DEST_FABRIC("dest-fabric", "df", true, "The fabric where metadata/data gets copy over into"),
-  DEFAULT_CONFIGS("default-configs", "dc", false, "Use default store configs (intended for system stores)"),
   ACL_PERMS("acl-perms", "ap", true, "Acl permissions for the store"),
   LOG_METADATA("log-metedata", "lm", false, "Only log the metadata for each kafka message on console"),
   NATIVE_REPLICATION_SOURCE_FABRIC(
@@ -237,7 +221,10 @@ public enum Arg {
   END_DATE("end-date", "ed", true, "End date in PST. Example: 2020-10-10 10:10:10"),
   PROGRESS_INTERVAL("progress-interval", "pi", true, "Dump progress after processing this number of messages"),
 
-  STORAGE_PERSONA("storage-persona", "sp", true, "Name of Storage Persona");
+  STORAGE_PERSONA("storage-persona", "sp", true, "Name of Storage Persona"),
+  RECOVERY_COMMAND("recovery-command", "rco", true, "command to execute the data recovery"),
+  EXTRA_COMMAND_ARGS("extra-command-args", "eca", true, "extra command arguments"),
+  DEBUG("debug", "d", false, "Print debugging messages for execute-data-recovery");
 
   private final String argName;
   private final String first;

@@ -4,7 +4,6 @@ import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLA
 import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
-import static com.linkedin.venice.ConfigKeys.LF_MODEL_DEPENDENCY_CHECK_DISABLED;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC;
 import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
@@ -62,7 +61,7 @@ import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
-import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Instance;
@@ -120,7 +119,7 @@ public class ActiveActiveReplicationForHybridTest {
 
   protected List<VeniceMultiClusterWrapper> childDatacenters;
   protected List<VeniceControllerWrapper> parentControllers;
-  protected VeniceTwoLayerMultiColoMultiClusterWrapper multiColoMultiClusterWrapper;
+  protected VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
 
   private D2Client d2ClientForDC0Region;
   private Properties serverProperties;
@@ -149,10 +148,7 @@ public class ActiveActiveReplicationForHybridTest {
     controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 1000);
     controllerProps.put(NATIVE_REPLICATION_SOURCE_FABRIC, "dc-0");
     controllerProps.put(PARENT_KAFKA_CLUSTER_FABRIC_LIST, DEFAULT_PARENT_DATA_CENTER_REGION_NAME);
-
-    controllerProps.put(LF_MODEL_DEPENDENCY_CHECK_DISABLED, true);
-
-    multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
+    multiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         NUMBER_OF_CHILD_DATACENTERS,
         NUMBER_OF_CLUSTERS,
         1,
@@ -164,8 +160,8 @@ public class ActiveActiveReplicationForHybridTest {
         Optional.of(controllerProps),
         Optional.of(new VeniceProperties(serverProperties)),
         false);
-    childDatacenters = multiColoMultiClusterWrapper.getChildRegions();
-    parentControllers = multiColoMultiClusterWrapper.getParentControllers();
+    childDatacenters = multiRegionMultiClusterWrapper.getChildRegions();
+    parentControllers = multiRegionMultiClusterWrapper.getParentControllers();
 
     // Set up a d2 client for DC0 region
     d2ClientForDC0Region = new D2ClientBuilder().setZkHosts(childDatacenters.get(0).getZkServerWrapper().getAddress())
@@ -193,7 +189,7 @@ public class ActiveActiveReplicationForHybridTest {
     Utils.closeQuietlyWithErrorLogged(dc0Client);
     Utils.closeQuietlyWithErrorLogged(dc1Client);
     Utils.closeQuietlyWithErrorLogged(dc2Client);
-    Utils.closeQuietlyWithErrorLogged(multiColoMultiClusterWrapper);
+    Utils.closeQuietlyWithErrorLogged(multiRegionMultiClusterWrapper);
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -209,27 +205,19 @@ public class ActiveActiveReplicationForHybridTest {
       createAndVerifyStoreInAllRegions(storeName4, parentControllerClient, dcControllerClientList);
 
       assertCommand(
-          parentControllerClient.updateStore(storeName1, new UpdateStoreQueryParams().setLeaderFollowerModel(true)));
-
-      assertCommand(
           parentControllerClient.updateStore(
               storeName2,
-              new UpdateStoreQueryParams().setLeaderFollowerModel(true)
-                  .setHybridRewindSeconds(10)
+              new UpdateStoreQueryParams().setHybridRewindSeconds(10)
                   .setHybridOffsetLagThreshold(2)
                   .setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE)));
 
       assertCommand(
           parentControllerClient.updateStore(
               storeName3,
-              new UpdateStoreQueryParams().setLeaderFollowerModel(true)
-                  .setHybridRewindSeconds(10)
-                  .setHybridOffsetLagThreshold(2)));
+              new UpdateStoreQueryParams().setHybridRewindSeconds(10).setHybridOffsetLagThreshold(2)));
 
       assertCommand(
-          parentControllerClient.updateStore(
-              storeName4,
-              new UpdateStoreQueryParams().setIncrementalPushEnabled(true).setLeaderFollowerModel(true)));
+          parentControllerClient.updateStore(storeName4, new UpdateStoreQueryParams().setIncrementalPushEnabled(true)));
 
       // Test batch
       assertCommand(
@@ -373,7 +361,7 @@ public class ActiveActiveReplicationForHybridTest {
       assertTrue(controllerResponse instanceof JobStatusQueryResponse);
       JobStatusQueryResponse jobStatusQueryResponse = (JobStatusQueryResponse) controllerResponse;
       int versionNumber = jobStatusQueryResponse.getVersion();
-      // Wait for push to complete in all colos
+      // Wait for push to complete in all regions
       waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
         for (ControllerClient controllerClient: dcControllerClientList) {
           StoreResponse storeResponse = assertCommand(controllerClient.getStore(storeName));
@@ -384,8 +372,8 @@ public class ActiveActiveReplicationForHybridTest {
       // disable the purging of transientRecord buffer using reflection.
       if (useTransientRecordCache) {
         String topicName = Version.composeKafkaTopic(storeName, versionNumber);
-        for (VeniceMultiClusterWrapper veniceColo: multiColoMultiClusterWrapper.getChildRegions()) {
-          VeniceClusterWrapper veniceCluster = veniceColo.getClusters().get(clusterName);
+        for (VeniceMultiClusterWrapper veniceRegion: multiRegionMultiClusterWrapper.getChildRegions()) {
+          VeniceClusterWrapper veniceCluster = veniceRegion.getClusters().get(clusterName);
           for (VeniceServerWrapper veniceServerWrapper: veniceCluster.getVeniceServers()) {
             StoreIngestionTaskBackdoor.setPurgeTransientRecordBuffer(veniceServerWrapper, topicName, false);
           }
@@ -408,7 +396,7 @@ public class ActiveActiveReplicationForHybridTest {
           samzaConfig.put(configPrefix + VENICE_AGGREGATE, "false");
           samzaConfig.put(VENICE_CHILD_D2_ZK_HOSTS, childDataCenter.getZkServerWrapper().getAddress());
           samzaConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, D2_SERVICE_NAME);
-          samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, multiColoMultiClusterWrapper.getZkServerWrapper().getAddress());
+          samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, multiRegionMultiClusterWrapper.getZkServerWrapper().getAddress());
           samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
           samzaConfig.put(DEPLOYMENT_ID, Utils.getUniqueString("venice-push-id"));
           samzaConfig.put(SSL_ENABLED, "false");

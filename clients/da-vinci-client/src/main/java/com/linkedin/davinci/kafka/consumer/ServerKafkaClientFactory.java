@@ -2,7 +2,6 @@ package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.venice.ConfigConstants.DEFAULT_KAFKA_SSL_CONTEXT_PROVIDER_CLASS_NAME;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_ZK_ADDRESS;
 import static org.apache.kafka.common.config.SslConfigs.SSL_CONTEXT_PROVIDER_CLASS_CONFIG;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -79,11 +78,6 @@ public class ServerKafkaClientFactory extends KafkaClientFactory {
   }
 
   @Override
-  protected String getKafkaZkAddress() {
-    return serverConfig.getKafkaZkAddress();
-  }
-
-  @Override
   public String getKafkaBootstrapServers() {
     return serverConfig.getKafkaBootstrapServers();
   }
@@ -94,13 +88,9 @@ public class ServerKafkaClientFactory extends KafkaClientFactory {
   }
 
   @Override
-  protected KafkaClientFactory clone(
-      String kafkaBootstrapServers,
-      String kafkaZkAddress,
-      Optional<MetricsParameters> metricsParameters) {
+  protected KafkaClientFactory clone(String kafkaBootstrapServers, Optional<MetricsParameters> metricsParameters) {
     Properties clonedProperties = this.serverConfig.getClusterProperties().toProperties();
     clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers);
-    clonedProperties.setProperty(KAFKA_ZK_ADDRESS, kafkaZkAddress);
     return new ServerKafkaClientFactory(
         new VeniceServerConfig(new VeniceProperties(clonedProperties), serverConfig.getKafkaClusterMap()),
         kafkaMessageEnvelopeSchemaReader,

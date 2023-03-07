@@ -6,8 +6,10 @@ import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_SCHEMA
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
 import static java.lang.Thread.currentThread;
 
+import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
 import com.linkedin.venice.client.exceptions.ServiceDiscoveryException;
 import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.MissingKeyInStoreMetadataException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -23,7 +25,9 @@ import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.service.ICProvider;
+import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreClusterConfig;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
@@ -37,6 +41,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.Executors;
@@ -101,7 +106,19 @@ public abstract class NativeMetadataRepository
           "Initializing {} with {}",
           NativeMetadataRepository.class.getSimpleName(),
           DaVinciClientMetaStoreBasedRepository.class.getSimpleName());
-      return new DaVinciClientMetaStoreBasedRepository(clientConfig, backendConfig);
+      ClientConfig clonedClientConfig = ClientConfig.cloneConfig(clientConfig)
+          .setStoreName(AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getSystemStoreName())
+          .setSpecificValueClass(StoreMetaValue.class);
+      return new DaVinciClientMetaStoreBasedRepository(
+          clientConfig,
+          backendConfig,
+          new CachingDaVinciClientFactory(
+              clientConfig.getD2Client(),
+              clientConfig.getD2ServiceName(),
+              Optional.ofNullable(clientConfig.getMetricsRepository())
+                  .orElse(TehutiUtils.getMetricsRepository("davinci-client")),
+              backendConfig),
+          ClientFactory.getSchemaReader(clonedClientConfig, null));
     } else {
       LOGGER.info(
           "Initializing {} with {}",

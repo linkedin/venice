@@ -699,6 +699,8 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
         clusterInfoProvider,
         storeRepository,
         schemaRepository,
+        Optional.empty(),
+        Optional.empty(),
         liveConfigRepository,
         metricsRepository,
         Optional.of(kafkaMessageEnvelopeSchemaReader),

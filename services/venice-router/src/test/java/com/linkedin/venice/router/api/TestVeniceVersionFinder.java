@@ -167,7 +167,6 @@ public class TestVeniceVersionFinder {
     int fifthVersion = 5;
     Store store = TestUtils.createTestStore(storeName, "unittest", System.currentTimeMillis());
     store.setPartitionCount(3);
-    store.setLeaderFollowerModelEnabled(true);
     store.addVersion(new VersionImpl(storeName, firstVersion));
     store.setCurrentVersion(firstVersion);
     store.updateVersionStatus(firstVersion, VersionStatus.ONLINE);
@@ -223,7 +222,6 @@ public class TestVeniceVersionFinder {
     Assert.assertEquals(versionFinder.getVersion(storeName, request), fourthVersion);
 
     // PartitionStatusOnlineInstanceFinder can also work
-    store.setLeaderFollowerModelEnabled(true);
     store.addVersion(new VersionImpl(storeName, fifthVersion));
     store.updateVersionStatus(fifthVersion, VersionStatus.ONLINE);
     store.setCurrentVersion(fifthVersion);

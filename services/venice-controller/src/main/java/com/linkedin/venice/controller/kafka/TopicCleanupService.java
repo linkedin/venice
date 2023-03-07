@@ -10,7 +10,6 @@ import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.system.store.MetaStoreWriter;
-import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Time;
 import java.util.Collections;
 import java.util.HashMap;
@@ -97,8 +96,8 @@ public class TopicCleanupService extends AbstractVeniceService {
     return admin.getTopicManager();
   }
 
-  TopicManager getTopicManager(Pair<String, String> kafkaBootstrapServersAndZkAddress) {
-    return admin.getTopicManager(kafkaBootstrapServersAndZkAddress);
+  TopicManager getTopicManager(String kafkaBootstrapServerAddress) {
+    return admin.getTopicManager(kafkaBootstrapServerAddress);
   }
 
   private class TopicCleanupTask implements Runnable {

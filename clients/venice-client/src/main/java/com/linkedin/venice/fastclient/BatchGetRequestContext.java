@@ -144,7 +144,7 @@ public class BatchGetRequestContext<K, V> extends RequestContext {
   }
 
   List<CompletableFuture<TransportClientResponseForRoute>> getAllRouteFutures() {
-    return routeRequests.values().stream().map(rrc -> rrc.routeRequestCompletion).collect(Collectors.toList());
+    return routeRequests.values().stream().map(rrc -> rrc.routeRequestCompletionFuture).collect(Collectors.toList());
   }
 
   Optional<Throwable> getPartialResponseException() {
@@ -184,7 +184,7 @@ public class BatchGetRequestContext<K, V> extends RequestContext {
    */
   private static class RouteRequestContext<K> {
     List<KeyInfo<K>> keysRequested = new ArrayList<>();
-    CompletableFuture<TransportClientResponseForRoute> routeRequestCompletion = new CompletableFuture<>();
+    CompletableFuture<TransportClientResponseForRoute> routeRequestCompletionFuture = new CompletableFuture<>();
 
     AtomicLong decompressionTime = new AtomicLong();
     AtomicLong responseDeserializationTime = new AtomicLong();
@@ -196,11 +196,11 @@ public class BatchGetRequestContext<K, V> extends RequestContext {
     }
 
     void setComplete(TransportClientResponseForRoute response) {
-      routeRequestCompletion.complete(response);
+      routeRequestCompletionFuture.complete(response);
     }
 
     void setCompleteExceptionally(Throwable exception) {
-      routeRequestCompletion.completeExceptionally(exception);
+      routeRequestCompletionFuture.completeExceptionally(exception);
     }
   }
 

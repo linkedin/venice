@@ -133,8 +133,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     this.storeProperties.etlConfig = new ETLStoreConfigImpl().dataModel();
     this.storeProperties.latestVersionPromoteToCurrentTimestamp = System.currentTimeMillis();
 
-    // hardcode the policy
-    this.storeProperties.incrementalPushPolicy = IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME.getValue();
+    this.storeProperties.leaderFollowerModelEnabled = true;
 
     setupVersionSupplier(new StoreVersionSupplier() {
       @Override
@@ -156,6 +155,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
       throw new VeniceException("Invalid store name: " + storeProperties.name.toString());
     }
     this.storeProperties = storeProperties;
+    this.storeProperties.leaderFollowerModelEnabled = true;
     setupVersionSupplier(new StoreVersionSupplier() {
       @Override
       public List<StoreVersion> getForUpdate() {
@@ -203,7 +203,6 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setWriteComputationEnabled(store.isWriteComputationEnabled());
     setReadComputationEnabled(store.isReadComputationEnabled());
     setBootstrapToOnlineTimeoutInHours(store.getBootstrapToOnlineTimeoutInHours());
-    setLeaderFollowerModelEnabled(store.isLeaderFollowerModelEnabled());
     setNativeReplicationEnabled(store.isNativeReplicationEnabled());
     setBackupStrategy(store.getBackupStrategy());
     setSchemaAutoRegisterFromPushJobEnabled(store.isSchemaAutoRegisterFromPushJobEnabled());
@@ -211,7 +210,6 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
     setHybridStoreDiskQuotaEnabled(store.isHybridStoreDiskQuotaEnabled());
     setEtlStoreConfig(store.getEtlStoreConfig());
     setStoreMetadataSystemStoreEnabled(store.isStoreMetadataSystemStoreEnabled());
-    setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME); // to be cleaned up in phase-II
     setLatestVersionPromoteToCurrentTimestamp(store.getLatestVersionPromoteToCurrentTimestamp());
     setBackupVersionRetentionMs(store.getBackupVersionRetentionMs());
     setReplicationFactor(store.getReplicationFactor());
@@ -606,16 +604,6 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   }
 
   @Override
-  public boolean isLeaderFollowerModelEnabled() {
-    return this.storeProperties.leaderFollowerModelEnabled;
-  }
-
-  @Override
-  public void setLeaderFollowerModelEnabled(boolean leaderFollowerModelEnabled) {
-    this.storeProperties.leaderFollowerModelEnabled = leaderFollowerModelEnabled;
-  }
-
-  @Override
   public String getPushStreamSourceAddress() {
     return this.storeProperties.pushStreamSourceAddress.toString();
   }
@@ -719,16 +707,6 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
   @Override
   public void setStoreMetaSystemStoreEnabled(boolean storeMetaSystemStoreEnabled) {
     this.storeProperties.storeMetaSystemStoreEnabled = storeMetaSystemStoreEnabled;
-  }
-
-  @Override
-  public IncrementalPushPolicy getIncrementalPushPolicy() {
-    return IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME;
-  }
-
-  @Override
-  public void setIncrementalPushPolicy(IncrementalPushPolicy incrementalPushPolicy) {
-    this.storeProperties.incrementalPushPolicy = IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME.getValue();
   }
 
   @Override
