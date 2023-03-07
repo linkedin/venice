@@ -218,10 +218,15 @@ task generateGHCI() {
   appendToGHCI(paramFileContent, targetFilePath, staticAnalysis, 20, staticAnalysisFlowGradleArgs)
   jobs << staticAnalysis
 
-  def unitTestsAndCodeCoverage = "UnitTestsAndCodeCoverage"
-  def unitTestsFlowGradleArgs = "-x :internal:venice-avro-compatibility-test:test jacocoTestCoverageVerification diffCoverage --continue"
-  appendToGHCI(paramFileContent, targetFilePath, unitTestsAndCodeCoverage, 60, unitTestsFlowGradleArgs)
-  jobs << unitTestsAndCodeCoverage
+  def moduleLevelCodeCoverage = "UnitTestsAndModuleLevelCodeCoverage"
+  def moduleLevelCodeCoverageGradleArgs = "-DmaxParallelForks=2 --parallel -x :internal:venice-avro-compatibility-test:test jacocoTestCoverageVerification --continue"
+  appendToGHCI(paramFileContent, targetFilePath, moduleLevelCodeCoverage, 60, moduleLevelCodeCoverageGradleArgs)
+  jobs << moduleLevelCodeCoverage
+
+  def diffCodeCoverage = "DiffCodeCoverage"
+  def diffCoverageGradleArgs = "-DmaxParallelForks=2 --parallel -x :internal:venice-avro-compatibility-test:test diffCoverage --continue"
+  appendToGHCI(paramFileContent, targetFilePath, diffCodeCoverage, 60, diffCoverageGradleArgs)
+  jobs << diffCodeCoverage
 
   def avroCompatibilityTests = "AvroCompatibilityTests"
   def avroCompatibilityFlowGradleArgs = "-DmaxParallelForks=2 --parallel :internal:venice-avro-compatibility-test:test --continue"
