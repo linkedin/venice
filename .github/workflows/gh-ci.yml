@@ -43,6 +43,7 @@ jobs:
         with:
           arguments: "--continue --no-daemon -DmaxParallelForks=2 --parallel -Pspotallbugs clean check -x spotlessCheck -x test -x integrationTest -x jacocoTestCoverageVerification"
       - name: Package Build Artifacts
+        if: success() || failure()
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
@@ -50,6 +51,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
+        if: success()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
@@ -86,6 +88,7 @@ jobs:
         with:
           arguments: "-DmaxParallelForks=2  --parallel -x :internal:venice-avro-compatibility-test:test jacocoTestCoverageVerification diffCoverage --continue"
       - name: Package Build Artifacts
+        if: success() || failure()
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
@@ -93,6 +96,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
+        if: success()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
@@ -129,6 +133,7 @@ jobs:
         with:
           arguments: "-DmaxParallelForks=2 --parallel :internal:venice-avro-compatibility-test:test --continue"
       - name: Package Build Artifacts
+        if: success() || failure()
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
@@ -136,6 +141,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
+        if: success()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
@@ -172,6 +178,7 @@ jobs:
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestA"
       - name: Package Build Artifacts
+        if: success() || failure()
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
@@ -179,6 +186,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
+        if: success()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
@@ -215,6 +223,7 @@ jobs:
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestB"
       - name: Package Build Artifacts
+        if: success() || failure()
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
@@ -222,6 +231,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
+        if: success()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
@@ -258,6 +268,7 @@ jobs:
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestC"
       - name: Package Build Artifacts
+        if: success() || failure()
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
@@ -265,6 +276,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
+        if: success()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
@@ -301,6 +313,7 @@ jobs:
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestD"
       - name: Package Build Artifacts
+        if: success() || failure()
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
@@ -308,6 +321,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
+        if: success()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
@@ -344,6 +358,7 @@ jobs:
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestE"
       - name: Package Build Artifacts
+        if: success() || failure()
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
@@ -351,6 +366,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
+        if: success()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
@@ -387,6 +403,7 @@ jobs:
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestF"
       - name: Package Build Artifacts
+        if: success() || failure()
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
@@ -394,6 +411,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
+        if: success()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
@@ -430,6 +448,7 @@ jobs:
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestG"
       - name: Package Build Artifacts
+        if: success() || failure()
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
@@ -437,6 +456,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
+        if: success()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
@@ -473,6 +493,7 @@ jobs:
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestH"
       - name: Package Build Artifacts
+        if: success() || failure()
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
@@ -480,6 +501,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
+        if: success()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
@@ -516,6 +538,7 @@ jobs:
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestI"
       - name: Package Build Artifacts
+        if: success() || failure()
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
@@ -523,6 +546,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
+        if: success()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
@@ -559,6 +583,7 @@ jobs:
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestJ"
       - name: Package Build Artifacts
+        if: success() || failure()
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
@@ -566,6 +591,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
+        if: success()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
@@ -602,6 +628,7 @@ jobs:
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestK"
       - name: Package Build Artifacts
+        if: success() || failure()
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
@@ -609,6 +636,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
+        if: success()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
@@ -645,6 +673,7 @@ jobs:
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestL"
       - name: Package Build Artifacts
+        if: success() || failure()
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
@@ -652,6 +681,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
+        if: success()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
@@ -688,6 +718,7 @@ jobs:
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestM"
       - name: Package Build Artifacts
+        if: success() || failure()
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
@@ -695,6 +726,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
+        if: success()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
@@ -731,6 +763,7 @@ jobs:
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestN"
       - name: Package Build Artifacts
+        if: success() || failure()
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
@@ -738,6 +771,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
+        if: success()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
@@ -774,6 +808,7 @@ jobs:
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestO"
       - name: Package Build Artifacts
+        if: success() || failure()
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
@@ -781,6 +816,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
+        if: success()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
@@ -817,6 +853,7 @@ jobs:
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestP"
       - name: Package Build Artifacts
+        if: success() || failure()
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
@@ -824,6 +861,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
+        if: success()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
@@ -860,6 +898,7 @@ jobs:
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestQ"
       - name: Package Build Artifacts
+        if: success() || failure()
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
@@ -867,6 +906,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
+        if: success()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
@@ -903,6 +943,7 @@ jobs:
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestZ"
       - name: Package Build Artifacts
+        if: success() || failure()
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
@@ -910,6 +951,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
+        if: success()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
@@ -947,6 +989,7 @@ jobs:
         with:
           arguments: "clean"
       - name: Package Build Artifacts
+        if: success() || failure()
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
@@ -954,6 +997,7 @@ jobs:
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
+        if: success()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
