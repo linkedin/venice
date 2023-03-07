@@ -28,3 +28,18 @@
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "$GradleArguments"
+      - name: Package Build Artifacts
+        if: success() || failure()
+        shell: bash
+        run: |
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Build Artifacts
+        if: success()
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ github.job }}
+          path: ${{ github.job }}-artifacts.tar.gz
+          retention-days: 30
