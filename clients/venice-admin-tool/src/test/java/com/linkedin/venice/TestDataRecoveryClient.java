@@ -41,7 +41,13 @@ public class TestDataRecoveryClient {
     } else {
       // Verify all stores are executed unsuccessfully.
       for (int i = 0; i < numOfStores; i++) {
-        Assert.assertTrue(executor.getTasks().get(i).getTaskResult().isError());
+        // For tasks that require sentinel run, if the first task is errored, then the remaining task wouldn't be
+        // executed.
+        if (i == 0) {
+          Assert.assertTrue(executor.getTasks().get(i).getTaskResult().isError());
+        } else {
+          Assert.assertNull(executor.getTasks().get(i).getTaskResult());
+        }
       }
     }
   }
@@ -53,7 +59,6 @@ public class TestDataRecoveryClient {
 
     // Partial mock of Module class to take password from console input.
     executor = spy(DataRecoveryExecutor.class);
-    doReturn("test").when(executor).getUserCredentials();
 
     // Mock command to mimic a successful repush result.
     List<String> mockCmd = new ArrayList<>();
@@ -80,7 +85,7 @@ public class TestDataRecoveryClient {
     doCallRealMethod().when(dataRecoveryClient).execute(any(), any());
     doReturn(true).when(dataRecoveryClient).confirmStores(any());
     // client executes three store recovery.
-    dataRecoveryClient.execute(new DataRecoveryClient.DataRecoveryParams("store1,store2,store3"), cmdParams);
+    dataRecoveryClient.execute(new DataRecoveryClient.DataRecoveryParams("store1,store2,store3", true), cmdParams);
   }
 
   private List<DataRecoveryTask> buildTasks(

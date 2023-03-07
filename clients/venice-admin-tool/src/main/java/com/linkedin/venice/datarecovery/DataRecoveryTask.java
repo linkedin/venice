@@ -19,6 +19,10 @@ public class DataRecoveryTask implements Runnable {
     taskResult = new TaskResult(command.getResult());
   }
 
+  public boolean requiresSentinelRun() {
+    return true;
+  }
+
   public TaskResult getTaskResult() {
     return taskResult;
   }
