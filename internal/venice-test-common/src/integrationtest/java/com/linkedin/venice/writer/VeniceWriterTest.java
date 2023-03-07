@@ -25,14 +25,21 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
+import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
+import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
+import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.storage.protocol.ChunkId;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
@@ -43,12 +50,13 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
@@ -56,10 +64,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeoutException;
-import org.apache.kafka.clients.consumer.Consumer;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.common.TopicPartition;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -118,34 +122,40 @@ public class VeniceWriterTest {
     } finally {
       TestUtils.shutdownExecutor(executorService);
     }
-
-    try (Consumer<KafkaKey, KafkaMessageEnvelope> consumer = kafkaClientFactory.getRecordKafkaConsumer()) {
-      List<TopicPartition> partitions = Collections.singletonList(new TopicPartition(topicName, 0));
-      consumer.assign(partitions);
-      consumer.seekToBeginning(partitions);
+    KafkaValueSerializer kafkaValueSerializer = new OptimizedKafkaValueSerializer();
+    KafkaPubSubMessageDeserializer pubSubDeserializer = new KafkaPubSubMessageDeserializer(
+        kafkaValueSerializer,
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+        new LandFillObjectPool<>(KafkaMessageEnvelope::new));
+    try (PubSubConsumer consumer = kafkaClientFactory.getConsumer(new Properties(), pubSubDeserializer)) {
+      // List<TopicPartition> partitions = Collections.singletonList(new TopicPartition(topicName, 0));
+      PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(pubSubTopic, 0);
+      consumer.subscribe(pubSubTopicPartition, -1);
       int lastSeenSequenceNumber = -1;
       int lastSeenSegmentNumber = -1;
-      ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records;
+      Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> messages;
       do {
-        records = consumer.poll(10 * Time.MS_PER_SECOND);
-        for (final ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record: records) {
-          ProducerMetadata producerMetadata = record.value().producerMetadata;
-          int currentSegmentNumber = producerMetadata.segmentNumber;
-          int currentSequenceNumber = producerMetadata.messageSequenceNumber;
+        messages = consumer.poll(10 * Time.MS_PER_SECOND);
+        if (messages.containsKey(pubSubTopicPartition)) {
+          for (final PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> message: messages.get(pubSubTopicPartition)) {
+            ProducerMetadata producerMetadata = message.getValue().producerMetadata;
+            int currentSegmentNumber = producerMetadata.segmentNumber;
+            int currentSequenceNumber = producerMetadata.messageSequenceNumber;
 
-          if (currentSegmentNumber == lastSeenSegmentNumber && currentSequenceNumber == lastSeenSequenceNumber + 1) {
-            lastSeenSequenceNumber = currentSequenceNumber;
-          } else if (currentSegmentNumber == lastSeenSegmentNumber + 1 && currentSequenceNumber == 0) {
-            lastSeenSegmentNumber = currentSegmentNumber;
-            lastSeenSequenceNumber = currentSequenceNumber;
-          } else {
-            Assert.fail(
-                "DIV Error caught.\n" + "Last segment Number: " + lastSeenSegmentNumber + ". Current segment number: "
-                    + currentSegmentNumber + ".\n" + "Last sequence Number: " + lastSeenSequenceNumber
-                    + ". Current sequence number: " + currentSequenceNumber + ".");
+            if (currentSegmentNumber == lastSeenSegmentNumber && currentSequenceNumber == lastSeenSequenceNumber + 1) {
+              lastSeenSequenceNumber = currentSequenceNumber;
+            } else if (currentSegmentNumber == lastSeenSegmentNumber + 1 && currentSequenceNumber == 0) {
+              lastSeenSegmentNumber = currentSegmentNumber;
+              lastSeenSequenceNumber = currentSequenceNumber;
+            } else {
+              Assert.fail(
+                  "DIV Error caught.\n" + "Last segment Number: " + lastSeenSegmentNumber + ". Current segment number: "
+                      + currentSegmentNumber + ".\n" + "Last sequence Number: " + lastSeenSequenceNumber
+                      + ". Current sequence number: " + currentSequenceNumber + ".");
+            }
           }
         }
-      } while (!records.isEmpty());
+      } while (!messages.isEmpty());
     }
   }
 

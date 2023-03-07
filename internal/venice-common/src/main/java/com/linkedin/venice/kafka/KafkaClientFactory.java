@@ -1,20 +1,15 @@
 package com.linkedin.venice.kafka;
 
 import static com.linkedin.venice.ConfigConstants.DEFAULT_KAFKA_ADMIN_GET_TOPIC_CONFIG_RETRY_IN_SECONDS;
-import static com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer.VENICE_SCHEMA_READER_CONFIG;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.kafka.admin.InstrumentedKafkaAdmin;
 import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
 import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumer;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.schema.SchemaReader;
-import com.linkedin.venice.serialization.KafkaKeySerializer;
-import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
@@ -67,33 +62,6 @@ public abstract class KafkaClientFactory {
         kafkaPubSubMessageDeserializer);
   }
 
-  public Consumer<byte[], byte[]> getRawBytesKafkaConsumer() {
-    Properties props = getConsumerProps();
-    // This is a temporary fix for the issue described here
-    // https://stackoverflow.com/questions/37363119/kafka-producer-org-apache-kafka-common-serialization-stringserializer-could-no
-    // In our case "org.apache.kafka.common.serialization.ByteArrayDeserializer" class can not be found
-    // because class loader has no venice-common in class path. This can be only reproduced on JDK11
-    // Trying to avoid class loading via Kafka's ConfigDef class
-    props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
-    props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
-    // Increase receive buffer to 1MB to check whether it can solve the metadata timing out issue
-    props.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
-
-    return getKafkaConsumer(props);
-  }
-
-  @Deprecated
-  public Consumer<KafkaKey, KafkaMessageEnvelope> getRecordKafkaConsumer() {
-    Properties props = getConsumerProps();
-    props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class);
-    props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, OptimizedKafkaValueSerializer.class);
-    if (kafkaMessageEnvelopeSchemaReader.isPresent()) {
-      props.put(VENICE_SCHEMA_READER_CONFIG, kafkaMessageEnvelopeSchemaReader.get());
-    }
-
-    return getKafkaConsumer(props);
-  }
-
   private <K, V> Consumer<K, V> getKafkaConsumer(Properties properties) {
     Properties propertiesWithSSL = setupSSL(properties);
     return new KafkaConsumer<>(propertiesWithSSL);
@@ -133,6 +101,8 @@ public abstract class KafkaClientFactory {
     KafkaAdminWrapper adminWrapper =
         ReflectUtils.callConstructor(ReflectUtils.loadClass(kafkaAdminClientClass), new Class[0], new Object[0]);
     Properties properties = setupSSL(new Properties());
+    // Increase receive buffer to 1MB to check whether it can solve the metadata timing out issue
+    properties.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
     if (!properties.contains(ConfigKeys.KAFKA_ADMIN_GET_TOPIC_CONFIG_MAX_RETRY_TIME_SEC)) {
       properties.put(
           ConfigKeys.KAFKA_ADMIN_GET_TOPIC_CONFIG_MAX_RETRY_TIME_SEC,
@@ -159,19 +129,6 @@ public abstract class KafkaClientFactory {
           kafkaBootstrapServers);
     }
     return adminWrapper;
-  }
-
-  /**
-   * N.B. These props are only used by {@link #getRecordKafkaConsumer()} and {@link #getRawBytesKafkaConsumer()}
-   *      which in turn are used by {@link com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcherImpl}
-   *      and {@link TopicManager}, and therefore only for metadata operations. The data path is using
-   *      {@link #getConsumer(Properties)} and is thus more flexible in terms of configurability.
-   */
-  private Properties getConsumerProps() {
-    Properties props = new Properties();
-    // Increase receive buffer to 1MB to check whether it can solve the metadata timing out issue
-    props.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
-    return props;
   }
 
   protected boolean isKafkaConsumerOffsetCollectionEnabled() {

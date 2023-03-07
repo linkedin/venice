@@ -52,5 +52,4 @@ public interface PubSubConsumer extends AutoCloseable, Closeable {
   default long getLatestOffset(PubSubTopicPartition pubSubTopicPartition) {
     return -1;
   }
-
 }
