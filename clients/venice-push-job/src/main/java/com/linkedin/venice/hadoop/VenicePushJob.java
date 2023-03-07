@@ -530,6 +530,7 @@ public class VenicePushJob implements AutoCloseable {
     Version sourceKafkaInputVersionInfo;
     long storeRewindTimeInSeconds;
     Schema keySchema;
+    HybridStoreConfig hybridStoreConfig;
   }
 
   protected StoreSetting storeSetting;
@@ -950,12 +951,6 @@ public class VenicePushJob implements AutoCloseable {
         inputFileHasRecords = inputInfo.hasRecords();
         inputModificationTime = inputInfo.getInputModificationTime();
         inputNumFiles = inputInfo.getNumInputFiles();
-
-        if (!inputFileHasRecords && storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
-          // TODO double check this: What happens when there is an empty push (to erase data maybe?)
-          // for a store which had zstd compression and want to continue having the same config again?
-          throw new VeniceException("Empty push with ZSTD dictionary Compression is not allowed");
-        }
 
         validateKeySchema(controllerClient, pushJobSetting, pushJobSchemaInfo, storeSetting);
         validateValueSchema(
@@ -1697,6 +1692,18 @@ public class VenicePushJob implements AutoCloseable {
   private Optional<ByteBuffer> getCompressionDictionary() throws VeniceException {
     ByteBuffer compressionDictionary = null;
 
+    // Prepare the param builder, which can be used by different scenarios.
+    KafkaInputDictTrainer.ParamBuilder paramBuilder = new KafkaInputDictTrainer.ParamBuilder()
+        .setKeySchema(AvroCompatibilityHelper.toParsingForm(storeSetting.keySchema))
+        .setSslProperties(isSslEnabled() ? sslProperties.get() : new Properties())
+        .setCompressionDictSize(
+            props.getInt(
+                DefaultInputDataInfoProvider.COMPRESSION_DICTIONARY_SIZE_LIMIT,
+                VeniceWriter.DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES))
+        .setDictSampleSize(
+            props.getInt(
+                DefaultInputDataInfoProvider.COMPRESSION_DICTIONARY_SAMPLE_SIZE,
+                DefaultInputDataInfoProvider.DEFAULT_COMPRESSION_DICTIONARY_SAMPLE_SIZE));
     if (pushJobSetting.isSourceKafka) {
       /**
        * Currently KIF repush will always build a dict in Azkaban Job driver if necessary.
@@ -1705,24 +1712,14 @@ public class VenicePushJob implements AutoCloseable {
       // Repush
       if (storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
         if (rebuildDict) {
-          LOGGER.info("Rebuild a new Zstd dictionary from the input topic");
-          KafkaInputDictTrainer.ParamBuilder paramBuilder =
-              new KafkaInputDictTrainer.ParamBuilder().setKafkaInputBroker(pushJobSetting.kafkaInputBrokerUrl)
-                  .setTopicName(pushJobSetting.kafkaInputTopic)
-                  .setKeySchema(AvroCompatibilityHelper.toParsingForm(storeSetting.keySchema))
-                  .setSslProperties(isSslEnabled() ? sslProperties.get() : new Properties())
-                  .setCompressionDictSize(
-                      props.getInt(
-                          DefaultInputDataInfoProvider.COMPRESSION_DICTIONARY_SIZE_LIMIT,
-                          VeniceWriter.DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES))
-                  .setDictSampleSize(
-                      props.getInt(
-                          DefaultInputDataInfoProvider.COMPRESSION_DICTIONARY_SAMPLE_SIZE,
-                          DefaultInputDataInfoProvider.DEFAULT_COMPRESSION_DICTIONARY_SAMPLE_SIZE));
+          LOGGER.info("Rebuild a new Zstd dictionary from the input topic: {}", pushJobSetting.kafkaInputTopic);
+          paramBuilder.setKafkaInputBroker(pushJobSetting.kafkaInputBrokerUrl)
+              .setTopicName(pushJobSetting.kafkaInputTopic)
+              .setSourceVersionCompressionStrategy(storeSetting.sourceKafkaInputVersionInfo.getCompressionStrategy());
           KafkaInputDictTrainer dictTrainer = new KafkaInputDictTrainer(paramBuilder.build());
           compressionDictionary = ByteBuffer.wrap(dictTrainer.trainDict());
         } else {
-          LOGGER.info("Reading Zstd dictionary from input topic");
+          LOGGER.info("Reading Zstd dictionary from input topic: {}", pushJobSetting.kafkaInputTopic);
           // set up ssl properties and kafka consumer properties
           Properties kafkaConsumerProperties = new Properties();
           if (isSslEnabled()) {
@@ -1737,6 +1734,48 @@ public class VenicePushJob implements AutoCloseable {
 
       return Optional.ofNullable(compressionDictionary);
     } else {
+      /**
+       * Special handling for an empty push to a hybrid store.
+       * Push Job will try to train a dict based on the records of the current version, and it won't work
+       * for the very first version, and the following versions will work.
+       */
+      if (storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT && !inputFileHasRecords
+          && storeSetting.hybridStoreConfig != null) {
+        String storeName = getPushJobSetting().storeName;
+        try {
+          // Get the latest version
+          RepushInfoResponse repushInfoResponse = ControllerClient.retryableRequest(
+              controllerClient,
+              pushJobSetting.controllerRetries,
+              c -> c.getRepushInfo(storeName, Optional.empty()));
+          if (repushInfoResponse.isError()) {
+            throw new VeniceException(
+                "Could not get repush info for store " + storeName + " with error: " + repushInfoResponse.getError());
+          }
+          int sourceVersion = repushInfoResponse.getRepushInfo().getVersion().getNumber();
+          String sourceTopicName = Version.composeKafkaTopic(storeName, sourceVersion);
+          String sourceKafkaUrl = repushInfoResponse.getRepushInfo().getKafkaBrokerUrl();
+          LOGGER.info(
+              "Rebuild a new Zstd dictionary from the source topic: {} in Kafka: {}",
+              sourceTopicName,
+              sourceKafkaUrl);
+          paramBuilder.setKafkaInputBroker(repushInfoResponse.getRepushInfo().getKafkaBrokerUrl())
+              .setTopicName(sourceTopicName)
+              .setSourceVersionCompressionStrategy(
+                  repushInfoResponse.getRepushInfo().getVersion().getCompressionStrategy());
+          KafkaInputDictTrainer dictTrainer = new KafkaInputDictTrainer(paramBuilder.build());
+          compressionDictionary = ByteBuffer.wrap(dictTrainer.trainDict());
+
+          return Optional.of(compressionDictionary);
+        } catch (Exception e) {
+          LOGGER.warn(
+              "Encountered an exception when trying to build a dict from an existing version for an empty push to a hybrid store: "
+                  + storeName + ", so the push job will use a default dict built in the Controller",
+              e);
+          return Optional.empty();
+        }
+      }
+
       if (isZstdDictCreationRequired) {
         if (!pushJobSetting.useMapperToBuildDict) {
           LOGGER.info("Training Zstd dictionary");
@@ -2200,6 +2239,7 @@ public class VenicePushJob implements AutoCloseable {
     storeSetting.storeRewindTimeInSeconds = DEFAULT_RE_PUSH_REWIND_IN_SECONDS_OVERRIDE;
 
     HybridStoreConfig hybridStoreConfig = storeResponse.getStore().getHybridStoreConfig();
+    storeSetting.hybridStoreConfig = hybridStoreConfig;
     if (setting.repushTTLEnabled) {
       if (hybridStoreConfig == null) {
         throw new VeniceException("Repush TTL is only supported for real-time only store.");

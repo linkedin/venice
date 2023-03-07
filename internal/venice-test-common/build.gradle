@@ -125,7 +125,8 @@ def integrationTestBuckets = [
   "H": [
       "com.linkedin.venice.fastclient.BatchGet*",
       "com.linkedin.venice.fastclient.schema.*",
-      "com.linkedin.venice.fastclient.meta.*"],
+      "com.linkedin.venice.fastclient.meta.*",
+      "com.linkedin.venice.endToEnd.TestEmptyPush"],
   "I": [
       "com.linkedin.venice.fastclient.AvroStore*"],
   "J": [

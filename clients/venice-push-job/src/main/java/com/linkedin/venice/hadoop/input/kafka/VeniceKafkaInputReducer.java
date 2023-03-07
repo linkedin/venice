@@ -23,19 +23,16 @@ import com.linkedin.venice.hadoop.input.kafka.ttl.VeniceChunkedPayloadTTLFilter;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.ByteUtils;
-import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Iterator;
-import java.util.Properties;
 import javax.annotation.Nonnull;
 import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.Reporter;
-import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -70,12 +67,14 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
     this.veniceFilterChain = initFilterChain(props);
 
     compressorFactory = new CompressorFactory();
-    sourceVersionCompressor = getCompressor(
+    sourceVersionCompressor = KafkaInputUtils.getCompressor(
+        compressorFactory,
         CompressionStrategy.valueOf(job.get(KAFKA_INPUT_SOURCE_COMPRESSION_STRATEGY)),
         job.get(KAFKA_INPUT_BROKER_URL),
         job.get(KAFKA_INPUT_TOPIC),
         props);
-    destVersionCompressor = getCompressor(
+    destVersionCompressor = KafkaInputUtils.getCompressor(
+        compressorFactory,
         CompressionStrategy.valueOf(job.get(COMPRESSION_STRATEGY)),
         job.get(KAFKA_BOOTSTRAP_SERVERS),
         job.get(TOPIC_PROP),
@@ -100,22 +99,6 @@ public class VeniceKafkaInputReducer extends VeniceReducer {
   protected void setDestVersionCompressor(VeniceCompressor compressor) {
     this.destVersionCompressor = compressor;
     this.passThrough = this.destVersionCompressor.equals(sourceVersionCompressor);
-  }
-
-  private VeniceCompressor getCompressor(
-      CompressionStrategy strategy,
-      String kafkaUrl,
-      String topic,
-      VeniceProperties properties) {
-    if (strategy.equals(CompressionStrategy.ZSTD_WITH_DICT)) {
-      Properties props = properties.toProperties();
-      props.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafkaUrl);
-      ByteBuffer dict = DictionaryUtils.readDictionaryFromKafka(topic, new VeniceProperties(props));
-      return compressorFactory
-          .createVersionSpecificCompressorIfNotExist(strategy, topic, ByteUtils.extractByteArray(dict));
-    } else {
-      return compressorFactory.getCompressor(strategy);
-    }
   }
 
   protected byte[] compress(byte[] valueBytesFromSourceVersion) {

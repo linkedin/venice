@@ -22,6 +22,7 @@ import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJ
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducerConfig;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.runVPJ;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendCustomSizeStreamingRecord;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
@@ -51,7 +52,6 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.RecordTooLargeException;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.helix.HelixBaseRoutingRepository;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -1761,24 +1761,6 @@ public class TestHybrid {
     kafkaValue.leaderMetadataFooter = new LeaderMetadata();
     kafkaValue.leaderMetadataFooter.upstreamOffset = upstreamOffset;
     return Pair.create(kafkaKey, kafkaValue);
-  }
-
-  /**
-   * Blocking, waits for new version to go online
-   */
-  public static void runVPJ(Properties vpjProperties, int expectedVersionNumber, ControllerClient controllerClient) {
-    long vpjStart = System.currentTimeMillis();
-    String jobName = Utils.getUniqueString("hybrid-job-" + expectedVersionNumber);
-    try (VenicePushJob job = new VenicePushJob(jobName, vpjProperties)) {
-      job.run();
-      TestUtils.waitForNonDeterministicCompletion(
-          5,
-          TimeUnit.SECONDS,
-          () -> controllerClient.getStore((String) vpjProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP))
-              .getStore()
-              .getCurrentVersion() == expectedVersionNumber);
-      LOGGER.info("**TIME** VPJ #{} takes {} ms", expectedVersionNumber, (System.currentTimeMillis() - vpjStart));
-    }
   }
 
   private static VeniceClusterWrapper setUpCluster(
