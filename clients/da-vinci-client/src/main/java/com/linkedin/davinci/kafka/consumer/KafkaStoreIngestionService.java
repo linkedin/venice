@@ -15,6 +15,7 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModel;
 import com.linkedin.davinci.listener.response.AdminResponse;
+import com.linkedin.davinci.listener.response.MetadataResponse;
 import com.linkedin.davinci.notifier.LogNotifier;
 import com.linkedin.davinci.notifier.MetaSystemStoreReplicaStatusNotifier;
 import com.linkedin.davinci.notifier.PartitionPushStatusNotifier;
@@ -33,6 +34,8 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
+import com.linkedin.venice.helix.HelixInstanceConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.kafka.KafkaClientFactory.MetricsParameters;
 import com.linkedin.venice.kafka.TopicManagerRepository;
@@ -41,6 +44,7 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.meta.ClusterInfoProvider;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.ReadOnlyLiveClusterConfigRepository;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -49,6 +53,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.metadata.response.VersionProperties;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -56,6 +61,9 @@ import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdap
 import com.linkedin.venice.pubsub.adapter.kafka.producer.SharedKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.routerapi.ReplicaState;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
@@ -89,6 +97,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
@@ -123,6 +132,12 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final StorageMetadataService storageMetadataService;
 
   private final ReadOnlyStoreRepository metadataRepo;
+
+  private final ReadOnlySchemaRepository schemaRepo;
+
+  private HelixCustomizedViewOfflinePushRepository customizedViewRepository;
+
+  private HelixInstanceConfigRepository helixInstanceConfigRepository;
 
   private final AggHostLevelIngestionStats hostLevelIngestionStats;
 
@@ -185,6 +200,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       ClusterInfoProvider clusterInfoProvider,
       ReadOnlyStoreRepository metadataRepo,
       ReadOnlySchemaRepository schemaRepo,
+      Optional<CompletableFuture<HelixCustomizedViewOfflinePushRepository>> customizedViewFuture,
+      Optional<CompletableFuture<HelixInstanceConfigRepository>> helixInstanceFuture,
       ReadOnlyLiveClusterConfigRepository liveClusterConfigRepository,
       MetricsRepository metricsRepository,
       Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader,
@@ -200,6 +217,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     this.cacheBackend = cacheBackend;
     this.storageMetadataService = storageMetadataService;
     this.metadataRepo = metadataRepo;
+    this.schemaRepo = schemaRepo;
     this.topicNameToIngestionTaskMap = new ConcurrentSkipListMap<>();
     this.veniceConfigLoader = veniceConfigLoader;
     this.isIsolatedIngestion = isIsolatedIngestion;
@@ -207,6 +225,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     this.compressorFactory = compressorFactory;
     // Each topic that has any partition ingested by this class has its own lock.
     this.topicLockManager = new ResourceAutoClosableLockManager<>(ReentrantLock::new);
+
+    customizedViewFuture.ifPresent(future -> future.thenApply(cv -> this.customizedViewRepository = cv));
+    helixInstanceFuture.ifPresent(future -> future.thenApply(helix -> this.helixInstanceConfigRepository = helix));
 
     VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
     ServerKafkaClientFactory veniceConsumerFactory = new ServerKafkaClientFactory(
@@ -1049,6 +1070,74 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       LOGGER.warn(msg);
       response.setMessage(msg);
     }
+    return response;
+  }
+
+  /**
+   * Return the metadata information for the given store. The data is retrieved from its respective repositories which
+   * originate from the VeniceServer.
+   * @param storeName
+   * @return {@link MetadataResponse} object that holds all the information required for answering a server metadata
+   * fetch request.
+   */
+  @Override
+  public MetadataResponse getMetadata(String storeName) {
+    MetadataResponse response = new MetadataResponse();
+    try {
+      Store store = metadataRepo.getStoreOrThrow(storeName);
+
+      Version version = store.getVersion(store.getCurrentVersion()).get();
+      Map<CharSequence, CharSequence> partitionerParams =
+          new HashMap<>(version.getPartitionerConfig().getPartitionerParams());
+      VersionProperties versionProperties = new VersionProperties(
+          store.getCurrentVersion(),
+          version.getCompressionStrategy().getValue(),
+          version.getPartitionCount(),
+          version.getPartitionerConfig().getPartitionerClass(),
+          partitionerParams,
+          version.getPartitionerConfig().getAmplificationFactor());
+
+      Map<CharSequence, CharSequence> keySchema = Collections.singletonMap(
+          String.valueOf(schemaRepo.getKeySchema(storeName).getId()),
+          schemaRepo.getKeySchema(storeName).getSchema().toString());
+      Map<CharSequence, CharSequence> valueSchemas = new HashMap<>();
+      for (SchemaEntry schemaEntry: schemaRepo.getValueSchemas(storeName)) {
+        String valueSchemaStr = schemaEntry.getSchema().toString();
+        int valueSchemaId = schemaRepo.getValueSchemaId(storeName, valueSchemaStr);
+        valueSchemas.put(String.valueOf(valueSchemaId), valueSchemaStr);
+      }
+      int latestSuperSetValueSchemaId = store.getLatestSuperSetValueSchemaId();
+
+      Map<CharSequence, List<CharSequence>> routingInfo = new HashMap<>();
+      for (String resource: customizedViewRepository.getResourceAssignment().getAssignedResources()) {
+        if (resource.endsWith("v" + store.getCurrentVersion())) {
+          for (Partition partition: customizedViewRepository.getPartitionAssignments(resource).getAllPartitions()) {
+            List<CharSequence> instances = new ArrayList<>();
+            for (ReplicaState replicaState: customizedViewRepository.getReplicaStates(resource, partition.getId())) {
+              if (replicaState.getVenicePushStatus().equals(ExecutionStatus.COMPLETED.name())) {
+                instances.add(replicaState.getParticipantId());
+              }
+            }
+            routingInfo.put(String.valueOf(partition.getId()), instances);
+          }
+        }
+      }
+
+      Map<CharSequence, Integer> helixGroupInfo =
+          new HashMap<>(helixInstanceConfigRepository.getInstanceGroupIdMapping());
+
+      response.setVersionMetadata(versionProperties);
+      response.setKeySchema(keySchema);
+      response.setValueSchemas(valueSchemas);
+      response.setLatestSuperSetValueSchemaId(latestSuperSetValueSchemaId);
+      response.setRoutingInfo(routingInfo);
+      response.setHelixGroupInfo(helixGroupInfo);
+    } catch (VeniceNoStoreException e) {
+      LOGGER.warn("Store {} not found in metadataRepo.", storeName);
+      response.setMessage("Store \"" + storeName + "\" not found");
+      response.setError(true);
+    }
+
     return response;
   }
 

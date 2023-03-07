@@ -2,6 +2,8 @@ package com.linkedin.venice.pushmonitor;
 
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.NOT_CREATED;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.Collection;
 import java.util.Collections;
@@ -18,7 +20,8 @@ public class PartitionStatus implements Comparable<PartitionStatus> {
 
   private Map<String, ReplicaStatus> replicaStatusMap;
 
-  public PartitionStatus(int partitionId) {
+  @JsonCreator
+  public PartitionStatus(@JsonProperty("partitionId") int partitionId) {
     this.partitionId = partitionId;
     replicaStatusMap = new HashMap<>();
   }
