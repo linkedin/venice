@@ -28,11 +28,18 @@
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "$GradleArguments"
-      - name: Upload test logs on failure
-        if: failure() && startsWith(github.job, 'IntegrationTest')
+      - name: Package build artifacts
+        shell: bash
+        run: |
+          mkdir artifacts
+          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          mv artifacts ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Logs
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}.logs
-          path: "**/build/test-results/*/TEST-*.xml"
+          name: ${{ github.job }}-artifacts
+          path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
 

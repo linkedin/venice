@@ -42,12 +42,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DmaxParallelForks=2 --parallel -Pspotallbugs clean check -x spotlessCheck -x test -x integrationTest -x jacocoTestCoverageVerification"
-      - name: Upload test logs on failure
-        if: failure() && startsWith(github.job, 'IntegrationTest')
+      - name: Package build artifacts
+        shell: bash
+        run: |
+          mkdir artifacts
+          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          mv artifacts ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Logs
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}.logs
-          path: "**/build/test-results/*/TEST-*.xml"
+          name: ${{ github.job }}-artifacts
+          path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
 
 
@@ -80,12 +87,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "-DmaxParallelForks=2  --parallel -x :internal:venice-avro-compatibility-test:test jacocoTestCoverageVerification diffCoverage --continue"
-      - name: Upload test logs on failure
-        if: failure() && startsWith(github.job, 'IntegrationTest')
+      - name: Package build artifacts
+        shell: bash
+        run: |
+          mkdir artifacts
+          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          mv artifacts ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Logs
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}.logs
-          path: "**/build/test-results/*/TEST-*.xml"
+          name: ${{ github.job }}-artifacts
+          path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
 
 
@@ -118,12 +132,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "-DmaxParallelForks=2 --parallel :internal:venice-avro-compatibility-test:test --continue"
-      - name: Upload test logs on failure
-        if: failure() && startsWith(github.job, 'IntegrationTest')
+      - name: Package build artifacts
+        shell: bash
+        run: |
+          mkdir artifacts
+          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          mv artifacts ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Logs
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}.logs
-          path: "**/build/test-results/*/TEST-*.xml"
+          name: ${{ github.job }}-artifacts
+          path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
 
 
@@ -156,12 +177,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestA"
-      - name: Upload test logs on failure
-        if: failure() && startsWith(github.job, 'IntegrationTest')
+      - name: Package build artifacts
+        shell: bash
+        run: |
+          mkdir artifacts
+          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          mv artifacts ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Logs
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}.logs
-          path: "**/build/test-results/*/TEST-*.xml"
+          name: ${{ github.job }}-artifacts
+          path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
 
 
@@ -194,12 +222,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestB"
-      - name: Upload test logs on failure
-        if: failure() && startsWith(github.job, 'IntegrationTest')
+      - name: Package build artifacts
+        shell: bash
+        run: |
+          mkdir artifacts
+          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          mv artifacts ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Logs
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}.logs
-          path: "**/build/test-results/*/TEST-*.xml"
+          name: ${{ github.job }}-artifacts
+          path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
 
 
@@ -232,12 +267,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestC"
-      - name: Upload test logs on failure
-        if: failure() && startsWith(github.job, 'IntegrationTest')
+      - name: Package build artifacts
+        shell: bash
+        run: |
+          mkdir artifacts
+          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          mv artifacts ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Logs
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}.logs
-          path: "**/build/test-results/*/TEST-*.xml"
+          name: ${{ github.job }}-artifacts
+          path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
 
 
@@ -270,12 +312,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestD"
-      - name: Upload test logs on failure
-        if: failure() && startsWith(github.job, 'IntegrationTest')
+      - name: Package build artifacts
+        shell: bash
+        run: |
+          mkdir artifacts
+          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          mv artifacts ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Logs
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}.logs
-          path: "**/build/test-results/*/TEST-*.xml"
+          name: ${{ github.job }}-artifacts
+          path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
 
 
@@ -308,12 +357,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestE"
-      - name: Upload test logs on failure
-        if: failure() && startsWith(github.job, 'IntegrationTest')
+      - name: Package build artifacts
+        shell: bash
+        run: |
+          mkdir artifacts
+          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          mv artifacts ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Logs
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}.logs
-          path: "**/build/test-results/*/TEST-*.xml"
+          name: ${{ github.job }}-artifacts
+          path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
 
 
@@ -346,12 +402,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestF"
-      - name: Upload test logs on failure
-        if: failure() && startsWith(github.job, 'IntegrationTest')
+      - name: Package build artifacts
+        shell: bash
+        run: |
+          mkdir artifacts
+          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          mv artifacts ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Logs
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}.logs
-          path: "**/build/test-results/*/TEST-*.xml"
+          name: ${{ github.job }}-artifacts
+          path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
 
 
@@ -384,12 +447,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestG"
-      - name: Upload test logs on failure
-        if: failure() && startsWith(github.job, 'IntegrationTest')
+      - name: Package build artifacts
+        shell: bash
+        run: |
+          mkdir artifacts
+          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          mv artifacts ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Logs
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}.logs
-          path: "**/build/test-results/*/TEST-*.xml"
+          name: ${{ github.job }}-artifacts
+          path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
 
 
@@ -422,12 +492,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestH"
-      - name: Upload test logs on failure
-        if: failure() && startsWith(github.job, 'IntegrationTest')
+      - name: Package build artifacts
+        shell: bash
+        run: |
+          mkdir artifacts
+          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          mv artifacts ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Logs
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}.logs
-          path: "**/build/test-results/*/TEST-*.xml"
+          name: ${{ github.job }}-artifacts
+          path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
 
 
@@ -460,12 +537,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestI"
-      - name: Upload test logs on failure
-        if: failure() && startsWith(github.job, 'IntegrationTest')
+      - name: Package build artifacts
+        shell: bash
+        run: |
+          mkdir artifacts
+          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          mv artifacts ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Logs
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}.logs
-          path: "**/build/test-results/*/TEST-*.xml"
+          name: ${{ github.job }}-artifacts
+          path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
 
 
@@ -498,12 +582,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestJ"
-      - name: Upload test logs on failure
-        if: failure() && startsWith(github.job, 'IntegrationTest')
+      - name: Package build artifacts
+        shell: bash
+        run: |
+          mkdir artifacts
+          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          mv artifacts ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Logs
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}.logs
-          path: "**/build/test-results/*/TEST-*.xml"
+          name: ${{ github.job }}-artifacts
+          path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
 
 
@@ -536,12 +627,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestK"
-      - name: Upload test logs on failure
-        if: failure() && startsWith(github.job, 'IntegrationTest')
+      - name: Package build artifacts
+        shell: bash
+        run: |
+          mkdir artifacts
+          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          mv artifacts ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Logs
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}.logs
-          path: "**/build/test-results/*/TEST-*.xml"
+          name: ${{ github.job }}-artifacts
+          path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
 
 
@@ -574,12 +672,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestL"
-      - name: Upload test logs on failure
-        if: failure() && startsWith(github.job, 'IntegrationTest')
+      - name: Package build artifacts
+        shell: bash
+        run: |
+          mkdir artifacts
+          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          mv artifacts ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Logs
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}.logs
-          path: "**/build/test-results/*/TEST-*.xml"
+          name: ${{ github.job }}-artifacts
+          path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
 
 
@@ -612,12 +717,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestM"
-      - name: Upload test logs on failure
-        if: failure() && startsWith(github.job, 'IntegrationTest')
+      - name: Package build artifacts
+        shell: bash
+        run: |
+          mkdir artifacts
+          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          mv artifacts ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Logs
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}.logs
-          path: "**/build/test-results/*/TEST-*.xml"
+          name: ${{ github.job }}-artifacts
+          path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
 
 
@@ -650,12 +762,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestN"
-      - name: Upload test logs on failure
-        if: failure() && startsWith(github.job, 'IntegrationTest')
+      - name: Package build artifacts
+        shell: bash
+        run: |
+          mkdir artifacts
+          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          mv artifacts ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Logs
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}.logs
-          path: "**/build/test-results/*/TEST-*.xml"
+          name: ${{ github.job }}-artifacts
+          path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
 
 
@@ -688,12 +807,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestO"
-      - name: Upload test logs on failure
-        if: failure() && startsWith(github.job, 'IntegrationTest')
+      - name: Package build artifacts
+        shell: bash
+        run: |
+          mkdir artifacts
+          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          mv artifacts ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Logs
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}.logs
-          path: "**/build/test-results/*/TEST-*.xml"
+          name: ${{ github.job }}-artifacts
+          path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
 
 
@@ -726,12 +852,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestP"
-      - name: Upload test logs on failure
-        if: failure() && startsWith(github.job, 'IntegrationTest')
+      - name: Package build artifacts
+        shell: bash
+        run: |
+          mkdir artifacts
+          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          mv artifacts ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Logs
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}.logs
-          path: "**/build/test-results/*/TEST-*.xml"
+          name: ${{ github.job }}-artifacts
+          path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
 
 
@@ -764,12 +897,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestQ"
-      - name: Upload test logs on failure
-        if: failure() && startsWith(github.job, 'IntegrationTest')
+      - name: Package build artifacts
+        shell: bash
+        run: |
+          mkdir artifacts
+          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          mv artifacts ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Logs
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}.logs
-          path: "**/build/test-results/*/TEST-*.xml"
+          name: ${{ github.job }}-artifacts
+          path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
 
 
@@ -802,12 +942,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestZ"
-      - name: Upload test logs on failure
-        if: failure() && startsWith(github.job, 'IntegrationTest')
+      - name: Package build artifacts
+        shell: bash
+        run: |
+          mkdir artifacts
+          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          mv artifacts ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Logs
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}.logs
-          path: "**/build/test-results/*/TEST-*.xml"
+          name: ${{ github.job }}-artifacts
+          path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
 
 
@@ -841,12 +988,19 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           arguments: "clean"
-      - name: Upload test logs on failure
-        if: failure() && startsWith(github.job, 'IntegrationTest')
+      - name: Package build artifacts
+        shell: bash
+        run: |
+          mkdir artifacts
+          find . -name "reports" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          find . -name "test-results" | xargs tar cvf - | (cd artifacts/ ; tar xfp -)
+          mv artifacts ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Logs
         uses: actions/upload-artifact@v3
         with:
-          name: ${{ github.job }}.logs
-          path: "**/build/test-results/*/TEST-*.xml"
+          name: ${{ github.job }}-artifacts
+          path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
 
 
