@@ -687,7 +687,7 @@ public class MergeConflictResolver {
     switch (rmdTimestampType) {
       case VALUE_LEVEL_TIMESTAMP:
         final long valueLevelTimestamp = (long) oldTimestampObject;
-        if (updateOperationTimestamp > valueLevelTimestamp) {
+        if (updateOperationTimestamp >= valueLevelTimestamp) {
           return false;
         }
         toUpdateFieldNames = WriteComputeSchemaConverter.getNamesOfFieldsToBeUpdated(writeComputeRecord);

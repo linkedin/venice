@@ -312,12 +312,11 @@ public class TestMergeUpdate extends TestMergeBase {
     GenericRecord updatedValueRecord = deserializeValueRecord(result.getNewValue());
     Assert.assertEquals(
         updatedValueRecord.get(STRING_ARRAY_FIELD_NAME),
-        Arrays.asList(new Utf8("key1"), new Utf8("key2"), new Utf8("key4"), new Utf8("key6"), new Utf8("key3")));
+        Arrays.asList(new Utf8("key1"), new Utf8("key2"), new Utf8("key6"), new Utf8("key3")));
 
     IndexedHashMap<Utf8, Integer> expectedMap = new IndexedHashMap<>();
     expectedMap.put(new Utf8("key1"), 2);
     expectedMap.put(new Utf8("key2"), 2);
-    expectedMap.put(new Utf8("key5"), 2);
     expectedMap.put(new Utf8("key3"), 2);
     expectedMap.put(new Utf8("key4"), 1);
 
@@ -326,17 +325,17 @@ public class TestMergeUpdate extends TestMergeBase {
     GenericRecord updatedRmdTsRecord = (GenericRecord) result.getRmdRecord().get(RmdConstants.TIMESTAMP_FIELD_NAME);
     GenericRecord updatedListTsRecord = (GenericRecord) updatedRmdTsRecord.get(STRING_ARRAY_FIELD_NAME);
     Assert.assertEquals(updatedListTsRecord.get(TOP_LEVEL_TS_FIELD_NAME), 2L);
-    Assert.assertEquals(updatedListTsRecord.get(PUT_ONLY_PART_LENGTH_FIELD_NAME), 4);
+    Assert.assertEquals(updatedListTsRecord.get(PUT_ONLY_PART_LENGTH_FIELD_NAME), 3);
     Assert.assertEquals(updatedListTsRecord.get(ACTIVE_ELEM_TS_FIELD_NAME), Collections.singletonList(3L));
-    Assert.assertEquals(updatedListTsRecord.get(DELETED_ELEM_FIELD_NAME), Collections.singletonList("key5"));
-    Assert.assertEquals(updatedListTsRecord.get(DELETED_ELEM_TS_FIELD_NAME), Collections.singletonList(3L));
+    Assert.assertEquals(updatedListTsRecord.get(DELETED_ELEM_FIELD_NAME), Arrays.asList("key4", "key5"));
+    Assert.assertEquals(updatedListTsRecord.get(DELETED_ELEM_TS_FIELD_NAME), Arrays.asList(2L, 3L));
 
     GenericRecord updatedMapTsRecord = (GenericRecord) updatedRmdTsRecord.get(INT_MAP_FIELD_NAME);
     Assert.assertEquals(updatedMapTsRecord.get(TOP_LEVEL_TS_FIELD_NAME), 2L);
-    Assert.assertEquals(updatedMapTsRecord.get(PUT_ONLY_PART_LENGTH_FIELD_NAME), 4);
+    Assert.assertEquals(updatedMapTsRecord.get(PUT_ONLY_PART_LENGTH_FIELD_NAME), 3);
     Assert.assertEquals(updatedMapTsRecord.get(ACTIVE_ELEM_TS_FIELD_NAME), Collections.singletonList(3L));
-    Assert.assertEquals(updatedMapTsRecord.get(DELETED_ELEM_FIELD_NAME), Collections.singletonList("key6"));
-    Assert.assertEquals(updatedMapTsRecord.get(DELETED_ELEM_TS_FIELD_NAME), Collections.singletonList(3L));
+    Assert.assertEquals(updatedMapTsRecord.get(DELETED_ELEM_FIELD_NAME), Arrays.asList("key5", "key6"));
+    Assert.assertEquals(updatedMapTsRecord.get(DELETED_ELEM_TS_FIELD_NAME), Arrays.asList(2L, 3L));
   }
 
   @Test

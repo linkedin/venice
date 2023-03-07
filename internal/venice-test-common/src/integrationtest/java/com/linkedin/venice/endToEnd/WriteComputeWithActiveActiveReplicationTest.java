@@ -786,10 +786,6 @@ public class WriteComputeWithActiveActiveReplicationTest {
     verifyFLMRecord(storeName, dc1RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
 
-    // todo: Fix/add a tie breaker for RemoveFromMap and AddToMap for the same key with the same timestamp
-    // AddToMap: adding an element that was deleted with the same timestamp should not succeed as DELETE takes
-    // precedence. However, in this case that doesn't happen.
-
     ub = new UpdateBuilderImpl(wcSchemaV1);
     mapFieldValue = new HashMap<>();
     mapFieldValue.put("four", 404);
@@ -816,9 +812,6 @@ public class WriteComputeWithActiveActiveReplicationTest {
     verifyFLMRecord(storeName, dc0RouterUrl, "marker1", "", Collections.emptyList(), Collections.emptyMap());
     verifyFLMRecord(storeName, dc1RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
-
-    // TODO: When PartialPut with the same timestamp as PUT is processed, it wipes out the data with the
-    // timestamp <= t2 including PUTs timestamp. This creates a race between PartialPut and PUT
 
     ub = new UpdateBuilderImpl(wcSchemaV1);
     mapFieldValue = new HashMap<>();
@@ -853,8 +846,6 @@ public class WriteComputeWithActiveActiveReplicationTest {
     expectedMapFieldValue.remove("ThreeZero"); // existing timestamp 3
     verifyFLMRecord(storeName, dc1RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
-
-    // todo: Two partial puts with the same timestamp doesn't produce deterministic output
 
     ub = new UpdateBuilderImpl(wcSchemaV1);
     mapFieldValue = new HashMap<>();
@@ -1130,17 +1121,17 @@ public class WriteComputeWithActiveActiveReplicationTest {
     verifyFLMRecord(storeName, dc1RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
 
     ubV1 = new UpdateBuilderImpl(wcSchemaV1);
-    ubV1.setElementsToRemoveFromListField(INT_ARRAY_FIELD, Arrays.asList(66));
+    ubV1.setElementsToRemoveFromListField(INT_ARRAY_FIELD, Collections.singletonList(66));
     expectedArrayFieldVal = Arrays.asList(11, 77, 88);
     timestampedOp = new VeniceObjectWithTimestamp(ubV1.build(), 4);
     sendStreamingRecord(systemProducerMap.get(childDatacenters.get(1)), storeName, key2, timestampedOp);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
     verifyFLMRecord(storeName, dc1RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
 
-    // The deleted element with the same timestamp should be added back with PartialPut
+    // The deleted element with the same timestamp should not be added back with PartialPut
     ubV1 = new UpdateBuilderImpl(wcSchemaV1);
     ubV1.setNewFieldValue(INT_ARRAY_FIELD, Arrays.asList(66, 99));
-    expectedArrayFieldVal = Arrays.asList(66, 99);
+    expectedArrayFieldVal = Collections.singletonList(99);
     timestampedOp = new VeniceObjectWithTimestamp(ubV1.build(), 4);
     sendStreamingRecord(systemProducerMap.get(childDatacenters.get(0)), storeName, key2, timestampedOp);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, "", expectedArrayFieldVal, Collections.emptyMap());
