@@ -1,14 +1,7 @@
 package com.linkedin.venice.listener;
 
-import static com.linkedin.venice.router.api.VenicePathParser.TYPE_STORAGE;
-import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.anyInt;
-import static org.mockito.Mockito.anyString;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import static com.linkedin.venice.router.api.VenicePathParser.*;
+import static org.mockito.Mockito.*;
 
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceServerConfig;
@@ -441,6 +434,59 @@ public class StorageReadRequestsHandlerTest {
       Assert.assertEquals(obj.getResponseRecord().getVersionMetadata(), versionProperties);
       Assert.assertEquals(obj.getResponseRecord().getKeySchema(), keySchema);
       Assert.assertEquals(obj.getResponseRecord().getValueSchemas(), valueSchemas);
+    } finally {
+      TestUtils.shutdownExecutor(threadPoolExecutor);
+    }
+  }
+
+  @Test
+  public static void testUnrecognizedRequestInStorageExecutionHandler() throws Exception {
+    List<Object> outputArray = new ArrayList<Object>();
+    Object unrecognizedRequest = new Object();
+
+    /**
+     * Capture the output written by {@link StorageReadRequestsHandler}
+     */
+    ChannelHandlerContext mockCtx = mock(ChannelHandlerContext.class);
+    doReturn(new UnpooledByteBufAllocator(true)).when(mockCtx).alloc();
+    when(mockCtx.writeAndFlush(any())).then(i -> {
+      outputArray.add(i.getArguments()[0]);
+      return null;
+    });
+
+    ThreadPoolExecutor threadPoolExecutor =
+        new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>(2));
+    try {
+      VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+      RocksDBServerConfig dbServerConfig = mock(RocksDBServerConfig.class);
+      doReturn(dbServerConfig).when(serverConfig).getRocksDBServerConfig();
+
+      // Actual test
+      StorageReadRequestsHandler testHandler = new StorageReadRequestsHandler(
+          threadPoolExecutor,
+          threadPoolExecutor,
+          mock(StorageEngineRepository.class),
+          mock(ReadOnlyStoreRepository.class),
+          mock(ReadOnlySchemaRepository.class),
+          mock(MetadataRetriever.class),
+          null,
+          false,
+          false,
+          10,
+          serverConfig,
+          mock(StorageEngineBackedCompressorFactory.class),
+          Optional.empty());
+      testHandler.channelRead(mockCtx, unrecognizedRequest);
+
+      waitUntilStorageExecutionHandlerRespond(outputArray);
+
+      Assert.assertEquals(outputArray.size(), 1);
+      Assert.assertTrue(outputArray.get(0) instanceof HttpShortcutResponse);
+      HttpShortcutResponse obj = (HttpShortcutResponse) outputArray.get(0);
+
+      // Verification
+      Assert.assertEquals(obj.getStatus(), HttpResponseStatus.INTERNAL_SERVER_ERROR);
+      Assert.assertEquals(obj.getMessage(), "Unrecognized object in StorageExecutionHandler");
     } finally {
       TestUtils.shutdownExecutor(threadPoolExecutor);
     }

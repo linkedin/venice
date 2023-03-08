@@ -92,7 +92,7 @@ public class D2TestUtils {
     }
   }
 
-  public static String getRouterD2ServiceName(Map<String, String> clusterToD2, String clusterName) {
+  public static String getRandomD2ServiceName(Map<String, String> clusterToD2, String clusterName) {
     String defaultD2Service = Utils.getUniqueString(clusterName + "_d2");
     if (clusterToD2 == null) {
       return defaultD2Service;

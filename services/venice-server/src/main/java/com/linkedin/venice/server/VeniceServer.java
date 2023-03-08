@@ -164,7 +164,7 @@ public class VeniceServer {
         storeAccessController,
         clientConfigForConsumer,
         icProvider,
-        new ArrayList<>());
+        Collections.emptyList());
   }
 
   /**
