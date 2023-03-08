@@ -606,6 +606,8 @@ public class WriteComputeWithActiveActiveReplicationTest {
     VeniceObjectWithTimestamp timestampedOp;
     Map<String, Integer> expectedMapFieldValue = new HashMap<>();
 
+    // AddToMap before PUT
+    // Update on the same key by AddToMap operation should be reflected.
     ub = new UpdateBuilderImpl(wcSchemaV1); // t1
     mapFieldValue = new HashMap<>();
     mapFieldValue.put("xx", 1);
@@ -626,7 +628,6 @@ public class WriteComputeWithActiveActiveReplicationTest {
     verifyFLMRecord(storeName, dc1RouterUrl, key2, regularFieldDefault, intArrayFieldDefault, expectedMapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, regularFieldDefault, intArrayFieldDefault, expectedMapFieldValue);
 
-    // AddToMap before PUT
     // Add three elements to the Map with TS lower than, equal, and greater than the PUT's timestamp
     ub = new UpdateBuilderImpl(wcSchemaV1); // t1
     mapFieldValue = new HashMap<>();
@@ -699,7 +700,6 @@ public class WriteComputeWithActiveActiveReplicationTest {
     verifyFLMRecord(storeName, dc1RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
 
-    // todo: We need to have tie-breaking mechanism based on value when timestamps of modifications are the same
     // AddToMap: Key four's current (AddToMap) timestamp is 3 and the following operations is trying to add a new
     // value for the key four again. Currently this second update is ignored. However, tie breaking should not be
     // first come first server based as that leads to non-deterministic output. To keep this consistent with our
@@ -854,7 +854,7 @@ public class WriteComputeWithActiveActiveReplicationTest {
     ub.setNewFieldValue(MAP_FIELD, mapFieldValue);
     timestampedOp = new VeniceObjectWithTimestamp(ub.build(), 3);
     sendStreamingRecord(systemProducerMap.get(childDatacenters.get(0)), storeName, key2, timestampedOp);
-    // expectedMapFieldValue.putAll(mapFieldValue);
+    // This setField UPDATE is ignored, as it has smaller colo ID compared to existing top-level colo ID.
     verifyFLMRecord(storeName, dc1RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
     verifyFLMRecord(storeName, dc0RouterUrl, key2, regularFieldValue, arrayFieldValue, expectedMapFieldValue);
 

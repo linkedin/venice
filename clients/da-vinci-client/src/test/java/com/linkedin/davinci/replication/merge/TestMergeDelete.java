@@ -23,6 +23,9 @@ import org.testng.annotations.Test;
  * TODO: Merge {@link TestMergeDeleteWithFieldLevelTimestamp}
  */
 public class TestMergeDelete extends TestMergeBase {
+  /**
+   * This test validates DELETE removes full value of a key and RMD collapses into value-level TS.
+   */
   @Test
   public void testFullDelete() {
     GenericRecord oldValueRecord = createValueRecord(r -> {
@@ -53,6 +56,11 @@ public class TestMergeDelete extends TestMergeBase {
     Assert.assertEquals(result.getRmdRecord().get(RmdConstants.TIMESTAMP_FIELD_NAME), 2L);
   }
 
+  /**
+   * This test validates DELETE removes part of the value of a key.
+   * 1. Case 1: Delete regular field
+   * 2. Case 2: Delete collection field
+   */
   @Test
   public void testPartiallyDelete() {
     // Case 1: Partially delete regular field.
@@ -117,6 +125,12 @@ public class TestMergeDelete extends TestMergeBase {
     Assert.assertEquals(updatedFieldTsRecord.get(PUT_ONLY_PART_LENGTH_FIELD_NAME), 0);
   }
 
+  /**
+   * This test validates DELETE get ignored.
+   * 1. Case 1: DELETE TS < all existing fields
+   * 2. Case 2: DELETE TS == Collection field TS but smaller COLO ID
+   * 3. Case 3: DELETE TS > TOP-LEVEL TS but smaller than active elements (No put-only element exists)
+   */
   @Test
   public void testDeleteIgnored() {
     // Case 1: Delete ignored due to smaller TS in all fields

@@ -66,13 +66,11 @@ public class StringAnnotatedStoreSchemaCache {
    */
   public SchemaEntry getSupersetSchema() {
     SchemaEntry schemaEntry = internalSchemaRepo.getSupersetSchema(storeName);
-    if (schemaEntry != null) {
-      SchemaEntry annotatedSchemaEntry =
-          valueSchemaEntryMapCache.computeIfAbsent(schemaEntry.getId(), k -> getAnnotatedValueSchemaEntry(schemaEntry));
-      return annotatedSchemaEntry;
-    } else {
+    if (schemaEntry == null) {
       return null;
     }
+    return valueSchemaEntryMapCache
+        .computeIfAbsent(schemaEntry.getId(), k -> getAnnotatedValueSchemaEntry(schemaEntry));
   }
 
   /**

@@ -576,7 +576,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
         activeElementToTsMap.put(toAddElement, modifyTimestamp);
         updated = true;
       } else if (activeTimestamp != modifyTimestamp) {
-        activeElementToTsMap.remove(toAddElement);
+        // activeElementToTsMap.remove(toAddElement);
         activeElementToTsMap.put(toAddElement, modifyTimestamp);
         updated = true;
 
@@ -897,6 +897,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
               for (Schema schema: fieldSchema.getTypes()) {
                 if (schema.getType().equals(Schema.Type.MAP)) {
                   mapValueSchema = schema.getValueType();
+                  break;
                 }
               }
             } else {

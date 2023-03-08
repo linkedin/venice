@@ -22,6 +22,9 @@ import org.testng.annotations.Test;
  * TODO: Merge {@link TestMergePutWithFieldLevelTimestamp}
  */
 public class TestMergePut extends TestMergeBase {
+  /**
+   * This test validates PUT updates full value of a key and RMD collapses into value-level TS.
+   */
   @Test
   public void testPutResultsInFullRecordUpdate() {
     GenericRecord oldValueRecord = createValueRecord(r -> {
@@ -55,6 +58,11 @@ public class TestMergePut extends TestMergeBase {
     Assert.assertEquals(result.getRmdRecord().get(RmdConstants.TIMESTAMP_FIELD_NAME), 1L);
   }
 
+  /**
+   * This test validates PUT get ignored.
+   * 1. Case 1: PUT TS < all existing fields
+   * 2. Case 2: PUT TS == Collection field TS but smaller COLO ID
+   */
   @Test
   public void testPutIgnored() {
     // Case 1: Apply PUT operation with smaller TS
@@ -97,6 +105,11 @@ public class TestMergePut extends TestMergeBase {
     Assert.assertTrue(result.isUpdateIgnored());
   }
 
+  /**
+   * This test validates PUT applied on regular field only:
+   * 1. Case 1: Regular field applied, collection field not applied due to smaller TS
+   * 2. Case 2: Regular field applied, collection field not applied due to same TS but smaller colo ID
+   */
   @Test
   public void testPutResultsInPartialUpdateForRegularField() {
     // Case 1: Regular field is updated, but collection field is not due to smaller top level TS.
@@ -172,6 +185,9 @@ public class TestMergePut extends TestMergeBase {
     Assert.assertEquals(((GenericRecord) updatedRmdTsRecord.get(INT_MAP_FIELD_NAME)).get(TOP_LEVEL_TS_FIELD_NAME), 2L);
   }
 
+  /**
+   * This test validates PUT applied on collection field only.
+   */
   @Test
   public void testPutResultsInPartialUpdateForCollectionMergeField() {
     // Case 1: Map field partial updated.
