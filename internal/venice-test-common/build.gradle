@@ -245,11 +245,11 @@ task generateGHCI() {
   jobs << otherTest
 
   def alpiniUnitTests = "AlpiniUnitTests"
-  appendToGHCI(alpiniParamFileContent, targetFilePath, alpiniUnitTests, 120, common + "-DmaxParallelForks=2 --parallel alpiniUnitTest")
+  appendToGHCI(alpiniParamFileContent, targetFilePath, alpiniUnitTests, 120, common + "alpiniUnitTest")
   jobs << alpiniUnitTests
 
   def alpiniFunctionalTests = "AlpiniFunctionalTests"
-  appendToGHCI(alpiniParamFileContent, targetFilePath, alpiniFunctionalTests, 120, common + "-DmaxParallelForks=2 --parallel alpiniFunctionalTest")
+  appendToGHCI(alpiniParamFileContent, targetFilePath, alpiniFunctionalTests, 120, common + "alpiniFunctionalTest")
   jobs << alpiniFunctionalTests
 
   // define a job that depends others to manage the status check
