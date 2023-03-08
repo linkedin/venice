@@ -3,7 +3,6 @@ package com.linkedin.davinci.replication.merge;
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
@@ -28,15 +27,13 @@ import org.apache.commons.lang3.Validate;
  */
 @Threadsafe
 public class RmdSerDe {
-  private final String storeName;
-  private final ReadOnlySchemaRepository schemaRepository;
+  private final StringAnnotatedStoreSchemaCache annotatedStoreSchemaCache;
   private final int rmdVersionId;
   private final Map<Integer, Schema> valueSchemaIdToRmdSchemaMap;
   private final Map<WriterReaderSchemaIDs, RecordDeserializer<GenericRecord>> schemaIdToDeserializerMap;
 
-  public RmdSerDe(ReadOnlySchemaRepository schemaRepository, String storeName, int rmdVersionId) {
-    this.schemaRepository = schemaRepository;
-    this.storeName = storeName;
+  public RmdSerDe(StringAnnotatedStoreSchemaCache annotatedStoreSchemaCache, int rmdVersionId) {
+    this.annotatedStoreSchemaCache = annotatedStoreSchemaCache;
     this.rmdVersionId = rmdVersionId;
     this.valueSchemaIdToRmdSchemaMap = new VeniceConcurrentHashMap<>();
     this.schemaIdToDeserializerMap = new VeniceConcurrentHashMap<>();
@@ -76,8 +73,7 @@ public class RmdSerDe {
 
   public Schema getRmdSchema(final int valueSchemaId) {
     return valueSchemaIdToRmdSchemaMap.computeIfAbsent(valueSchemaId, id -> {
-      RmdSchemaEntry rmdSchemaEntry =
-          schemaRepository.getReplicationMetadataSchema(storeName, valueSchemaId, rmdVersionId);
+      RmdSchemaEntry rmdSchemaEntry = annotatedStoreSchemaCache.getRmdSchema(valueSchemaId, rmdVersionId);
       if (rmdSchemaEntry == null) {
         throw new VeniceException("Unable to fetch replication metadata schema from schema repository");
       }

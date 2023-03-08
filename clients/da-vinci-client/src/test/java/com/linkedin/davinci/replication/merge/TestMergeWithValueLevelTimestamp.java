@@ -37,10 +37,13 @@ public class TestMergeWithValueLevelTimestamp extends TestMergeConflictResolver 
     newValueRecord.put("id", "id10");
     newValueRecord.put("name", "name10");
     newValueRecord.put("age", 20);
+
+    StringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
+        new StringAnnotatedStoreSchemaCache(storeName, schemaRepository);
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
-            schemaRepository,
-            new RmdSerDe(schemaRepository, storeName, RMD_VERSION_ID),
+            stringAnnotatedStoreSchemaCache,
+            new RmdSerDe(stringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
             storeName);
     ByteBuffer oldBB = serialize(oldValueRecord);
     ByteBuffer newBB = serialize(newValueRecord);
@@ -152,10 +155,12 @@ public class TestMergeWithValueLevelTimestamp extends TestMergeConflictResolver 
     timestampRecord.put(0, 20L);
     timestampRecord.put(1, new ArrayList<Long>());
 
+    StringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
+        new StringAnnotatedStoreSchemaCache(storeName, schemaRepository);
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
-            schemaRepository,
-            new RmdSerDe(schemaRepository, storeName, RMD_VERSION_ID),
+            stringAnnotatedStoreSchemaCache,
+            new RmdSerDe(stringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
             storeName);
     // new MergeConflictResolver(schemaRepository, storeName, valueSchemaID -> new GenericData.Record(rmdSchemaV1));
 
@@ -222,10 +227,12 @@ public class TestMergeWithValueLevelTimestamp extends TestMergeConflictResolver 
       writeTs.add((long) (i + 15));
     }
 
+    StringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
+        new StringAnnotatedStoreSchemaCache(storeName, schemaRepository);
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
-            schemaRepository,
-            new RmdSerDe(schemaRepository, storeName, RMD_VERSION_ID),
+            stringAnnotatedStoreSchemaCache,
+            new RmdSerDe(stringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
             storeName);
     // new MergeConflictResolver(schemaRepository, storeName, null);
     MergeConflictResult mergeConflictResult = null;

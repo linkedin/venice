@@ -130,7 +130,6 @@ public class MergeGenericRecord extends AbstractMerge<GenericRecord> {
           newValue.get(fieldName),
           putOperationTimestamp,
           putOperationColoID);
-
       allFieldsNew &= (fieldUpdateResult == UpdateResultStatus.COMPLETELY_UPDATED);
       noFieldUpdated &= (fieldUpdateResult == UpdateResultStatus.NOT_UPDATED_AT_ALL);
     }

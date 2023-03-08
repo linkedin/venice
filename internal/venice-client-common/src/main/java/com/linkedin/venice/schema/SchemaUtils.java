@@ -1,6 +1,8 @@
 package com.linkedin.venice.schema;
 
+import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.DELETED_ELEM_FIELD_NAME;
 import static org.apache.avro.Schema.Type.ARRAY;
+import static org.apache.avro.Schema.Type.LONG;
 import static org.apache.avro.Schema.Type.MAP;
 import static org.apache.avro.Schema.Type.RECORD;
 import static org.apache.avro.Schema.Type.STRING;
@@ -8,6 +10,8 @@ import static org.apache.avro.Schema.Type.UNION;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.schema.rmd.RmdConstants;
+import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import java.util.ArrayList;
 import java.util.List;
@@ -107,17 +111,21 @@ public class SchemaUtils {
   }
 
   /**
-   * Annotate all the top-level map field of the input schema to use Java String as key.
+   * Annotate all the top-level map field and string array field of the input schema to use Java String as key.
    * @param schema the input value schema to be annotated.
    * @return Annotated value schema.
    */
-  public static Schema annotateStringMapInValueSchema(Schema schema) {
+  public static Schema annotateValueSchema(Schema schema) {
     // Create duplicate schema here in order not to create any side effect during annotation.
     Schema replicatedSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schema.toString());
     if (replicatedSchema.getType().equals(RECORD)) {
       for (Schema.Field field: replicatedSchema.getFields()) {
-        if (field.schema().getType().equals(MAP)) {
-          annotateMapSchema(field.schema());
+        if (field.schema().isUnion()) {
+          for (Schema unionBranchSchema: field.schema().getTypes()) {
+            annotateMapAndStringArraySchema(unionBranchSchema);
+          }
+        } else {
+          annotateMapAndStringArraySchema(field.schema());
         }
       }
     }
@@ -125,12 +133,12 @@ public class SchemaUtils {
   }
 
   /**
-   * Annotate all the top-level map field of the partial update schema to use Java String as key. This method will make
-   * sure field update and collection merging operations of a top-level map field are annotated.
-   * @param schema the input partial update schema to be annotated.
-   * @return Annotated partial update schema.
+   * Annotate all the top-level map field and string array of the update schema to use Java String as key.
+   * This method will make sure field update and collection merging operations of these fields are annotated.
+   * @param schema the input update schema to be annotated.
+   * @return Annotated update schema.
    */
-  public static Schema annotateStringMapInPartialUpdateSchema(Schema schema) {
+  public static Schema annotateUpdateSchema(Schema schema) {
     // Create duplicate schema here in order not to create any side effect during annotation.
     Schema replicatedSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schema.toString());
     if (replicatedSchema.getType().equals(RECORD)) {
@@ -138,15 +146,16 @@ public class SchemaUtils {
         if (field.schema().isUnion()) {
           for (Schema unionBranchSchema: field.schema().getTypes()) {
             // Full update request for Map field.
-            if (unionBranchSchema.getType().equals(Schema.Type.MAP)) {
+            if (isMap(unionBranchSchema)) {
               annotateMapSchema(unionBranchSchema);
+            } else if (isStringArray(unionBranchSchema)) {
+              // Full update request for String array field.
+              annotateStringArraySchema(unionBranchSchema);
             } else if (unionBranchSchema.getType().equals(RECORD)) {
               for (Schema.Field updateOpField: unionBranchSchema.getFields()) {
-                Schema.Type updateOpFieldType = updateOpField.schema().getType();
-                if (updateOpFieldType.equals(MAP)) {
+                if (isMap(updateOpField.schema())) {
                   annotateMapSchema(updateOpField.schema());
-                } else if (updateOpFieldType.equals(ARRAY)
-                    && updateOpField.schema().getElementType().getType().equals(STRING)) {
+                } else if (isStringArray(updateOpField.schema())) {
                   annotateStringArraySchema(updateOpField.schema());
                 }
               }
@@ -159,15 +168,41 @@ public class SchemaUtils {
   }
 
   /**
+   * Annotate all the top-level map and string array's deleted elements field of the RMD schema to use Java String as key.
+   * This method will make sure deleted elements field of these fields are annotated.
+   * @param schema the input update schema to be annotated.
+   * @return Annotated update schema.
+   */
+  public static Schema annotateRmdSchema(Schema schema) {
+    // Create duplicate schema here in order not to create any side effect during annotation.
+    Schema replicatedSchema = AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(schema.toString());
+    for (Schema fieldLevelTsSchema: replicatedSchema.getField(RmdConstants.TIMESTAMP_FIELD_NAME).schema().getTypes()) {
+      if (fieldLevelTsSchema.getType().equals(LONG)) {
+        continue;
+      }
+      for (Schema.Field field: fieldLevelTsSchema.getFields()) {
+        // For current RMD schema structure, there will be no union, adding this just for defensive coding.
+        if (!field.schema().isUnion() && field.schema().getType().equals(RECORD)) {
+          Schema.Field deletedElementField = field.schema().getField(DELETED_ELEM_FIELD_NAME);
+          if (deletedElementField != null && isStringArray(deletedElementField.schema())) {
+            annotateStringArraySchema(deletedElementField.schema());
+          }
+        }
+      }
+    }
+    return replicatedSchema;
+  }
+
+  /**
    * Create a new {@link SchemaEntry} for value schema annotation.
    * @param schemaEntry Input {@link SchemaEntry}, containing the value schema to be annotated.
    * @return Annotated value schema in a newly created {@link SchemaEntry}
    */
-  public static SchemaEntry getAnnotatedStringMapValueSchemaEntry(SchemaEntry schemaEntry) {
+  public static SchemaEntry getAnnotatedValueSchemaEntry(SchemaEntry schemaEntry) {
     if (schemaEntry == null) {
       return null;
     }
-    Schema annotatedSchema = annotateStringMapInValueSchema(schemaEntry.getSchema());
+    Schema annotatedSchema = annotateValueSchema(schemaEntry.getSchema());
     return new SchemaEntry(schemaEntry.getId(), annotatedSchema);
   }
 
@@ -176,12 +211,21 @@ public class SchemaUtils {
    * @param schemaEntry Input {@link DerivedSchemaEntry}, containing the partial update schema to be annotated.
    * @return Annotated partial update schema in a newly created {@link DerivedSchemaEntry}
    */
-  public static DerivedSchemaEntry getAnnotatedStringMapDerivedSchemaEntry(DerivedSchemaEntry schemaEntry) {
+  public static DerivedSchemaEntry getAnnotatedDerivedSchemaEntry(DerivedSchemaEntry schemaEntry) {
     if (schemaEntry == null) {
       return null;
     }
-    Schema annotatedSchema = annotateStringMapInPartialUpdateSchema(schemaEntry.getSchema());
+    Schema annotatedSchema = annotateUpdateSchema(schemaEntry.getSchema());
     return new DerivedSchemaEntry(schemaEntry.getValueSchemaID(), schemaEntry.getId(), annotatedSchema);
+  }
+
+  public static RmdSchemaEntry getAnnotatedRmdSchemaEntry(RmdSchemaEntry schemaEntry) {
+    if (schemaEntry == null) {
+      return null;
+    }
+
+    Schema annotatedSchema = annotateRmdSchema(schemaEntry.getSchema());
+    return new RmdSchemaEntry(schemaEntry.getValueSchemaID(), schemaEntry.getId(), annotatedSchema);
   }
 
   private static void annotateMapSchema(Schema mapSchema) {
@@ -191,5 +235,21 @@ public class SchemaUtils {
   private static void annotateStringArraySchema(Schema arraySchema) {
     AvroCompatibilityHelper
         .setSchemaPropFromJsonString(arraySchema.getElementType(), "avro.java.string", "\"String\"", false);
+  }
+
+  private static boolean isStringArray(Schema schema) {
+    return schema.getType().equals(ARRAY) && schema.getElementType().getType().equals(STRING);
+  }
+
+  private static boolean isMap(Schema schema) {
+    return schema.getType().equals(MAP);
+  }
+
+  private static void annotateMapAndStringArraySchema(Schema schema) {
+    if (isMap(schema)) {
+      annotateMapSchema(schema);
+    } else if (isStringArray(schema)) {
+      annotateStringArraySchema(schema);
+    }
   }
 }

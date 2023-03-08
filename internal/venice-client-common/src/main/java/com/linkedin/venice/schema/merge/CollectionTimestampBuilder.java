@@ -1,4 +1,4 @@
-package com.linkedin.davinci.writecompute;
+package com.linkedin.venice.schema.merge;
 
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.ACTIVE_ELEM_TS_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.DELETED_ELEM_FIELD_NAME;
