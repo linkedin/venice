@@ -1018,7 +1018,7 @@ jobs:
         if: steps.check_alpini_files_changed.outputs.alpini == 'true'
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--stacktrace --continue --no-daemon alpiniUnitTest"
+          arguments: "--stacktrace --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 alpiniUnitTest"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -1095,7 +1095,7 @@ jobs:
         if: steps.check_alpini_files_changed.outputs.alpini == 'true'
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--stacktrace --continue --no-daemon alpiniFunctionalTest"
+          arguments: "--stacktrace --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 alpiniFunctionalTest"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
