@@ -3243,7 +3243,7 @@ public class VeniceParentHelixAdmin implements Admin {
    * Unsupported operation in the parent controller.
    */
   @Override
-  public Map<String, String> getStorageNodesStatus(String clusterName) {
+  public Map<String, String> getStorageNodesStatus(String clusterName, boolean enableReplica) {
     throw new VeniceUnsupportedOperationException("getStorageNodesStatus");
   }
 

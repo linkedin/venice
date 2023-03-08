@@ -23,6 +23,7 @@ import static com.linkedin.venice.Arg.DERIVED_SCHEMA_ID;
 import static com.linkedin.venice.Arg.DEST_FABRIC;
 import static com.linkedin.venice.Arg.DISABLE_DAVINCI_PUSH_STATUS_STORE;
 import static com.linkedin.venice.Arg.DISABLE_META_STORE;
+import static com.linkedin.venice.Arg.ENABLE_DISABLED_REPLICA;
 import static com.linkedin.venice.Arg.END_DATE;
 import static com.linkedin.venice.Arg.ETLED_PROXY_USER_ACCOUNT;
 import static com.linkedin.venice.Arg.EXECUTION;
@@ -163,7 +164,8 @@ public enum Command {
       new Arg[] { URL, CLUSTER, STORE, VALUE_SCHEMA_ID, DERIVED_SCHEMA_ID }
   ), LIST_STORAGE_NODES("list-storage-nodes", "", new Arg[] { URL, CLUSTER }),
   CLUSTER_HEALTH_INSTANCES(
-      "cluster-health-instances", "List the status for every instance", new Arg[] { URL, CLUSTER }
+      "cluster-health-instances", "List the status for every instance", new Arg[] { URL, CLUSTER },
+      new Arg[] { ENABLE_DISABLED_REPLICA }
   ), CLUSTER_HEALTH_STORES("cluster-health-stores", "List the status for every store", new Arg[] { URL, CLUSTER }),
   NODE_REMOVABLE(
       "node-removable", "A node is removable if all replicas it is serving are available on other nodes",
