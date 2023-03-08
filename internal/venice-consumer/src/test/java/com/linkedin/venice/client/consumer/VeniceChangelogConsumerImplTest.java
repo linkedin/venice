@@ -1,4 +1,4 @@
-package com.linkedin.venice.consumer;
+package com.linkedin.venice.client.consumer;
 
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -7,10 +7,6 @@ import static org.mockito.Mockito.verify;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.change.capture.protocol.RecordChangeEvent;
 import com.linkedin.venice.client.change.capture.protocol.ValueBytes;
-import com.linkedin.venice.client.consumer.ChangeEvent;
-import com.linkedin.venice.client.consumer.ChangelogClientConfig;
-import com.linkedin.venice.client.consumer.VeniceAfterImageConsumerImpl;
-import com.linkedin.venice.client.consumer.VeniceChangelogConsumerImpl;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
