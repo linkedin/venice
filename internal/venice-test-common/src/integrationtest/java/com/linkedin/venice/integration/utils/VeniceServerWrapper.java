@@ -12,9 +12,9 @@ import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
 import static com.linkedin.venice.ConfigKeys.MAX_ONLINE_OFFLINE_STATE_TRANSITION_THREAD_NUMBER;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
-import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP2_INBOUND_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_FULL_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_KAFKA_OPENSSL;
+import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_APPLICATION_PORT;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_SERVICE_PORT;
 import static com.linkedin.venice.ConfigKeys.SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS;
@@ -67,8 +67,6 @@ import org.apache.logging.log4j.Logger;
 public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware {
   private static final Logger LOGGER = LogManager.getLogger(VeniceServerWrapper.class);
   public static final String SERVICE_NAME = "VeniceServer";
-  public static final String CLUSTER_DISCOVERY_D2_SERVICE_NAME =
-      ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME + "_test";
   /**
    *  Possible config options which are not included in {@link com.linkedin.venice.ConfigKeys}.
     */
@@ -226,33 +224,34 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       File serverConfigFile = new File(configDirectory, VeniceConfigLoader.SERVER_PROPERTIES_FILE);
       serverProps.storeFlattened(serverConfigFile);
 
+      boolean https = serverProps.getBoolean(SERVER_HTTP2_INBOUND_ENABLED, false);
+      String httpURI = "http://localhost:" + listenPort;
+      String httpsURI = "https://localhost:" + sslPort;
+
+      String d2ServiceName = clusterName + "_test";
+      List<ServiceDiscoveryAnnouncer> d2Servers = new ArrayList<>();
+      String d2ClusterName = D2TestUtils.setupD2Config(zkAddress, https, d2ServiceName);
+      d2Servers.addAll(D2TestUtils.getD2ServersForComponent(zkAddress, d2ClusterName, httpURI, httpsURI));
+
       // generate the kafka cluster map in config directory
       VeniceConfigLoader.storeKafkaClusterMap(configDirectory, kafkaClusterMap);
 
-      String d2ServiceName = D2TestUtils.getRouterD2ServiceName(null, clusterName);
-
-      VeniceProperties serverProperties = serverPropsBuilder.build();
-      boolean https = serverProperties.getBoolean(ROUTER_HTTP2_INBOUND_ENABLED, false);
-      String httpURI = "http://localhost:" + listenPort;
-      String httpsURI = "https://localhost:" + sslPort;
-      List<ServiceDiscoveryAnnouncer> d2Servers = new ArrayList<>();
-      String d2ClusterName = D2TestUtils.setupD2Config(zkAddress, https, d2ServiceName);
-      d2Servers.addAll(D2TestUtils.getD2ServersForRouter(zkAddress, d2ClusterName, httpURI, httpsURI));
-      String clusterDiscoveryD2ClusterName =
-          D2TestUtils.setupD2Config(zkAddress, https, CLUSTER_DISCOVERY_D2_SERVICE_NAME);
-      d2Servers.addAll(D2TestUtils.getD2ServersForRouter(zkAddress, clusterDiscoveryD2ClusterName, httpURI, httpsURI));
-
       if (!forkServer) {
-        if (enableServerAllowlist && isAutoJoin) {
-          joinClusterAllowlist(zkAddress, clusterName, listenPort);
-        }
-
         VeniceConfigLoader veniceConfigLoader =
             VeniceConfigLoader.loadFromConfigDirectory(configDirectory.getAbsolutePath());
+
+        if (enableServerAllowlist && isAutoJoin) {
+          joinClusterAllowlist(
+              veniceConfigLoader.getVeniceClusterConfig().getZookeeperAddress(),
+              clusterName,
+              listenPort);
+        }
+
         Optional<SSLFactory> sslFactory = Optional.empty();
         if (ssl) {
           sslFactory = Optional.of(SslUtils.getVeniceLocalSslFactory());
         }
+
         TestVeniceServer server = new TestVeniceServer(
             veniceConfigLoader,
             new MetricsRepository(),
@@ -260,7 +259,6 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
             Optional.empty(),
             consumerClientConfig,
             d2Servers);
-
         return new VeniceServerWrapper(
             serviceName,
             dataDirectory,
