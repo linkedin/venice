@@ -485,7 +485,6 @@ public class TestActiveActiveIngestion {
 
   }
 
-
   private void pollChangeEventsFromChangeCaptureConsumer(
       Map<String, ChangeEvent<Utf8>> polledChangeEvents,
       VeniceChangelogConsumer veniceChangelogConsumer) {

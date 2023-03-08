@@ -96,8 +96,8 @@ public class VeniceChangelogConsumerImplTest {
 
     int partition = 0;
     prepareChangeCaptureRecordsToBePolled(
-        0,
-        5,
+        0L,
+        5L,
         mockKafkaConsumer,
         oldChangeCaptureTopic,
         partition,
@@ -147,7 +147,7 @@ public class VeniceChangelogConsumerImplTest {
     String oldVersionTopic = Version.composeKafkaTopic(storeName, 1);
     String oldChangeCaptureTopic = oldVersionTopic + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX;
 
-    prepareVersionTopicRecordsToBePolled(0, 5, kafkaConsumer, oldVersionTopic, 0, true);
+    prepareVersionTopicRecordsToBePolled(0L, 5L, kafkaConsumer, oldVersionTopic, 0, true);
     ChangelogClientConfig changelogClientConfig =
         new ChangelogClientConfig<>().setD2ControllerClient(d2ControllerClient)
             .setSchemaReader(schemaReader)
@@ -167,7 +167,7 @@ public class VeniceChangelogConsumerImplTest {
     }
     // Verify version swap from version topic to its corresponding change capture topic happened.
     verify(kafkaConsumer).assign(Arrays.asList(new TopicPartition(oldChangeCaptureTopic, 0)));
-    prepareChangeCaptureRecordsToBePolled(0, 10, kafkaConsumer, oldChangeCaptureTopic, 0, oldVersionTopic, "");
+    prepareChangeCaptureRecordsToBePolled(0L, 10L, kafkaConsumer, oldChangeCaptureTopic, 0, oldVersionTopic, "");
     pubSubMessages = (List<PubSubMessage<String, ChangeEvent<Utf8>, Long>>) veniceChangelogConsumer.poll(100);
     Assert.assertFalse(pubSubMessages.isEmpty());
     Assert.assertEquals(pubSubMessages.size(), 5);
@@ -179,8 +179,8 @@ public class VeniceChangelogConsumerImplTest {
   }
 
   private void prepareChangeCaptureRecordsToBePolled(
-      int startIdx,
-      int endIdx,
+      long startIdx,
+      long endIdx,
       Consumer kafkaConsumer,
       String changeCaptureTopic,
       int partition,
@@ -188,7 +188,7 @@ public class VeniceChangelogConsumerImplTest {
       String newVersionTopic) {
     List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> consumerRecordList = new ArrayList<>();
     Map<TopicPartition, List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> consumerRecordsMap = new HashMap<>();
-    for (Long i = Long.valueOf(startIdx); i < endIdx; i++) {
+    for (long i = startIdx; i < endIdx; i++) {
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord = constructChangeCaptureConsumerRecord(
           changeCaptureTopic,
           partition,
@@ -214,15 +214,15 @@ public class VeniceChangelogConsumerImplTest {
   }
 
   private void prepareVersionTopicRecordsToBePolled(
-      int startIdx,
-      int endIdx,
+      long startIdx,
+      long endIdx,
       Consumer kafkaConsumer,
       String versionTopic,
       int partition,
       boolean prepareEndOfPush) {
     List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> consumerRecordList = new ArrayList<>();
     Map<TopicPartition, List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> consumerRecordsMap = new HashMap<>();
-    for (Long i = Long.valueOf(startIdx); i < endIdx; i++) {
+    for (long i = startIdx; i < endIdx; i++) {
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord =
           constructConsumerRecord(versionTopic, partition, "newValue" + i, "key" + i, Arrays.asList(i, i));
       consumerRecordList.add(consumerRecord);
