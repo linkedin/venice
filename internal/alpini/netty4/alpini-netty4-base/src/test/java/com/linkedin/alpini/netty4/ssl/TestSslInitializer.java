@@ -120,17 +120,6 @@ public class TestSslInitializer {
     _resolveExecutor = new DefaultEventExecutorGroup(RESOLVE_EXECUTOR_THREADS);
   }
 
-  private SSLEngineFactory newSSLEngineFactory;
-  private SSLEngineFactory newSslEngineRefCntFactory;
-  private SSLEngineFactory newSslEngineSunJSSEFactory;
-
-  @BeforeClass
-  public void createSSLEngineFactories() throws Exception {
-    newSSLEngineFactory = newSSLEngineFactory();
-    newSslEngineRefCntFactory = newSslEngineRefCntFactory();
-    newSslEngineSunJSSEFactory = newSslEngineSunJSSEFactory();
-  }
-
   @AfterClass(alwaysRun = true)
   public void done() {
     Optional.ofNullable(_resolveExecutor).ifPresent(EventExecutorGroup::shutdown);
@@ -557,7 +546,10 @@ public class TestSslInitializer {
   }
 
   @DataProvider
-  public Object[][] sslEngineFactory() {
+  public Object[][] sslEngineFactory() throws Exception {
+    SSLEngineFactory newSSLEngineFactory = newSSLEngineFactory();
+    SSLEngineFactory newSslEngineRefCntFactory = newSslEngineRefCntFactory();
+    SSLEngineFactory newSslEngineSunJSSEFactory = newSslEngineSunJSSEFactory();
     return new Object[][] { new Object[] { newSSLEngineFactory, UnaryOperator.identity() },
         new Object[] { newSslEngineRefCntFactory, UnaryOperator.identity() },
         new Object[] { newSslEngineSunJSSEFactory, UnaryOperator.identity() },
