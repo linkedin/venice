@@ -275,15 +275,7 @@ public class VeniceServerTest {
 
   public void testVeniceServerWithD2(boolean https) throws Exception {
     try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 1, 0)) {
-      String storeName = Utils.getUniqueString("testVeniceServerWithD2");
-
-      VeniceServerWrapper server = cluster.getVeniceServers().get(0);
-      server.getVeniceServer()
-          .getStorageService()
-          .openStoreForNewPartition(
-              server.getVeniceServer().getConfigLoader().getStoreConfig(storeName),
-              1,
-              () -> null);
+      String storeName = cluster.createStore(1);
 
       D2Client d2Client;
       if (https) {
@@ -295,7 +287,7 @@ public class VeniceServerTest {
       URI requestUri = URI.create(
           "d2://" + VeniceServerWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME + "/"
               + QueryAction.METADATA.toString().toLowerCase() + "/" + storeName);
-      RestRequest request = new RestRequestBuilder(requestUri).setMethod("get").build();
+      RestRequest request = new RestRequestBuilder(requestUri).setMethod("GET").build();
       RestResponse response = d2Client.restRequest(request).get();
 
       Assert.assertEquals(response.getStatus(), HttpStatus.SC_OK);

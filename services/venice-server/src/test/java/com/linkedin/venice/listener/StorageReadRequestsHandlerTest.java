@@ -377,7 +377,7 @@ public class StorageReadRequestsHandlerTest {
     List<Object> outputArray = new ArrayList<Object>();
 
     // [0]""/[1]"action"/[2]"store"
-    String uri = "/" + QueryAction.ADMIN.toString().toLowerCase() + "/" + storeName;
+    String uri = "/" + QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
     HttpRequest httpRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri);
     MetadataFetchRequest testRequest = MetadataFetchRequest.parseGetHttpRequest(httpRequest);
 
