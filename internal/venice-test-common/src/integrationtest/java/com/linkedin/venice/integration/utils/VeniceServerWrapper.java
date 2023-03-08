@@ -242,24 +242,24 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
           D2TestUtils.setupD2Config(zkAddress, https, CLUSTER_DISCOVERY_D2_SERVICE_NAME);
       d2Servers.addAll(D2TestUtils.getD2ServersForRouter(zkAddress, clusterDiscoveryD2ClusterName, httpURI, httpsURI));
 
-      VeniceConfigLoader veniceConfigLoader =
-          VeniceConfigLoader.loadFromConfigDirectory(configDirectory.getAbsolutePath());
-      Optional<SSLFactory> sslFactory = Optional.empty();
-      if (ssl) {
-        sslFactory = Optional.of(SslUtils.getVeniceLocalSslFactory());
-      }
-      TestVeniceServer server = new TestVeniceServer(
-          veniceConfigLoader,
-          new MetricsRepository(),
-          sslFactory,
-          Optional.empty(),
-          consumerClientConfig,
-          d2Servers);
-
       if (!forkServer) {
         if (enableServerAllowlist && isAutoJoin) {
           joinClusterAllowlist(zkAddress, clusterName, listenPort);
         }
+
+        VeniceConfigLoader veniceConfigLoader =
+            VeniceConfigLoader.loadFromConfigDirectory(configDirectory.getAbsolutePath());
+        Optional<SSLFactory> sslFactory = Optional.empty();
+        if (ssl) {
+          sslFactory = Optional.of(SslUtils.getVeniceLocalSslFactory());
+        }
+        TestVeniceServer server = new TestVeniceServer(
+            veniceConfigLoader,
+            new MetricsRepository(),
+            sslFactory,
+            Optional.empty(),
+            consumerClientConfig,
+            d2Servers);
 
         return new VeniceServerWrapper(
             serviceName,
@@ -274,7 +274,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
         return new VeniceServerWrapper(
             serviceName,
             dataDirectory,
-            server,
+            null,
             serverProps,
             null,
             consumerClientConfig,
