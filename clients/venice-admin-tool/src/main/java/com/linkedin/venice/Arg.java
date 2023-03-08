@@ -224,6 +224,7 @@ public enum Arg {
   STORAGE_PERSONA("storage-persona", "sp", true, "Name of Storage Persona"),
   RECOVERY_COMMAND("recovery-command", "rco", true, "command to execute the data recovery"),
   EXTRA_COMMAND_ARGS("extra-command-args", "eca", true, "extra command arguments"),
+  ENABLE_DISABLED_REPLICA("enable-disabled-replicas", "edr", true, "Reenable disabled replicas"),
   DEBUG("debug", "d", false, "Print debugging messages for execute-data-recovery");
 
   private final String argName;
