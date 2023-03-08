@@ -165,7 +165,8 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       Properties configProperties,
       boolean forkServer,
       String serverName,
-      Map<String, Map<String, String>> kafkaClusterMap) {
+      Map<String, Map<String, String>> kafkaClusterMap,
+      String serverD2ServiceName) {
     return (serviceName, dataDirectory) -> {
       boolean enableServerAllowlist =
           Boolean.parseBoolean(featureProperties.getProperty(SERVER_ENABLE_SERVER_ALLOW_LIST, "false"));
@@ -229,8 +230,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       String httpURI = "http://localhost:" + listenPort;
       String httpsURI = "https://localhost:" + sslPort;
 
-      String d2ServiceName = clusterName + "_test";
-      String d2ClusterName = D2TestUtils.setupD2Config(zkAddress, https, d2ServiceName);
+      String d2ClusterName = D2TestUtils.setupD2Config(zkAddress, https, serverD2ServiceName);
       List<ServiceDiscoveryAnnouncer> d2Servers =
           new ArrayList<>(D2TestUtils.getD2Servers(zkAddress, d2ClusterName, httpURI, httpsURI));
 
