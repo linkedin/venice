@@ -68,12 +68,13 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         .getValueSchema(storeName, oldValueSchemaId);
     doReturn(new SchemaEntry(oldValueSchemaId, personSchemaV2)).when(readOnlySchemaRepository)
         .getSupersetSchema(storeName);
-
+    StringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
+        new StringAnnotatedStoreSchemaCache(storeName, readOnlySchemaRepository);
     // Update happens below
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
-            readOnlySchemaRepository,
-            new RmdSerDe(readOnlySchemaRepository, storeName, RMD_VERSION_ID),
+            stringAnnotatedStoreSchemaCache,
+            new RmdSerDe(stringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
             storeName);
     MergeConflictResult mergeConflictResult = mergeConflictResolver.update(
         Lazy.of(() -> null),
@@ -125,12 +126,13 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         .getValueSchema(storeName, oldValueSchemaId);
     doReturn(new SchemaEntry(oldValueSchemaId, personSchemaV2)).when(readOnlySchemaRepository)
         .getSupersetSchema(storeName);
-
+    StringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
+        new StringAnnotatedStoreSchemaCache(storeName, readOnlySchemaRepository);
     // Update happens below
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
-            readOnlySchemaRepository,
-            new RmdSerDe(readOnlySchemaRepository, storeName, RMD_VERSION_ID),
+            stringAnnotatedStoreSchemaCache,
+            new RmdSerDe(stringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
             storeName);
 
     GenericRecord updateFieldPartialUpdateRecord1 = SchemaUtils.createGenericRecord(writeComputeSchema);
@@ -248,15 +250,16 @@ public class TestMergeUpdateWithFieldLevelTimestamp extends TestMergeConflictRes
         .getDerivedSchema(storeName, incomingValueSchemaId, incomingWriteComputeSchemaId);
     doReturn(new SchemaEntry(oldValueSchemaId, personSchemaV1)).when(readOnlySchemaRepository)
         .getValueSchema(storeName, oldValueSchemaId);
-
     doReturn(new SchemaEntry(oldValueSchemaId, personSchemaV1)).when(readOnlySchemaRepository)
         .getSupersetSchema(storeName);
 
+    StringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
+        new StringAnnotatedStoreSchemaCache(storeName, readOnlySchemaRepository);
     // Update happens below
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
-            readOnlySchemaRepository,
-            new RmdSerDe(readOnlySchemaRepository, storeName, RMD_VERSION_ID),
+            stringAnnotatedStoreSchemaCache,
+            new RmdSerDe(stringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
             storeName);
 
     final int newColoID = 3;

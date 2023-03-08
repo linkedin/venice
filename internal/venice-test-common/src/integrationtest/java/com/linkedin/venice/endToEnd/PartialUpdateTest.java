@@ -27,6 +27,7 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTaskBackdoor;
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.davinci.replication.merge.RmdSerDe;
+import com.linkedin.davinci.replication.merge.StringAnnotatedStoreSchemaCache;
 import com.linkedin.davinci.storage.chunking.SingleGetChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
@@ -149,7 +150,9 @@ public class PartialUpdateTest {
     when(schemaRepo.getReplicationMetadataSchema(storeName, 1, 1)).thenReturn(new RmdSchemaEntry(1, 1, rmdSchema));
     when(schemaRepo.getDerivedSchema(storeName, 1, 1)).thenReturn(new DerivedSchemaEntry(1, 1, writeComputeSchema));
     when(schemaRepo.getValueSchema(storeName, 1)).thenReturn(new SchemaEntry(1, valueSchema));
-    RmdSerDe rmdSerDe = new RmdSerDe(schemaRepo, storeName, 1);
+    StringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
+        new StringAnnotatedStoreSchemaCache(storeName, schemaRepo);
+    RmdSerDe rmdSerDe = new RmdSerDe(stringAnnotatedStoreSchemaCache, 1);
 
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
       assertCommand(

@@ -12,11 +12,11 @@ import org.apache.commons.lang3.Validate;
 
 @Threadsafe
 public class MergeResultValueSchemaResolverImpl implements MergeResultValueSchemaResolver {
-  private final MapKeyStringAnnotatedStoreSchemaCache storeSchemaCache;
+  private final StringAnnotatedStoreSchemaCache storeSchemaCache;
   private final String storeName;
   private final Map<String, SchemaEntry> resolvedSchemaCache;
 
-  public MergeResultValueSchemaResolverImpl(MapKeyStringAnnotatedStoreSchemaCache storeSchemaCache, String storeName) {
+  public MergeResultValueSchemaResolverImpl(StringAnnotatedStoreSchemaCache storeSchemaCache, String storeName) {
     this.storeSchemaCache = Validate.notNull(storeSchemaCache);
     Validate.notNull(storeName);
     if (storeName.isEmpty()) {
