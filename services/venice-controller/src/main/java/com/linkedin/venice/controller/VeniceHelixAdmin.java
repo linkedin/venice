@@ -4925,7 +4925,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * @return a map containing the storage node name and its connectivity status (<code>InstanceStatus</code>).
    */
   @Override
-  public Map<String, String> getStorageNodesStatus(String clusterName) {
+  public Map<String, String> getStorageNodesStatus(String clusterName, boolean enableReplica) {
     checkControllerLeadershipFor(clusterName);
     List<String> instances = helixAdminClient.getInstancesInCluster(clusterName);
     RoutingDataRepository routingDataRepository =
@@ -4936,6 +4936,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         instancesStatusesMap.put(instance, InstanceStatus.CONNECTED.toString());
       } else {
         instancesStatusesMap.put(instance, InstanceStatus.DISCONNECTED.toString());
+      }
+      if (enableReplica) {
+        Map<String, List<String>> disabledPartitions = helixAdminClient.getDisabledPartitionsMap(clusterName, instance);
+        for (Map.Entry<String, List<String>> entry: disabledPartitions.entrySet()) {
+          helixAdminClient.enablePartition(true, clusterName, instance, entry.getKey(), entry.getValue());
+          LOGGER.info(
+              "Enabled disabled replica of resource {}, partitions {} in cluster {}",
+              entry.getKey(),
+              entry.getValue(),
+              clusterName);
+        }
       }
     }
     return instancesStatusesMap;
@@ -5909,7 +5920,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * @see Admin#getStorageNodesStatus(String)
+   * @see Admin#getStorageNodesStatus(String, boolean)
    */
   @Override
   public StorageNodeStatus getStorageNodesStatus(String clusterName, String instanceId) {
