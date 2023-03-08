@@ -2,6 +2,7 @@ package com.linkedin.venice.schema.merge;
 
 import com.linkedin.avro.api.PrimitiveLongList;
 import com.linkedin.avro.fastserde.primitive.PrimitiveLongArrayList;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp;
 import com.linkedin.venice.utils.IndexedHashMap;
 import java.util.ArrayList;
@@ -902,6 +903,9 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
               }
             } else {
               mapValueSchema = fieldSchema.getValueType();
+            }
+            if (mapValueSchema == null) {
+              throw new VeniceException("Could not find map schema in map field: " + fieldSchema.toString(true));
             }
 
             if (AvroCollectionElementComparator.INSTANCE.compare(newValue, currentValue, mapValueSchema) > 0) {
