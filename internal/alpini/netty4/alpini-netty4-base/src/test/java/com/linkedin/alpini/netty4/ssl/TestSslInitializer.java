@@ -617,20 +617,19 @@ public class TestSslInitializer {
           }
         });
 
-    waitForNonDeterministicAssertion(
-        1,
-        TimeUnit.SECONDS,
-        () -> Assert.assertEquals(
-            serverSslInitializer.getAvailablePermits(),
-            UnaryOperator.identity().equals(serverOp) ? 0 : RESOLVE_EXECUTOR_THREADS));
-    Assert.assertEquals(serverSslInitializer.getPendingHandshakes(), 0);
-    Assert.assertEquals(serverSslInitializer.getHandshakesStarted(), 1L);
-    Assert.assertEquals(serverSslInitializer.getHandshakesSuccessful(), 1L);
-    Assert.assertEquals(serverSslInitializer.getHandshakesFailed(), 0L);
-    // when not using slow handshake, we can't catch the pending-handshakes being non-zero because the handshake blocks
-    // the
-    // IO worker and completes in a single pass.
-    Assert.assertTrue(pendingHandshakesNonZero.getAndSet(false) || UnaryOperator.identity().equals(serverOp));
+    waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
+      Assert.assertEquals(
+          serverSslInitializer.getAvailablePermits(),
+          UnaryOperator.identity().equals(serverOp) ? 0 : RESOLVE_EXECUTOR_THREADS);
+      Assert.assertEquals(serverSslInitializer.getPendingHandshakes(), 0);
+      Assert.assertEquals(serverSslInitializer.getHandshakesStarted(), 1L);
+      Assert.assertEquals(serverSslInitializer.getHandshakesSuccessful(), 1L);
+      Assert.assertEquals(serverSslInitializer.getHandshakesFailed(), 0L);
+      // when not using slow handshake, we can't catch the pending-handshakes being non-zero because the handshake
+      // blocks the IO worker and completes in a single pass.
+      Assert.assertTrue(pendingHandshakesNonZero.get() || UnaryOperator.identity().equals(serverOp));
+    });
+    pendingHandshakesNonZero.set(false);
 
     simpleTest(
         new DefaultEventLoopGroup(),
@@ -647,17 +646,17 @@ public class TestSslInitializer {
             pendingHandshakesNonZero.set(true);
           }
         });
-    waitForNonDeterministicAssertion(
-        1,
-        TimeUnit.SECONDS,
-        () -> Assert.assertEquals(
-            serverSslInitializer.getAvailablePermits(),
-            UnaryOperator.identity().equals(serverOp) ? 0 : RESOLVE_EXECUTOR_THREADS));
-    Assert.assertEquals(serverSslInitializer.getPendingHandshakes(), 0);
-    Assert.assertEquals(serverSslInitializer.getHandshakesStarted(), 2L);
-    Assert.assertEquals(serverSslInitializer.getHandshakesSuccessful(), 2L);
-    Assert.assertEquals(serverSslInitializer.getHandshakesFailed(), 0L);
-    Assert.assertTrue(pendingHandshakesNonZero.getAndSet(false) || UnaryOperator.identity().equals(serverOp));
+    waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
+      Assert.assertEquals(
+          serverSslInitializer.getAvailablePermits(),
+          UnaryOperator.identity().equals(serverOp) ? 0 : RESOLVE_EXECUTOR_THREADS);
+      Assert.assertEquals(serverSslInitializer.getPendingHandshakes(), 0);
+      Assert.assertEquals(serverSslInitializer.getHandshakesStarted(), 2L);
+      Assert.assertEquals(serverSslInitializer.getHandshakesSuccessful(), 2L);
+      Assert.assertEquals(serverSslInitializer.getHandshakesFailed(), 0L);
+      Assert.assertTrue(pendingHandshakesNonZero.get() || UnaryOperator.identity().equals(serverOp));
+    });
+    pendingHandshakesNonZero.set(false);
   }
 
   /**
@@ -702,7 +701,6 @@ public class TestSslInitializer {
           serverSslInitializer.enableSslTaskExecutor(sslExecutor),
           clientSslInitializer.enableSslTaskExecutor(sslExecutor),
           serverOp);
-
     } finally {
       sslExecutor.shutdownNow();
     }
@@ -731,20 +729,19 @@ public class TestSslInitializer {
             pendingHandshakesMoreThanOne.set(true);
           }
         });
-    waitForNonDeterministicAssertion(
-        1,
-        TimeUnit.SECONDS,
-        () -> Assert.assertEquals(
-            serverSslInitializer.getAvailablePermits(),
-            UnaryOperator.identity().equals(serverOp) ? 0 : RESOLVE_EXECUTOR_THREADS));
-    Assert.assertEquals(serverSslInitializer.getPendingHandshakes(), 0);
-    Assert.assertEquals(serverSslInitializer.getHandshakesStarted(), concurrency);
-    Assert.assertEquals(serverSslInitializer.getHandshakesSuccessful(), concurrency);
-    Assert.assertEquals(serverSslInitializer.getHandshakesFailed(), 0L);
-    // when not using slow handshake, we can't catch the pending-handshakes being non-zero because the handshake blocks
-    // the
-    // IO worker and completes in a single pass.
-    Assert.assertTrue(pendingHandshakesMoreThanOne.getAndSet(false) || UnaryOperator.identity().equals(serverOp));
+    waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
+      Assert.assertEquals(
+          serverSslInitializer.getAvailablePermits(),
+          UnaryOperator.identity().equals(serverOp) ? 0 : RESOLVE_EXECUTOR_THREADS);
+      Assert.assertEquals(serverSslInitializer.getPendingHandshakes(), 0);
+      Assert.assertEquals(serverSslInitializer.getHandshakesStarted(), concurrency);
+      Assert.assertEquals(serverSslInitializer.getHandshakesSuccessful(), concurrency);
+      Assert.assertEquals(serverSslInitializer.getHandshakesFailed(), 0L);
+      // when not using slow handshake, we can't catch the pending-handshakes being non-zero because the handshake
+      // blocks the IO worker and completes in a single pass.
+      Assert.assertTrue(pendingHandshakesMoreThanOne.get() || UnaryOperator.identity().equals(serverOp));
+    });
+    pendingHandshakesMoreThanOne.set(false);
 
     simpleTest(
         new DefaultEventLoopGroup(),
@@ -761,17 +758,17 @@ public class TestSslInitializer {
             pendingHandshakesMoreThanOne.set(true);
           }
         });
-    waitForNonDeterministicAssertion(
-        1,
-        TimeUnit.SECONDS,
-        () -> Assert.assertEquals(
-            serverSslInitializer.getAvailablePermits(),
-            UnaryOperator.identity().equals(serverOp) ? 0 : RESOLVE_EXECUTOR_THREADS));
-    Assert.assertEquals(serverSslInitializer.getPendingHandshakes(), 0);
-    Assert.assertEquals(serverSslInitializer.getHandshakesStarted(), 2 * concurrency);
-    Assert.assertEquals(serverSslInitializer.getHandshakesSuccessful(), 2 * concurrency);
-    Assert.assertEquals(serverSslInitializer.getHandshakesFailed(), 0L);
-    Assert.assertTrue(pendingHandshakesMoreThanOne.getAndSet(false) || UnaryOperator.identity().equals(serverOp));
+    waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
+      Assert.assertEquals(
+          serverSslInitializer.getAvailablePermits(),
+          UnaryOperator.identity().equals(serverOp) ? 0 : RESOLVE_EXECUTOR_THREADS);
+      Assert.assertEquals(serverSslInitializer.getPendingHandshakes(), 0);
+      Assert.assertEquals(serverSslInitializer.getHandshakesStarted(), 2 * concurrency);
+      Assert.assertEquals(serverSslInitializer.getHandshakesSuccessful(), 2 * concurrency);
+      Assert.assertEquals(serverSslInitializer.getHandshakesFailed(), 0L);
+      Assert.assertTrue(pendingHandshakesMoreThanOne.get() || UnaryOperator.identity().equals(serverOp));
+    });
+    pendingHandshakesMoreThanOne.set(false);
   }
 
   @Test(dataProvider = "sslEngineFactory")
@@ -794,16 +791,15 @@ public class TestSslInitializer {
             1,
             ctx -> {},
             ctx -> {}));
-    waitForNonDeterministicAssertion(
-        1,
-        TimeUnit.SECONDS,
-        () -> Assert.assertEquals(
-            serverSslInitializer.getAvailablePermits(),
-            UnaryOperator.identity().equals(serverOp) ? 0 : RESOLVE_EXECUTOR_THREADS));
-    Assert.assertEquals(serverSslInitializer.getPendingHandshakes(), 0);
-    Assert.assertEquals(serverSslInitializer.getHandshakesStarted(), 0L);
-    Assert.assertEquals(serverSslInitializer.getHandshakesSuccessful(), 0L);
-    Assert.assertEquals(serverSslInitializer.getHandshakesFailed(), 0L);
+    waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
+      Assert.assertEquals(
+          serverSslInitializer.getAvailablePermits(),
+          UnaryOperator.identity().equals(serverOp) ? 0 : RESOLVE_EXECUTOR_THREADS);
+      Assert.assertEquals(serverSslInitializer.getPendingHandshakes(), 0);
+      Assert.assertEquals(serverSslInitializer.getHandshakesStarted(), 0L);
+      Assert.assertEquals(serverSslInitializer.getHandshakesSuccessful(), 0L);
+      Assert.assertEquals(serverSslInitializer.getHandshakesFailed(), 0L);
+    });
 
     Assert.assertThrows(
         NotSslRecordException.class,
@@ -818,16 +814,15 @@ public class TestSslInitializer {
             1,
             ctx -> {},
             ctx -> {}));
-    waitForNonDeterministicAssertion(
-        1,
-        TimeUnit.SECONDS,
-        () -> Assert.assertEquals(
-            serverSslInitializer.getAvailablePermits(),
-            UnaryOperator.identity().equals(serverOp) ? 0 : RESOLVE_EXECUTOR_THREADS));
-    Assert.assertEquals(serverSslInitializer.getPendingHandshakes(), 0);
-    Assert.assertEquals(serverSslInitializer.getHandshakesStarted(), 0L);
-    Assert.assertEquals(serverSslInitializer.getHandshakesSuccessful(), 0L);
-    Assert.assertEquals(serverSslInitializer.getHandshakesFailed(), 0L);
+    waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
+      Assert.assertEquals(
+          serverSslInitializer.getAvailablePermits(),
+          UnaryOperator.identity().equals(serverOp) ? 0 : RESOLVE_EXECUTOR_THREADS);
+      Assert.assertEquals(serverSslInitializer.getPendingHandshakes(), 0);
+      Assert.assertEquals(serverSslInitializer.getHandshakesStarted(), 0L);
+      Assert.assertEquals(serverSslInitializer.getHandshakesSuccessful(), 0L);
+      Assert.assertEquals(serverSslInitializer.getHandshakesFailed(), 0L);
+    });
   }
 
   @Test(dataProvider = "sslEngineFactory")
@@ -850,16 +845,15 @@ public class TestSslInitializer {
             1,
             ctx -> {},
             ctx -> {}));
-    waitForNonDeterministicAssertion(
-        1,
-        TimeUnit.SECONDS,
-        () -> Assert.assertEquals(
-            serverSslInitializer.getAvailablePermits(),
-            UnaryOperator.identity().equals(serverOp) ? 0 : RESOLVE_EXECUTOR_THREADS));
-    Assert.assertEquals(serverSslInitializer.getPendingHandshakes(), 0);
-    Assert.assertEquals(serverSslInitializer.getHandshakesStarted(), 1L);
-    Assert.assertEquals(serverSslInitializer.getHandshakesSuccessful(), 0L);
-    Assert.assertEquals(serverSslInitializer.getHandshakesFailed(), 1L);
+    waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
+      Assert.assertEquals(
+          serverSslInitializer.getAvailablePermits(),
+          UnaryOperator.identity().equals(serverOp) ? 0 : RESOLVE_EXECUTOR_THREADS);
+      Assert.assertEquals(serverSslInitializer.getPendingHandshakes(), 0);
+      Assert.assertEquals(serverSslInitializer.getHandshakesStarted(), 1L);
+      Assert.assertEquals(serverSslInitializer.getHandshakesSuccessful(), 0L);
+      Assert.assertEquals(serverSslInitializer.getHandshakesFailed(), 1L);
+    });
 
     Assert.assertThrows(
         SSLHandshakeException.class,
@@ -874,16 +868,15 @@ public class TestSslInitializer {
             1,
             ctx -> {},
             ctx -> {}));
-    waitForNonDeterministicAssertion(
-        1,
-        TimeUnit.SECONDS,
-        () -> Assert.assertEquals(
-            serverSslInitializer.getAvailablePermits(),
-            UnaryOperator.identity().equals(serverOp) ? 0 : RESOLVE_EXECUTOR_THREADS));
-    Assert.assertEquals(serverSslInitializer.getPendingHandshakes(), 0);
-    Assert.assertEquals(serverSslInitializer.getHandshakesStarted(), 2L);
-    Assert.assertEquals(serverSslInitializer.getHandshakesSuccessful(), 0L);
-    Assert.assertEquals(serverSslInitializer.getHandshakesFailed(), 2L);
+    waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
+      Assert.assertEquals(
+          serverSslInitializer.getAvailablePermits(),
+          UnaryOperator.identity().equals(serverOp) ? 0 : RESOLVE_EXECUTOR_THREADS);
+      Assert.assertEquals(serverSslInitializer.getPendingHandshakes(), 0);
+      Assert.assertEquals(serverSslInitializer.getHandshakesStarted(), 2L);
+      Assert.assertEquals(serverSslInitializer.getHandshakesSuccessful(), 0L);
+      Assert.assertEquals(serverSslInitializer.getHandshakesFailed(), 2L);
+    });
   }
 
   @Test(dataProvider = "sslEngineFactory")
@@ -906,16 +899,15 @@ public class TestSslInitializer {
             1,
             ctx -> {},
             ctx -> {}));
-    waitForNonDeterministicAssertion(
-        1,
-        TimeUnit.SECONDS,
-        () -> Assert.assertEquals(
-            serverSslInitializer.getAvailablePermits(),
-            UnaryOperator.identity().equals(serverOp) ? 0 : RESOLVE_EXECUTOR_THREADS));
-    Assert.assertEquals(serverSslInitializer.getPendingHandshakes(), 0);
-    Assert.assertEquals(serverSslInitializer.getHandshakesStarted(), 0L);
-    Assert.assertEquals(serverSslInitializer.getHandshakesSuccessful(), 0L);
-    Assert.assertEquals(serverSslInitializer.getHandshakesFailed(), 0L);
+    waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
+      Assert.assertEquals(
+          serverSslInitializer.getAvailablePermits(),
+          UnaryOperator.identity().equals(serverOp) ? 0 : RESOLVE_EXECUTOR_THREADS);
+      Assert.assertEquals(serverSslInitializer.getPendingHandshakes(), 0);
+      Assert.assertEquals(serverSslInitializer.getHandshakesStarted(), 0L);
+      Assert.assertEquals(serverSslInitializer.getHandshakesSuccessful(), 0L);
+      Assert.assertEquals(serverSslInitializer.getHandshakesFailed(), 0L);
+    });
 
     Assert.assertThrows(
         SSLProtocolException.class,
@@ -930,16 +922,15 @@ public class TestSslInitializer {
             1,
             ctx -> {},
             ctx -> {}));
-    waitForNonDeterministicAssertion(
-        1,
-        TimeUnit.SECONDS,
-        () -> Assert.assertEquals(
-            serverSslInitializer.getAvailablePermits(),
-            UnaryOperator.identity().equals(serverOp) ? 0 : RESOLVE_EXECUTOR_THREADS));
-    Assert.assertEquals(serverSslInitializer.getPendingHandshakes(), 0);
-    Assert.assertEquals(serverSslInitializer.getHandshakesStarted(), 0L);
-    Assert.assertEquals(serverSslInitializer.getHandshakesSuccessful(), 0L);
-    Assert.assertEquals(serverSslInitializer.getHandshakesFailed(), 0L);
+    waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
+      Assert.assertEquals(
+          serverSslInitializer.getAvailablePermits(),
+          UnaryOperator.identity().equals(serverOp) ? 0 : RESOLVE_EXECUTOR_THREADS);
+      Assert.assertEquals(serverSslInitializer.getPendingHandshakes(), 0);
+      Assert.assertEquals(serverSslInitializer.getHandshakesStarted(), 0L);
+      Assert.assertEquals(serverSslInitializer.getHandshakesSuccessful(), 0L);
+      Assert.assertEquals(serverSslInitializer.getHandshakesFailed(), 0L);
+    });
   }
 
   @Test(dataProvider = "sslEngineFactory")
@@ -993,16 +984,15 @@ public class TestSslInitializer {
       Assert.assertTrue(protocol.isDone());
       Assert.assertEquals(protocol.getNow(null), "TLSv1.2");
     }
-    waitForNonDeterministicAssertion(
-        1,
-        TimeUnit.SECONDS,
-        () -> Assert.assertEquals(
-            serverSslInitializer.getAvailablePermits(),
-            UnaryOperator.identity().equals(serverOp) ? 0 : RESOLVE_EXECUTOR_THREADS));
-    Assert.assertEquals(serverSslInitializer.getPendingHandshakes(), 0);
-    Assert.assertEquals(serverSslInitializer.getHandshakesStarted(), 1L);
-    Assert.assertEquals(serverSslInitializer.getHandshakesSuccessful(), 1L);
-    Assert.assertEquals(serverSslInitializer.getHandshakesFailed(), 0L);
+    waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
+      Assert.assertEquals(
+          serverSslInitializer.getAvailablePermits(),
+          UnaryOperator.identity().equals(serverOp) ? 0 : RESOLVE_EXECUTOR_THREADS);
+      Assert.assertEquals(serverSslInitializer.getPendingHandshakes(), 0);
+      Assert.assertEquals(serverSslInitializer.getHandshakesStarted(), 1L);
+      Assert.assertEquals(serverSslInitializer.getHandshakesSuccessful(), 1L);
+      Assert.assertEquals(serverSslInitializer.getHandshakesFailed(), 0L);
+    });
 
     {
       CompletableFuture<String> protocol = new CompletableFuture<>();
@@ -1024,16 +1014,15 @@ public class TestSslInitializer {
       Assert.assertTrue(protocol.isDone());
       Assert.assertEquals(protocol.getNow(null), "TLSv1.2");
     }
-    waitForNonDeterministicAssertion(
-        1,
-        TimeUnit.SECONDS,
-        () -> Assert.assertEquals(
-            serverSslInitializer.getAvailablePermits(),
-            UnaryOperator.identity().equals(serverOp) ? 0 : RESOLVE_EXECUTOR_THREADS));
-    Assert.assertEquals(serverSslInitializer.getPendingHandshakes(), 0);
-    Assert.assertEquals(serverSslInitializer.getHandshakesStarted(), 2L);
-    Assert.assertEquals(serverSslInitializer.getHandshakesSuccessful(), 2L);
-    Assert.assertEquals(serverSslInitializer.getHandshakesFailed(), 0L);
+    waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
+      Assert.assertEquals(
+          serverSslInitializer.getAvailablePermits(),
+          UnaryOperator.identity().equals(serverOp) ? 0 : RESOLVE_EXECUTOR_THREADS);
+      Assert.assertEquals(serverSslInitializer.getPendingHandshakes(), 0);
+      Assert.assertEquals(serverSslInitializer.getHandshakesStarted(), 2L);
+      Assert.assertEquals(serverSslInitializer.getHandshakesSuccessful(), 2L);
+      Assert.assertEquals(serverSslInitializer.getHandshakesFailed(), 0L);
+    });
   }
 
   /**
