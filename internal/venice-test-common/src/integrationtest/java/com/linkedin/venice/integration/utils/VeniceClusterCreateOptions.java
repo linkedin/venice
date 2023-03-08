@@ -375,7 +375,7 @@ public class VeniceClusterCreateOptions {
         kafkaClusterMap = Collections.emptyMap();
       }
       if (serverD2ServiceName == null) {
-        serverD2ServiceName = D2TestUtils.getRandomD2ServiceName(null, clusterName);
+        serverD2ServiceName = Utils.getUniqueString(clusterName + "_d2");
       }
     }
 
