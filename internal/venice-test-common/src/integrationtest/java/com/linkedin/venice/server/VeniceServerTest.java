@@ -21,6 +21,7 @@ import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -263,16 +264,7 @@ public class VeniceServerTest {
     }
   }
 
-  @Test
-  public void testVeniceServerWithHttpD2() throws Exception {
-    testVeniceServerWithD2(false);
-  }
-
-  @Test
-  public void testVeniceServerWithHttpsD2() throws Exception {
-    testVeniceServerWithD2(true);
-  }
-
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testVeniceServerWithD2(boolean https) throws Exception {
     try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 1, 0)) {
       String storeName = cluster.createStore(1);

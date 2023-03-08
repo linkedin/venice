@@ -150,7 +150,7 @@ public class D2TestUtils {
    * @param localUris varags if we want to announce on multiple uris (for example on an http port and https port)
    * @return
    */
-  public static List<ServiceDiscoveryAnnouncer> getD2ServersForComponent(
+  public static List<ServiceDiscoveryAnnouncer> getD2Servers(
       String zkHosts,
       String d2ClusterName,
       String... localUris) {
