@@ -196,7 +196,7 @@ public class TestLeaderReplicaFailover {
         Assert.assertNotNull(newLeaderNode);
         Assert.assertTrue(
             clusterWrapper.getLeaderVeniceController().getVeniceAdmin().getReplicas(clusterName, topic).size() == 9);
-        InstanceConfig instanceConfig1 = finalAdmin.getInstanceConfig(clusterName, newLeaderNode.getNodeId());
+        InstanceConfig instanceConfig1 = finalAdmin.getInstanceConfig(clusterName, leader.getNodeId());
         Assert.assertEquals(instanceConfig1.getDisabledPartitionsMap().size(), 0);
       });
     } finally {

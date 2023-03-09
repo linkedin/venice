@@ -77,6 +77,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
   private ErrorPartitionResetTask errorPartitionResetTask = null;
   private final Optional<MetaStoreWriter> metaStoreWriter;
   private final VeniceAdminStats veniceAdminStats;
+  private final VeniceHelixAdmin admin;
 
   public HelixVeniceClusterResources(
       String clusterName,
@@ -92,6 +93,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
     this.clusterName = clusterName;
     this.config = config;
     this.helixManager = helixManager;
+    this.admin = admin;
     /**
      * So far, Meta system store doesn't support write from parent cluster.
      */
@@ -265,6 +267,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
     customizedViewRepo.refresh();
     pushMonitor.loadAllPushes();
     routersClusterManager.refresh();
+    admin.startInstanceMonitor();
   }
 
   @Override
@@ -280,6 +283,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
     routingDataRepository.clear();
     customizedViewRepo.clear();
     routersClusterManager.clear();
+    admin.clearInstanceMonitor();
   }
 
   /**

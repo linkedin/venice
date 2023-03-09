@@ -336,8 +336,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private static final ByteBuffer EMPTY_PUSH_ZSTD_DICTIONARY =
       ByteBuffer.wrap(ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData());
   private static final String ZK_INSTANCES_SUB_PATH = "INSTANCES";
-  private static final String ZK_CUSTOMIZEDSTATES_SUB_PATH =
-      "CUSTOMIZEDSTATES/" + HelixPartitionState.OFFLINE_PUSH.toString();
+  private static final String ZK_CUSTOMIZEDSTATES_SUB_PATH = "CUSTOMIZEDSTATES/" + HelixPartitionState.OFFLINE_PUSH;
 
   /**
    * Level-1 controller, it always being connected to Helix. And will create sub-controller for specific cluster when
@@ -366,6 +365,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   private final Map<String, Map<String, ControllerClient>> clusterControllerClientPerColoMap =
       new VeniceConcurrentHashMap<>();
+  private final List<HelixLiveInstanceMonitor> liveInstanceMonitorList = new ArrayList<>();
 
   private VeniceDistClusterControllerStateModelFactory controllerStateModelFactory;
 
@@ -591,6 +591,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     for (String clusterName: multiClusterConfigs.getClusters()) {
       HelixLiveInstanceMonitor liveInstanceMonitor = new HelixLiveInstanceMonitor(this.zkClient, clusterName);
+      liveInstanceMonitorList.add(liveInstanceMonitor);
       // Register new instance callback
       liveInstanceMonitor.registerLiveInstanceChangedListener(new LiveInstanceChangedListener() {
         @Override
@@ -615,6 +616,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         public void handleDeletedInstances(Set<Instance> deletedInstances) {
         }
       });
+    }
+  }
+
+  public void startInstanceMonitor() {
+    for (HelixLiveInstanceMonitor liveInstanceMonitor: liveInstanceMonitorList) {
+      liveInstanceMonitor.refresh();
+    }
+  }
+
+  public void clearInstanceMonitor() {
+    for (HelixLiveInstanceMonitor liveInstanceMonitor: liveInstanceMonitorList) {
+      liveInstanceMonitor.clear();
     }
   }
 
