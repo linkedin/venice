@@ -391,6 +391,10 @@ public class TestChannelPoolManager {
           channelFuture = manager.acquire("localhost:" + serverAddress.getPort(), "other", QOS.HIGH);
           _cancelInAcquireResolved = channelFuture;
           Assert.assertTrue(channelFuture.await(1, TimeUnit.SECONDS));
+          _log.info(
+              "Channel future state: Done: {} or Cancelled: {}",
+              channelFuture.isDone(),
+              channelFuture.isCancelled());
           Assert.assertTrue(channelFuture.isCancelled());
           // Sleep for 100ms, so that the stats can catch up.
           Thread.sleep(100);
