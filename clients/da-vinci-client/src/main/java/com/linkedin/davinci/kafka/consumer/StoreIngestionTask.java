@@ -792,7 +792,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           }
           if (offsetThreshold >= 0) {
             /**
-             * If both threshold configs are on, both both offset lag and time lag must be within thresholds before online.
+             * If both threshold configs are on, both offset lag and time lag must be within thresholds before online.
              */
             isLagAcceptable &= timestampLagIsAcceptable;
           } else {

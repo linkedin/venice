@@ -2325,7 +2325,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           }
 
           final String kafkaSourceAddress = getSourceKafkaUrlForOffsetLagMeasurement(pcs);
-          // Consumer might not existed after the consumption state is created, but before attaching the corresponding
+          // Consumer might not exist after the consumption state is created, but before attaching the corresponding
           // consumer.
           long offsetLagOptional = getPartitionOffsetLag(kafkaSourceAddress, currentLeaderTopic, pcs.getPartition());
           if (offsetLagOptional >= 0) {

@@ -434,6 +434,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           storeName,
           versionNumber,
           LatencyUtils.getLatencyInMS(beforeProcessingRecordTimestamp));
+
+      // Record the last ignored offset
+      partitionConsumptionState
+          .updateLatestIgnoredUpstreamRTOffset(kafkaClusterIdToUrlMap.get(kafkaClusterId), sourceOffset);
     } else {
       validatePostOperationResultsAndRecord(mergeConflictResult, offsetSumPreOperation, recordTimestampsPreOperation);
 
@@ -1062,7 +1066,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   protected long getLatestPersistedUpstreamOffsetForHybridOffsetLagMeasurement(
       PartitionConsumptionState pcs,
       String upstreamKafkaUrl) {
-    return pcs.getLatestProcessedUpstreamRTOffset(upstreamKafkaUrl);
+    return pcs.getLatestProcessedUpstreamRTOffsetWithIgnoredMessages(upstreamKafkaUrl);
   }
 
   /**

@@ -15,6 +15,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -155,6 +156,31 @@ public class PartitionConsumptionState {
   private long latestProcessedUpstreamVersionTopicOffset;
 
   /**
+   * This keeps track of those offsets which have been screened during conflict resolution. This needs to be kept
+   * separate from the drainers notion of per colo offsets because the ingestion task will screen offsets at a higher
+   * offset then those which have been drained.  This is used for determining the lag of a leader consumer relative
+   * to a source topic when the latest messages have been consumed but not applied due to certain writes not getting
+   * applied after losing on conflict resolution to a pre-existing/conflicting write.
+   *
+   * key: source Kafka url
+   * value: Latest ignored upstream RT offset
+   */
+  private Map<String, Long> latestIgnoredUpstreamRTOffsetMap;
+
+  /**
+   * This keeps track of the latest RT offsets from a specific broker which have been produced to VT. When a message
+   * is consumed out of RT it can be produced to VT but not yet committed to local storage for the leader.  We only
+   * commit a message to a drainer queue after we've produced to the local VT.  This map tracks what messages have been
+   * produced.  To find what messages have been committed refer to latestProcessedUpstreamRTOffsetMap.  This map is used
+   * for determining if a leader replica is ready to serve or not to avoid the edge case that the end of the RT is full
+   * of events which we want to ignore or not apply.
+   *
+   * key: source Kafka url
+   * Value: Latest upstream RT offset which has been published to VT
+   */
+  private Map<String, Long> latestRTOffsetProducedToVTMap;
+
+  /**
    * Key: source Kafka url
    * Value: Latest upstream RT offsets of a specific source processed by drainer
    */
@@ -198,6 +224,11 @@ public class PartitionConsumptionState {
     this.latestProcessedUpstreamVersionTopicOffset = offsetRecord.getCheckpointUpstreamVersionTopicOffset();
     this.leaderHostId = offsetRecord.getLeaderHostId();
     this.leaderGUID = offsetRecord.getLeaderGUID();
+    // We don't restore ignored offsets from the persisted offset record today. Doing so would only be useful
+    // if it was useful to skip ahead through a large number of dropped offsets at the start of consumption.
+    this.latestIgnoredUpstreamRTOffsetMap = new HashMap<>();
+    // On start we haven't sent anything
+    this.latestRTOffsetProducedToVTMap = new HashMap<>();
   }
 
   public int getPartition() {
@@ -305,6 +336,10 @@ public class PartitionConsumptionState {
         .append(latestProcessedUpstreamVersionTopicOffset)
         .append(", latestProcessedUpstreamRTOffsetMap=")
         .append(latestProcessedUpstreamRTOffsetMap)
+        .append(", latestIgnoredUpstreamRTOffsetMap=")
+        .append(latestIgnoredUpstreamRTOffsetMap)
+        .append(", latestRTOffsetProducedToVTMap")
+        .append(latestRTOffsetProducedToVTMap)
         .append(", offsetRecord=")
         .append(offsetRecord)
         .append(", errorReported=")
@@ -580,6 +615,48 @@ public class PartitionConsumptionState {
 
   public void updateLatestProcessedUpstreamRTOffset(String kafkaUrl, long offset) {
     latestProcessedUpstreamRTOffsetMap.put(kafkaUrl, offset);
+  }
+
+  public void updateLatestRTOffsetProducedToVTMap(String kafkaUrl, long offset) {
+    latestRTOffsetProducedToVTMap.put(kafkaUrl, offset);
+  }
+
+  public long getLatestRTOffsetProducedToVT(String kafkaUrl) {
+    return latestRTOffsetProducedToVTMap.getOrDefault(kafkaUrl, -1L);
+  }
+
+  public void updateLatestIgnoredUpstreamRTOffset(String kafkaUrl, long offset) {
+    latestIgnoredUpstreamRTOffsetMap.put(kafkaUrl, offset);
+  }
+
+  public long getLatestIgnoredUpstreamRTOffset(String kafkaUrl) {
+    return latestIgnoredUpstreamRTOffsetMap.getOrDefault(kafkaUrl, -1L);
+  }
+
+  public long getLatestProcessedUpstreamRTOffsetWithIgnoredMessages(String kafkaUrl) {
+    long processed = getLatestProcessedUpstreamRTOffset(kafkaUrl);
+    long ignored = getLatestIgnoredUpstreamRTOffset(kafkaUrl);
+    long produced = getLatestRTOffsetProducedToVT(kafkaUrl);
+
+    // we've committed messages at a higher offset then the last thing we ignored. Return the processed offset
+    if (processed >= ignored) {
+      return processed;
+    }
+
+    // We have messages which have been ignored at a higher offset then what we've processed but we still have committed
+    // all messages to local storage that we've produced to upstream VT. In this case, return the ignored offset as the
+    // highest offset. Technically speaking, processed should never be 'greater' then produced, it can at most be
+    // 'equal',
+    // but we'll include the broader comparison as it's still technically correct.
+    if (processed >= produced) {
+      return ignored;
+    }
+
+    // We have messages that we're still waiting to commit, though the most recent messages we've ignored (probably
+    // after failing a comparison against record in the transient record cache). In this case we'll return the offset
+    // of what's been processed
+    return processed;
+
   }
 
   public long getLatestProcessedUpstreamRTOffset(String kafkaUrl) {
