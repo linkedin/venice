@@ -51,19 +51,23 @@ public class ComputeOperationUtils {
   private static float dotProduct(int size, FloatSupplierByIndex floatSupplier1, FloatSupplierByIndex floatSupplier2) {
     float dotProductResult = 0.0f;
 
-    // round up size to the largest multiple of 4
+    // round up size to the largest multiple of 8
     int i = 0;
-    int limit = (size >> 2) << 2;
+    int limit = (size >> 3) << 3;
 
     // Unrolling mult-add into blocks of 4 multiply op and assign to 4 different variables so that CPU can take
     // advantage of out of order execution, making the operation faster (on a single thread ~2x improvement)
-    for (; i < limit; i += 4) {
+    for (; i < limit; i += 8) {
       float s0 = floatSupplier1.get(i) * floatSupplier2.get(i);
       float s1 = floatSupplier1.get(i + 1) * floatSupplier2.get(i + 1);
       float s2 = floatSupplier1.get(i + 2) * floatSupplier2.get(i + 2);
       float s3 = floatSupplier1.get(i + 3) * floatSupplier2.get(i + 3);
+      float s4 = floatSupplier1.get(i + 4) * floatSupplier2.get(i + 4);
+      float s5 = floatSupplier1.get(i + 5) * floatSupplier2.get(i + 5);
+      float s6 = floatSupplier1.get(i + 6) * floatSupplier2.get(i + 6);
+      float s7 = floatSupplier1.get(i + 7) * floatSupplier2.get(i + 7);
 
-      dotProductResult += (s0 + s1 + s2 + s3);
+      dotProductResult += (s0 + s1 + s2 + s3 + s4 + s5 + s6 + s7);
     }
 
     // Multiply the remaining elements
@@ -79,17 +83,21 @@ public class ComputeOperationUtils {
       FloatSupplierByIndex floatSupplier2) {
     float[] floats = new float[size];
 
-    // round up size to the largest multiple of 4
+    // round up size to the largest multiple of 8
     int i = 0;
-    int limit = (size >> 2) << 2;
+    int limit = (size >> 3) << 3;
 
     // Unrolling mult-add into blocks of 4 multiply op and assign to 4 different variables so that CPU can take
     // advantage of out of order execution, making the operation faster (on a single thread ~2x improvement)
-    for (; i < limit; i += 4) {
+    for (; i < limit; i += 8) {
       floats[i] = floatSupplier1.get(i) * floatSupplier2.get(i);
       floats[i + 1] = floatSupplier1.get(i + 1) * floatSupplier2.get(i + 1);
       floats[i + 2] = floatSupplier1.get(i + 2) * floatSupplier2.get(i + 2);
       floats[i + 3] = floatSupplier1.get(i + 3) * floatSupplier2.get(i + 3);
+      floats[i + 4] = floatSupplier1.get(i + 4) * floatSupplier2.get(i + 4);
+      floats[i + 5] = floatSupplier1.get(i + 5) * floatSupplier2.get(i + 5);
+      floats[i + 6] = floatSupplier1.get(i + 6) * floatSupplier2.get(i + 6);
+      floats[i + 7] = floatSupplier1.get(i + 7) * floatSupplier2.get(i + 7);
     }
 
     // Multiply the remaining elements
