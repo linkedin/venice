@@ -270,8 +270,8 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
   }
 
   @Override
-  public Map<PubSubTopic, Properties> getSomeTopicConfigs(Set<PubSubTopic> topicNames) {
-    return getSomethingForSomeTopics(topicNames, config -> marshallProperties(config), "configs");
+  public Map<PubSubTopic, Properties> getSomeTopicConfigs(Set<PubSubTopic> pubSubTopics) {
+    return getSomethingForSomeTopics(pubSubTopics, config -> marshallProperties(config), "configs");
   }
 
   // TODO: This method should be removed from the interface once we migrate to use Java kafka admin since we no longer
@@ -332,11 +332,19 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
 
   @Override
   public Map<PubSubTopicPartition, Long> endOffsets(Collection<PubSubTopicPartition> partitions, Duration timeout) {
-    Map<TopicPartition, PubSubTopicPartition> mapping = buildTopicPartitionMapping(partitions);
+    Map<TopicPartition, PubSubTopicPartition> pubSubTopicPartitionMapping = new HashMap<>(partitions.size());
+    for (PubSubTopicPartition pubSubTopicPartition: partitions) {
+      pubSubTopicPartitionMapping.put(
+          new TopicPartition(
+              pubSubTopicPartition.getPubSubTopic().getName(),
+              pubSubTopicPartition.getPartitionNumber()),
+          pubSubTopicPartition);
+    }
     Map<PubSubTopicPartition, Long> pubSubTopicPartitionOffsetMap = new HashMap<>(partitions.size());
-    Map<TopicPartition, Long> topicPartitionOffsetMap = this.kafkaConsumer.endOffsets(mapping.keySet(), timeout);
+    Map<TopicPartition, Long> topicPartitionOffsetMap =
+        this.kafkaConsumer.endOffsets(pubSubTopicPartitionMapping.keySet(), timeout);
     for (Map.Entry<TopicPartition, Long> entry: topicPartitionOffsetMap.entrySet()) {
-      pubSubTopicPartitionOffsetMap.put(mapping.get(entry.getKey()), entry.getValue());
+      pubSubTopicPartitionOffsetMap.put(pubSubTopicPartitionMapping.get(entry.getKey()), entry.getValue());
     }
     return pubSubTopicPartitionOffsetMap;
   }
@@ -348,19 +356,6 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
     Map<TopicPartition, Long> topicPartitionOffsetMap =
         this.kafkaConsumer.endOffsets(Collections.singleton(topicPartition));
     return topicPartitionOffsetMap.get(topicPartition);
-  }
-
-  private Map<TopicPartition, PubSubTopicPartition> buildTopicPartitionMapping(
-      Collection<PubSubTopicPartition> partitions) {
-    Map<TopicPartition, PubSubTopicPartition> mapping = new HashMap<>(partitions.size());
-    for (PubSubTopicPartition pubSubTopicPartition: partitions) {
-      mapping.put(
-          new TopicPartition(
-              pubSubTopicPartition.getPubSubTopic().getName(),
-              pubSubTopicPartition.getPartitionNumber()),
-          pubSubTopicPartition);
-    }
-    return mapping;
   }
 
   @Override
@@ -454,26 +449,26 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
 
   private <T> Map<PubSubTopic, T> getSomethingForAllTopics(Function<Config, T> configTransformer, String content) {
     try {
-      Set<PubSubTopic> topicNames = getKafkaAdminClient().listTopics()
+      Set<PubSubTopic> pubSubTopics = getKafkaAdminClient().listTopics()
           .names()
           .get()
           .stream()
           .map(t -> pubSubTopicRepository.getTopic(t))
           .collect(Collectors.toSet());
-      return getSomethingForSomeTopics(topicNames, configTransformer, content);
+      return getSomethingForSomeTopics(pubSubTopics, configTransformer, content);
     } catch (Exception e) {
       throw new VeniceException("Failed to get " + content + " for all topics", e);
     }
   }
 
   private <T> Map<PubSubTopic, T> getSomethingForSomeTopics(
-      Set<PubSubTopic> topicNames,
+      Set<PubSubTopic> pubSubTopics,
       Function<Config, T> configTransformer,
       String content) {
     Map<PubSubTopic, T> topicToSomething = new HashMap<>();
     try {
       // Step 1: Marshall topic names into config resources
-      Collection<ConfigResource> configResources = topicNames.stream()
+      Collection<ConfigResource> configResources = pubSubTopics.stream()
           .map(topicName -> new ConfigResource(ConfigResource.Type.TOPIC, topicName.getName()))
           .collect(Collectors.toCollection(ArrayList::new));
 
@@ -490,7 +485,7 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
 
       return topicToSomething;
     } catch (Exception e) {
-      int numberOfTopic = topicNames.size();
+      int numberOfTopic = pubSubTopics.size();
       String numberOfTopicString = numberOfTopic + " topic" + (numberOfTopic > 1 ? "s" : "");
       throw new VeniceException("Failed to get " + content + " for " + numberOfTopicString, e);
     }

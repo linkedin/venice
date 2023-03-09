@@ -38,7 +38,7 @@ public class TestDictionaryUtils {
   private ZkServerWrapper zkServer;
   private TopicManager manager;
   private TestMockTime mockTime;
-  private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   private String getTopic() {
     String callingFunction = Thread.currentThread().getStackTrace()[2].getMethodName();

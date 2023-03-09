@@ -21,7 +21,7 @@ public class TestTopicCleanupServiceForParentController {
   private Admin admin;
   private TopicManager topicManager;
   private TopicCleanupService topicCleanupService;
-  private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @BeforeTest
   public void setUp() {

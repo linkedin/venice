@@ -37,7 +37,7 @@ public class TestKafkaInputRecordReader {
   private KafkaBrokerWrapper kafka;
   private TopicManager manager;
   private ZkServerWrapper zkServer;
-  private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @BeforeClass
   public void setUp() {

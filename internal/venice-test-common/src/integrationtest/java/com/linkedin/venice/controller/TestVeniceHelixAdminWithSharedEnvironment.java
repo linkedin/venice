@@ -138,7 +138,8 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     VeniceHelixAdmin newLeaderAdmin = new VeniceHelixAdmin(
         TestUtils.getMultiClusterConfigFromOneCluster(newConfig),
         new MetricsRepository(),
-        D2TestUtils.getAndStartD2Client(zkAddress));
+        D2TestUtils.getAndStartD2Client(zkAddress),
+        pubSubTopicRepository);
     // Start stand by controller
     newLeaderAdmin.initStorageCluster(clusterName);
     Assert.assertFalse(

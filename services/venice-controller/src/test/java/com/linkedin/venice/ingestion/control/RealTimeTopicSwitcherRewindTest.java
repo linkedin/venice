@@ -81,7 +81,6 @@ public class RealTimeTopicSwitcherRewindTest {
             HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
             DataReplicationPolicy.NON_AGGREGATE,
             BufferReplayPolicy.REWIND_FROM_EOP)));
-    // TODO: change this to private.
     final PubSubTopic sourceTopicName = pubSubTopicRepository.getTopic("source topic name_v1");
     final PubSubTopic destinationTopicName = pubSubTopicRepository.getTopic("destination topic name_v1");
 

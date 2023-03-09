@@ -134,8 +134,7 @@ public class TestPushJobWithNativeReplication {
   private List<VeniceControllerWrapper> parentControllers;
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
 
-  private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository(); // TODO: Make this from global
-                                                                                     // wrapper.
+  private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @DataProvider(name = "storeSize")
   public static Object[][] storeSize() {

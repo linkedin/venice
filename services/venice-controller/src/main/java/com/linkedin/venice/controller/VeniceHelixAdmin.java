@@ -380,8 +380,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   public VeniceHelixAdmin(
       VeniceControllerMultiClusterConfig multiClusterConfigs,
       MetricsRepository metricsRepository,
-      D2Client d2Client) {
-    // TODO: chang passed pubSubTopicRepository
+      D2Client d2Client,
+      PubSubTopicRepository pubSubTopicRepository) {
     this(
         multiClusterConfigs,
         metricsRepository,
@@ -390,7 +390,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional.empty(),
         Optional.empty(),
         Optional.empty(),
-        new PubSubTopicRepository());
+        pubSubTopicRepository);
   }
 
   // TODO Use different configs for different clusters when creating helix admin.
