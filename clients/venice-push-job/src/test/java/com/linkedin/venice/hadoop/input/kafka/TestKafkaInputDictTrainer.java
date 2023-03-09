@@ -3,17 +3,22 @@ package com.linkedin.venice.hadoop.input.kafka;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.github.luben.zstd.ZstdDictTrainer;
+import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.NoopCompressor;
+import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperKey;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
@@ -24,13 +29,22 @@ import org.testng.annotations.Test;
 
 
 public class TestKafkaInputDictTrainer {
+  private KafkaInputDictTrainer.CompressorBuilder getCompressorBuilder(VeniceCompressor mockCompressor) {
+    return (compressorFactory, compressionStrategy, kafkaUrl, topic, props) -> mockCompressor;
+  }
+
   private KafkaInputDictTrainer.Param getParam(int sampleSize) {
+    return getParam(sampleSize, CompressionStrategy.NO_OP);
+  }
+
+  private KafkaInputDictTrainer.Param getParam(int sampleSize, CompressionStrategy sourceVersionCompressionStrategy) {
     return new KafkaInputDictTrainer.ParamBuilder().setKafkaInputBroker("test_url")
         .setTopicName("test_topic")
         .setKeySchema("\"string\"")
         .setCompressionDictSize(900 * 1024)
         .setDictSampleSize(sampleSize)
         .setSslProperties(new Properties())
+        .setSourceVersionCompressionStrategy(sourceVersionCompressionStrategy)
         .build();
   }
 
@@ -43,7 +57,11 @@ public class TestKafkaInputDictTrainer {
     doReturn(false).when(mockRecordReader).next(any(), any());
     doReturn(mockRecordReader).when(mockFormat).getRecordReader(any(), any(), any());
 
-    KafkaInputDictTrainer trainer = new KafkaInputDictTrainer(mockFormat, Optional.empty(), getParam(100));
+    KafkaInputDictTrainer trainer = new KafkaInputDictTrainer(
+        mockFormat,
+        Optional.empty(),
+        getParam(100),
+        getCompressorBuilder(new NoopCompressor()));
     trainer.trainDict();
   }
 
@@ -51,7 +69,18 @@ public class TestKafkaInputDictTrainer {
     void reset();
   }
 
-  private ResettableRecordReader<KafkaInputMapperKey, KafkaInputMapperValue> mockReader(List<byte[]> values) {
+  private static class ValueSchemaPair {
+    int schemaId;
+    byte[] value;
+
+    public ValueSchemaPair(int schemaId, byte[] value) {
+      this.schemaId = schemaId;
+      this.value = value;
+    }
+  }
+
+  private ResettableRecordReader<KafkaInputMapperKey, KafkaInputMapperValue> mockReaderForValueSchemaPairs(
+      List<ValueSchemaPair> values) {
     ResettableRecordReader<KafkaInputMapperKey, KafkaInputMapperValue> mockRecordReader =
         new ResettableRecordReader<KafkaInputMapperKey, KafkaInputMapperValue>() {
           @Override
@@ -69,7 +98,8 @@ public class TestKafkaInputDictTrainer {
             key.offset = cur;
             key.key = ByteBuffer.wrap(("test_key" + cur).getBytes());
             value.offset = cur;
-            value.value = ByteBuffer.wrap(values.get(cur));
+            value.value = ByteBuffer.wrap(values.get(cur).value);
+            value.schemaId = values.get(cur).schemaId;
             ++cur;
             return true;
           }
@@ -103,6 +133,12 @@ public class TestKafkaInputDictTrainer {
     return mockRecordReader;
   }
 
+  private ResettableRecordReader<KafkaInputMapperKey, KafkaInputMapperValue> mockReader(List<byte[]> values) {
+    List<ValueSchemaPair> valueSchemaPairs = new ArrayList<>();
+    values.forEach(v -> valueSchemaPairs.add(new ValueSchemaPair(1, v)));
+    return mockReaderForValueSchemaPairs(valueSchemaPairs);
+  }
+
   @Test
   public void testSamplingFromMultiplePartitions() throws IOException {
     KafkaInputFormat mockFormat = mock(KafkaInputFormat.class);
@@ -122,7 +158,11 @@ public class TestKafkaInputDictTrainer {
 
     // Big sampling will collect every record.
     ZstdDictTrainer mockTrainer1 = mock(ZstdDictTrainer.class);
-    KafkaInputDictTrainer trainer1 = new KafkaInputDictTrainer(mockFormat, Optional.of(mockTrainer1), getParam(1000));
+    KafkaInputDictTrainer trainer1 = new KafkaInputDictTrainer(
+        mockFormat,
+        Optional.of(mockTrainer1),
+        getParam(1000),
+        getCompressorBuilder(new NoopCompressor()));
     trainer1.trainDict();
 
     verify(mockTrainer1).addSample(eq("p0_value0".getBytes()));
@@ -136,7 +176,11 @@ public class TestKafkaInputDictTrainer {
     readerForP0.reset();
     readerForP1.reset();
     ZstdDictTrainer mockTrainer2 = mock(ZstdDictTrainer.class);
-    KafkaInputDictTrainer trainer2 = new KafkaInputDictTrainer(mockFormat, Optional.of(mockTrainer2), getParam(20));
+    KafkaInputDictTrainer trainer2 = new KafkaInputDictTrainer(
+        mockFormat,
+        Optional.of(mockTrainer2),
+        getParam(20),
+        getCompressorBuilder(new NoopCompressor()));
     trainer2.trainDict();
     verify(mockTrainer2).addSample(eq("p0_value0".getBytes()));
     verify(mockTrainer2, never()).addSample(eq("p0_value1".getBytes()));
@@ -144,5 +188,109 @@ public class TestKafkaInputDictTrainer {
     verify(mockTrainer2).addSample(eq("p1_value0".getBytes()));
     verify(mockTrainer2, never()).addSample(eq("p1_value1".getBytes()));
     verify(mockTrainer2, never()).addSample(eq("p1_value2".getBytes()));
+  }
+
+  @Test
+  public void testSamplingFromMultiplePartitionsWithSourceVersionCompressionEnabled() throws IOException {
+    KafkaInputFormat mockFormat = mock(KafkaInputFormat.class);
+    InputSplit[] splits = new KafkaInputSplit[] { new KafkaInputSplit("test_topic", 0, 0, 2),
+        new KafkaInputSplit("test_topic", 0, 0, 2) };
+    doReturn(splits).when(mockFormat).getSplitsByRecordsPerSplit(any(), anyLong());
+
+    // Return 3 records
+    ResettableRecordReader<KafkaInputMapperKey, KafkaInputMapperValue> readerForP0 =
+        mockReader(Arrays.asList("p0_value0".getBytes(), "p0_value1".getBytes(), "p0_value2".getBytes()));
+
+    ResettableRecordReader<KafkaInputMapperKey, KafkaInputMapperValue> readerForP1 =
+        mockReader(Arrays.asList("p1_value0".getBytes(), "p1_value1".getBytes(), "p1_value2".getBytes()));
+
+    doReturn(readerForP0).when(mockFormat).getRecordReader(eq(splits[0]), any(), any());
+    doReturn(readerForP1).when(mockFormat).getRecordReader(eq(splits[1]), any(), any());
+
+    VeniceCompressor mockedCompressor = mock(VeniceCompressor.class);
+    doReturn(CompressionStrategy.GZIP).when(mockedCompressor).getCompressionStrategy();
+    // Just return whatever it receives
+    doAnswer(invocation -> invocation.getArgument(0)).when(mockedCompressor).decompress(any(ByteBuffer.class));
+
+    // Big sampling will collect every record.
+    ZstdDictTrainer mockTrainer1 = mock(ZstdDictTrainer.class);
+    KafkaInputDictTrainer trainer1 = new KafkaInputDictTrainer(
+        mockFormat,
+        Optional.of(mockTrainer1),
+        getParam(1000, CompressionStrategy.GZIP),
+        getCompressorBuilder(mockedCompressor));
+    trainer1.trainDict();
+
+    List<byte[]> allValues = new ArrayList<>(
+        Arrays.asList(
+            "p0_value0".getBytes(),
+            "p0_value1".getBytes(),
+            "p0_value2".getBytes(),
+            "p1_value0".getBytes(),
+            "p1_value1".getBytes(),
+            "p1_value2".getBytes()));
+
+    allValues.forEach(v -> {
+      try {
+        verify(mockedCompressor).decompress(eq(ByteBuffer.wrap(v)));
+      } catch (IOException e) {
+        throw new RuntimeException(e);
+      }
+      verify(mockTrainer1).addSample(eq(v));
+    });
+  }
+
+  @Test
+  public void testSamplingFromMultiplePartitionsWithSourceVersionCompressionEnabledWithChunking() throws IOException {
+    KafkaInputFormat mockFormat = mock(KafkaInputFormat.class);
+    InputSplit[] splits = new KafkaInputSplit[] { new KafkaInputSplit("test_topic", 0, 0, 2),
+        new KafkaInputSplit("test_topic", 0, 0, 2) };
+    doReturn(splits).when(mockFormat).getSplitsByRecordsPerSplit(any(), anyLong());
+
+    // Return 3 records
+    ResettableRecordReader<KafkaInputMapperKey, KafkaInputMapperValue> readerForP0 = mockReaderForValueSchemaPairs(
+        Arrays.asList(
+            new ValueSchemaPair(-1, "p0_value0".getBytes()),
+            new ValueSchemaPair(1, "p0_value1".getBytes()),
+            new ValueSchemaPair(1, "p0_value2".getBytes())));
+
+    ResettableRecordReader<KafkaInputMapperKey, KafkaInputMapperValue> readerForP1 =
+        mockReader(Arrays.asList("p1_value0".getBytes(), "p1_value1".getBytes(), "p1_value2".getBytes()));
+
+    doReturn(readerForP0).when(mockFormat).getRecordReader(eq(splits[0]), any(), any());
+    doReturn(readerForP1).when(mockFormat).getRecordReader(eq(splits[1]), any(), any());
+
+    VeniceCompressor mockedCompressor = mock(VeniceCompressor.class);
+    doReturn(CompressionStrategy.GZIP).when(mockedCompressor).getCompressionStrategy();
+    // Just return whatever it receives
+    doAnswer(invocation -> invocation.getArgument(0)).when(mockedCompressor).decompress(any(ByteBuffer.class));
+
+    // Big sampling will collect every record.
+    ZstdDictTrainer mockTrainer1 = mock(ZstdDictTrainer.class);
+    KafkaInputDictTrainer trainer1 = new KafkaInputDictTrainer(
+        mockFormat,
+        Optional.of(mockTrainer1),
+        getParam(1000, CompressionStrategy.GZIP),
+        getCompressorBuilder(mockedCompressor));
+    trainer1.trainDict();
+
+    List<byte[]> allValues = new ArrayList<>(
+        Arrays.asList(
+            "p0_value1".getBytes(),
+            "p0_value2".getBytes(),
+            "p1_value0".getBytes(),
+            "p1_value1".getBytes(),
+            "p1_value2".getBytes()));
+
+    allValues.forEach(v -> {
+      try {
+        verify(mockedCompressor).decompress(eq(ByteBuffer.wrap(v)));
+      } catch (IOException e) {
+        throw new RuntimeException(e);
+      }
+      verify(mockTrainer1).addSample(eq(v));
+    });
+    verify(mockedCompressor, never()).decompress(eq(ByteBuffer.wrap("p0_value0".getBytes())));
+    verify(mockTrainer1, never()).addSample(eq("p0_value0".getBytes()));
   }
 }

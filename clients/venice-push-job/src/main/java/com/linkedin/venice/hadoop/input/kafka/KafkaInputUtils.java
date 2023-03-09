@@ -3,15 +3,21 @@ package com.linkedin.venice.hadoop.input.kafka;
 import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.hadoop.VenicePushJob.SSL_CONFIGURATOR_CLASS_CONFIG;
 
+import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.CompressorFactory;
+import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.UserCredentialsFactory;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerFactoryImpl;
+import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.Properties;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.kafka.clients.CommonClientConfigs;
@@ -47,4 +53,21 @@ public class KafkaInputUtils {
 
     return new KafkaConsumerFactoryImpl(new VeniceProperties(consumerFactoryProperties));
   }
+
+  public static VeniceCompressor getCompressor(
+      CompressorFactory compressorFactory,
+      CompressionStrategy strategy,
+      String kafkaUrl,
+      String topic,
+      VeniceProperties properties) {
+    if (strategy.equals(CompressionStrategy.ZSTD_WITH_DICT)) {
+      Properties props = properties.toProperties();
+      props.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafkaUrl);
+      ByteBuffer dict = DictionaryUtils.readDictionaryFromKafka(topic, new VeniceProperties(props));
+      return compressorFactory
+          .createVersionSpecificCompressorIfNotExist(strategy, topic, ByteUtils.extractByteArray(dict));
+    }
+    return compressorFactory.getCompressor(strategy);
+  }
+
 }
