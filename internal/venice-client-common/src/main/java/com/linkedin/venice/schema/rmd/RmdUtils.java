@@ -46,7 +46,6 @@ public class RmdUtils {
    * Returns the type of union record given tsObject is. Right now it will be either root level long or
    * generic record of per field timestamp.
    * @param tsObject
-   * @return
    */
   public static RmdTimestampType getRmdTimestampType(Object tsObject) {
     if (tsObject instanceof Long) {
