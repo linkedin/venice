@@ -10,6 +10,7 @@ import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIM
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.runVPJ;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendCustomSizeStreamingRecord;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
@@ -162,11 +163,11 @@ public class TestHybridQuota {
       hybridStoreQuotaOnlyRepository.refresh();
 
       // Do an VPJ push
-      TestHybrid.runVPJ(vpjProperties, 1, controllerClient);
+      runVPJ(vpjProperties, 1, controllerClient);
       String topicForStoreVersion1 = Version.composeKafkaTopic(storeName, 1);
 
       // Do an VPJ push
-      TestHybrid.runVPJ(vpjProperties, 2, controllerClient);
+      runVPJ(vpjProperties, 2, controllerClient);
       String topicForStoreVersion2 = Version.composeKafkaTopic(storeName, 2);
       Assert.assertTrue(
           topicManager.isTopicCompactionEnabled(topicForStoreVersion1),
@@ -184,7 +185,7 @@ public class TestHybridQuota {
       assertTrue(offlinePushRepository.containsKafkaTopic(topicForStoreVersion2));
 
       // Do an VPJ push
-      TestHybrid.runVPJ(vpjProperties, 3, controllerClient);
+      runVPJ(vpjProperties, 3, controllerClient);
       String topicForStoreVersion3 = Version.composeKafkaTopic(storeName, 3);
       long storageQuotaInByte = 60000; // A small quota, easily violated.
 
