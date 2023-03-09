@@ -20,9 +20,6 @@
           filters: |
             alpini:
               - 'internal/alpini/**'
-      - name: Run Alpini tests
-        if: steps.check_alpini_files_changed.outputs.alpini == 'true'
-        run: echo "Run Alpini tests here"
       - uses: actions/checkout@v3
         if: steps.check_alpini_files_changed.outputs.alpini == 'true'
         with:
@@ -60,7 +57,7 @@
         with:
           arguments: "$GradleArguments"
       - name: Package Build Artifacts
-        if: success() || failure()
+        if: steps.check_alpini_files_changed.outputs.alpini == 'true' && (success() || failure())
         shell: bash
         run: |
           mkdir ${{ github.job }}-artifacts
@@ -68,7 +65,7 @@
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
-        if: success() || failure()
+        if: steps.check_alpini_files_changed.outputs.alpini == 'true' && (success() || failure())
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}
