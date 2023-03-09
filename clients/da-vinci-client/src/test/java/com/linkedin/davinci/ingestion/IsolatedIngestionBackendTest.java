@@ -24,6 +24,7 @@ import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Supplier;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -55,12 +56,14 @@ public class IsolatedIngestionBackendTest {
       Runnable localCommandRunnable = () -> executionFlag.set(-1);
 
       Map<String, MainTopicIngestionStatus> topicIngestionStatusMap = new VeniceConcurrentHashMap<>();
+      ReentrantReadWriteLock readWriteLock = new ReentrantReadWriteLock();
       doCallRealMethod().when(monitorService).cleanupTopicPartitionState(topic, partition);
       doCallRealMethod().when(monitorService).setVersionPartitionToLocalIngestion(topic, partition);
       doCallRealMethod().when(monitorService).setVersionPartitionToIsolatedIngestion(topic, partition);
       when(monitorService.getTopicPartitionIngestionStatus(topic, partition)).thenCallRealMethod();
 
       when(monitorService.getTopicIngestionStatusMap()).thenReturn(topicIngestionStatusMap);
+      when(monitorService.getForkProcessActionLock()).thenReturn(readWriteLock);
 
       // Resource does not exist. Consumption request should be executed in remote.
       executionFlag.set(0);
@@ -115,9 +118,11 @@ public class IsolatedIngestionBackendTest {
       Runnable localCommandRunnable = () -> executionFlag.set(-1);
 
       Map<String, MainTopicIngestionStatus> topicIngestionStatusMap = new VeniceConcurrentHashMap<>();
+      ReentrantReadWriteLock readWriteLock = new ReentrantReadWriteLock();
       doCallRealMethod().when(monitorService).cleanupTopicPartitionState(topic, partition);
       when(monitorService.getTopicPartitionIngestionStatus(topic, partition)).thenCallRealMethod();
       when(monitorService.getTopicIngestionStatusMap()).thenReturn(topicIngestionStatusMap);
+      when(monitorService.getForkProcessActionLock()).thenReturn(readWriteLock);
 
       /**
        * Test Case (1): Resource metadata in-sync: Expect resource in forked process but found in main process.

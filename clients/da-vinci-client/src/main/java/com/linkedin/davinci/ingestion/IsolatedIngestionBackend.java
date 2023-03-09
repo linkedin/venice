@@ -121,13 +121,9 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker leaderSessionIdChecker) {
     String topicName = storeConfig.getStoreVersionName();
     executeCommandWithRetry(topicName, partition, PROMOTE_TO_LEADER, () -> {
-      boolean result;
-      try (AutoCloseableLock ignored =
-          AutoCloseableSingleLock.of(getMainIngestionMonitorService().getForkProcessLeaderStateActionLock())) {
-        result = mainIngestionRequestClient.promoteToLeader(topicName, partition);
-        if (result) {
-          getMainIngestionMonitorService().setTopicPartitionToLeaderState(topicName, partition);
-        }
+      boolean result = mainIngestionRequestClient.promoteToLeader(topicName, partition);
+      if (result) {
+        getMainIngestionMonitorService().setTopicPartitionToLeaderState(topicName, partition);
       }
       return result;
     }, () -> super.promoteToLeader(storeConfig, partition, leaderSessionIdChecker));
@@ -140,13 +136,9 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker leaderSessionIdChecker) {
     String topicName = storeConfig.getStoreVersionName();
     executeCommandWithRetry(topicName, partition, DEMOTE_TO_STANDBY, () -> {
-      boolean result;
-      try (AutoCloseableLock ignored =
-          AutoCloseableSingleLock.of(getMainIngestionMonitorService().getForkProcessLeaderStateActionLock())) {
-        result = mainIngestionRequestClient.demoteToStandby(topicName, partition);
-        if (result) {
-          getMainIngestionMonitorService().setTopicIngestionToFollowerState(topicName, partition);
-        }
+      boolean result = mainIngestionRequestClient.demoteToStandby(topicName, partition);
+      if (result) {
+        getMainIngestionMonitorService().setTopicIngestionToFollowerState(topicName, partition);
       }
       return result;
     }, () -> super.demoteToStandby(storeConfig, partition, leaderSessionIdChecker));
@@ -311,18 +303,24 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
         // Start consumption should set up resource ingestion status for tracking purpose.
         getMainIngestionMonitorService().setVersionPartitionToIsolatedIngestion(topicName, partition);
       }
-      try {
-        if (remoteCommandSupplier.get()) {
-          return;
+      // Acquire read lock here to guard against race condition between Helix state transition and restart of forked
+      // process.
+      try (AutoCloseableLock ignored =
+          AutoCloseableSingleLock.of(getMainIngestionMonitorService().getForkProcessActionLock().readLock())) {
+        try {
+          if (remoteCommandSupplier.get()) {
+            return;
+          }
+        } catch (Exception e) {
+          if (command.equals(START_CONSUMPTION)) {
+            // Failure in start consumption request should reset the resource ingestion status.
+            LOGGER.warn("Clean up ingestion status for topic: {}, partition: {}.", topicName, partition);
+            getMainIngestionMonitorService().cleanupTopicPartitionState(topicName, partition);
+          }
+          throw e;
         }
-      } catch (Exception e) {
-        if (command.equals(START_CONSUMPTION)) {
-          // Failure in start consumption request should reset the resource ingestion status.
-          LOGGER.warn("Clean up ingestion status for topic: {}, partition: {}.", topicName, partition);
-          getMainIngestionMonitorService().cleanupTopicPartitionState(topicName, partition);
-        }
-        throw e;
       }
+
       /**
        * The idea of this check below is to add resiliency to isolated ingestion metadata management.
        * Although in most of the case the resource ingestion status managed by main / forked process should be in sync,
