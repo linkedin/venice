@@ -1783,6 +1783,10 @@ public class ConfigKeys {
       "unregister.metric.for.deleted.store.enabled";
 
   /**
+   * Config to enable single leader replica disabling.
+   */
+  public static final String DISABLE_ERROR_LEADER_REPLICA_ENABLED = "disable.error.leader.replica.enabled";
+  /**
    * A config to specify the class to use to parse identities at runtime
    */
   public static final String IDENTITY_PARSER_CLASS = "identity.parser.class";

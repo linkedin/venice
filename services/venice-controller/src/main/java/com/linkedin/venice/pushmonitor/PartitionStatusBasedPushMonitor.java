@@ -34,7 +34,8 @@ public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
       ClusterLockManager clusterLockManager,
       String aggregateRealTimeSourceKafkaUrl,
       List<String> childDataCenterKafkaUrls,
-      HelixAdminClient helixAdminClient) {
+      HelixAdminClient helixAdminClient,
+      boolean disableErrorLeaderReplica) {
     super(
         clusterName,
         offlinePushAccessor,
@@ -46,7 +47,8 @@ public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
         clusterLockManager,
         aggregateRealTimeSourceKafkaUrl,
         childDataCenterKafkaUrls,
-        helixAdminClient);
+        helixAdminClient,
+        disableErrorLeaderReplica);
   }
 
   @Override

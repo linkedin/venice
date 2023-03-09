@@ -44,6 +44,7 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_ZK_SHARED_DAVINCI_PUSH_S
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ZK_SHARED_META_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DEPRECATED_TOPIC_MAX_RETENTION_MS;
 import static com.linkedin.venice.ConfigKeys.DEPRECATED_TOPIC_RETENTION_MS;
+import static com.linkedin.venice.ConfigKeys.DISABLE_ERROR_LEADER_REPLICA_ENABLED;
 import static com.linkedin.venice.ConfigKeys.EMERGENCY_SOURCE_REGION;
 import static com.linkedin.venice.ConfigKeys.ERROR_PARTITION_AUTO_RESET_LIMIT;
 import static com.linkedin.venice.ConfigKeys.ERROR_PARTITION_PROCESSING_CYCLE_DELAY;
@@ -242,6 +243,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   private final int storeGraveyardCleanupSleepIntervalBetweenListFetchMinutes;
 
+  private final boolean disableErrorLeaderReplicaEnabled;
+
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
     this.adminPort = props.getInt(ADMIN_PORT);
@@ -432,6 +435,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
         props.getInt(CONTROLLER_STORE_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MINUTES, 15);
     this.clusterDiscoveryD2ServiceName =
         props.getString(CLUSTER_DISCOVERY_D2_SERVICE, ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME);
+    this.disableErrorLeaderReplicaEnabled = props.getBoolean(DISABLE_ERROR_LEADER_REPLICA_ENABLED, true);
   }
 
   private void validateActiveActiveConfigs() {
@@ -501,6 +505,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public long getTopicCleanupSleepIntervalBetweenTopicListFetchMs() {
     return topicCleanupSleepIntervalBetweenTopicListFetchMs;
+  }
+
+  public boolean isDisableErrorLeaderReplicaEnabled() {
+    return disableErrorLeaderReplicaEnabled;
   }
 
   public int getTopicCleanupDelayFactor() {
