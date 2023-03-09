@@ -118,12 +118,13 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       int partition,
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker leaderSessionIdChecker) {
     String topicName = storeConfig.getStoreVersionName();
-    executeCommandWithRetry(
-        topicName,
-        partition,
-        PROMOTE_TO_LEADER,
-        () -> mainIngestionRequestClient.promoteToLeader(topicName, partition),
-        () -> super.promoteToLeader(storeConfig, partition, leaderSessionIdChecker));
+    executeCommandWithRetry(topicName, partition, PROMOTE_TO_LEADER, () -> {
+      boolean result = mainIngestionRequestClient.promoteToLeader(topicName, partition);
+      if (result) {
+        getMainIngestionMonitorService().setTopicPartitionToLeaderState(topicName, partition);
+      }
+      return result;
+    }, () -> super.promoteToLeader(storeConfig, partition, leaderSessionIdChecker));
   }
 
   @Override
@@ -132,12 +133,13 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       int partition,
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker leaderSessionIdChecker) {
     String topicName = storeConfig.getStoreVersionName();
-    executeCommandWithRetry(
-        topicName,
-        partition,
-        DEMOTE_TO_STANDBY,
-        () -> mainIngestionRequestClient.demoteToStandby(topicName, partition),
-        () -> super.demoteToStandby(storeConfig, partition, leaderSessionIdChecker));
+    executeCommandWithRetry(topicName, partition, DEMOTE_TO_STANDBY, () -> {
+      boolean result = mainIngestionRequestClient.demoteToStandby(topicName, partition);
+      if (result) {
+        getMainIngestionMonitorService().setTopicIngestionToFollowerState(topicName, partition);
+      }
+      return result;
+    }, () -> super.demoteToStandby(storeConfig, partition, leaderSessionIdChecker));
   }
 
   @Override

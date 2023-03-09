@@ -23,6 +23,7 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -53,6 +54,7 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   private final ExecutorService longRunningTaskExecutor = Executors.newSingleThreadExecutor();
   private final MainIngestionRequestClient heartbeatClient;
   private final Map<String, MainTopicIngestionStatus> topicIngestionStatusMap = new VeniceConcurrentHashMap<>();
+  private final Map<String, Map<Integer, Boolean>> topicPartitionLeaderStatusMap = new VeniceConcurrentHashMap<>();
   private final List<VeniceNotifier> ingestionNotifierList = new ArrayList<>();
   private final List<VeniceNotifier> pushStatusNotifierList = new ArrayList<>();
 
@@ -175,6 +177,21 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
     return storeRepository;
   }
 
+  public boolean isTopicPartitionInLeaderState(String topicName, int partitionId) {
+    return getTopicPartitionLeaderStatusMap().getOrDefault(topicName, Collections.emptyMap())
+        .getOrDefault(partitionId, false);
+  }
+
+  public void setTopicPartitionToLeaderState(String topicName, int partitionId) {
+    getTopicPartitionLeaderStatusMap().computeIfAbsent(topicName, x -> new VeniceConcurrentHashMap<>())
+        .put(partitionId, true);
+  }
+
+  public void setTopicIngestionToFollowerState(String topicName, int partitionId) {
+    getTopicPartitionLeaderStatusMap().computeIfAbsent(topicName, x -> new VeniceConcurrentHashMap<>())
+        .put(partitionId, false);
+  }
+
   public MainPartitionIngestionStatus getTopicPartitionIngestionStatus(String topicName, int partitionId) {
     MainTopicIngestionStatus topicIngestionStatus = getTopicIngestionStatusMap().get(topicName);
     if (topicIngestionStatus != null) {
@@ -194,14 +211,19 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   }
 
   public void cleanupTopicPartitionState(String topicName, int partitionId) {
-    MainTopicIngestionStatus topicIngestionStatus = getTopicIngestionStatusMap().get(topicName);
-    if (topicIngestionStatus != null) {
-      topicIngestionStatus.removePartitionIngestionStatus(partitionId);
+    MainTopicIngestionStatus partitionIngestionStatus = getTopicIngestionStatusMap().get(topicName);
+    if (partitionIngestionStatus != null) {
+      partitionIngestionStatus.removePartitionIngestionStatus(partitionId);
+    }
+    Map<Integer, Boolean> partitionLeaderStatus = getTopicPartitionLeaderStatusMap().get(topicName);
+    if (partitionLeaderStatus != null) {
+      partitionLeaderStatus.remove(partitionId);
     }
   }
 
   public void cleanupTopicState(String topicName) {
     getTopicIngestionStatusMap().remove(topicName);
+    getTopicPartitionLeaderStatusMap().remove(topicName);
   }
 
   public long getTopicPartitionCount(String topicName) {
@@ -271,6 +293,10 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
               LOGGER
                   .info("Recovered ingestion task in isolated process for topic: {}, partition: {}", topic, partition);
               count.addAndGet(1);
+              if (isTopicPartitionInLeaderState(topic, partition)) {
+                client.promoteToLeader(topic, partition);
+                LOGGER.info("Delivered leader promotion message for topic: {}, partition: {}", topic, partition);
+              }
             } catch (Exception e) {
               LOGGER.warn("Recovery of ingestion failed for topic: {}, partition: {}", topic, partition, e);
             }
@@ -328,6 +354,10 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
 
   public Map<String, MainTopicIngestionStatus> getTopicIngestionStatusMap() {
     return topicIngestionStatusMap;
+  }
+
+  public Map<String, Map<Integer, Boolean>> getTopicPartitionLeaderStatusMap() {
+    return topicPartitionLeaderStatusMap;
   }
 
   IsolatedIngestionProcessStats getIsolatedIngestionProcessStats() {
