@@ -1,7 +1,5 @@
 package com.linkedin.alpini.netty4.ssl;
 
-import static org.testng.Assert.assertTrue;
-
 import com.linkedin.alpini.base.concurrency.Executors;
 import com.linkedin.alpini.base.misc.ExceptionUtil;
 import com.linkedin.alpini.base.misc.Time;
@@ -617,7 +615,7 @@ public class TestSslInitializer {
           }
         });
 
-    waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
       Assert.assertEquals(
           serverSslInitializer.getAvailablePermits(),
           UnaryOperator.identity().equals(serverOp) ? 0 : RESOLVE_EXECUTOR_THREADS);
@@ -646,7 +644,7 @@ public class TestSslInitializer {
             pendingHandshakesNonZero.set(true);
           }
         });
-    waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
       Assert.assertEquals(
           serverSslInitializer.getAvailablePermits(),
           UnaryOperator.identity().equals(serverOp) ? 0 : RESOLVE_EXECUTOR_THREADS);
@@ -729,7 +727,7 @@ public class TestSslInitializer {
             pendingHandshakesMoreThanOne.set(true);
           }
         });
-    waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
       Assert.assertEquals(
           serverSslInitializer.getAvailablePermits(),
           UnaryOperator.identity().equals(serverOp) ? 0 : RESOLVE_EXECUTOR_THREADS);
@@ -758,7 +756,7 @@ public class TestSslInitializer {
             pendingHandshakesMoreThanOne.set(true);
           }
         });
-    waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
       Assert.assertEquals(
           serverSslInitializer.getAvailablePermits(),
           UnaryOperator.identity().equals(serverOp) ? 0 : RESOLVE_EXECUTOR_THREADS);
@@ -791,7 +789,7 @@ public class TestSslInitializer {
             1,
             ctx -> {},
             ctx -> {}));
-    waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
       Assert.assertEquals(
           serverSslInitializer.getAvailablePermits(),
           UnaryOperator.identity().equals(serverOp) ? 0 : RESOLVE_EXECUTOR_THREADS);
@@ -814,7 +812,7 @@ public class TestSslInitializer {
             1,
             ctx -> {},
             ctx -> {}));
-    waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
       Assert.assertEquals(
           serverSslInitializer.getAvailablePermits(),
           UnaryOperator.identity().equals(serverOp) ? 0 : RESOLVE_EXECUTOR_THREADS);
@@ -845,7 +843,7 @@ public class TestSslInitializer {
             1,
             ctx -> {},
             ctx -> {}));
-    waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
       Assert.assertEquals(
           serverSslInitializer.getAvailablePermits(),
           UnaryOperator.identity().equals(serverOp) ? 0 : RESOLVE_EXECUTOR_THREADS);
@@ -868,7 +866,7 @@ public class TestSslInitializer {
             1,
             ctx -> {},
             ctx -> {}));
-    waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
       Assert.assertEquals(
           serverSslInitializer.getAvailablePermits(),
           UnaryOperator.identity().equals(serverOp) ? 0 : RESOLVE_EXECUTOR_THREADS);
@@ -899,7 +897,7 @@ public class TestSslInitializer {
             1,
             ctx -> {},
             ctx -> {}));
-    waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
       Assert.assertEquals(
           serverSslInitializer.getAvailablePermits(),
           UnaryOperator.identity().equals(serverOp) ? 0 : RESOLVE_EXECUTOR_THREADS);
@@ -922,7 +920,7 @@ public class TestSslInitializer {
             1,
             ctx -> {},
             ctx -> {}));
-    waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
       Assert.assertEquals(
           serverSslInitializer.getAvailablePermits(),
           UnaryOperator.identity().equals(serverOp) ? 0 : RESOLVE_EXECUTOR_THREADS);
@@ -984,7 +982,7 @@ public class TestSslInitializer {
       Assert.assertTrue(protocol.isDone());
       Assert.assertEquals(protocol.getNow(null), "TLSv1.2");
     }
-    waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
       Assert.assertEquals(
           serverSslInitializer.getAvailablePermits(),
           UnaryOperator.identity().equals(serverOp) ? 0 : RESOLVE_EXECUTOR_THREADS);
@@ -1014,7 +1012,7 @@ public class TestSslInitializer {
       Assert.assertTrue(protocol.isDone());
       Assert.assertEquals(protocol.getNow(null), "TLSv1.2");
     }
-    waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
       Assert.assertEquals(
           serverSslInitializer.getAvailablePermits(),
           UnaryOperator.identity().equals(serverOp) ? 0 : RESOLVE_EXECUTOR_THREADS);
@@ -1102,58 +1100,5 @@ public class TestSslInitializer {
     Assert.assertTrue(SslInitializer.isNoSslHandshake(SslInitializer.NO_SSL_HANDSHAKE.cause()));
     Assert.assertFalse(
         SslInitializer.isNoSslHandshake(ExceptionUtil.withoutStackTrace(new SSLHandshakeException("No SSL"))));
-  }
-
-  private static void waitForNonDeterministicAssertion(
-      long timeout,
-      TimeUnit timeoutUnit,
-      TestUtils.NonDeterministicAssertion assertion) throws AssertionError {
-    waitForNonDeterministicAssertion(timeout, timeoutUnit, false, false, assertion);
-  }
-
-  // Copied these two functions from Venice as we want to keep Alpini modules isolated from Venice modules
-  private static void waitForNonDeterministicAssertion(
-      long timeout,
-      TimeUnit timeoutUnit,
-      boolean exponentialBackOff,
-      boolean retryOnThrowable,
-      TestUtils.NonDeterministicAssertion assertion) throws AssertionError {
-    final long ND_ASSERTION_MIN_WAIT_TIME_MS = 100;
-    final long ND_ASSERTION_MAX_WAIT_TIME_MS = 3000;
-
-    long startTimeMs = System.currentTimeMillis();
-    long nextDelayMs = ND_ASSERTION_MIN_WAIT_TIME_MS;
-    long deadlineMs = startTimeMs + timeoutUnit.toMillis(timeout);
-    try {
-      for (;;) {
-        try {
-          assertion.execute();
-          return;
-        } catch (Throwable e) {
-          long remainingMs = deadlineMs - System.currentTimeMillis();
-          if (remainingMs < nextDelayMs || !(retryOnThrowable || e instanceof AssertionError)) {
-            throw (e instanceof AssertionError ? (AssertionError) e : new AssertionError(e));
-          }
-          LOG.info("Non-deterministic assertion not met: {}. Will retry again in {} ms.", e, nextDelayMs);
-          assertTrue(sleep(nextDelayMs), "Waiting for non-deterministic assertion was interrupted.");
-          if (exponentialBackOff) {
-            nextDelayMs = Math.min(nextDelayMs * 2, remainingMs - nextDelayMs);
-            nextDelayMs = Math.min(nextDelayMs, ND_ASSERTION_MAX_WAIT_TIME_MS);
-          }
-        }
-      }
-    } finally {
-      LOG.info("waiting took {} ms.", System.currentTimeMillis() - startTimeMs);
-    }
-  }
-
-  private static boolean sleep(long millis) {
-    try {
-      Thread.sleep(millis);
-      return true;
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      return false;
-    }
   }
 }
