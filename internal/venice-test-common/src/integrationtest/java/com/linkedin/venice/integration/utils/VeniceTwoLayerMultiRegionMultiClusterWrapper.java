@@ -136,14 +136,14 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
       parentControllerProps.setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
       parentControllerPropertiesOverride = Optional.of(new VeniceProperties(parentControllerProps));
 
-      Map<String, String> clusterToControllerD2 = new HashMap<>();
+      Map<String, String> clusterToRouterD2 = new HashMap<>();
       Map<String, String> clusterToServerD2 = new HashMap<>();
       String[] clusterNames = new String[numberOfClustersInEachRegion];
       for (int i = 0; i < numberOfClustersInEachRegion; i++) {
         String clusterName = "venice-cluster" + i;
         clusterNames[i] = clusterName;
-        String controllerD2ServiceName = "venice-" + i;
-        clusterToControllerD2.put(clusterName, controllerD2ServiceName);
+        String routerD2ServiceName = "venice-" + i;
+        clusterToRouterD2.put(clusterName, routerD2ServiceName);
         String serverD2ServiceName = Utils.getUniqueString(clusterName + "_d2");
         clusterToServerD2.put(clusterName, serverD2ServiceName);
       }
@@ -251,7 +251,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
               .replicationFactor(replicationFactor)
               .childControllers(childControllers)
               .extraProperties(finalParentControllerProperties)
-              .clusterToD2(clusterToControllerD2)
+              .clusterToD2(clusterToRouterD2)
               .build();
       // Create parentControllers for multi-cluster
       for (int i = 0; i < numberOfParentControllers; i++) {

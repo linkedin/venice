@@ -140,8 +140,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       for (int i = 0; i < options.getNumberOfClusters(); i++) {
         // Create a wrapper for cluster without controller.
         vccBuilder.clusterName(clusterNames[i])
-            .serverD2ServiceName(
-                clusterToServerD2.getOrDefault(clusterNames[i], Utils.getUniqueString(clusterNames[i] + "_d2")));
+            .serverD2ServiceName(clusterToServerD2.getOrDefault(clusterNames[i], null));
         VeniceClusterWrapper clusterWrapper = ServiceFactory.getVeniceCluster(vccBuilder.build());
         controllerMap.values().forEach(clusterWrapper::addVeniceControllerWrapper);
         clusterWrapperMap.put(clusterWrapper.getClusterName(), clusterWrapper);
