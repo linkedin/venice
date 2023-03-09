@@ -23,7 +23,7 @@ import org.testng.annotations.Test;
 
 
 public class CachedKafkaMetadataGetterTest {
-  private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @Test
   public void testGetEarliestOffset() {

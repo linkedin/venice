@@ -51,7 +51,7 @@ public class RealTimeTopicSwitcherTest {
   private VeniceWriterFactory mockVeniceWriterFactory;
   private String aggregateRealTimeSourceKafkaUrl = "aggregate-real-time-source-kafka-url";
 
-  private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @BeforeMethod
   public void setUp() {

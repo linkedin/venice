@@ -45,8 +45,7 @@ public class TestTopicCleanupService {
   private HelixReadOnlyStoreConfigRepository storeConfigRepository;
   private TopicManager topicManager;
   private TopicCleanupService topicCleanupService;
-
-  private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @BeforeMethod
   public void setUp() {
