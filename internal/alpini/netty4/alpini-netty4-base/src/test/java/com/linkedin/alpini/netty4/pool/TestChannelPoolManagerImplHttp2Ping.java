@@ -135,7 +135,10 @@ public class TestChannelPoolManagerImplHttp2Ping {
     // to send http2 ping. In particular, for the local pool impl, it calls pool.acquire() 4 times
     // for pool initialization.
     if (!enableHttp2Ping || isPoolClosing) {
-      Mockito.verify(pool, useGlobalPool ? Mockito.never() : Mockito.times(numOfExecutors)).acquire();
+      TestUtils.waitForNonDeterministicAssertion(
+          1,
+          TimeUnit.SECONDS,
+          () -> Mockito.verify(pool, useGlobalPool ? Mockito.never() : Mockito.times(numOfExecutors)).acquire());
     }
 
     // reset
