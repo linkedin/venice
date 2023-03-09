@@ -14,6 +14,8 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
+import com.linkedin.venice.utils.locks.AutoCloseableSingleLock;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelOption;
@@ -26,12 +28,13 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -75,7 +78,7 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   private long connectionTimeoutMs;
   private volatile long latestHeartbeatTimestamp = -1;
 
-  private CountDownLatch forkProcessActionLatch = new CountDownLatch(0);
+  private Lock forkProcessLeaderStateActionLock = new ReentrantLock();
 
   public MainIngestionMonitorService(IsolatedIngestionBackend ingestionBackend, VeniceConfigLoader configLoader) {
     this.configLoader = configLoader;
@@ -281,9 +284,6 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   }
 
   int resumeOngoingIngestionTasks() {
-    // Place a latch to block incoming Helix state transitions to forked process until resuming ongoing ingestion tasks
-    // completed.
-    forkProcessActionLatch = new CountDownLatch(1);
     AtomicInteger count = new AtomicInteger();
     try (MainIngestionRequestClient client = createClient()) {
       Map<String, MainTopicIngestionStatus> topicIngestionStatusMap = getTopicIngestionStatusMap();
@@ -299,9 +299,11 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
               LOGGER
                   .info("Recovered ingestion task in isolated process for topic: {}, partition: {}", topic, partition);
               count.addAndGet(1);
-              if (isTopicPartitionInLeaderState(topic, partition)) {
-                client.promoteToLeader(topic, partition);
-                LOGGER.info("Delivered leader promotion message for topic: {}, partition: {}", topic, partition);
+              try (AutoCloseableLock ignored = AutoCloseableSingleLock.of(getForkProcessLeaderStateActionLock())) {
+                if (isTopicPartitionInLeaderState(topic, partition)) {
+                  client.promoteToLeader(topic, partition);
+                  LOGGER.info("Delivered leader promotion message for topic: {}, partition: {}", topic, partition);
+                }
               }
             } catch (Exception e) {
               LOGGER.warn("Recovery of ingestion failed for topic: {}, partition: {}", topic, partition, e);
@@ -311,8 +313,6 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
       });
       LOGGER.info("Resumed {} topic partition ingestion tasks.", count.get());
     }
-    // Release the latch so all pending Helix state transitions to forked process will be resumed.
-    forkProcessActionLatch.countDown();
     return count.get();
   }
 
@@ -372,7 +372,7 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
     return isolatedIngestionProcessStats;
   }
 
-  public CountDownLatch getForkProcessActionLatch() {
-    return forkProcessActionLatch;
+  public Lock getForkProcessLeaderStateActionLock() {
+    return forkProcessLeaderStateActionLock;
   }
 }

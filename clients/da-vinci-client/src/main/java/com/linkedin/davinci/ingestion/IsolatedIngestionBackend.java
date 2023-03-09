@@ -25,6 +25,8 @@ import com.linkedin.venice.ingestion.protocol.enums.IngestionComponentType;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
+import com.linkedin.venice.utils.locks.AutoCloseableSingleLock;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
 import java.util.function.Supplier;
@@ -119,9 +121,13 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker leaderSessionIdChecker) {
     String topicName = storeConfig.getStoreVersionName();
     executeCommandWithRetry(topicName, partition, PROMOTE_TO_LEADER, () -> {
-      boolean result = mainIngestionRequestClient.promoteToLeader(topicName, partition);
-      if (result) {
-        getMainIngestionMonitorService().setTopicPartitionToLeaderState(topicName, partition);
+      boolean result;
+      try (AutoCloseableLock ignored =
+          AutoCloseableSingleLock.of(getMainIngestionMonitorService().getForkProcessLeaderStateActionLock())) {
+        result = mainIngestionRequestClient.promoteToLeader(topicName, partition);
+        if (result) {
+          getMainIngestionMonitorService().setTopicPartitionToLeaderState(topicName, partition);
+        }
       }
       return result;
     }, () -> super.promoteToLeader(storeConfig, partition, leaderSessionIdChecker));
@@ -134,9 +140,13 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker leaderSessionIdChecker) {
     String topicName = storeConfig.getStoreVersionName();
     executeCommandWithRetry(topicName, partition, DEMOTE_TO_STANDBY, () -> {
-      boolean result = mainIngestionRequestClient.demoteToStandby(topicName, partition);
-      if (result) {
-        getMainIngestionMonitorService().setTopicIngestionToFollowerState(topicName, partition);
+      boolean result;
+      try (AutoCloseableLock ignored =
+          AutoCloseableSingleLock.of(getMainIngestionMonitorService().getForkProcessLeaderStateActionLock())) {
+        result = mainIngestionRequestClient.demoteToStandby(topicName, partition);
+        if (result) {
+          getMainIngestionMonitorService().setTopicIngestionToFollowerState(topicName, partition);
+        }
       }
       return result;
     }, () -> super.demoteToStandby(storeConfig, partition, leaderSessionIdChecker));
@@ -291,13 +301,6 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
         return;
       }
       LOGGER.info("Sending command {} of topic: {}, partition: {} to fork process.", command, topicName, partition);
-      try {
-        // Make sure forked process is not going through restart process.
-        getMainIngestionMonitorService().getForkProcessActionLatch().await();
-      } catch (InterruptedException e) {
-        LOGGER.warn("Waiting forked process action latch is interrupted.", e);
-        Thread.currentThread().interrupt();
-      }
       if (command.equals(START_CONSUMPTION)) {
         /**
          * StartConsumption operation may take long time to wait for non-existence store/version until it times out.

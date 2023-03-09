@@ -11,6 +11,8 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Collections;
 import java.util.Map;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -41,9 +43,11 @@ public class MainIngestionMonitorServiceTest {
     when(monitorService.getTopicIngestionStatusMap()).thenReturn(topicIngestionStatusMap);
     when(monitorService.getTopicPartitionLeaderStatusMap()).thenReturn(topicPartitionLeaderStatusMap);
 
+    Lock lock = new ReentrantLock();
     when(monitorService.createClient()).thenReturn(client);
     when(monitorService.resumeOngoingIngestionTasks()).thenCallRealMethod();
     when(monitorService.isTopicPartitionInLeaderState(anyString(), anyInt())).thenCallRealMethod();
+    when(monitorService.getForkProcessLeaderStateActionLock()).thenReturn(lock);
     Assert.assertTrue(monitorService.isTopicPartitionInLeaderState(topic, 3));
     Assert.assertEquals(monitorService.resumeOngoingIngestionTasks(), 2);
     verify(client, times(0)).promoteToLeader(topic, 2);
