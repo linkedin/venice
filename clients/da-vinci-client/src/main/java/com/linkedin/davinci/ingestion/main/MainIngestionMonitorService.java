@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -73,6 +74,8 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
    */
   private long connectionTimeoutMs;
   private volatile long latestHeartbeatTimestamp = -1;
+
+  private CountDownLatch forkProcessActionLatch = new CountDownLatch(0);
 
   public MainIngestionMonitorService(IsolatedIngestionBackend ingestionBackend, VeniceConfigLoader configLoader) {
     this.configLoader = configLoader;
@@ -278,6 +281,9 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   }
 
   int resumeOngoingIngestionTasks() {
+    // Place a latch to block incoming Helix state transitions to forked process until resuming ongoing ingestion tasks
+    // completed.
+    forkProcessActionLatch = new CountDownLatch(1);
     AtomicInteger count = new AtomicInteger();
     try (MainIngestionRequestClient client = createClient()) {
       Map<String, MainTopicIngestionStatus> topicIngestionStatusMap = getTopicIngestionStatusMap();
@@ -305,6 +311,8 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
       });
       LOGGER.info("Resumed {} topic partition ingestion tasks.", count.get());
     }
+    // Release the latch so all pending Helix state transitions to forked process will be resumed.
+    forkProcessActionLatch.countDown();
     return count.get();
   }
 
@@ -362,5 +370,9 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
 
   IsolatedIngestionProcessStats getIsolatedIngestionProcessStats() {
     return isolatedIngestionProcessStats;
+  }
+
+  public CountDownLatch getForkProcessActionLatch() {
+    return forkProcessActionLatch;
   }
 }

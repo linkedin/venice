@@ -291,6 +291,13 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
         return;
       }
       LOGGER.info("Sending command {} of topic: {}, partition: {} to fork process.", command, topicName, partition);
+      try {
+        // Make sure forked process is not going through restart process.
+        getMainIngestionMonitorService().getForkProcessActionLatch().await();
+      } catch (InterruptedException e) {
+        LOGGER.warn("Waiting forked process action latch is interrupted.", e);
+        Thread.currentThread().interrupt();
+      }
       if (command.equals(START_CONSUMPTION)) {
         /**
          * StartConsumption operation may take long time to wait for non-existence store/version until it times out.
