@@ -31,6 +31,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -93,7 +94,7 @@ public class StorageNodeComputeTest {
   }
 
   private VeniceClusterWrapper veniceCluster;
-  private Map<AvroImpl, Map<SerializerReuse, AvroGenericStoreClient<String, Object>>> clientsMap = new HashMap<>();
+  private Map<SerializerReuse, AvroGenericStoreClient<String, Object>> clientsMap = new HashMap<>();
   private int valueSchemaId;
   private String storeName;
 
@@ -138,17 +139,14 @@ public class StorageNodeComputeTest {
     keySerializer = new VeniceAvroKafkaSerializer(keySchema);
     valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_FOR_COMPUTE);
 
-    for (AvroImpl fastAvro: AvroImpl.values()) {
-      for (SerializerReuse serializerReuse: SerializerReuse.values()) {
-        clientsMap.computeIfAbsent(fastAvro, ignored -> new HashMap<>())
-            .put(
-                serializerReuse,
-                ClientFactory.getAndStartGenericAvroClient(
-                    ClientConfig.defaultGenericClientConfig(storeName)
-                        .setVeniceURL(routerAddr)
-                        .setUseFastAvro(fastAvro.config)
-                        .setReuseObjectsForSerialization(serializerReuse.config)));
-      }
+    for (SerializerReuse serializerReuse: SerializerReuse.values()) {
+      clientsMap.put(
+          serializerReuse,
+          ClientFactory.getAndStartGenericAvroClient(
+              ClientConfig.defaultGenericClientConfig(storeName)
+                  .setVeniceURL(routerAddr)
+                  .setUseFastAvro(true)
+                  .setReuseObjectsForSerialization(serializerReuse.config)));
     }
 
     compressorFactory = new CompressorFactory();
@@ -159,8 +157,7 @@ public class StorageNodeComputeTest {
     if (veniceCluster != null) {
       veniceCluster.close();
     }
-    clientsMap.forEach(
-        (ignored, clientMap) -> clientMap.forEach((ignored2, client) -> Utils.closeQuietlyWithErrorLogged(client)));
+    clientsMap.forEach((ignored2, client) -> Utils.closeQuietlyWithErrorLogged(client));
     Utils.closeQuietlyWithErrorLogged(compressorFactory);
   }
 
@@ -172,11 +169,9 @@ public class StorageNodeComputeTest {
 
     List<Object[]> returnList = new ArrayList<>();
     for (CompressionStrategy compressionStrategy: compressionStrategies) {
-      for (AvroImpl fastAvro: AvroImpl.values()) {
-        for (ValueSize valueLargerThan1MB: ValueSize.values()) {
-          for (SerializerReuse serializerReuse: SerializerReuse.values()) {
-            returnList.add(new Object[] { compressionStrategy, fastAvro, serializerReuse, valueLargerThan1MB });
-          }
+      for (ValueSize valueLargerThan1MB: ValueSize.values()) {
+        for (SerializerReuse serializerReuse: SerializerReuse.values()) {
+          returnList.add(new Object[] { compressionStrategy, serializerReuse, valueLargerThan1MB });
         }
       }
     }
@@ -187,7 +182,6 @@ public class StorageNodeComputeTest {
   @Test(timeOut = 30000, dataProvider = "testPermutations")
   public void testCompute(
       CompressionStrategy compressionStrategy,
-      AvroImpl fastAvro,
       SerializerReuse serializerReuse,
       ValueSize valueLargerThan1MB) throws Exception {
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
@@ -220,7 +214,7 @@ public class StorageNodeComputeTest {
           valueLargerThan1MB.config);
     }
 
-    AvroGenericStoreClient<String, Object> storeClient = clientsMap.get(fastAvro).get(serializerReuse);
+    AvroGenericStoreClient<String, Object> storeClient = clientsMap.get(serializerReuse);
 
     // Run multiple rounds
     int rounds = 100;
@@ -314,9 +308,10 @@ public class StorageNodeComputeTest {
     final int pushVersion = newVersion.getVersion();
 
     try (
-        VeniceWriter<Object, byte[], byte[]> veniceWriter =
-            TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress())
-                .createVeniceWriter(newVersion.getKafkaTopic(), keySerializer, new DefaultSerializer());
+        VeniceWriter<Object, byte[], byte[]> veniceWriter = TestUtils
+            .getVeniceWriterFactory(veniceCluster.getKafka().getAddress())
+            .createVeniceWriter(
+                new VeniceWriterOptions.Builder(newVersion.getKafkaTopic()).setKeySerializer(keySerializer).build());
         AvroGenericStoreClient<String, Object> storeClient = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerAddr))) {
 

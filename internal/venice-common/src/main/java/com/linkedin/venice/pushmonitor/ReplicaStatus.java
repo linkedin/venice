@@ -7,6 +7,8 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.STARTED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.TOPIC_SWITCH_RECEIVED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.isIncrementalPushStatus;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.linkedin.venice.utils.Pair;
 import java.time.LocalDateTime;
 import java.util.Iterator;
@@ -32,7 +34,8 @@ public class ReplicaStatus {
 
   private List<StatusSnapshot> statusHistory;
 
-  public ReplicaStatus(String instanceId) {
+  @JsonCreator
+  public ReplicaStatus(@JsonProperty("instanceId") String instanceId) {
     this.instanceId = instanceId;
     statusHistory = new LinkedList<>();
   }

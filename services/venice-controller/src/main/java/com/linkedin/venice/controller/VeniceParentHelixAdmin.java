@@ -23,7 +23,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.FUTURE_VE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_DISK_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.LEADER_FOLLOWER_MODEL_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MIGRATION_DUPLICATE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_SOURCE_FABRIC;
@@ -169,6 +168,7 @@ import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.persona.StoragePersona;
+import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
@@ -238,7 +238,6 @@ import org.apache.avro.Schema;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.Validate;
 import org.apache.http.HttpStatus;
-import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -500,22 +499,25 @@ public class VeniceParentHelixAdmin implements Admin {
        * 2. Data out of order;
        * 3. Data duplication;
        */
-      VeniceWriterOptions options = new VeniceWriterOptions.Builder(topicName).setTime(getTimer())
-          .setPartitionCount(Optional.of(AdminTopicUtils.PARTITION_NUM_FOR_ADMIN_TOPIC))
-          .build();
-
-      return getVeniceWriterFactory().createVeniceWriter(options);
+      return getVeniceWriterFactory().createVeniceWriter(
+          new VeniceWriterOptions.Builder(topicName).setTime(getTimer())
+              .setPartitionCount(AdminTopicUtils.PARTITION_NUM_FOR_ADMIN_TOPIC)
+              .build());
     });
 
     if (!getMultiClusterConfigs().getPushJobStatusStoreClusterName().isEmpty()
         && clusterName.equals(getMultiClusterConfigs().getPushJobStatusStoreClusterName())) {
+      // TODO: When we plan to enable active-active push details store in future, we need to enable it by default.
+      UpdateStoreQueryParams updateStoreQueryParams =
+          new UpdateStoreQueryParams().setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE);
       asyncSetupForInternalRTStore(
           getMultiClusterConfigs().getPushJobStatusStoreClusterName(),
           VeniceSystemStoreUtils.getPushJobDetailsStoreName(),
           PUSH_JOB_DETAILS_STORE_DESCRIPTOR + VeniceSystemStoreUtils.getPushJobDetailsStoreName(),
           PushJobStatusRecordKey.getClassSchema().toString(),
           PushJobDetails.getClassSchema().toString(),
-          getMultiClusterConfigs().getControllerConfig(clusterName).getNumberOfPartition());
+          getMultiClusterConfigs().getControllerConfig(clusterName).getNumberOfPartition(),
+          updateStoreQueryParams);
     }
 
     maybeSetupBatchJobLivenessHeartbeatStore(clusterName);
@@ -526,13 +528,17 @@ public class VeniceParentHelixAdmin implements Admin {
     final String batchJobHeartbeatStoreName = AvroProtocolDefinition.BATCH_JOB_HEARTBEAT.getSystemStoreName();
 
     if (Objects.equals(currClusterName, batchJobHeartbeatStoreCluster)) {
+      UpdateStoreQueryParams updateStoreQueryParams =
+          new UpdateStoreQueryParams().setHybridDataReplicationPolicy(DataReplicationPolicy.ACTIVE_ACTIVE)
+              .setActiveActiveReplicationEnabled(true);
       asyncSetupForInternalRTStore(
           currClusterName,
           batchJobHeartbeatStoreName,
           BATCH_JOB_HEARTBEAT_STORE_DESCRIPTOR + batchJobHeartbeatStoreName,
           BatchJobHeartbeatKey.getClassSchema().toString(),
           BatchJobHeartbeatValue.getClassSchema().toString(),
-          getMultiClusterConfigs().getControllerConfig(currClusterName).getNumberOfPartition());
+          getMultiClusterConfigs().getControllerConfig(currClusterName).getNumberOfPartition(),
+          updateStoreQueryParams);
     } else {
       LOGGER.info(
           "Skip creating the batch job liveness heartbeat store: {} in cluster: {} since the designated cluster is: {}",
@@ -553,7 +559,8 @@ public class VeniceParentHelixAdmin implements Admin {
       String storeDescriptor,
       String keySchema,
       String valueSchema,
-      int partitionCount) {
+      int partitionCount,
+      UpdateStoreQueryParams updateStoreQueryParams) {
 
     asyncSetupExecutor.submit(() -> {
       int retryCount = 0;
@@ -569,7 +576,8 @@ public class VeniceParentHelixAdmin implements Admin {
               storeDescriptor,
               keySchema,
               valueSchema,
-              partitionCount);
+              partitionCount,
+              updateStoreQueryParams);
         } catch (VeniceException e) {
           // Verification attempts (i.e. a controller running this routine but is not the leader of the cluster) do not
           // count towards the retry count.
@@ -614,7 +622,8 @@ public class VeniceParentHelixAdmin implements Admin {
       String storeDescriptor,
       String keySchema,
       String valueSchema,
-      int partitionCount) {
+      int partitionCount,
+      UpdateStoreQueryParams updateStoreQueryParams) {
     boolean storeReady = false;
     if (isLeaderControllerFor(clusterName)) {
       // We should only perform the store validation if the current controller is the leader controller of the requested
@@ -631,11 +640,13 @@ public class VeniceParentHelixAdmin implements Admin {
       }
 
       if (!store.isHybrid()) {
-        UpdateStoreQueryParams updateStoreQueryParams;
-        updateStoreQueryParams = new UpdateStoreQueryParams();
-        updateStoreQueryParams.setHybridOffsetLagThreshold(100L);
-        updateStoreQueryParams.setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(7));
-        updateStoreQueryParams.setHybridDataReplicationPolicy(DataReplicationPolicy.AGGREGATE);
+        // Make sure we do not override hybrid configs passed in.
+        if (!updateStoreQueryParams.getHybridOffsetLagThreshold().isPresent()) {
+          updateStoreQueryParams.setHybridOffsetLagThreshold(100L);
+        }
+        if (!updateStoreQueryParams.getHybridRewindSeconds().isPresent()) {
+          updateStoreQueryParams.setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(7));
+        }
         updateStore(clusterName, storeName, updateStoreQueryParams);
         store = getStore(clusterName, storeName);
         if (!store.isHybrid()) {
@@ -731,11 +742,11 @@ public class VeniceParentHelixAdmin implements Admin {
         VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterMap.get(clusterName);
         byte[] serializedValue = adminOperationSerializer.serialize(message);
         try {
-          Future<RecordMetadata> future = veniceWriter
+          Future<PubSubProduceResult> future = veniceWriter
               .put(emptyKeyByteArr, serializedValue, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-          RecordMetadata meta = future.get();
+          PubSubProduceResult produceResult = future.get();
 
-          LOGGER.info("Sent message: {} to kafka, offset: {}", message, meta.offset());
+          LOGGER.info("Sent message: {} to kafka, offset: {}", message, produceResult.getOffset());
         } catch (Exception e) {
           throw new VeniceException("Got exception during sending message to Kafka -- " + e.getMessage(), e);
         }
@@ -1744,7 +1755,7 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public Map<String, Integer> getCurrentVersionsForMultiColos(String clusterName, String storeName) {
     Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
-    return getCurrentVersionForMultiColos(clusterName, storeName, controllerClients);
+    return getCurrentVersionForMultiRegions(clusterName, storeName, controllerClients);
   }
 
   /**
@@ -1766,7 +1777,8 @@ public class VeniceParentHelixAdmin implements Admin {
           response.getStore().getKafkaBrokerUrl());
     }
     // fabricName not present, get the largest version info among the child colos.
-    Map<String, Integer> currentVersionsMap = getCurrentVersionForMultiColos(clusterName, storeName, controllerClients);
+    Map<String, Integer> currentVersionsMap =
+        getCurrentVersionForMultiRegions(clusterName, storeName, controllerClients);
     int largestVersion = Integer.MIN_VALUE;
     String colo = null;
     for (Map.Entry<String, Integer> mapEntry: currentVersionsMap.entrySet()) {
@@ -1819,7 +1831,7 @@ public class VeniceParentHelixAdmin implements Admin {
     return Store.NON_EXISTING_VERSION;
   }
 
-  Map<String, Integer> getCurrentVersionForMultiColos(
+  Map<String, Integer> getCurrentVersionForMultiRegions(
       String clusterName,
       String storeName,
       Map<String, ControllerClient> controllerClients) {
@@ -2149,26 +2161,6 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * Expectation for this API: Also send out an admin message to admin channel.
-   */
-  @Override
-  public void setLeaderFollowerModelEnabled(String clusterName, String storeName, boolean leaderFollowerModelEnabled) {
-    // place holder
-    // will add it in the following RB
-  }
-
-  /**
-   * Only change the configs in parent; do not send it to admin channel.
-   */
-  @Override
-  public void enableLeaderFollowerModelLocally(
-      String clusterName,
-      String storeName,
-      boolean leaderFollowerModelEnabled) {
-    getVeniceHelixAdmin().setLeaderFollowerModelEnabled(clusterName, storeName, leaderFollowerModelEnabled);
-  }
-
-  /**
    * Update a target store properties by first applying the provided deltas and then sending
    * {@link AdminMessageType#UPDATE_STORE UPDATE_STORE} admin message.
    * @param clusterName name of the Venice cluster.
@@ -2208,7 +2200,6 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Integer> replicationMetadataVersionID = params.getReplicationMetadataVersionID();
       Optional<Boolean> readComputationEnabled = params.getReadComputationEnabled();
       Optional<Integer> bootstrapToOnlineTimeoutInHours = params.getBootstrapToOnlineTimeoutInHours();
-      Optional<Boolean> leaderFollowerModelEnabled = params.getLeaderFollowerModelEnabled();
       Optional<BackupStrategy> backupStrategy = params.getBackupStrategy();
       Optional<Boolean> autoSchemaRegisterPushJobEnabled = params.getAutoSchemaRegisterPushJobEnabled();
       Optional<Boolean> hybridStoreDiskQuotaEnabled = params.getHybridStoreDiskQuotaEnabled();
@@ -2266,11 +2257,6 @@ public class VeniceParentHelixAdmin implements Admin {
        * TODO: We should build an UpdateStoreHelper that takes current store config and update command as input, and
        *       return whether the update command is valid.
        */
-      validateNativeReplicationEnableConfigs(
-          nativeReplicationEnabled,
-          leaderFollowerModelEnabled,
-          currStore,
-          clusterName);
       validateActiveActiveReplicationEnableConfigs(activeActiveReplicationEnabled, nativeReplicationEnabled, currStore);
 
       setStore.nativeReplicationEnabled =
@@ -2443,9 +2429,7 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.bootstrapToOnlineTimeoutInHours = bootstrapToOnlineTimeoutInHours
           .map(addToUpdatedConfigList(updatedConfigsList, BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS))
           .orElseGet(currStore::getBootstrapToOnlineTimeoutInHours);
-      setStore.leaderFollowerModelEnabled =
-          leaderFollowerModelEnabled.map(addToUpdatedConfigList(updatedConfigsList, LEADER_FOLLOWER_MODEL_ENABLED))
-              .orElseGet(currStore::isLeaderFollowerModelEnabled);
+      setStore.leaderFollowerModelEnabled = true; // do not mess up during upgrades
       setStore.backupStrategy = (backupStrategy.map(addToUpdatedConfigList(updatedConfigsList, BACKUP_STRATEGY))
           .orElse(currStore.getBackupStrategy())).ordinal();
 
@@ -2646,30 +2630,6 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public void updateClusterConfig(String clusterName, UpdateClusterConfigQueryParams params) {
     getVeniceHelixAdmin().updateClusterConfig(clusterName, params);
-  }
-
-  private void validateNativeReplicationEnableConfigs(
-      Optional<Boolean> nativeReplicationEnabledOptional,
-      Optional<Boolean> leaderFollowerModelEnabled,
-      Store store,
-      String clusterName) {
-    final boolean nativeReplicationEnabled = nativeReplicationEnabledOptional.orElse(false);
-    if (!nativeReplicationEnabled) {
-      return;
-    }
-
-    final boolean isLeaderFollowerModelEnabled =
-        (!leaderFollowerModelEnabled.isPresent() && store.isLeaderFollowerModelEnabled())
-            || (leaderFollowerModelEnabled.isPresent() && leaderFollowerModelEnabled.get());
-    final boolean isLfModelDependencyCheckDisabled = getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName)
-        .getConfig()
-        .isLfModelDependencyCheckDisabled();
-    if (!isLeaderFollowerModelEnabled && !isLfModelDependencyCheckDisabled) {
-      throw new VeniceHttpException(
-          HttpStatus.SC_BAD_REQUEST,
-          "Native Replication cannot be enabled for store " + store.getName() + " since it's not on L/F state model",
-          ErrorType.INVALID_CONFIG);
-    }
   }
 
   private void validateActiveActiveReplicationEnableConfigs(
@@ -3283,7 +3243,7 @@ public class VeniceParentHelixAdmin implements Admin {
    * Unsupported operation in the parent controller.
    */
   @Override
-  public Map<String, String> getStorageNodesStatus(String clusterName) {
+  public Map<String, String> getStorageNodesStatus(String clusterName, boolean enableReplica) {
     throw new VeniceUnsupportedOperationException("getStorageNodesStatus");
   }
 
@@ -3487,11 +3447,11 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * @see VeniceHelixAdmin#getNativeReplicationKafkaBootstrapServerAndZkAddress(String)
+   * @see VeniceHelixAdmin#getNativeReplicationKafkaBootstrapServerAddress(String)
    */
   @Override
-  public Pair<String, String> getNativeReplicationKafkaBootstrapServerAndZkAddress(String sourceFabric) {
-    return getVeniceHelixAdmin().getNativeReplicationKafkaBootstrapServerAndZkAddress(sourceFabric);
+  public String getNativeReplicationKafkaBootstrapServerAddress(String sourceFabric) {
+    return getVeniceHelixAdmin().getNativeReplicationKafkaBootstrapServerAddress(sourceFabric);
   }
 
   /**
@@ -3532,11 +3492,11 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * @see VeniceHelixAdmin#getTopicManager(Pair)
+   * @see VeniceHelixAdmin#getTopicManager(String)
    */
   @Override
-  public TopicManager getTopicManager(Pair<String, String> kafkaBootstrapServersAndZkAddress) {
-    return getVeniceHelixAdmin().getTopicManager(kafkaBootstrapServersAndZkAddress);
+  public TopicManager getTopicManager(String pubSubServerAddress) {
+    return getVeniceHelixAdmin().getTopicManager(pubSubServerAddress);
   }
 
   /**

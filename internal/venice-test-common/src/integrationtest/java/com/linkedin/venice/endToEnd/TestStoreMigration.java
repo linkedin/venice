@@ -42,7 +42,7 @@ import com.linkedin.venice.integration.utils.DaVinciTestContext;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
-import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
@@ -89,7 +89,7 @@ public class TestStoreMigration {
   private static final boolean[] ABORT_MIGRATION_PROMPTS_OVERRIDE = { false, true, true };
   private static final Logger LOGGER = LogManager.getLogger(TestStoreMigration.class);
 
-  private VeniceTwoLayerMultiColoMultiClusterWrapper twoLayerMultiColoMultiClusterWrapper;
+  private VeniceTwoLayerMultiRegionMultiClusterWrapper twoLayerMultiRegionMultiClusterWrapper;
   private VeniceMultiClusterWrapper multiClusterWrapper;
   private String srcClusterName;
   private String destClusterName;
@@ -122,9 +122,9 @@ public class TestStoreMigration {
     Properties serverProperties = new Properties();
     serverProperties.put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 1L);
 
-    // 1 parent controller, 1 child colo, 2 clusters per child colo, 2 servers per cluster
+    // 1 parent controller, 1 child region, 2 clusters per child region, 2 servers per cluster
     // RF=2 to test both leader and follower SNs
-    twoLayerMultiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
+    twoLayerMultiRegionMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiRegionMultiClusterWrapper(
         1,
         2,
         1,
@@ -137,18 +137,18 @@ public class TestStoreMigration {
         Optional.of(new VeniceProperties(serverProperties)),
         true);
 
-    multiClusterWrapper = twoLayerMultiColoMultiClusterWrapper.getChildRegions().get(0);
+    multiClusterWrapper = twoLayerMultiRegionMultiClusterWrapper.getChildRegions().get(0);
     String[] clusterNames = multiClusterWrapper.getClusterNames();
     Arrays.sort(clusterNames);
     srcClusterName = clusterNames[0]; // venice-cluster0
     destClusterName = clusterNames[1]; // venice-cluster1
-    parentControllerUrl = twoLayerMultiColoMultiClusterWrapper.getControllerConnectString();
+    parentControllerUrl = twoLayerMultiRegionMultiClusterWrapper.getControllerConnectString();
     childControllerUrl0 = multiClusterWrapper.getControllerConnectString();
   }
 
   @AfterClass(alwaysRun = true)
   public void cleanUp() {
-    twoLayerMultiColoMultiClusterWrapper.close();
+    twoLayerMultiRegionMultiClusterWrapper.close();
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -395,7 +395,7 @@ public class TestStoreMigration {
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     Schema recordSchema = TestWriteUtils.writeSimpleAvroFileWithUserSchema(inputDir, true, RECORD_COUNT);
     Properties props =
-        IntegrationTestPushUtils.defaultVPJProps(twoLayerMultiColoMultiClusterWrapper, inputDirPath, storeName);
+        IntegrationTestPushUtils.defaultVPJProps(twoLayerMultiRegionMultiClusterWrapper, inputDirPath, storeName);
     String keySchemaStr = recordSchema.getField(props.getProperty(VenicePushJob.KEY_FIELD_PROP)).schema().toString();
     String valueSchemaStr =
         recordSchema.getField(props.getProperty(VenicePushJob.VALUE_FIELD_PROP)).schema().toString();

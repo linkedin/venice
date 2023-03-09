@@ -355,7 +355,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       StreamingCallback<K, V> callback) {
 
     /* This implementation is intentionally designed to separate the request phase (scatter) and the response handling
-     * phase . These internal methods help to keep this separation and leaves room for future fine grained control. */
+     * phase (gather). These internal methods help to keep this separation and leaves room for future fine-grained control. */
     streamingBatchGetInternal(requestContext, keys, (transportClientResponse, throwable) -> {
       // This method binds the internal transport client response to the events delivered to the callback
       transportRequestCompletionHandler(requestContext, transportClientResponse, throwable, callback);
@@ -380,7 +380,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   }
 
   /**
-   * This internal method takes a batchGet request context , a set of keys and determines the strategy for scattering
+   * This internal method takes a batchGet request context, a set of keys and determines the strategy for scattering
    * the requests. The callback is invoked whenever a response is received from the internal transport.
    * @param requestContext
    * @param keys
@@ -411,7 +411,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
               requestContext.getRoutesForPartitionMapping().getOrDefault(partId, Collections.emptySet())));
 
       if (routes.isEmpty()) {
-        /* If a partition doesn't have a available route then there is something wrong about or metadata and this is
+        /* If a partition doesn't have an available route then there is something wrong about or metadata and this is
          * an error */
         requestContext.noAvailableReplica = true;
         String errorMessage = String.format(
@@ -425,7 +425,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
 
       /* Add this key into each route  we are going to send request to.
         Current implementation has only one replica/route count , so each key will go via one route.
-        For loop is not necessary here but if  in the future we send to multiple routes then the code below remains */
+        For loop is not necessary here but if in the future we send to multiple routes then the code below remains */
       for (String route: routes) {
         requestContext.addKey(route, key, partitionId);
       }
@@ -450,6 +450,10 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     }
   }
 
+  /**
+   * This callback handles results from one route for multiple keys in that route once the post()
+   * is completed with {@link TransportClientResponseForRoute} for this route.
+   */
   private void transportRequestCompletionHandler(
       BatchGetRequestContext<K, V> requestContext,
       TransportClientResponseForRoute transportClientResponse,

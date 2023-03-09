@@ -41,7 +41,6 @@ public class StoreInfo {
     storeInfo.setIncrementalPushEnabled(store.isIncrementalPushEnabled());
     storeInfo.setLargestUsedVersionNumber(store.getLargestUsedVersionNumber());
     storeInfo.setLatestSuperSetValueSchemaId(store.getLatestSuperSetValueSchemaId());
-    storeInfo.setLeaderFollowerModelEnabled(store.isLeaderFollowerModelEnabled());
     storeInfo.setLowWatermark(store.getLowWatermark());
     storeInfo.setMigrating(store.isMigrating());
     storeInfo.setMigrationDuplicateStore(store.isMigrationDuplicateStore());
@@ -216,14 +215,8 @@ public class StoreInfo {
    */
   private int bootstrapToOnlineTimeoutInHours = BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS;
 
-  /** Whether or not to use leader follower state transition model
-   * for upcoming version.
-   */
-  private boolean leaderFollowerModelEnabled = false;
-
   /**
-   * Whether or not native replication should be enabled for this store.  Will only successfully
-   * apply if leaderFollowerModelEnabled is also true either in this update or a previous version of the store
+   * Whether native replication should be enabled for this store.
    */
   private boolean nativeReplicationEnabled = false;
 
@@ -598,10 +591,6 @@ public class StoreInfo {
     this.bootstrapToOnlineTimeoutInHours = bootstrapToOnlineTimeoutInHours;
   }
 
-  public boolean isLeaderFollowerModelEnabled() {
-    return leaderFollowerModelEnabled;
-  }
-
   public void setBackupStrategy(BackupStrategy value) {
     backupStrategy = value;
   }
@@ -624,10 +613,6 @@ public class StoreInfo {
 
   public void setSuperSetSchemaAutoGenerationForReadComputeEnabled(boolean value) {
     superSetSchemaAutoGenerationForReadComputeEnabled = value;
-  }
-
-  public void setLeaderFollowerModelEnabled(boolean leaderFollowerModelEnabled) {
-    this.leaderFollowerModelEnabled = leaderFollowerModelEnabled;
   }
 
   public String getPushStreamSourceAddress() {

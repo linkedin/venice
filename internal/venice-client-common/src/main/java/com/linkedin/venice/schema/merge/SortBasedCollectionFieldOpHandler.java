@@ -2,6 +2,7 @@ package com.linkedin.venice.schema.merge;
 
 import com.linkedin.avro.api.PrimitiveLongList;
 import com.linkedin.avro.fastserde.primitive.PrimitiveLongArrayList;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp;
 import com.linkedin.venice.utils.IndexedHashMap;
 import java.util.ArrayList;
@@ -252,7 +253,6 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     // Step 2: Insert new put-only part map entries in the front.
     Map<String, Object> newMap = new IndexedHashMap<>();
     PrimitiveLongList newActiveTimestamps = new PrimitiveLongArrayList(activeEntriesToTsMap.size());
-
     collectionFieldRmd.setPutOnlyPartLength(toPutMap.size());
     // Add new entries for the put-only part.
     toPutMap.forEach(newMap::put);
@@ -270,10 +270,10 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     // Step 4: Set deleted keys and their deleted timestamps.
     List<String> newDeletedKeys = new ArrayList<>(deletedKeyToTsMap.size());
     PrimitiveLongList newDeletedTimestamps = new PrimitiveLongArrayList(deletedKeyToTsMap.size());
-    for (Map.Entry deleteKeyAndTs: deletedKeyToTsMap.entrySet()) {
-      newDeletedKeys.add(deleteKeyAndTs.getKey().toString());
-      newDeletedTimestamps.add((Long) deleteKeyAndTs.getValue());
-    }
+    deletedKeyToTsMap.forEach((key, ts) -> {
+      newDeletedKeys.add(key);
+      newDeletedTimestamps.add(ts);
+    });
 
     collectionFieldRmd.setDeletedElementsAndTimestamps(newDeletedKeys, newDeletedTimestamps);
 
@@ -312,12 +312,16 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     // Step 2: Remove all active elements with smaller or equal timestamps.
     final int removedActiveTimestampsCount = collectionFieldRmd.removeActiveTimestampsLowerOrEqualTo(deleteTimestamp);
     List<Object> currList = (List<Object>) currValueRecord.get(fieldName);
-    List<Object> remainingList =
-        new ArrayList<>(currList.size() - currPutOnlyPartLength - removedActiveTimestampsCount);
 
     // All elements in the current put-only part should be removed.
     final int remainingElementsStartIdx = currPutOnlyPartLength + removedActiveTimestampsCount;
+    if (remainingElementsStartIdx == 0) {
+      // This indicates no put only item exists prior to DELETE operation and also no active items are removed.
+      return UpdateResultStatus.NOT_UPDATED_AT_ALL;
+    }
     Iterator<Object> currListIterator = currList.listIterator(remainingElementsStartIdx);
+    List<Object> remainingList =
+        new ArrayList<>(currList.size() - currPutOnlyPartLength - removedActiveTimestampsCount);
     while (currListIterator.hasNext()) {
       remainingList.add(currListIterator.next());
     }
@@ -339,6 +343,9 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
     validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.MAP, true); // Validate before modifying any state.
+    // Handle Delete on a map that is in the collection-merge mode.
+    final int originalPutOnlyPartLength = collectionFieldRmd.getPutOnlyPartLength();
+    final long originalTopLevelFieldTimestamp = collectionFieldRmd.getTopLevelFieldTimestamp();
     collectionFieldRmd.setTopLevelFieldTimestamp(deleteTimestamp);
     collectionFieldRmd.setTopLevelColoID(coloID);
     collectionFieldRmd.setPutOnlyPartLength(0); // No put-only part because it should be deleted completely.
@@ -348,19 +355,21 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       return UpdateResultStatus.COMPLETELY_UPDATED;
     }
 
-    // Handle Delete on a map that is in the collection-merge mode.
-    final int originalPutOnlyPartLength = collectionFieldRmd.getPutOnlyPartLength();
-
     // Step 1: Remove all deleted map keys and their deleted timestamps with smaller or equal timestamps.
     collectionFieldRmd.removeDeletionInfoWithTimestampsLowerOrEqualTo(deleteTimestamp);
 
     // Step 2: Remove all active entries with smaller or equal timestamps.
     final int removedActiveTimestampsCount = collectionFieldRmd.removeActiveTimestampsLowerOrEqualTo(deleteTimestamp);
     IndexedHashMap<String, Object> currMap = (IndexedHashMap<String, Object>) currValueRecord.get(fieldName);
-    Map<String, Object> remainingMap = new IndexedHashMap<>();
 
     // All map entries in the current put-only part should be removed.
     final int remainingEntriesStartIdx = originalPutOnlyPartLength + removedActiveTimestampsCount;
+    if (remainingEntriesStartIdx == 0) {
+      // This indicates no put only item exists prior to DELETE operation and also no active items are removed.
+      collectionFieldRmd.setTopLevelFieldTimestamp(originalTopLevelFieldTimestamp);
+      return UpdateResultStatus.NOT_UPDATED_AT_ALL;
+    }
+    Map<String, Object> remainingMap = new IndexedHashMap<>();
     for (int i = remainingEntriesStartIdx; i < currMap.size(); i++) {
       Map.Entry<String, Object> remainingEntry = currMap.getByIndex(i);
       remainingMap.put(remainingEntry.getKey(), remainingEntry.getValue());
@@ -564,10 +573,14 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
         activeElementToTsMap.remove(toAddElement);
         newPutOnlyPartLength--;
       }
-
-      if (activeTimestamp == null || activeTimestamp != modifyTimestamp) {
+      if (activeTimestamp == null) {
         activeElementToTsMap.put(toAddElement, modifyTimestamp);
         updated = true;
+      } else if (activeTimestamp != modifyTimestamp) {
+        // activeElementToTsMap.remove(toAddElement);
+        activeElementToTsMap.put(toAddElement, modifyTimestamp);
+        updated = true;
+
       }
     }
 
@@ -707,7 +720,6 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     for (String toRemoveKey: toRemoveKeys) {
       newEntries.remove(toRemoveKey);
     }
-
     if (collectionFieldRmd.isInPutOnlyState()) {
       return handleModifyPutOnlyMap(
           modifyTimestamp,
@@ -862,16 +874,47 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
         // Key was not deleted before.
         KeyValPair newKeyValue = new KeyValPair(newKey, newEntry.getValue());
         final Long activeTimestamp = activeEntriesToTsMap.get(newKeyValue);
-        if (activeTimestamp != null && activeTimestamp == topLevelTimestamp) {
-          // This key exists and it is in the put-only part. We remove the key from the put-only part.
-          activeEntriesToTsMap.remove(newKeyValue);
-          newPutOnlyPartLength--;
-        }
-
-        if (activeTimestamp == null || activeTimestamp < modifyTimestamp) {
+        if (activeTimestamp == null) {
+          // The key does not exist before.
           activeEntriesToTsMap.put(newKeyValue, modifyTimestamp);
           updated = true;
-        } // Note that if the current active timestamp is equal to the modify timestamp, we do nothing.
+        } else {
+          // The key exist.
+          if (activeTimestamp == topLevelTimestamp) {
+            newPutOnlyPartLength--;
+          }
+          if (activeTimestamp < modifyTimestamp) {
+            activeEntriesToTsMap.remove(newKeyValue);
+            activeEntriesToTsMap.put(newKeyValue, modifyTimestamp);
+            updated = true;
+
+          } else if (activeTimestamp == modifyTimestamp) {
+            // Note that if the current active timestamp is equal to the modify timestamp, we compare value.
+            Object currentValue = currMap.get(newKey);
+            Object newValue = newKeyValue.getVal();
+            Schema fieldSchema = currValueRecord.getSchema().getField(fieldName).schema();
+            Schema mapValueSchema = null;
+            if (fieldSchema.isUnion()) {
+              for (Schema schema: fieldSchema.getTypes()) {
+                if (schema.getType().equals(Schema.Type.MAP)) {
+                  mapValueSchema = schema.getValueType();
+                  break;
+                }
+              }
+            } else {
+              mapValueSchema = fieldSchema.getValueType();
+            }
+            if (mapValueSchema == null) {
+              throw new VeniceException("Could not find map schema in map field: " + fieldSchema.toString(true));
+            }
+
+            if (AvroCollectionElementComparator.INSTANCE.compare(newValue, currentValue, mapValueSchema) > 0) {
+              activeEntriesToTsMap.remove(newKeyValue);
+              activeEntriesToTsMap.put(newKeyValue, modifyTimestamp);
+              updated = true;
+            }
+          }
+        }
       }
     }
 
@@ -932,10 +975,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     // Step 4: Set new deleted keys and their deleted timestamps.
     final List<ElementAndTimestamp> newDeletedKeyAndTsList = new ArrayList<>(deletedKeyToTsMap.size());
 
-    // Keys in deletedKeyToTsMap are actually of type Utf-8 and not String
-    for (Map.Entry entry: deletedKeyToTsMap.entrySet()) {
-      newDeletedKeyAndTsList.add(new ElementAndTimestamp(entry.getKey().toString(), (Long) entry.getValue()));
-    }
+    deletedKeyToTsMap.forEach((k, v) -> newDeletedKeyAndTsList.add(new ElementAndTimestamp(k, v)));
 
     // The element here is String (as deleted key). So, we can use a String comparator.
     sortElementAndTimestampList(newDeletedKeyAndTsList, Comparator.comparing(o -> ((String) o)));

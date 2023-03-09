@@ -4,7 +4,6 @@ import static com.linkedin.venice.HttpConstants.HTTP_GET;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
-import com.linkedin.venice.integration.utils.H2SSLUtils;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.Instance;
@@ -14,6 +13,7 @@ import com.linkedin.venice.router.httpclient.PortableHttpResponse;
 import com.linkedin.venice.router.httpclient.StorageNodeClientType;
 import com.linkedin.venice.router.httpclient.VeniceMetaDataRequest;
 import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -55,7 +55,7 @@ public class TestReadForHttpClient5 extends TestRead {
     VeniceClusterWrapper veniceCluster = getVeniceCluster();
     VeniceServerWrapper serverWrapper = veniceCluster.getVeniceServers().get(0);
     Instance serverInstance = Instance.fromHostAndPort(serverWrapper.getHost(), serverWrapper.getPort());
-    Optional<SSLFactory> sslFactory = Optional.of(H2SSLUtils.getLocalHttp2SslFactory());
+    Optional<SSLFactory> sslFactory = Optional.of(SslUtils.getVeniceLocalSslFactory());
     // Form a heartbeat request
     VeniceMetaDataRequest request = new VeniceMetaDataRequest(
         serverInstance,

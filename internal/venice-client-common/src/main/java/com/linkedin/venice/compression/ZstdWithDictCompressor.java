@@ -18,6 +18,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -29,9 +30,13 @@ public class ZstdWithDictCompressor extends VeniceCompressor {
   private final CloseableThreadLocal<ZstdDecompressCtx> decompressor;
   private final ZstdDictCompress dictCompress;
   private final ZstdDictDecompress dictDecompress;
+  private final byte[] dictionary;
+  private final int level;
 
   public ZstdWithDictCompressor(final byte[] dictionary, int level) {
     super(CompressionStrategy.ZSTD_WITH_DICT);
+    this.dictionary = dictionary;
+    this.level = level;
     this.dictCompress = new ZstdDictCompress(dictionary, level);
     this.dictDecompress = new ZstdDictDecompress(dictionary);
     this.compressor = new CloseableThreadLocal<>(() -> new ZstdCompressCtx().loadDict(dictCompress).setLevel(level));
@@ -170,5 +175,23 @@ public class ZstdWithDictCompressor extends VeniceCompressor {
       trainer.addSample(value);
     }
     return trainer.trainSamples();
+  }
+
+  @Override
+  public int hashCode() {
+    return super.hashCode();
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (o == this) {
+      return true;
+    }
+    if (o == null || !(o instanceof ZstdWithDictCompressor)) {
+      return false;
+    }
+    // Compare dictionary and level
+    return Arrays.equals(dictionary, ((ZstdWithDictCompressor) o).dictionary)
+        && level == ((ZstdWithDictCompressor) o).level;
   }
 }

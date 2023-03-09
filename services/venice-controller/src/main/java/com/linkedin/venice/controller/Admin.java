@@ -368,13 +368,6 @@ public interface Admin extends AutoCloseable, Closeable {
 
   void setStoreReadWriteability(String clusterName, String storeName, boolean isAccessible);
 
-  void setLeaderFollowerModelEnabled(String clusterName, String storeName, boolean leaderFollowerModelEnabled);
-
-  /**
-   * Enable or disable L/F model for the store locally, without propagating the change to any other fabrics
-   */
-  void enableLeaderFollowerModelLocally(String clusterName, String storeName, boolean leaderFollowerModelEnabled);
-
   void updateStore(String clusterName, String storeName, UpdateStoreQueryParams params);
 
   void updateClusterConfig(String clusterName, UpdateClusterConfigQueryParams params);
@@ -383,7 +376,7 @@ public interface Admin extends AutoCloseable, Closeable {
 
   List<String> getStorageNodes(String clusterName);
 
-  Map<String, String> getStorageNodesStatus(String clusterName);
+  Map<String, String> getStorageNodesStatus(String clusterName, boolean enableReplica);
 
   void removeStorageNode(String clusterName, String instanceId);
 
@@ -419,7 +412,7 @@ public interface Admin extends AutoCloseable, Closeable {
    */
   String getKafkaBootstrapServers(boolean isSSL);
 
-  Pair<String, String> getNativeReplicationKafkaBootstrapServerAndZkAddress(String sourceFabric);
+  String getNativeReplicationKafkaBootstrapServerAddress(String sourceFabric);
 
   String getNativeReplicationSourceFabric(
       String clusterName,
@@ -436,7 +429,7 @@ public interface Admin extends AutoCloseable, Closeable {
 
   TopicManager getTopicManager();
 
-  TopicManager getTopicManager(Pair<String, String> kafkaBootstrapServersAndZkAddress);
+  TopicManager getTopicManager(String pubSubServerAddress);
 
   /**
    * Check if this controller itself is the leader controller for a given cluster or not. Note that the controller can be

@@ -17,15 +17,18 @@ import static com.linkedin.venice.Arg.CLUSTER;
 import static com.linkedin.venice.Arg.CLUSTER_DEST;
 import static com.linkedin.venice.Arg.CLUSTER_SRC;
 import static com.linkedin.venice.Arg.COMPRESSION_STRATEGY;
+import static com.linkedin.venice.Arg.DEBUG;
 import static com.linkedin.venice.Arg.DERIVED_SCHEMA;
 import static com.linkedin.venice.Arg.DERIVED_SCHEMA_ID;
 import static com.linkedin.venice.Arg.DEST_FABRIC;
 import static com.linkedin.venice.Arg.DISABLE_DAVINCI_PUSH_STATUS_STORE;
 import static com.linkedin.venice.Arg.DISABLE_META_STORE;
+import static com.linkedin.venice.Arg.ENABLE_DISABLED_REPLICA;
 import static com.linkedin.venice.Arg.END_DATE;
 import static com.linkedin.venice.Arg.ETLED_PROXY_USER_ACCOUNT;
 import static com.linkedin.venice.Arg.EXECUTION;
 import static com.linkedin.venice.Arg.EXPECTED_ROUTER_COUNT;
+import static com.linkedin.venice.Arg.EXTRA_COMMAND_ARGS;
 import static com.linkedin.venice.Arg.FABRIC;
 import static com.linkedin.venice.Arg.FABRIC_A;
 import static com.linkedin.venice.Arg.FABRIC_B;
@@ -47,11 +50,9 @@ import static com.linkedin.venice.Arg.KAFKA_TOPIC_LOG_COMPACTION_ENABLED;
 import static com.linkedin.venice.Arg.KAFKA_TOPIC_NAME;
 import static com.linkedin.venice.Arg.KAFKA_TOPIC_PARTITION;
 import static com.linkedin.venice.Arg.KAFKA_TOPIC_RETENTION_IN_MS;
-import static com.linkedin.venice.Arg.KAFKA_ZOOKEEPER_CONNECTION_URL;
 import static com.linkedin.venice.Arg.KEY;
 import static com.linkedin.venice.Arg.KEY_SCHEMA;
 import static com.linkedin.venice.Arg.LARGEST_USED_VERSION_NUMBER;
-import static com.linkedin.venice.Arg.LEADER_FOLLOWER_MODEL_ENABLED;
 import static com.linkedin.venice.Arg.MESSAGE_COUNT;
 import static com.linkedin.venice.Arg.MIGRATION_PUSH_STRATEGY;
 import static com.linkedin.venice.Arg.NATIVE_REPLICATION_ENABLED;
@@ -70,6 +71,7 @@ import static com.linkedin.venice.Arg.PUSH_STREAM_SOURCE_ADDRESS;
 import static com.linkedin.venice.Arg.READABILITY;
 import static com.linkedin.venice.Arg.READ_COMPUTATION_ENABLED;
 import static com.linkedin.venice.Arg.READ_QUOTA;
+import static com.linkedin.venice.Arg.RECOVERY_COMMAND;
 import static com.linkedin.venice.Arg.REGIONS_FILTER;
 import static com.linkedin.venice.Arg.REGULAR_VERSION_ETL_ENABLED;
 import static com.linkedin.venice.Arg.REPLICATE_ALL_CONFIGS;
@@ -85,6 +87,7 @@ import static com.linkedin.venice.Arg.STORAGE_NODE;
 import static com.linkedin.venice.Arg.STORAGE_PERSONA;
 import static com.linkedin.venice.Arg.STORAGE_QUOTA;
 import static com.linkedin.venice.Arg.STORE;
+import static com.linkedin.venice.Arg.STORES;
 import static com.linkedin.venice.Arg.STORE_SIZE;
 import static com.linkedin.venice.Arg.STORE_TYPE;
 import static com.linkedin.venice.Arg.STORE_VIEW_CONFIGS;
@@ -161,7 +164,8 @@ public enum Command {
       new Arg[] { URL, CLUSTER, STORE, VALUE_SCHEMA_ID, DERIVED_SCHEMA_ID }
   ), LIST_STORAGE_NODES("list-storage-nodes", "", new Arg[] { URL, CLUSTER }),
   CLUSTER_HEALTH_INSTANCES(
-      "cluster-health-instances", "List the status for every instance", new Arg[] { URL, CLUSTER }
+      "cluster-health-instances", "List the status for every instance", new Arg[] { URL, CLUSTER },
+      new Arg[] { ENABLE_DISABLED_REPLICA }
   ), CLUSTER_HEALTH_STORES("cluster-health-stores", "List the status for every store", new Arg[] { URL, CLUSTER }),
   NODE_REMOVABLE(
       "node-removable", "A node is removable if all replicas it is serving are available on other nodes",
@@ -204,10 +208,9 @@ public enum Command {
           HYBRID_REWIND_SECONDS, HYBRID_OFFSET_LAG, HYBRID_TIME_LAG, HYBRID_DATA_REPLICATION_POLICY,
           HYBRID_BUFFER_REPLAY_POLICY, ACCESS_CONTROL, COMPRESSION_STRATEGY, CLIENT_DECOMPRESSION_ENABLED,
           CHUNKING_ENABLED, RMD_CHUNKING_ENABLED, BATCH_GET_LIMIT, NUM_VERSIONS_TO_PRESERVE, WRITE_COMPUTATION_ENABLED,
-          READ_COMPUTATION_ENABLED, LEADER_FOLLOWER_MODEL_ENABLED, BACKUP_STRATEGY,
-          AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED, INCREMENTAL_PUSH_ENABLED, BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOUR,
-          HYBRID_STORE_DISK_QUOTA_ENABLED, REGULAR_VERSION_ETL_ENABLED, FUTURE_VERSION_ETL_ENABLED,
-          ETLED_PROXY_USER_ACCOUNT, NATIVE_REPLICATION_ENABLED, PUSH_STREAM_SOURCE_ADDRESS,
+          READ_COMPUTATION_ENABLED, BACKUP_STRATEGY, AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED, INCREMENTAL_PUSH_ENABLED,
+          BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOUR, HYBRID_STORE_DISK_QUOTA_ENABLED, REGULAR_VERSION_ETL_ENABLED,
+          FUTURE_VERSION_ETL_ENABLED, ETLED_PROXY_USER_ACCOUNT, NATIVE_REPLICATION_ENABLED, PUSH_STREAM_SOURCE_ADDRESS,
           BACKUP_VERSION_RETENTION_DAY, REPLICATION_FACTOR, NATIVE_REPLICATION_SOURCE_FABRIC, REPLICATE_ALL_CONFIGS,
           ACTIVE_ACTIVE_REPLICATION_ENABLED, REGIONS_FILTER, DISABLE_META_STORE, DISABLE_DAVINCI_PUSH_STATUS_STORE,
           STORAGE_PERSONA, STORE_VIEW_CONFIGS }
@@ -272,7 +275,7 @@ public enum Command {
   ),
   DELETE_KAFKA_TOPIC(
       "delete-kafka-topic", "Delete a Kafka topic directly (without interaction with the Venice Controller",
-      new Arg[] { KAFKA_BOOTSTRAP_SERVERS, KAFKA_ZOOKEEPER_CONNECTION_URL, KAFKA_TOPIC_NAME },
+      new Arg[] { KAFKA_BOOTSTRAP_SERVERS, KAFKA_TOPIC_NAME },
       new Arg[] { KAFKA_OPERATION_TIMEOUT, KAFKA_CONSUMER_CONFIG_FILE }
   ),
   DUMP_ADMIN_MESSAGES(
@@ -318,14 +321,6 @@ public enum Command {
   SEND_END_OF_PUSH(
       "send-end-of-push", "Send this message after Samza reprocessing job to close offline batch push",
       new Arg[] { URL, CLUSTER, STORE, VERSION }
-  ), LIST_LF_STORES("list-lf-stores", "list all stores that use leader/follower model", new Arg[] { URL, CLUSTER }),
-  ENABLE_LF_MODEL(
-      "enable-lf-model", "enable leader/follower model for certain stores based on the param",
-      new Arg[] { URL, CLUSTER, STORE_TYPE }
-  ),
-  DISABLE_LF_MODEL(
-      "disable-lf-model", "disable leader/follower model for certain stores based on the param",
-      new Arg[] { URL, CLUSTER, STORE_TYPE }
   ),
   NEW_STORE_ACL(
       "new-store-acl", "Create a new store with ACL permissions set",
@@ -437,6 +432,10 @@ public enum Command {
   CLEANUP_INSTANCE_CUSTOMIZED_STATES(
       "cleanup-instance-customized-states", "Cleanup any lingering instance level customized states",
       new Arg[] { URL, CLUSTER }
+  ),
+  EXECUTE_DATA_RECOVERY(
+      "execute-data-recovery", "Execute data recovery for a group of stores",
+      new Arg[] { RECOVERY_COMMAND, STORES, SOURCE_FABRIC }, new Arg[] { EXTRA_COMMAND_ARGS, DEBUG }
   );
 
   private final String commandName;

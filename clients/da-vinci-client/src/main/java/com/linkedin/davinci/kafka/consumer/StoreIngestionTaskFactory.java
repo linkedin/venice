@@ -11,7 +11,6 @@ import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.view.VeniceViewWriterFactory;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -61,20 +60,17 @@ public class StoreIngestionTaskFactory {
           partitionId,
           isIsolatedIngestion,
           cacheBackend);
-    } else if (version.isLeaderFollowerModelEnabled()) {
-      return new LeaderFollowerStoreIngestionTask(
-          builder,
-          store,
-          version,
-          kafkaConsumerProperties,
-          isCurrentVersion,
-          storeConfig,
-          partitionId,
-          isIsolatedIngestion,
-          cacheBackend);
-    } else {
-      throw new VeniceException("State transition model not defined.");
     }
+    return new LeaderFollowerStoreIngestionTask(
+        builder,
+        store,
+        version,
+        kafkaConsumerProperties,
+        isCurrentVersion,
+        storeConfig,
+        partitionId,
+        isIsolatedIngestion,
+        cacheBackend);
   }
 
   /**

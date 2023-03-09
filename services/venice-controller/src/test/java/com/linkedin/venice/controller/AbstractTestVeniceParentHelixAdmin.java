@@ -36,7 +36,6 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
-import org.apache.kafka.common.TopicPartition;
 
 
 /**
@@ -51,11 +50,10 @@ public class AbstractTestVeniceParentHelixAdmin {
       "{\"type\":\"record\", \"name\":\"ValueRecord\", \"fields\": [{\"name\":\"number\", " + "\"type\":\"int\"}]}";
 
   static final String clusterName = "test-cluster";
-  static final String coloName = "test-colo";
+  static final String regionName = "test-region";
   static final String topicName = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
   static final String zkMetadataNodePath = ZkAdminTopicMetadataAccessor.getAdminTopicMetadataNodePath(clusterName);
   static final int partitionId = AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID;
-  static final TopicPartition topicPartition = new TopicPartition(topicName, partitionId);
   static final AdminOperationSerializer adminOperationSerializer = new AdminOperationSerializer();
 
   TopicManager topicManager;
@@ -117,7 +115,7 @@ public class AbstractTestVeniceParentHelixAdmin {
     doReturn(1).when(config).getReplicationMetadataVersionId();
 
     controllerClients
-        .put(coloName, ControllerClient.constructClusterControllerClient(clusterName, "localhost", Optional.empty()));
+        .put(regionName, ControllerClient.constructClusterControllerClient(clusterName, "localhost", Optional.empty()));
     doReturn(controllerClients).when(internalAdmin).getControllerClientMap(any());
 
     resources = mockResources(config, clusterName);
@@ -159,7 +157,7 @@ public class AbstractTestVeniceParentHelixAdmin {
     parentAdmin.getAdminCommandExecutionTracker(clusterName)
         .get()
         .getFabricToControllerClientsMap()
-        .put(coloName, mockControllerClient);
+        .put(regionName, mockControllerClient);
     parentAdmin.setOfflinePushAccessor(accessor);
     parentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
   }
@@ -186,7 +184,7 @@ public class AbstractTestVeniceParentHelixAdmin {
     // Disable background threads that may interfere when we try to re-mock internalAdmin later in the tests.
     doReturn(Long.MAX_VALUE).when(config).getTerminalStateTopicCheckerDelayMs();
     Map<String, String> childClusterMap = new HashMap<>();
-    childClusterMap.put(coloName, "localhost");
+    childClusterMap.put(regionName, "localhost");
     doReturn(childClusterMap).when(config).getChildDataCenterControllerUrlMap();
     doReturn(MAX_PARTITION_NUM).when(config).getMaxNumberOfPartition();
     doReturn(DefaultIdentityParser.class.getName()).when(config).getIdentityParserClassName();

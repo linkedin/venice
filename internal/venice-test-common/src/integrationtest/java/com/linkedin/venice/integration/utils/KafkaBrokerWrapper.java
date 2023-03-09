@@ -37,7 +37,7 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
 
   /**
    * This is package private because the only way to call this should be from
-   * {@link ServiceFactory#getKafkaBroker()}.
+   * {@link ServiceFactory#getKafkaBroker(ZkServerWrapper, Optional)}.
    *
    * @return a function which yields a {@link KafkaBrokerWrapper} instance
    */
@@ -144,13 +144,6 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
 
   public String getSSLAddress() {
     return getHost() + ":" + getSslPort();
-  }
-
-  /**
-   * @return the address of the ZK used by this Kafka instance
-   */
-  public String getZkAddress() {
-    return zkServerWrapper.getAddress();
   }
 
   @Override

@@ -237,7 +237,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         new VeniceWriterOptions.Builder(getVersionTopic().getName()).setPartitioner(venicePartitioner)
             .setChunkingEnabled(isChunked)
             .setRmdChunkingEnabled(version.isRmdChunkingEnabled())
-            .setPartitionCount(Optional.of(storeVersionPartitionCount * amplificationFactor))
+            .setPartitionCount(storeVersionPartitionCount * amplificationFactor)
             .build();
     this.veniceWriter = Lazy.of(() -> veniceWriterFactory.createVeniceWriter(writerOptions));
     this.kafkaClusterIdToUrlMap = serverConfig.getKafkaClusterIdToUrlMap();

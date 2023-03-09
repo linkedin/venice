@@ -101,9 +101,7 @@ public class DaVinciLiveUpdateSuppressionTest {
       // Update to hybrid store
       client.updateStore(
           storeName,
-          new UpdateStoreQueryParams().setHybridRewindSeconds(10)
-              .setHybridOffsetLagThreshold(10)
-              .setLeaderFollowerModel(true));
+          new UpdateStoreQueryParams().setHybridRewindSeconds(10).setHybridOffsetLagThreshold(10));
     });
 
     VersionCreationResponse newVersion = cluster.getNewVersion(storeName, 1024);

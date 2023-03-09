@@ -3,7 +3,6 @@ package com.linkedin.venice.controller.kafka;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.kafka.TopicManager;
-import com.linkedin.venice.utils.Pair;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
@@ -30,8 +29,7 @@ public class TopicCleanupServiceForParentController extends TopicCleanupService 
     if (!parentFabrics.isEmpty()) {
       for (String parentFabric: parentFabrics) {
         String kafkaBootstrapServers = multiClusterConfigs.getChildDataCenterKafkaUrlMap().get(parentFabric);
-        String kafkaZkAddress = multiClusterConfigs.getChildDataCenterKafkaZkMap().get(parentFabric);
-        cleanupVeniceTopics(getTopicManager(Pair.create(kafkaBootstrapServers, kafkaZkAddress)));
+        cleanupVeniceTopics(getTopicManager(kafkaBootstrapServers));
       }
     } else {
       cleanupVeniceTopics(getTopicManager());

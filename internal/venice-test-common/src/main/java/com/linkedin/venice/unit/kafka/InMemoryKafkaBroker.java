@@ -1,5 +1,6 @@
 package com.linkedin.venice.unit.kafka;
 
+import com.linkedin.venice.unit.kafka.producer.MockInMemoryProducerAdapter;
 import com.linkedin.venice.utils.Utils;
 import java.util.HashMap;
 import java.util.Map;
@@ -13,7 +14,7 @@ import java.util.Optional;
  * Instead, this Kafka broker keeps messages in memory. It can be used via the following
  * mock classes:
  * @see com.linkedin.venice.unit.kafka.consumer.MockInMemoryConsumer
- * @see com.linkedin.venice.unit.kafka.producer.MockInMemoryProducer
+ * @see MockInMemoryProducerAdapter
  */
 public class InMemoryKafkaBroker {
   private final Map<String, InMemoryKafkaTopic> topics = new HashMap<>();

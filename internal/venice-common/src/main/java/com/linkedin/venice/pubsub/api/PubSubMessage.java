@@ -30,4 +30,12 @@ public interface PubSubMessage<K, V, OFFSET> {
    * @return the size in bytes of the key + value.
    */
   int getPayloadSize();
+
+  default String getTopicName() {
+    return getTopicPartition().getPubSubTopic().getName();
+  }
+
+  default int getPartition() {
+    return getTopicPartition().getPartitionNumber();
+  }
 }

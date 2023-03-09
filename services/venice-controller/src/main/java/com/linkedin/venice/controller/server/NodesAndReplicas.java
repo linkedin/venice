@@ -37,6 +37,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import org.apache.http.HttpStatus;
@@ -84,7 +85,7 @@ public class NodesAndReplicas extends AbstractRoute {
 
   /**
    * No ACL check; any user is allowed to list all node status.
-   * @see Admin#getStorageNodesStatus(String)
+   * @see Admin#getStorageNodesStatus(String, boolean)
    */
   public Route listAllNodesStatus(Admin admin) {
     return (request, response) -> {
@@ -93,7 +94,9 @@ public class NodesAndReplicas extends AbstractRoute {
       try {
         AdminSparkServer.validateParams(request, ClUSTER_HEALTH_INSTANCES.getParams(), admin);
         responseObject.setCluster(request.queryParams(CLUSTER));
-        Map<String, String> nodesStatusesMap = admin.getStorageNodesStatus(responseObject.getCluster());
+        String value = AdminSparkServer.getOptionalParameterValue(request, "enable-disabled-replicas");
+        Map<String, String> nodesStatusesMap =
+            admin.getStorageNodesStatus(responseObject.getCluster(), Objects.equals(value, "true"));
         responseObject.setInstancesStatusMap(nodesStatusesMap);
       } catch (Throwable e) {
         responseObject.setError(e);

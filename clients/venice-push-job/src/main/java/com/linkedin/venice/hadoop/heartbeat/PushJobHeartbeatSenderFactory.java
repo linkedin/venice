@@ -15,6 +15,7 @@ public interface PushJobHeartbeatSenderFactory {
    * @param properties
    */
   PushJobHeartbeatSender createHeartbeatSender(
+      String kafkaUrl,
       VeniceProperties properties,
       ControllerClient controllerClient,
       Optional<Properties> sslProperties);

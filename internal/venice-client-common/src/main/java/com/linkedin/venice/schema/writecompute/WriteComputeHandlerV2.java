@@ -7,6 +7,7 @@ import com.linkedin.venice.schema.merge.AvroCollectionElementComparator;
 import com.linkedin.venice.schema.merge.CollectionFieldOperationHandler;
 import com.linkedin.venice.schema.merge.MergeRecordHelper;
 import com.linkedin.venice.schema.merge.SortBasedCollectionFieldOpHandler;
+import com.linkedin.venice.schema.merge.UpdateResultStatus;
 import com.linkedin.venice.schema.merge.ValueAndRmd;
 import com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp;
 import com.linkedin.venice.utils.IndexedHashMap;
@@ -69,7 +70,7 @@ public class WriteComputeHandlerV2 extends WriteComputeHandlerV1 {
       throw new IllegalStateException(
           "Write Compute only support partial update. Got unexpected Write Compute record: " + writeComputeRecord);
     }
-
+    boolean notUpdated = true;
     final Schema writeComputeSchema = writeComputeRecord.getSchema();
     for (Schema.Field writeComputeField: writeComputeSchema.getFields()) {
       final String writeComputeFieldName = writeComputeField.name();
@@ -87,32 +88,37 @@ public class WriteComputeHandlerV2 extends WriteComputeHandlerV1 {
           continue; // Do nothing
 
         case PUT_NEW_FIELD:
-          mergeRecordHelper.putOnField(
+          UpdateResultStatus putResult = mergeRecordHelper.putOnField(
               currRecordAndRmd.getValue(),
               timestampRecord,
               writeComputeFieldName,
               writeComputeFieldValue,
               updateOperationTimestamp,
               coloID);
+          notUpdated &= (putResult.equals(UpdateResultStatus.NOT_UPDATED_AT_ALL));
           continue;
 
         case LIST_OPS:
         case MAP_OPS:
-          modifyCollectionField(
+          UpdateResultStatus collectionMergeResult = modifyCollectionField(
               assertAndGetTsRecordFieldIsRecord(timestampRecord, writeComputeFieldName),
               (GenericRecord) writeComputeFieldValue,
               updateOperationTimestamp,
               currRecordAndRmd.getValue(),
               writeComputeFieldName);
+          notUpdated &= (collectionMergeResult.equals(UpdateResultStatus.NOT_UPDATED_AT_ALL));
           continue;
         default:
           throw new IllegalStateException("Unexpected write-compute operation: " + operationType);
       }
     }
+    if (notUpdated) {
+      currRecordAndRmd.setUpdateIgnored(true);
+    }
     return currRecordAndRmd;
   }
 
-  private void modifyCollectionField(
+  private UpdateResultStatus modifyCollectionField(
       GenericRecord fieldTimestampRecord,
       GenericRecord fieldWriteComputeRecord,
       long modifyTimestamp,
@@ -121,7 +127,7 @@ public class WriteComputeHandlerV2 extends WriteComputeHandlerV1 {
     Object fieldValue = currValueRecord.get(fieldName);
     if (fieldValue instanceof List) {
 
-      collectionFieldOperationHandler.handleModifyList(
+      return collectionFieldOperationHandler.handleModifyList(
           modifyTimestamp,
           new CollectionRmdTimestamp(fieldTimestampRecord),
           currValueRecord,
@@ -140,7 +146,7 @@ public class WriteComputeHandlerV2 extends WriteComputeHandlerV1 {
               "Expect value of field " + fieldName + " to be an IndexedHashMap. Got: " + fieldValue.getClass());
         }
       }
-      collectionFieldOperationHandler.handleModifyMap(
+      return collectionFieldOperationHandler.handleModifyMap(
           modifyTimestamp,
           new CollectionRmdTimestamp(fieldTimestampRecord),
           currValueRecord,

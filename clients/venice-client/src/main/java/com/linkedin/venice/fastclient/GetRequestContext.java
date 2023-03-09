@@ -11,6 +11,8 @@ public class GetRequestContext extends RequestContext {
 
   boolean errorRetryRequestTriggered;
 
+  // TODO Explore whether adding a new boolean named originalWin to properly differentiate and
+  // maybe add more strict tests around these 2 flags will be helpful.
   boolean retryWin;
 
   GetRequestContext() {

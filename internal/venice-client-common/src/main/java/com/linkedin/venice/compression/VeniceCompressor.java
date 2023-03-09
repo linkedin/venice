@@ -30,4 +30,5 @@ public abstract class VeniceCompressor implements Closeable {
   public void close() throws IOException {
     return;
   }
+
 }

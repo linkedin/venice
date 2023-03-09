@@ -32,7 +32,6 @@ import org.apache.commons.lang3.Validate;
 
 
 /**
- * TODO schema validation of old and new schema for WC enabled stores.
  * The workflow is
  * Query old replication metadata. If it's null (and running in first batch push merge policy), then write the new value directly.
  * If the old replication metadata exists, then deserialize it and run Merge<BB>.
@@ -43,7 +42,7 @@ import org.apache.commons.lang3.Validate;
 @Threadsafe
 public class MergeConflictResolver {
   private final String storeName;
-  private final MapKeyStringAnnotatedStoreSchemaCache storeSchemaCache;
+  private final StringAnnotatedStoreSchemaCache storeSchemaCache;
   private final Function<Integer, GenericRecord> newRmdCreator;
   private final MergeGenericRecord mergeGenericRecord;
   private final MergeByteBuffer mergeByteBuffer;
@@ -51,7 +50,7 @@ public class MergeConflictResolver {
   private final RmdSerDe rmdSerde;
 
   MergeConflictResolver(
-      MapKeyStringAnnotatedStoreSchemaCache storeSchemaCache,
+      StringAnnotatedStoreSchemaCache storeSchemaCache,
       String storeName,
       Function<Integer, GenericRecord> newRmdCreator,
       MergeGenericRecord mergeGenericRecord,
@@ -211,12 +210,15 @@ public class MergeConflictResolver {
         newValueColoID,
         newValueSourceOffset,
         newValueSourceBrokerID);
+    if (mergedValueAndRmd.isUpdateIgnored()) {
+      return MergeConflictResult.getIgnoredResult();
+    }
     ByteBuffer mergedValueBytes = serializeMergedValueRecord(mergeResultValueSchema, mergedValueAndRmd.getValue());
     return new MergeConflictResult(mergedValueBytes, newValueSchemaID, false, mergedValueAndRmd.getRmd());
   }
 
   /**
-   * This methods create a pair of deserialized value of type {@link GenericRecord} and its corresponding replication metadata.
+   * This method create a pair of deserialized value of type {@link GenericRecord} and its corresponding replication metadata.
    * It takes into account the writer schema and reader schema. If the writer schema is different from the reader schema,
    * the replication metadata record will be converted to use the RMD schema generated from the reader schema.
    *
@@ -501,6 +503,9 @@ public class MergeConflictResolver {
         deleteOperationColoID,
         deleteOperationSourceOffset,
         deleteOperationSourceBrokerID);
+    if (mergedValueAndRmd.isUpdateIgnored()) {
+      return MergeConflictResult.getIgnoredResult();
+    }
     final ByteBuffer mergedValueBytes = mergedValueAndRmd.getValue() == null
         ? null
         : serializeMergedValueRecord(oldValueSchema, mergedValueAndRmd.getValue());
@@ -546,6 +551,9 @@ public class MergeConflictResolver {
         newValueColoID,
         newValueSourceOffset,
         newValueSourceBrokerID);
+    if (updatedValueAndRmd.isUpdateIgnored()) {
+      return MergeConflictResult.getIgnoredResult();
+    }
     final ByteBuffer updatedValueBytes = updatedValueAndRmd.getValue() == null
         ? null
         : serializeMergedValueRecord(oldValueSchema, updatedValueAndRmd.getValue());
@@ -679,7 +687,7 @@ public class MergeConflictResolver {
     switch (rmdTimestampType) {
       case VALUE_LEVEL_TIMESTAMP:
         final long valueLevelTimestamp = (long) oldTimestampObject;
-        if (updateOperationTimestamp > valueLevelTimestamp) {
+        if (updateOperationTimestamp >= valueLevelTimestamp) {
           return false;
         }
         toUpdateFieldNames = WriteComputeSchemaConverter.getNamesOfFieldsToBeUpdated(writeComputeRecord);

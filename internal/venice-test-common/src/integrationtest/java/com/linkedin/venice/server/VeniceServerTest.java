@@ -3,23 +3,58 @@ package com.linkedin.venice.server;
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.SERVER_ENABLE_SERVER_ALLOW_LIST;
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.SERVER_IS_AUTO_JOIN;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.httpclient.HttpClientUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.TestVeniceServer;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
+import com.linkedin.venice.metadata.response.MetadataResponseRecord;
+import com.linkedin.venice.serializer.RecordDeserializer;
+import com.linkedin.venice.serializer.SerializerDeserializerFactory;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.Field;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
+import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import org.apache.avro.generic.GenericDatumWriter;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.io.Encoder;
+import org.apache.avro.util.Utf8;
+import org.apache.commons.io.IOUtils;
+import org.apache.helix.HelixAdmin;
+import org.apache.helix.manager.zk.ZKHelixAdmin;
+import org.apache.helix.model.ClusterConfig;
+import org.apache.helix.model.HelixConfigScope;
+import org.apache.helix.model.InstanceConfig;
+import org.apache.helix.model.builder.HelixConfigScopeBuilder;
+import org.apache.http.HttpResponse;
+import org.apache.http.HttpStatus;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
 public class VeniceServerTest {
+  private static final Logger LOGGER = LogManager.getLogger(VeniceServerTest.class);
+
   @Test
   public void testStartServerWithDefaultConfigForTests() throws NoSuchFieldException, IllegalAccessException {
     try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 1, 0)) {
@@ -126,6 +161,97 @@ public class VeniceServerTest {
       Assert.assertTrue(cluster.getVeniceServers().get(0).getVeniceServer().isStarted());
     } finally {
       TestUtils.shutdownThread(serverAddingThread);
+    }
+  }
+
+  @Test
+  public void testMetadataFetchRequest() throws ExecutionException, InterruptedException, IOException {
+    Utils.thisIsLocalhost();
+    int servers = 6;
+    int replicationFactor = 2;
+
+    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, servers, 0, replicationFactor);
+        CloseableHttpAsyncClient client =
+            HttpClientUtils.getMinimalHttpClient(1, 1, Optional.of(SslUtils.getVeniceLocalSslFactory()));) {
+
+      HelixAdmin admin = new ZKHelixAdmin(cluster.getZk().getAddress());
+
+      HelixConfigScope configScope =
+          new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER).forCluster(cluster.getClusterName())
+              .build();
+      Map<String, String> clusterProperties = new HashMap<String, String>() {
+        {
+          put(ClusterConfig.ClusterConfigProperty.TOPOLOGY.name(), "/zone/instance");
+          put(ClusterConfig.ClusterConfigProperty.TOPOLOGY_AWARE_ENABLED.name(), "TRUE");
+          put(ClusterConfig.ClusterConfigProperty.FAULT_ZONE_TYPE.name(), "zone");
+        }
+      };
+
+      admin.setConfig(configScope, clusterProperties);
+
+      for (int i = 0; i < servers; i++) {
+        VeniceServerWrapper server = cluster.getVeniceServers().get(i);
+        String instanceName = server.getHost() + "_" + server.getPort();
+        String domain = "zone=zone_" + (char) (i % replicationFactor + 65) + ",instance=" + instanceName;
+
+        InstanceConfig instanceConfig = new InstanceConfig(instanceName);
+        instanceConfig.setDomain(domain);
+        instanceConfig.setHostName(server.getHost());
+        instanceConfig.setPort(String.valueOf(server.getPort()));
+
+        admin.setInstanceConfig(cluster.getClusterName(), instanceName, instanceConfig);
+      }
+
+      String storeName = cluster.createStore(1);
+
+      client.start();
+
+      for (int i = 0; i < servers; i++) {
+        HttpGet httpsRequest =
+            new HttpGet("http://" + cluster.getVeniceServers().get(i).getAddress() + "/metadata/" + storeName);
+        HttpResponse httpsResponse = client.execute(httpsRequest, null).get();
+        Assert.assertEquals(httpsResponse.getStatusLine().getStatusCode(), 200);
+
+        try (InputStream bodyStream = httpsResponse.getEntity().getContent()) {
+          byte[] body = IOUtils.toByteArray(bodyStream);
+          Assert.assertEquals(httpsResponse.getStatusLine().getStatusCode(), HttpStatus.SC_OK);
+          RecordDeserializer<MetadataResponseRecord> metadataResponseRecordRecordDeserializer =
+              SerializerDeserializerFactory.getAvroGenericDeserializer(MetadataResponseRecord.SCHEMA$);
+          GenericRecord metadataResponse = metadataResponseRecordRecordDeserializer.deserialize(body);
+
+          try (ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            GenericDatumWriter<Object> avroDatumWriter = new GenericDatumWriter<>(MetadataResponseRecord.SCHEMA$);
+            Encoder jsonEncoder = AvroCompatibilityHelper.newJsonEncoder(MetadataResponseRecord.SCHEMA$, output, true);
+            avroDatumWriter.write(metadataResponse, jsonEncoder);
+            jsonEncoder.flush();
+            output.flush();
+
+            LOGGER.info("Got a metadata response from server {} : {}", i, output);
+          } catch (IOException e) {
+            throw new VeniceException(e);
+          }
+
+          // check we can parse the fields of the response
+          Assert.assertEquals(
+              ((HashMap<Utf8, Utf8>) metadataResponse.get("keySchema")).get(new Utf8("1")),
+              new Utf8("\"int\""));
+
+          // verify the property that no replicas of the same partition are in the same helix group
+          Map<Utf8, Integer> helixGroupInfo = (HashMap<Utf8, Integer>) metadataResponse.get("helixGroupInfo");
+          Map<Utf8, Collection<Utf8>> routingInfo =
+              (HashMap<Utf8, Collection<Utf8>>) metadataResponse.get("routingInfo");
+
+          for (Map.Entry<Utf8, Collection<Utf8>> entry: routingInfo.entrySet()) {
+            Set<Integer> zonesSeen = new HashSet<>();
+            for (Utf8 instance: entry.getValue()) {
+              Assert.assertFalse(
+                  zonesSeen.contains(helixGroupInfo.get(instance)),
+                  instance + " is in the same helix zone as another replica of the partition");
+              zonesSeen.add(helixGroupInfo.get(instance));
+            }
+          }
+        }
+      }
     }
   }
 }

@@ -28,7 +28,6 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.SSLConfig;
-import com.linkedin.venice.VeniceStateModel;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -190,6 +189,7 @@ import com.linkedin.venice.views.VeniceView;
 import com.linkedin.venice.views.ViewUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
 import java.security.cert.X509Certificate;
@@ -450,7 +450,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     this.topicManagerRepository = new TopicManagerRepository(
         getKafkaBootstrapServers(isSslToKafka()),
-        multiClusterConfigs.getKafkaZkAddress(),
         multiClusterConfigs.getTopicManagerKafkaOperationTimeOutMs(),
         multiClusterConfigs.getTopicDeletionStatusPollIntervalMs(),
         multiClusterConfigs.getKafkaMinLogCompactionLagInMs(),
@@ -529,7 +528,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           new UpdateStoreQueryParams().setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(1)) // 1 day rewind
               .setHybridOffsetLagThreshold(1)
               .setHybridTimeLagThreshold(-1) // Explicitly disable hybrid time lag measurement on system store
-              .setLeaderFollowerModel(true)
               .setWriteComputationEnabled(true)
               .setPartitionCount(1);
       initRoutines.add(
@@ -547,7 +545,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           new UpdateStoreQueryParams().setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(1)) // 1 day rewind
               .setHybridOffsetLagThreshold(1)
               .setHybridTimeLagThreshold(-1) // Explicitly disable hybrid time lag measurement on system store
-              .setLeaderFollowerModel(true)
               .setWriteComputationEnabled(true)
               .setPartitionCount(1);
       initRoutines.add(
@@ -867,8 +864,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   private void configureNewStore(Store newStore, VeniceControllerClusterConfig config, int largestUsedVersionNumber) {
-    // Enable L/F for the new store (no matter which type it is)
-    newStore.setLeaderFollowerModelEnabled(true);
     newStore.setNativeReplicationEnabled(config.isNativeReplicationEnabledAsDefaultForBatchOnly());
     newStore.setActiveActiveReplicationEnabled(config.isActiveActiveReplicationEnabledAsDefaultForBatchOnly());
 
@@ -1083,9 +1078,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           VeniceSystemStoreUtils.getPushJobDetailsStoreName(),
           value.getSchema().toString());
       return getVeniceWriterFactory().createVeniceWriter(
-          pushJobDetailsRTTopic,
-          new VeniceAvroKafkaSerializer(key.getSchema().toString()),
-          new VeniceAvroKafkaSerializer(value.getSchema().toString()));
+          new VeniceWriterOptions.Builder(pushJobDetailsRTTopic)
+              .setKeySerializer(new VeniceAvroKafkaSerializer(key.getSchema().toString()))
+              .setValueSerializer(new VeniceAvroKafkaSerializer(value.getSchema().toString()))
+              .build());
     });
 
     pushJobDetailsWriter.put(key, value, pushJobDetailsSchemaId, null);
@@ -1169,9 +1165,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     // write EOP message
     VeniceWriterFactory factory = getVeniceWriterFactory();
     int partitionCount = version.getPartitionCount() * version.getPartitionerConfig().getAmplificationFactor();
-    try (VeniceWriter veniceWriter = (multiClusterConfigs.isParent() && version.isNativeReplicationEnabled())
-        ? factory.createVeniceWriter(topicToReceiveEndOfPush, version.getPushStreamSourceAddress(), partitionCount)
-        : factory.createVeniceWriter(topicToReceiveEndOfPush, partitionCount)) {
+    VeniceWriterOptions.Builder vwOptionsBuilder =
+        new VeniceWriterOptions.Builder(topicToReceiveEndOfPush).setUseKafkaKeySerializer(true)
+            .setPartitionCount(partitionCount);
+    if (multiClusterConfigs.isParent() && version.isNativeReplicationEnabled()) {
+      vwOptionsBuilder.setBrokerAddress(version.getPushStreamSourceAddress());
+    }
+    try (VeniceWriter veniceWriter = factory.createVeniceWriter(vwOptionsBuilder.build())) {
       if (alsoWriteStartOfPush) {
         veniceWriter.broadcastStartOfPush(
             false,
@@ -1844,19 +1844,19 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         store.addVersion(version);
         // Apply cluster-level native replication configs
         VeniceControllerClusterConfig clusterConfig = resources.getConfig();
-        if (version.isLeaderFollowerModelEnabled()) {
-          boolean nativeReplicationEnabled = version.isNativeReplicationEnabled();
-          if (store.isHybrid()) {
-            nativeReplicationEnabled |= clusterConfig.isNativeReplicationEnabledForHybrid();
+
+        boolean nativeReplicationEnabled = version.isNativeReplicationEnabled();
+        if (store.isHybrid()) {
+          nativeReplicationEnabled |= clusterConfig.isNativeReplicationEnabledForHybrid();
+        } else {
+          if (store.isIncrementalPushEnabled()) {
+            nativeReplicationEnabled |= clusterConfig.isNativeReplicationEnabledForIncremental();
           } else {
-            if (store.isIncrementalPushEnabled()) {
-              nativeReplicationEnabled |= clusterConfig.isNativeReplicationEnabledForIncremental();
-            } else {
-              nativeReplicationEnabled |= clusterConfig.isNativeReplicationEnabledForBatchOnly();
-            }
+            nativeReplicationEnabled |= clusterConfig.isNativeReplicationEnabledForBatchOnly();
           }
-          version.setNativeReplicationEnabled(nativeReplicationEnabled);
         }
+        version.setNativeReplicationEnabled(nativeReplicationEnabled);
+
         if (version.isNativeReplicationEnabled()) {
           if (remoteKafkaBootstrapServers != null) {
             version.setPushStreamSourceAddress(remoteKafkaBootstrapServers);
@@ -1976,8 +1976,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           clusterName,
           version.kafkaTopicName(),
           version.getPartitionCount(),
-          store.getReplicationFactor(),
-          version.isLeaderFollowerModelEnabled());
+          store.getReplicationFactor());
       startMonitorOfflinePush(
           clusterName,
           version.kafkaTopicName(),
@@ -2112,7 +2111,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     ReadWriteStoreRepository repository = resources.getStoreMetadataRepository();
     Version version = null;
     OfflinePushStrategy strategy;
-    boolean isLeaderFollowerStateModel = false;
     int currentVersionBeforePush = -1;
     VeniceControllerClusterConfig clusterConfig = resources.getConfig();
     BackupStrategy backupStrategy;
@@ -2190,7 +2188,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             compressionDictionaryBuffer = EMPTY_PUSH_ZSTD_DICTIONARY;
           }
 
-          Pair<String, String> sourceKafkaBootstrapServersAndZk = null;
+          String sourceKafkaBootstrapServers = null;
 
           store = repository.getStore(storeName);
           strategy = store.getOffLinePushStrategy();
@@ -2198,29 +2196,19 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             version.setPushType(pushType);
             store.addVersion(version);
           }
-          // We set the version level LF config to true if this LF dependency check is disabled.
-          // This should be applicable for parent controllers only.
-          if (clusterConfig.isLfModelDependencyCheckDisabled()) {
-            version.setLeaderFollowerModelEnabled(true);
-          }
 
-          if (version.isLeaderFollowerModelEnabled()) {
-            isLeaderFollowerStateModel = true;
-          }
           // Apply cluster-level native replication configs
-          if (version.isLeaderFollowerModelEnabled()) {
-            boolean nativeReplicationEnabled = version.isNativeReplicationEnabled();
-            if (store.isHybrid()) {
-              nativeReplicationEnabled |= clusterConfig.isNativeReplicationEnabledForHybrid();
+          boolean nativeReplicationEnabled = version.isNativeReplicationEnabled();
+          if (store.isHybrid()) {
+            nativeReplicationEnabled |= clusterConfig.isNativeReplicationEnabledForHybrid();
+          } else {
+            if (store.isIncrementalPushEnabled()) {
+              nativeReplicationEnabled |= clusterConfig.isNativeReplicationEnabledForIncremental();
             } else {
-              if (store.isIncrementalPushEnabled()) {
-                nativeReplicationEnabled |= clusterConfig.isNativeReplicationEnabledForIncremental();
-              } else {
-                nativeReplicationEnabled |= clusterConfig.isNativeReplicationEnabledForBatchOnly();
-              }
+              nativeReplicationEnabled |= clusterConfig.isNativeReplicationEnabledForBatchOnly();
             }
-            version.setNativeReplicationEnabled(nativeReplicationEnabled);
           }
+          version.setNativeReplicationEnabled(nativeReplicationEnabled);
 
           // Check whether native replication is enabled
           if (version.isNativeReplicationEnabled()) {
@@ -2244,8 +2232,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                */
               String sourceFabric =
                   getNativeReplicationSourceFabric(clusterName, store, sourceGridFabric, emergencySourceRegion);
-              sourceKafkaBootstrapServersAndZk = getNativeReplicationKafkaBootstrapServerAndZkAddress(sourceFabric);
-              String sourceKafkaBootstrapServers = sourceKafkaBootstrapServersAndZk.getFirst();
+              sourceKafkaBootstrapServers = getNativeReplicationKafkaBootstrapServerAddress(sourceFabric);
               if (sourceKafkaBootstrapServers == null) {
                 sourceKafkaBootstrapServers = getKafkaBootstrapServers(isSslToKafka());
               }
@@ -2311,17 +2298,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
            */
           if (multiClusterConfigs.isParent() && version.isNativeReplicationEnabled()
               && !version.getPushStreamSourceAddress().equals(getKafkaBootstrapServers(isSslToKafka()))) {
-            if (sourceKafkaBootstrapServersAndZk == null || sourceKafkaBootstrapServersAndZk.getFirst() == null
-                || sourceKafkaBootstrapServersAndZk.getSecond() == null) {
+            if (sourceKafkaBootstrapServers == null) {
               throw new VeniceException(
-                  "Parent controller should know the source Kafka bootstrap server url "
-                      + "and source Kafka ZK address for store: " + storeName + " and version: " + version.getNumber()
-                      + " in cluster: " + clusterName);
+                  "Parent controller should know the source Kafka bootstrap server url for store: " + storeName
+                      + " and version: " + version.getNumber() + " in cluster: " + clusterName);
             }
             createBatchTopics(
                 version,
                 pushType,
-                getTopicManager(sourceKafkaBootstrapServersAndZk),
+                getTopicManager(sourceKafkaBootstrapServers),
                 subPartitionCount,
                 clusterConfig,
                 useFastKafkaOperationTimeout);
@@ -2331,18 +2316,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             final Version finalVersion = version;
             VeniceWriter veniceWriter = null;
             try {
+              VeniceWriterOptions.Builder vwOptionsBuilder =
+                  new VeniceWriterOptions.Builder(finalVersion.kafkaTopicName()).setUseKafkaKeySerializer(true)
+                      .setPartitionCount(subPartitionCount);
               if (multiClusterConfigs.isParent() && finalVersion.isNativeReplicationEnabled()) {
-                /**
-                 * Produce directly into one of the child fabric
-                 */
-                veniceWriter = getVeniceWriterFactory().createVeniceWriter(
-                    finalVersion.kafkaTopicName(),
-                    finalVersion.getPushStreamSourceAddress(),
-                    subPartitionCount);
-              } else {
-                veniceWriter =
-                    getVeniceWriterFactory().createVeniceWriter(finalVersion.kafkaTopicName(), subPartitionCount);
+                // Produce directly into one of the child fabric
+                vwOptionsBuilder.setBrokerAddress(finalVersion.getPushStreamSourceAddress());
               }
+              veniceWriter = getVeniceWriterFactory().createVeniceWriter(vwOptionsBuilder.build());
               veniceWriter.broadcastStartOfPush(
                   sorted,
                   finalVersion.isChunkingEnabled(),
@@ -2376,8 +2357,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 clusterName,
                 version.kafkaTopicName(),
                 numberOfPartitions,
-                replicationFactor,
-                isLeaderFollowerStateModel);
+                replicationFactor);
           }
         }
         // We need to release the locks as `waitUntilNodesAreAssignedForResource` can take long time
@@ -3117,8 +3097,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     boolean allTopicsAreDeleted = true;
     Set<String> parentFabrics = multiClusterConfigs.getParentFabrics();
     for (String parentFabric: parentFabrics) {
-      Pair<String, String> kafkaUrlAndZk = getNativeReplicationKafkaBootstrapServerAndZkAddress(parentFabric);
-      allTopicsAreDeleted &= truncateKafkaTopic(getTopicManager(kafkaUrlAndZk), kafkaTopicName);
+      String kafkaBootstrapServerAddress = getNativeReplicationKafkaBootstrapServerAddress(parentFabric);
+      allTopicsAreDeleted &= truncateKafkaTopic(getTopicManager(kafkaBootstrapServerAddress), kafkaTopicName);
     }
     return allTopicsAreDeleted;
   }
@@ -3441,10 +3421,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (isParent()) {
           // RT might not exist in parent colo. Get RT partition count from a child colo.
           String childDatacenter = Utils.parseCommaSeparatedStringToList(clusterConfig.getChildDatacenters()).get(0);
-          topicManager = getTopicManager(
-              Pair.create(
-                  multiClusterConfigs.getChildDataCenterKafkaUrlMap().get(childDatacenter),
-                  multiClusterConfigs.getChildDataCenterKafkaZkMap().get(childDatacenter)));
+          topicManager = getTopicManager(multiClusterConfigs.getChildDataCenterKafkaUrlMap().get(childDatacenter));
         } else {
           topicManager = getTopicManager();
         }
@@ -3598,9 +3575,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       VeniceControllerClusterConfig config = getHelixVeniceClusterResources(clusterName).getConfig();
       if (incrementalPushEnabled) {
         // Enabling incremental push
-        if (config.isLeaderFollowerEnabledForIncrementalPushStores()) {
-          store.setLeaderFollowerModelEnabled(true);
-        }
         store.setActiveActiveReplicationEnabled(config.isActiveActiveReplicationEnabledAsDefaultForIncremental());
         store.setNativeReplicationEnabled(config.isNativeReplicationEnabledAsDefaultForIncremental());
         store.setNativeReplicationSourceFabric(config.getNativeReplicationSourceFabricAsDefaultForIncremental());
@@ -3686,26 +3660,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       store.setBootstrapToOnlineTimeoutInHours(bootstrapToOnlineTimeoutInHours);
       return store;
     });
-  }
-
-  /**
-   * Update the leader follower model in the store's metadata.
-   */
-  public void setLeaderFollowerModelEnabled(String clusterName, String storeName, boolean leaderFollowerModelEnabled) {
-    storeMetadataUpdate(clusterName, storeName, store -> {
-      store.setLeaderFollowerModelEnabled(leaderFollowerModelEnabled);
-      return store;
-    });
-  }
-
-  /**
-   * @see #setLeaderFollowerModelEnabled(String, String, boolean)
-   */
-  public void enableLeaderFollowerModelLocally(
-      String clusterName,
-      String storeName,
-      boolean leaderFollowerModelEnabled) {
-    setLeaderFollowerModelEnabled(clusterName, storeName, leaderFollowerModelEnabled);
   }
 
   private void setNativeReplicationEnabled(String clusterName, String storeName, boolean nativeReplicationEnabled) {
@@ -3905,7 +3859,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Integer> replicationMetadataVersionID = params.getReplicationMetadataVersionID();
     Optional<Boolean> readComputationEnabled = params.getReadComputationEnabled();
     Optional<Integer> bootstrapToOnlineTimeoutInHours = params.getBootstrapToOnlineTimeoutInHours();
-    Optional<Boolean> leaderFollowerModelEnabled = params.getLeaderFollowerModelEnabled();
     Optional<BackupStrategy> backupStrategy = params.getBackupStrategy();
     Optional<Boolean> autoSchemaRegisterPushJobEnabled = params.getAutoSchemaRegisterPushJobEnabled();
     Optional<Boolean> hybridStoreDiskQuotaEnabled = params.getHybridStoreDiskQuotaEnabled();
@@ -3954,20 +3907,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         setStorePartitionCount(clusterName, storeName, partitionCount.get());
       }
 
-      // Amplification factor is a Leader-Follower only feature. Block the update if the store is in O/O model.
-      String amplificationFactorNotSupportedErrorMessage =
-          "amplificationFactor is not supported in Online/Offline state model";
-      if (amplificationFactor.isPresent() && amplificationFactor.get() != 1) {
-        if (leaderFollowerModelEnabled.isPresent()) {
-          if (!leaderFollowerModelEnabled.get()) {
-            throw new VeniceException(amplificationFactorNotSupportedErrorMessage);
-          }
-        } else {
-          if (!originalStore.isLeaderFollowerModelEnabled()) {
-            throw new VeniceException(amplificationFactorNotSupportedErrorMessage);
-          }
-        }
-      }
       /**
        * If either of these three fields is not present, we should use store's original value to construct correct
        * updated partitioner config.
@@ -4024,29 +3963,24 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
              * still consuming the RT topic.
              */
             store.setHybridStoreConfig(null);
-            if (store.isLeaderFollowerModelEnabled() || clusterConfig.isLfModelDependencyCheckDisabled()) {
-              // Disabling hybrid configs for a L/F store
-              if (!store.isIncrementalPushEnabled()) {
-                // Enable/disable native replication for batch-only stores if the cluster level config for new batch
-                // stores is on
-                store.setNativeReplicationEnabled(clusterConfig.isNativeReplicationEnabledAsDefaultForBatchOnly());
-                store.setNativeReplicationSourceFabric(
-                    clusterConfig.getNativeReplicationSourceFabricAsDefaultForBatchOnly());
-                store.setActiveActiveReplicationEnabled(
-                    clusterConfig.isActiveActiveReplicationEnabledAsDefaultForBatchOnly());
-              } else {
-                store.setNativeReplicationEnabled(clusterConfig.isNativeReplicationEnabledAsDefaultForIncremental());
-                store.setNativeReplicationSourceFabric(
-                    clusterConfig.getNativeReplicationSourceFabricAsDefaultForIncremental());
-                store.setActiveActiveReplicationEnabled(
-                    clusterConfig.isActiveActiveReplicationEnabledAsDefaultForIncremental());
-              }
+            // Disabling hybrid configs for a L/F store
+            if (!store.isIncrementalPushEnabled()) {
+              // Enable/disable native replication for batch-only stores if the cluster level config for new batch
+              // stores is on
+              store.setNativeReplicationEnabled(clusterConfig.isNativeReplicationEnabledAsDefaultForBatchOnly());
+              store.setNativeReplicationSourceFabric(
+                  clusterConfig.getNativeReplicationSourceFabricAsDefaultForBatchOnly());
+              store.setActiveActiveReplicationEnabled(
+                  clusterConfig.isActiveActiveReplicationEnabledAsDefaultForBatchOnly());
+            } else {
+              store.setNativeReplicationEnabled(clusterConfig.isNativeReplicationEnabledAsDefaultForIncremental());
+              store.setNativeReplicationSourceFabric(
+                  clusterConfig.getNativeReplicationSourceFabricAsDefaultForIncremental());
+              store.setActiveActiveReplicationEnabled(
+                  clusterConfig.isActiveActiveReplicationEnabledAsDefaultForIncremental());
             }
           } else {
-            if (!store.isHybrid() && (clusterConfig.isLeaderFollowerEnabledForHybridStores()
-                || clusterConfig.isLfModelDependencyCheckDisabled())) {
-              // This is a new hybrid store. Enable L/F if the config is set to true.
-              store.setLeaderFollowerModelEnabled(true);
+            if (!store.isHybrid()) {
               if (!store.isIncrementalPushEnabled()) {
                 // Enable/disable native replication for hybrid stores if the cluster level config for new hybrid stores
                 // is on
@@ -4140,44 +4074,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         setReadComputationEnabled(clusterName, storeName, readComputationEnabled.get());
       }
 
-      if (leaderFollowerModelEnabled.isPresent() && !leaderFollowerModelEnabled.get()) {
-        if (amplificationFactor.isPresent()) {
-          if (amplificationFactor.get() != 1) {
-            throw new VeniceException(amplificationFactorNotSupportedErrorMessage);
-          }
-        } else {
-          if (originalStore.getPartitionerConfig() != null
-              && originalStore.getPartitionerConfig().getAmplificationFactor() != 1) {
-            throw new VeniceException(amplificationFactorNotSupportedErrorMessage);
-          }
-        }
-      }
-
-      if (leaderFollowerModelEnabled.isPresent()) {
-        setLeaderFollowerModelEnabled(clusterName, storeName, leaderFollowerModelEnabled.get());
-      }
-
       if (nativeReplicationEnabled.isPresent()) {
-        /**
-         * Leader/follower mode can be enabled/disabled within the same command.
-         */
-        boolean isLeaderFollowerModelEnabled = getStore(clusterName, storeName).isLeaderFollowerModelEnabled();
-        if (!isLeaderFollowerModelEnabled && !clusterConfig.isLfModelDependencyCheckDisabled()
-            && nativeReplicationEnabled.get()) {
-          throw new VeniceException(
-              "Native Replication cannot be enabled on store " + storeName
-                  + " which does not have leader/follower mode enabled!");
-        }
         setNativeReplicationEnabled(clusterName, storeName, nativeReplicationEnabled.get());
       }
 
       if (activeActiveReplicationEnabled.isPresent()) {
-        boolean isLeaderFollowerModelEnabled = getStore(clusterName, storeName).isLeaderFollowerModelEnabled();
-        if (!isLeaderFollowerModelEnabled && activeActiveReplicationEnabled.get()) {
-          throw new VeniceException(
-              "Active active replication cannot be enabled on store " + storeName
-                  + " which does not have L/F mode enabled.");
-        }
         setActiveActiveReplicationEnabled(clusterName, storeName, activeActiveReplicationEnabled.get());
       }
 
@@ -5024,7 +4925,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * @return a map containing the storage node name and its connectivity status (<code>InstanceStatus</code>).
    */
   @Override
-  public Map<String, String> getStorageNodesStatus(String clusterName) {
+  public Map<String, String> getStorageNodesStatus(String clusterName, boolean enableReplica) {
     checkControllerLeadershipFor(clusterName);
     List<String> instances = helixAdminClient.getInstancesInCluster(clusterName);
     RoutingDataRepository routingDataRepository =
@@ -5035,6 +4936,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         instancesStatusesMap.put(instance, InstanceStatus.CONNECTED.toString());
       } else {
         instancesStatusesMap.put(instance, InstanceStatus.DISCONNECTED.toString());
+      }
+      if (enableReplica) {
+        Map<String, List<String>> disabledPartitions = helixAdminClient.getDisabledPartitionsMap(clusterName, instance);
+        for (Map.Entry<String, List<String>> entry: disabledPartitions.entrySet()) {
+          helixAdminClient.enablePartition(true, clusterName, instance, entry.getKey(), entry.getValue());
+          LOGGER.info(
+              "Enabled disabled replica of resource {}, partitions {} in cluster {}",
+              entry.getKey(),
+              entry.getValue(),
+              clusterName);
+        }
       }
     }
     return instancesStatusesMap;
@@ -5487,11 +5399,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         "Cluster creation: {} completed, auto join to true. Delayed rebalance time: {}ms",
         clusterName,
         delayedTime);
-
-    admin.addStateModelDef(
-        clusterName,
-        VeniceStateModel.PARTITION_ONLINE_OFFLINE_STATE_MODEL,
-        VeniceStateModel.getDefinition());
     admin.addStateModelDef(clusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
 
     admin.addResource(
@@ -5549,15 +5456,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * @return a pair of KafkaUrl and Zk for the given fabric.
+   * @return KafkaUrl for the given fabric.
    * @see ConfigKeys#CHILD_DATA_CENTER_KAFKA_URL_PREFIX
-   * @see ConfigKeys#CHILD_DATA_CENTER_KAFKA_ZK_PREFIX
    */
   @Override
-  public Pair<String, String> getNativeReplicationKafkaBootstrapServerAndZkAddress(String sourceFabric) {
-    return Pair.create(
-        multiClusterConfigs.getChildDataCenterKafkaUrlMap().get(sourceFabric),
-        multiClusterConfigs.getChildDataCenterKafkaZkMap().get(sourceFabric));
+  public String getNativeReplicationKafkaBootstrapServerAddress(String sourceFabric) {
+    return multiClusterConfigs.getChildDataCenterKafkaUrlMap().get(sourceFabric);
   }
 
   /**
@@ -5646,11 +5550,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * @see Admin#getTopicManager(Pair)
+   * @see Admin#getTopicManager(String)
    */
   @Override
-  public TopicManager getTopicManager(Pair<String, String> kafkaBootstrapServersAndZkAddress) {
-    return this.topicManagerRepository.getTopicManager(kafkaBootstrapServersAndZkAddress);
+  public TopicManager getTopicManager(String pubSubServerAddress) {
+    return this.topicManagerRepository.getTopicManager(pubSubServerAddress);
   }
 
   /**
@@ -6008,14 +5912,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 + VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName));
       }
       return getVeniceWriterFactory().createVeniceWriter(
-          topic,
-          new VeniceAvroKafkaSerializer(ParticipantMessageKey.getClassSchema().toString()),
-          new VeniceAvroKafkaSerializer(ParticipantMessageValue.getClassSchema().toString()));
+          new VeniceWriterOptions.Builder(topic)
+              .setKeySerializer(new VeniceAvroKafkaSerializer(ParticipantMessageKey.getClassSchema().toString()))
+              .setValueSerializer(new VeniceAvroKafkaSerializer(ParticipantMessageValue.getClassSchema().toString()))
+              .build());
     });
   }
 
   /**
-   * @see Admin#getStorageNodesStatus(String)
+   * @see Admin#getStorageNodesStatus(String, boolean)
    */
   @Override
   public StorageNodeStatus getStorageNodesStatus(String clusterName, String instanceId) {
@@ -6512,7 +6417,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
     }
 
-    VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
     if (storeName.isPresent()) {
       /**
        * Legacy stores venice_system_store_davinci_push_status_store_<cluster_name> still exist.
@@ -6561,13 +6465,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         default:
           throw new VeniceException("Unsupported store type." + storeType);
       }
-      /**
-       * If the command is trying to enable native replication, the store must have Leader/Follower state model enabled.
-       */
-      if (enableNativeReplicationForCluster) {
-        shouldUpdateNativeReplication &=
-            (originalStore.isLeaderFollowerModelEnabled() || clusterConfig.isLfModelDependencyCheckDisabled());
-      }
       if (shouldUpdateNativeReplication) {
         LOGGER.info("Will enable native replication for store: {}", storeName.get());
         setNativeReplicationEnabled(clusterName, storeName.get(), enableNativeReplicationForCluster);
@@ -6613,17 +6510,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
 
       storesToBeConfigured.forEach(store -> {
-        if (enableNativeReplicationForCluster
-            && !(store.isLeaderFollowerModelEnabled() || clusterConfig.isLfModelDependencyCheckDisabled())) {
-          LOGGER.info(
-              "Will not enable native replication for store: {} since it doesn't have Leader/Follower "
-                  + "state model enabled.",
-              store.getName());
-        } else {
-          LOGGER.info("Will enable native replication for store: {}", store.getName());
-          setNativeReplicationEnabled(clusterName, store.getName(), enableNativeReplicationForCluster);
-          newSourceFabric.ifPresent(f -> setNativeReplicationSourceFabric(clusterName, storeName.get(), f));
-        }
+        LOGGER.info("Will enable native replication for store: {}", store.getName());
+        setNativeReplicationEnabled(clusterName, store.getName(), enableNativeReplicationForCluster);
+        newSourceFabric.ifPresent(f -> setNativeReplicationSourceFabric(clusterName, storeName.get(), f));
       });
     }
   }
@@ -6655,7 +6544,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     }
 
-    VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
     if (storeName.isPresent()) {
       /**
        * Legacy stores venice_system_store_davinci_push_status_store_<cluster_name> still exist.
@@ -6705,18 +6593,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         default:
           break;
       }
-      /**
-       * If the command is trying to enable active active replication, the store must have Leader/Follower state model enabled.
-       */
-      if (enableActiveActiveReplicationForCluster) {
-        shouldUpdateActiveActiveReplication &=
-            (originalStore.isLeaderFollowerModelEnabled() || clusterConfig.isLfModelDependencyCheckDisabled());
-        // Filter out aggregate mode store explicitly.
-        if (originalStore.isHybrid() && originalStore.getHybridStoreConfig()
-            .getDataReplicationPolicy()
-            .equals(DataReplicationPolicy.AGGREGATE)) {
-          shouldUpdateActiveActiveReplication = false;
-        }
+      // Filter out aggregate mode store explicitly.
+      if (enableActiveActiveReplicationForCluster && originalStore.isHybrid()
+          && originalStore.getHybridStoreConfig().getDataReplicationPolicy().equals(DataReplicationPolicy.AGGREGATE)) {
+        shouldUpdateActiveActiveReplication = false;
       }
       if (shouldUpdateActiveActiveReplication) {
         LOGGER.info("Will enable active active replication for store: {}", storeName.get());
@@ -6770,16 +6650,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                   && (VeniceSystemStoreType.getSystemStoreType(store.getName()).isStoreZkShared())))
           .collect(Collectors.toList());
       storesToBeConfigured.forEach(store -> {
-        if (enableActiveActiveReplicationForCluster
-            && !(store.isLeaderFollowerModelEnabled() || clusterConfig.isLfModelDependencyCheckDisabled())) {
-          LOGGER.info(
-              "Will not enable active active replication for store: {} since it doesn't have Leader/Follower "
-                  + "state model enabled.",
-              store.getName());
-        } else {
-          LOGGER.info("Will enable active active replication for store: {}", store.getName());
-          setActiveActiveReplicationEnabled(clusterName, store.getName(), enableActiveActiveReplicationForCluster);
-        }
+        LOGGER.info("Will enable active active replication for store: {}", store.getName());
+        setActiveActiveReplicationEnabled(clusterName, store.getName(), enableActiveActiveReplicationForCluster);
       });
     }
   }
@@ -7145,7 +7017,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   public Optional<String> getAggregateRealTimeTopicSource(String clusterName) {
     String sourceRegion = multiClusterConfigs.getControllerConfig(clusterName).getAggregateRealTimeSourceRegion();
     if (sourceRegion != null && sourceRegion.length() > 0) {
-      return Optional.of(getNativeReplicationKafkaBootstrapServerAndZkAddress(sourceRegion).getFirst());
+      return Optional.of(getNativeReplicationKafkaBootstrapServerAddress(sourceRegion));
     } else {
       return Optional.empty();
     }

@@ -139,10 +139,7 @@ public class TopicManager implements Closeable {
                 kafkaClientFactory.getKafkaBootstrapServers(),
                 mp.metricsRepository));
     this.partitionOffsetFetcher = PartitionOffsetFetcherFactory.createDefaultPartitionOffsetFetcher(
-        kafkaClientFactory.clone(
-            kafkaClientFactory.getKafkaBootstrapServers(),
-            kafkaClientFactory.getKafkaZkAddress(),
-            metricsForPartitionOffsetFetcher),
+        kafkaClientFactory.clone(kafkaClientFactory.getKafkaBootstrapServers(), metricsForPartitionOffsetFetcher),
         kafkaReadOnlyAdmin,
         kafkaOperationTimeoutMs,
         optionalMetricsRepository);
@@ -636,8 +633,6 @@ public class TopicManager implements Closeable {
 
   /**
    * A quick check to see whether the topic exists.
-   *
-   * N.B.: The behavior of the Scala and Java admin clients are different...
    */
   public boolean containsTopic(String topic) {
     return kafkaReadOnlyAdmin.get().containsTopic(topic);

@@ -39,5 +39,6 @@ public class VersionJsonSerializerTest {
     byte[] data = versionVeniceJsonSerializer.serialize(version, "");
     Version newVersion = versionVeniceJsonSerializer.deserialize(data, "");
     Assert.assertEquals(newVersion, version);
+    Assert.assertTrue(newVersion.isLeaderFollowerModelEnabled());
   }
 }

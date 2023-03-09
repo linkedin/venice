@@ -100,6 +100,11 @@ public class GzipCompressor extends VeniceCompressor {
     return new GZIPInputStream(inputStream);
   }
 
+  @Override
+  public int hashCode() {
+    return super.hashCode();
+  }
+
   private static class ZeroCopyByteArrayOutputStream extends ByteArrayOutputStream {
     public ZeroCopyByteArrayOutputStream(int size) {
       super(size);
@@ -109,5 +114,13 @@ public class GzipCompressor extends VeniceCompressor {
     public synchronized byte[] toByteArray() {
       return buf;
     }
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (o == this) {
+      return true;
+    }
+    return o != null && o instanceof GzipCompressor;
   }
 }

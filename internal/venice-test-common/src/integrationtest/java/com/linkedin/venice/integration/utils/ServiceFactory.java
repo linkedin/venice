@@ -102,19 +102,6 @@ public class ServiceFactory {
     return getStatefulService(ZkServerWrapper.SERVICE_NAME, ZkServerWrapper.generateService());
   }
 
-  /**
-   * @return an instance of {@link KafkaBrokerWrapper}
-   */
-  public static KafkaBrokerWrapper getKafkaBroker() {
-    /**
-     * Get the ZK dependency outside of the lambda, to avoid time complexity of
-     * O({@value maxAttempt} ^2) on the amount of retries. {@link #getZkServer()}
-     * has its own retries, so we can assume it's reliable enough.
-     */
-
-    return getKafkaBroker(ServiceFactory.getZkServer());
-  }
-
   public static KafkaBrokerWrapper getKafkaBroker(ZkServerWrapper zkServerWrapper) {
     return getKafkaBroker(zkServerWrapper, Optional.empty());
   }
@@ -161,14 +148,14 @@ public class ServiceFactory {
   }
 
   public static VeniceServerWrapper getVeniceServer(
-      String coloName,
+      String regionName,
       String clusterName,
       KafkaBrokerWrapper kafkaBrokerWrapper,
       String zkAddress,
       Properties featureProperties,
       Properties configProperties) {
     return getVeniceServer(
-        coloName,
+        regionName,
         clusterName,
         kafkaBrokerWrapper,
         zkAddress,
@@ -180,7 +167,7 @@ public class ServiceFactory {
   }
 
   public static VeniceServerWrapper getVeniceServer(
-      String coloName,
+      String regionName,
       String clusterName,
       KafkaBrokerWrapper kafkaBrokerWrapper,
       String zkAddress,
@@ -194,8 +181,9 @@ public class ServiceFactory {
     return getStatefulService(
         VeniceServerWrapper.SERVICE_NAME,
         VeniceServerWrapper.generateService(
-            coloName,
+            regionName,
             clusterName,
+            zkAddress,
             kafkaBrokerWrapper,
             featureProperties,
             configProperties,
@@ -205,7 +193,7 @@ public class ServiceFactory {
   }
 
   static VeniceRouterWrapper getVeniceRouter(
-      String coloName,
+      String regionName,
       String clusterName,
       ZkServerWrapper zkServerWrapper,
       KafkaBrokerWrapper kafkaBrokerWrapper,
@@ -215,7 +203,7 @@ public class ServiceFactory {
     return getService(
         VeniceRouterWrapper.SERVICE_NAME,
         VeniceRouterWrapper.generateService(
-            coloName,
+            regionName,
             clusterName,
             zkServerWrapper,
             kafkaBrokerWrapper,
@@ -375,18 +363,18 @@ public class ServiceFactory {
     return getService(VeniceMultiClusterWrapper.SERVICE_NAME, VeniceMultiClusterWrapper.generateService(options));
   }
 
-  public static VeniceTwoLayerMultiColoMultiClusterWrapper getVeniceTwoLayerMultiColoMultiClusterWrapper(
-      int numberOfColos,
-      int numberOfClustersInEachColo,
+  public static VeniceTwoLayerMultiRegionMultiClusterWrapper getVeniceTwoLayerMultiRegionMultiClusterWrapper(
+      int numberOfRegions,
+      int numberOfClustersInEachRegion,
       int numberOfParentControllers,
       int numberOfControllers,
       int numberOfServers,
       int numberOfRouters) {
     return getService(
-        VeniceTwoLayerMultiColoMultiClusterWrapper.SERVICE_NAME,
-        VeniceTwoLayerMultiColoMultiClusterWrapper.generateService(
-            numberOfColos,
-            numberOfClustersInEachColo,
+        VeniceTwoLayerMultiRegionMultiClusterWrapper.SERVICE_NAME,
+        VeniceTwoLayerMultiRegionMultiClusterWrapper.generateService(
+            numberOfRegions,
+            numberOfClustersInEachRegion,
             numberOfParentControllers,
             numberOfControllers,
             numberOfServers,
@@ -396,9 +384,9 @@ public class ServiceFactory {
             Optional.empty()));
   }
 
-  public static VeniceTwoLayerMultiColoMultiClusterWrapper getVeniceTwoLayerMultiColoMultiClusterWrapper(
-      int numberOfColos,
-      int numberOfClustersInEachColo,
+  public static VeniceTwoLayerMultiRegionMultiClusterWrapper getVeniceTwoLayerMultiRegionMultiClusterWrapper(
+      int numberOfRegions,
+      int numberOfClustersInEachRegion,
       int numberOfParentControllers,
       int numberOfControllers,
       int numberOfServers,
@@ -408,10 +396,10 @@ public class ServiceFactory {
       Optional<Properties> childControllerProperties,
       Optional<VeniceProperties> serverProps) {
     return getService(
-        VeniceTwoLayerMultiColoMultiClusterWrapper.SERVICE_NAME,
-        VeniceTwoLayerMultiColoMultiClusterWrapper.generateService(
-            numberOfColos,
-            numberOfClustersInEachColo,
+        VeniceTwoLayerMultiRegionMultiClusterWrapper.SERVICE_NAME,
+        VeniceTwoLayerMultiRegionMultiClusterWrapper.generateService(
+            numberOfRegions,
+            numberOfClustersInEachRegion,
             numberOfParentControllers,
             numberOfControllers,
             numberOfServers,
@@ -423,9 +411,9 @@ public class ServiceFactory {
             false));
   }
 
-  public static VeniceTwoLayerMultiColoMultiClusterWrapper getVeniceTwoLayerMultiColoMultiClusterWrapper(
-      int numberOfColos,
-      int numberOfClustersInEachColo,
+  public static VeniceTwoLayerMultiRegionMultiClusterWrapper getVeniceTwoLayerMultiRegionMultiClusterWrapper(
+      int numberOfRegions,
+      int numberOfClustersInEachRegion,
       int numberOfParentControllers,
       int numberOfControllers,
       int numberOfServers,
@@ -436,10 +424,10 @@ public class ServiceFactory {
       Optional<VeniceProperties> serverProps,
       boolean forkServer) {
     return getService(
-        VeniceTwoLayerMultiColoMultiClusterWrapper.SERVICE_NAME,
-        VeniceTwoLayerMultiColoMultiClusterWrapper.generateService(
-            numberOfColos,
-            numberOfClustersInEachColo,
+        VeniceTwoLayerMultiRegionMultiClusterWrapper.SERVICE_NAME,
+        VeniceTwoLayerMultiRegionMultiClusterWrapper.generateService(
+            numberOfRegions,
+            numberOfClustersInEachRegion,
             numberOfParentControllers,
             numberOfControllers,
             numberOfServers,

@@ -47,9 +47,11 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
@@ -159,7 +161,10 @@ public abstract class AbstractClientEndToEndSetup {
     valueSerializer = new VeniceAvroKafkaSerializer(VALUE_SCHEMA_STR);
 
     veniceWriter = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress())
-        .createVeniceWriter(storeVersionName, keySerializer, valueSerializer);
+        .createVeniceWriter(
+            new VeniceWriterOptions.Builder(storeVersionName).setKeySerializer(keySerializer)
+                .setValueSerializer(valueSerializer)
+                .build());
     final int pushVersion = Version.parseVersionFromKafkaTopicName(storeVersionName);
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     // Insert test record and wait synchronously for it to succeed by calling get() on the future
@@ -229,13 +234,19 @@ public abstract class AbstractClientEndToEndSetup {
   protected AvroGenericStoreClient<String, Object> getGenericFastVsonClient(
       ClientConfig.ClientConfigBuilder clientConfigBuilder,
       MetricsRepository metricsRepository,
-      boolean useDaVinciClientBasedMetadata) throws IOException {
+      boolean useDaVinciClientBasedMetadata,
+      Optional<AvroGenericStoreClient> vsonThinClient) throws IOException {
     clientConfigBuilder.setVsonStore(true);
     setupStoreMetadata(clientConfigBuilder, useDaVinciClientBasedMetadata);
 
     // clientConfigBuilder will be used for building multiple clients over this test flow,
     // so, always specify a new MetricsRepository to avoid conflicts.
     clientConfigBuilder.setMetricsRepository(metricsRepository);
+
+    // Need to switch to a VSON-based thin client for dual read support
+    if (vsonThinClient.isPresent()) {
+      clientConfigBuilder.setGenericThinClient(vsonThinClient.get());
+    }
 
     clientConfig = clientConfigBuilder.build();
 
@@ -341,6 +352,14 @@ public abstract class AbstractClientEndToEndSetup {
         com.linkedin.venice.client.store.ClientConfig.defaultGenericClientConfig(storeName)
             .setVeniceURL(veniceCluster.getRandomRouterSslURL())
             .setSslFactory(SslUtils.getVeniceLocalSslFactory()));
+  }
+
+  protected AvroGenericStoreClient<String, Object> getGenericVsonThinClient() {
+    return com.linkedin.venice.client.store.ClientFactory.getAndStartGenericAvroClient(
+        com.linkedin.venice.client.store.ClientConfig.defaultGenericClientConfig(storeName)
+            .setVeniceURL(veniceCluster.getRandomRouterSslURL())
+            .setSslFactory(SslUtils.getVeniceLocalSslFactory())
+            .setVsonClient(true));
   }
 
   protected AvroSpecificStoreClient<String, TestValueSchema> getSpecificThinClient() {
