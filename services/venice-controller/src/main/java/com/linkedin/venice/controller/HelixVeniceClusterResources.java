@@ -268,7 +268,9 @@ public class HelixVeniceClusterResources implements VeniceResource {
     customizedViewRepo.refresh();
     pushMonitor.loadAllPushes();
     routersClusterManager.refresh();
-    admin.startInstanceMonitor(clusterName);
+    if (config.isErrorLeaderReplicaFailOverEnabled()) {
+      admin.startInstanceMonitor(clusterName);
+    }
   }
 
   @Override
@@ -284,7 +286,9 @@ public class HelixVeniceClusterResources implements VeniceResource {
     routingDataRepository.clear();
     customizedViewRepo.clear();
     routersClusterManager.clear();
-    admin.clearInstanceMonitor(clusterName);
+    if (config.isErrorLeaderReplicaFailOverEnabled()) {
+      admin.clearInstanceMonitor(clusterName);
+    }
   }
 
   /**
