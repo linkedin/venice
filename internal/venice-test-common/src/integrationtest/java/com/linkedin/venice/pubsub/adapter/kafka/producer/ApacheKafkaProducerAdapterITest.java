@@ -5,7 +5,6 @@ import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProdu
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
 import static com.linkedin.venice.utils.Time.MS_PER_MINUTE;
 import static org.apache.kafka.common.config.TopicConfig.RETENTION_MS_CONFIG;
-import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertNotNull;
@@ -26,8 +25,6 @@ import com.linkedin.venice.pubsub.adapter.PubSubProducerCallbackSimpleImpl;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.utils.DataProviderUtils;
-import com.linkedin.venice.utils.ExceptionUtils;
-import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
 import java.nio.ByteBuffer;
 import java.time.Duration;
@@ -38,7 +35,6 @@ import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -55,7 +51,7 @@ import org.testng.annotations.Test;
 
 
 /**
- * Integration tests specific to Kafka Producer.
+ * Integration tests that are intended to verify the expected behavior from Kafka Producer.
  * Important Notes:
  * 1) Please use this class to verify the guarantees expected from Kafka producer by Venice.
  * 2) Do NOT use this class for testing general venice code paths.
@@ -114,7 +110,13 @@ public class ApacheKafkaProducerAdapterITest {
     return messageEnvelope;
   }
 
-  @Test(timeOut = MS_PER_MINUTE, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, invocationCount = 1)
+  /* The following test verifies that when producer is closed
+   * 1) doFlush == true: when flushing is enabled, given sufficient time all records are sent to Kafka
+   *                     and all Futures are completed.
+   * 2) doFlush == false: upon forceful close (timeout 0 and no flushing) producer doesn't forget to complete
+   *                      any Future that it returned in response to sendMessage() call.
+   */
+  @Test(timeOut = MS_PER_MINUTE, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testProducerCloseDoesNotLeaveAnyFuturesIncomplete(boolean doFlush) throws InterruptedException {
     String topicName = Utils.getUniqueString("test-topic-for-callback-close-test");
     Map<String, String> topicProps = Collections.singletonMap(RETENTION_MS_CONFIG, Long.toString(Long.MAX_VALUE));
@@ -150,19 +152,17 @@ public class ApacheKafkaProducerAdapterITest {
     // callback execution is finished.
     assertFalse(m1Future.isDone());
 
-    final AtomicInteger loggedCount = new AtomicInteger();
-
     // Let's add records m2 to m99 to producer's buffer/accumulator
-    Map<PubSubProducerCallbackLoggingImpl, Future<PubSubProduceResult>> produceResults = new LinkedHashMap<>(100);
+    Map<PubSubProducerCallbackSimpleImpl, Future<PubSubProduceResult>> produceResults = new LinkedHashMap<>(100);
     for (int i = 2; i < 100; i++) {
       KafkaKey mKey = getDummyKey();
-      PubSubProducerCallbackLoggingImpl callback = new PubSubProducerCallbackLoggingImpl(loggedCount);
+      PubSubProducerCallbackSimpleImpl callback = new PubSubProducerCallbackSimpleImpl();
       produceResults.put(callback, producerAdapter.sendMessage(topicName, null, mKey, getDummyVal(), null, callback));
     }
 
     // Initiate close in another thread as it close() call waits for ioThread to finish.
     // Since we're blocking ioThread in m0's callback calling it from current thread would lead to deadlock.
-    Thread closeProducerThread = new Thread(() -> producerAdapter.close(doFlush ? MS_PER_MINUTE : 0, doFlush));
+    Thread closeProducerThread = new Thread(() -> producerAdapter.close(doFlush ? Integer.MAX_VALUE : 0, doFlush));
     closeProducerThread.start();
 
     // Let's make sure that none of the m2 to m99 are ACKed by Kafka yet
@@ -198,7 +198,7 @@ public class ApacheKafkaProducerAdapterITest {
     }
 
     // let's make sure that all Futures returned by sendMessage method are completed exceptionally
-    for (Map.Entry<PubSubProducerCallbackLoggingImpl, Future<PubSubProduceResult>> entry: produceResults.entrySet()) {
+    for (Map.Entry<PubSubProducerCallbackSimpleImpl, Future<PubSubProduceResult>> entry: produceResults.entrySet()) {
       PubSubProducerCallbackSimpleImpl cb = entry.getKey();
       Future<PubSubProduceResult> future = entry.getValue();
       waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> assertTrue(cb.isInvoked()));
@@ -224,12 +224,6 @@ public class ApacheKafkaProducerAdapterITest {
         fail("Exceptionally completed future should throw an exception");
       } catch (Exception expected) {
       }
-    }
-
-    if (doFlush) {
-      assertEquals(loggedCount.get(), 0);
-    } else {
-      assertEquals(loggedCount.get(), 1);
     }
   }
 
@@ -262,28 +256,6 @@ public class ApacheKafkaProducerAdapterITest {
         mutex.unlock();
       }
       LOGGER.info("Callback has unblocked executing thread. KeyIdx: {}", idx);
-    }
-  }
-
-  private static class PubSubProducerCallbackLoggingImpl extends PubSubProducerCallbackSimpleImpl {
-    private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
-        RedundantExceptionFilter.getDailyRedundantExceptionFilter();
-    private static final Logger LOGGER = LogManager.getLogger(PubSubProducerCallbackSimpleImpl.class);
-
-    private final AtomicInteger loggedCount;
-
-    PubSubProducerCallbackLoggingImpl(AtomicInteger loggedCount) {
-      this.loggedCount = loggedCount;
-    }
-
-    @Override
-    public void onCompletion(PubSubProduceResult produceResult, Exception e) {
-      super.onCompletion(produceResult, e);
-      if (e == null || REDUNDANT_LOGGING_FILTER.isRedundantException(ExceptionUtils.compactExceptionDescription(e))) {
-        return;
-      }
-      loggedCount.getAndIncrement();
-      LOGGER.error("###Leader failed to send out message to version topic when consuming", e);
     }
   }
 }
