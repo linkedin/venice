@@ -1,11 +1,17 @@
 package com.linkedin.venice.pubsub.adapter.kafka.producer;
 
-import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_BATCH_SIZE;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_LINGER_MS;
+import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_CLIENT_ID;
+import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
+import static com.linkedin.venice.utils.Time.MS_PER_MINUTE;
+import static org.apache.kafka.common.config.TopicConfig.RETENTION_MS_CONFIG;
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
 
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -16,9 +22,12 @@ import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.adapter.PubSubProducerCallbackSimpleImpl;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
-import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.ExceptionUtils;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
 import java.nio.ByteBuffer;
 import java.time.Duration;
@@ -29,6 +38,7 @@ import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -37,7 +47,6 @@ import org.apache.kafka.clients.admin.AdminClientConfig;
 import org.apache.kafka.clients.admin.CreateTopicsResult;
 import org.apache.kafka.clients.admin.KafkaAdminClient;
 import org.apache.kafka.clients.admin.NewTopic;
-import org.apache.kafka.common.config.TopicConfig;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.annotations.AfterClass;
@@ -76,12 +85,8 @@ public class ApacheKafkaProducerAdapterITest {
     zkServerWrapper.close();
   }
 
-  private void createTopic(
-      String topicName,
-      int numPartitions,
-      int replicationFactor,
-      Map<String, String> topicPropertiesMap) {
-    NewTopic newTopic = new NewTopic(topicName, numPartitions, (short) replicationFactor).configs(topicPropertiesMap);
+  private void createTopic(String topicName, int numPartitions, int replicationFactor, Map<String, String> topicProps) {
+    NewTopic newTopic = new NewTopic(topicName, numPartitions, (short) replicationFactor).configs(topicProps);
     CreateTopicsResult createTopicsResult = kafkaAdminClient.createTopics(Collections.singleton(newTopic));
     try {
       createTopicsResult.all().get();
@@ -109,35 +114,29 @@ public class ApacheKafkaProducerAdapterITest {
     return messageEnvelope;
   }
 
-  @Test
-  public void testProducerUngracefulCloseFromCallback() throws ExecutionException, InterruptedException {
+  @Test(timeOut = MS_PER_MINUTE, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, invocationCount = 1)
+  public void testProducerCloseDoesNotLeaveAnyFuturesIncomplete(boolean doFlush) throws InterruptedException {
     String topicName = Utils.getUniqueString("test-topic-for-callback-close-test");
-    int batchSize = 8 * 1024;
-    createTopic(
-        topicName,
-        1,
-        1,
-        Collections.singletonMap(TopicConfig.RETENTION_MS_CONFIG, Long.toString(Long.MAX_VALUE)));
+    Map<String, String> topicProps = Collections.singletonMap(RETENTION_MS_CONFIG, Long.toString(Long.MAX_VALUE));
+    createTopic(topicName, 1, 1, topicProps);
+
     Properties properties = new Properties();
     properties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getAddress());
-    properties.put(KAFKA_LINGER_MS, 0);
-    properties.put(KAFKA_BATCH_SIZE, batchSize);
-    // properties.put(KAFKA_VALUE_SERIALIZER, ByteArraySerializer.class.getName());
+    properties.put(KAFKA_CLIENT_ID, topicName);
     ApacheKafkaProducerConfig producerConfig = new ApacheKafkaProducerConfig(properties);
-    ApacheKafkaProducerAdapter producer = new ApacheKafkaProducerAdapter(producerConfig);
+    ApacheKafkaProducerAdapter producerAdapter = new ApacheKafkaProducerAdapter(producerConfig);
 
-    // case 1: block and drop messages in accumulator
     KafkaKey m0Key = getDummyKey();
     SimpleBlockingCallback m0BlockingCallback = new SimpleBlockingCallback("m0Key");
-    Future<PubSubProduceResult> m0Future =
-        producer.sendMessage(topicName, null, m0Key, getDummyVal(), null, m0BlockingCallback);
+    producerAdapter.sendMessage(topicName, null, m0Key, getDummyVal(), null, m0BlockingCallback);
 
     KafkaKey m1Key = getDummyKey();
-    SimpleLoggingPubSubProducerCallbackImpl m1SimpleCallback = new SimpleLoggingPubSubProducerCallbackImpl("m1Key");
+    PubSubProducerCallbackSimpleImpl m1Cb = new PubSubProducerCallbackSimpleImpl();
     Future<PubSubProduceResult> m1Future =
-        producer.sendMessage(topicName, null, m1Key, getDummyVal(), null, m1SimpleCallback);
+        producerAdapter.sendMessage(topicName, null, m1Key, getDummyVal(), null, m1Cb);
 
-    // wait until producer's sender(ioThread) is blocked
+    // We want to simulate a case where records sit in producer buffer and are not yet sent Kafka.
+    // Hence, we will block current thread until producer's sender(ioThread) is blocked.
     m0BlockingCallback.mutex.lock();
     try {
       while (!m0BlockingCallback.blockedSuccessfully) {
@@ -146,24 +145,33 @@ public class ApacheKafkaProducerAdapterITest {
     } finally {
       m0BlockingCallback.mutex.unlock();
     }
-    // if control reaches here, it means producer's sender thread is blocked
+    // If control reaches here, it means producer's sender thread is blocked.
+    // Message m1 was sent before blocking sender thread. But it's future won't be completed until m0's
+    // callback execution is finished.
     assertFalse(m1Future.isDone());
 
-    // let's add some records (m1 to m99) to producer's buffer/accumulator
-    Map<SimpleLoggingPubSubProducerCallbackImpl, Future<PubSubProduceResult>> produceResults = new LinkedHashMap<>(100);
-    for (int i = 0; i < 100; i++) {
+    final AtomicInteger loggedCount = new AtomicInteger();
+
+    // Let's add records m2 to m99 to producer's buffer/accumulator
+    Map<PubSubProducerCallbackLoggingImpl, Future<PubSubProduceResult>> produceResults = new LinkedHashMap<>(100);
+    for (int i = 2; i < 100; i++) {
       KafkaKey mKey = getDummyKey();
-      SimpleLoggingPubSubProducerCallbackImpl callback = new SimpleLoggingPubSubProducerCallbackImpl("" + i);
-      produceResults.put(callback, producer.sendMessage(topicName, null, mKey, getDummyVal(), null, callback));
+      PubSubProducerCallbackLoggingImpl callback = new PubSubProducerCallbackLoggingImpl(loggedCount);
+      produceResults.put(callback, producerAdapter.sendMessage(topicName, null, mKey, getDummyVal(), null, callback));
     }
 
-    // let's make sure that none of the m1 to m99 are ACKed by Kafka yet
+    // Initiate close in another thread as it close() call waits for ioThread to finish.
+    // Since we're blocking ioThread in m0's callback calling it from current thread would lead to deadlock.
+    Thread closeProducerThread = new Thread(() -> producerAdapter.close(doFlush ? MS_PER_MINUTE : 0, doFlush));
+    closeProducerThread.start();
+
+    // Let's make sure that none of the m2 to m99 are ACKed by Kafka yet
     produceResults.forEach((cb, future) -> {
       assertFalse(cb.isInvoked());
       assertFalse(future.isDone());
     });
 
-    LOGGER.info("Unblocking sender");
+    LOGGER.info("Unblocking producer's ioThread (sender)...");
     // now unblock sender
     m0BlockingCallback.mutex.lock();
     try {
@@ -172,52 +180,60 @@ public class ApacheKafkaProducerAdapterITest {
     } finally {
       m0BlockingCallback.mutex.unlock();
     }
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> assertTrue(m1Future.isDone()));
-    // TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> assertTrue(m1SimpleCallback.isInvoked()));
+    // In graceful case, m1Future should be completed normally. But in ungraceful case, we cannot make any such
+    // assumptions and in such cases all we care about is it gets completed.
+    waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> assertTrue(m1Future.isDone()));
 
-    produceResults.forEach((key, value) -> System.out.println(key + " - " + value));
-    System.out.println("m0 --> " + m0BlockingCallback + " - " + m0Future);
-    System.out.println("m1 --> " + m1SimpleCallback + " - " + m1Future);
+    closeProducerThread.join(); // wait for close to finish
 
-    for (int i = 0; i < 100; i++) {
+    // for most or all of the below sendMessage call we should bet producer closed exception. But by any chance
+    // any record gets added to the producer's buffer, then we'll track it to make sure that it eventually gets
+    // completed.
+    for (int i = 0; i < 10; i++) {
       try {
-        LOGGER.info("sending record for:", i);
-
-        KafkaKey mKey = getDummyKey();
-        SimpleLoggingPubSubProducerCallbackImpl callback = new SimpleLoggingPubSubProducerCallbackImpl("post-" + i);
-        Future<PubSubProduceResult> resultFuture =
-            producer.sendMessage(topicName, null, mKey, getDummyVal(), null, callback);
-        LOGGER.info("send record for:", resultFuture);
-        PubSubProduceResult produceResult = resultFuture.get();
-        assertNotNull(produceResult);
-        LOGGER.info("result:", produceResult);
-      } catch (Exception e) {
-        LOGGER.error("failed at: {}", i, e);
-        break;
+        producerAdapter.sendMessage(topicName, null, getDummyKey(), getDummyVal(), null, null);
+        fail("Sending records after producer has been closed should not succeed");
+      } catch (Exception expected) {
       }
     }
 
-    // let's make sure that none of the m1 to m99 are ACKed by Kafka yet
-    produceResults.forEach((cb, future) -> {
-      assertFalse(cb.isInvoked());
-      assertFalse(future.isDone());
-    });
+    // let's make sure that all Futures returned by sendMessage method are completed exceptionally
+    for (Map.Entry<PubSubProducerCallbackLoggingImpl, Future<PubSubProduceResult>> entry: produceResults.entrySet()) {
+      PubSubProducerCallbackSimpleImpl cb = entry.getKey();
+      Future<PubSubProduceResult> future = entry.getValue();
+      waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> assertTrue(cb.isInvoked()));
+      waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> assertTrue(future.isDone()));
+      assertFalse(future.isCancelled());
 
-    //
-    // try {
-    // future.get();
-    // } catch (Exception e) {
-    // LOGGER.error(e);
-    // }
-    //
-    // LOGGER.info("##CB##: {} invoked: {}", pubSubProducerCallback, pubSubProducerCallback.isInvoked());
-    // System.out.println("hello");
+      if (doFlush) {
+        try {
+          PubSubProduceResult produceResult = future.get();
+          assertNotNull(produceResult);
+          assertNotEquals(produceResult.getOffset(), -1);
+          assertNull(cb.getException());
+        } catch (Exception notExpected) {
+          fail("When flush is enabled all messages should be sent to Kafka successfully");
+        }
+        continue;
+      }
 
-    // case 2: ignore messages sent
+      assertNotNull(cb.getException().getMessage());
+      assertTrue(cb.getException().getMessage().contains("Producer is closed forcefully."));
+      try {
+        future.get();
+        fail("Exceptionally completed future should throw an exception");
+      } catch (Exception expected) {
+      }
+    }
 
+    if (doFlush) {
+      assertEquals(loggedCount.get(), 0);
+    } else {
+      assertEquals(loggedCount.get(), 1);
+    }
   }
 
-  static class SimpleBlockingCallback implements PubSubProducerCallback {
+  private static class SimpleBlockingCallback implements PubSubProducerCallback {
     boolean block = true;
     boolean blockedSuccessfully = false;
     String idx;
@@ -245,39 +261,29 @@ public class ApacheKafkaProducerAdapterITest {
       } finally {
         mutex.unlock();
       }
-      LOGGER.info("Callback thread has unblocked executing thread. KeyIdx: {}", idx);
+      LOGGER.info("Callback has unblocked executing thread. KeyIdx: {}", idx);
     }
   }
 
-  static class SimpleLoggingPubSubProducerCallbackImpl implements PubSubProducerCallback {
-    private PubSubProduceResult produceResult;
-    private Exception exception;
-    private boolean isInvoked;
-    private String idx;
+  private static class PubSubProducerCallbackLoggingImpl extends PubSubProducerCallbackSimpleImpl {
+    private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
+        RedundantExceptionFilter.getDailyRedundantExceptionFilter();
+    private static final Logger LOGGER = LogManager.getLogger(PubSubProducerCallbackSimpleImpl.class);
 
-    SimpleLoggingPubSubProducerCallbackImpl(String idx) {
-      this.idx = idx;
+    private final AtomicInteger loggedCount;
+
+    PubSubProducerCallbackLoggingImpl(AtomicInteger loggedCount) {
+      this.loggedCount = loggedCount;
     }
 
     @Override
-    public void onCompletion(PubSubProduceResult produceResult, Exception exception) {
-      LOGGER.info("Callback(idx:{}) -  produceResult:{} {} ", idx, produceResult, exception);
-      this.isInvoked = true;
-      this.produceResult = produceResult;
-      this.exception = exception;
-    }
-
-    public boolean isInvoked() {
-      return isInvoked;
-    }
-
-    public PubSubProduceResult getProduceResult() {
-      return produceResult;
-    }
-
-    public Exception getException() {
-      return exception;
+    public void onCompletion(PubSubProduceResult produceResult, Exception e) {
+      super.onCompletion(produceResult, e);
+      if (e == null || REDUNDANT_LOGGING_FILTER.isRedundantException(ExceptionUtils.compactExceptionDescription(e))) {
+        return;
+      }
+      loggedCount.getAndIncrement();
+      LOGGER.error("###Leader failed to send out message to version topic when consuming", e);
     }
   }
-
 }
