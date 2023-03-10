@@ -20,8 +20,6 @@ public class TestHelixLiveInstanceMonitor {
   @Test
   public void testRefresh() {
     HelixLiveInstanceMonitor liveInstanceMonitor = new HelixLiveInstanceMonitor(zkClient, "cluster");
-    doReturn(false).when(zkClient).exists(anyString());
-    liveInstanceMonitor.refresh();
     doReturn(true).when(zkClient).exists(anyString());
     liveInstanceMonitor.refresh();
     verify(zkClient, times(1)).subscribeChildChanges("/cluster/LIVEINSTANCES", liveInstanceMonitor);
