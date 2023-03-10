@@ -77,7 +77,11 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   private long connectionTimeoutMs;
   private volatile long latestHeartbeatTimestamp = -1;
 
-  private final ReentrantReadWriteLock forkProcessLeaderStateActionLock = new ReentrantReadWriteLock();
+  /**
+   * This RW lock is introduced to make sure when forked process crashes and restarts, it will first resume all ongoing
+   * ingestion and restore LEADER replica status correctly, before accepting any new Helix topic partition state transition.
+   */
+  private final ReentrantReadWriteLock forkProcessActionLock = new ReentrantReadWriteLock();
 
   public MainIngestionMonitorService(IsolatedIngestionBackend ingestionBackend, VeniceConfigLoader configLoader) {
     this.configLoader = configLoader;
@@ -374,7 +378,7 @@ public class MainIngestionMonitorService extends AbstractVeniceService {
   }
 
   public ReentrantReadWriteLock getForkProcessActionLock() {
-    return forkProcessLeaderStateActionLock;
+    return forkProcessActionLock;
   }
 
 }
