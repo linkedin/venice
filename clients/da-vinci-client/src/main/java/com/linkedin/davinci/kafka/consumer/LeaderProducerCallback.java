@@ -1,6 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER;
+import static com.linkedin.venice.utils.RedundantExceptionFilter.DEFAULT_NO_REDUNDANT_EXCEPTION_DURATION_MS;
 
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -13,7 +14,9 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.writer.ChunkAwareCallback;
 import java.nio.ByteBuffer;
 import org.apache.logging.log4j.LogManager;
@@ -22,6 +25,8 @@ import org.apache.logging.log4j.Logger;
 
 class LeaderProducerCallback implements ChunkAwareCallback {
   private static final Logger LOGGER = LogManager.getLogger(LeaderFollowerStoreIngestionTask.class);
+  private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
+      RedundantExceptionFilter.getRedundantExceptionFilter(64 * 1024, DEFAULT_NO_REDUNDANT_EXCEPTION_DURATION_MS);
 
   protected static final ChunkedValueManifestSerializer CHUNKED_VALUE_MANIFEST_SERIALIZER =
       new ChunkedValueManifestSerializer(false);
@@ -68,12 +73,14 @@ class LeaderProducerCallback implements ChunkAwareCallback {
   @Override
   public void onCompletion(PubSubProduceResult produceResult, Exception e) {
     if (e != null) {
-      LOGGER.error(
-          "Leader failed to send out message to version topic when consuming {}",
-          sourceConsumerRecord.getTopicPartition(),
-          e);
       ingestionTask.getVersionedDIVStats()
           .recordLeaderProducerFailure(ingestionTask.getStoreName(), ingestionTask.versionNumber);
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(ExceptionUtils.compactExceptionDescription(e))) {
+        LOGGER.error(
+            "Leader failed to send out message to version topic when consuming {}",
+            sourceConsumerRecord.getTopicPartition(),
+            e);
+      }
     } else {
       // recordMetadata.partition() represents the partition being written by VeniceWriter
       // partitionConsumptionState.getPartition() is leaderSubPartition
