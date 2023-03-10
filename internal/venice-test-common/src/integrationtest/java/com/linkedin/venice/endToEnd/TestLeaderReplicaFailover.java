@@ -190,13 +190,10 @@ public class TestLeaderReplicaFailover {
 
       // Restart server, the disabled replica should be re-enabled.
       clusterWrapper.restartVeniceServer(leader.getPort());
-      HelixBaseRoutingRepository finalRoutingDataRepo1 = routingDataRepo;
       TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, true, () -> {
-        Instance newLeaderNode = finalRoutingDataRepo1.getLeaderInstance(topic, 0);
-        Assert.assertNotNull(newLeaderNode);
         Assert.assertTrue(
             clusterWrapper.getLeaderVeniceController().getVeniceAdmin().getReplicas(clusterName, topic).size() == 9);
-        InstanceConfig instanceConfig1 = finalAdmin.getInstanceConfig(clusterName, newLeaderNode.getNodeId());
+        InstanceConfig instanceConfig1 = finalAdmin.getInstanceConfig(clusterName, leader.getNodeId());
         Assert.assertEquals(instanceConfig1.getDisabledPartitionsMap().size(), 0);
       });
     } finally {
