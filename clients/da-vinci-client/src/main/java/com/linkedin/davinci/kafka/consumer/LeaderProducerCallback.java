@@ -1,7 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.davinci.kafka.consumer.LeaderFollowerStateType.LEADER;
-import static com.linkedin.venice.utils.RedundantExceptionFilter.DEFAULT_NO_REDUNDANT_EXCEPTION_DURATION_MS;
 
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -25,7 +24,7 @@ import org.apache.logging.log4j.Logger;
 class LeaderProducerCallback implements ChunkAwareCallback {
   private static final Logger LOGGER = LogManager.getLogger(LeaderFollowerStoreIngestionTask.class);
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
-      RedundantExceptionFilter.getRedundantExceptionFilter(64 * 1024, DEFAULT_NO_REDUNDANT_EXCEPTION_DURATION_MS);
+      RedundantExceptionFilter.getDailyRedundantExceptionFilter();
 
   protected static final ChunkedValueManifestSerializer CHUNKED_VALUE_MANIFEST_SERIALIZER =
       new ChunkedValueManifestSerializer(false);
