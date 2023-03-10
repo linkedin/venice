@@ -373,6 +373,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   private DataRecoveryManager dataRecoveryManager;
 
+  private boolean isLeaderReplicaFailOverEnabled;
+
   public VeniceHelixAdmin(
       VeniceControllerMultiClusterConfig multiClusterConfigs,
       MetricsRepository metricsRepository,
@@ -403,6 +405,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     this.minNumberOfStoreVersionsToPreserve = multiClusterConfigs.getMinNumberOfStoreVersionsToPreserve();
     this.d2Client = d2Client;
+    this.isLeaderReplicaFailOverEnabled = commonConfig.isErrorLeaderReplicaFailOverEnabled();
 
     if (sslEnabled) {
       try {
@@ -589,40 +592,44 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         accessController,
         helixAdminClient);
 
-    for (String clusterName: multiClusterConfigs.getClusters()) {
-      HelixLiveInstanceMonitor liveInstanceMonitor = new HelixLiveInstanceMonitor(this.zkClient, clusterName);
-      liveInstanceMonitorMap.put(clusterName, liveInstanceMonitor);
-      // Register new instance callback
-      liveInstanceMonitor.registerLiveInstanceChangedListener(new LiveInstanceChangedListener() {
-        @Override
-        public void handleNewInstances(Set<Instance> newInstances) {
-          long startTime = System.currentTimeMillis();
-          for (Instance instance: newInstances) {
-            Map<String, List<String>> disabledPartitions =
-                helixAdminClient.getDisabledPartitionsMap(clusterName, instance.getNodeId());
-            for (Map.Entry<String, List<String>> entry: disabledPartitions.entrySet()) {
-              helixAdminClient
-                  .enablePartition(true, clusterName, instance.getNodeId(), entry.getKey(), entry.getValue());
-              LOGGER.info("Enabled disabled replica of resource {}, partitions {}", entry.getKey(), entry.getValue());
+    if (isLeaderReplicaFailOverEnabled) {
+      for (String clusterName: multiClusterConfigs.getClusters()) {
+        HelixLiveInstanceMonitor liveInstanceMonitor = new HelixLiveInstanceMonitor(this.zkClient, clusterName);
+        liveInstanceMonitorMap.put(clusterName, liveInstanceMonitor);
+        // Register new instance callback
+        liveInstanceMonitor.registerLiveInstanceChangedListener(new LiveInstanceChangedListener() {
+          @Override
+          public void handleNewInstances(Set<Instance> newInstances) {
+            long startTime = System.currentTimeMillis();
+            for (Instance instance: newInstances) {
+              Map<String, List<String>> disabledPartitions =
+                  helixAdminClient.getDisabledPartitionsMap(clusterName, instance.getNodeId());
+              for (Map.Entry<String, List<String>> entry: disabledPartitions.entrySet()) {
+                helixAdminClient
+                    .enablePartition(true, clusterName, instance.getNodeId(), entry.getKey(), entry.getValue());
+                LOGGER.info("Enabled disabled replica of resource {}, partitions {}", entry.getKey(), entry.getValue());
+              }
             }
+            LOGGER.info(
+                "Enabling disabled replicas for instances {} took {} ms",
+                newInstances.stream().map(Instance::getNodeId).collect(Collectors.joining(",")),
+                LatencyUtils.getElapsedTimeInMs(startTime));
           }
-          LOGGER.info(
-              "Enabling disabled replicas for instances {} took {} ms",
-              newInstances.stream().map(Instance::getNodeId).collect(Collectors.joining(",")),
-              LatencyUtils.getElapsedTimeInMs(startTime));
-        }
 
-        @Override
-        public void handleDeletedInstances(Set<Instance> deletedInstances) {
-        }
-      });
+          @Override
+          public void handleDeletedInstances(Set<Instance> deletedInstances) {
+          }
+        });
+      }
     }
   }
 
   public void startInstanceMonitor(String clusterName) {
     HelixLiveInstanceMonitor liveInstanceMonitor = liveInstanceMonitorMap.get(clusterName);
     if (liveInstanceMonitor == null) {
-      LOGGER.warn("Could not find live instance monitor for cluster {}", clusterName);
+      if (isLeaderReplicaFailOverEnabled) {
+        LOGGER.warn("Could not find live instance monitor for cluster {}", clusterName);
+      }
       return;
     }
     liveInstanceMonitor.refresh();
@@ -631,7 +638,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   public void clearInstanceMonitor(String clusterName) {
     HelixLiveInstanceMonitor liveInstanceMonitor = liveInstanceMonitorMap.get(clusterName);
     if (liveInstanceMonitor == null) {
-      LOGGER.warn("Could not find live instance monitor for cluster {}", clusterName);
+      if (isLeaderReplicaFailOverEnabled) {
+        LOGGER.warn("Could not find live instance monitor for cluster {}", clusterName);
+      }
       return;
     }
     liveInstanceMonitor.clear();
