@@ -74,8 +74,7 @@ class LeaderProducerCallback implements ChunkAwareCallback {
     if (e != null) {
       ingestionTask.getVersionedDIVStats()
           .recordLeaderProducerFailure(ingestionTask.getStoreName(), ingestionTask.versionNumber);
-      String message = e + " Topic: " + sourceConsumerRecord.getTopicPartition().getPubSubTopic().getName()
-          + " Partition: " + sourceConsumerRecord.getTopicPartition().getPartitionNumber();
+      String message = e + " - TP: " + sourceConsumerRecord.getTopicName() + "/" + sourceConsumerRecord.getPartition();
       if (!REDUNDANT_LOGGING_FILTER.isRedundantException(message)) {
         LOGGER.error(
             "Leader failed to send out message to version topic when consuming {}",
