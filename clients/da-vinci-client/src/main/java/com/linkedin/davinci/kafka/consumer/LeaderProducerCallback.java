@@ -14,7 +14,6 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
-import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.writer.ChunkAwareCallback;
@@ -75,7 +74,9 @@ class LeaderProducerCallback implements ChunkAwareCallback {
     if (e != null) {
       ingestionTask.getVersionedDIVStats()
           .recordLeaderProducerFailure(ingestionTask.getStoreName(), ingestionTask.versionNumber);
-      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(ExceptionUtils.compactExceptionDescription(e))) {
+      String message = e + " Topic: " + sourceConsumerRecord.getTopicPartition().getPubSubTopic().getName()
+          + " Partition: " + sourceConsumerRecord.getTopicPartition().getPartitionNumber();
+      if (!REDUNDANT_LOGGING_FILTER.isRedundantException(message)) {
         LOGGER.error(
             "Leader failed to send out message to version topic when consuming {}",
             sourceConsumerRecord.getTopicPartition(),
