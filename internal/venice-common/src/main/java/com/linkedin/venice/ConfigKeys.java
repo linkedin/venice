@@ -1785,7 +1785,8 @@ public class ConfigKeys {
   /**
    * Config to enable single leader replica disabling.
    */
-  public static final String DISABLE_ERROR_LEADER_REPLICA_ENABLED = "disable.error.leader.replica.enabled";
+  public static final String FORCE_LEADER_ERROR_REPLICA_FAIL_OVER_ENABLED =
+      "controller.force.leader.error.replica.fail.over.enabled";
   /**
    * A config to specify the class to use to parse identities at runtime
    */

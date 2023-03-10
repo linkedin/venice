@@ -44,10 +44,10 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_ZK_SHARED_DAVINCI_PUSH_S
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ZK_SHARED_META_SYSTEM_SCHEMA_STORE_AUTO_CREATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.DEPRECATED_TOPIC_MAX_RETENTION_MS;
 import static com.linkedin.venice.ConfigKeys.DEPRECATED_TOPIC_RETENTION_MS;
-import static com.linkedin.venice.ConfigKeys.DISABLE_ERROR_LEADER_REPLICA_ENABLED;
 import static com.linkedin.venice.ConfigKeys.EMERGENCY_SOURCE_REGION;
 import static com.linkedin.venice.ConfigKeys.ERROR_PARTITION_AUTO_RESET_LIMIT;
 import static com.linkedin.venice.ConfigKeys.ERROR_PARTITION_PROCESSING_CYCLE_DELAY;
+import static com.linkedin.venice.ConfigKeys.FORCE_LEADER_ERROR_REPLICA_FAIL_OVER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.IDENTITY_PARSER_CLASS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_ADMIN_CLASS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_READ_ONLY_ADMIN_CLASS;
@@ -243,7 +243,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   private final int storeGraveyardCleanupSleepIntervalBetweenListFetchMinutes;
 
-  private final boolean disableErrorLeaderReplicaEnabled;
+  private final boolean errorLeaderReplicaFailOverEnabled;
 
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
@@ -435,7 +435,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
         props.getInt(CONTROLLER_STORE_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MINUTES, 15);
     this.clusterDiscoveryD2ServiceName =
         props.getString(CLUSTER_DISCOVERY_D2_SERVICE, ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME);
-    this.disableErrorLeaderReplicaEnabled = props.getBoolean(DISABLE_ERROR_LEADER_REPLICA_ENABLED, true);
+    this.errorLeaderReplicaFailOverEnabled = props.getBoolean(FORCE_LEADER_ERROR_REPLICA_FAIL_OVER_ENABLED, true);
   }
 
   private void validateActiveActiveConfigs() {
@@ -507,8 +507,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     return topicCleanupSleepIntervalBetweenTopicListFetchMs;
   }
 
-  public boolean isDisableErrorLeaderReplicaEnabled() {
-    return disableErrorLeaderReplicaEnabled;
+  public boolean isErrorLeaderReplicaFailOverEnabled() {
+    return errorLeaderReplicaFailOverEnabled;
   }
 
   public int getTopicCleanupDelayFactor() {

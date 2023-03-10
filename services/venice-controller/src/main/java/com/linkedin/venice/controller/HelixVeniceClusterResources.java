@@ -164,7 +164,7 @@ public class HelixVeniceClusterResources implements VeniceResource {
         aggregateRealTimeSourceKafkaUrl,
         getActiveActiveRealTimeSourceKafkaURLs(config),
         helixAdminClient,
-        config.isDisableErrorLeaderReplicaEnabled());
+        config.isErrorLeaderReplicaFailOverEnabled());
 
     this.leakedPushStatusCleanUpService = new LeakedPushStatusCleanUpService(
         clusterName,
