@@ -622,6 +622,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   public void startInstanceMonitor(String clusterName) {
+    if (!multiClusterConfigs.getControllerConfig(clusterName).isErrorLeaderReplicaFailOverEnabled()) {
+      return;
+    }
     HelixLiveInstanceMonitor liveInstanceMonitor = liveInstanceMonitorMap.get(clusterName);
     if (liveInstanceMonitor == null) {
       LOGGER.warn("Could not find live instance monitor for cluster {}", clusterName);
@@ -631,6 +634,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   public void clearInstanceMonitor(String clusterName) {
+    if (!multiClusterConfigs.getControllerConfig(clusterName).isErrorLeaderReplicaFailOverEnabled()) {
+      return;
+    }
     HelixLiveInstanceMonitor liveInstanceMonitor = liveInstanceMonitorMap.get(clusterName);
     if (liveInstanceMonitor == null) {
       LOGGER.warn("Could not find live instance monitor for cluster {}", clusterName);
