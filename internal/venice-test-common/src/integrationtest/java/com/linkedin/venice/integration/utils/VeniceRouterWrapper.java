@@ -122,7 +122,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
           .put(properties);
 
       // setup d2 config first
-      String d2ServiceName = D2TestUtils.getRouterD2ServiceName(finalClusterToD2, clusterName);
+      String d2ServiceName = D2TestUtils.getRandomD2ServiceName(finalClusterToD2, clusterName);
 
       VeniceProperties routerProperties = builder.build();
       boolean https = routerProperties.getBoolean(ROUTER_HTTP2_INBOUND_ENABLED, false);
@@ -130,12 +130,12 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
       String httpsURI = "https://localhost:" + sslPort;
       List<ServiceDiscoveryAnnouncer> d2Servers = new ArrayList<>();
       String d2ClusterName = D2TestUtils.setupD2Config(zkAddress, https, d2ServiceName);
-      d2Servers.addAll(D2TestUtils.getD2ServersForRouter(zkAddress, d2ClusterName, httpURI, httpsURI));
+      d2Servers.addAll(D2TestUtils.getD2Servers(zkAddress, d2ClusterName, httpURI, httpsURI));
 
       // Also announce to the default service name
       String clusterDiscoveryD2ClusterName =
           D2TestUtils.setupD2Config(zkAddress, https, CLUSTER_DISCOVERY_D2_SERVICE_NAME);
-      d2Servers.addAll(D2TestUtils.getD2ServersForRouter(zkAddress, clusterDiscoveryD2ClusterName, httpURI, httpsURI));
+      d2Servers.addAll(D2TestUtils.getD2Servers(zkAddress, clusterDiscoveryD2ClusterName, httpURI, httpsURI));
 
       RouterServer router = new RouterServer(
           routerProperties,
@@ -192,10 +192,9 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
     String httpURI = "http://" + getHost() + ":" + getPort();
     String httpsURI = "https://" + getHost() + ":" + getSslPort();
 
-    List<ServiceDiscoveryAnnouncer> d2Servers =
-        D2TestUtils.getD2ServersForRouter(zkAddress, d2ClusterName, httpURI, httpsURI);
+    List<ServiceDiscoveryAnnouncer> d2Servers = D2TestUtils.getD2Servers(zkAddress, d2ClusterName, httpURI, httpsURI);
 
-    d2Servers.addAll(D2TestUtils.getD2ServersForRouter(zkAddress, clusterDiscoveryD2ClusterName, httpURI, httpsURI));
+    d2Servers.addAll(D2TestUtils.getD2Servers(zkAddress, clusterDiscoveryD2ClusterName, httpURI, httpsURI));
 
     service =
         new RouterServer(properties, d2Servers, Optional.empty(), Optional.of(SslUtils.getVeniceLocalSslFactory()));

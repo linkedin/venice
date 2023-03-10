@@ -14,6 +14,7 @@ import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_CONSUMPTION_DEL
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.SERVER_DISK_FULL_THRESHOLD;
 import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_KAFKA_OPENSSL;
+import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_APPLICATION_PORT;
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_ISOLATION_SERVICE_PORT;
 import static com.linkedin.venice.ConfigKeys.SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS;
@@ -30,6 +31,7 @@ import com.linkedin.venice.helix.AllowlistAccessor;
 import com.linkedin.venice.helix.ZkAllowlistAccessor;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.server.VeniceServer;
+import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
 import com.linkedin.venice.tehuti.MetricsAware;
 import com.linkedin.venice.utils.ForkedJavaProcess;
 import com.linkedin.venice.utils.KafkaSSLUtils;
@@ -163,7 +165,8 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       Properties configProperties,
       boolean forkServer,
       String serverName,
-      Map<String, Map<String, String>> kafkaClusterMap) {
+      Map<String, Map<String, String>> kafkaClusterMap,
+      String serverD2ServiceName) {
     return (serviceName, dataDirectory) -> {
       boolean enableServerAllowlist =
           Boolean.parseBoolean(featureProperties.getProperty(SERVER_ENABLE_SERVER_ALLOW_LIST, "false"));
@@ -187,6 +190,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
 
       // Generate server.properties in config directory
       int listenPort = Utils.getFreePort();
+      int sslPort = Utils.getFreePort();
       int ingestionIsolationApplicationPort = Utils.getFreePort();
       int ingestionIsolationServicePort = Utils.getFreePort();
       PropertyBuilder serverPropsBuilder = new PropertyBuilder().put(LISTENER_PORT, listenPort)
@@ -222,6 +226,14 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       File serverConfigFile = new File(configDirectory, VeniceConfigLoader.SERVER_PROPERTIES_FILE);
       serverProps.storeFlattened(serverConfigFile);
 
+      boolean https = serverProps.getBoolean(SERVER_HTTP2_INBOUND_ENABLED, false);
+      String httpURI = "http://localhost:" + listenPort;
+      String httpsURI = "https://localhost:" + sslPort;
+
+      String d2ClusterName = D2TestUtils.setupD2Config(zkAddress, https, serverD2ServiceName);
+      List<ServiceDiscoveryAnnouncer> d2Servers =
+          new ArrayList<>(D2TestUtils.getD2Servers(zkAddress, d2ClusterName, httpURI, httpsURI));
+
       // generate the kafka cluster map in config directory
       VeniceConfigLoader.storeKafkaClusterMap(configDirectory, kafkaClusterMap);
 
@@ -246,7 +258,8 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
             new MetricsRepository(),
             sslFactory,
             Optional.empty(),
-            consumerClientConfig);
+            consumerClientConfig,
+            d2Servers);
         return new VeniceServerWrapper(
             serviceName,
             dataDirectory,
@@ -257,7 +270,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
             sslFactory,
             regionName);
       } else {
-        VeniceServerWrapper veniceServerWrapper = new VeniceServerWrapper(
+        return new VeniceServerWrapper(
             serviceName,
             dataDirectory,
             null,
@@ -274,7 +287,6 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
             isAutoJoin,
             serverName,
             regionName);
-        return veniceServerWrapper;
       }
     };
   }
