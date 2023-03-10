@@ -213,7 +213,9 @@ public class ApacheKafkaProducerAdapterITest {
       try {
         producerAdapter.sendMessage(topicName, null, getDummyKey(), getDummyVal(), null, null);
         fail("Sending records after producer has been closed should not succeed");
-      } catch (Exception expected) {
+      } catch (Exception e) {
+        // this is expected since producer has been already closed
+        LOGGER.info("As expected an exception was received - {}", e.toString()); // make spotbugs happy
       }
     }
 
@@ -243,6 +245,7 @@ public class ApacheKafkaProducerAdapterITest {
         future.get();
         fail("Exceptionally completed future should throw an exception");
       } catch (Exception expected) {
+        LOGGER.info("As expected an exception was received - {}", expected.toString()); // make spotbugs happy
       }
     }
   }
