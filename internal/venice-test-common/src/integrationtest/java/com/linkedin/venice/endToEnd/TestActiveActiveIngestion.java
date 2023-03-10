@@ -376,7 +376,6 @@ public class TestActiveActiveIngestion {
         .setChunkingEnabled(true)
         .setNativeReplicationEnabled(true)
         .setPartitionCount(1);
-    MetricsRepository metricsRepository = new MetricsRepository();
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
     TestWriteUtils.runPushJob("Run push job", props);
 
