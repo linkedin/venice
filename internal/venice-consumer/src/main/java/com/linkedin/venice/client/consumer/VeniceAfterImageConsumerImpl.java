@@ -94,6 +94,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
     return pubSubMessages;
   }
 
+  // TODO: Find a better way to avoid data gap between version topic and change capture topic due to log compaction.
   private boolean handleControlMessage(ControlMessage controlMessage, PubSubTopicPartition pubSubTopicPartition) {
     ControlMessageType controlMessageType = ControlMessageType.valueOf(controlMessage);
     if (controlMessageType.equals(ControlMessageType.END_OF_PUSH)) {
