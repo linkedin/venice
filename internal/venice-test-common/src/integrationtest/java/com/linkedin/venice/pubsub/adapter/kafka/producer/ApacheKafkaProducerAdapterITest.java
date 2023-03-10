@@ -4,6 +4,7 @@ import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProdu
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_CLIENT_ID;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
 import static com.linkedin.venice.utils.Time.MS_PER_MINUTE;
+import static com.linkedin.venice.utils.Time.MS_PER_SECOND;
 import static org.apache.kafka.common.config.TopicConfig.RETENTION_MS_CONFIG;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotEquals;
@@ -12,6 +13,7 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
@@ -25,6 +27,7 @@ import com.linkedin.venice.pubsub.adapter.PubSubProducerCallbackSimpleImpl;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.utils.DataProviderUtils;
+import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.Utils;
 import java.nio.ByteBuffer;
 import java.time.Duration;
@@ -32,7 +35,10 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
@@ -46,7 +52,9 @@ import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.annotations.AfterClass;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeClass;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
@@ -62,8 +70,10 @@ public class ApacheKafkaProducerAdapterITest {
 
   private ZkServerWrapper zkServerWrapper;
   private KafkaBrokerWrapper kafkaBrokerWrapper;
-  // todo: AdminClient should be replaced with KafkaAdminClientAdapter when it is available
+  // todo: The following AdminClient should be replaced with KafkaAdminClientAdapter when it is available
   private AdminClient kafkaAdminClient;
+  private String topicName;
+  private ApacheKafkaProducerAdapter producerAdapter;
 
   @BeforeClass(alwaysRun = true)
   public void setupKafka() {
@@ -75,10 +85,27 @@ public class ApacheKafkaProducerAdapterITest {
   }
 
   @AfterClass(alwaysRun = true)
-  public void cleanUp() {
+  public void tearDown() {
     kafkaAdminClient.close(Duration.ZERO);
     kafkaBrokerWrapper.close();
     zkServerWrapper.close();
+  }
+
+  @BeforeMethod(alwaysRun = true)
+  public void setupProducerAdapter() {
+    topicName = Utils.getUniqueString("topic-for-sendMessage-thread-safety");
+    Properties properties = new Properties();
+    properties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getAddress());
+    properties.put(KAFKA_CLIENT_ID, topicName);
+    ApacheKafkaProducerConfig producerConfig = new ApacheKafkaProducerConfig(properties);
+    producerAdapter = new ApacheKafkaProducerAdapter(producerConfig);
+  }
+
+  @AfterMethod(alwaysRun = true)
+  public void cleanUp() {
+    if (producerAdapter != null) {
+      producerAdapter.close(0, false);
+    }
   }
 
   private void createTopic(String topicName, int numPartitions, int replicationFactor, Map<String, String> topicProps) {
@@ -118,15 +145,8 @@ public class ApacheKafkaProducerAdapterITest {
    */
   @Test(timeOut = MS_PER_MINUTE, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testProducerCloseDoesNotLeaveAnyFuturesIncomplete(boolean doFlush) throws InterruptedException {
-    String topicName = Utils.getUniqueString("test-topic-for-callback-close-test");
     Map<String, String> topicProps = Collections.singletonMap(RETENTION_MS_CONFIG, Long.toString(Long.MAX_VALUE));
     createTopic(topicName, 1, 1, topicProps);
-
-    Properties properties = new Properties();
-    properties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getAddress());
-    properties.put(KAFKA_CLIENT_ID, topicName);
-    ApacheKafkaProducerConfig producerConfig = new ApacheKafkaProducerConfig(properties);
-    ApacheKafkaProducerAdapter producerAdapter = new ApacheKafkaProducerAdapter(producerConfig);
 
     KafkaKey m0Key = getDummyKey();
     SimpleBlockingCallback m0BlockingCallback = new SimpleBlockingCallback("m0Key");
@@ -256,6 +276,45 @@ public class ApacheKafkaProducerAdapterITest {
         mutex.unlock();
       }
       LOGGER.info("Callback has unblocked executing thread. KeyIdx: {}", idx);
+    }
+  }
+
+  /* The following test verifies that when a producer is closed it unblocks threads that are
+   * blocked in Producer::sendMessage() call.
+   */
+  @Test(timeOut = 30 * MS_PER_SECOND, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testProducerCloseCanUnblockSendMessageCallerThread(boolean doFlush) {
+    ExecutorService executor = Executors.newCachedThreadPool();
+    CountDownLatch countDownLatch = new CountDownLatch(1);
+
+    Future<?> sendMessageFuture = executor.submit(() -> {
+      Thread.currentThread().setName("sendMessageThread");
+      countDownLatch.countDown();
+      try {
+        // send to non-existent topic
+        producerAdapter.sendMessage("topic", null, getDummyKey(), getDummyVal(), null, null);
+        LOGGER.error("Expectations were not met in thread: {}", Thread.currentThread().getName());
+        fail("sendMessage on non-existent topic should have blocked the executing thread");
+      } catch (VeniceException e) {
+        LOGGER.info("As expected an exception has been received from sendMessage()", e);
+        assertNotNull(e.getMessage(), "Exception thrown by sendMessage does not have a message");
+        assertTrue(e.getMessage().contains("Got an error while trying to produce message into Kafka. Topic: 'topic'"));
+        assertTrue(ExceptionUtils.recursiveMessageContains(e, "Producer closed while send in progress"));
+        assertTrue(ExceptionUtils.recursiveMessageContains(e, "Requested metadata update after close"));
+        LOGGER.info("All expectations were met in thread: {}", Thread.currentThread().getName());
+      }
+    });
+
+    try {
+      countDownLatch.await();
+      // Still wait for some time to make sure blocking sendMessage is inside kafka before closing it.
+      Utils.sleep(50);
+      producerAdapter.close(5000, doFlush);
+      sendMessageFuture.get(); // this is necessary to check whether expectations in sendMessage thread were met
+    } catch (Exception e) {
+      fail("Producer closing should have succeeded without an exception", e);
+    } finally {
+      executor.shutdownNow();
     }
   }
 }
