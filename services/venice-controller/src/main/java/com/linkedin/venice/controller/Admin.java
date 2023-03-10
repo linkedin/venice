@@ -869,9 +869,9 @@ public interface Admin extends AutoCloseable, Closeable {
 
   void removeStoreFromGraveyard(String clusterName, String storeName);
 
-  default void startInstanceMonitor() {
+  default void startInstanceMonitor(String clusterName) {
   }
 
-  default void clearInstanceMonitor() {
+  default void clearInstanceMonitor(String clusterName) {
   }
 }

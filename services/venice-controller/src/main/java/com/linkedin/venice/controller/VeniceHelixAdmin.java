@@ -365,7 +365,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   private final Map<String, Map<String, ControllerClient>> clusterControllerClientPerColoMap =
       new VeniceConcurrentHashMap<>();
-  private final List<HelixLiveInstanceMonitor> liveInstanceMonitorList = new ArrayList<>();
+  private final Map<String, HelixLiveInstanceMonitor> liveInstanceMonitorMap = new HashMap<>();
 
   private VeniceDistClusterControllerStateModelFactory controllerStateModelFactory;
 
@@ -591,7 +591,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     for (String clusterName: multiClusterConfigs.getClusters()) {
       HelixLiveInstanceMonitor liveInstanceMonitor = new HelixLiveInstanceMonitor(this.zkClient, clusterName);
-      liveInstanceMonitorList.add(liveInstanceMonitor);
+      liveInstanceMonitorMap.put(clusterName, liveInstanceMonitor);
       // Register new instance callback
       liveInstanceMonitor.registerLiveInstanceChangedListener(new LiveInstanceChangedListener() {
         @Override
@@ -619,16 +619,22 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  public void startInstanceMonitor() {
-    for (HelixLiveInstanceMonitor liveInstanceMonitor: liveInstanceMonitorList) {
-      liveInstanceMonitor.refresh();
+  public void startInstanceMonitor(String clusterName) {
+    HelixLiveInstanceMonitor liveInstanceMonitor = liveInstanceMonitorMap.get(clusterName);
+    if (liveInstanceMonitor == null) {
+      LOGGER.warn("Could not find live instance monitor for cluster {}", clusterName);
+      return;
     }
+    liveInstanceMonitor.refresh();
   }
 
-  public void clearInstanceMonitor() {
-    for (HelixLiveInstanceMonitor liveInstanceMonitor: liveInstanceMonitorList) {
-      liveInstanceMonitor.clear();
+  public void clearInstanceMonitor(String clusterName) {
+    HelixLiveInstanceMonitor liveInstanceMonitor = liveInstanceMonitorMap.get(clusterName);
+    if (liveInstanceMonitor == null) {
+      LOGGER.warn("Could not find live instance monitor for cluster {}", clusterName);
+      return;
     }
+    liveInstanceMonitor.clear();
   }
 
   private void checkAndCreateVeniceControllerCluster(boolean isControllerInAzure) {
