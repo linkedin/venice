@@ -336,8 +336,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private static final ByteBuffer EMPTY_PUSH_ZSTD_DICTIONARY =
       ByteBuffer.wrap(ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData());
   private static final String ZK_INSTANCES_SUB_PATH = "INSTANCES";
-  private static final String ZK_CUSTOMIZEDSTATES_SUB_PATH =
-      "CUSTOMIZEDSTATES/" + HelixPartitionState.OFFLINE_PUSH.toString();
+  private static final String ZK_CUSTOMIZEDSTATES_SUB_PATH = "CUSTOMIZEDSTATES/" + HelixPartitionState.OFFLINE_PUSH;
 
   /**
    * Level-1 controller, it always being connected to Helix. And will create sub-controller for specific cluster when
@@ -366,6 +365,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   private final Map<String, Map<String, ControllerClient>> clusterControllerClientPerColoMap =
       new VeniceConcurrentHashMap<>();
+  private final Map<String, HelixLiveInstanceMonitor> liveInstanceMonitorMap = new HashMap<>();
 
   private VeniceDistClusterControllerStateModelFactory controllerStateModelFactory;
 
@@ -403,7 +403,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     this.minNumberOfStoreVersionsToPreserve = multiClusterConfigs.getMinNumberOfStoreVersionsToPreserve();
     this.d2Client = d2Client;
-
     if (sslEnabled) {
       try {
         String sslFactoryClassName = multiClusterConfigs.getSslFactoryClassName();
@@ -590,7 +589,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         helixAdminClient);
 
     for (String clusterName: multiClusterConfigs.getClusters()) {
+      if (!multiClusterConfigs.getControllerConfig(clusterName).isErrorLeaderReplicaFailOverEnabled()) {
+        continue;
+      }
       HelixLiveInstanceMonitor liveInstanceMonitor = new HelixLiveInstanceMonitor(this.zkClient, clusterName);
+      liveInstanceMonitorMap.put(clusterName, liveInstanceMonitor);
       // Register new instance callback
       liveInstanceMonitor.registerLiveInstanceChangedListener(new LiveInstanceChangedListener() {
         @Override
@@ -616,6 +619,30 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
       });
     }
+  }
+
+  public void startInstanceMonitor(String clusterName) {
+    if (!multiClusterConfigs.getControllerConfig(clusterName).isErrorLeaderReplicaFailOverEnabled()) {
+      return;
+    }
+    HelixLiveInstanceMonitor liveInstanceMonitor = liveInstanceMonitorMap.get(clusterName);
+    if (liveInstanceMonitor == null) {
+      LOGGER.warn("Could not find live instance monitor for cluster {}", clusterName);
+      return;
+    }
+    liveInstanceMonitor.refresh();
+  }
+
+  public void clearInstanceMonitor(String clusterName) {
+    if (!multiClusterConfigs.getControllerConfig(clusterName).isErrorLeaderReplicaFailOverEnabled()) {
+      return;
+    }
+    HelixLiveInstanceMonitor liveInstanceMonitor = liveInstanceMonitorMap.get(clusterName);
+    if (liveInstanceMonitor == null) {
+      LOGGER.warn("Could not find live instance monitor for cluster {}", clusterName);
+      return;
+    }
+    liveInstanceMonitor.clear();
   }
 
   private void checkAndCreateVeniceControllerCluster(boolean isControllerInAzure) {
