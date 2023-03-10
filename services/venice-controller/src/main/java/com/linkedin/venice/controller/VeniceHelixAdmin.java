@@ -373,7 +373,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   private DataRecoveryManager dataRecoveryManager;
 
-  private boolean isLeaderReplicaFailOverEnabled;
+  private boolean isErrorLeaderReplicaFailOverEnabled;
 
   public VeniceHelixAdmin(
       VeniceControllerMultiClusterConfig multiClusterConfigs,
@@ -405,7 +405,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     this.minNumberOfStoreVersionsToPreserve = multiClusterConfigs.getMinNumberOfStoreVersionsToPreserve();
     this.d2Client = d2Client;
-    this.isLeaderReplicaFailOverEnabled = commonConfig.isErrorLeaderReplicaFailOverEnabled();
+    this.isErrorLeaderReplicaFailOverEnabled = commonConfig.isErrorLeaderReplicaFailOverEnabled();
 
     if (sslEnabled) {
       try {
@@ -592,7 +592,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         accessController,
         helixAdminClient);
 
-    if (isLeaderReplicaFailOverEnabled) {
+    if (isErrorLeaderReplicaFailOverEnabled) {
       for (String clusterName: multiClusterConfigs.getClusters()) {
         HelixLiveInstanceMonitor liveInstanceMonitor = new HelixLiveInstanceMonitor(this.zkClient, clusterName);
         liveInstanceMonitorMap.put(clusterName, liveInstanceMonitor);
@@ -627,7 +627,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   public void startInstanceMonitor(String clusterName) {
     HelixLiveInstanceMonitor liveInstanceMonitor = liveInstanceMonitorMap.get(clusterName);
     if (liveInstanceMonitor == null) {
-      if (isLeaderReplicaFailOverEnabled) {
+      if (isErrorLeaderReplicaFailOverEnabled) {
         LOGGER.warn("Could not find live instance monitor for cluster {}", clusterName);
       }
       return;
@@ -638,7 +638,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   public void clearInstanceMonitor(String clusterName) {
     HelixLiveInstanceMonitor liveInstanceMonitor = liveInstanceMonitorMap.get(clusterName);
     if (liveInstanceMonitor == null) {
-      if (isLeaderReplicaFailOverEnabled) {
+      if (isErrorLeaderReplicaFailOverEnabled) {
         LOGGER.warn("Could not find live instance monitor for cluster {}", clusterName);
       }
       return;
