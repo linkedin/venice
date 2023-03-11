@@ -293,10 +293,6 @@ public class VeniceRouterConfig {
     return clusterName;
   }
 
-  public Map<String, String> getClusterToServerD2Map() {
-    return clusterToServerD2Map;
-  }
-
   public String getZkConnection() {
     return zkConnection;
   }
@@ -335,6 +331,10 @@ public class VeniceRouterConfig {
 
   public Map<String, String> getClusterToD2Map() {
     return clusterToD2Map;
+  }
+
+  public Map<String, String> getClusterToServerD2Map() {
+    return clusterToServerD2Map;
   }
 
   public int getConnectionLimit() {

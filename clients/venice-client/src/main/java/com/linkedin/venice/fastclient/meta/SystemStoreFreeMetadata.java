@@ -203,7 +203,7 @@ public class SystemStoreFreeMetadata extends AbstractStoreMetadata {
       Map<Integer, String> valueSchemas = ((HashMap<Utf8, Utf8>) metadataResponse.get("valueSchemas")).entrySet()
           .stream()
           .collect(Collectors.toMap(e -> Integer.valueOf(e.getKey().toString()), e -> e.getValue().toString()));
-      Map<Utf8, Integer> helixGroupInfo = (HashMap<Utf8, Integer>) metadataResponse.get("helixGroupInfo");
+      // Map<Utf8, Integer> helixGroupInfo = (HashMap<Utf8, Integer>) metadataResponse.get("helixGroupInfo");
       Map<Integer, List<String>> routingInfo =
           ((HashMap<Utf8, Collection<Utf8>>) metadataResponse.get("routingInfo")).entrySet()
               .stream()
