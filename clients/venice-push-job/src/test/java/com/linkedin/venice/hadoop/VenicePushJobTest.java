@@ -1,28 +1,10 @@
 package com.linkedin.venice.hadoop;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.D2_ZK_HOSTS_PREFIX;
-import static com.linkedin.venice.hadoop.VenicePushJob.INCREMENTAL_PUSH;
-import static com.linkedin.venice.hadoop.VenicePushJob.KEY_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJob.LEGACY_AVRO_KEY_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJob.LEGACY_AVRO_VALUE_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJob.MULTI_REGION;
-import static com.linkedin.venice.hadoop.VenicePushJob.PARENT_CONTROLLER_REGION_NAME;
-import static com.linkedin.venice.hadoop.VenicePushJob.REPUSH_TTL_ENABLE;
-import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_ETL;
-import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_KAFKA;
-import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_FIELD_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_DISCOVER_URL_PROP;
-import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
-import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.spy;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertNotNull;
-import static org.testng.Assert.assertTrue;
+import static com.linkedin.venice.hadoop.VenicePushJob.*;
+import static com.linkedin.venice.status.BatchJobHeartbeatConfigs.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+import static org.testng.Assert.*;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -200,7 +182,7 @@ public class VenicePushJobTest {
     // mock discover cluster
     D2ServiceDiscoveryResponse clusterResponse = new D2ServiceDiscoveryResponse();
     clusterResponse.setCluster(TEST_CLUSTER);
-    clusterResponse.setD2Service(TEST_SERVICE);
+    clusterResponse.setRouterD2Service(TEST_SERVICE);
     doReturn(clusterResponse).when(client).discoverCluster(TEST_STORE);
 
     // mock value schema

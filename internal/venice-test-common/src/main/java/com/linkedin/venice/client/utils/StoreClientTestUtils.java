@@ -47,7 +47,7 @@ public class StoreClientTestUtils {
     D2ServiceDiscoveryResponse responseObject = new D2ServiceDiscoveryResponse();
     responseObject.setCluster(clusterName);
     responseObject.setName(storeName);
-    responseObject.setD2Service(d2Service);
+    responseObject.setRouterD2Service(d2Service);
     ObjectMapper mapper = ObjectMapperFactory.getInstance();
     byte[] bytes = mapper.writeValueAsBytes(responseObject);
     ByteBuf body = Unpooled.wrappedBuffer(bytes);

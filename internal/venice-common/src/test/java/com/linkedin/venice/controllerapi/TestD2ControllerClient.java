@@ -1,9 +1,7 @@
 package com.linkedin.venice.controllerapi;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.mock;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.linkedin.d2.balancer.D2Client;
@@ -56,7 +54,7 @@ public class TestD2ControllerClient {
   public void testDiscoverCluster() throws JsonProcessingException {
     D2ServiceDiscoveryResponse serviceDiscoveryResponse = new D2ServiceDiscoveryResponse();
     serviceDiscoveryResponse.setCluster(TEST_CLUSTER);
-    serviceDiscoveryResponse.setD2Service(TEST_ROUTER_D2_SERVICE);
+    serviceDiscoveryResponse.setRouterD2Service(TEST_ROUTER_D2_SERVICE);
     serviceDiscoveryResponse.setName(TEST_STORE);
 
     String discoverClusterResponse = ObjectMapperFactory.getInstance().writeValueAsString(serviceDiscoveryResponse);

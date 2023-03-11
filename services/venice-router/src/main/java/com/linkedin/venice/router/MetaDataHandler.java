@@ -1,24 +1,11 @@
 package com.linkedin.venice.router;
 
-import static com.linkedin.venice.VeniceConstants.TYPE_PUSH_STATUS;
-import static com.linkedin.venice.VeniceConstants.TYPE_STORE_STATE;
-import static com.linkedin.venice.VeniceConstants.TYPE_STREAM_HYBRID_STORE_QUOTA;
-import static com.linkedin.venice.VeniceConstants.TYPE_STREAM_REPROCESSING_HYBRID_STORE_QUOTA;
-import static com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2.D2_SERVICE_DISCOVERY_RESPONSE_V2_ENABLED;
-import static com.linkedin.venice.router.api.VenicePathParser.TYPE_CLUSTER_DISCOVERY;
-import static com.linkedin.venice.router.api.VenicePathParser.TYPE_KEY_SCHEMA;
-import static com.linkedin.venice.router.api.VenicePathParser.TYPE_LEADER_CONTROLLER;
-import static com.linkedin.venice.router.api.VenicePathParser.TYPE_LEADER_CONTROLLER_LEGACY;
-import static com.linkedin.venice.router.api.VenicePathParser.TYPE_RESOURCE_STATE;
-import static com.linkedin.venice.router.api.VenicePathParser.TYPE_UPDATE_SCHEMA;
-import static com.linkedin.venice.router.api.VenicePathParser.TYPE_VALUE_SCHEMA;
-import static com.linkedin.venice.router.api.VenicePathParserHelper.parseRequest;
-import static com.linkedin.venice.utils.NettyUtils.setupResponseAndFlush;
-import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
-import static io.netty.handler.codec.http.HttpResponseStatus.INTERNAL_SERVER_ERROR;
-import static io.netty.handler.codec.http.HttpResponseStatus.NOT_FOUND;
-import static io.netty.handler.codec.http.HttpResponseStatus.OK;
-import static io.netty.handler.codec.http.HttpResponseStatus.UNAUTHORIZED;
+import static com.linkedin.venice.VeniceConstants.*;
+import static com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2.*;
+import static com.linkedin.venice.router.api.VenicePathParser.*;
+import static com.linkedin.venice.router.api.VenicePathParserHelper.*;
+import static com.linkedin.venice.utils.NettyUtils.*;
+import static io.netty.handler.codec.http.HttpResponseStatus.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
@@ -98,6 +85,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private final ReadOnlySchemaRepository schemaRepo;
   private final ReadOnlyStoreConfigRepository storeConfigRepo;
   private final Map<String, String> clusterToD2Map;
+  private final Map<String, String> clusterToServerD2Map;
   private final Optional<HelixHybridStoreQuotaRepository> hybridStoreQuotaRepository;
   private final ReadOnlyStoreRepository storeRepository;
   private final String clusterName;
@@ -109,6 +97,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       ReadOnlySchemaRepository schemaRepo,
       ReadOnlyStoreConfigRepository storeConfigRepo,
       Map<String, String> clusterToD2Map,
+      Map<String, String> clusterToServerD2Map,
       ReadOnlyStoreRepository storeRepository,
       Optional<HelixHybridStoreQuotaRepository> hybridStoreQuotaRepository,
       String clusterName,
@@ -119,6 +108,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     this.schemaRepo = schemaRepo;
     this.storeConfigRepo = storeConfigRepo;
     this.clusterToD2Map = clusterToD2Map;
+    this.clusterToServerD2Map = clusterToServerD2Map;
     this.hybridStoreQuotaRepository = hybridStoreQuotaRepository;
     this.storeRepository = storeRepository;
     this.clusterName = clusterName;
@@ -150,7 +140,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       handleUpdateSchemaLookup(ctx, helper);
     } else if (TYPE_CLUSTER_DISCOVERY.equals(resourceType)) {
       // URI: /discover_cluster/${storeName}
-      hanldeD2ServiceLookup(ctx, helper, req.headers());
+      handleD2ServiceLookup(ctx, helper, req.headers());
     } else if (TYPE_RESOURCE_STATE.equals(resourceType)) {
       // URI: /resource_state
       handleResourceStateLookup(ctx, helper);
@@ -276,7 +266,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     }
   }
 
-  private void hanldeD2ServiceLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper, HttpHeaders headers)
+  private void handleD2ServiceLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper, HttpHeaders headers)
       throws IOException {
     String storeName = helper.getResourceName();
     checkResourceName(storeName, "/" + TYPE_CLUSTER_DISCOVERY + "/${storeName}");
@@ -287,9 +277,15 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       return;
     }
     String clusterName = config.get().getCluster();
-    String d2Service = getD2ServiceByClusterName(clusterName);
-    if (StringUtils.isEmpty(d2Service)) {
-      String errorMsg = "D2 service for store: " + storeName + " doesn't exist";
+    String routerD2Service = getRouterD2ServiceByClusterName(clusterName);
+    if (StringUtils.isEmpty(routerD2Service)) {
+      String errorMsg = "Router D2 service for store: " + storeName + " doesn't exist";
+      setupErrorD2DiscoveryResponseAndFlush(NOT_FOUND, errorMsg, headers, ctx);
+      return;
+    }
+    String serverD2Service = getServerD2ServiceByClusterName(clusterName);
+    if (StringUtils.isEmpty(serverD2Service)) {
+      String errorMsg = "Server D2 service for store: " + storeName + " doesn't exist";
       setupErrorD2DiscoveryResponseAndFlush(NOT_FOUND, errorMsg, headers, ctx);
       return;
     }
@@ -297,7 +293,8 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       D2ServiceDiscoveryResponseV2 responseObject = new D2ServiceDiscoveryResponseV2();
       responseObject.setCluster(config.get().getCluster());
       responseObject.setName(config.get().getStoreName());
-      responseObject.setD2Service(d2Service);
+      responseObject.setRouterD2Service(routerD2Service);
+      responseObject.setServerD2Service(serverD2Service);
       responseObject.setZkAddress(zkAddress);
       responseObject.setKafkaBootstrapServers(kafkaBootstrapServers);
       setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(responseObject), true, ctx);
@@ -305,7 +302,8 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       D2ServiceDiscoveryResponse responseObject = new D2ServiceDiscoveryResponse();
       responseObject.setCluster(config.get().getCluster());
       responseObject.setName(config.get().getStoreName());
-      responseObject.setD2Service(d2Service);
+      responseObject.setRouterD2Service(routerD2Service);
+      responseObject.setServerD2Service(serverD2Service);
       setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(responseObject), true, ctx);
     }
   }
@@ -471,8 +469,12 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(hybridStoreQuotaStatusResponse), true, ctx);
   }
 
-  private String getD2ServiceByClusterName(String clusterName) {
+  private String getRouterD2ServiceByClusterName(String clusterName) {
     return clusterToD2Map.get(clusterName);
+  }
+
+  private String getServerD2ServiceByClusterName(String clusterName) {
+    return clusterToServerD2Map.get(clusterName);
   }
 
   private void checkResourceName(String resourceName, String path) {

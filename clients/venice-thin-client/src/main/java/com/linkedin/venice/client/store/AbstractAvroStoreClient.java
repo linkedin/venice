@@ -1,9 +1,8 @@
 package com.linkedin.venice.client.store;
 
-import static com.linkedin.venice.HttpConstants.VENICE_COMPUTE_VALUE_SCHEMA_ID;
-import static com.linkedin.venice.HttpConstants.VENICE_KEY_COUNT;
-import static com.linkedin.venice.VeniceConstants.COMPUTE_REQUEST_VERSION_V2;
-import static com.linkedin.venice.streaming.StreamingConstants.KEY_ID_FOR_STREAMING_FOOTER;
+import static com.linkedin.venice.HttpConstants.*;
+import static com.linkedin.venice.VeniceConstants.*;
+import static com.linkedin.venice.streaming.StreamingConstants.*;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.avroutil1.compatibility.AvroVersion;
@@ -348,7 +347,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       }
       if (transportClient instanceof D2TransportClient) {
         D2TransportClient client = (D2TransportClient) transportClient;
-        client.setServiceName(new D2ServiceDiscovery().find(client, storeName, retryOnFailure).getD2Service());
+        client.setServiceName(new D2ServiceDiscovery().find(client, storeName, retryOnFailure).getRouterD2Service());
       }
       isServiceDiscovered = true;
     }

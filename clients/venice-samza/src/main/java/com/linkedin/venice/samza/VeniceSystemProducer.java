@@ -1,8 +1,7 @@
 package com.linkedin.venice.samza;
 
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.schema.AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation;
-import static com.linkedin.venice.schema.AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation;
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.schema.AvroSchemaParseUtils.*;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.d2.balancer.D2Client;
@@ -386,7 +385,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
           2);
       ClientConfig clientConfigForKafkaMessageEnvelopeSchemaReader =
           ClientConfig.defaultGenericClientConfig(kafkaMessageEnvelopSchemaSysStore);
-      clientConfigForKafkaMessageEnvelopeSchemaReader.setD2ServiceName(sysStoreDiscoveryResponse.getD2Service());
+      clientConfigForKafkaMessageEnvelopeSchemaReader.setD2ServiceName(sysStoreDiscoveryResponse.getRouterD2Service());
       clientConfigForKafkaMessageEnvelopeSchemaReader.setD2Client(childColoD2Client);
       SchemaReader kafkaMessageEnvelopeSchemaReader =
           ClientFactory.getSchemaReader(clientConfigForKafkaMessageEnvelopeSchemaReader, null);
@@ -444,7 +443,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
       String versionTopic = Version.composeVersionTopicFromStreamReprocessingTopic(topicName);
       pushMonitor = Optional.of(
           new RouterBasedPushMonitor(
-              new D2TransportClient(discoveryResponse.getD2Service(), childColoD2Client),
+              new D2TransportClient(discoveryResponse.getRouterD2Service(), childColoD2Client),
               versionTopic,
               factory,
               this));
@@ -482,7 +481,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
         && hybridStoreDiskQuotaEnabled) {
       hybridStoreQuotaMonitor = Optional.of(
           new RouterBasedHybridStoreQuotaMonitor(
-              new D2TransportClient(discoveryResponse.getD2Service(), childColoD2Client),
+              new D2TransportClient(discoveryResponse.getRouterD2Service(), childColoD2Client),
               storeName,
               pushType,
               topicName));

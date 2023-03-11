@@ -1,9 +1,7 @@
 package com.linkedin.venice.router;
 
-import static com.linkedin.venice.VeniceConstants.TYPE_STORE_STATE;
-import static com.linkedin.venice.VeniceConstants.TYPE_STREAM_HYBRID_STORE_QUOTA;
-import static com.linkedin.venice.VeniceConstants.TYPE_STREAM_REPROCESSING_HYBRID_STORE_QUOTA;
-import static io.netty.handler.codec.http.HttpHeaderNames.CONTENT_TYPE;
+import static com.linkedin.venice.VeniceConstants.*;
+import static io.netty.handler.codec.http.HttpHeaderNames.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.common.VeniceSystemStoreType;
@@ -82,6 +80,7 @@ public class TestMetaDataHandler {
         schemaRepo,
         Mockito.mock(HelixReadOnlyStoreConfigRepository.class),
         Collections.emptyMap(),
+        Collections.emptyMap(),
         null);
   }
 
@@ -90,7 +89,8 @@ public class TestMetaDataHandler {
       RoutingDataRepository routingDataRepository,
       ReadOnlySchemaRepository schemaRepo,
       HelixReadOnlyStoreConfigRepository storeConfigRepository,
-      Map<String, String> clusterToD2ServiceMap) throws IOException {
+      Map<String, String> clusterToD2ServiceMap,
+      Map<String, String> clusterToServerD2ServiceMap) throws IOException {
     Store store = TestUtils.createTestStore("testStore", "test", System.currentTimeMillis());
     store.setCurrentVersion(1);
     HelixReadOnlyStoreRepository helixReadOnlyStoreRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
@@ -101,6 +101,7 @@ public class TestMetaDataHandler {
         schemaRepo,
         storeConfigRepository,
         clusterToD2ServiceMap,
+        clusterToServerD2ServiceMap,
         helixReadOnlyStoreRepository);
   }
 
@@ -110,6 +111,7 @@ public class TestMetaDataHandler {
       ReadOnlySchemaRepository schemaRepo,
       HelixReadOnlyStoreConfigRepository storeConfigRepository,
       Map<String, String> clusterToD2ServiceMap,
+      Map<String, String> clusterToServerD2ServiceMap,
       HelixReadOnlyStoreRepository helixReadOnlyStoreRepository) throws IOException {
     ChannelHandlerContext ctx = Mockito.mock(ChannelHandlerContext.class);
     FullHttpRequest httpRequest = Mockito.mock(FullHttpRequest.class);
@@ -131,6 +133,7 @@ public class TestMetaDataHandler {
         schemaRepoToUse,
         storeConfigRepository,
         clusterToD2ServiceMap,
+        clusterToServerD2ServiceMap,
         helixReadOnlyStoreRepository,
         Optional.of(hybridStoreQuotaRepository),
         "test-cluster",
@@ -287,6 +290,7 @@ public class TestMetaDataHandler {
         null,
         schemaRepo,
         Mockito.mock(HelixReadOnlyStoreConfigRepository.class),
+        Collections.emptyMap(),
         Collections.emptyMap());
 
     Assert.assertEquals(response.status().code(), 200);
@@ -315,6 +319,7 @@ public class TestMetaDataHandler {
         null,
         null,
         Mockito.mock(HelixReadOnlyStoreConfigRepository.class),
+        Collections.emptyMap(),
         Collections.emptyMap());
 
     Assert.assertEquals(response.status().code(), 200);
@@ -391,7 +396,7 @@ public class TestMetaDataHandler {
     D2ServiceDiscoveryResponse d2ServiceResponse =
         OBJECT_MAPPER.readValue(response.content().array(), D2ServiceDiscoveryResponse.class);
     Assert.assertEquals(d2ServiceResponse.getCluster(), clusterName);
-    Assert.assertEquals(d2ServiceResponse.getD2Service(), d2Service);
+    Assert.assertEquals(d2ServiceResponse.getRouterD2Service(), d2Service);
     Assert.assertEquals(d2ServiceResponse.getName(), storeName);
     Assert.assertFalse(d2ServiceResponse.isError());
   }
@@ -432,6 +437,7 @@ public class TestMetaDataHandler {
         routingDataRepository,
         null,
         storeConfigRepository,
+        Collections.emptyMap(),
         Collections.emptyMap());
     Assert.assertEquals(response.status().code(), 200);
     ResourceStateResponse resourceStateResponse =
@@ -447,6 +453,7 @@ public class TestMetaDataHandler {
         routingDataRepository,
         null,
         storeConfigRepository,
+        Collections.emptyMap(),
         Collections.emptyMap());
     Assert.assertEquals(response.status().code(), 200);
     resourceStateResponse = OBJECT_MAPPER.readValue(response.content().array(), ResourceStateResponse.class);
@@ -461,6 +468,7 @@ public class TestMetaDataHandler {
         routingDataRepository,
         null,
         storeConfigRepository,
+        Collections.emptyMap(),
         Collections.emptyMap());
     Assert.assertEquals(response.status().code(), 200);
     resourceStateResponse = OBJECT_MAPPER.readValue(response.content().array(), ResourceStateResponse.class);
@@ -488,6 +496,7 @@ public class TestMetaDataHandler {
           routingDataRepository,
           null,
           storeConfigRepository,
+          Collections.emptyMap(),
           Collections.emptyMap());
       Assert.assertEquals(response.status().code(), 200);
       ResourceStateResponse resourceStateResponse =
@@ -516,6 +525,7 @@ public class TestMetaDataHandler {
         null,
         storeConfigRepository,
         Collections.emptyMap(),
+        Collections.emptyMap(),
         helixReadOnlyStoreRepository);
     Assert.assertEquals(response.status().code(), 404);
     Mockito.doReturn(Optional.of(new StoreConfig(Version.parseStoreFromKafkaTopicName(resourceName))))
@@ -531,6 +541,7 @@ public class TestMetaDataHandler {
         routingDataRepository,
         null,
         storeConfigRepository,
+        Collections.emptyMap(),
         Collections.emptyMap());
     Assert.assertEquals(response.status().code(), 200);
     ResourceStateResponse resourceStateResponse =
@@ -557,6 +568,7 @@ public class TestMetaDataHandler {
         routingDataRepository,
         null,
         storeConfigRepository,
+        Collections.emptyMap(),
         Collections.emptyMap());
     Assert.assertEquals(response.status().code(), 200);
     HybridStoreQuotaStatusResponse pushStatusResponse =
@@ -572,6 +584,7 @@ public class TestMetaDataHandler {
         routingDataRepository,
         null,
         storeConfigRepository,
+        Collections.emptyMap(),
         Collections.emptyMap());
     Assert.assertEquals(response.status().code(), 200);
     pushStatusResponse = OBJECT_MAPPER.readValue(response.content().array(), HybridStoreQuotaStatusResponse.class);
@@ -596,6 +609,7 @@ public class TestMetaDataHandler {
         routingDataRepository,
         null,
         storeConfigRepository,
+        Collections.emptyMap(),
         Collections.emptyMap());
     System.out.println(response);
     Assert.assertEquals(response.status().code(), 200);
@@ -612,6 +626,7 @@ public class TestMetaDataHandler {
         routingDataRepository,
         null,
         storeConfigRepository,
+        Collections.emptyMap(),
         Collections.emptyMap());
     Assert.assertEquals(response.status().code(), 200);
     pushStatusResponse = OBJECT_MAPPER.readValue(response.content().array(), HybridStoreQuotaStatusResponse.class);
@@ -635,6 +650,7 @@ public class TestMetaDataHandler {
         null,
         null,
         null,
+        Collections.emptyMap(),
         Collections.emptyMap(),
         helixReadOnlyStoreRepository,
         Optional.of(hybridStoreQuotaRepository),
@@ -683,6 +699,7 @@ public class TestMetaDataHandler {
         null,
         null,
         Collections.emptyMap(),
+        Collections.emptyMap(),
         mockStoreRepository);
     Assert.assertEquals(response.status().code(), 200);
     StoreJSONSerializer storeSerializer = new StoreJSONSerializer();
@@ -695,6 +712,7 @@ public class TestMetaDataHandler {
         null,
         null,
         null,
+        Collections.emptyMap(),
         Collections.emptyMap(),
         mockStoreRepository);
     Assert.assertEquals(response.status().code(), 200);
@@ -714,6 +732,7 @@ public class TestMetaDataHandler {
         null,
         null,
         null,
+        Collections.emptyMap(),
         Collections.emptyMap(),
         mockStoreRepository);
     Assert.assertEquals(notFoundResponse.status().code(), 404);

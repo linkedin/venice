@@ -1,11 +1,9 @@
 package com.linkedin.venice.router;
 
-import static com.linkedin.davinci.config.BlockingQueueType.ARRAY_BLOCKING_QUEUE;
-import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.HELIX_ASSISTED_ROUTING;
-import static com.linkedin.venice.router.api.VenicePathParser.TYPE_HEALTH_CHECK;
-import static com.linkedin.venice.router.api.VenicePathParser.TYPE_RESOURCE_STATE;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.fail;
+import static com.linkedin.davinci.config.BlockingQueueType.*;
+import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.*;
+import static com.linkedin.venice.router.api.VenicePathParser.*;
+import static org.testng.Assert.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.d2.balancer.D2Client;
@@ -601,7 +599,7 @@ public abstract class TestRead {
       Assert.assertFalse(d2ServiceDiscoveryResponse.isError());
       Assert.assertEquals(d2ServiceDiscoveryResponse.getCluster(), veniceCluster.getClusterName());
       Assert.assertEquals(
-          d2ServiceDiscoveryResponse.getD2Service(),
+          d2ServiceDiscoveryResponse.getRouterD2Service(),
           veniceCluster.getRandomVeniceRouter().getD2ServiceNameForCluster(veniceCluster.getClusterName()));
       Assert.assertEquals(d2ServiceDiscoveryResponse.getCluster(), veniceCluster.getClusterName());
       Assert.assertEquals(d2ServiceDiscoveryResponse.getName(), storeName);

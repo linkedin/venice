@@ -1,11 +1,6 @@
 package com.linkedin.venice.client.store;
 
-import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.anyLong;
-import static org.mockito.Mockito.anyString;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.*;
 
 import com.linkedin.venice.client.exceptions.ServiceDiscoveryException;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
@@ -36,7 +31,7 @@ public class TestD2ServiceDiscovery {
         clientConfig.setD2ServiceName(router.getRouterD2Service()).setVeniceURL(zk.getAddress());
         // Find the d2 service for that store.
         try (D2TransportClient client = new D2TransportClient(router.getRouterD2Service(), clientConfig)) {
-          String d2ServiceName = new D2ServiceDiscovery().find(client, storeName).getD2Service();
+          String d2ServiceName = new D2ServiceDiscovery().find(client, storeName).getRouterD2Service();
           Assert.assertEquals(
               d2ServiceName,
               router.getD2ServiceNameForCluster(router.getClusterName()),

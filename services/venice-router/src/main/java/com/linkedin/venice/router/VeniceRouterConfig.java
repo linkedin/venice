@@ -1,95 +1,9 @@
 package com.linkedin.venice.router;
 
-import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
-import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_D2;
-import static com.linkedin.venice.ConfigKeys.ENFORCE_SECURE_ROUTER;
-import static com.linkedin.venice.ConfigKeys.HEARTBEAT_CYCLE;
-import static com.linkedin.venice.ConfigKeys.HEARTBEAT_TIMEOUT;
-import static com.linkedin.venice.ConfigKeys.HELIX_HYBRID_STORE_QUOTA_ENABLED;
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.KEY_VALUE_PROFILING_ENABLED;
-import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
-import static com.linkedin.venice.ConfigKeys.LISTENER_SSL_PORT;
-import static com.linkedin.venice.ConfigKeys.MAX_READ_CAPACITY;
-import static com.linkedin.venice.ConfigKeys.REFRESH_ATTEMPTS_FOR_ZK_RECONNECT;
-import static com.linkedin.venice.ConfigKeys.REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS;
-import static com.linkedin.venice.ConfigKeys.ROUTER_ASYNC_START_ENABLED;
-import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_DECOMPRESSION_ENABLED;
-import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_SSL_HANDSHAKE_ATTEMPTS;
-import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_SSL_HANDSHAKE_BACKOFF_MS;
-import static com.linkedin.venice.ConfigKeys.ROUTER_CLIENT_SSL_HANDSHAKE_THREADS;
-import static com.linkedin.venice.ConfigKeys.ROUTER_COMPUTE_FAST_AVRO_ENABLED;
-import static com.linkedin.venice.ConfigKeys.ROUTER_COMPUTE_TARDY_LATENCY_MS;
-import static com.linkedin.venice.ConfigKeys.ROUTER_CONNECTION_LIMIT;
-import static com.linkedin.venice.ConfigKeys.ROUTER_CONNECTION_TIMEOUT;
-import static com.linkedin.venice.ConfigKeys.ROUTER_DICTIONARY_PROCESSING_THREADS;
-import static com.linkedin.venice.ConfigKeys.ROUTER_DICTIONARY_RETRIEVAL_TIME_MS;
-import static com.linkedin.venice.ConfigKeys.ROUTER_DNS_CACHE_ENABLED;
-import static com.linkedin.venice.ConfigKeys.ROUTER_DNS_CACHE_REFRESH_INTERVAL_MS;
-import static com.linkedin.venice.ConfigKeys.ROUTER_EARLY_THROTTLE_ENABLED;
-import static com.linkedin.venice.ConfigKeys.ROUTER_ENABLE_READ_THROTTLING;
-import static com.linkedin.venice.ConfigKeys.ROUTER_FULL_PENDING_QUEUE_SERVER_OOR_MS;
-import static com.linkedin.venice.ConfigKeys.ROUTER_HEART_BEAT_ENABLED;
-import static com.linkedin.venice.ConfigKeys.ROUTER_HELIX_ASSISTED_ROUTING_GROUP_SELECTION_STRATEGY;
-import static com.linkedin.venice.ConfigKeys.ROUTER_HELIX_VIRTUAL_GROUP_FIELD_IN_DOMAIN;
-import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP2_HEADER_TABLE_SIZE;
-import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP2_INBOUND_ENABLED;
-import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP2_INITIAL_WINDOW_SIZE;
-import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP2_MAX_CONCURRENT_STREAMS;
-import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP2_MAX_FRAME_SIZE;
-import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP2_MAX_HEADER_LIST_SIZE;
-import static com.linkedin.venice.ConfigKeys.ROUTER_HTTPASYNCCLIENT_CLIENT_POOL_THREAD_COUNT;
-import static com.linkedin.venice.ConfigKeys.ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_ENABLED;
-import static com.linkedin.venice.ConfigKeys.ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_EXECUTOR_THREAD_NUM;
-import static com.linkedin.venice.ConfigKeys.ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_LOW_WATER_MARK;
-import static com.linkedin.venice.ConfigKeys.ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_NEW_INSTANCE_DELAY_JOIN_MS;
-import static com.linkedin.venice.ConfigKeys.ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_SLEEP_INTERVAL_MS;
-import static com.linkedin.venice.ConfigKeys.ROUTER_HTTPAYSNCCLIENT_CONNECTION_WARMING_SOCKET_TIMEOUT_MS;
-import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP_CLIENT5_POOL_SIZE;
-import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP_CLIENT5_SKIP_CIPHER_CHECK_ENABLED;
-import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP_CLIENT5_TOTAL_IO_THREAD_COUNT;
-import static com.linkedin.venice.ConfigKeys.ROUTER_HTTP_CLIENT_POOL_SIZE;
-import static com.linkedin.venice.ConfigKeys.ROUTER_IDLE_CONNECTION_TO_SERVER_CLEANUP_ENABLED;
-import static com.linkedin.venice.ConfigKeys.ROUTER_IDLE_CONNECTION_TO_SERVER_CLEANUP_THRESHOLD_MINS;
-import static com.linkedin.venice.ConfigKeys.ROUTER_IO_WORKER_COUNT;
-import static com.linkedin.venice.ConfigKeys.ROUTER_LEAKED_FUTURE_CLEANUP_POLL_INTERVAL_MS;
-import static com.linkedin.venice.ConfigKeys.ROUTER_LEAKED_FUTURE_CLEANUP_THRESHOLD_MS;
-import static com.linkedin.venice.ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS;
-import static com.linkedin.venice.ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS;
-import static com.linkedin.venice.ConfigKeys.ROUTER_LONG_TAIL_RETRY_MAX_ROUTE_FOR_MULTI_KEYS_REQ;
-import static com.linkedin.venice.ConfigKeys.ROUTER_MAX_CONCURRENT_SSL_HANDSHAKES;
-import static com.linkedin.venice.ConfigKeys.ROUTER_MAX_KEY_COUNT_IN_MULTIGET_REQ;
-import static com.linkedin.venice.ConfigKeys.ROUTER_MAX_OUTGOING_CONNECTION;
-import static com.linkedin.venice.ConfigKeys.ROUTER_MAX_OUTGOING_CONNECTION_PER_ROUTE;
-import static com.linkedin.venice.ConfigKeys.ROUTER_MAX_PENDING_REQUEST;
-import static com.linkedin.venice.ConfigKeys.ROUTER_MAX_READ_CAPACITY;
-import static com.linkedin.venice.ConfigKeys.ROUTER_META_STORE_SHADOW_READ_ENABLED;
-import static com.linkedin.venice.ConfigKeys.ROUTER_MULTIGET_TARDY_LATENCY_MS;
-import static com.linkedin.venice.ConfigKeys.ROUTER_MULTI_KEY_ROUTING_STRATEGY;
-import static com.linkedin.venice.ConfigKeys.ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS;
-import static com.linkedin.venice.ConfigKeys.ROUTER_PENDING_CONNECTION_RESUME_THRESHOLD_PER_ROUTE;
-import static com.linkedin.venice.ConfigKeys.ROUTER_PER_NODE_CLIENT_ENABLED;
-import static com.linkedin.venice.ConfigKeys.ROUTER_PER_NODE_CLIENT_THREAD_COUNT;
-import static com.linkedin.venice.ConfigKeys.ROUTER_PER_STORAGE_NODE_READ_QUOTA_BUFFER;
-import static com.linkedin.venice.ConfigKeys.ROUTER_QUOTA_CHECK_WINDOW;
-import static com.linkedin.venice.ConfigKeys.ROUTER_READ_QUOTA_THROTTLING_LEASE_TIMEOUT_MS;
-import static com.linkedin.venice.ConfigKeys.ROUTER_SINGLEGET_TARDY_LATENCY_MS;
-import static com.linkedin.venice.ConfigKeys.ROUTER_SMART_LONG_TAIL_RETRY_ABORT_THRESHOLD_MS;
-import static com.linkedin.venice.ConfigKeys.ROUTER_SMART_LONG_TAIL_RETRY_ENABLED;
-import static com.linkedin.venice.ConfigKeys.ROUTER_SOCKET_TIMEOUT;
-import static com.linkedin.venice.ConfigKeys.ROUTER_STATEFUL_HEALTHCHECK_ENABLED;
-import static com.linkedin.venice.ConfigKeys.ROUTER_STORAGE_NODE_CLIENT_TYPE;
-import static com.linkedin.venice.ConfigKeys.ROUTER_THROTTLE_CLIENT_SSL_HANDSHAKES;
-import static com.linkedin.venice.ConfigKeys.ROUTER_UNHEALTHY_PENDING_CONNECTION_THRESHOLD_PER_ROUTE;
-import static com.linkedin.venice.ConfigKeys.ROUTE_DNS_CACHE_HOST_PATTERN;
-import static com.linkedin.venice.ConfigKeys.SSL_TO_STORAGE_NODES;
-import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_CLUSTER_NAME;
-import static com.linkedin.venice.ConfigKeys.UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED;
-import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
-import static com.linkedin.venice.helix.HelixInstanceConfigRepository.GROUP_FIELD_NAME_IN_DOMAIN;
-import static com.linkedin.venice.helix.HelixInstanceConfigRepository.ZONE_FIELD_NAME_IN_DOMAIN;
-import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.LEAST_LOADED_ROUTING;
-import static com.linkedin.venice.router.api.routing.helix.HelixGroupSelectionStrategyEnum.LEAST_LOADED;
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.helix.HelixInstanceConfigRepository.*;
+import static com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy.*;
+import static com.linkedin.venice.router.api.routing.helix.HelixGroupSelectionStrategyEnum.*;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy;
@@ -131,6 +45,7 @@ public class VeniceRouterConfig {
   private int maxOutgoingConnPerRoute;
   private int maxOutgoingConn;
   private Map<String, String> clusterToD2Map;
+  private Map<String, String> clusterToServerD2Map;
   private double perStorageNodeReadQuotaBuffer;
   private int refreshAttemptsForZkReconnect;
   private long refreshIntervalForZkReconnectInMs;
@@ -236,6 +151,7 @@ public class VeniceRouterConfig {
     maxOutgoingConnPerRoute = props.getInt(ROUTER_MAX_OUTGOING_CONNECTION_PER_ROUTE, 120);
     maxOutgoingConn = props.getInt(ROUTER_MAX_OUTGOING_CONNECTION, 1200);
     clusterToD2Map = props.getMap(CLUSTER_TO_D2);
+    clusterToServerD2Map = props.getMap(CLUSTER_TO_SERVER_D2);
     perStorageNodeReadQuotaBuffer = props.getDouble(ROUTER_PER_STORAGE_NODE_READ_QUOTA_BUFFER, 1.0);
     refreshAttemptsForZkReconnect = props.getInt(REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, 3);
     refreshIntervalForZkReconnectInMs =
@@ -375,6 +291,10 @@ public class VeniceRouterConfig {
 
   public String getClusterName() {
     return clusterName;
+  }
+
+  public Map<String, String> getClusterToServerD2Map() {
+    return clusterToServerD2Map;
   }
 
   public String getZkConnection() {

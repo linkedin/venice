@@ -1,7 +1,7 @@
 package com.linkedin.venice.controller.server;
 
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
-import static com.linkedin.venice.controllerapi.ControllerRoute.CLUSTER_DISCOVERY;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
@@ -22,7 +22,7 @@ public class ClusterDiscovery {
         responseObject.setName(request.queryParams(NAME));
         Pair<String, String> clusterToD2Pair = admin.discoverCluster(responseObject.getName());
         responseObject.setCluster(clusterToD2Pair.getFirst());
-        responseObject.setD2Service(clusterToD2Pair.getSecond());
+        responseObject.setRouterD2Service(clusterToD2Pair.getSecond());
       } catch (Throwable e) {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);

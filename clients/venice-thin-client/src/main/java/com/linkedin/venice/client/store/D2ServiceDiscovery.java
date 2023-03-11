@@ -1,6 +1,6 @@
 package com.linkedin.venice.client.store;
 
-import static com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2.D2_SERVICE_DISCOVERY_RESPONSE_V2_ENABLED;
+import static com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.client.exceptions.ServiceDiscoveryException;
@@ -73,7 +73,7 @@ public class D2ServiceDiscovery {
         if (result.isError()) {
           throw new VeniceException(result.getError());
         }
-        LOGGER.info("Found d2 service {} for {}", result.getD2Service(), storeName);
+        LOGGER.info("Found d2 service {} for {}", result.getRouterD2Service(), storeName);
         return result;
 
       } catch (TimeoutException | ExecutionException e) {
