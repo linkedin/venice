@@ -868,4 +868,10 @@ public interface Admin extends AutoCloseable, Closeable {
   StoreGraveyard getStoreGraveyard();
 
   void removeStoreFromGraveyard(String clusterName, String storeName);
+
+  default void startInstanceMonitor(String clusterName) {
+  }
+
+  default void clearInstanceMonitor(String clusterName) {
+  }
 }

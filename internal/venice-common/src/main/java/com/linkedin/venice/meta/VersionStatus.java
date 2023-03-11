@@ -20,7 +20,9 @@ public enum VersionStatus {
   CREATED(5),
   // Version has been pushed to Venice and is ready to serve in some regions, but failed in other regions.
   // This version status only exists in parent.
-  PARTIALLY_ONLINE(6);
+  PARTIALLY_ONLINE(6),
+  // This version has been killed.
+  KILLED(7);
 
   private final int value;
 

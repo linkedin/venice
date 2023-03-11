@@ -35,6 +35,7 @@ public class VeniceMultiClusterCreateOptions {
   private final KafkaBrokerWrapper kafkaBrokerWrapper;
   private final Properties childControllerProperties;
   private final VeniceProperties veniceProperties;
+  private final Map<String, String> clusterToServerD2;
 
   public String getRegionName() {
     return regionName;
@@ -116,6 +117,10 @@ public class VeniceMultiClusterCreateOptions {
     return veniceProperties;
   }
 
+  public Map<String, String> getClusterToServerD2() {
+    return clusterToServerD2;
+  }
+
   @Override
   public String toString() {
     return new StringBuilder().append("VeniceMultiClusterCreateOptions - ")
@@ -179,6 +184,8 @@ public class VeniceMultiClusterCreateOptions {
         .append(", ")
         .append("kafkaClusterMap:")
         .append(kafkaClusterMap)
+        .append("clusterToServerD2:")
+        .append(clusterToServerD2)
         .toString();
   }
 
@@ -203,6 +210,7 @@ public class VeniceMultiClusterCreateOptions {
     veniceProperties = builder.veniceProperties;
     forkServer = builder.forkServer;
     kafkaClusterMap = builder.kafkaClusterMap;
+    clusterToServerD2 = builder.clusterToServerD2;
   }
 
   public static class Builder {
@@ -223,6 +231,7 @@ public class VeniceMultiClusterCreateOptions {
     private boolean forkServer = false;
     private boolean isMinActiveReplicaSet = false;
     private Map<String, Map<String, String>> kafkaClusterMap;
+    private Map<String, String> clusterToServerD2;
     private ZkServerWrapper zkServerWrapper;
     private KafkaBrokerWrapper kafkaBrokerWrapper;
     private Properties childControllerProperties;
@@ -308,6 +317,11 @@ public class VeniceMultiClusterCreateOptions {
       return this;
     }
 
+    public Builder clusterToServerD2(Map<String, String> clusterToServerD2) {
+      this.clusterToServerD2 = clusterToServerD2;
+      return this;
+    }
+
     public Builder zkServerWrapper(ZkServerWrapper zkServerWrapper) {
       this.zkServerWrapper = zkServerWrapper;
       return this;
@@ -340,6 +354,9 @@ public class VeniceMultiClusterCreateOptions {
       }
       if (kafkaClusterMap == null) {
         kafkaClusterMap = Collections.emptyMap();
+      }
+      if (clusterToServerD2 == null) {
+        clusterToServerD2 = Collections.emptyMap();
       }
     }
 

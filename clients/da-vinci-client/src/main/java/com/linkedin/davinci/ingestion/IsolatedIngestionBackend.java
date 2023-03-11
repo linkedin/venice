@@ -25,6 +25,8 @@ import com.linkedin.venice.ingestion.protocol.enums.IngestionComponentType;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.locks.AutoCloseableLock;
+import com.linkedin.venice.utils.locks.AutoCloseableSingleLock;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
 import java.util.function.Supplier;
@@ -118,12 +120,13 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       int partition,
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker leaderSessionIdChecker) {
     String topicName = storeConfig.getStoreVersionName();
-    executeCommandWithRetry(
-        topicName,
-        partition,
-        PROMOTE_TO_LEADER,
-        () -> mainIngestionRequestClient.promoteToLeader(topicName, partition),
-        () -> super.promoteToLeader(storeConfig, partition, leaderSessionIdChecker));
+    executeCommandWithRetry(topicName, partition, PROMOTE_TO_LEADER, () -> {
+      boolean result = mainIngestionRequestClient.promoteToLeader(topicName, partition);
+      if (result) {
+        getMainIngestionMonitorService().setTopicPartitionToLeaderState(topicName, partition);
+      }
+      return result;
+    }, () -> super.promoteToLeader(storeConfig, partition, leaderSessionIdChecker));
   }
 
   @Override
@@ -132,12 +135,13 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
       int partition,
       LeaderFollowerPartitionStateModel.LeaderSessionIdChecker leaderSessionIdChecker) {
     String topicName = storeConfig.getStoreVersionName();
-    executeCommandWithRetry(
-        topicName,
-        partition,
-        DEMOTE_TO_STANDBY,
-        () -> mainIngestionRequestClient.demoteToStandby(topicName, partition),
-        () -> super.demoteToStandby(storeConfig, partition, leaderSessionIdChecker));
+    executeCommandWithRetry(topicName, partition, DEMOTE_TO_STANDBY, () -> {
+      boolean result = mainIngestionRequestClient.demoteToStandby(topicName, partition);
+      if (result) {
+        getMainIngestionMonitorService().setTopicIngestionToFollowerState(topicName, partition);
+      }
+      return result;
+    }, () -> super.demoteToStandby(storeConfig, partition, leaderSessionIdChecker));
   }
 
   @Override
@@ -299,18 +303,24 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
         // Start consumption should set up resource ingestion status for tracking purpose.
         getMainIngestionMonitorService().setVersionPartitionToIsolatedIngestion(topicName, partition);
       }
-      try {
-        if (remoteCommandSupplier.get()) {
-          return;
+      // Acquire read lock here to guard against race condition between Helix state transition and restart of forked
+      // process.
+      try (AutoCloseableLock ignored =
+          AutoCloseableSingleLock.of(getMainIngestionMonitorService().getForkProcessActionLock().readLock())) {
+        try {
+          if (remoteCommandSupplier.get()) {
+            return;
+          }
+        } catch (Exception e) {
+          if (command.equals(START_CONSUMPTION)) {
+            // Failure in start consumption request should reset the resource ingestion status.
+            LOGGER.warn("Clean up ingestion status for topic: {}, partition: {}.", topicName, partition);
+            getMainIngestionMonitorService().cleanupTopicPartitionState(topicName, partition);
+          }
+          throw e;
         }
-      } catch (Exception e) {
-        if (command.equals(START_CONSUMPTION)) {
-          // Failure in start consumption request should reset the resource ingestion status.
-          LOGGER.warn("Clean up ingestion status for topic: {}, partition: {}.", topicName, partition);
-          getMainIngestionMonitorService().cleanupTopicPartitionState(topicName, partition);
-        }
-        throw e;
       }
+
       /**
        * The idea of this check below is to add resiliency to isolated ingestion metadata management.
        * Although in most of the case the resource ingestion status managed by main / forked process should be in sync,
