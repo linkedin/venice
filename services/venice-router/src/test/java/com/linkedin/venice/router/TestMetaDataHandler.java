@@ -401,7 +401,7 @@ public class TestMetaDataHandler {
     D2ServiceDiscoveryResponse d2ServiceResponse =
         OBJECT_MAPPER.readValue(response.content().array(), D2ServiceDiscoveryResponse.class);
     Assert.assertEquals(d2ServiceResponse.getCluster(), clusterName);
-    Assert.assertEquals(d2ServiceResponse.getRouterD2Service(), d2Service);
+    Assert.assertEquals(d2ServiceResponse.getD2Service(), d2Service);
     Assert.assertEquals(d2ServiceResponse.getName(), storeName);
     Assert.assertFalse(d2ServiceResponse.isError());
   }

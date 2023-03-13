@@ -601,7 +601,7 @@ public abstract class TestRead {
       Assert.assertFalse(d2ServiceDiscoveryResponse.isError());
       Assert.assertEquals(d2ServiceDiscoveryResponse.getCluster(), veniceCluster.getClusterName());
       Assert.assertEquals(
-          d2ServiceDiscoveryResponse.getRouterD2Service(),
+          d2ServiceDiscoveryResponse.getD2Service(),
           veniceCluster.getRandomVeniceRouter().getD2ServiceNameForCluster(veniceCluster.getClusterName()));
       Assert.assertEquals(d2ServiceDiscoveryResponse.getCluster(), veniceCluster.getClusterName());
       Assert.assertEquals(d2ServiceDiscoveryResponse.getName(), storeName);

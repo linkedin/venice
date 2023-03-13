@@ -22,7 +22,7 @@ public class ClusterDiscovery {
         responseObject.setName(request.queryParams(NAME));
         Pair<String, String> clusterToD2Pair = admin.discoverCluster(responseObject.getName());
         responseObject.setCluster(clusterToD2Pair.getFirst());
-        responseObject.setRouterD2Service(clusterToD2Pair.getSecond());
+        responseObject.setD2Service(clusterToD2Pair.getSecond());
       } catch (Throwable e) {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);

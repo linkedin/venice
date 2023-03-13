@@ -170,7 +170,7 @@ public class SystemStoreFreeMetadata extends AbstractStoreMetadata {
       }
       if (d2TransportClient instanceof D2TransportClient) {
         D2TransportClient client = (D2TransportClient) d2TransportClient;
-        serverD2ServiceName = new D2ServiceDiscovery().find(client, storeName, retryOnFailure).getRouterD2Service();
+        serverD2ServiceName = new D2ServiceDiscovery().find(client, storeName, retryOnFailure).getServerD2Service();
         // TODO: do we ever use the d2Client to make requests? AbstractAvroStoreClient uses it...
         client.setServiceName(serverD2ServiceName);
       }

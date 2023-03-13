@@ -73,7 +73,7 @@ public class D2ServiceDiscovery {
         if (result.isError()) {
           throw new VeniceException(result.getError());
         }
-        LOGGER.info("Found d2 service {} for {}", result.getRouterD2Service(), storeName);
+        LOGGER.info("Found d2 service {} for {}", result.getD2Service(), storeName);
         return result;
 
       } catch (TimeoutException | ExecutionException e) {

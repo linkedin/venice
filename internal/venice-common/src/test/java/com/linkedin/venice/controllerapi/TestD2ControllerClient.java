@@ -56,7 +56,7 @@ public class TestD2ControllerClient {
   public void testDiscoverCluster() throws JsonProcessingException {
     D2ServiceDiscoveryResponse serviceDiscoveryResponse = new D2ServiceDiscoveryResponse();
     serviceDiscoveryResponse.setCluster(TEST_CLUSTER);
-    serviceDiscoveryResponse.setRouterD2Service(TEST_ROUTER_D2_SERVICE);
+    serviceDiscoveryResponse.setD2Service(TEST_ROUTER_D2_SERVICE);
     serviceDiscoveryResponse.setName(TEST_STORE);
 
     String discoverClusterResponse = ObjectMapperFactory.getInstance().writeValueAsString(serviceDiscoveryResponse);

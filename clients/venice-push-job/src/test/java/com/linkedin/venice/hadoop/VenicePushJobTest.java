@@ -200,7 +200,7 @@ public class VenicePushJobTest {
     // mock discover cluster
     D2ServiceDiscoveryResponse clusterResponse = new D2ServiceDiscoveryResponse();
     clusterResponse.setCluster(TEST_CLUSTER);
-    clusterResponse.setRouterD2Service(TEST_SERVICE);
+    clusterResponse.setD2Service(TEST_SERVICE);
     doReturn(clusterResponse).when(client).discoverCluster(TEST_STORE);
 
     // mock value schema

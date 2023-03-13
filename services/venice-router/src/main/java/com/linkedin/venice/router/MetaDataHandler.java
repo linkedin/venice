@@ -290,9 +290,9 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       return;
     }
     String clusterName = config.get().getCluster();
-    String routerD2Service = getRouterD2ServiceByClusterName(clusterName);
-    if (StringUtils.isEmpty(routerD2Service)) {
-      String errorMsg = "Router D2 service for store: " + storeName + " doesn't exist";
+    String d2Service = getD2ServiceByClusterName(clusterName);
+    if (StringUtils.isEmpty(d2Service)) {
+      String errorMsg = "D2 service for store: " + storeName + " doesn't exist";
       setupErrorD2DiscoveryResponseAndFlush(NOT_FOUND, errorMsg, headers, ctx);
       return;
     }
@@ -306,7 +306,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       D2ServiceDiscoveryResponseV2 responseObject = new D2ServiceDiscoveryResponseV2();
       responseObject.setCluster(config.get().getCluster());
       responseObject.setName(config.get().getStoreName());
-      responseObject.setRouterD2Service(routerD2Service);
+      responseObject.setD2Service(d2Service);
       responseObject.setServerD2Service(serverD2Service);
       responseObject.setZkAddress(zkAddress);
       responseObject.setKafkaBootstrapServers(kafkaBootstrapServers);
@@ -315,7 +315,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       D2ServiceDiscoveryResponse responseObject = new D2ServiceDiscoveryResponse();
       responseObject.setCluster(config.get().getCluster());
       responseObject.setName(config.get().getStoreName());
-      responseObject.setRouterD2Service(routerD2Service);
+      responseObject.setD2Service(d2Service);
       responseObject.setServerD2Service(serverD2Service);
       setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(responseObject), true, ctx);
     }
@@ -482,7 +482,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(hybridStoreQuotaStatusResponse), true, ctx);
   }
 
-  private String getRouterD2ServiceByClusterName(String clusterName) {
+  private String getD2ServiceByClusterName(String clusterName) {
     return clusterToD2Map.get(clusterName);
   }
 

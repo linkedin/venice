@@ -2,6 +2,7 @@ package com.linkedin.venice.integration.utils;
 
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_D2;
+import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_SERVER_D2;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
 import static com.linkedin.venice.ConfigKeys.LISTENER_SSL_PORT;
@@ -115,6 +116,7 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
       String httpsURI = "https://localhost:" + sslPortFromPort(port);
       List<ServiceDiscoveryAnnouncer> d2ServerList = new ArrayList<>();
       String d2ServiceName = Utils.getUniqueString("D2_SERVICE_NAME");
+      String serverD2ServiceName = Utils.getUniqueString("SERVER_D2_SERVICE_NAME");
       if (!StringUtils.isEmpty(zkAddress)) {
         // Set up d2 config before announcing
         String d2ClusterName = D2TestUtils.setupD2Config(zkAddress, false, d2ServiceName);
@@ -131,6 +133,9 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
           .put(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers)
           .put(SSL_TO_STORAGE_NODES, sslToStorageNodes)
           .put(CLUSTER_TO_D2, TestUtils.getClusterToD2String(Collections.singletonMap(clusterName, d2ServiceName)))
+          .put(
+              CLUSTER_TO_SERVER_D2,
+              TestUtils.getClusterToD2String(Collections.singletonMap(clusterName, serverD2ServiceName)))
           .put(ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 0)
           .put(ROUTER_THROTTLE_CLIENT_SSL_HANDSHAKES, true)
           .put(ROUTER_STORAGE_NODE_CLIENT_TYPE, StorageNodeClientType.APACHE_HTTP_ASYNC_CLIENT.name())

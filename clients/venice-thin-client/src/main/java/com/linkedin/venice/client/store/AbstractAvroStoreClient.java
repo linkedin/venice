@@ -348,7 +348,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       }
       if (transportClient instanceof D2TransportClient) {
         D2TransportClient client = (D2TransportClient) transportClient;
-        client.setServiceName(new D2ServiceDiscovery().find(client, storeName, retryOnFailure).getRouterD2Service());
+        client.setServiceName(new D2ServiceDiscovery().find(client, storeName, retryOnFailure).getD2Service());
       }
       isServiceDiscovered = true;
     }

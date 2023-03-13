@@ -58,7 +58,7 @@ public class TestD2ControllerClient {
         // Test cluster discovery
         D2ServiceDiscoveryResponse discoveryResponse =
             D2ControllerClient.discoverCluster(d2Client, d2ServiceName, storeName);
-        Assert.assertEquals(discoveryResponse.getRouterD2Service(), clusterD2Service);
+        Assert.assertEquals(discoveryResponse.getD2Service(), clusterD2Service);
       }
     } finally {
       if (d2Client != null) {
