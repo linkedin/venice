@@ -228,12 +228,10 @@ public class StoreBufferService extends AbstractStoreBufferService {
     private final AtomicBoolean isRunning = new AtomicBoolean(true);
     private final int drainerIndex;
     private final ConcurrentMap<PubSubTopicPartition, Long> topicToTimeSpent = new ConcurrentHashMap<>();
-    private final RecordHandler recordHandler;
 
-    public StoreBufferDrainer(BlockingQueue<QueueNode> blockingQueue, int drainerIndex, RecordHandler recordHandler) {
+    public StoreBufferDrainer(BlockingQueue<QueueNode> blockingQueue, int drainerIndex) {
       this.blockingQueue = blockingQueue;
       this.drainerIndex = drainerIndex;
-      this.recordHandler = recordHandler;
     }
 
     public void stop() {
@@ -264,7 +262,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
           int subPartition = PartitionUtils
               .getSubPartition(consumerRecord.getTopicPartition(), ingestionTask.getAmplificationFactor());
 
-          recordHandler.handle(
+          processRecord(
               consumerRecord,
               ingestionTask,
               leaderProducedRecordContext,
@@ -356,7 +354,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
     for (int cur = 0; cur < drainerNum; ++cur) {
       this.blockingQueueArr.add(new MemoryBoundBlockingQueue<>(bufferCapacityPerDrainer, bufferNotifyDelta));
     }
-    this.leaderRecordHandler = queueLeaderWrites ? this::queueLeaderRecord : this::processLeaderRecord;
+    this.leaderRecordHandler = queueLeaderWrites ? this::queueLeaderRecord : StoreBufferService::processRecord;
   }
 
   public StoreBufferService(int drainerNum, long bufferCapacityPerDrainer, long bufferNotifyDelta) {
@@ -448,7 +446,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
             leaderProducedRecordContext));
   }
 
-  private void processLeaderRecord(
+  private static void processRecord(
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       StoreIngestionTask ingestionTask,
       LeaderProducedRecordContext leaderProducedRecordContext,
@@ -520,8 +518,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
 
     // Submit all the buffer drainers
     for (int cur = 0; cur < drainerNum; ++cur) {
-      StoreBufferDrainer drainer =
-          new StoreBufferDrainer(this.blockingQueueArr.get(cur), cur, this::processLeaderRecord);
+      StoreBufferDrainer drainer = new StoreBufferDrainer(this.blockingQueueArr.get(cur), cur);
       this.executorService.submit(drainer);
       drainerList.add(drainer);
     }
