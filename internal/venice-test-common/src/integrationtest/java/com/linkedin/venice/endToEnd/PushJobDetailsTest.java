@@ -34,6 +34,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
@@ -43,6 +44,7 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
@@ -62,6 +64,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -288,6 +291,23 @@ public class PushJobDetailsTest {
           processedSignals.contains(intValue),
           "Each PushJobDetailsStatus should have its own unique int value");
       processedSignals.add(intValue);
+    }
+  }
+
+  /**
+   * This is to verify that all defined 'PushJobDetails.avsc' schemas are registered in the controller's ZK schema repo.
+   */
+  @Test(timeOut = 30 * Time.MS_PER_SECOND)
+  public void testPushJobDetailsCurrentProtolIsRegistered() {
+    MultiSchemaResponse response =
+        parentControllerClient.getAllValueSchema(AvroProtocolDefinition.PUSH_JOB_DETAILS.getSystemStoreName());
+    Map<Integer, String> valueSchemas = Arrays.stream(response.getSchemas())
+        .collect(Collectors.toMap(MultiSchemaResponse.Schema::getId, MultiSchemaResponse.Schema::getSchemaStr));
+
+    assertEquals(valueSchemas.size(), AvroProtocolDefinition.PUSH_JOB_DETAILS.getCurrentProtocolVersion());
+    for (Map.Entry<Integer, String> schema: valueSchemas.entrySet()) {
+      assertNotNull(schema.getValue());
+      assertFalse(schema.getValue().isEmpty());
     }
   }
 }
