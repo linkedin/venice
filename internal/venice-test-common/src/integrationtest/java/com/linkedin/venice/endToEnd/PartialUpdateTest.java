@@ -313,7 +313,7 @@ public class PartialUpdateTest {
         GenericRecord timestampRecord =
             (GenericRecord) rmdWithValueSchemaId.getRmdRecord().get(RmdConstants.TIMESTAMP_FIELD_NAME);
         GenericRecord stringMapTimestampRecord = (GenericRecord) timestampRecord.get("stringMap");
-        assertEquals(stringMapTimestampRecord.get(TOP_LEVEL_TS_FIELD_NAME), (long) (updateCount * 10));
+        assertEquals(stringMapTimestampRecord.get(TOP_LEVEL_TS_FIELD_NAME), (long) (updateCount) * 10);
       });
     } finally {
       veniceProducer.stop();
