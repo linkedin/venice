@@ -237,6 +237,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
             kafkaBrokerWrapper,
             options.isSslToStorageNodes(),
             clusterToD2,
+            options.getServerD2ServiceName(),
             options.getExtraProperties());
         LOGGER.info(
             "[{}][{}] Created router on port {}",
@@ -554,6 +555,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         kafkaBrokerWrapper,
         sslToStorageNodes,
         clusterToD2,
+        serverD2ServiceName,
         properties);
     synchronized (this) {
       veniceRouterWrappers.put(veniceRouterWrapper.getPort(), veniceRouterWrapper);

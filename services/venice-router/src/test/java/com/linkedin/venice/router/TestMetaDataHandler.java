@@ -379,19 +379,22 @@ public class TestMetaDataHandler {
     String storeName = "test-store";
     String clusterName = "test-cluster";
     String d2Service = "test-d2-service";
+    String serverD2Service = "test-server-d2-service";
     HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
     StoreConfig storeConfig = new StoreConfig(storeName);
     storeConfig.setCluster(clusterName);
     Mockito.doReturn(Optional.of(storeConfig)).when(storeConfigRepository).getStoreConfig(storeName);
     Map<String, String> clusterToD2Map = new HashMap<>();
     clusterToD2Map.put(clusterName, d2Service);
+    Map<String, String> clusterToServerD2ServiceMap = new HashMap<>();
+    clusterToServerD2ServiceMap.put(clusterName, serverD2Service);
     FullHttpResponse response = passRequestToMetadataHandler(
         "http://myRouterHost:4567/discover_cluster/" + storeName,
         null,
         null,
         storeConfigRepository,
         clusterToD2Map,
-        null);
+        clusterToServerD2ServiceMap);
 
     Assert.assertEquals(response.status().code(), 200);
     Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");
@@ -414,7 +417,7 @@ public class TestMetaDataHandler {
         null,
         storeConfigRepository,
         Collections.emptyMap(),
-        null);
+        Collections.emptyMap());
 
     Assert.assertEquals(response.status().code(), 404);
   }
