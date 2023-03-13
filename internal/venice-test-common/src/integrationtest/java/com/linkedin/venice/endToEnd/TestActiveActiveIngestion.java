@@ -404,7 +404,6 @@ public class TestActiveActiveIngestion {
       for (int i = 0; i < 100; i++) {
         String key = Integer.toString(i);
         Utf8 afterImageValue = polledAfterImageEvents.get(key);
-        System.out.println(key + "check for: " + afterImageValue);
         if (i < 10 || (i >= 20 && i < 30)) {
           Assert.assertNotNull(afterImageValue);
           Assert.assertEquals(afterImageValue.toString(), "stream_" + i);
