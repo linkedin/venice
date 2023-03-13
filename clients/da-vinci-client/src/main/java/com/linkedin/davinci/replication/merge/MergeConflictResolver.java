@@ -3,7 +3,6 @@ package com.linkedin.davinci.replication.merge;
 import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.RmdTimestampType.PER_FIELD_TIMESTAMP;
-import static com.linkedin.venice.schema.rmd.RmdTimestampType.VALUE_LEVEL_TIMESTAMP;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.PUT_ONLY_PART_LENGTH_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL_COLO_ID_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL_TS_FIELD_NAME;
@@ -120,23 +119,11 @@ public class MergeConflictResolver {
      * fail even though the version should be recreated / repushed with correct config setup.
      */
     if (useFieldLevelTimestamp || RmdUtils.getRmdTimestampType(oldTimestampObject).equals(PER_FIELD_TIMESTAMP)) {
-      GenericRecord oldFieldLevelRmdRecord = oldRmdRecord;
-      if (RmdUtils.getRmdTimestampType(oldTimestampObject).equals(VALUE_LEVEL_TIMESTAMP)) {
-        int oldValueWriterSchemaId = rmdWithValueSchemaID.getValueSchemaId();
-        Schema oldValueSchema = getValueSchema(oldValueWriterSchemaId);
-        oldFieldLevelRmdRecord = createOldValueAndRmd(
-            oldValueSchema,
-            oldValueWriterSchemaId,
-            oldValueWriterSchemaId,
-            oldValueBytesProvider,
-            oldRmdRecord).getRmd();
-      }
-
       return mergePutWithFieldLevelTimestamp(
           rmdWithValueSchemaID.getValueSchemaId(),
-          oldFieldLevelRmdRecord.get(TIMESTAMP_FIELD_NAME),
+          oldTimestampObject,
           oldValueBytesProvider,
-          oldFieldLevelRmdRecord,
+          oldRmdRecord,
           putOperationTimestamp,
           newValueBytes,
           newValueColoID,
@@ -196,23 +183,11 @@ public class MergeConflictResolver {
      * fail even though the version should be recreated / repushed with correct config setup.
      */
     if (useFieldLevelTimestamp || RmdUtils.getRmdTimestampType(oldTimestampObject).equals(PER_FIELD_TIMESTAMP)) {
-      GenericRecord oldFieldLevelRmdRecord = oldRmdRecord;
-      if (RmdUtils.getRmdTimestampType(oldTimestampObject).equals(VALUE_LEVEL_TIMESTAMP)) {
-        int oldValueWriterSchemaId = rmdWithValueSchemaID.getValueSchemaId();
-        Schema oldValueSchema = getValueSchema(oldValueWriterSchemaId);
-        oldFieldLevelRmdRecord = createOldValueAndRmd(
-            oldValueSchema,
-            oldValueWriterSchemaId,
-            oldValueWriterSchemaId,
-            oldValueBytesProvider,
-            oldRmdRecord).getRmd();
-      }
-
       return mergeDeleteWithFieldLevelTimestamp(
           oldValueBytesProvider,
-          (GenericRecord) oldFieldLevelRmdRecord.get(TIMESTAMP_FIELD_NAME),
+          (GenericRecord) oldTimestampObject,
           oldValueSchemaID,
-          oldFieldLevelRmdRecord,
+          oldRmdRecord,
           deleteOperationColoID,
           deleteOperationTimestamp,
           deleteOperationSourceOffset,
@@ -428,7 +403,7 @@ public class MergeConflictResolver {
       Lazy<ByteBuffer> oldValueBytesProvider,
       GenericRecord oldRmdRecord) {
     final GenericRecord oldValueRecord =
-        createOldValueRecord(readerValueSchema, oldValueWriterSchemaID, oldValueBytesProvider.get());
+        createValueRecordFromByteBuffer(readerValueSchema, oldValueWriterSchemaID, oldValueBytesProvider.get());
 
     // RMD record should contain a per-field timestamp and it should use the RMD schema generated from
     // mergeResultValueSchema.
@@ -441,7 +416,7 @@ public class MergeConflictResolver {
     return createdOldValueAndRmd;
   }
 
-  private GenericRecord createOldValueRecord(
+  private GenericRecord createValueRecordFromByteBuffer(
       Schema readerValueSchema,
       int oldValueWriterSchemaID,
       ByteBuffer oldValueBytes) {
@@ -566,6 +541,11 @@ public class MergeConflictResolver {
         REPLICATION_CHECKPOINT_VECTOR_FIELD,
         MergeUtils.mergeOffsetVectors(null, newValueSourceOffset, newValueSourceBrokerID));
 
+    if (useFieldLevelTimestamp) {
+      Schema valueSchema = getValueSchema(newValueSchemaID);
+      newRmd = createOldValueAndRmd(valueSchema, newValueSchemaID, newValueSchemaID, Lazy.of(() -> newValue), newRmd)
+          .getRmd();
+    }
     return new MergeConflictResult(newValue, newValueSchemaID, true, newRmd);
   }
 
@@ -576,7 +556,7 @@ public class MergeConflictResolver {
     /**
      * oldReplicationMetadata can be null in two cases:
      * 1. There is no value corresponding to the key
-     * 2. There is a value corresponding to the key but it came from the batch push and the BatchConflictResolutionPolicy
+     * 2. There is a value corresponding to the key, but it came from the batch push and the BatchConflictResolutionPolicy
      * specifies that no per-record replication metadata should be persisted for batch push data.
      *
      * In such cases, the incoming Delete operation will be applied directly and we should store a tombstone for it.
@@ -587,6 +567,10 @@ public class MergeConflictResolver {
     newRmd.put(
         REPLICATION_CHECKPOINT_VECTOR_FIELD,
         MergeUtils.mergeOffsetVectors(null, newValueSourceOffset, deleteOperationSourceBrokerID));
+    if (useFieldLevelTimestamp) {
+      Schema valueSchema = getValueSchema(valueSchemaID);
+      newRmd = createOldValueAndRmd(valueSchema, valueSchemaID, valueSchemaID, Lazy.of(() -> null), newRmd).getRmd();
+    }
     return new MergeConflictResult(null, valueSchemaID, false, newRmd);
   }
 
