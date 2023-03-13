@@ -1,7 +1,8 @@
 package com.linkedin.venice.samza;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.schema.AvroSchemaParseUtils.*;
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.schema.AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation;
+import static com.linkedin.venice.schema.AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.d2.balancer.D2Client;

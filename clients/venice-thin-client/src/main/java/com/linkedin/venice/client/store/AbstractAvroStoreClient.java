@@ -1,8 +1,9 @@
 package com.linkedin.venice.client.store;
 
-import static com.linkedin.venice.HttpConstants.*;
-import static com.linkedin.venice.VeniceConstants.*;
-import static com.linkedin.venice.streaming.StreamingConstants.*;
+import static com.linkedin.venice.HttpConstants.VENICE_COMPUTE_VALUE_SCHEMA_ID;
+import static com.linkedin.venice.HttpConstants.VENICE_KEY_COUNT;
+import static com.linkedin.venice.VeniceConstants.COMPUTE_REQUEST_VERSION_V2;
+import static com.linkedin.venice.streaming.StreamingConstants.KEY_ID_FOR_STREAMING_FOOTER;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.avroutil1.compatibility.AvroVersion;

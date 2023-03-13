@@ -1,7 +1,9 @@
 package com.linkedin.venice.router;
 
-import static com.linkedin.venice.VeniceConstants.*;
-import static io.netty.handler.codec.http.HttpHeaderNames.*;
+import static com.linkedin.venice.VeniceConstants.TYPE_STORE_STATE;
+import static com.linkedin.venice.VeniceConstants.TYPE_STREAM_HYBRID_STORE_QUOTA;
+import static com.linkedin.venice.VeniceConstants.TYPE_STREAM_REPROCESSING_HYBRID_STORE_QUOTA;
+import static io.netty.handler.codec.http.HttpHeaderNames.CONTENT_TYPE;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.common.VeniceSystemStoreType;
