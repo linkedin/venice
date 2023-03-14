@@ -1,5 +1,6 @@
 package com.linkedin.venice.fastclient.meta;
 
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.D2ServiceDiscovery;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
@@ -11,7 +12,6 @@ import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.MissingKeyInStoreMetadataException;
 import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.fastclient.stats.ClusterStats;
-import com.linkedin.venice.fastclient.transport.R2TransportClient;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
 import com.linkedin.venice.partitioner.VenicePartitioner;
@@ -19,7 +19,6 @@ import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
-import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -63,23 +62,20 @@ public class SystemStoreFreeMetadata extends AbstractStoreMetadata {
   private final AtomicInteger latestSuperSetValueSchemaId = new AtomicInteger();
   private final AtomicReference<SchemaData> schemas = new AtomicReference<>();
   private final Map<String, List<String>> readyToServeInstancesMap = new VeniceConcurrentHashMap<>();
-  private final Map<Integer, Pair<VenicePartitioner, Integer>> versionPartitionerMap = new VeniceConcurrentHashMap<>();
-  private int partitionCount;
+  private final Map<Integer, PartitionerPair> versionPartitionerMap = new VeniceConcurrentHashMap<>();
   private final Map<Integer, ByteBuffer> versionZstdDictionaryMap = new VeniceConcurrentHashMap<>();
   private final CompressorFactory compressorFactory;
-  private final TransportClient r2TransportClient;
-  private final TransportClient d2TransportClient;
+  private final D2TransportClient discoveryClient;
+  private TransportClient transportClient;
   private final ClusterStats clusterStats;
   private volatile boolean isServiceDiscovered;
-  private String serverD2ServiceName;
 
-  public SystemStoreFreeMetadata(ClientConfig clientConfig, TransportClient d2TransportClient) {
+  public SystemStoreFreeMetadata(ClientConfig clientConfig, D2TransportClient discoveryClient) {
     super(clientConfig);
     this.refreshIntervalInSeconds = clientConfig.getMetadataRefreshIntervalInSeconds() > 0
         ? clientConfig.getMetadataRefreshIntervalInSeconds()
         : DEFAULT_REFRESH_INTERVAL_IN_SECONDS;
-    this.r2TransportClient = new R2TransportClient(clientConfig.getR2Client());
-    this.d2TransportClient = d2TransportClient;
+    this.discoveryClient = discoveryClient;
     this.compressorFactory = new CompressorFactory();
     this.clusterStats = clientConfig.getClusterStats();
   }
@@ -91,11 +87,11 @@ public class SystemStoreFreeMetadata extends AbstractStoreMetadata {
 
   @Override
   public int getPartitionId(int version, ByteBuffer key) {
-    Pair<VenicePartitioner, Integer> partitionerPair = versionPartitionerMap.get(version);
+    PartitionerPair partitionerPair = versionPartitionerMap.get(version);
     if (partitionerPair == null) {
       throw new VeniceClientException("Unknown version number: " + version + " for store: " + storeName);
     }
-    return partitionerPair.getFirst().getPartitionId(key, partitionerPair.getSecond());
+    return partitionerPair.getVenicePartitioner().getPartitionId(key, partitionerPair.getPartitionCount());
   }
 
   @Override
@@ -106,34 +102,6 @@ public class SystemStoreFreeMetadata extends AbstractStoreMetadata {
 
   private String getVersionPartitionMapKey(int version, int partition) {
     return version + VERSION_PARTITION_SEPARATOR + partition;
-  }
-
-  @Override
-  public VeniceCompressor getCompressor(CompressionStrategy compressionStrategy, int version) {
-    if (compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
-      String resourceName = getResourceName(version);
-      VeniceCompressor compressor = compressorFactory.getVersionSpecificCompressor(resourceName);
-      if (compressor == null) {
-        ByteBuffer dictionary = versionZstdDictionaryMap.get(version);
-        if (dictionary == null) {
-          throw new VeniceClientException(
-              String.format(
-                  "No dictionary available for decompressing zstd payload for store %s version %d ",
-                  storeName,
-                  version));
-        } else {
-          compressor = compressorFactory
-              .createVersionSpecificCompressorIfNotExist(compressionStrategy, resourceName, dictionary.array());
-        }
-      }
-      return compressor;
-    } else {
-      return compressorFactory.getCompressor(compressionStrategy);
-    }
-  }
-
-  private String getResourceName(int version) {
-    return storeName + "_v" + version;
   }
 
   @Override
@@ -168,12 +136,9 @@ public class SystemStoreFreeMetadata extends AbstractStoreMetadata {
       if (isServiceDiscovered) {
         return;
       }
-      if (d2TransportClient instanceof D2TransportClient) {
-        D2TransportClient client = (D2TransportClient) d2TransportClient;
-        serverD2ServiceName = new D2ServiceDiscovery().find(client, storeName, retryOnFailure).getServerD2Service();
-        // TODO: do we ever use the d2Client to make requests? AbstractAvroStoreClient uses it...
-        client.setServiceName(serverD2ServiceName);
-      }
+      transportClient = new D2TransportClient(
+          new D2ServiceDiscovery().find(discoveryClient, storeName, retryOnFailure).getServerD2Service(),
+          (D2Client) null);
       isServiceDiscovered = true;
     }
   }
@@ -226,7 +191,7 @@ public class SystemStoreFreeMetadata extends AbstractStoreMetadata {
           params.putAll(partitionerParams);
           VenicePartitioner partitioner =
               PartitionUtils.getVenicePartitioner(partitionerClass, amplificationFactor, new VeniceProperties(params));
-          return new Pair<>(partitioner, newPartitionCount);
+          return new PartitionerPair(partitioner, newPartitionCount);
         });
 
         // Update readyToServeInstanceMap
@@ -247,12 +212,11 @@ public class SystemStoreFreeMetadata extends AbstractStoreMetadata {
         schemas.set(schemaData);
 
         // Evict old entries
-        versionPartitionerMap.remove(currentVersion.get());
-        versionZstdDictionaryMap.remove(currentVersion.get());
-        for (int i = 0; i < partitionCount; i++) {
-          readyToServeInstancesMap.remove(getVersionPartitionMapKey(currentVersion.get(), i));
+        for (int i = 0; i < versionPartitionerMap.get(getCurrentStoreVersion()).getPartitionCount(); i++) {
+          readyToServeInstancesMap.remove(getVersionPartitionMapKey(getCurrentStoreVersion(), i));
         }
-        partitionCount = newPartitionCount;
+        versionPartitionerMap.remove(getCurrentStoreVersion());
+        versionZstdDictionaryMap.remove(getCurrentStoreVersion());
 
         // Wait for dictionary fetch to finish if there is one
         try {
@@ -272,25 +236,23 @@ public class SystemStoreFreeMetadata extends AbstractStoreMetadata {
               e);
           clusterStats.recordVersionUpdateFailure();
         }
-
       }
     } catch (InterruptedException interruptedException) {
       Thread.currentThread().interrupt();
       throw new VeniceClientException("Metadata fetch operation was interrupted");
     } catch (ExecutionException e) {
-      // perform an on demand refresh if update fails in case of store migration, otherwise propagate the error
+      // perform an on demand refresh if update fails in case of store migration
       if (!onDemandRefresh) {
         updateCache(true);
       } else {
+        // pass the error along if the on demand refresh also fails
         throw new VeniceClientException("Metadata fetch operation has failed");
       }
     }
 
-    // update the refresh interval to a random interval and queue the next refresh if this wasn't an on demand refresh
-    if (!onDemandRefresh) {
-      long randomRefreshInterval = refreshIntervalInSeconds + ThreadLocalRandom.current().nextInt(-10, 10);
-      scheduler.schedule(this::refresh, randomRefreshInterval, TimeUnit.SECONDS);
-    }
+    // update the refresh interval to a random interval and queue the next refresh
+    long randomRefreshInterval = refreshIntervalInSeconds + ThreadLocalRandom.current().nextInt(-10, 10);
+    scheduler.schedule(this::refresh, randomRefreshInterval, TimeUnit.SECONDS);
   }
 
   private void refresh() {
@@ -315,16 +277,15 @@ public class SystemStoreFreeMetadata extends AbstractStoreMetadata {
     }
     readyToServeInstancesMap.clear();
     versionPartitionerMap.clear();
-    partitionCount = 0;
     Utils.closeQuietlyWithErrorLogged(compressorFactory);
   }
 
   private CompletableFuture<TransportClientResponse> fetchMetadata() {
     CompletableFuture<TransportClientResponse> metadataFuture = new CompletableFuture<>();
-    String url = serverD2ServiceName + "/" + QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
+    String url = QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
 
     LOGGER.info("Fetching metadata for store {} from URL {} ", storeName, url);
-    r2TransportClient.get(url).whenComplete((response, throwable) -> {
+    transportClient.get(url).whenComplete((response, throwable) -> {
       if (throwable != null) {
         String message = String.format("Problem fetching metadata from URL:%s for store:%s ", url, storeName);
         LOGGER.warn(message, throwable);
@@ -338,26 +299,21 @@ public class SystemStoreFreeMetadata extends AbstractStoreMetadata {
 
   private CompletableFuture<TransportClientResponse> fetchCompressionDictionary(int version) {
     CompletableFuture<TransportClientResponse> compressionDictionaryFuture = new CompletableFuture<>();
-    String url =
-        serverD2ServiceName + "/" + QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/" + version;
+    String url = QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/" + version;
 
-    LOGGER.info("Fetching compression dictionary for version {} from URL {} ", version, url);
-    r2TransportClient.get(url).whenComplete((response, throwable) -> {
-      if (throwable != null) {
-        String message = String.format(
-            "Problem fetching zstd compression dictionary from URL:%s for store:%s , version:%d",
-            url,
-            storeName,
-            version);
-        LOGGER.warn(message, throwable);
-        compressionDictionaryFuture.completeExceptionally(throwable);
-      } else {
-        byte[] dictionary = response.getBody();
-        versionZstdDictionaryMap.put(version, ByteBuffer.wrap(dictionary));
-        compressionDictionaryFuture.complete(response);
-      }
-    });
-    return compressionDictionaryFuture;
+    return CompressionHelper.fetchCompressionDictionary(
+        version,
+        transportClient,
+        url,
+        storeName,
+        versionZstdDictionaryMap,
+        compressionDictionaryFuture);
+  }
+
+  @Override
+  public VeniceCompressor getCompressor(CompressionStrategy compressionStrategy, int version) {
+    return CompressionHelper
+        .getCompressor(compressionStrategy, version, compressorFactory, versionZstdDictionaryMap, storeName);
   }
 
   @Override
