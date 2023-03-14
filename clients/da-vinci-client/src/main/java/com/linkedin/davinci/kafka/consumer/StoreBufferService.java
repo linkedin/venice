@@ -357,10 +357,6 @@ public class StoreBufferService extends AbstractStoreBufferService {
     this.leaderRecordHandler = queueLeaderWrites ? this::queueLeaderRecord : StoreBufferService::processRecord;
   }
 
-  public StoreBufferService(int drainerNum, long bufferCapacityPerDrainer, long bufferNotifyDelta) {
-    this(drainerNum, bufferCapacityPerDrainer, bufferNotifyDelta, false);
-  }
-
   protected MemoryBoundBlockingQueue<QueueNode> getDrainerForConsumerRecord(
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       int subPartition) {

@@ -239,6 +239,7 @@ public class ApacheKafkaProducerAdapterITest {
         continue;
       }
 
+      assertNotNull(cb.getException());
       assertNotNull(cb.getException().getMessage());
       assertTrue(cb.getException().getMessage().contains("Producer is closed forcefully."));
       try {
