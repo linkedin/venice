@@ -174,7 +174,6 @@ public class MergeGenericRecord extends AbstractMerge<GenericRecord> {
         if (recordDeleteResultStatus == UpdateResultStatus.COMPLETELY_UPDATED) {
           // Full delete
           oldValueAndRmd.setValue(null);
-          // oldReplicationMetadata.put(TIMESTAMP_FIELD_NAME, deleteOperationTimestamp);
         } else if (recordDeleteResultStatus == UpdateResultStatus.NOT_UPDATED_AT_ALL) {
           oldValueAndRmd.setUpdateIgnored(true);
         }

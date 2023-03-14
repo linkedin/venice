@@ -130,17 +130,16 @@ public class MergeConflictResolver {
           newValueSourceOffset,
           newValueSourceBrokerID,
           newValueSchemaID);
-    } else {
-      return mergePutWithValueLevelTimestamp(
-          oldValueBytesProvider,
-          oldRmdRecord,
-          putOperationTimestamp,
-          newValueBytes,
-          newValueColoID,
-          newValueSourceOffset,
-          newValueSourceBrokerID,
-          newValueSchemaID);
     }
+    return mergePutWithValueLevelTimestamp(
+        oldValueBytesProvider,
+        oldRmdRecord,
+        putOperationTimestamp,
+        newValueBytes,
+        newValueColoID,
+        newValueSourceOffset,
+        newValueSourceBrokerID,
+        newValueSchemaID);
   }
 
   /**
@@ -192,15 +191,14 @@ public class MergeConflictResolver {
           deleteOperationTimestamp,
           deleteOperationSourceOffset,
           deleteOperationSourceBrokerID);
-    } else {
-      return mergeDeleteWithValueLevelTimestamp(
-          oldValueSchemaID,
-          oldRmdRecord,
-          deleteOperationColoID,
-          deleteOperationTimestamp,
-          deleteOperationSourceOffset,
-          deleteOperationSourceBrokerID);
     }
+    return mergeDeleteWithValueLevelTimestamp(
+        oldValueSchemaID,
+        oldRmdRecord,
+        deleteOperationColoID,
+        deleteOperationTimestamp,
+        deleteOperationSourceOffset,
+        deleteOperationSourceBrokerID);
   }
 
   public MergeConflictResult update(
