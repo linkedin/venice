@@ -75,10 +75,6 @@ class LeaderProducerCallback implements ChunkAwareCallback {
       ingestionTask.getVersionedDIVStats()
           .recordLeaderProducerFailure(ingestionTask.getStoreName(), ingestionTask.versionNumber);
     } else {
-      if (partitionConsumptionState.getLeaderFollowerState() == LEADER && partitionConsumptionState.isHybrid()
-          && sourceConsumerRecord.getTopicPartition().getPubSubTopic().isRealTime()) {
-        partitionConsumptionState.updateLatestRTOffsetProducedToVTMap(kafkaUrl, sourceConsumerRecord.getOffset());
-      }
       // recordMetadata.partition() represents the partition being written by VeniceWriter
       // partitionConsumptionState.getPartition() is leaderSubPartition
       // when leaderSubPartition != recordMetadata.partition(), local StorageEngine will be written by

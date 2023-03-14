@@ -673,6 +673,33 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   }
 
   @Override
+  protected void produceToLocalKafka(
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      PartitionConsumptionState partitionConsumptionState,
+      LeaderProducedRecordContext leaderProducedRecordContext,
+      BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceFunction,
+      int subPartition,
+      String kafkaUrl,
+      int kafkaClusterId,
+      long beforeProcessingRecordTimestamp) {
+    super.produceToLocalKafka(
+        consumerRecord,
+        partitionConsumptionState,
+        leaderProducedRecordContext,
+        produceFunction,
+        subPartition,
+        kafkaUrl,
+        kafkaClusterId,
+        beforeProcessingRecordTimestamp);
+    // Update the partition consumption state to say that we've transmitted the message to kafka (but haven't
+    // necessarily received an ack back yet).
+    if (partitionConsumptionState.getLeaderFollowerState() == LEADER && partitionConsumptionState.isHybrid()
+        && consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()) {
+      partitionConsumptionState.updateLatestRTOffsetProducedToVTMap(kafkaUrl, consumerRecord.getOffset());
+    }
+  }
+
+  @Override
   protected void startConsumingAsLeader(PartitionConsumptionState partitionConsumptionState) {
     final int partition = partitionConsumptionState.getPartition();
     final OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();

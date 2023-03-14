@@ -173,7 +173,8 @@ public class PartitionConsumptionState {
    * commit a message to a drainer queue after we've produced to the local VT.  This map tracks what messages have been
    * produced.  To find what messages have been committed refer to latestProcessedUpstreamRTOffsetMap.  This map is used
    * for determining if a leader replica is ready to serve or not to avoid the edge case that the end of the RT is full
-   * of events which we want to ignore or not apply.
+   * of events which we want to ignore or not apply.  NOTE: This is updated 'before' an ACK is received from Kafka,
+   * an offset in this map does not guarantee that the message has successfully made it to VT yet.
    *
    * key: source Kafka url
    * Value: Latest upstream RT offset which has been published to VT
