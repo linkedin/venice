@@ -75,9 +75,9 @@ public class LeaderProducerCallbackTest {
       assertEquals(matchedLogs, 3L);
       assertEquals(reportedStatsCounter.get(), cbInvocations); // stats should be reported for all invocations
     } finally {
-      inMemoryLogAppender.stop();
       config.getRootLogger().removeAppender(inMemoryLogAppender.getName());
       ctx.updateLoggers();
+      inMemoryLogAppender.stop();
     }
   }
 }
