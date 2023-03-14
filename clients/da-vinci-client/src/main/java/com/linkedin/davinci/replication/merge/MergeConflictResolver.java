@@ -703,7 +703,7 @@ public class MergeConflictResolver {
         GenericRecord timestampRecord = (GenericRecord) oldTimestampObject;
         for (Schema.Field field: writeComputeRecord.getSchema().getFields()) {
           Object fieldObject = writeComputeRecord.get(field.name());
-          if (getFieldOperationType(fieldObject) != NO_OP_ON_FIELD && timestampRecord.get(field.name()) == null) {
+          if (getFieldOperationType(fieldObject) != NO_OP_ON_FIELD && timestampRecord.get(field.pos()) == null) {
             return false; // Write Compute tries to update a non-existing field.
           }
           if (isRmdFieldTimestampSmaller(timestampRecord, field.name(), updateOperationTimestamp, false)) {
