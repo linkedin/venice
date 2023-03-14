@@ -17,6 +17,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.core.LoggerContext;
 import org.apache.logging.log4j.core.config.Configuration;
+import org.apache.logging.log4j.core.config.LoggerConfig;
 import org.testng.annotations.Test;
 
 
@@ -75,7 +76,10 @@ public class LeaderProducerCallbackTest {
       assertEquals(matchedLogs, 3L);
       assertEquals(reportedStatsCounter.get(), cbInvocations); // stats should be reported for all invocations
     } finally {
-      config.getRootLogger().removeAppender(inMemoryLogAppender.getName());
+      LoggerConfig loggerConfig = config.getLoggerConfig(LeaderFollowerStoreIngestionTask.class.getName());
+      if (loggerConfig.getName().equals(LeaderFollowerStoreIngestionTask.class.getCanonicalName())) {
+        loggerConfig.removeAppender(inMemoryLogAppender.getName());
+      }
       ctx.updateLoggers();
       inMemoryLogAppender.stop();
     }
