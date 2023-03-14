@@ -56,7 +56,7 @@ public interface VeniceChangelogConsumer<K, V> {
    * @return a collection of messages since the last fetch for the subscribed list of topic partitions
    * @throws a VeniceException if polling operation fails
    */
-  Collection<PubSubMessage> poll(long timeoutInMs);
+  Collection<PubSubMessage<K, ChangeEvent<V>, Long>> poll(long timeoutInMs);
 
   /**
    * Release the internal resources.

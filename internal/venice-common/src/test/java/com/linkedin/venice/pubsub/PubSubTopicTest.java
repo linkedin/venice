@@ -44,6 +44,17 @@ public class PubSubTopicTest {
     assertFalse(topic5.isVersionTopic());
     assertTrue(topic5.isStreamReprocessingTopic());
     assertTrue(topic5.isVersionTopicOrStreamReprocessingTopic());
+
+    PubSubTopic topic6 = pubSubTopicRepository.getTopic("1_v1_cc");
+    assertNotEquals(topic1, topic6);
+    assertNotEquals(topic3, topic6);
+    assertNotEquals(topic4, topic6);
+    assertNotEquals(topic5, topic6);
+    assertFalse(topic6.isRealTime());
+    assertFalse(topic6.isVersionTopic());
+    assertFalse(topic6.isStreamReprocessingTopic());
+    assertFalse(topic6.isVersionTopicOrStreamReprocessingTopic());
+    assertTrue(topic6.isViewTopic());
   }
 
 }
