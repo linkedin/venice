@@ -4,7 +4,8 @@ import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.annotation.NotThreadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.writecompute.WriteComputeConstants;
-import com.linkedin.venice.serializer.AvroSerializer;
+import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -21,7 +22,7 @@ import org.apache.commons.lang3.Validate;
 @Experimental
 public class UpdateBuilderImpl implements UpdateBuilder {
   private final GenericRecord updateRecord;
-  private final AvroSerializer<GenericRecord> serializer;
+  private final RecordSerializer<GenericRecord> serializer;
   private final Set<String> updateFieldNameSet;
   private final Set<String> collectionMergeFieldNameSet;
 
@@ -31,7 +32,7 @@ public class UpdateBuilderImpl implements UpdateBuilder {
   public UpdateBuilderImpl(Schema updateSchema) {
     validateUpdateSchema(updateSchema);
     this.updateRecord = new GenericData.Record(updateSchema);
-    this.serializer = new AvroSerializer<>(updateSchema);
+    this.serializer = SerializerDeserializerFactory.getAvroGenericSerializer(updateSchema);
     this.updateFieldNameSet = new HashSet<>();
     this.collectionMergeFieldNameSet = new HashSet<>();
   }
