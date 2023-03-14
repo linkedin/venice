@@ -139,8 +139,7 @@ public class DataRecoveryTest {
                       .setNativeReplicationEnabled(true)
                       .setPartitionCount(1))
               .isError());
-      TestUtils.verifyDCConfigNativeAndActiveRepl(dc0Client, storeName, true, false);
-      TestUtils.verifyDCConfigNativeAndActiveRepl(dc1Client, storeName, true, false);
+      TestUtils.verifyDCConfigNativeAndActiveRepl(storeName, true, false, dc0Client, dc1Client);
       Assert.assertFalse(
           parentControllerClient.emptyPush(storeName, "empty-push-" + System.currentTimeMillis(), 1000).isError());
       TestUtils.waitForNonDeterministicPushCompletion(
@@ -188,8 +187,7 @@ public class DataRecoveryTest {
                   storeName,
                   new UpdateStoreQueryParams().setNativeReplicationEnabled(true).setPartitionCount(1))
               .isError());
-      TestUtils.verifyDCConfigNativeAndActiveRepl(dc0Client, storeName, true, false);
-      TestUtils.verifyDCConfigNativeAndActiveRepl(dc1Client, storeName, true, false);
+      TestUtils.verifyDCConfigNativeAndActiveRepl(storeName, true, false, dc0Client, dc1Client);
       VersionCreationResponse versionCreationResponse = parentControllerClient.requestTopicForWrites(
           storeName,
           1024,
@@ -265,8 +263,7 @@ public class DataRecoveryTest {
                       .setActiveActiveReplicationEnabled(true)
                       .setPartitionCount(1))
               .isError());
-      TestUtils.verifyDCConfigNativeAndActiveRepl(dc0Client, storeName, true, true);
-      TestUtils.verifyDCConfigNativeAndActiveRepl(dc1Client, storeName, true, true);
+      TestUtils.verifyDCConfigNativeAndActiveRepl(storeName, true, true, dc0Client, dc1Client);
       Assert.assertFalse(
           parentControllerClient.emptyPush(storeName, "empty-push-" + System.currentTimeMillis(), 1000).isError());
       String versionTopic = Version.composeKafkaTopic(storeName, 1);

@@ -24,7 +24,7 @@ import org.apache.logging.log4j.Logger;
 class LeaderProducerCallback implements ChunkAwareCallback {
   private static final Logger LOGGER = LogManager.getLogger(LeaderFollowerStoreIngestionTask.class);
   private static final RedundantExceptionFilter REDUNDANT_LOGGING_FILTER =
-      RedundantExceptionFilter.getDailyRedundantExceptionFilter();
+      RedundantExceptionFilter.getRedundantExceptionFilter();
 
   protected static final ChunkedValueManifestSerializer CHUNKED_VALUE_MANIFEST_SERIALIZER =
       new ChunkedValueManifestSerializer(false);

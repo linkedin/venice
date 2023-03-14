@@ -12,10 +12,9 @@ public class StoragePartitionDiskUsage {
   private final AbstractStorageEngine storageEngine;
 
   /**
-   * This field indicates in memory partition usage since last syncing up with disk
+   * Disk usage + memory usage since last sync with the disk
    */
-  private long inMemoryPartitionUsage;
-  private long diskPartitionUsage;
+  private volatile long combinedPartitionUsage = 0;
 
   public StoragePartitionDiskUsage(int partition, AbstractStorageEngine storageEngine) {
     this.partition = partition;
@@ -25,39 +24,26 @@ public class StoragePartitionDiskUsage {
 
   /**
    * Adds a usage size to the partition
-   * @param recordSize
-   * @return true if recordSize >= 0
    */
-  public boolean add(long recordSize) {
-    if (recordSize < 0) {
-      return false;
+  public void add(long recordSize) {
+    if (recordSize > 0) {
+      synchronized (this) {
+        this.combinedPartitionUsage += recordSize;
+      }
     }
-    synchronized (this) {
-      this.inMemoryPartitionUsage += recordSize;
-    }
-    return true;
   }
 
   /**
-   * When you want to check usage for a partition, use this method.
-   * It will query syncing with real DB at a calculated frequency based on time and/or size trigger.
-   * Generally calling this method should be quick
-   *
    * @return the disk usage for this partition
    */
   public long getUsage() {
-    synchronized (this) {
-      return this.diskPartitionUsage + this.inMemoryPartitionUsage;
-    }
+    return this.combinedPartitionUsage;
   }
 
   /**
    * sync with real partition DB usage and reset in memory partition usage to be zero
    */
-  public final void syncWithDB() {
-    synchronized (this) {
-      this.diskPartitionUsage = storageEngine.getPartitionSizeInBytes(this.partition);
-      this.inMemoryPartitionUsage = 0;
-    }
+  public final synchronized void syncWithDB() {
+    this.combinedPartitionUsage = storageEngine.getPartitionSizeInBytes(this.partition);
   }
 }
