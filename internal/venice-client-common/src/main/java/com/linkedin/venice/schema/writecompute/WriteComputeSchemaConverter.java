@@ -18,13 +18,10 @@ import io.tehuti.utils.Utils;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.generic.IndexedRecord;
 import org.apache.commons.lang.Validate;
 
@@ -470,21 +467,5 @@ public class WriteComputeSchemaConverter {
       }
     }
     return PUT_NEW_FIELD;
-  }
-
-  /**
-   * Get a list of names of fields that a given Write Compute request record is trying to update (e.g. delete/update/collection merge).
-   * @param writeComputeRecord
-   * @return
-   */
-  public static Set<String> getNamesOfFieldsToBeUpdated(GenericRecord writeComputeRecord) {
-    Set<String> fieldsToBeUpdated = new HashSet<>();
-    for (Field field: writeComputeRecord.getSchema().getFields()) {
-      Object fieldObject = writeComputeRecord.get(field.name());
-      if (getFieldOperationType(fieldObject) != NO_OP_ON_FIELD) {
-        fieldsToBeUpdated.add(field.name());
-      }
-    }
-    return fieldsToBeUpdated;
   }
 }
