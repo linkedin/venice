@@ -11,8 +11,7 @@ import org.apache.avro.generic.GenericRecord;
  */
 public class RmdWithValueSchemaId {
   private final int valueSchemaID;
-  private final int rmdProtocolVersionID; // Note that it is NOT RMD schema ID which should have the format
-                                          // "<valueSchemaId>-<rmdProtocolVersionID>"
+  private final int rmdProtocolVersionID;
   private final GenericRecord rmdRecord;
 
   public RmdWithValueSchemaId(int valueSchemaID, int rmdProtocolVersionID, GenericRecord rmdRecord) {

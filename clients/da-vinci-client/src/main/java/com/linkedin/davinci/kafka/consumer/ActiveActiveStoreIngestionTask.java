@@ -130,7 +130,11 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
 
     this.rmdSerDe = new RmdSerDe(annotatedReadOnlySchemaRepository, rmdProtocolVersionID);
     this.mergeConflictResolver = MergeConflictResolverFactory.getInstance()
-        .createMergeConflictResolver(annotatedReadOnlySchemaRepository, rmdSerDe, getStoreName());
+        .createMergeConflictResolver(
+            annotatedReadOnlySchemaRepository,
+            rmdSerDe,
+            getStoreName(),
+            isWriteComputationEnabled);
     this.remoteIngestionRepairService = builder.getRemoteIngestionRepairService();
   }
 
