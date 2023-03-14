@@ -381,7 +381,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       this.storeBufferService = new StoreBufferService(
           serverConfig.getStoreWriterNumber(),
           serverConfig.getStoreWriterBufferMemoryCapacity(),
-          serverConfig.getStoreWriterBufferNotifyDelta());
+          serverConfig.getStoreWriterBufferNotifyDelta(),
+          serverConfig.isStoreWriterBufferAfterLeaderLogicEnabled());
     }
     this.kafkaMessageEnvelopeSchemaReader = kafkaMessageEnvelopeSchemaReader;
     /**

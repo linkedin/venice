@@ -2,6 +2,7 @@ package com.linkedin.venice.pubsub;
 
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import java.util.Objects;
 
 
 public class ImmutablePubSubMessage<K, V> implements PubSubMessage<K, V, Long> {
@@ -21,7 +22,7 @@ public class ImmutablePubSubMessage<K, V> implements PubSubMessage<K, V, Long> {
       int payloadSize) {
     this.key = key;
     this.value = value;
-    this.topicPartition = topicPartition;
+    this.topicPartition = Objects.requireNonNull(topicPartition);
     this.offset = offset;
     this.timestamp = timestamp;
     this.payloadSize = payloadSize;

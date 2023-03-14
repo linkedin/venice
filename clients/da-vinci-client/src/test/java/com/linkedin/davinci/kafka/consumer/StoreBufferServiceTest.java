@@ -23,6 +23,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.Utils;
 import java.nio.ByteBuffer;
 import org.testng.Assert;
@@ -32,35 +33,47 @@ import org.testng.annotations.Test;
 public class StoreBufferServiceTest {
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
   private final KafkaKey key = new KafkaKey(MessageType.PUT, null);
-  private final KafkaMessageEnvelope value = new KafkaMessageEnvelope(
-      MessageType.PUT.getValue(),
-      new ProducerMetadata(),
-      new Put(ByteBuffer.allocate(0), 0, 0, ByteBuffer.allocate(0)),
-      null);
+  private final Put put = new Put(ByteBuffer.allocate(0), 0, 0, ByteBuffer.allocate(0));
+  private final KafkaMessageEnvelope value =
+      new KafkaMessageEnvelope(MessageType.PUT.getValue(), new ProducerMetadata(), put, null);
+  private final LeaderProducedRecordContext leaderContext =
+      LeaderProducedRecordContext.newPutRecord(0, 0, key.getKey(), put);
   private static final int TIMEOUT_IN_MS = 1000;
 
-  @Test
-  public void testRun() throws Exception {
-    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000);
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testRun(boolean queueLeaderWrites) throws Exception {
+    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, queueLeaderWrites);
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     String topic = Utils.getUniqueString("test_topic") + "_v1";
     int partition1 = 1;
     int partition2 = 2;
+    int partition3 = 3;
+    int partition4 = 4;
     PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(topic);
     PubSubTopicPartition pubSubTopicPartition1 = new PubSubTopicPartitionImpl(pubSubTopic, partition1);
     PubSubTopicPartition pubSubTopicPartition2 = new PubSubTopicPartitionImpl(pubSubTopic, partition2);
+    PubSubTopicPartition pubSubTopicPartition3 = new PubSubTopicPartitionImpl(pubSubTopic, partition3);
+    PubSubTopicPartition pubSubTopicPartition4 = new PubSubTopicPartitionImpl(pubSubTopic, partition4);
     String kafkaUrl = "blah";
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> cr1 =
         new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition1, -1, 0, 0);
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> cr2 =
         new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition2, -1, 0, 0);
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> cr3 =
+        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition3, -1, 0, 0);
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> cr4 =
+        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition4, -1, 0, 0);
 
     bufferService.putConsumerRecord(cr1, mockTask, null, partition1, kafkaUrl, 0L);
     bufferService.putConsumerRecord(cr2, mockTask, null, partition2, kafkaUrl, 0L);
+    bufferService.putConsumerRecord(cr3, mockTask, leaderContext, partition3, kafkaUrl, 0L);
+    bufferService.putConsumerRecord(cr4, mockTask, leaderContext, partition4, kafkaUrl, 0L);
 
     bufferService.start();
-    verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr1, null, kafkaUrl, 0L);
-    verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr2, null, kafkaUrl, 0L);
+    verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr1, null, partition1, kafkaUrl, 0L);
+    verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr2, null, partition2, kafkaUrl, 0L);
+    verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr3, leaderContext, partition3, kafkaUrl, 0L);
+    verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr4, leaderContext, partition4, kafkaUrl, 0L);
 
     bufferService.stop();
     Assert.assertThrows(
@@ -68,9 +81,9 @@ public class StoreBufferServiceTest {
         () -> bufferService.drainBufferedRecordsFromTopicPartition(pubSubTopicPartition1));
   }
 
-  @Test
-  public void testRunWhenThrowException() throws Exception {
-    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000);
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testRunWhenThrowException(boolean queueLeaderWrites) throws Exception {
+    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, queueLeaderWrites);
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     String topic = Utils.getUniqueString("test_topic") + "_v1";
     int partition1 = 1;
@@ -85,21 +98,21 @@ public class StoreBufferServiceTest {
         new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition2, -1, 0, 0);
     Exception e = new VeniceException("test_exception");
 
-    doThrow(e).when(mockTask).processConsumerRecord(cr1, null, kafkaUrl, 0L);
+    doThrow(e).when(mockTask).processConsumerRecord(cr1, null, partition1, kafkaUrl, 0L);
 
     bufferService.putConsumerRecord(cr1, mockTask, null, partition1, kafkaUrl, 0L);
     bufferService.putConsumerRecord(cr2, mockTask, null, partition2, kafkaUrl, 0L);
 
     bufferService.start();
-    verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr1, null, kafkaUrl, 0L);
-    verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr2, null, kafkaUrl, 0L);
+    verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr1, null, partition1, kafkaUrl, 0L);
+    verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr2, null, partition2, kafkaUrl, 0L);
     verify(mockTask).setIngestionException(partition1, e);
     bufferService.stop();
   }
 
-  @Test
-  public void testDrainBufferedRecordsWhenNotExists() throws Exception {
-    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000);
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testDrainBufferedRecordsWhenNotExists(boolean queueLeaderWrites) throws Exception {
+    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, queueLeaderWrites);
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     String topic = Utils.getUniqueString("test_topic") + "_v1";
     int partition = 1;
@@ -118,9 +131,9 @@ public class StoreBufferServiceTest {
     bufferService.stop();
   }
 
-  @Test
-  public void testDrainBufferedRecordsWhenExists() throws Exception {
-    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000);
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testDrainBufferedRecordsWhenExists(boolean queueLeaderWrites) throws Exception {
+    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, queueLeaderWrites);
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     String topic = Utils.getUniqueString("test_topic") + "_v1";
     int partition = 1;
@@ -135,8 +148,8 @@ public class StoreBufferServiceTest {
     bufferService.stop();
   }
 
-  @Test
-  public void testGetDrainerIndexForConsumerRecordSeparateDrainer() {
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testGetDrainerIndexForConsumerRecordSeparateDrainer(boolean queueLeaderWrites) {
     String topic = Utils.getUniqueString("test_topic") + "_v1";
     PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(topic);
     int partitionCount = 32;
@@ -150,6 +163,7 @@ public class StoreBufferServiceTest {
     doReturn(8).when(serverConfig).getDrainerPoolSizeUnsortedInput();
     doReturn(1000l).when(serverConfig).getStoreWriterBufferNotifyDelta();
     doReturn(10000l).when(serverConfig).getStoreWriterBufferMemoryCapacity();
+    doReturn(queueLeaderWrites).when(serverConfig).isStoreWriterBufferAfterLeaderLogicEnabled();
     SeparatedStoreBufferService bufferService = new SeparatedStoreBufferService(serverConfig);
     for (int partition = 0; partition < partitionCount; ++partition) {
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> cr =
@@ -174,8 +188,8 @@ public class StoreBufferServiceTest {
     }
   }
 
-  @Test
-  public void testGetDrainerIndexForConsumerRecord() {
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testGetDrainerIndexForConsumerRecord(boolean queueLeaderWrites) {
     String topic = Utils.getUniqueString("test_topic") + "_v1";
     PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(topic);
     int partitionCount = 64;
@@ -184,7 +198,7 @@ public class StoreBufferServiceTest {
     for (int i = 0; i < drainerNum; ++i) {
       drainerPartitionCount[i] = 0;
     }
-    StoreBufferService bufferService = new StoreBufferService(8, 10000, 1000);
+    StoreBufferService bufferService = new StoreBufferService(8, 10000, 1000, queueLeaderWrites);
     for (int partition = 0; partition < partitionCount; ++partition) {
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> cr =
           new ImmutablePubSubMessage<>(key, value, new PubSubTopicPartitionImpl(pubSubTopic, partition), 100, 0, 0);
@@ -197,9 +211,9 @@ public class StoreBufferServiceTest {
     }
   }
 
-  @Test
-  public void testRunWhenThrowVeniceCheckSumFailException() throws Exception {
-    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000);
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testRunWhenThrowVeniceCheckSumFailException(boolean queueLeaderWrites) throws Exception {
+    StoreBufferService bufferService = new StoreBufferService(1, 10000, 1000, queueLeaderWrites);
     StoreIngestionTask mockTask = mock(StoreIngestionTask.class);
     String topic = Utils.getUniqueString("test_topic") + "_v1";
     int partition1 = 1;
@@ -213,14 +227,14 @@ public class StoreBufferServiceTest {
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> cr2 =
         new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition2, -1, 0, 0);
     Exception e = new VeniceChecksumException("test_exception");
-    doThrow(e).when(mockTask).processConsumerRecord(cr1, null, kafkaUrl, 0L);
+    doThrow(e).when(mockTask).processConsumerRecord(cr1, null, partition1, kafkaUrl, 0L);
 
     bufferService.putConsumerRecord(cr1, mockTask, null, partition1, kafkaUrl, 0L);
     bufferService.putConsumerRecord(cr2, mockTask, null, partition2, kafkaUrl, 0L);
 
     bufferService.start();
-    verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr1, null, kafkaUrl, 0L);
-    verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr2, null, kafkaUrl, 0L);
+    verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr1, null, partition1, kafkaUrl, 0L);
+    verify(mockTask, timeout(TIMEOUT_IN_MS)).processConsumerRecord(cr2, null, partition2, kafkaUrl, 0L);
     bufferService.getMaxMemoryUsagePerDrainer();
     for (int i = 0; i < 1; ++i) {
       // Verify map the cleared out
@@ -231,13 +245,14 @@ public class StoreBufferServiceTest {
     bufferService.stop();
   }
 
-  @Test
-  public void testPutConsumerRecord() throws InterruptedException {
+  @Test(dataProviderClass = DataProviderUtils.class, dataProvider = "True-and-False")
+  public void testPutConsumerRecord(boolean queueLeaderWrites) throws InterruptedException {
     VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
     doReturn(8).when(serverConfig).getDrainerPoolSizeSortedInput();
     doReturn(8).when(serverConfig).getDrainerPoolSizeUnsortedInput();
     doReturn(1000l).when(serverConfig).getStoreWriterBufferNotifyDelta();
     doReturn(10000l).when(serverConfig).getStoreWriterBufferMemoryCapacity();
+    doReturn(queueLeaderWrites).when(serverConfig).isStoreWriterBufferAfterLeaderLogicEnabled();
     StoreBufferService sortedSBS = mock(StoreBufferService.class);
     StoreBufferService unsortedSBS = mock(StoreBufferService.class);
     SeparatedStoreBufferService bufferService = new SeparatedStoreBufferService(8, 8, sortedSBS, unsortedSBS);
