@@ -381,8 +381,6 @@ public class TestActiveActiveIngestion {
 
     Map<String, String> samzaConfig = getSamzaConfig(storeName);
     VeniceSystemFactory factory = new VeniceSystemFactory();
-    // Use a unique key for DELETE with RMD validation
-    int deleteWithRmdKeyIndex = 1000;
     // set up mocked time for Samza records so some records can be stale intentionally.
     List<Long> mockTimestampInMs = new LinkedList<>();
     List<Long> mockTimestampInMsInThePast = new LinkedList<>();
@@ -401,14 +399,15 @@ public class TestActiveActiveIngestion {
         VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
       veniceProducer.start();
       // Run Samza job to send PUT and DELETE requests with a mix of records that will land and some which won't.
-      runSamzaStreamJob(veniceProducer, storeName, mockTime, 10, 10, 20);
+      runSamzaStreamJob(veniceProducer, storeName, mockTime, 10, 0, 20);
 
-      // Run it again but only add records to the end of the RT which will fail DCR
-      runSamzaStreamJob(veniceProducer, storeName, mockPastime, 10, 10, 20);
+      // Run it again but only add records to the end of the RT which will fail DCR. These records will try to delete
+      // everything we just wrote
+      runSamzaStreamJob(veniceProducer, storeName, mockPastime, 0, 10, 20);
 
     }
 
-    // Now see if a push will succeed. There are 20 events at the front of the qeueu which are valid and another 20
+    // Now see if a push will succeed. There are 20 events at the front of the queue which are valid and another 20
     // which are ignored.
     // our rewind is set to 8 messages as acceptable lag. If the push succeeds, it means we used the drop messages as
     // part of our calculation
@@ -417,6 +416,21 @@ public class TestActiveActiveIngestion {
         5,
         TimeUnit.SECONDS,
         () -> Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 2));
+
+    try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(clusterWrapper.getRandomRouterURL()))) {
+      // We sent a bunch of deletes to the keys we wrote previously that should have been dropped by DCR. Validate
+      // they're still there.
+      int validGet = 0;
+      for (int i = 20; i < 30; i++) {
+        Object result = client.get(Integer.toString(i)).get();
+        if (result != null) {
+          validGet++;
+        }
+      }
+      // Half records are valid, another half is not
+      Assert.assertEquals(validGet, 10);
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)

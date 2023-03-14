@@ -1525,8 +1525,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return Long.MAX_VALUE;
     }
 
-    // Since DaVinci clients run in follower only mode, use local VT to compute hybrid lag.
-    if (isDaVinciClient) {
+    // Followers and Davinci clients, use local VT to compute hybrid lag.
+    if (isDaVinciClient || partitionConsumptionState.getLeaderFollowerState().equals(STANDBY)) {
       return cachedKafkaMetadataGetter.getOffset(getTopicManager(localKafkaServer), kafkaVersionTopic, partition)
           - partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset();
     }
