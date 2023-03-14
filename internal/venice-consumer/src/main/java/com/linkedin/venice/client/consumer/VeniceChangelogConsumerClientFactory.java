@@ -26,7 +26,7 @@ public class VeniceChangelogConsumerClientFactory {
       D2ControllerClient d2ControllerClient = D2ControllerClientFactory.discoverAndConstructControllerClient(
           storeName,
           globalChangelogClientConfig.getControllerD2ServiceName(),
-          globalChangelogClientConfig.getVeniceURL(),
+          globalChangelogClientConfig.getLocalD2ZkHosts(),
           Optional.ofNullable(newStoreChangelogClientConfig.getInnerClientConfig().getSslFactory()),
           globalChangelogClientConfig.getControllerRequestRetryCount());
       newStoreChangelogClientConfig.setD2ControllerClient(d2ControllerClient);

@@ -210,7 +210,7 @@ public class TestActiveActiveIngestion {
             .setConsumerProperties(consumerProperties)
             .setControllerD2ServiceName(D2_SERVICE_NAME)
             .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
-            .setVeniceURL(localZkServer.getAddress())
+            .setLocalD2ZkHosts(localZkServer.getAddress())
             .setControllerRequestRetryCount(3);
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig);
@@ -355,9 +355,6 @@ public class TestActiveActiveIngestion {
     // run empty push to clean up batch data
     parentControllerClient.sendEmptyPushAndWait(storeName, "Run empty push job", 1000, 30 * Time.MS_PER_SECOND);
 
-    // enable repush ttl
-    props.setProperty(REPUSH_TTL_ENABLE, "true");
-
     // set up mocked time for Samza records so some records can be stale intentionally.
     List<Long> mockTimestampInMs = new LinkedList<>();
     Instant now = Instant.now();
@@ -387,8 +384,8 @@ public class TestActiveActiveIngestion {
       // keys (0-100), 1000, and 1001, the total would be 103.
       Assert.assertEquals(polledAfterImageEvents.size(), 103);
       // After image consumer consumed 3 different topics: v2, v2_cc and v3_cc.
-      // The total messages: 121 (v2 repush from v1) + 2 (v2 real-time produce) + 20 (v3 real-time produce) - 20
-      // (messages filtered)
+      // The total messages: 102 (v2 repush from v1, key: 0-100, 1000) + 1 (v2_cc, key: 1001) + 42 (v3_cc, key: 0-39,
+      // 1000, 1001) - 22 (filtered from v3_cc, key: 0-19, 1000 and 1001 as they were read already.)
       Assert.assertEquals(totalPolledAfterImageMessages.get(), 123);
       for (int i = 20; i < 40; i++) {
         String key = Integer.toString(i);
@@ -416,6 +413,8 @@ public class TestActiveActiveIngestion {
       }
     });
 
+    // enable repush ttl
+    props.setProperty(REPUSH_TTL_ENABLE, "true");
     TestWriteUtils.runPushJob("Run repush job with TTL", props);
     TestUtils.waitForNonDeterministicAssertion(
         5,

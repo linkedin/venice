@@ -78,11 +78,6 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
                     offset,
                     timestamp,
                     keyBytes.length + currentValuePayloadSize[pubSubTopicPartition.getPartitionNumber()]));
-            System.out.println(
-                "Get message from topic: " + currentTopic + " offset: " + offset + " key: " + currentKey.toString());
-          } else {
-            System.out.println(
-                "Filter message from topic: " + currentTopic + " offset: " + offset + " key: " + currentKey.toString());
           }
         } else {
           PubSubMessage<K, ChangeEvent<V>, Long> pubSubMessage = convertRecordToPubSubMessage(
@@ -93,8 +88,6 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
               timestamp,
               payloadSize);
           pubSubMessages.add(pubSubMessage);
-          System.out.println(
-              "Get message from topic: " + currentTopic + " offset: " + offset + " key: " + currentKey.toString());
         }
       }
     }

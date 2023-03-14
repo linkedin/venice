@@ -87,12 +87,12 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return this.d2ControllerClient;
   }
 
-  public ChangelogClientConfig<T> setVeniceURL(String veniceURL) {
-    this.innerClientConfig.setVeniceURL(veniceURL);
+  public ChangelogClientConfig<T> setLocalD2ZkHosts(String localD2ZkHosts) {
+    this.innerClientConfig.setVeniceURL(localD2ZkHosts);
     return this;
   }
 
-  public String getVeniceURL() {
+  public String getLocalD2ZkHosts() {
     return this.innerClientConfig.getVeniceURL();
   }
 
@@ -111,7 +111,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
 
   public static <V extends SpecificRecord> ChangelogClientConfig<V> cloneConfig(ChangelogClientConfig<V> config) {
     ChangelogClientConfig<V> newConfig = new ChangelogClientConfig<V>().setStoreName(config.getStoreName())
-        .setVeniceURL(config.getVeniceURL())
+        .setLocalD2ZkHosts(config.getLocalD2ZkHosts())
         .setD2ServiceName(config.getD2ServiceName())
         .setConsumerProperties(config.getConsumerProperties())
         .setSchemaReader(config.getSchemaReader())
