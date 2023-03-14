@@ -1,6 +1,7 @@
 package com.linkedin.venice.serialization.avro;
 
 import com.linkedin.venice.admin.protocol.response.AdminResponseRecord;
+import com.linkedin.venice.client.change.capture.protocol.RecordChangeEvent;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.ingestion.protocol.IngestionMetricsReport;
@@ -141,14 +142,20 @@ public enum AvroProtocolDefinition {
   PUSH_STATUS_SYSTEM_SCHEMA_STORE(1, PushStatusValue.class),
 
   /**
-   * Response record for admin request v1
+   * Response record for admin request v1.
    */
   SERVER_ADMIN_RESPONSE_V1(1, AdminResponseRecord.class),
 
   /**
    * Response record for metadata fetch request v1
    */
-  SERVER_METADATA_RESPONSE_V1(1, MetadataResponseRecord.class);
+  SERVER_METADATA_RESPONSE_V1(1, MetadataResponseRecord.class),
+
+  /**
+   * Value schema for change capture event.
+   * TODO: Figure out a way to pull in protocol from different view class.
+   */
+  RECORD_CHANGE_EVENT(1, RecordChangeEvent.class);
 
   private static final Set<Byte> magicByteSet = validateMagicBytes();
 
