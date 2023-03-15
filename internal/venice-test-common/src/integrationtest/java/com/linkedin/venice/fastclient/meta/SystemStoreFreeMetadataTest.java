@@ -12,7 +12,6 @@ import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
-import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OnlineInstanceFinder;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -54,16 +53,15 @@ public class SystemStoreFreeMetadataTest {
   @BeforeClass
   public void setUp() throws Exception {
     Utils.thisIsLocalhost();
-    // veniceCluster = ServiceFactory.getVeniceCluster(1, 2, 1, 2);
-    veniceCluster = ServiceFactory.getVeniceCluster(1, 2, 1, 2, 100, true, false);
+    veniceCluster = ServiceFactory.getVeniceCluster(1, 2, 1, 2);
     r2Client = ClientTestUtils.getR2Client();
-    d2Client = D2TestUtils.getAndStartHttpsD2Client(veniceCluster.getZk().getAddress());
+    d2Client = D2TestUtils.getAndStartD2Client(veniceCluster.getZk().getAddress());
     createStore();
 
     keySerializer =
         SerializerDeserializerFactory.getAvroGenericSerializer(Schema.parse(VeniceClusterWrapper.DEFAULT_KEY_SCHEMA));
 
-    // Populate required ClientConfig fields for initializing DaVinciClientBasedMetadata
+    // Populate required ClientConfig fields for initializing SystemStoreFreeMetadata
     ClientConfig.ClientConfigBuilder clientConfigBuilder = new ClientConfig.ClientConfigBuilder();
     clientConfigBuilder.setStoreName(storeName);
     clientConfigBuilder.setR2Client(r2Client);
@@ -138,8 +136,7 @@ public class SystemStoreFreeMetadataTest {
           systemStoreFreeMetadata.getPartitionId(versionNumber, key));
       Set<String> routerReadyToServeView = onlineInstanceFinder.getReadyToServeInstances(resourceName, partitionId)
           .stream()
-          .map(Instance::getNodeId)
-          // .map(instance -> instance.getUrl(true))
+          .map(instance -> instance.getUrl(true))
           .collect(Collectors.toSet());
       Set<String> metadataView = new HashSet<>(systemStoreFreeMetadata.getReplicas(versionNumber, partitionId));
       assertEquals(

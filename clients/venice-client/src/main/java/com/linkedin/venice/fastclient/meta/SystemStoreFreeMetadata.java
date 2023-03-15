@@ -214,18 +214,12 @@ public class SystemStoreFreeMetadata extends AbstractStoreMetadata {
         }
         schemas.set(schemaData);
 
-        // Evict old entries
-        // if (versionPartitionerMap.containsKey(getCurrentStoreVersion())) {
-        // for (int i = 0; i < versionPartitionerMap.get(getCurrentStoreVersion()).getPartitionCount(); i++) {
-        // readyToServeInstancesMap.remove(getVersionPartitionMapKey(getCurrentStoreVersion(), i));
-        // }
-        // }
-        // if (versionPartitionerMap.containsKey(getCurrentStoreVersion())) {
-        // versionPartitionerMap.remove(getCurrentStoreVersion());
-        // }
-        // if (versionZstdDictionaryMap.containsKey(getCurrentStoreVersion())) {
-        // versionZstdDictionaryMap.remove(getCurrentStoreVersion());
-        // }
+        // Evict entries that are over two versions behind from the latest fetched version
+        readyToServeInstancesMap.entrySet()
+            .removeIf(
+                entry -> Integer.parseInt(entry.getKey().split(VERSION_PARTITION_SEPARATOR)[0]) < fetchedVersion - 2);
+        versionPartitionerMap.entrySet().removeIf(entry -> entry.getKey() < fetchedVersion - 2);
+        versionZstdDictionaryMap.entrySet().removeIf(entry -> entry.getKey() < fetchedVersion - 2);
 
         // Wait for dictionary fetch to finish if there is one
         try {

@@ -1,13 +1,9 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import static com.linkedin.venice.ConfigConstants.DEFAULT_KAFKA_BATCH_SIZE;
-import static com.linkedin.venice.ConfigConstants.DEFAULT_KAFKA_LINGER_MS;
-import static com.linkedin.venice.ConfigConstants.DEFAULT_KAFKA_SSL_CONTEXT_PROVIDER_CLASS_NAME;
-import static com.linkedin.venice.ConfigKeys.KAFKA_BATCH_SIZE;
-import static com.linkedin.venice.ConfigKeys.KAFKA_LINGER_MS;
-import static java.lang.Thread.currentThread;
-import static java.lang.Thread.sleep;
-import static org.apache.kafka.common.config.SslConfigs.SSL_CONTEXT_PROVIDER_CLASS_CONFIG;
+import static com.linkedin.venice.ConfigConstants.*;
+import static com.linkedin.venice.ConfigKeys.*;
+import static java.lang.Thread.*;
+import static org.apache.kafka.common.config.SslConfigs.*;
 
 import com.linkedin.davinci.compression.StorageEngineBackedCompressorFactory;
 import com.linkedin.davinci.config.VeniceConfigLoader;
@@ -61,8 +57,6 @@ import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdap
 import com.linkedin.venice.pubsub.adapter.kafka.producer.SharedKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
-import com.linkedin.venice.pushmonitor.ExecutionStatus;
-import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -1113,18 +1107,18 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         if (resource.endsWith("v" + store.getCurrentVersion())) {
           for (Partition partition: customizedViewRepository.getPartitionAssignments(resource).getAllPartitions()) {
             List<CharSequence> instances = new ArrayList<>();
-            for (ReplicaState replicaState: customizedViewRepository.getReplicaStates(resource, partition.getId())) {
-              if (replicaState.getVenicePushStatus().equals(ExecutionStatus.COMPLETED.name())) {
-                instances.add(replicaState.getParticipantId());
-              }
+            for (Instance instance: customizedViewRepository.getReadyToServeInstances(resource, partition.getId())) {
+              instances.add(instance.getUrl(true));
             }
             routingInfo.put(String.valueOf(partition.getId()), instances);
           }
         }
       }
 
-      Map<CharSequence, Integer> helixGroupInfo =
-          new HashMap<>(helixInstanceConfigRepository.getInstanceGroupIdMapping());
+      Map<CharSequence, Integer> helixGroupInfo = new HashMap<>();
+      for (Map.Entry<String, Integer> entry: helixInstanceConfigRepository.getInstanceGroupIdMapping().entrySet()) {
+        helixGroupInfo.put("https://" + entry.getKey().replace("_", ":"), entry.getValue());
+      }
 
       response.setVersionMetadata(versionProperties);
       response.setKeySchema(keySchema);
