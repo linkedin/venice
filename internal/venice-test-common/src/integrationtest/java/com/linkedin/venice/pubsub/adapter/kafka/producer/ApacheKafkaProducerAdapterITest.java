@@ -3,7 +3,6 @@ package com.linkedin.venice.pubsub.adapter.kafka.producer;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_CLIENT_ID;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAssertion;
-import static com.linkedin.venice.utils.Time.MS_PER_MINUTE;
 import static com.linkedin.venice.utils.Time.MS_PER_SECOND;
 import static org.apache.kafka.common.config.TopicConfig.RETENTION_MS_CONFIG;
 import static org.testng.Assert.assertFalse;
@@ -93,7 +92,7 @@ public class ApacheKafkaProducerAdapterITest {
 
   @BeforeMethod(alwaysRun = true)
   public void setupProducerAdapter() {
-    topicName = Utils.getUniqueString("topic-for-sendMessage-thread-safety");
+    topicName = Utils.getUniqueString("test-topic");
     Properties properties = new Properties();
     properties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getAddress());
     properties.put(KAFKA_CLIENT_ID, topicName);
@@ -143,7 +142,7 @@ public class ApacheKafkaProducerAdapterITest {
    * 2) doFlush == false: upon forceful close (timeout 0 and no flushing) producer doesn't forget to complete
    *                      any Future that it returned in response to sendMessage() call.
    */
-  @Test(timeOut = MS_PER_MINUTE, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  @Test(timeOut = 90 * MS_PER_SECOND, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testProducerCloseDoesNotLeaveAnyFuturesIncomplete(boolean doFlush) throws InterruptedException {
     Map<String, String> topicProps = Collections.singletonMap(RETENTION_MS_CONFIG, Long.toString(Long.MAX_VALUE));
     createTopic(topicName, 1, 1, topicProps);
@@ -184,6 +183,14 @@ public class ApacheKafkaProducerAdapterITest {
     // Since we're blocking ioThread in m0's callback calling it from current thread would lead to deadlock.
     Thread closeProducerThread = new Thread(() -> producerAdapter.close(doFlush ? Integer.MAX_VALUE : 0, doFlush));
     closeProducerThread.start();
+    // We need to make sure that the Producer::close is always invoked first to ensure the correctness of this test
+    waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      assertTrue(
+          closeProducerThread.getState().equals(Thread.State.WAITING)
+              || closeProducerThread.getState().equals(Thread.State.TIMED_WAITING)
+              || closeProducerThread.getState().equals(Thread.State.BLOCKED)
+              || closeProducerThread.getState().equals(Thread.State.TERMINATED));
+    });
 
     // Let's make sure that none of the m2 to m99 are ACKed by Kafka yet
     produceResults.forEach((cb, future) -> {
