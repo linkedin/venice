@@ -1,11 +1,7 @@
 package com.linkedin.venice.fastclient.meta;
 
-import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_CLUSTER_NAME;
-import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_PARTITION_ID;
-import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_SCHEMA_ID;
-import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
-import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_VERSION_NUMBER;
-import static java.lang.Thread.currentThread;
+import static com.linkedin.venice.system.store.MetaStoreWriter.*;
+import static java.lang.Thread.*;
 
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
@@ -402,17 +398,27 @@ public class DaVinciClientBasedMetadata extends AbstractStoreMetadata {
     String route = routes.get(ThreadLocalRandom.current().nextInt(routes.size()));
     String url = route + "/" + QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/" + version;
 
-    return CompressionHelper.fetchCompressionDictionary(
-        version,
-        transportClient,
-        url,
-        storeName,
-        versionZstdDictionaryMap,
-        compressionDictionaryFuture);
+    LOGGER.info("Fetching compression dictionary for version {} from URL {} ", version, url);
+    transportClient.get(url).whenComplete((response, throwable) -> {
+      if (throwable != null) {
+        String message = String.format(
+            "Problem fetching zstd compression dictionary from URL:%s for store:%s , version:%d",
+            url,
+            storeName,
+            version);
+        LOGGER.warn(message, throwable);
+        compressionDictionaryFuture.completeExceptionally(throwable);
+      } else {
+        byte[] dictionary = response.getBody();
+        versionZstdDictionaryMap.put(version, ByteBuffer.wrap(dictionary));
+        compressionDictionaryFuture.complete(response);
+      }
+    });
+    return compressionDictionaryFuture;
   }
 
+  @Override
   public VeniceCompressor getCompressor(CompressionStrategy compressionStrategy, int version) {
-    return CompressionHelper
-        .getCompressor(compressionStrategy, version, compressorFactory, versionZstdDictionaryMap, storeName);
+    return getCompressor(compressionStrategy, version, compressorFactory, versionZstdDictionaryMap);
   }
 }

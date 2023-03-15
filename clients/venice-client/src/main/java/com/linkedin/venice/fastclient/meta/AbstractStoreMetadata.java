@@ -1,12 +1,17 @@
 package com.linkedin.venice.fastclient.meta;
 
 import com.linkedin.restli.common.HttpStatus;
+import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.CompressorFactory;
+import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
@@ -76,6 +81,33 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
   @Override
   public void close() throws IOException {
     Utils.closeQuietlyWithErrorLogged(instanceHealthMonitor);
+  }
+
+  public VeniceCompressor getCompressor(
+      CompressionStrategy compressionStrategy,
+      int version,
+      CompressorFactory compressorFactory,
+      Map<Integer, ByteBuffer> versionZstdDictionaryMap) {
+    if (compressionStrategy != CompressionStrategy.ZSTD_WITH_DICT) {
+      return compressorFactory.getCompressor(compressionStrategy);
+    }
+
+    String resourceName = storeName + "_v" + version;
+    VeniceCompressor compressor = compressorFactory.getVersionSpecificCompressor(resourceName);
+    if (compressor == null) {
+      ByteBuffer dictionary = versionZstdDictionaryMap.get(version);
+      if (dictionary == null) {
+        throw new VeniceClientException(
+            String.format(
+                "No dictionary available for decompressing zstd payload for store %s version %d ",
+                storeName,
+                version));
+      } else {
+        compressor = compressorFactory
+            .createVersionSpecificCompressorIfNotExist(compressionStrategy, resourceName, dictionary.array());
+      }
+    }
+    return compressor;
   }
 
 }
