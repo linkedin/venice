@@ -383,7 +383,10 @@ public class StorageUtilizationManager implements StoreDataChangedListener {
       quota /= subPartitionCount;
     }
 
-    long usage = partitionConsumptionSizeMap.values().stream().mapToLong(StoragePartitionDiskUsage::getUsage).sum();
+    long usage = 0;
+    for (StoragePartitionDiskUsage diskUsage: partitionConsumptionSizeMap.values()) {
+      usage += diskUsage.getUsage();
+    }
     return (double) usage / quota;
   }
 

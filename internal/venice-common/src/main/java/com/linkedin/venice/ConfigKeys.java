@@ -343,6 +343,8 @@ public class ConfigKeys {
   public static final String STORE_WRITER_NUMBER = "store.writer.number";
   public static final String SORTED_INPUT_DRAINER_SIZE = "sorted.input.drainer.size";
   public static final String UNSORTED_INPUT_DRAINER_SIZE = "unsorted.input.drainer.size";
+  public static final String STORE_WRITER_BUFFER_AFTER_LEADER_LOGIC_ENABLED =
+      "store.writer.buffer.after.leader.logic.enabled";
   public static final String STORE_WRITER_BUFFER_MEMORY_CAPACITY = "store.writer.buffer.memory.capacity";
   public static final String STORE_WRITER_BUFFER_NOTIFY_DELTA = "store.writer.buffer.notify.delta";
   public static final String SERVER_REST_SERVICE_STORAGE_THREAD_NUM = "server.rest.service.storage.thread.num";
@@ -1782,6 +1784,11 @@ public class ConfigKeys {
   public static final String UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED =
       "unregister.metric.for.deleted.store.enabled";
 
+  /**
+   * Config to enable single leader replica disabling.
+   */
+  public static final String FORCE_LEADER_ERROR_REPLICA_FAIL_OVER_ENABLED =
+      "controller.force.leader.error.replica.fail.over.enabled";
   /**
    * A config to specify the class to use to parse identities at runtime
    */

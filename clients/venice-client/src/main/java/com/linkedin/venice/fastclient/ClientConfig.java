@@ -1,6 +1,5 @@
 package com.linkedin.venice.fastclient;
 
-import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -53,7 +52,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
    * But to temporarily unblock the first customer, we will only allow at most two keys in a batch-get request.
    */
   private final int maxAllowedKeyCntInBatchGetReq;
-  private final DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore;
+  private final AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> thinClientForMetaStore;
   private final long metadataRefreshIntervalInSeconds;
   private final boolean longTailRetryEnabledForSingleGet;
   private final boolean longTailRetryEnabledForBatchGet;
@@ -80,7 +79,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       long routingUnavailableRequestCounterResetDelayMS,
       int routingPendingRequestCounterInstanceBlockThreshold,
       int maxAllowedKeyCntInBatchGetReq,
-      DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore,
+      AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> thinClientForMetaStore,
       long metadataRefreshIntervalInSeconds,
       boolean longTailRetryEnabledForSingleGet,
       int longTailRetryThresholdForSingleGetInMicroSeconds,
@@ -148,7 +147,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
     this.maxAllowedKeyCntInBatchGetReq = maxAllowedKeyCntInBatchGetReq;
 
-    this.daVinciClientForMetaStore = daVinciClientForMetaStore;
+    this.thinClientForMetaStore = thinClientForMetaStore;
     this.metadataRefreshIntervalInSeconds = metadataRefreshIntervalInSeconds;
 
     this.longTailRetryEnabledForSingleGet = longTailRetryEnabledForSingleGet;
@@ -242,8 +241,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return maxAllowedKeyCntInBatchGetReq;
   }
 
-  public DaVinciClient<StoreMetaKey, StoreMetaValue> getDaVinciClientForMetaStore() {
-    return daVinciClientForMetaStore;
+  public AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> getThinClientForMetaStore() {
+    return thinClientForMetaStore;
   }
 
   public long getMetadataRefreshIntervalInSeconds() {
@@ -309,7 +308,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
      */
     private int maxAllowedKeyCntInBatchGetReq = 2;
 
-    private DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore;
+    private AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> thinClientForMetaStore;
 
     private long metadataRefreshIntervalInSeconds = -1;
 
@@ -406,9 +405,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
-    public ClientConfigBuilder<K, V, T> setDaVinciClientForMetaStore(
-        DaVinciClient<StoreMetaKey, StoreMetaValue> daVinciClientForMetaStore) {
-      this.daVinciClientForMetaStore = daVinciClientForMetaStore;
+    public ClientConfigBuilder<K, V, T> setThinClientForMetaStore(
+        AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> thinClientForMetaStore) {
+      this.thinClientForMetaStore = thinClientForMetaStore;
       return this;
     }
 
@@ -468,7 +467,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setRoutingUnavailableRequestCounterResetDelayMS(routingUnavailableRequestCounterResetDelayMS)
           .setRoutingPendingRequestCounterInstanceBlockThreshold(routingPendingRequestCounterInstanceBlockThreshold)
           .setMaxAllowedKeyCntInBatchGetReq(maxAllowedKeyCntInBatchGetReq)
-          .setDaVinciClientForMetaStore(daVinciClientForMetaStore)
+          .setThinClientForMetaStore(thinClientForMetaStore)
           .setMetadataRefreshIntervalInSeconds(metadataRefreshIntervalInSeconds)
           .setLongTailRetryEnabledForSingleGet(longTailRetryEnabledForSingleGet)
           .setLongTailRetryThresholdForSingleGetInMicroSeconds(longTailRetryThresholdForSingleGetInMicroSeconds)
@@ -496,7 +495,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           routingUnavailableRequestCounterResetDelayMS,
           routingPendingRequestCounterInstanceBlockThreshold,
           maxAllowedKeyCntInBatchGetReq,
-          daVinciClientForMetaStore,
+          thinClientForMetaStore,
           metadataRefreshIntervalInSeconds,
           longTailRetryEnabledForSingleGet,
           longTailRetryThresholdForSingleGetInMicroSeconds,

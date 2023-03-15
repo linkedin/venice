@@ -109,16 +109,17 @@ public class ApacheKafkaProducerAdapter implements PubSubProducerAdapter {
 
   @Override
   public void close(int closeTimeOutMs, boolean doFlush) {
-    if (producer != null) {
-      if (doFlush) {
-        // Flush out all the messages in the producer buffer
-        producer.flush(closeTimeOutMs, TimeUnit.MILLISECONDS);
-        LOGGER.info("Flushed all the messages in producer before closing");
-      }
-      producer.close(Duration.ofMillis(closeTimeOutMs));
-      // Recycle the internal buffer allocated by KafkaProducer ASAP.
-      producer = null;
+    if (producer == null) {
+      return; // producer has been closed already
     }
+    if (doFlush) {
+      // Flush out all the messages in the producer buffer
+      producer.flush(closeTimeOutMs, TimeUnit.MILLISECONDS);
+      LOGGER.info("Flushed all the messages in producer before closing");
+    }
+    producer.close(Duration.ofMillis(closeTimeOutMs));
+    // Recycle the internal buffer allocated by KafkaProducer ASAP.
+    producer = null;
   }
 
   @Override

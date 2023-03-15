@@ -52,8 +52,6 @@ public class WriteComputeHandlerV2 extends WriteComputeHandlerV1 {
       currRecordAndRmd.setValue(SchemaUtils.createGenericRecord(currValueSchema));
     }
 
-    // TODO: RMD could be null or not have per-field timestamp. Caller of this method will handle these cases and ensure
-    // that RMD here does have per-field timestamp.
     Object timestampObject = currRecordAndRmd.getRmd().get(TIMESTAMP_FIELD_NAME);
     if (!(timestampObject instanceof GenericRecord)) {
       throw new IllegalStateException(

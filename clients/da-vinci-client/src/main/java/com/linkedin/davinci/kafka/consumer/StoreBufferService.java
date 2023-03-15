@@ -15,9 +15,11 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.PartitionUtils;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -217,7 +219,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
   }
 
   /**
-   * Worker thread, which will invoke {@link StoreIngestionTask#processConsumerRecord(PubSubMessage, LeaderProducedRecordContext, String, long)}
+   * Worker thread, which will invoke {@link StoreIngestionTask#processConsumerRecord}
    * to process each {@link PubSubMessage} buffered in {@link BlockingQueue}.
    */
   private static class StoreBufferDrainer implements Runnable {
@@ -257,17 +259,16 @@ public class StoreBufferService extends AbstractStoreBufferService {
 
           long startTime = System.currentTimeMillis();
 
-          ingestionTask.processConsumerRecord(
+          int subPartition = PartitionUtils
+              .getSubPartition(consumerRecord.getTopicPartition(), ingestionTask.getAmplificationFactor());
+
+          processRecord(
               consumerRecord,
+              ingestionTask,
               leaderProducedRecordContext,
+              subPartition,
               node.getKafkaUrl(),
               beforeProcessingRecordTimestamp);
-
-          // complete the leaderProducedRecordContext future as processing for this leaderProducedRecordContext is done
-          // here.
-          if (leaderProducedRecordContext != null) {
-            leaderProducedRecordContext.completePersistedToDBFuture(null);
-          }
 
           /**
            * Complete {@link QueueNode#queuedRecordPersistedFuture} since the processing for the current record is done.
@@ -340,13 +341,27 @@ public class StoreBufferService extends AbstractStoreBufferService {
   private final List<StoreBufferDrainer> drainerList = new ArrayList<>();
   private final long bufferCapacityPerDrainer;
 
-  public StoreBufferService(int drainerNum, long bufferCapacityPerDrainer, long bufferNotifyDelta) {
+  private final RecordHandler leaderRecordHandler;
+
+  public StoreBufferService(
+      int drainerNum,
+      long bufferCapacityPerDrainer,
+      long bufferNotifyDelta,
+      boolean queueLeaderWrites) {
     this.drainerNum = drainerNum;
     this.blockingQueueArr = new ArrayList<>();
     this.bufferCapacityPerDrainer = bufferCapacityPerDrainer;
     for (int cur = 0; cur < drainerNum; ++cur) {
       this.blockingQueueArr.add(new MemoryBoundBlockingQueue<>(bufferCapacityPerDrainer, bufferNotifyDelta));
     }
+    this.leaderRecordHandler = queueLeaderWrites ? this::queueLeaderRecord : StoreBufferService::processRecord;
+  }
+
+  protected MemoryBoundBlockingQueue<QueueNode> getDrainerForConsumerRecord(
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      int subPartition) {
+    int drainerIndex = getDrainerIndexForConsumerRecord(consumerRecord, subPartition);
+    return blockingQueueArr.get(drainerIndex);
   }
 
   protected int getDrainerIndexForConsumerRecord(
@@ -369,8 +384,6 @@ public class StoreBufferService extends AbstractStoreBufferService {
       int subPartition,
       String kafkaUrl,
       long beforeProcessingRecordTimestamp) throws InterruptedException {
-    int drainerIndex = getDrainerIndexForConsumerRecord(consumerRecord, subPartition);
-    MemoryBoundBlockingQueue<QueueNode> queue = blockingQueueArr.get(drainerIndex);
     if (leaderProducedRecordContext == null) {
       /**
        * The last queued record persisted future will only be setup when {@param leaderProducedRecordContext} is 'null',
@@ -378,7 +391,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
        * end-to-end completeness when producing to local Kafka is needed.
        */
       CompletableFuture<Void> recordFuture = new CompletableFuture<>();
-      queue.put(
+      getDrainerForConsumerRecord(consumerRecord, subPartition).put(
           new FollowerQueueNode(
               consumerRecord,
               ingestionTask,
@@ -393,13 +406,59 @@ public class StoreBufferService extends AbstractStoreBufferService {
         partitionConsumptionState.setLastQueuedRecordPersistedFuture(recordFuture);
       }
     } else {
-      queue.put(
-          new LeaderQueueNode(
-              consumerRecord,
-              ingestionTask,
-              kafkaUrl,
-              beforeProcessingRecordTimestamp,
-              leaderProducedRecordContext));
+      leaderRecordHandler.handle(
+          consumerRecord,
+          ingestionTask,
+          leaderProducedRecordContext,
+          subPartition,
+          kafkaUrl,
+          beforeProcessingRecordTimestamp);
+    }
+  }
+
+  private interface RecordHandler {
+    void handle(
+        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+        StoreIngestionTask ingestionTask,
+        LeaderProducedRecordContext leaderProducedRecordContext,
+        int subPartition,
+        String kafkaUrl,
+        long beforeProcessingRecordTimestamp) throws InterruptedException;
+  }
+
+  private void queueLeaderRecord(
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      StoreIngestionTask ingestionTask,
+      LeaderProducedRecordContext leaderProducedRecordContext,
+      int subPartition,
+      String kafkaUrl,
+      long beforeProcessingRecordTimestamp) throws InterruptedException {
+    getDrainerForConsumerRecord(consumerRecord, subPartition).put(
+        new LeaderQueueNode(
+            consumerRecord,
+            ingestionTask,
+            kafkaUrl,
+            beforeProcessingRecordTimestamp,
+            leaderProducedRecordContext));
+  }
+
+  private static void processRecord(
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      StoreIngestionTask ingestionTask,
+      LeaderProducedRecordContext leaderProducedRecordContext,
+      int subPartition,
+      String kafkaUrl,
+      long beforeProcessingRecordTimestamp) throws InterruptedException {
+    ingestionTask.processConsumerRecord(
+        consumerRecord,
+        leaderProducedRecordContext,
+        subPartition,
+        kafkaUrl,
+        beforeProcessingRecordTimestamp);
+
+    // complete the leaderProducedRecordContext future as processing for this leaderProducedRecordContext is done here.
+    if (leaderProducedRecordContext != null) {
+      leaderProducedRecordContext.completePersistedToDBFuture(null);
     }
   }
 
@@ -554,7 +613,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
     private final PubSubTopicPartition topicPartition;
 
     FakePubSubMessage(PubSubTopicPartition topicPartition) {
-      this.topicPartition = topicPartition;
+      this.topicPartition = Objects.requireNonNull(topicPartition);
     }
 
     @Override

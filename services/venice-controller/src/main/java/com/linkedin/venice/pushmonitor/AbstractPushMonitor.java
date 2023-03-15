@@ -71,6 +71,7 @@ public abstract class AbstractPushMonitor
   private final List<String> activeActiveRealTimeSourceKafkaURLs;
   private final HelixAdminClient helixAdminClient;
   private final EventThrottler helixClientThrottler;
+  private final boolean disableErrorLeaderReplica;
 
   public AbstractPushMonitor(
       String clusterName,
@@ -83,7 +84,8 @@ public abstract class AbstractPushMonitor
       ClusterLockManager clusterLockManager,
       String aggregateRealTimeSourceKafkaUrl,
       List<String> activeActiveRealTimeSourceKafkaURLs,
-      HelixAdminClient helixAdminClient) {
+      HelixAdminClient helixAdminClient,
+      boolean disableErrorLeaderReplica) {
     this.clusterName = clusterName;
     this.offlinePushAccessor = offlinePushAccessor;
     this.storeCleaner = storeCleaner;
@@ -95,6 +97,7 @@ public abstract class AbstractPushMonitor
     this.aggregateRealTimeSourceKafkaUrl = aggregateRealTimeSourceKafkaUrl;
     this.activeActiveRealTimeSourceKafkaURLs = activeActiveRealTimeSourceKafkaURLs;
     this.helixAdminClient = helixAdminClient;
+    this.disableErrorLeaderReplica = disableErrorLeaderReplica;
     this.helixClientThrottler =
         new EventThrottler(10, "push_monitor_helix_client_throttler", false, EventThrottler.BLOCK_STRATEGY);
   }
@@ -671,6 +674,9 @@ public abstract class AbstractPushMonitor
   }
 
   protected DisableReplicaCallback getDisableReplicaCallback(String kafkaTopic) {
+    if (!disableErrorLeaderReplica) {
+      return null;
+    }
     DisableReplicaCallback callback = new DisableReplicaCallback() {
       private final Map<String, Set<Integer>> disabledReplicaMap = new HashMap<>();
 

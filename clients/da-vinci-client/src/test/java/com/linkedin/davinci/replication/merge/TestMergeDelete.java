@@ -3,6 +3,7 @@ package com.linkedin.davinci.replication.merge;
 import static com.linkedin.davinci.replication.merge.TestMergeConflictResolver.RMD_VERSION_ID;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.ACTIVE_ELEM_TS_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.PUT_ONLY_PART_LENGTH_FIELD_NAME;
+import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL_COLO_ID_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL_TS_FIELD_NAME;
 
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
@@ -53,7 +54,18 @@ public class TestMergeDelete extends TestMergeBase {
 
     Assert.assertFalse(result.isUpdateIgnored());
     Assert.assertNull(result.getNewValue());
-    Assert.assertEquals(result.getRmdRecord().get(RmdConstants.TIMESTAMP_FIELD_NAME), 2L);
+    GenericRecord rmdTimestampRecord = (GenericRecord) result.getRmdRecord().get(RmdConstants.TIMESTAMP_FIELD_NAME);
+    Assert.assertEquals(rmdTimestampRecord.get(REGULAR_FIELD_NAME), 2L);
+    Assert.assertEquals(((GenericRecord) rmdTimestampRecord.get(INT_MAP_FIELD_NAME)).get(TOP_LEVEL_TS_FIELD_NAME), 2L);
+    Assert.assertEquals(
+        ((GenericRecord) rmdTimestampRecord.get(INT_MAP_FIELD_NAME)).get(TOP_LEVEL_COLO_ID_FIELD_NAME),
+        0);
+    Assert.assertEquals(
+        ((GenericRecord) rmdTimestampRecord.get(STRING_ARRAY_FIELD_NAME)).get(TOP_LEVEL_TS_FIELD_NAME),
+        2L);
+    Assert.assertEquals(
+        ((GenericRecord) rmdTimestampRecord.get(STRING_ARRAY_FIELD_NAME)).get(TOP_LEVEL_COLO_ID_FIELD_NAME),
+        0);
   }
 
   /**

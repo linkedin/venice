@@ -115,8 +115,11 @@ public class TestMergeDeleteWithFieldLevelTimestamp extends TestMergeConflictRes
     updatedRmd = result.getRmdRecord();
     Object timestampObj = updatedRmd.get(TIMESTAMP_FIELD_NAME);
     // Because all fields are deleted. Timestamp should be converted to be a value-level timestamp.
-    Assert.assertTrue(timestampObj instanceof Long);
-    Assert.assertEquals((long) timestampObj, 99L);
+    Assert.assertTrue(timestampObj instanceof GenericRecord);
+    GenericRecord timestampRecord = (GenericRecord) timestampObj;
+    Assert.assertEquals(timestampRecord.get("id"), 99L);
+    Assert.assertEquals(timestampRecord.get("name"), 99L);
+    Assert.assertEquals(timestampRecord.get("age"), 99L);
 
     // Because all fields being deleted is equivalent to the whole value record being deleted.
     updatedValueOptional = result.getNewValue();
