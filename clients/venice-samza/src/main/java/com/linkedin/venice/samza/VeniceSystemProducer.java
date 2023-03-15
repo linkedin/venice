@@ -610,7 +610,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     final PubSubProducerCallback callback = new CompletableFutureCallback(completableFuture);
 
     long logicalTimestamp = -1;
-    if (valueObject instanceof VeniceObjectWithTimestamp) {
+    // Only transmit the timestamp if this is a realtime topic.
+    if (valueObject instanceof VeniceObjectWithTimestamp && Version.isRealTimeTopic(topicName)) {
       VeniceObjectWithTimestamp objectWithTimestamp = (VeniceObjectWithTimestamp) valueObject;
       logicalTimestamp = objectWithTimestamp.getTimestamp();
       if (logicalTimestamp <= 0) {
@@ -644,27 +645,6 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
         // to a full put with default fields applied
 
         int baseSchemaId = valueSchemaIdPair.getFirst();
-        // Pair<Integer, Integer> finalValueSchemaIdPair = valueSchemaIdPair;
-        // Schema baseSchema = valueSchemaIds.entrySet().stream()
-        // .filter(entry -> entry.getValue().getFirst() == finalValueSchemaIdPair.getFirst() &&
-        // entry.getValue().getSecond() == -1)
-        // .map(Map.Entry::getKey).findFirst().orElse(null);
-        //
-        // if(baseSchema == null) {
-        // // refresh from venice once since we don't have this schema cached yet, then check again
-        // this.refreshSchemaCache();
-        // baseSchema = valueSchemaIds.entrySet().stream()
-        // .filter(entry -> entry.getValue().getFirst() == finalValueSchemaIdPair.getFirst() &&
-        // entry.getValue().getSecond() == -1)
-        // .map(Map.Entry::getKey).findFirst().orElse(null);
-        // if (baseSchema == null) {
-        // // Something isn't right with this write. We can't seem to find an associated schema, so raise an exception.
-        // throw new SamzaException("Unable to find base schema with id: " + baseSchemaId + " for write compute schema
-        // with id " + finalValueSchemaIdPair.getSecond());
-        // }
-        // }
-        //
-        // WriteComputeHandlerV1 writeComputeHandlerV1 = new WriteComputeHandlerV1();
         valueObject = convertWriteComputeRecordToFullPut(
             valueSchemaIdPair.getFirst(),
             valueSchemaIdPair.getSecond(),
