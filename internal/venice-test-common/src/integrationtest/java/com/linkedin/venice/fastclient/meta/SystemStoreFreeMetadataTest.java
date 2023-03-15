@@ -38,17 +38,17 @@ import org.testng.annotations.Test;
 
 
 public class SystemStoreFreeMetadataTest {
-  private static final int KEY_COUNT = 100;
-  private static final long TIME_OUT = 60 * Time.MS_PER_SECOND;
+  protected static final int KEY_COUNT = 100;
+  protected static final long TIME_OUT = 60 * Time.MS_PER_SECOND;
 
   private final VenicePartitioner defaultPartitioner = new DefaultVenicePartitioner();
-  private VeniceClusterWrapper veniceCluster;
-  private String storeName;
-  private SystemStoreFreeMetadata systemStoreFreeMetadata;
+  protected VeniceClusterWrapper veniceCluster;
+  protected String storeName;
+  protected SystemStoreFreeMetadata systemStoreFreeMetadata;
   private RecordSerializer<Object> keySerializer;
   private Client r2Client;
   private D2Client d2Client;
-  private ClientConfig clientConfig;
+  protected ClientConfig clientConfig;
 
   @BeforeClass
   public void setUp() throws Exception {
@@ -77,11 +77,11 @@ public class SystemStoreFreeMetadataTest {
     systemStoreFreeMetadata.start();
   }
 
-  private void createStore() {
+  protected void createStore() throws Exception {
     storeName = veniceCluster.createStore(KEY_COUNT);
   }
 
-  @Test()
+  @Test(timeOut = TIME_OUT)
   public void testMetadata() {
     VeniceRouterWrapper routerWrapper = veniceCluster.getRandomVeniceRouter();
     ReadOnlyStoreRepository storeRepository = routerWrapper.getMetaDataRepository();
