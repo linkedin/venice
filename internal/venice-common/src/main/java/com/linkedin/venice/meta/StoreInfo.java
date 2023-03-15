@@ -731,7 +731,7 @@ public class StoreInfo {
   }
 
   public boolean isLeaderFollowerModelEnabled() {
-    return leaderFollowerModelEnabled;
+    return true;
   }
 
   public StoreInfo setLeaderFollowerModelEnabled(boolean leaderFollowerModelEnabled) {
