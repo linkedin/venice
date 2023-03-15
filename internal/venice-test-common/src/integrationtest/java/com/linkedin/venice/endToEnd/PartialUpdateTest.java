@@ -732,28 +732,6 @@ public class PartialUpdateTest {
       // Run empty push to create a version and get everything created
       controllerClient.sendEmptyPushAndWait(storeName, "foopush", 10000, 60 * Time.MS_PER_SECOND);
 
-      // // VPJ push
-      // String childControllerUrl = childDatacenters.get(0).getRandomController().getControllerUrl();
-      // try (ControllerClient childControllerClient = new ControllerClient(CLUSTER_NAME, childControllerUrl)) {
-      // runVPJ(vpjProperties, 1, childControllerClient);
-      // }
-      //
-      // // Verify records (note, records 1-100 have been pushed)
-      // TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-      // try {
-      // for (int i = 1; i < 100; i++) {
-      // String key = String.valueOf(i);
-      // GenericRecord value = readValue(storeReader, key);
-      // assertNotNull(value, "Key " + key + " should not be missing!");
-      // assertEquals(value.get("firstName").toString(), "first_name_" + key);
-      // assertEquals(value.get("lastName").toString(), "last_name_" + key);
-      // assertEquals(value.get("age"), -1);
-      // }
-      // } catch (Exception e) {
-      // throw new VeniceException(e);
-      // }
-      // });
-
       VeniceSystemFactory factory = new VeniceSystemFactory();
       Version.PushType pushType = Version.PushType.BATCH;
       Map<String, String> samzaConfig = getSamzaProducerConfig(veniceClusterWrapper, storeName, pushType);
@@ -764,8 +742,6 @@ public class PartialUpdateTest {
       samzaConfig.put(DEPLOYMENT_ID, Utils.getUniqueString("venice-push-id"));
       veniceProducer = factory.getProducer("venice", new MapConfig(samzaConfig), null);
       veniceProducer.start();
-
-      // veniceProducer = getSamzaProducer(veniceClusterWrapper, storeName, Version.PushType.BATCH);
 
       // build partial update
       char[] chars = new char[5];
@@ -801,109 +777,6 @@ public class PartialUpdateTest {
           throw new VeniceException(e);
         }
       });
-
-      // // Update the record
-      // Arrays.fill(chars, 'u');
-      // String updatedFirstName = new String(chars);
-      // final int updatedAge = 1;
-      // UpdateBuilder updateBuilder = new UpdateBuilderImpl(writeComputeSchema);
-      // updateBuilder.setNewFieldValue("firstName", updatedFirstName);
-      // updateBuilder.setNewFieldValue("age", updatedAge);
-      // GenericRecord partialUpdateRecord = updateBuilder.build();
-      //
-      // sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord);
-      // Verify the update
-      // TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
-      // try {
-      // GenericRecord retrievedValue = readValue(storeReader, key);
-      // assertNotNull(retrievedValue, "Key " + key + " should not be missing!");
-      // assertEquals(retrievedValue.get("firstName").toString(), updatedFirstName);
-      // assertEquals(retrievedValue.get("lastName").toString(), lastName);
-      // assertEquals(retrievedValue.get("age"), updatedAge);
-      // } catch (Exception e) {
-      // throw new VeniceException(e);
-      // }
-      // });
-
-      // Update the record again
-      // Arrays.fill(chars, 'v');
-      // String updatedFirstName1 = new String(chars);
-      //
-      // updateBuilder = new UpdateBuilderImpl(writeComputeSchema);
-      // updateBuilder.setNewFieldValue("firstName", updatedFirstName1);
-      // GenericRecord partialUpdateRecord1 = updateBuilder.build();
-      // sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord1);
-      // // Verify the update
-      // TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
-      // try {
-      // GenericRecord retrievedValue = readValue(storeReader, key);
-      // assertNotNull(retrievedValue, "Key " + key + " should not be missing!");
-      // assertEquals(retrievedValue.get("firstName").toString(), updatedFirstName1);
-      // assertEquals(retrievedValue.get("lastName").toString(), lastName);
-      // } catch (Exception e) {
-      // throw new VeniceException(e);
-      // }
-      // });
-
-      // Delete the record
-      // sendStreamingRecord(veniceProducer, storeName, key, null);
-      // // Verify the delete
-      // TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
-      // try {
-      // GenericRecord retrievedValue = readValue(storeReader, key);
-      // assertNull(retrievedValue, "Key " + key + " should be missing!");
-      // } catch (Exception e) {
-      // throw new VeniceException(e);
-      // }
-      // });
-
-      // Update the record again
-      // Arrays.fill(chars, 'w');
-      // String updatedFirstName2 = new String(chars);
-      // Arrays.fill(chars, 'g');
-      // String updatedLastName = new String(chars);
-      //
-      // updateBuilder = new UpdateBuilderImpl(writeComputeSchema);
-      // updateBuilder.setNewFieldValue("firstName", updatedFirstName2);
-      // updateBuilder.setNewFieldValue("lastName", updatedLastName);
-      // updateBuilder.setNewFieldValue("age", 2);
-      // GenericRecord partialUpdateRecord2 = updateBuilder.build();
-
-      // sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord2);
-      // // Verify the update
-      // TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
-      // try {
-      // GenericRecord retrievedValue = readValue(storeReader, key);
-      // assertNotNull(retrievedValue, "Key " + key + " should not be missing!");
-      // assertEquals(retrievedValue.get("firstName").toString(), updatedFirstName2);
-      // assertEquals(retrievedValue.get("lastName").toString(), updatedLastName);
-      // assertEquals(retrievedValue.get("age"), 2);
-      // } catch (Exception e) {
-      // throw new VeniceException(e);
-      // }
-      // });
-
-      // Update the record again
-      // Arrays.fill(chars, 'x');
-      // String updatedFirstName3 = new String(chars);
-      //
-      // updateBuilder = new UpdateBuilderImpl(writeComputeSchema);
-      // updateBuilder.setNewFieldValue("firstName", updatedFirstName3);
-      // GenericRecord partialUpdateRecord3 = updateBuilder.build();
-      // sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord3);
-      // // Verify the update
-      // TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
-      // try {
-      // GenericRecord retrievedValue = readValue(storeReader, key);
-      // assertNotNull(retrievedValue, "Key " + key + " should not be missing!");
-      // assertEquals(retrievedValue.get("firstName").toString(), updatedFirstName3);
-      // assertEquals(retrievedValue.get("lastName").toString(), updatedLastName);
-      // } catch (Exception e) {
-      // throw new VeniceException(e);
-      // }
-      // });
-
-      // }
     } finally {
       if (veniceProducer != null) {
         veniceProducer.stop();

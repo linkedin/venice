@@ -104,6 +104,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   private static final DatumWriter<ByteBuffer> BYTES_DATUM_WRITER = new GenericDatumWriter<>(BYTES_SCHEMA);
   private static final DatumWriter<Boolean> BOOL_DATUM_WRITER = new GenericDatumWriter<>(BOOL_SCHEMA);
 
+  private static final WriteComputeHandlerV1 writeComputeHandlerV1 = new WriteComputeHandlerV1();
+
   // Immutable state
   private final String veniceChildD2ZkHost;
   private final String primaryControllerColoD2ZKHost;
@@ -118,7 +120,10 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   private final String runningFabric;
   private final boolean verifyLatestProtocolPresent;
   private final Map<String, D2ClientEnvelope> d2ZkHostToClientEnvelopeMap = new HashMap<>();
-  private final VeniceConcurrentHashMap<Schema, Pair<Integer, Integer>> valueSchemaIds =
+  private final VeniceConcurrentHashMap<Schema, Pair<Integer, Integer>> valueSchemaToIdsMap =
+      new VeniceConcurrentHashMap<>();
+
+  private final VeniceConcurrentHashMap<Pair<Integer, Integer>, Schema> valueSchemaIdsToSchemaMap =
       new VeniceConcurrentHashMap<>();
 
   /**
@@ -493,9 +498,10 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
         2);
     LOGGER.info("Got [store: {}] SchemaResponse for value schemas: {}", storeName, valueSchemaResponse);
     for (MultiSchemaResponse.Schema valueSchema: valueSchemaResponse.getSchemas()) {
-      valueSchemaIds.put(
-          parseSchemaFromJSONLooseValidation(valueSchema.getSchemaStr()),
-          new Pair<>(valueSchema.getId(), valueSchema.getDerivedSchemaId()));
+      Schema schema = parseSchemaFromJSONLooseValidation(valueSchema.getSchemaStr());
+      Pair<Integer, Integer> idPair = new Pair<>(valueSchema.getId(), valueSchema.getDerivedSchemaId());
+      valueSchemaToIdsMap.put(schema, idPair);
+      valueSchemaIdsToSchemaMap.put(idPair, schema);
     }
   }
 
@@ -631,7 +637,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     } else {
       Schema valueObjectSchema = getSchemaFromObject(valueObject);
 
-      Pair<Integer, Integer> valueSchemaIdPair = valueSchemaIds.computeIfAbsent(valueObjectSchema, valueSchema -> {
+      Pair<Integer, Integer> valueSchemaIdPair = valueSchemaToIdsMap.computeIfAbsent(valueObjectSchema, valueSchema -> {
         SchemaResponse valueSchemaResponse = (SchemaResponse) controllerRequestWithRetry(
             () -> controllerClient.getValueOrDerivedSchemaId(storeName, valueSchema.toString()),
             2);
@@ -639,16 +645,13 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
         return new Pair<>(valueSchemaResponse.getId(), valueSchemaResponse.getDerivedSchemaId());
       });
 
-      if (Version.isVersionTopic(topicName) && valueSchemaIdPair.getSecond() != -1) {
-        // This is a write compute request getting published to a version topic. We don't
+      if (Version.isATopicThatIsVersioned(topicName) && valueSchemaIdPair.getSecond() != -1) {
+        // This is a write compute request getting published to a version topic or reprocessing topic. We don't
         // support partial records in the Venice version topic, so we will convert this request
         // to a full put with default fields applied
 
         int baseSchemaId = valueSchemaIdPair.getFirst();
-        valueObject = convertWriteComputeRecordToFullPut(
-            valueSchemaIdPair.getFirst(),
-            valueSchemaIdPair.getSecond(),
-            valueObject);
+        valueObject = convertPartialUpdateToFullPut(valueSchemaIdPair, valueObject);
         valueSchemaIdPair = new Pair<>(baseSchemaId, -1);
       }
 
@@ -770,35 +773,20 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     return out.toByteArray();
   }
 
-  private Object convertWriteComputeRecordToFullPut(
-      int derivedSchemaId,
-      int baseSchemaId,
-      Object incomingWriteValueObject) {
-    Schema baseSchema = valueSchemaIds.entrySet()
-        .stream()
-        .filter(entry -> entry.getValue().getFirst() == derivedSchemaId && entry.getValue().getSecond() == -1)
-        .map(Map.Entry::getKey)
-        .findFirst()
-        .orElse(null);
-
+  private Object convertPartialUpdateToFullPut(Pair<Integer, Integer> schemaIds, Object incomingWriteValueObject) {
+    Pair<Integer, Integer> baseSchemaIds = new Pair(schemaIds.getFirst(), -1);
+    Schema baseSchema = valueSchemaIdsToSchemaMap.get(baseSchemaIds);
     if (baseSchema == null) {
       // refresh from venice once since we don't have this schema cached yet, then check again
       this.refreshSchemaCache();
-      baseSchema = valueSchemaIds.entrySet()
-          .stream()
-          .filter(entry -> entry.getValue().getFirst() == derivedSchemaId && entry.getValue().getSecond() == -1)
-          .map(Map.Entry::getKey)
-          .findFirst()
-          .orElse(null);
+      baseSchema = valueSchemaIdsToSchemaMap.get(baseSchemaIds);
       if (baseSchema == null) {
         // Something isn't right with this write. We can't seem to find an associated schema, so raise an exception.
         throw new SamzaException(
-            "Unable to find base schema with id: " + baseSchemaId + " for write compute schema with id "
-                + derivedSchemaId);
+            "Unable to find base schema with id: " + schemaIds.getFirst() + " for write compute schema with id "
+                + schemaIds.getSecond());
       }
     }
-
-    WriteComputeHandlerV1 writeComputeHandlerV1 = new WriteComputeHandlerV1();
     return writeComputeHandlerV1.updateValueRecord(baseSchema, null, (GenericRecord) incomingWriteValueObject);
   }
 
