@@ -41,6 +41,7 @@ public class StoreInfo {
     storeInfo.setIncrementalPushEnabled(store.isIncrementalPushEnabled());
     storeInfo.setLargestUsedVersionNumber(store.getLargestUsedVersionNumber());
     storeInfo.setLatestSuperSetValueSchemaId(store.getLatestSuperSetValueSchemaId());
+    storeInfo.setLeaderFollowerModelEnabled(true);
     storeInfo.setLowWatermark(store.getLowWatermark());
     storeInfo.setMigrating(store.isMigrating());
     storeInfo.setMigrationDuplicateStore(store.isMigrationDuplicateStore());
@@ -214,6 +215,8 @@ public class StoreInfo {
    * Maximum number of hours allowed for the store to transition from bootstrap to online state.
    */
   private int bootstrapToOnlineTimeoutInHours = BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS;
+
+  private boolean leaderFollowerModelEnabled = true;
 
   /**
    * Whether native replication should be enabled for this store.
@@ -725,5 +728,14 @@ public class StoreInfo {
 
   public void setActiveActiveReplicationEnabled(boolean activeActiveReplicationEnabled) {
     this.activeActiveReplicationEnabled = activeActiveReplicationEnabled;
+  }
+
+  public boolean isLeaderFollowerModelEnabled() {
+    return leaderFollowerModelEnabled;
+  }
+
+  public StoreInfo setLeaderFollowerModelEnabled(boolean leaderFollowerModelEnabled) {
+    this.leaderFollowerModelEnabled = true;
+    return this;
   }
 }
