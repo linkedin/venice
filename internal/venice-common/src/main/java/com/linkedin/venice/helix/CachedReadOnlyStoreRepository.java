@@ -1,7 +1,5 @@
 package com.linkedin.venice.helix;
 
-import static com.linkedin.venice.common.VeniceSystemStoreUtils.getZkStoreName;
-
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadOnlyStore;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -63,7 +61,7 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
 
   @Override
   public Store getStore(String storeName) {
-    Store store = storeMap.get(getZkStoreName(storeName));
+    Store store = storeMap.get(storeName);
     if (store != null) {
       return new ReadOnlyStore(store);
     }
@@ -71,7 +69,7 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
   }
 
   public Store getStoreOrThrow(String storeName) throws VeniceNoStoreException {
-    Store store = storeMap.get(getZkStoreName(storeName));
+    Store store = storeMap.get(storeName);
     if (store != null) {
       return new ReadOnlyStore(store);
     }
@@ -80,7 +78,7 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
 
   @Override
   public boolean hasStore(String storeName) {
-    return storeMap.containsKey(getZkStoreName(storeName));
+    return storeMap.containsKey(storeName);
   }
 
   @Override
@@ -163,7 +161,7 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
       // Workaround to make old metadata compatible with new fields
       newStore.fixMissingFields();
 
-      Store oldStore = storeMap.put(getZkStoreName(newStore.getName()), newStore);
+      Store oldStore = storeMap.put(newStore.getName(), newStore);
       if (oldStore == null) {
         totalStoreReadQuota.addAndGet(newStore.getReadQuotaInCU());
         notifyStoreCreated(newStore);
@@ -177,7 +175,7 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
 
   protected Store removeStore(String storeName) {
     try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(storeName)) {
-      Store oldStore = storeMap.remove(getZkStoreName(storeName));
+      Store oldStore = storeMap.remove(storeName);
       if (oldStore != null) {
         totalStoreReadQuota.addAndGet(-oldStore.getReadQuotaInCU());
         notifyStoreDeleted(oldStore);
@@ -187,7 +185,7 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
   }
 
   protected final String getStoreZkPath(String storeName) {
-    return Paths.get(clusterStoreRepositoryPath, getZkStoreName(storeName)).toString();
+    return Paths.get(clusterStoreRepositoryPath, storeName).toString();
   }
 
   protected Store getStoreFromZk(String storeName) {
