@@ -489,10 +489,6 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
 
     Store store = storeRepository.getStore(storeName);
 
-    VersionCreationResponse responseObject = new VersionCreationResponse();
-    responseObject.setCluster(clusterName);
-    responseObject.setName(storeName);
-
     // Only allow router request_topic for hybrid stores
     if (!store.isHybrid()) {
       setupResponseAndFlush(BAD_REQUEST, REQUEST_TOPIC_ERROR_BATCH_ONLY_STORE.getBytes(), false, ctx);
@@ -534,31 +530,14 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       return;
     }
 
-    responseObject.setPartitions(currentVersion.getPartitionCount());
-
-    responseObject.setKafkaTopic(Version.composeRealTimeTopic(storeName));
-    // RT topic only supports NO_OP compression
-    responseObject.setCompressionStrategy(CompressionStrategy.NO_OP);
-    // disable amplificationFactor logic on real-time topic
-    responseObject.setAmplificationFactor(1);
-
-    responseObject.setKafkaBootstrapServers(kafkaBootstrapServers);
-
-    responseObject.setDaVinciPushStatusStoreEnabled(store.isDaVinciPushStatusStoreEnabled());
     // Retrieve partitioner config from the store
     PartitionerConfig storePartitionerConfig = store.getPartitionerConfig();
     Map<String, String> queryParams = helper.extractQueryParameters(request);
-    if (queryParams.get(PARTITIONERS) == null) {
-      // Request does not contain partitioner info
-      responseObject.setPartitionerClass(storePartitionerConfig.getPartitionerClass());
-      responseObject.setPartitionerParams(storePartitionerConfig.getPartitionerParams());
-    } else {
+    if (queryParams.get(PARTITIONERS) != null) {
       // Retrieve provided partitioner class list from the request
       boolean hasMatchedPartitioner = false;
       for (String partitioner: queryParams.get(PARTITIONERS).split(",")) {
         if (partitioner.equals(storePartitionerConfig.getPartitionerClass())) {
-          responseObject.setPartitionerClass(storePartitionerConfig.getPartitionerClass());
-          responseObject.setPartitionerParams(storePartitionerConfig.getPartitionerParams());
           hasMatchedPartitioner = true;
           break;
         }
@@ -570,6 +549,20 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
         return;
       }
     }
+
+    VersionCreationResponse responseObject = new VersionCreationResponse();
+    responseObject.setCluster(clusterName);
+    responseObject.setName(storeName);
+    responseObject.setPartitions(currentVersion.getPartitionCount());
+    responseObject.setKafkaTopic(Version.composeRealTimeTopic(storeName));
+    // RT topic only supports NO_OP compression
+    responseObject.setCompressionStrategy(CompressionStrategy.NO_OP);
+    // disable amplificationFactor logic on real-time topic
+    responseObject.setAmplificationFactor(1);
+    responseObject.setKafkaBootstrapServers(kafkaBootstrapServers);
+    responseObject.setDaVinciPushStatusStoreEnabled(store.isDaVinciPushStatusStoreEnabled());
+    responseObject.setPartitionerClass(storePartitionerConfig.getPartitionerClass());
+    responseObject.setPartitionerParams(storePartitionerConfig.getPartitionerParams());
 
     setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(responseObject), true, ctx);
   }
