@@ -1,0 +1,5 @@
+name: "CodeQL config"
+paths-ignore:
+  - internal/venice-client-common/src/main/java/com/linkedin/venice/partitioner/DefaultVenicePartitioner.java
+  - internal/alpini/netty4/alpini-netty4-base/src/main/java/com/linkedin/alpini/netty4/misc/BasicHttpRequestSerializer.java
+  - internal/alpini/netty4/alpini-netty4-base/src/main/java/com/linkedin/alpini/netty4/misc/HttpUtils.java
