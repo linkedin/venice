@@ -3,6 +3,14 @@ package com.linkedin.venice.router;
 import static com.linkedin.venice.VeniceConstants.TYPE_STORE_STATE;
 import static com.linkedin.venice.VeniceConstants.TYPE_STREAM_HYBRID_STORE_QUOTA;
 import static com.linkedin.venice.VeniceConstants.TYPE_STREAM_REPROCESSING_HYBRID_STORE_QUOTA;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITIONERS;
+import static com.linkedin.venice.router.MetaDataHandler.REQUEST_TOPIC_ERROR_BATCH_ONLY_STORE;
+import static com.linkedin.venice.router.MetaDataHandler.REQUEST_TOPIC_ERROR_CURRENT_VERSION_NOT_HYBRID;
+import static com.linkedin.venice.router.MetaDataHandler.REQUEST_TOPIC_ERROR_FORMAT_UNSUPPORTED_PARTITIONER;
+import static com.linkedin.venice.router.MetaDataHandler.REQUEST_TOPIC_ERROR_MISSING_CURRENT_VERSION;
+import static com.linkedin.venice.router.MetaDataHandler.REQUEST_TOPIC_ERROR_NO_CURRENT_VERSION;
+import static com.linkedin.venice.router.MetaDataHandler.REQUEST_TOPIC_ERROR_UNSUPPORTED_REPLICATION_POLICY;
+import static com.linkedin.venice.router.api.VenicePathParser.TYPE_REQUEST_TOPIC;
 import static io.netty.handler.codec.http.HttpHeaderNames.CONTENT_TYPE;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -11,6 +19,7 @@ import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.LeaderControllerResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
+import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixHybridStoreQuotaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
@@ -24,6 +33,8 @@ import com.linkedin.venice.meta.ETLStoreConfigImpl;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.PartitionerConfig;
+import com.linkedin.venice.meta.PartitionerConfigImpl;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.SerializableSystemStore;
@@ -34,6 +45,7 @@ import com.linkedin.venice.meta.SystemStoreAttributes;
 import com.linkedin.venice.meta.SystemStoreAttributesImpl;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
+import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.routerapi.HybridStoreQuotaStatusResponse;
@@ -50,6 +62,7 @@ import io.netty.handler.codec.http.EmptyHttpHeaders;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -717,5 +730,376 @@ public class TestMetaDataHandler {
         Collections.emptyMap(),
         mockStoreRepository);
     Assert.assertEquals(notFoundResponse.status().code(), 404);
+  }
+
+  @Test
+  public void testRequestTopicForBatchOnlyStore() throws IOException {
+    HelixReadOnlyStoreRepository storeRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
+    HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
+
+    String storeName = "test-store";
+    Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
+    Mockito.doReturn(store).when(storeRepository).getStore(storeName);
+
+    FullHttpResponse response = passRequestToMetadataHandler(
+        "http://myRouterHost:4567/" + TYPE_REQUEST_TOPIC + "/" + storeName,
+        null,
+        null,
+        storeConfigRepository,
+        Collections.emptyMap(),
+        storeRepository);
+    Assert.assertEquals(response.status().code(), 400);
+    Assert.assertEquals(
+        new String(response.content().array(), StandardCharsets.UTF_8),
+        REQUEST_TOPIC_ERROR_BATCH_ONLY_STORE);
+  }
+
+  @Test
+  public void testRequestTopicForStoreWithNoCurrentVersion() throws IOException {
+    HelixReadOnlyStoreRepository storeRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
+    HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
+
+    String storeName = "test-store";
+    Store store = Mockito.mock(Store.class);
+
+    HybridStoreConfig badCurrentVersionStoreConfig = new HybridStoreConfigImpl(
+        Time.SECONDS_PER_DAY,
+        1,
+        TimeUnit.MINUTES.toSeconds(1),
+        DataReplicationPolicy.NON_AGGREGATE,
+        BufferReplayPolicy.REWIND_FROM_EOP);
+    Mockito.doReturn(true).when(store).isHybrid();
+    Mockito.doReturn(badCurrentVersionStoreConfig).when(store).getHybridStoreConfig();
+
+    Mockito.doReturn(Store.NON_EXISTING_VERSION).when(store).getCurrentVersion();
+
+    Mockito.doReturn(store).when(storeRepository).getStore(storeName);
+    FullHttpResponse response = passRequestToMetadataHandler(
+        "http://myRouterHost:4567/" + TYPE_REQUEST_TOPIC + "/" + storeName,
+        null,
+        null,
+        storeConfigRepository,
+        Collections.emptyMap(),
+        storeRepository);
+    Assert.assertEquals(response.status().code(), 400);
+    Assert.assertEquals(
+        new String(response.content().array(), StandardCharsets.UTF_8),
+        REQUEST_TOPIC_ERROR_NO_CURRENT_VERSION);
+  }
+
+  @Test
+  public void testRequestTopicForStoreWithMissingCurrentVersion() throws IOException {
+    HelixReadOnlyStoreRepository storeRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
+    HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
+
+    String storeName = "test-store";
+    Store store = Mockito.mock(Store.class);
+
+    HybridStoreConfig badCurrentVersionStoreConfig = new HybridStoreConfigImpl(
+        Time.SECONDS_PER_DAY,
+        1,
+        TimeUnit.MINUTES.toSeconds(1),
+        DataReplicationPolicy.NON_AGGREGATE,
+        BufferReplayPolicy.REWIND_FROM_EOP);
+    Mockito.doReturn(true).when(store).isHybrid();
+    Mockito.doReturn(badCurrentVersionStoreConfig).when(store).getHybridStoreConfig();
+
+    Mockito.doReturn(1).when(store).getCurrentVersion();
+    Mockito.doReturn(Optional.empty()).when(store).getVersion(1);
+
+    Mockito.doReturn(store).when(storeRepository).getStore(storeName);
+    FullHttpResponse response = passRequestToMetadataHandler(
+        "http://myRouterHost:4567/" + TYPE_REQUEST_TOPIC + "/" + storeName,
+        null,
+        null,
+        storeConfigRepository,
+        Collections.emptyMap(),
+        storeRepository);
+    Assert.assertEquals(response.status().code(), 500);
+    Assert.assertEquals(
+        new String(response.content().array(), StandardCharsets.UTF_8),
+        REQUEST_TOPIC_ERROR_MISSING_CURRENT_VERSION);
+  }
+
+  @Test
+  public void testRequestTopicForStoreWithNonHybridCurrentVersion() throws IOException {
+    HelixReadOnlyStoreRepository storeRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
+    HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
+
+    String storeName = "test-store";
+    Store store = Mockito.mock(Store.class);
+
+    HybridStoreConfig aggStoreConfig = new HybridStoreConfigImpl(
+        Time.SECONDS_PER_DAY,
+        1,
+        TimeUnit.MINUTES.toSeconds(1),
+        DataReplicationPolicy.AGGREGATE,
+        BufferReplayPolicy.REWIND_FROM_EOP);
+    Mockito.doReturn(true).when(store).isHybrid();
+    Mockito.doReturn(aggStoreConfig).when(store).getHybridStoreConfig();
+
+    Version currentVersion = Mockito.mock(Version.class);
+    Mockito.doReturn(true).when(currentVersion).isUseVersionLevelHybridConfig();
+    Mockito.doReturn(null).when(currentVersion).getHybridStoreConfig();
+    Mockito.doReturn(1).when(currentVersion).getNumber();
+
+    Mockito.doReturn(1).when(store).getCurrentVersion();
+    Mockito.doReturn(Optional.of(currentVersion)).when(store).getVersion(1);
+
+    Mockito.doReturn(store).when(storeRepository).getStore(storeName);
+    FullHttpResponse response = passRequestToMetadataHandler(
+        "http://myRouterHost:4567/" + TYPE_REQUEST_TOPIC + "/" + storeName,
+        null,
+        null,
+        storeConfigRepository,
+        Collections.emptyMap(),
+        storeRepository);
+    Assert.assertEquals(response.status().code(), 400);
+    Assert.assertEquals(
+        new String(response.content().array(), StandardCharsets.UTF_8),
+        REQUEST_TOPIC_ERROR_CURRENT_VERSION_NOT_HYBRID);
+  }
+
+  @Test
+  public void testRequestTopicForHybridStoreWithAggregateReplicationPolicy() throws IOException {
+    HelixReadOnlyStoreRepository storeRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
+    HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
+
+    String storeName = "test-store";
+    Store store = Mockito.mock(Store.class);
+
+    HybridStoreConfig aggStoreConfig = new HybridStoreConfigImpl(
+        Time.SECONDS_PER_DAY,
+        1,
+        TimeUnit.MINUTES.toSeconds(1),
+        DataReplicationPolicy.AGGREGATE,
+        BufferReplayPolicy.REWIND_FROM_EOP);
+    Mockito.doReturn(true).when(store).isHybrid();
+    Mockito.doReturn(aggStoreConfig).when(store).getHybridStoreConfig();
+
+    Version currentVersion = Mockito.mock(Version.class);
+    Mockito.doReturn(aggStoreConfig).when(currentVersion).getHybridStoreConfig();
+    Mockito.doReturn(1).when(currentVersion).getNumber();
+
+    Mockito.doReturn(1).when(store).getCurrentVersion();
+    Mockito.doReturn(Optional.of(currentVersion)).when(store).getVersion(1);
+
+    Mockito.doReturn(store).when(storeRepository).getStore(storeName);
+    FullHttpResponse response = passRequestToMetadataHandler(
+        "http://myRouterHost:4567/" + TYPE_REQUEST_TOPIC + "/" + storeName,
+        null,
+        null,
+        storeConfigRepository,
+        Collections.emptyMap(),
+        storeRepository);
+    Assert.assertEquals(response.status().code(), 400);
+    Assert.assertEquals(
+        new String(response.content().array(), StandardCharsets.UTF_8),
+        REQUEST_TOPIC_ERROR_UNSUPPORTED_REPLICATION_POLICY);
+  }
+
+  @Test
+  public void testRequestTopicForStoreWithNonAggregateReplicationPolicy() throws IOException {
+    String clusterName = "test-cluster";
+    HelixReadOnlyStoreRepository storeRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
+    HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
+
+    String storeName = "test-store";
+    Store store = Mockito.mock(Store.class);
+
+    HybridStoreConfig nonAggStoreConfig = new HybridStoreConfigImpl(
+        Time.SECONDS_PER_DAY,
+        1,
+        TimeUnit.MINUTES.toSeconds(1),
+        DataReplicationPolicy.NON_AGGREGATE,
+        BufferReplayPolicy.REWIND_FROM_EOP);
+    Mockito.doReturn(true).when(store).isHybrid();
+    Mockito.doReturn(nonAggStoreConfig).when(store).getHybridStoreConfig();
+
+    PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
+    partitionerConfig.setAmplificationFactor(10); // Setting a higher number to verify that response still returns 1
+    Mockito.doReturn(partitionerConfig).when(store).getPartitionerConfig();
+
+    Version currentVersion = Mockito.mock(Version.class);
+    Mockito.doReturn(nonAggStoreConfig).when(currentVersion).getHybridStoreConfig();
+    Mockito.doReturn(1).when(currentVersion).getNumber();
+    Mockito.doReturn(10).when(currentVersion).getPartitionCount();
+    Mockito.doReturn(true).when(currentVersion).isUseVersionLevelHybridConfig();
+
+    Mockito.doReturn(1).when(store).getCurrentVersion();
+    Mockito.doReturn(Optional.of(currentVersion)).when(store).getVersion(1);
+
+    Mockito.doReturn(store).when(storeRepository).getStore(storeName);
+    FullHttpResponse response = passRequestToMetadataHandler(
+        "http://myRouterHost:4567/" + TYPE_REQUEST_TOPIC + "/" + storeName,
+        null,
+        null,
+        storeConfigRepository,
+        Collections.emptyMap(),
+        storeRepository);
+    Assert.assertEquals(response.status().code(), 200);
+    VersionCreationResponse versionCreationResponse =
+        OBJECT_MAPPER.readValue(response.content().array(), VersionCreationResponse.class);
+    Assert.assertEquals(versionCreationResponse.getName(), storeName);
+    Assert.assertEquals(versionCreationResponse.getCluster(), clusterName);
+    Assert.assertEquals(versionCreationResponse.getKafkaTopic(), Version.composeRealTimeTopic(storeName));
+    Assert.assertEquals(versionCreationResponse.getKafkaBootstrapServers(), KAFKA_BOOTSTRAP_SERVERS);
+    Assert.assertEquals(versionCreationResponse.getAmplificationFactor(), 1);
+    Assert.assertEquals(versionCreationResponse.getPartitions(), 10);
+    Assert
+        .assertEquals(versionCreationResponse.getPartitionerClass(), DefaultVenicePartitioner.class.getCanonicalName());
+  }
+
+  @Test
+  public void testRequestTopicForStoreWithActiveActiveReplicationPolicy() throws IOException {
+    String clusterName = "test-cluster";
+    HelixReadOnlyStoreRepository storeRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
+    HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
+
+    String storeName = "test-store";
+    Store store = Mockito.mock(Store.class);
+
+    HybridStoreConfig nonAggStoreConfig = new HybridStoreConfigImpl(
+        Time.SECONDS_PER_DAY,
+        1,
+        TimeUnit.MINUTES.toSeconds(1),
+        DataReplicationPolicy.ACTIVE_ACTIVE,
+        BufferReplayPolicy.REWIND_FROM_EOP);
+    Mockito.doReturn(true).when(store).isHybrid();
+    Mockito.doReturn(nonAggStoreConfig).when(store).getHybridStoreConfig();
+
+    PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
+    partitionerConfig.setAmplificationFactor(10); // Setting a higher number to verify that response still returns 1
+    Mockito.doReturn(partitionerConfig).when(store).getPartitionerConfig();
+
+    Version currentVersion = Mockito.mock(Version.class);
+    Mockito.doReturn(nonAggStoreConfig).when(currentVersion).getHybridStoreConfig();
+    Mockito.doReturn(1).when(currentVersion).getNumber();
+    Mockito.doReturn(10).when(currentVersion).getPartitionCount();
+
+    Mockito.doReturn(1).when(store).getCurrentVersion();
+    Mockito.doReturn(Optional.of(currentVersion)).when(store).getVersion(1);
+
+    Mockito.doReturn(store).when(storeRepository).getStore(storeName);
+    FullHttpResponse response = passRequestToMetadataHandler(
+        "http://myRouterHost:4567/" + TYPE_REQUEST_TOPIC + "/" + storeName,
+        null,
+        null,
+        storeConfigRepository,
+        Collections.emptyMap(),
+        storeRepository);
+    Assert.assertEquals(response.status().code(), 200);
+    VersionCreationResponse versionCreationResponse =
+        OBJECT_MAPPER.readValue(response.content().array(), VersionCreationResponse.class);
+    Assert.assertEquals(versionCreationResponse.getName(), storeName);
+    Assert.assertEquals(versionCreationResponse.getCluster(), clusterName);
+    Assert.assertEquals(versionCreationResponse.getKafkaTopic(), Version.composeRealTimeTopic(storeName));
+    Assert.assertEquals(versionCreationResponse.getKafkaBootstrapServers(), KAFKA_BOOTSTRAP_SERVERS);
+    Assert.assertEquals(versionCreationResponse.getAmplificationFactor(), 1);
+    Assert.assertEquals(versionCreationResponse.getPartitions(), 10);
+    Assert
+        .assertEquals(versionCreationResponse.getPartitionerClass(), DefaultVenicePartitioner.class.getCanonicalName());
+  }
+
+  @Test
+  public void testRequestTopicForStoreWithValidPartitioner() throws IOException {
+    String clusterName = "test-cluster";
+    HelixReadOnlyStoreRepository storeRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
+    HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
+
+    String storeName = "test-store";
+    Store store = Mockito.mock(Store.class);
+
+    HybridStoreConfig nonAggStoreConfig = new HybridStoreConfigImpl(
+        Time.SECONDS_PER_DAY,
+        1,
+        TimeUnit.MINUTES.toSeconds(1),
+        DataReplicationPolicy.ACTIVE_ACTIVE,
+        BufferReplayPolicy.REWIND_FROM_EOP);
+    Mockito.doReturn(true).when(store).isHybrid();
+    Mockito.doReturn(nonAggStoreConfig).when(store).getHybridStoreConfig();
+
+    PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
+    partitionerConfig.setAmplificationFactor(10); // Setting a higher number to verify that response still returns 1
+
+    String partitionerClass = "com.linkedin.venice.TestVenicePartitioner";
+    partitionerConfig.setPartitionerClass(partitionerClass);
+    Mockito.doReturn(partitionerConfig).when(store).getPartitionerConfig();
+
+    Version currentVersion = Mockito.mock(Version.class);
+    Mockito.doReturn(nonAggStoreConfig).when(currentVersion).getHybridStoreConfig();
+    Mockito.doReturn(1).when(currentVersion).getNumber();
+    Mockito.doReturn(10).when(currentVersion).getPartitionCount();
+
+    Mockito.doReturn(1).when(store).getCurrentVersion();
+    Mockito.doReturn(Optional.of(currentVersion)).when(store).getVersion(1);
+
+    Mockito.doReturn(store).when(storeRepository).getStore(storeName);
+    FullHttpResponse response = passRequestToMetadataHandler(
+        "http://myRouterHost:4567/" + TYPE_REQUEST_TOPIC + "/" + storeName + "?" + PARTITIONERS + "="
+            + partitionerClass,
+        null,
+        null,
+        storeConfigRepository,
+        Collections.emptyMap(),
+        storeRepository);
+    Assert.assertEquals(response.status().code(), 200);
+    VersionCreationResponse versionCreationResponse =
+        OBJECT_MAPPER.readValue(response.content().array(), VersionCreationResponse.class);
+    Assert.assertEquals(versionCreationResponse.getName(), storeName);
+    Assert.assertEquals(versionCreationResponse.getCluster(), clusterName);
+    Assert.assertEquals(versionCreationResponse.getKafkaTopic(), Version.composeRealTimeTopic(storeName));
+    Assert.assertEquals(versionCreationResponse.getKafkaBootstrapServers(), KAFKA_BOOTSTRAP_SERVERS);
+    Assert.assertEquals(versionCreationResponse.getAmplificationFactor(), 1);
+    Assert.assertEquals(versionCreationResponse.getPartitions(), 10);
+    Assert.assertEquals(versionCreationResponse.getPartitionerClass(), partitionerClass);
+  }
+
+  @Test
+  public void testRequestTopicForStoreWithInvalidPartitioner() throws IOException {
+    HelixReadOnlyStoreRepository storeRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
+    HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
+
+    String storeName = "test-store";
+    Store store = Mockito.mock(Store.class);
+
+    HybridStoreConfig nonAggStoreConfig = new HybridStoreConfigImpl(
+        Time.SECONDS_PER_DAY,
+        1,
+        TimeUnit.MINUTES.toSeconds(1),
+        DataReplicationPolicy.ACTIVE_ACTIVE,
+        BufferReplayPolicy.REWIND_FROM_EOP);
+    Mockito.doReturn(true).when(store).isHybrid();
+    Mockito.doReturn(nonAggStoreConfig).when(store).getHybridStoreConfig();
+
+    PartitionerConfig partitionerConfig = new PartitionerConfigImpl();
+    partitionerConfig.setAmplificationFactor(10); // Setting a higher number to verify that response still returns 1
+    Mockito.doReturn(partitionerConfig).when(store).getPartitionerConfig();
+
+    Version currentVersion = Mockito.mock(Version.class);
+    Mockito.doReturn(nonAggStoreConfig).when(currentVersion).getHybridStoreConfig();
+    Mockito.doReturn(1).when(currentVersion).getNumber();
+    Mockito.doReturn(10).when(currentVersion).getPartitionCount();
+
+    Mockito.doReturn(1).when(store).getCurrentVersion();
+    Mockito.doReturn(Optional.of(currentVersion)).when(store).getVersion(1);
+
+    Mockito.doReturn(store).when(storeRepository).getStore(storeName);
+
+    String partitionerClass = "com.linkedin.venice.TestVenicePartitioner";
+    FullHttpResponse response = passRequestToMetadataHandler(
+        "http://myRouterHost:4567/" + TYPE_REQUEST_TOPIC + "/" + storeName + "?" + PARTITIONERS + "="
+            + partitionerClass,
+        null,
+        null,
+        storeConfigRepository,
+        Collections.emptyMap(),
+        storeRepository);
+    Assert.assertEquals(response.status().code(), 400);
+    Assert.assertEquals(
+        new String(response.content().array(), StandardCharsets.UTF_8),
+        String.format(
+            REQUEST_TOPIC_ERROR_FORMAT_UNSUPPORTED_PARTITIONER,
+            DefaultVenicePartitioner.class.getCanonicalName()));
   }
 }
