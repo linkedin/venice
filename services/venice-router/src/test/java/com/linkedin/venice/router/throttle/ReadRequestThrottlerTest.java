@@ -167,7 +167,7 @@ public class ReadRequestThrottlerTest {
     Mockito.doReturn(Arrays.asList(stores)).when(storeRepository).getAllStores();
     Mockito.doReturn(totalQuota).when(storeRepository).getTotalStoreReadQuota();
     Mockito.doReturn(routerCount).when(zkRoutersClusterManager).getLiveRoutersCount();
-    Mockito.doReturn(maxCapcity).when(routerConfig).getMaxRouterReadCapacityCu();
+    Mockito.doReturn(maxCapcity).when(routerConfig).getMaxReadCapacityCu();
     Mockito.doReturn(true).when(routerConfig).isPerRouterStorageNodeThrottlerEnabled();
 
     ReadRequestThrottler multiStoreThrottler =
