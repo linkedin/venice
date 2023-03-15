@@ -91,9 +91,6 @@ public class TopicManager implements Closeable {
   private final long topicDeletionStatusPollIntervalMs;
   private final long topicMinLogCompactionLagMs;
   private final KafkaClientFactory kafkaClientFactory;
-
-  private Consumer<byte[], byte[]> kafkaRawBytesConsumer;
-  // private final Lazy<KafkaAdminWrapper> kafkaAdmin;
   private final Lazy<KafkaAdminWrapper> kafkaWriteOnlyAdmin;
   private final Lazy<KafkaAdminWrapper> kafkaReadOnlyAdmin;
   private final PartitionOffsetFetcher partitionOffsetFetcher;
@@ -108,7 +105,8 @@ public class TopicManager implements Closeable {
       long topicDeletionStatusPollIntervalMs,
       long topicMinLogCompactionLagMs,
       KafkaClientFactory kafkaClientFactory,
-      Optional<MetricsRepository> optionalMetricsRepository) {
+      Optional<MetricsRepository> optionalMetricsRepository,
+      PubSubTopicRepository pubSubTopicRepository) {
     this.kafkaOperationTimeoutMs = kafkaOperationTimeoutMs;
     this.topicDeletionStatusPollIntervalMs = topicDeletionStatusPollIntervalMs;
     this.topicMinLogCompactionLagMs = topicMinLogCompactionLagMs;
@@ -116,7 +114,6 @@ public class TopicManager implements Closeable {
     this.kafkaBootstrapServers = kafkaClientFactory.getKafkaBootstrapServers();
     this.logger = LogManager.getLogger(this.getClass().getSimpleName() + " [" + kafkaBootstrapServers + "]");
 
-    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository(); // TODO: Remove this.
     this.kafkaReadOnlyAdmin = Lazy.of(() -> {
       KafkaAdminWrapper kafkaReadOnlyAdmin =
           kafkaClientFactory.getReadOnlyKafkaAdmin(optionalMetricsRepository, pubSubTopicRepository);
@@ -156,13 +153,15 @@ public class TopicManager implements Closeable {
       long kafkaOperationTimeoutMs,
       long topicDeletionStatusPollIntervalMs,
       long topicMinLogCompactionLagMs,
-      KafkaClientFactory kafkaClientFactory) {
+      KafkaClientFactory kafkaClientFactory,
+      PubSubTopicRepository pubSubTopicRepository) {
     this(
         kafkaOperationTimeoutMs,
         topicDeletionStatusPollIntervalMs,
         topicMinLogCompactionLagMs,
         kafkaClientFactory,
-        Optional.empty());
+        Optional.empty(),
+        pubSubTopicRepository);
   }
 
   /**
@@ -170,12 +169,13 @@ public class TopicManager implements Closeable {
    * topic.deletion.status.poll.interval.ms, so we use default config defined in this class; besides, TopicManager
    * in server doesn't use the config mentioned above.
    */
-  public TopicManager(KafkaClientFactory kafkaClientFactory) {
+  public TopicManager(KafkaClientFactory kafkaClientFactory, PubSubTopicRepository pubSubTopicRepository) {
     this(
         DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
         DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS,
         DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS,
-        kafkaClientFactory);
+        kafkaClientFactory,
+        pubSubTopicRepository);
   }
 
   // For testing only

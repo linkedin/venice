@@ -191,7 +191,8 @@ public class TestHybrid {
             DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
             100,
             0L,
-            IntegrationTestPushUtils.getVeniceConsumerFactory(venice.getKafka()))) {
+            IntegrationTestPushUtils.getVeniceConsumerFactory(venice.getKafka()),
+            sharedVenice.getPubSubTopicRepository())) {
       long streamingRewindSeconds = 25L;
       long streamingMessageLag = 2L;
       final String storeName = Utils.getUniqueString("multi-colo-hybrid-store");
@@ -320,7 +321,8 @@ public class TestHybrid {
               DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
               100,
               MIN_COMPACTION_LAG,
-              IntegrationTestPushUtils.getVeniceConsumerFactory(venice.getKafka()))) {
+              IntegrationTestPushUtils.getVeniceConsumerFactory(venice.getKafka()),
+              sharedVenice.getPubSubTopicRepository())) {
 
         Cache cacheNothingCache = Mockito.mock(Cache.class);
         Mockito.when(cacheNothingCache.getIfPresent(Mockito.any())).thenReturn(null);
@@ -1120,7 +1122,8 @@ public class TestHybrid {
               DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
               100,
               MIN_COMPACTION_LAG,
-              IntegrationTestPushUtils.getVeniceConsumerFactory(venice.getKafka()))) {
+              IntegrationTestPushUtils.getVeniceConsumerFactory(venice.getKafka()),
+              sharedVenice.getPubSubTopicRepository())) {
 
         ControllerResponse response = controllerClient.updateStore(
             storeName,

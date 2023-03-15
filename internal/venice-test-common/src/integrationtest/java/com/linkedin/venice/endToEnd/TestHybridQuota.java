@@ -127,7 +127,8 @@ public class TestHybridQuota {
             DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
             100,
             0L,
-            IntegrationTestPushUtils.getVeniceConsumerFactory(sharedVenice.getKafka()))) {
+            IntegrationTestPushUtils.getVeniceConsumerFactory(sharedVenice.getKafka()),
+            sharedVenice.getPubSubTopicRepository())) {
 
       // Setting the hybrid store quota here will cause the VPJ push failed.
       ControllerResponse response = controllerClient.updateStore(

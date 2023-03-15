@@ -45,7 +45,8 @@ public class TestKafkaInputRecordReader {
         DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
         100,
         24 * Time.MS_PER_HOUR,
-        IntegrationTestPushUtils.getVeniceConsumerFactory(kafka));
+        IntegrationTestPushUtils.getVeniceConsumerFactory(kafka),
+        pubSubTopicRepository);
   }
 
   @AfterClass

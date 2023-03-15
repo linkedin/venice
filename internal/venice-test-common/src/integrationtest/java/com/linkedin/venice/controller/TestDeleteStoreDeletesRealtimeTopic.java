@@ -55,7 +55,8 @@ public class TestDeleteStoreDeletesRealtimeTopic {
         DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
         100,
         0l,
-        IntegrationTestPushUtils.getVeniceConsumerFactory(venice.getKafka()));
+        IntegrationTestPushUtils.getVeniceConsumerFactory(venice.getKafka()),
+        pubSubTopicRepository);
     storeName = Utils.getUniqueString("hybrid-store");
     venice.getNewStore(storeName);
     makeStoreHybrid(venice, storeName, 100L, 5L);

@@ -60,7 +60,8 @@ public class AdminConsumptionTaskIntegrationTest {
             DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
             100,
             0L,
-            IntegrationTestPushUtils.getVeniceConsumerFactory(kafka))) {
+            IntegrationTestPushUtils.getVeniceConsumerFactory(kafka),
+            pubSubTopicRepository)) {
       PubSubTopic adminTopic = pubSubTopicRepository.getTopic(AdminTopicUtils.getTopicNameFromClusterName(clusterName));
       topicManager.createTopic(adminTopic, 1, 1, true);
       String storeName = "test-store";

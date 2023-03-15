@@ -54,7 +54,7 @@ public class PubSubSharedProducerAdapterFactoryTest {
   public void setUp() {
     pubSubBrokerWrapper = ServiceFactory.getPubSubBroker();
     kafkaClientFactory = IntegrationTestPushUtils.getVeniceConsumerFactory(pubSubBrokerWrapper);
-    topicManager = new TopicManager(kafkaClientFactory);
+    topicManager = new TopicManager(kafkaClientFactory, pubSubTopicRepository);
   }
 
   @AfterClass

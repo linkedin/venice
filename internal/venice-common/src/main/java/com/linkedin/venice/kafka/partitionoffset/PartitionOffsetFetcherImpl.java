@@ -13,6 +13,7 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.lazy.Lazy;
@@ -49,6 +50,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
   private final Lock adminConsumerLock;
   private final Lock kafkaAdminWrapperLock;
   private final Lazy<KafkaAdminWrapper> kafkaAdminWrapper;
+  private final Lazy<PubSubConsumer> pubSubConsumer;
   private final Duration kafkaOperationTimeout;
 
   private enum TopicEndType {
@@ -57,10 +59,12 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
 
   public PartitionOffsetFetcherImpl(
       @Nonnull Lazy<KafkaAdminWrapper> kafkaAdminWrapper,
+      @Nonnull Lazy<PubSubConsumer> pubSubConsumer,
       long kafkaOperationTimeoutMs,
       String kafkaBootstrapServers) {
     Validate.notNull(kafkaAdminWrapper);
     this.kafkaAdminWrapper = kafkaAdminWrapper;
+    this.pubSubConsumer = pubSubConsumer;
     this.adminConsumerLock = new ReentrantLock();
     this.kafkaAdminWrapperLock = new ReentrantLock();
     this.kafkaOperationTimeout = Duration.ofMillis(kafkaOperationTimeoutMs);
@@ -350,10 +354,8 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
             return Collections.emptyList();
           } else {
             // poll the last message and retrieve the producer timestamp
-
-            kafkaAdminWrapper.get().assign(Collections.singletonList(pubSubTopicPartition));
             final long startConsumeOffset = Math.max(latestOffset - lastRecordsCount, earliestOffset);
-            kafkaAdminWrapper.get().seek(pubSubTopicPartition, startConsumeOffset);
+            pubSubConsumer.get().subscribe(pubSubTopicPartition, startConsumeOffset - 1);
             List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> allConsumedRecords =
                 new ArrayList<>(lastRecordsCount);
 
@@ -375,7 +377,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
                     KAFKA_POLLING_RETRY_MAX_ATTEMPT);
 
                 oneBatchConsumedRecords =
-                    kafkaAdminWrapper.get().poll(kafkaOperationTimeout.toMillis()).get(pubSubTopicPartition);
+                    pubSubConsumer.get().poll(kafkaOperationTimeout.toMillis()).get(pubSubTopicPartition);
               }
               if (oneBatchConsumedRecords.isEmpty()) {
                 /**
@@ -403,7 +405,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
                 + pubSubTopicPartition,
             ex);
       } finally {
-        kafkaAdminWrapper.get().assign(Collections.emptyList());
+        pubSubConsumer.get().unSubscribe(pubSubTopicPartition);
       }
     }
   }
@@ -440,8 +442,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
       }
 
       try {
-        kafkaAdminWrapper.get().assign(Collections.singletonList(pubSubTopicPartition));
-        kafkaAdminWrapper.get().seek(pubSubTopicPartition, latestOffset - 1);
+        pubSubConsumer.get().subscribe(pubSubTopicPartition, latestOffset - 2);
         Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> records = new HashMap<>();
         /**
          * We should retry to get the last record from that topic/partition, never return 0L here because 0L offset
@@ -456,7 +457,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
               latestOffset - 1,
               attempts,
               KAFKA_POLLING_RETRY_MAX_ATTEMPT);
-          records = kafkaAdminWrapper.get().poll(kafkaOperationTimeout.toMillis());
+          records = pubSubConsumer.get().poll(kafkaOperationTimeout.toMillis());
         }
         if (records.isEmpty()) {
           /**
@@ -507,7 +508,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
             timestamp);
         return resultOffset;
       } finally {
-        kafkaAdminWrapper.get().assign(Collections.emptyList());
+        pubSubConsumer.get().unSubscribe(pubSubTopicPartition);
       }
     }
   }

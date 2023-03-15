@@ -111,7 +111,8 @@ public class TopicManagerTest {
         DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
         100,
         MIN_COMPACTION_LAG,
-        IntegrationTestPushUtils.getVeniceConsumerFactory(kafka));
+        IntegrationTestPushUtils.getVeniceConsumerFactory(kafka),
+        pubSubTopicRepository);
     Cache cacheNothingCache = mock(Cache.class);
     Mockito.when(cacheNothingCache.getIfPresent(Mockito.any())).thenReturn(null);
     topicManager.setTopicConfigCache(cacheNothingCache);
@@ -301,7 +302,8 @@ public class TopicManagerTest {
             DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
             100,
             MIN_COMPACTION_LAG,
-            IntegrationTestPushUtils.getVeniceConsumerFactory(kafka)));
+            IntegrationTestPushUtils.getVeniceConsumerFactory(kafka),
+            pubSubTopicRepository));
     Mockito.doThrow(VeniceOperationAgainstKafkaTimedOut.class)
         .when(partiallyMockedTopicManager)
         .ensureTopicIsDeletedAndBlock(topicName);
@@ -507,8 +509,12 @@ public class TopicManagerTest {
     // Throw Kafka TimeoutException when trying to get max offset
     doReturn(mockKafkaClientFactory).when(mockKafkaClientFactory).clone(any(), any());
 
-    try (TopicManager topicManagerForThisTest =
-        new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, MIN_COMPACTION_LAG, mockKafkaClientFactory)) {
+    try (TopicManager topicManagerForThisTest = new TopicManager(
+        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+        100,
+        MIN_COMPACTION_LAG,
+        mockKafkaClientFactory,
+        pubSubTopicRepository)) {
       Assert.assertThrows(
           VeniceOperationAgainstKafkaTimedOut.class,
           () -> topicManagerForThisTest.getPartitionLatestOffsetAndRetry(pubSubTopicPartition, 10));

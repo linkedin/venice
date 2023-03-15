@@ -108,8 +108,12 @@ public class KafkaConsumptionTest {
     mockTime = new TestMockTime();
     localKafka = ServiceFactory.getPubSubBroker(new PubSubBrokerConfigs.Builder().setMockTime(mockTime).build());
     localKafkaClientFactory = IntegrationTestPushUtils.getVeniceConsumerFactory(localKafka);
-    topicManager =
-        new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, MIN_COMPACTION_LAG, localKafkaClientFactory);
+    topicManager = new TopicManager(
+        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+        100,
+        MIN_COMPACTION_LAG,
+        localKafkaClientFactory,
+        pubSubTopicRepository);
     Cache cacheNothingCache = mock(Cache.class);
     Mockito.when(cacheNothingCache.getIfPresent(Mockito.any())).thenReturn(null);
     topicManager.setTopicConfigCache(cacheNothingCache);
@@ -117,8 +121,12 @@ public class KafkaConsumptionTest {
     remoteMockTime = new TestMockTime();
     remoteKafka = ServiceFactory.getPubSubBroker(new PubSubBrokerConfigs.Builder().setMockTime(remoteMockTime).build());
     remoteKafkaClientFactory = IntegrationTestPushUtils.getVeniceConsumerFactory(remoteKafka);
-    remoteTopicManager =
-        new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, MIN_COMPACTION_LAG, remoteKafkaClientFactory);
+    remoteTopicManager = new TopicManager(
+        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+        100,
+        MIN_COMPACTION_LAG,
+        remoteKafkaClientFactory,
+        pubSubTopicRepository);
     Cache remoteCacheNothingCache = mock(Cache.class);
     Mockito.when(remoteCacheNothingCache.getIfPresent(Mockito.any())).thenReturn(null);
     remoteTopicManager.setTopicConfigCache(remoteCacheNothingCache);

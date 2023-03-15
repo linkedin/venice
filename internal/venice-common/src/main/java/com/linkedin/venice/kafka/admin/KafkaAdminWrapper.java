@@ -2,11 +2,8 @@ package com.linkedin.venice.kafka.admin;
 
 import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.RetryUtils;
@@ -159,10 +156,4 @@ public interface KafkaAdminWrapper extends Closeable {
   Long endOffset(PubSubTopicPartition pubSubTopicPartition);
 
   List<PubSubTopicPartitionInfo> partitionsFor(PubSubTopic topic);
-
-  Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> poll(long timeoutMs);
-
-  void assign(Collection<PubSubTopicPartition> partitions);
-
-  void seek(PubSubTopicPartition partition, long offset);
 }

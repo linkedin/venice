@@ -26,6 +26,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -80,7 +81,8 @@ public class TestEmptyPush {
             DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
             100,
             0L,
-            IntegrationTestPushUtils.getVeniceConsumerFactory(venice.getKafka()))) {
+            IntegrationTestPushUtils.getVeniceConsumerFactory(venice.getKafka()),
+            venice.getPubSubTopicRepository())) {
       controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);
       controllerClient.updateStore(
           storeName,
@@ -100,7 +102,9 @@ public class TestEmptyPush {
       assertNotNull(
           dictForVersion1,
           "Dict shouldn't be null for the empty push to a hybrid store without any records in RT");
-      assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(Version.composeRealTimeTopic(storeName)));
+      PubSubTopic storeRealTimeTopic =
+          venice.getPubSubTopicRepository().getTopic(Version.composeRealTimeTopic(storeName));
+      assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(storeRealTimeTopic));
 
       // Start writing some real-time records
       SystemProducer veniceProducer =

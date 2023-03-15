@@ -40,7 +40,7 @@ public class KafkaInputFormat implements InputFormat<KafkaInputMapperKey, KafkaI
 
   protected Map<TopicPartition, Long> getLatestOffsets(JobConf config) {
     KafkaClientFactory consumerFactory = getConsumerFactory(config);
-    try (TopicManager topicManager = new TopicManager(consumerFactory)) {
+    try (TopicManager topicManager = new TopicManager(consumerFactory, pubSubTopicRepository)) {
       String topic = config.get(KAFKA_INPUT_TOPIC);
       Map<Integer, Long> latestOffsets = topicManager.getTopicLatestOffsets(pubSubTopicRepository.getTopic(topic));
       Map<TopicPartition, Long> partitionOffsetMap = new HashMap<>(latestOffsets.size());

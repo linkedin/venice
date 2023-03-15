@@ -189,7 +189,8 @@ public class TestTopicRequestOnHybridDelete {
         DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
         100,
         0l,
-        IntegrationTestPushUtils.getVeniceConsumerFactory(venice.getKafka()));
+        IntegrationTestPushUtils.getVeniceConsumerFactory(venice.getKafka()),
+        pubSubTopicRepository);
 
     String storeName = Utils.getUniqueString("hybrid-store");
     venice.getNewStore(storeName);

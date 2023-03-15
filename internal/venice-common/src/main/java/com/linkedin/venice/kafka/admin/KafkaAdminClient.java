@@ -9,11 +9,8 @@ import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
-import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
@@ -42,8 +39,6 @@ import org.apache.kafka.clients.admin.ListTopicsResult;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.admin.TopicDescription;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.common.KafkaFuture;
@@ -65,7 +60,6 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
   private AdminClient kafkaAdminClient;
   private KafkaConsumer<KafkaKey, KafkaMessageEnvelope> kafkaConsumer;
   private Long maxRetryInMs;
-
   private PubSubTopicRepository pubSubTopicRepository;
 
   public KafkaAdminClient() {
@@ -376,50 +370,6 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
       }
     }
     return pubSubTopicPartitionInfos;
-  }
-
-  @Override
-  public Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> poll(long timeoutMs) {
-    ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records;
-    Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> polledPubSubMessages =
-        new HashMap<>();
-    records = kafkaConsumer.poll(Duration.ofMillis(timeoutMs));
-    for (TopicPartition topicPartition: records.partitions()) {
-      PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(
-          pubSubTopicRepository.getTopic(topicPartition.topic()),
-          topicPartition.partition());
-      List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> topicPartitionConsumerRecords =
-          records.records(topicPartition);
-      List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>> topicPartitionPubSubMessages =
-          new ArrayList<>(topicPartitionConsumerRecords.size());
-      for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord: topicPartitionConsumerRecords) {
-        PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage = new ImmutablePubSubMessage<>(
-            consumerRecord.key(),
-            consumerRecord.value(),
-            pubSubTopicPartition,
-            consumerRecord.offset(),
-            consumerRecord.timestamp(),
-            consumerRecord.serializedKeySize() + consumerRecord.serializedValueSize());
-        topicPartitionPubSubMessages.add(pubSubMessage);
-      }
-      polledPubSubMessages.put(pubSubTopicPartition, topicPartitionPubSubMessages);
-    }
-    return polledPubSubMessages;
-  }
-
-  @Override
-  public void assign(Collection<PubSubTopicPartition> pubSubTopicPartitions) {
-    Collection<TopicPartition> topicPartitions = pubSubTopicPartitions.stream()
-        .map(t -> new TopicPartition(t.getPubSubTopic().getName(), t.getPartitionNumber()))
-        .collect(Collectors.toList());
-    kafkaConsumer.assign(topicPartitions);
-  }
-
-  @Override
-  public void seek(PubSubTopicPartition pubSubTopicPartition, long offset) {
-    TopicPartition topicPartition =
-        new TopicPartition(pubSubTopicPartition.getPubSubTopic().getName(), pubSubTopicPartition.getPartitionNumber());
-    kafkaConsumer.seek(topicPartition, offset);
   }
 
   @Override

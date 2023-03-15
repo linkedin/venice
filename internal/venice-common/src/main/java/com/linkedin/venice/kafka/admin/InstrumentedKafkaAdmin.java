@@ -3,11 +3,8 @@ package com.linkedin.venice.kafka.admin;
 import static com.linkedin.venice.stats.KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.*;
 
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.stats.KafkaAdminWrapperStats;
@@ -178,27 +175,6 @@ public class InstrumentedKafkaAdmin implements KafkaAdminWrapper {
   @Override
   public List<PubSubTopicPartitionInfo> partitionsFor(PubSubTopic topic) {
     return instrument(PARTITIONS_FOR, () -> kafkaAdmin.partitionsFor(topic));
-  }
-
-  @Override
-  public Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> poll(long timeoutMs) {
-    return instrument(POLL, () -> kafkaAdmin.poll(timeoutMs));
-  }
-
-  @Override
-  public void assign(Collection<PubSubTopicPartition> partitions) {
-    instrument(ASSIGN, () -> {
-      kafkaAdmin.assign(partitions);
-      return null;
-    });
-  }
-
-  @Override
-  public void seek(PubSubTopicPartition partition, long offset) {
-    instrument(SEEK, () -> {
-      kafkaAdmin.seek(partition, offset);
-      return null;
-    });
   }
 
   private <T> T instrument(

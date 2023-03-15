@@ -6,6 +6,7 @@ import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIM
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory.MetricsParameters;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import io.tehuti.metrics.MetricsRepository;
@@ -29,6 +30,7 @@ public class TopicManagerRepository implements Closeable {
   private final Function<String, TopicManager> topicManagerCreator;
   private final Map<String, TopicManager> topicManagersMap = new VeniceConcurrentHashMap<>();
   private final Lazy<TopicManager> localTopicManager;
+  private final PubSubTopicRepository pubSubTopicRepository;
 
   public TopicManagerRepository(
       String localKafkaBootstrapServers,
@@ -36,12 +38,14 @@ public class TopicManagerRepository implements Closeable {
       int topicDeletionStatusPollIntervalMs,
       long topicMinLogCompactionLagMs,
       KafkaClientFactory kafkaClientFactory,
-      MetricsRepository metricsRepository) {
+      MetricsRepository metricsRepository,
+      PubSubTopicRepository pubSubTopicRepository) {
     this.localKafkaBootstrapServers = localKafkaBootstrapServers;
     this.kafkaOperationTimeoutMs = kafkaOperationTimeoutMs;
     this.topicDeletionStatusPollIntervalMs = topicDeletionStatusPollIntervalMs;
     this.topicMinLogCompactionLagMs = topicMinLogCompactionLagMs;
     this.kafkaClientFactory = kafkaClientFactory;
+    this.pubSubTopicRepository = pubSubTopicRepository;
     this.topicManagerCreator = (kafkaServerAddress) -> {
       MetricsParameters metricsParameters = new MetricsParameters(
           this.kafkaClientFactory.getClass(),
@@ -55,7 +59,8 @@ public class TopicManagerRepository implements Closeable {
           this.topicDeletionStatusPollIntervalMs,
           this.topicMinLogCompactionLagMs,
           kafkaClientFactoryClone,
-          Optional.of(metricsRepository));
+          Optional.of(metricsRepository),
+          pubSubTopicRepository);
     };
     this.localTopicManager = Lazy.of(
         () -> topicManagersMap.computeIfAbsent(
@@ -66,14 +71,16 @@ public class TopicManagerRepository implements Closeable {
   public TopicManagerRepository(
       String localKafkaBootstrapServers,
       KafkaClientFactory kafkaClientFactory,
-      MetricsRepository metricsRepository) {
+      MetricsRepository metricsRepository,
+      PubSubTopicRepository pubSubTopicRepository) {
     this(
         localKafkaBootstrapServers,
         DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
         DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS,
         DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS,
         kafkaClientFactory,
-        metricsRepository);
+        metricsRepository,
+        pubSubTopicRepository);
   }
 
   /**
