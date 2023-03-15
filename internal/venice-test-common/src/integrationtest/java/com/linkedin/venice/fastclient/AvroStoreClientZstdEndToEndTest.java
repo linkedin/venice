@@ -23,10 +23,9 @@ public class AvroStoreClientZstdEndToEndTest extends AvroStoreClientEndToEndTest
   // useDaVinciClientBasedMetadata is always true as router based metadata store is considered legacy
   // The tests fails on zstd fetching side if it's set to false. Deprioritized debugging this as its legacy.
   @Override
-  @DataProvider(name = "FastClient-Four-Boolean-And-A-Number")
-  public Object[][] fourBooleanAndANumber() {
+  @DataProvider(name = "FastClient-Three-Boolean-And-A-Number")
+  public Object[][] threeBooleanAndANumber() {
     return DataProviderUtils.allPermutationGenerator(
-        DataProviderUtils.BOOLEAN_TRUE,
         DataProviderUtils.BOOLEAN,
         DataProviderUtils.BOOLEAN,
         DataProviderUtils.BOOLEAN,

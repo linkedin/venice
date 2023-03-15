@@ -123,7 +123,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
             .setRoutingPendingRequestCounterInstanceBlockThreshold(recordCnt + 1);
 
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
-        getGenericFastClient(clientConfigBuilder, new MetricsRepository(), true);
+        getGenericFastClient(clientConfigBuilder, new MetricsRepository());
 
     Set<String> keys = new HashSet<>();
     for (int i = 0; i < recordCnt; ++i) {
@@ -154,7 +154,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
             .setRoutingPendingRequestCounterInstanceBlockThreshold(recordCnt);
 
     AvroSpecificStoreClient<String, TestValueSchema> specificFastClient =
-        getSpecificFastClient(clientConfigBuilder, new MetricsRepository(), true, TestValueSchema.class);
+        getSpecificFastClient(clientConfigBuilder, new MetricsRepository(), TestValueSchema.class);
 
     Set<String> keys = new HashSet<>();
     for (int i = 0; i < recordCnt; ++i) {
@@ -181,7 +181,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
             .setMaxAllowedKeyCntInBatchGetReq(2);
 
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
-        getGenericFastClient(clientConfigBuilder, new MetricsRepository(), true);
+        getGenericFastClient(clientConfigBuilder, new MetricsRepository());
 
     Set<String> keys = new HashSet<>();
     for (int i = 0; i < recordCnt; ++i) {
@@ -228,7 +228,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
             .setMaxAllowedKeyCntInBatchGetReq(2);
 
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
-        getGenericFastClient(clientConfigBuilder, new MetricsRepository(), true);
+        getGenericFastClient(clientConfigBuilder, new MetricsRepository());
     Set<String> keys = new HashSet<>();
     for (int i = 0; i < recordCnt; ++i) {
       keys.add(keyPrefix + i);

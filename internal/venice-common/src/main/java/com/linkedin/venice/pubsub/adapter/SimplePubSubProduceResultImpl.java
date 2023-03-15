@@ -38,4 +38,10 @@ public class SimplePubSubProduceResultImpl implements PubSubProduceResult {
   public int getPartition() {
     return partition;
   }
+
+  @Override
+  public String toString() {
+    return "[Topic: " + topic + "," + "Partition: " + partition + "," + "Offset: " + offset + "," + "SerializedSize: "
+        + serializedSize + "]";
+  }
 }

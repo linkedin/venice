@@ -362,7 +362,7 @@ public abstract class StoreIngestionTaskTest {
   public void suiteSetUp() throws Exception {
     taskPollingService = Executors.newFixedThreadPool(1);
 
-    storeBufferService = new StoreBufferService(3, 10000, 1000);
+    storeBufferService = new StoreBufferService(3, 10000, 1000, isStoreWriterBufferAfterLeaderLogicEnabled());
     storeBufferService.start();
   }
 
@@ -906,6 +906,8 @@ public abstract class StoreIngestionTaskTest {
   }
 
   abstract KafkaConsumerService.ConsumerAssignmentStrategy getConsumerAssignmentStrategy();
+
+  abstract boolean isStoreWriterBufferAfterLeaderLogicEnabled();
 
   private void prepareAggKafkaConsumerServiceMock() {
     doAnswer(invocation -> {

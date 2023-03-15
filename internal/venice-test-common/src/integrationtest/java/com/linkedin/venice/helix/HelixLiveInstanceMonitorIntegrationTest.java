@@ -13,7 +13,7 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
-public class TestHelixLiveInstanceMonitor {
+public class HelixLiveInstanceMonitorIntegrationTest {
   private String zkAddress;
   private ZkClient zkClient;
   private String cluster = "test-metadata-cluster";
