@@ -1,29 +1,10 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.venice.ConfigKeys.CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS;
-import static com.linkedin.venice.ConfigKeys.CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY;
-import static com.linkedin.venice.ConfigKeys.CLIENT_USE_SYSTEM_STORE_REPOSITORY;
-import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
-import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
-import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS;
-import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_CLUSTER_NAME;
-import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_PARTITION_ID;
-import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_SCHEMA_ID;
-import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
-import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_VERSION_NUMBER;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertFalse;
-import static org.testng.Assert.assertNotNull;
-import static org.testng.Assert.assertNull;
-import static org.testng.Assert.assertTrue;
-import static org.testng.Assert.expectThrows;
-import static org.testng.Assert.fail;
+import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.system.store.MetaStoreWriter.*;
+import static org.testng.Assert.*;
 
 import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.davinci.client.DaVinciClient;
-import com.linkedin.davinci.client.DaVinciConfig;
-import com.linkedin.davinci.client.factory.CachingDaVinciClientFactory;
-import com.linkedin.davinci.repository.DaVinciClientMetaStoreBasedRepository;
 import com.linkedin.davinci.repository.NativeMetadataRepository;
 import com.linkedin.davinci.repository.ThinClientMetaStoreBasedRepository;
 import com.linkedin.venice.D2.D2ClientUtils;
@@ -45,7 +26,6 @@ import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
-import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlyStore;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -63,8 +43,6 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-import io.tehuti.metrics.MetricsRepository;
-import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -73,7 +51,6 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
 import org.apache.logging.log4j.LogManager;
@@ -380,118 +357,6 @@ public class MetaSystemStoreTest {
         // leaked
         // into other tests.
         nativeMetadataRepository.clear();
-      }
-    }
-  }
-
-  @Test(timeOut = 120 * Time.MS_PER_SECOND)
-  public void testDaVinciClientMetaStoreBasedRepository() throws InterruptedException {
-    String regularVeniceStoreName = Utils.getUniqueString("venice_store");
-    createStoreAndMaterializeMetaSystemStore(regularVeniceStoreName);
-    // Perform another empty push to the meta system store to verify StoreStateReader and StoreState endpoint (system
-    // store discovery).
-    String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(regularVeniceStoreName);
-    VersionCreationResponse metaSystemStoreNewVersionResponse =
-        controllerClient.emptyPush(metaSystemStoreName, "test_meta_system_store_push2", 10000);
-    TestUtils.waitForNonDeterministicPushCompletion(
-        Version.composeKafkaTopic(metaSystemStoreName, metaSystemStoreNewVersionResponse.getVersion()),
-        controllerClient,
-        30,
-        TimeUnit.SECONDS);
-    D2Client d2Client = null;
-    NativeMetadataRepository nativeMetadataRepository = null;
-    try {
-      d2Client = D2TestUtils.getAndStartD2Client(venice.getZk().getAddress());
-      ClientConfig<StoreMetaValue> clientConfig = getClientConfig(regularVeniceStoreName, d2Client);
-      // Not providing a CLIENT_META_SYSTEM_STORE_VERSION_MAP, should use the default value of 1 for system store
-      // current version.
-      VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
-          .put(CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY, true)
-          .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
-          .build();
-      nativeMetadataRepository = NativeMetadataRepository.getInstance(clientConfig, backendConfig);
-      // DaVinciClientMetaStoreBasedRepository implementation should be used since
-      // CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY is set to true.
-      Assert.assertTrue(nativeMetadataRepository instanceof DaVinciClientMetaStoreBasedRepository);
-      verifyRepository(nativeMetadataRepository, regularVeniceStoreName);
-    } finally {
-      if (d2Client != null) {
-        D2ClientUtils.shutdownClient(d2Client);
-      }
-      if (nativeMetadataRepository != null) {
-        nativeMetadataRepository.clear();
-      }
-    }
-  }
-
-  @Test(timeOut = 360 * Time.MS_PER_SECOND)
-  public void testDaVinciClientMetaStoreBasedRepositoryAutoDetectVersionChange() throws Exception {
-    String regularVeniceStoreName = Utils.getUniqueString("venice_store");
-    String metaSystemStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(regularVeniceStoreName);
-    String valueSchema = INT_KEY_SCHEMA;
-    createStoreAndMaterializeMetaSystemStore(regularVeniceStoreName, valueSchema);
-    final int value = 10;
-    TestUtils.createVersionWithBatchData(
-        controllerClient,
-        regularVeniceStoreName,
-        INT_KEY_SCHEMA,
-        valueSchema,
-        IntStream.range(0, 5).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, value)));
-    // Not providing a CLIENT_META_SYSTEM_STORE_VERSION_MAP, should use the default value of 1 for system store current
-    // version.
-    VeniceProperties backendConfig = new PropertyBuilder().put(CLIENT_USE_SYSTEM_STORE_REPOSITORY, true)
-        .put(CLIENT_USE_DA_VINCI_BASED_SYSTEM_STORE_REPOSITORY, true)
-        .put(CLIENT_SYSTEM_STORE_REPOSITORY_REFRESH_INTERVAL_SECONDS, 1)
-        .put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
-        .put(DATA_BASE_PATH, Utils.getTempDataDirectory().getAbsolutePath())
-        .build();
-    DaVinciConfig daVinciConfig = new DaVinciConfig();
-    D2Client d2Client = D2TestUtils.getAndStartD2Client(venice.getZk().getAddress());
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
-        d2Client,
-        VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
-        new MetricsRepository(),
-        backendConfig)) {
-      DaVinciClient<Integer, Object> daVinciClient =
-          factory.getAndStartGenericAvroClient(regularVeniceStoreName, daVinciConfig);
-      daVinciClient.subscribeAll().get();
-      // Cannot verify the feature using test initialized NativeMetadataRepository because the DaVinciBackend that's
-      // bootstrapping the meta system store(s) is using a different NativeMetadataRepository.
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        for (int k = 0; k < 5; k++) {
-          Object v = daVinciClient.get(k).get();
-          assertNotNull(v);
-          assertEquals(v, value);
-        }
-      });
-      // Perform a new empty pushes to the meta system store.
-      VersionCreationResponse metaSystemStoreNewVersionResponse =
-          controllerClient.emptyPush(metaSystemStoreName, "test_meta_system_store_push2", 10000);
-      TestUtils.waitForNonDeterministicPushCompletion(
-          Version.composeKafkaTopic(metaSystemStoreName, metaSystemStoreNewVersionResponse.getVersion()),
-          controllerClient,
-          30,
-          TimeUnit.SECONDS);
-      // Remove the older version.
-      assertFalse(controllerClient.deleteOldVersion(metaSystemStoreName, 1).isError());
-      // A new version push should still be detected and ingested by the DaVinci client
-      final int newValue = 100;
-      TestUtils.createVersionWithBatchData(
-          controllerClient,
-          regularVeniceStoreName,
-          INT_KEY_SCHEMA,
-          valueSchema,
-          IntStream.range(0, 5).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, newValue)));
-      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        for (int k = 0; k < 5; k++) {
-          Object v = daVinciClient.get(k).get();
-          assertNotNull(v);
-          assertEquals(v, newValue);
-        }
-      });
-    } finally {
-      if (d2Client != null) {
-        D2ClientUtils.shutdownClient(d2Client);
       }
     }
   }
