@@ -629,10 +629,9 @@ public class AdminTool {
   private static void estimateDataRecoveryTime(CommandLine cmd) {
     String stores = getRequiredArgument(cmd, Arg.STORES);
     String cluster = getRequiredArgument(cmd, Arg.CLUSTER);
-    // String url = getRequiredArgument(cmd, Arg.URL);
 
     DataRecoveryClient dataRecoveryClient = new DataRecoveryClient();
-    DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(stores);
+    DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(stores, true);
     Integer total = dataRecoveryClient.estimateRecoveryTime(params, cluster, controllerClient);
     printObject("total recovery time: " + (total / 360) + ":" + ((total / 60) % 60) + ":" + (total % 10));
   }
