@@ -1,5 +1,10 @@
 package com.linkedin.venice.datarecovery;
 
+import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.security.SSLFactory;
+import java.util.Optional;
+
+
 /**
  * EstimateRecoveryTimeCommand contains the details of a request for estimating the recovery time of a store.
  * We expect the command to comply with the following contract:
@@ -12,16 +17,53 @@ package com.linkedin.venice.datarecovery;
  */
 
 public class EstimateDataRecoveryTimeCommand {
-  public static class Params {
-    private String clusterName;
-    private String parentUrl;
+  private String storeName;
+  private Params params;
 
-    public String getClusterName() {
-      return clusterName;
+  public Params getParams() {
+    return params;
+  }
+
+  public void setParams(Params params) {
+    this.params = params;
+  }
+
+  public String getStoreName() {
+    return storeName;
+  }
+
+  public void setStoreName(String storeName) {
+    this.storeName = storeName;
+  }
+
+  public static class Params {
+    private String targetRegion;
+    private ControllerClient pCtrlCliWithoutCluster;
+    private String parentUrl;
+    private Optional<SSLFactory> sslFactory;
+
+    public String getTargetRegion() {
+      return targetRegion;
     }
 
-    public void setClusterName(String clusterName) {
-      this.clusterName = clusterName;
+    public void setTargetRegion(String targetRegion) {
+      this.targetRegion = targetRegion;
+    }
+
+    public ControllerClient getPCtrlCliWithoutCluster() {
+      return pCtrlCliWithoutCluster;
+    }
+
+    public void setPCtrlCliWithoutCluster(ControllerClient pCtrlCliWithoutCluster) {
+      this.pCtrlCliWithoutCluster = pCtrlCliWithoutCluster;
+    }
+
+    public Optional<SSLFactory> getSslFactory() {
+      return sslFactory;
+    }
+
+    public void setSslFactory(Optional<SSLFactory> sslFactory) {
+      this.sslFactory = sslFactory;
     }
 
     public String getParentUrl() {

@@ -1,6 +1,5 @@
 package com.linkedin.venice.datarecovery;
 
-import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.utils.Utils;
 import java.util.Scanner;
 import java.util.Set;
@@ -16,7 +15,7 @@ import org.apache.logging.log4j.Logger;
 public class DataRecoveryClient {
   private static final Logger LOGGER = LogManager.getLogger(DataRecoveryClient.class);
   private final DataRecoveryExecutor executor;
-  private final PlanningExecutor _planningExecutor;
+  private final Estimator _estimator;
 
   public DataRecoveryClient() {
     this(new DataRecoveryExecutor());
@@ -24,15 +23,15 @@ public class DataRecoveryClient {
 
   public DataRecoveryClient(DataRecoveryExecutor module) {
     this.executor = module;
-    this._planningExecutor = new PlanningExecutor();
+    this._estimator = new Estimator();
   }
 
   public DataRecoveryExecutor getExecutor() {
     return executor;
   }
 
-  public PlanningExecutor getPlanningExecutor() {
-    return _planningExecutor;
+  public Estimator getEstimator() {
+    return _estimator;
   }
 
   public void execute(DataRecoveryParams drParams, StoreRepushCommand.Params cmdParams) {
@@ -49,19 +48,16 @@ public class DataRecoveryClient {
     getExecutor().shutdownAndAwaitTermination();
   }
 
-  public Integer estimateRecoveryTime(
-      DataRecoveryParams drParams,
-      String clusterName,
-      ControllerClient controllerClient) {
+  public Integer estimateRecoveryTime(DataRecoveryParams drParams, EstimateDataRecoveryTimeCommand.Params cmdParams) {
     Set<String> storeNames = drParams.getRecoveryStores();
     if (storeNames == null || storeNames.isEmpty()) {
       LOGGER.warn("store list is empty, exit.");
       return -1;
     }
 
-    getPlanningExecutor().perform(clusterName, storeNames, controllerClient);
+    getEstimator().perform(storeNames, cmdParams);
     Integer totalRecoveryTime = 0;
-    for (PlanningTask t: getPlanningExecutor().getTasks()) {
+    for (PlanningTask t: getEstimator().getTasks()) {
       totalRecoveryTime += t.getEstimatedTimeResult();
     }
     return totalRecoveryTime;

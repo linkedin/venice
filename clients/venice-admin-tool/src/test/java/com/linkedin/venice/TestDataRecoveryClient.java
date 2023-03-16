@@ -1,13 +1,7 @@
 package com.linkedin.venice;
 
 import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.anyBoolean;
-import static org.mockito.Mockito.anyString;
-import static org.mockito.Mockito.doCallRealMethod;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.*;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreHealthAuditResponse;
@@ -15,7 +9,7 @@ import com.linkedin.venice.datarecovery.DataRecoveryClient;
 import com.linkedin.venice.datarecovery.DataRecoveryExecutor;
 import com.linkedin.venice.datarecovery.DataRecoveryTask;
 import com.linkedin.venice.datarecovery.EstimateDataRecoveryTimeCommand;
-import com.linkedin.venice.datarecovery.PlanningExecutor;
+import com.linkedin.venice.datarecovery.Estimator;
 import com.linkedin.venice.datarecovery.PlanningTask;
 import com.linkedin.venice.datarecovery.StoreRepushCommand;
 import com.linkedin.venice.meta.RegionPushDetails;
@@ -31,7 +25,7 @@ import org.testng.annotations.Test;
 
 public class TestDataRecoveryClient {
   private DataRecoveryExecutor executor;
-  private PlanningExecutor planningExecutor;
+  private Estimator _estimator;
   private ControllerClient controllerClient;
 
   @Test
@@ -49,9 +43,9 @@ public class TestDataRecoveryClient {
   }
 
   private void verifyEstimationResults() {
-    Integer expectedAverage = 14400;
+    Integer expectedAverage = 7200;
     Integer result = 0;
-    for (PlanningTask t: planningExecutor.getTasks()) {
+    for (PlanningTask t: _estimator.getTasks()) {
       result += t.getEstimatedTimeResult();
     }
     Assert.assertEquals(result, expectedAverage);
@@ -80,16 +74,20 @@ public class TestDataRecoveryClient {
   }
 
   private void estimateRecovery() {
-    EstimateDataRecoveryTimeCommand.Params cmdParams = new EstimateDataRecoveryTimeCommand.Params();
-    planningExecutor = spy(PlanningExecutor.class);
+    _estimator = spy(Estimator.class);
     controllerClient = mock(ControllerClient.class);
 
     Set<String> storeNames = new HashSet<>(Arrays.asList("store1", "store2"));
+    EstimateDataRecoveryTimeCommand.Params cmdParams = new EstimateDataRecoveryTimeCommand.Params();
+    cmdParams.setTargetRegion("region1");
+    cmdParams.setParentUrl("https://localhost:7036");
+    cmdParams.setPCtrlCliWithoutCluster(controllerClient);
     List<PlanningTask> tasks = buildPlanningTasks(storeNames, cmdParams);
-    doReturn(tasks).when(planningExecutor).buildTasks(anyString(), any(), eq(controllerClient));
+
+    doReturn(tasks).when(_estimator).buildTasks(any(), any());
     DataRecoveryClient dataRecoveryClient = mock(DataRecoveryClient.class);
-    doReturn(planningExecutor).when(dataRecoveryClient).getPlanningExecutor();
-    doCallRealMethod().when(dataRecoveryClient).estimateRecoveryTime(any(), anyString(), any());
+    doReturn(_estimator).when(dataRecoveryClient).getEstimator();
+    doCallRealMethod().when(dataRecoveryClient).estimateRecoveryTime(any(), any());
 
     StoreHealthAuditResponse mockResponse = new StoreHealthAuditResponse();
 
@@ -110,10 +108,8 @@ public class TestDataRecoveryClient {
     doReturn(mockResponse).when(controllerClient).listStorePushInfo(anyString(), anyBoolean());
     doReturn("testcluster").when(controllerClient).getClusterName();
 
-    dataRecoveryClient.estimateRecoveryTime(
-        new DataRecoveryClient.DataRecoveryParams("store1,store2", true),
-        controllerClient.getClusterName(),
-        controllerClient);
+    dataRecoveryClient
+        .estimateRecoveryTime(new DataRecoveryClient.DataRecoveryParams("store1,store2", true), cmdParams);
   }
 
   private void executeRecovery(boolean isSuccess) {
@@ -167,8 +163,8 @@ public class TestDataRecoveryClient {
   private List<PlanningTask> buildPlanningTasks(Set<String> storeNames, EstimateDataRecoveryTimeCommand.Params params) {
     List<PlanningTask> tasks = new ArrayList<>();
     for (String name: storeNames) {
-      PlanningTask.TaskParams taskParams = new PlanningTask.TaskParams(params.getClusterName(), name);
-      tasks.add(new PlanningTask(taskParams, controllerClient));
+      PlanningTask.TaskParams taskParams = new PlanningTask.TaskParams(name, params);
+      tasks.add(new PlanningTask(taskParams));
     }
     return tasks;
   }

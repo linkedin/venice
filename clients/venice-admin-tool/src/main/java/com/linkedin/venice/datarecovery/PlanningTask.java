@@ -12,35 +12,36 @@ import java.util.Map;
  * A Task is wrapper class that designed to execute multiple commands in sequence.
  */
 public class PlanningTask implements Runnable {
-  private final TaskParams taskParams;
+  private final TaskParams _params;
   private Integer estimatedTimeResult = -2;
   private ControllerClient controllerClient;
 
-  public PlanningTask(TaskParams params, ControllerClient controllerClient) {
-    this.taskParams = params;
-    this.controllerClient = controllerClient;
+  public PlanningTask(TaskParams params) {
+    this._params = params;
+    this.controllerClient = params.getCmdParams().getPCtrlCliWithoutCluster();
   }
 
   @Override
   public void run() {
     estimatedTimeResult = 0;
+
     // get store's push + partition info
-    StoreHealthAuditResponse storeHealthInfo = controllerClient.listStorePushInfo(taskParams.getStoreName(), true);
+    StoreHealthAuditResponse storeHealthInfo = controllerClient.listStorePushInfo(_params.getStoreName(), true);
     Map<String, RegionPushDetails> pushDetails = storeHealthInfo.getRegionPushDetails();
-    int ret = 0;
 
-    // examine and record/avg push times
-    for (Map.Entry<String, RegionPushDetails> entry: pushDetails.entrySet()) {
-      Instant startTime = Instant.parse(entry.getValue().getPushStartTimestamp() + "Z");
-      Instant endTime = Instant.parse(entry.getValue().getPushEndTimestamp() + "Z");
-      ret += startTime.until(endTime, ChronoUnit.SECONDS);
+    if (pushDetails.containsKey(getParams().getCmdParams().getTargetRegion())) {
+      Instant startTime =
+          Instant.parse(pushDetails.get(getParams().getCmdParams().getTargetRegion()).getPushStartTimestamp() + "Z");
+      Instant endTime =
+          Instant.parse(pushDetails.get(getParams().getCmdParams().getTargetRegion()).getPushEndTimestamp() + "Z");
+      estimatedTimeResult = (int) startTime.until(endTime, ChronoUnit.SECONDS);
+    } else {
+      estimatedTimeResult = -1;
     }
-
-    estimatedTimeResult = ret;
   }
 
-  public TaskParams getTaskParams() {
-    return taskParams;
+  public TaskParams getParams() {
+    return _params;
   }
 
   public Integer getEstimatedTimeResult() {
@@ -54,19 +55,20 @@ public class PlanningTask implements Runnable {
   public static class TaskParams {
     // Store name.
     private final String storeName;
-    private String clusterName;
+    private final EstimateDataRecoveryTimeCommand.Params cmdParams;
 
-    public TaskParams(String clusterName, String storeName) {
+    public TaskParams(String storeName, EstimateDataRecoveryTimeCommand.Params cmdParams) {
       this.storeName = storeName;
-      this.clusterName = clusterName;
+      this.cmdParams = cmdParams;
     }
 
     public String getStoreName() {
       return storeName;
     }
 
-    public String getClusterName() {
-      return clusterName;
+    public EstimateDataRecoveryTimeCommand.Params getCmdParams() {
+      return cmdParams;
     }
+
   }
 }

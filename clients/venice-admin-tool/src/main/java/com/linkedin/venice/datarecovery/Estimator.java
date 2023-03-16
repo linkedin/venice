@@ -2,7 +2,6 @@ package com.linkedin.venice.datarecovery;
 
 import static java.lang.Thread.*;
 
-import com.linkedin.venice.controllerapi.ControllerClient;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -18,25 +17,25 @@ import org.apache.logging.log4j.Logger;
 /**
  * DataRecoveryExecutor is the engine to run tasks in data recovery.
  */
-public class PlanningExecutor {
-  private final Logger LOGGER = LogManager.getLogger(PlanningExecutor.class);
+public class Estimator {
+  private final Logger LOGGER = LogManager.getLogger(Estimator.class);
   private final static int DEFAULT_POOL_SIZE = 10;
   private final static int DEFAULT_POOL_TIMEOUT_IN_SECONDS = 30;
   private final int poolSize;
   private final ExecutorService pool;
   private List<PlanningTask> tasks;
 
-  public PlanningExecutor() {
+  public Estimator() {
     this(DEFAULT_POOL_SIZE);
   }
 
-  public PlanningExecutor(int poolSize) {
+  public Estimator(int poolSize) {
     this.poolSize = poolSize;
     this.pool = Executors.newFixedThreadPool(this.poolSize);
   }
 
-  public void perform(String clusterName, Set<String> storeNames, ControllerClient controllerClient) {
-    tasks = buildTasks(clusterName, storeNames, controllerClient);
+  public void perform(Set<String> storeNames, EstimateDataRecoveryTimeCommand.Params params) {
+    tasks = buildTasks(storeNames, params);
     List<CompletableFuture<Void>> taskFutures = tasks.stream()
         .map(dataRecoveryTask -> CompletableFuture.runAsync(dataRecoveryTask, pool))
         .collect(Collectors.toList());
@@ -58,11 +57,11 @@ public class PlanningExecutor {
     }
   }
 
-  public List<PlanningTask> buildTasks(String clusterName, Set<String> storeNames, ControllerClient controllerClient) {
+  public List<PlanningTask> buildTasks(Set<String> storeNames, EstimateDataRecoveryTimeCommand.Params params) {
     List<PlanningTask> tasks = new ArrayList<>();
     for (String storeName: storeNames) {
-      PlanningTask.TaskParams taskParams = new PlanningTask.TaskParams(clusterName, storeName);
-      tasks.add(new PlanningTask(taskParams, controllerClient));
+      PlanningTask.TaskParams taskParams = new PlanningTask.TaskParams(storeName, params);
+      tasks.add(new PlanningTask(taskParams));
     }
     return tasks;
   }
@@ -77,7 +76,7 @@ public class PlanningExecutor {
         storeStatus = "not started";
       else if (estimatedRecoveryTime > 0)
         storeStatus = "Estimated recovery time: " + estimatedRecoveryTime;
-      LOGGER.info("[store: {}, status: {}]", task.getTaskParams().getStoreName(), storeStatus);
+      LOGGER.info("[store: {}, status: {}]", task.getParams().getStoreName(), storeStatus);
     }
   }
 

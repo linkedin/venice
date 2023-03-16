@@ -58,6 +58,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
 import com.linkedin.venice.datarecovery.DataRecoveryClient;
+import com.linkedin.venice.datarecovery.EstimateDataRecoveryTimeCommand;
 import com.linkedin.venice.datarecovery.StoreRepushCommand;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
@@ -628,11 +629,23 @@ public class AdminTool {
 
   private static void estimateDataRecoveryTime(CommandLine cmd) {
     String stores = getRequiredArgument(cmd, Arg.STORES);
-    String cluster = getRequiredArgument(cmd, Arg.CLUSTER);
+    String destFabric = getRequiredArgument(cmd, Arg.DEST_FABRIC);
+    String parentUrl = getRequiredArgument(cmd, Arg.URL);
 
     DataRecoveryClient dataRecoveryClient = new DataRecoveryClient();
+
     DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(stores, true);
-    Integer total = dataRecoveryClient.estimateRecoveryTime(params, cluster, controllerClient);
+
+    EstimateDataRecoveryTimeCommand.Params cmdParams = new EstimateDataRecoveryTimeCommand.Params();
+    cmdParams.setTargetRegion(destFabric);
+    cmdParams.setParentUrl(parentUrl);
+    cmdParams.setSslFactory(sslFactory);
+    Integer total = 0;
+
+    try (ControllerClient cli = new ControllerClient("*", parentUrl, sslFactory)) {
+      cmdParams.setPCtrlCliWithoutCluster(cli);
+      total = dataRecoveryClient.estimateRecoveryTime(params, cmdParams);
+    }
     printObject("total recovery time: " + (total / 360) + ":" + ((total / 60) % 60) + ":" + (total % 10));
   }
 

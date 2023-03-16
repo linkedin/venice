@@ -441,7 +441,7 @@ public enum Command {
   ),
   ESTIMATE_DATA_RECOVERY_TIME(
       "estimate-data-recovery-time", "Estimates the time it would take to execute data recovery for a group of stores.",
-      new Arg[] { URL, STORES, CLUSTER }
+      new Arg[] { URL, STORES, DEST_FABRIC }
   );
 
   private final String commandName;
