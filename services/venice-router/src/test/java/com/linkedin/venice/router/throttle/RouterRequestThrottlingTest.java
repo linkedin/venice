@@ -114,7 +114,7 @@ public class RouterRequestThrottlingTest {
     doReturn(path).when(scatter).getPath();
     doReturn(0).when(scatter).getOfflineRequestCount();
     ScatterGatherRequest<Instance, RouterKey> part = mock(ScatterGatherRequest.class);
-    Instance instance = new Instance(Utils.getHelixNodeIdentifier(10000), "localhost", 10000);
+    Instance instance = new Instance(Utils.getHelixNodeIdentifier(Utils.getHostName(), 10000), "localhost", 10000);
     Set<String> partitionNames = new HashSet<>();
     partitionNames.add(storeName + "_v1-0");
     doReturn(Arrays.asList(instance)).when(part).getHosts();
@@ -217,7 +217,7 @@ public class RouterRequestThrottlingTest {
     Scatter<Instance, VenicePath, RouterKey> scatter = mock(Scatter.class);
     doReturn(path).when(scatter).getPath();
     doReturn(0).when(scatter).getOfflineRequestCount();
-    Instance instance = new Instance(Utils.getHelixNodeIdentifier(10000), "localhost", 10000);
+    Instance instance = new Instance(Utils.getHelixNodeIdentifier(Utils.getHostName(), 10000), "localhost", 10000);
     ScatterGatherRequest<Instance, RouterKey> part = mock(ScatterGatherRequest.class);
     doReturn(Arrays.asList(instance)).when(part).getHosts();
     SortedSet<RouterKey> keys = mock(SortedSet.class);

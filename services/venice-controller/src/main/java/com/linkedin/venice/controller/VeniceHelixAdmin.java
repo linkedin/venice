@@ -392,7 +392,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Validate.notNull(d2Client);
     this.multiClusterConfigs = multiClusterConfigs;
     VeniceControllerConfig commonConfig = multiClusterConfigs.getCommonConfig();
-    this.controllerName = Utils.getHelixNodeIdentifier(multiClusterConfigs.getAdminPort());
+    this.controllerName =
+        Utils.getHelixNodeIdentifier(multiClusterConfigs.getAdminHostname(), multiClusterConfigs.getAdminPort());
     this.controllerClusterName = multiClusterConfigs.getControllerClusterName();
     this.controllerClusterReplica = multiClusterConfigs.getControllerClusterReplica();
     this.kafkaBootstrapServers = multiClusterConfigs.getKafkaBootstrapServers();
@@ -483,7 +484,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       pushStatusStoreWriter = Optional.of(
           new PushStatusStoreWriter(
               veniceWriterFactory,
-              Utils.getHostName(),
+              controllerName,
               commonConfig.getProps().getInt(PUSH_STATUS_STORE_DERIVED_SCHEMA_ID, 1)));
       pushStatusStoreDeleter = Optional.of(new PushStatusStoreRecordDeleter(veniceWriterFactory));
     } else {

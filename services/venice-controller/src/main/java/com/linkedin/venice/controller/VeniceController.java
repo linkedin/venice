@@ -148,6 +148,7 @@ public class VeniceController {
         icProvider);
 
     adminServer = new AdminSparkServer(
+        // no need to pass the hostname, we are binding to all the addresses
         multiClusterConfigs.getAdminPort(),
         controllerService.getVeniceHelixAdmin(),
         metricsRepository,

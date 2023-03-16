@@ -26,8 +26,8 @@ public class StoreReadThrottlerTest {
     int versionNumber = 1;
     double perStorageNodeReadQuotaBuffer = 1.0;
 
-    Instance instance1 = new Instance(Utils.getHelixNodeIdentifier(10001), "localhost", 10001);
-    Instance instance2 = new Instance(Utils.getHelixNodeIdentifier(10002), "localhost", 10002);
+    Instance instance1 = new Instance(Utils.getHelixNodeIdentifier(Utils.getHostName(), 10001), "localhost", 10001);
+    Instance instance2 = new Instance(Utils.getHelixNodeIdentifier(Utils.getHostName(), 10002), "localhost", 10002);
     PartitionAssignment assignment =
         new PartitionAssignment(Version.composeKafkaTopic(storeName, versionNumber), partitionCount);
 
@@ -55,11 +55,11 @@ public class StoreReadThrottlerTest {
     // Instance1 holds 1 of 2 online replicas for partition 0 and 1 of 1 online replicas for partition 1. So it should
     // be assigned the quota value which equals to quota/partitionCount * 1.5
     Assert.assertEquals(
-        throttler.getQuotaForStorageNode(Utils.getHelixNodeIdentifier(10001)),
+        throttler.getQuotaForStorageNode(Utils.getHelixNodeIdentifier(Utils.getHostName(), 10001)),
         (long) (quota / (double) partitionCount * 1.5 * (1 + perStorageNodeReadQuotaBuffer)));
     // Instance 2 hold 1 of 2 online prelicas for partition 0 and 0 of 1 online replicas for partition 1.
     Assert.assertEquals(
-        throttler.getQuotaForStorageNode(Utils.getHelixNodeIdentifier(10002)),
+        throttler.getQuotaForStorageNode(Utils.getHelixNodeIdentifier(Utils.getHostName(), 10002)),
         (long) (quota / (double) partitionCount * 0.5 * (1 + perStorageNodeReadQuotaBuffer)));
 
     // Bootstrap replica in partition2 and instance2 become online.
@@ -69,11 +69,11 @@ public class StoreReadThrottlerTest {
     throttler.updateStorageNodesThrottlers(assignment);
     // Instance1 holds 1 of 2 online replicas for partition 0 and 1 of 2 online replicas for partition 1.
     Assert.assertEquals(
-        throttler.getQuotaForStorageNode(Utils.getHelixNodeIdentifier(10001)),
+        throttler.getQuotaForStorageNode(Utils.getHelixNodeIdentifier(Utils.getHostName(), 10001)),
         (long) (quota / (double) partitionCount * (1 + perStorageNodeReadQuotaBuffer)));
     // Instance 2 hold 1 of 2 online replicas for partition 0 and 1 of 2 online replicas for partition 1.
     Assert.assertEquals(
-        throttler.getQuotaForStorageNode(Utils.getHelixNodeIdentifier(10002)),
+        throttler.getQuotaForStorageNode(Utils.getHelixNodeIdentifier(Utils.getHostName(), 10002)),
         (long) (quota / (double) partitionCount * (1 + perStorageNodeReadQuotaBuffer)));
 
     // All replicas in Partition 1 failed.
@@ -82,11 +82,11 @@ public class StoreReadThrottlerTest {
     throttler.updateStorageNodesThrottlers(assignment);
     // Instance1 holds 1 of 2 online replicas for partition 0 and 0 of 0 online replicas for partition 1.
     Assert.assertEquals(
-        throttler.getQuotaForStorageNode(Utils.getHelixNodeIdentifier(10001)),
+        throttler.getQuotaForStorageNode(Utils.getHelixNodeIdentifier(Utils.getHostName(), 10001)),
         (long) (quota / (double) partitionCount / 2 * (1 + perStorageNodeReadQuotaBuffer)));
     // Instance 2 hold 1 of 2 online prelicas for partition 0 and 0 of 0 online replicas for partition 1.
     Assert.assertEquals(
-        throttler.getQuotaForStorageNode(Utils.getHelixNodeIdentifier(10002)),
+        throttler.getQuotaForStorageNode(Utils.getHelixNodeIdentifier(Utils.getHostName(), 10002)),
         (long) (quota / (double) partitionCount / 2 * (1 + perStorageNodeReadQuotaBuffer)));
   }
 
@@ -100,7 +100,7 @@ public class StoreReadThrottlerTest {
     Instance[] instances = new Instance[instanceCount];
     for (int i = 0; i < instanceCount; i++) {
       int port = 10000 + i;
-      instances[i] = new Instance(Utils.getHelixNodeIdentifier(port), "localhost", port);
+      instances[i] = new Instance(Utils.getHelixNodeIdentifier(Utils.getHostName(), port), "localhost", port);
     }
     PartitionAssignment assignment =
         new PartitionAssignment(Version.composeKafkaTopic(storeName, versionNumber), partitionCount);
@@ -118,24 +118,24 @@ public class StoreReadThrottlerTest {
         0.0,
         1000,
         1000);
-    throttler.mayThrottleRead(400, Optional.of(Utils.getHelixNodeIdentifier(10000)));
+    throttler.mayThrottleRead(400, Optional.of(Utils.getHelixNodeIdentifier(Utils.getHostName(), 10000)));
     try {
-      throttler.mayThrottleRead(100, Optional.of(Utils.getHelixNodeIdentifier(10000)));
+      throttler.mayThrottleRead(100, Optional.of(Utils.getHelixNodeIdentifier(Utils.getHostName(), 10000)));
       Assert.fail("Usage(500) exceed the quota(400) of Instance localhost_10000 ");
     } catch (QuotaExceededException e) {
       // expected
     }
 
     try {
-      throttler.mayThrottleRead(400, Optional.of(Utils.getHelixNodeIdentifier(10001)));
-      throttler.mayThrottleRead(100, Optional.of(Utils.getHelixNodeIdentifier(10002)));
+      throttler.mayThrottleRead(400, Optional.of(Utils.getHelixNodeIdentifier(Utils.getHostName(), 10001)));
+      throttler.mayThrottleRead(100, Optional.of(Utils.getHelixNodeIdentifier(Utils.getHostName(), 10002)));
     } catch (QuotaExceededException e) {
       Assert.fail("Usage has not exceeded the quota, should accept requests.", e);
     }
 
     throttler.clearStorageNodesThrottlers();
     try {
-      throttler.mayThrottleRead(100, Optional.of(Utils.getHelixNodeIdentifier(10000)));
+      throttler.mayThrottleRead(100, Optional.of(Utils.getHelixNodeIdentifier(Utils.getHostName(), 10000)));
     } catch (QuotaExceededException e) {
       Assert.fail("Throttler for storage node has been cleared, this store still have quota to accept this request.");
     }
