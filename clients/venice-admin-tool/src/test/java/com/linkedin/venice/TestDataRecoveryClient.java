@@ -1,6 +1,8 @@
 package com.linkedin.venice;
 
 import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyBoolean;
+import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -75,7 +77,7 @@ public class TestDataRecoveryClient {
     List<PlanningTask> tasks = buildPlanningTasks(storeNames, cmdParams);
     doReturn(tasks).when(planningExecutor).buildTasks(any(), any(), any());
     DataRecoveryClient dataRecoveryClient = mock(DataRecoveryClient.class);
-    doReturn(executor).when(dataRecoveryClient).getPlanningExecutor();
+    doReturn(planningExecutor).when(dataRecoveryClient).getPlanningExecutor();
     doCallRealMethod().when(dataRecoveryClient).estimateRecoveryTime(any(), any(), any());
 
     StoreHealthAuditResponse mockResponse = new StoreHealthAuditResponse();
@@ -89,7 +91,8 @@ public class TestDataRecoveryClient {
       }
     });
 
-    doReturn(mockResponse).when(controllerClient).listStorePushInfo(any(), any());
+    doReturn(mockResponse).when(controllerClient).listStorePushInfo(anyString(), anyBoolean());
+    doReturn("testcluster").when(controllerClient).getClusterName();
 
     dataRecoveryClient.estimateRecoveryTime(
         new DataRecoveryClient.DataRecoveryParams("store1"),
