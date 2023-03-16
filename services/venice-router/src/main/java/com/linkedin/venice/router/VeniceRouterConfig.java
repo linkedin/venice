@@ -72,6 +72,8 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_PENDING_CONNECTION_RESUME_TH
 import static com.linkedin.venice.ConfigKeys.ROUTER_PER_NODE_CLIENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_PER_NODE_CLIENT_THREAD_COUNT;
 import static com.linkedin.venice.ConfigKeys.ROUTER_PER_STORAGE_NODE_READ_QUOTA_BUFFER;
+import static com.linkedin.venice.ConfigKeys.ROUTER_PER_STORAGE_NODE_THROTTLER_ENABLED;
+import static com.linkedin.venice.ConfigKeys.ROUTER_PER_STORE_ROUTER_QUOTA_BUFFER;
 import static com.linkedin.venice.ConfigKeys.ROUTER_QUOTA_CHECK_WINDOW;
 import static com.linkedin.venice.ConfigKeys.ROUTER_READ_QUOTA_THROTTLING_LEASE_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_SINGLEGET_TARDY_LATENCY_MS;
@@ -201,6 +203,8 @@ public class VeniceRouterConfig {
   private boolean metaStoreShadowReadEnabled;
   private boolean unregisterMetricForDeletedStoreEnabled;
   private int routerIOWorkerCount;
+  private boolean perRouterStorageNodeThrottlerEnabled;
+  private double perStoreRouterQuotaBuffer;
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
@@ -375,6 +379,12 @@ public class VeniceRouterConfig {
      * should consider to use some number, which is proportional to the available cores.
      */
     routerIOWorkerCount = props.getInt(ROUTER_IO_WORKER_COUNT, 24);
+    perRouterStorageNodeThrottlerEnabled = props.getBoolean(ROUTER_PER_STORAGE_NODE_THROTTLER_ENABLED, true);
+    perStoreRouterQuotaBuffer = props.getDouble(ROUTER_PER_STORE_ROUTER_QUOTA_BUFFER, 1.5);
+  }
+
+  public double getPerStoreRouterQuotaBuffer() {
+    return perStoreRouterQuotaBuffer;
   }
 
   public String getClusterName() {
@@ -804,5 +814,9 @@ public class VeniceRouterConfig {
 
   public int getRouterIOWorkerCount() {
     return routerIOWorkerCount;
+  }
+
+  public boolean isPerRouterStorageNodeThrottlerEnabled() {
+    return perRouterStorageNodeThrottlerEnabled;
   }
 }

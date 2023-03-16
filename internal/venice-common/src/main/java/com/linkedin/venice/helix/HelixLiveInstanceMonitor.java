@@ -49,15 +49,18 @@ public class HelixLiveInstanceMonitor implements IZkChildListener, VeniceResourc
     return HelixUtils.getHelixClusterZkPath(clusterName) + LIVE_INSTANCE_PATH;
   }
 
+  /**
+   * Must be run during service start else it wont subscribe to state changes.
+   */
   @Override
   public void refresh() {
     // subscribe is thread safe method.
-    zkClient.subscribeStateChanges(zkStateListener);
-    zkClient.subscribeChildChanges(getLiveInstanceRootPath(), this);
     /**
      * Here is using {@link ZkClient#getChildren(String)}, which should either success or fail.
      * It should not be possible to receive partial data here.
      */
+    zkClient.subscribeStateChanges(zkStateListener);
+    zkClient.subscribeChildChanges(getLiveInstanceRootPath(), this);
     List<String> instances = zkClient.getChildren(getLiveInstanceRootPath());
     liveInstanceSet = convertToInstance(instances);
     LOGGER.info("Got live instances: " + liveInstanceSet);

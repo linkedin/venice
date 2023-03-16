@@ -32,6 +32,10 @@ import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUs
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.client.consumer.ChangeEvent;
+import com.linkedin.venice.client.consumer.ChangelogClientConfig;
+import com.linkedin.venice.client.consumer.VeniceChangelogConsumer;
+import com.linkedin.venice.client.consumer.VeniceChangelogConsumerClientFactory;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -39,33 +43,42 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
+import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
+import com.linkedin.venice.serialization.KafkaKeySerializer;
+import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.MockCircularTime;
+import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.view.TestView;
+import com.linkedin.venice.views.ChangeCaptureView;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -76,10 +89,13 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
+import org.apache.kafka.clients.CommonClientConfigs;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.samza.config.MapConfig;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -162,6 +178,9 @@ public class TestActiveActiveIngestion {
         "testView",
         "{\"viewClassName\" : \"" + TestView.class.getCanonicalName() + "\", \"viewParameters\" : {}}");
 
+    viewConfig.put(
+        "changeCaptureView",
+        "{\"viewClassName\" : \"" + ChangeCaptureView.class.getCanonicalName() + "\", \"viewParameters\" : {}}");
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
         .setHybridRewindSeconds(500)
         .setStoreViews(viewConfig)
@@ -172,12 +191,38 @@ public class TestActiveActiveIngestion {
     MetricsRepository metricsRepository = new MetricsRepository();
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
     TestWriteUtils.runPushJob("Run push job", props);
-
     Map<String, String> samzaConfig = getSamzaConfig(storeName);
     VeniceSystemFactory factory = new VeniceSystemFactory();
     // Use a unique key for DELETE with RMD validation
     int deleteWithRmdKeyIndex = 1000;
 
+    TestMockTime testMockTime = new TestMockTime();
+    ZkServerWrapper localZkServer = multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper();
+    KafkaBrokerWrapper localKafka = ServiceFactory.getKafkaBroker(localZkServer, Optional.of(testMockTime));
+    Properties consumerProperties = new Properties();
+    String localKafkaUrl = localKafka.getAddress();
+    consumerProperties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, localKafkaUrl);
+    consumerProperties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class);
+    consumerProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, KafkaValueSerializer.class);
+    consumerProperties.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
+    ChangelogClientConfig globalChangelogClientConfig =
+        new ChangelogClientConfig().setViewClassName(ChangeCaptureView.CHANGE_CAPTURE_VIEW_WRITER_CLASS_NAME)
+            .setConsumerProperties(consumerProperties)
+            .setControllerD2ServiceName(D2_SERVICE_NAME)
+            .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+            .setLocalD2ZkHosts(localZkServer.getAddress())
+            .setControllerRequestRetryCount(3);
+    VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
+        new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig);
+
+    ChangelogClientConfig globalAfterImageClientConfig =
+        ChangelogClientConfig.cloneConfig(globalChangelogClientConfig).setViewClassName("");
+    VeniceChangelogConsumerClientFactory veniceAfterImageConsumerClientFactory =
+        new VeniceChangelogConsumerClientFactory(globalAfterImageClientConfig);
+
+    VeniceChangelogConsumer<Utf8, Utf8> veniceChangelogConsumer =
+        veniceChangelogConsumerClientFactory.getChangelogConsumer(storeName);
+    veniceChangelogConsumer.subscribeAll().get();
     try (
         VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
       veniceProducer.start();
@@ -195,6 +240,31 @@ public class TestActiveActiveIngestion {
         Assert.assertNull(client.get(Integer.toString(deleteWithRmdKeyIndex)).get());
       });
     }
+
+    // Validate change events for version 1.
+    Map<String, ChangeEvent<Utf8>> polledChangeEvents = new HashMap<>();
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      Assert.assertTrue(polledChangeEvents.size() == 21);
+      for (int i = 0; i < 10; i++) {
+        String key = Integer.toString(i);
+        ChangeEvent<Utf8> changeEvent = polledChangeEvents.get(key);
+        Assert.assertNotNull(changeEvent);
+        if (i == 0) {
+          Assert.assertNull(changeEvent.getPreviousValue());
+        } else {
+          Assert.assertEquals(changeEvent.getPreviousValue().toString(), "test_name_" + i);
+        }
+        Assert.assertEquals(changeEvent.getCurrentValue().toString(), "stream_" + i);
+      }
+      for (int i = 10; i < 20; i++) {
+        String key = Integer.toString(i);
+        ChangeEvent<Utf8> changeEvent = polledChangeEvents.get(key);
+        Assert.assertNotNull(changeEvent);
+        Assert.assertNull(changeEvent.getPreviousValue()); // schema id is negative, so we did not parse.
+        Assert.assertNull(changeEvent.getCurrentValue());
+      }
+    });
 
     // run repush
     props.setProperty(SOURCE_KAFKA, "true");
@@ -260,15 +330,30 @@ public class TestActiveActiveIngestion {
         Assert.assertNull(client.get(Integer.toString(deleteWithRmdKeyIndex)).get());
       });
     }
+    VeniceChangelogConsumer<Utf8, Utf8> veniceAfterImageConsumer =
+        veniceAfterImageConsumerClientFactory.getChangelogConsumer(storeName);
+    veniceAfterImageConsumer.subscribeAll().get();
+    // Validate changed events for version 2.
+    polledChangeEvents.clear();
+    Map<String, Utf8> polledAfterImageEvents = new HashMap<>();
+    // As records keys from VPJ start from 1, real-time produced records' key starts from 0, the message with key as 0
+    // is new message.
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      String deleteWithRmdKey = Integer.toString(deleteWithRmdKeyIndex);
+      String persistWithRmdKey = Integer.toString(deleteWithRmdKeyIndex + 1);
+      Assert.assertNull(polledChangeEvents.get(deleteWithRmdKey));
+      Assert.assertNotNull(polledChangeEvents.get(persistWithRmdKey));
+      Assert.assertEquals(
+          polledChangeEvents.get(persistWithRmdKey).getCurrentValue().toString(),
+          "stream_" + persistWithRmdKey);
+    });
 
     /**
      * Test Repush with TTL
      */
     // run empty push to clean up batch data
     parentControllerClient.sendEmptyPushAndWait(storeName, "Run empty push job", 1000, 30 * Time.MS_PER_SECOND);
-
-    // enable repush ttl
-    props.setProperty(REPUSH_TTL_ENABLE, "true");
 
     // set up mocked time for Samza records so some records can be stale intentionally.
     List<Long> mockTimestampInMs = new LinkedList<>();
@@ -287,6 +372,49 @@ public class TestActiveActiveIngestion {
       runSamzaStreamJob(veniceProducer, storeName, mockTime, 10, 10, 20);
     }
 
+    // Validate changed events for version 3.
+    polledChangeEvents.clear();
+    AtomicInteger totalPolledAfterImageMessages = new AtomicInteger();
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      // Filter previous 21 messages.
+      Assert.assertEquals(polledChangeEvents.size(), 20);
+      totalPolledAfterImageMessages
+          .addAndGet(pollAfterImageEventsFromChangeCaptureConsumer(polledAfterImageEvents, veniceAfterImageConsumer));
+      // keys (0-100), 1000, and 1001, the total would be 103.
+      Assert.assertEquals(polledAfterImageEvents.size(), 103);
+      // After image consumer consumed 3 different topics: v2, v2_cc and v3_cc.
+      // The total messages: 102 (v2 repush from v1, key: 0-100, 1000) + 1 (v2_cc, key: 1001) + 42 (v3_cc, key: 0-39,
+      // 1000, 1001) - 22 (filtered from v3_cc, key: 0-19, 1000 and 1001 as they were read already.)
+      Assert.assertEquals(totalPolledAfterImageMessages.get(), 123);
+      for (int i = 20; i < 40; i++) {
+        String key = Integer.toString(i);
+        ChangeEvent<Utf8> changeEvent = polledChangeEvents.get(key);
+        Assert.assertNotNull(changeEvent);
+        Assert.assertNull(changeEvent.getPreviousValue());
+        if (i >= 20 && i < 30) {
+          Assert.assertEquals(changeEvent.getCurrentValue().toString(), "stream_" + i);
+        } else {
+          Assert.assertNull(changeEvent.getCurrentValue());
+        }
+      }
+      for (int i = 0; i < 100; i++) {
+        String key = Integer.toString(i);
+        Utf8 afterImageValue = polledAfterImageEvents.get(key);
+        if (i < 10 || (i >= 20 && i < 30)) {
+          Assert.assertNotNull(afterImageValue);
+          Assert.assertEquals(afterImageValue.toString(), "stream_" + i);
+        } else if (i < 40) {
+          // Deleted
+          Assert.assertNull(afterImageValue);
+        } else {
+          Assert.assertEquals(afterImageValue.toString(), "test_name_" + i);
+        }
+      }
+    });
+
+    // enable repush ttl
+    props.setProperty(REPUSH_TTL_ENABLE, "true");
     TestWriteUtils.runPushJob("Run repush job with TTL", props);
     TestUtils.waitForNonDeterministicAssertion(
         5,
@@ -324,6 +452,13 @@ public class TestActiveActiveIngestion {
       }
     }
 
+    // Since nothing is produced, so changed events generated.
+    polledChangeEvents.clear();
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, true, () -> {
+      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      Assert.assertEquals(polledChangeEvents.size(), 0);
+    });
+
     // Verify version swap count matches with version count - 1 (since we don't transmit from version 0 to version 1)
     TestUtils.waitForNonDeterministicAssertion(
         5,
@@ -345,6 +480,32 @@ public class TestActiveActiveIngestion {
       Assert.assertFalse(storeTopicsResponse.isError());
       Assert.assertEquals(storeTopicsResponse.getTopics().size(), 0);
     });
+
+  }
+
+  private void pollChangeEventsFromChangeCaptureConsumer(
+      Map<String, ChangeEvent<Utf8>> polledChangeEvents,
+      VeniceChangelogConsumer veniceChangelogConsumer) {
+    Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, Long>> pubSubMessages = veniceChangelogConsumer.poll(100);
+    for (PubSubMessage<Utf8, ChangeEvent<Utf8>, Long> pubSubMessage: pubSubMessages) {
+      ChangeEvent<Utf8> changeEvent = pubSubMessage.getValue();
+      String key = pubSubMessage.getKey().toString();
+      polledChangeEvents.put(key, changeEvent);
+    }
+  }
+
+  private int pollAfterImageEventsFromChangeCaptureConsumer(
+      Map<String, Utf8> polledChangeEvents,
+      VeniceChangelogConsumer veniceChangelogConsumer) {
+    int polledMessagesNum = 0;
+    Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, Long>> pubSubMessages = veniceChangelogConsumer.poll(100);
+    for (PubSubMessage<Utf8, ChangeEvent<Utf8>, Long> pubSubMessage: pubSubMessages) {
+      Utf8 afterImageEvent = pubSubMessage.getValue().getCurrentValue();
+      String key = pubSubMessage.getKey().toString();
+      polledChangeEvents.put(key, afterImageEvent);
+      polledMessagesNum++;
+    }
+    return polledMessagesNum;
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)

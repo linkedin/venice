@@ -9,8 +9,6 @@ import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.fail;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
@@ -25,7 +23,6 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
-import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
@@ -48,7 +45,6 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -440,51 +436,5 @@ public class VeniceWriterTest {
         ByteBuffer.wrap(chunkedValueManifestSerializer.serialize(testTopic, chunkedValueManifest)));
     Assert.assertEquals(actualValue4.producerMetadata.logicalTimestamp, APP_DEFAULT_LOGICAL_TS);
 
-  }
-
-  @Test(timeOut = 30000)
-  public void testProducerCloses() {
-    String topicName = Utils.getUniqueString("topic-for-vw-thread-safety");
-    int partitionCount = 1;
-    topicManager.createTopic(topicName, partitionCount, 1, true);
-    Properties properties = new Properties();
-    properties.put(ApacheKafkaProducerConfig.KAFKA_BOOTSTRAP_SERVERS, kafka.getAddress());
-    VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter = new VeniceWriterFactory(properties).createVeniceWriter(
-        new VeniceWriterOptions.Builder(topicName).setUseKafkaKeySerializer(true)
-            .setPartitionCount(partitionCount)
-            .setPartitioner(new DefaultVenicePartitioner())
-            .build());
-    PubSubProducerAdapter producer = veniceWriter.getProducerAdapter();
-    ExecutorService executor = Executors.newSingleThreadExecutor();
-    CountDownLatch countDownLatch = new CountDownLatch(1);
-
-    try {
-      Future future = executor.submit(() -> {
-        countDownLatch.countDown();
-        // send to non-existent topic
-        producer.sendMessage("topic", null, new KafkaKey(MessageType.PUT, "key".getBytes()), null, null, null);
-        fail("Should be blocking send");
-      });
-
-      try {
-        countDownLatch.await();
-        // Still wait for some time to make sure blocking sendMessage is inside kafka before closing it.
-        Utils.sleep(50);
-        producer.close(5000, true);
-      } catch (Exception e) {
-        fail("Close should be able to close.", e);
-      }
-      try {
-        future.get();
-      } catch (ExecutionException exception) {
-        assertEquals(
-            exception.getCause().getMessage(),
-            "Got an error while trying to produce message into Kafka. Topic: 'topic', partition: null");
-      } catch (Exception e) {
-        fail(" Should not throw other types of exception", e);
-      }
-    } finally {
-      executor.shutdownNow();
-    }
   }
 }

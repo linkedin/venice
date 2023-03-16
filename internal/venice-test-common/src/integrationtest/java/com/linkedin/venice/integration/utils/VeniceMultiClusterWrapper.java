@@ -136,9 +136,11 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
               .forkServer(options.isForkServer())
               .kafkaClusterMap(options.getKafkaClusterMap());
 
+      Map<String, String> clusterToServerD2 = options.getClusterToServerD2();
       for (int i = 0; i < options.getNumberOfClusters(); i++) {
         // Create a wrapper for cluster without controller.
-        vccBuilder.clusterName(clusterNames[i]);
+        vccBuilder.clusterName(clusterNames[i])
+            .serverD2ServiceName(clusterToServerD2.getOrDefault(clusterNames[i], null));
         VeniceClusterWrapper clusterWrapper = ServiceFactory.getVeniceCluster(vccBuilder.build());
         controllerMap.values().forEach(clusterWrapper::addVeniceControllerWrapper);
         clusterWrapperMap.put(clusterWrapper.getClusterName(), clusterWrapper);

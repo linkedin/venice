@@ -284,7 +284,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
           readRequestThrottler.mayThrottleRead(
               storeName,
               keyCount * readRequestThrottler.getReadCapacity(),
-              Optional.of(veniceInstance.getNodeId()));
+              veniceInstance.getNodeId());
         } catch (QuotaExceededException e) {
           /**
            * Exception thrown here won't go through {@link VeniceResponseAggregator}, and DDS lib will return an error response

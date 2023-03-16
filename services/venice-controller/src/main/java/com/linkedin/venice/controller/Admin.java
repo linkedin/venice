@@ -376,7 +376,7 @@ public interface Admin extends AutoCloseable, Closeable {
 
   List<String> getStorageNodes(String clusterName);
 
-  Map<String, String> getStorageNodesStatus(String clusterName);
+  Map<String, String> getStorageNodesStatus(String clusterName, boolean enableReplica);
 
   void removeStorageNode(String clusterName, String instanceId);
 
@@ -868,4 +868,10 @@ public interface Admin extends AutoCloseable, Closeable {
   StoreGraveyard getStoreGraveyard();
 
   void removeStoreFromGraveyard(String clusterName, String storeName);
+
+  default void startInstanceMonitor(String clusterName) {
+  }
+
+  default void clearInstanceMonitor(String clusterName) {
+  }
 }

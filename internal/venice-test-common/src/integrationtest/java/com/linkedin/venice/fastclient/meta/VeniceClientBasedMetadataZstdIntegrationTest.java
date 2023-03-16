@@ -1,7 +1,6 @@
 package com.linkedin.venice.fastclient.meta;
 
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.*;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
@@ -14,7 +13,7 @@ import java.util.concurrent.TimeUnit;
 import org.testng.annotations.Test;
 
 
-public class DaVinciClientBasedMetadataZstdTest extends DaVinciClientBasedMetadataTest {
+public class VeniceClientBasedMetadataZstdIntegrationTest extends VeniceClientBasedMetadataIntegrationTest {
   protected void createStore() throws Exception {
     storeName = veniceCluster.createStoreWithZstdDictionary(KEY_COUNT);
   }
@@ -27,9 +26,9 @@ public class DaVinciClientBasedMetadataZstdTest extends DaVinciClientBasedMetada
         30,
         TimeUnit.SECONDS,
         () -> assertEquals(
-            daVinciClientBasedMetadata.getCurrentStoreVersion(),
+            veniceClientBasedMetadata.getCurrentStoreVersion(),
             storeRepository.getStore(storeName).getCurrentVersion()));
-    VeniceCompressor compressor = daVinciClientBasedMetadata
+    VeniceCompressor compressor = veniceClientBasedMetadata
         .getCompressor(CompressionStrategy.ZSTD_WITH_DICT, storeRepository.getStore(storeName).getCurrentVersion());
     assertNotNull(compressor);
     ClusterStats clusterStats = clientConfig.getClusterStats();

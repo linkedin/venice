@@ -78,8 +78,10 @@ public class RouterRequestThrottlingTest {
         2000,
         stats,
         0.0,
+        0.0,
         1000,
-        1000);
+        1000,
+        true);
   }
 
   @Test(timeOut = 30000, groups = { "flaky" })

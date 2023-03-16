@@ -348,6 +348,8 @@ public class ConfigKeys {
   public static final String STORE_WRITER_NUMBER = "store.writer.number";
   public static final String SORTED_INPUT_DRAINER_SIZE = "sorted.input.drainer.size";
   public static final String UNSORTED_INPUT_DRAINER_SIZE = "unsorted.input.drainer.size";
+  public static final String STORE_WRITER_BUFFER_AFTER_LEADER_LOGIC_ENABLED =
+      "store.writer.buffer.after.leader.logic.enabled";
   public static final String STORE_WRITER_BUFFER_MEMORY_CAPACITY = "store.writer.buffer.memory.capacity";
   public static final String STORE_WRITER_BUFFER_NOTIFY_DELTA = "store.writer.buffer.notify.delta";
   public static final String SERVER_REST_SERVICE_STORAGE_THREAD_NUM = "server.rest.service.storage.thread.num";
@@ -822,6 +824,11 @@ public class ConfigKeys {
   public static final String ROUTER_MAX_OUTGOING_CONNECTION = "router.max.outgoing.connection";
 
   /**
+   * Enable per router per storage node throttler by distributing the store quota among the partitions and replicas.
+   */
+  public static final String ROUTER_PER_STORAGE_NODE_THROTTLER_ENABLED = "router.per.storage.node.throttler.enabled";
+
+  /**
    * This config is used to bound the pending request.
    * Without this config, the accumulated requests in Http Async Client could grow unlimitedly,
    * which would put Router in a non-recoverable state because of long GC pause introduced
@@ -855,11 +862,7 @@ public class ConfigKeys {
    */
   public static final String ROUTER_PER_STORAGE_NODE_READ_QUOTA_BUFFER = "router.per.storage.node.read.quota.buffer";
 
-  /**
-   * The TTL for each entry in router cache (millisecond)
-   * If 0, TTL is not enabled; other, cache TTL is enabled
-   */
-  public static final String ROUTER_CACHE_TTL_MILLIS = "router.cache.ttl.millis";
+  public static final String ROUTER_PER_STORE_ROUTER_QUOTA_BUFFER = "router.per.store.router.quota.buffer";
 
   /**
    * Whether to enable customized dns cache in router or not.
@@ -1787,6 +1790,11 @@ public class ConfigKeys {
   public static final String UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED =
       "unregister.metric.for.deleted.store.enabled";
 
+  /**
+   * Config to enable single leader replica disabling.
+   */
+  public static final String FORCE_LEADER_ERROR_REPLICA_FAIL_OVER_ENABLED =
+      "controller.force.leader.error.replica.fail.over.enabled";
   /**
    * A config to specify the class to use to parse identities at runtime
    */

@@ -24,12 +24,10 @@ public class StoragePartitionDiskUsageTest {
 
   @Test
   public void testAddAndGetPartitionUsage() {
-    boolean added = partitionDiskUsage.add(smallRecordSizeToBeAdded);
-    Assert.assertTrue(added);
+    partitionDiskUsage.add(smallRecordSizeToBeAdded);
     Assert.assertEquals(smallRecordSizeToBeAdded, partitionDiskUsage.getUsage());
     // negative record size shouldn't be appended to partition diskUsage
-    added = partitionDiskUsage.add(-smallRecordSizeToBeAdded);
-    Assert.assertFalse(added);
+    partitionDiskUsage.add(-smallRecordSizeToBeAdded);
     Assert.assertEquals(smallRecordSizeToBeAdded, partitionDiskUsage.getUsage());
   }
 }

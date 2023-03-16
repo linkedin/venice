@@ -2,9 +2,12 @@ package com.linkedin.davinci.replication.merge;
 
 import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
+import static com.linkedin.venice.schema.rmd.RmdTimestampType.PER_FIELD_TIMESTAMP;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.PUT_ONLY_PART_LENGTH_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL_COLO_ID_FIELD_NAME;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL_TS_FIELD_NAME;
+import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.NO_OP_ON_FIELD;
+import static com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter.getFieldOperationType;
 
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.venice.annotation.Threadsafe;
@@ -16,7 +19,6 @@ import com.linkedin.venice.schema.merge.ValueAndRmd;
 import com.linkedin.venice.schema.rmd.RmdTimestampType;
 import com.linkedin.venice.schema.rmd.RmdUtils;
 import com.linkedin.venice.schema.writecompute.WriteComputeOperation;
-import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serializer.avro.MapOrderingPreservingSerDeFactory;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.nio.ByteBuffer;
@@ -32,7 +34,6 @@ import org.apache.commons.lang3.Validate;
 
 
 /**
- * TODO schema validation of old and new schema for WC enabled stores.
  * The workflow is
  * Query old replication metadata. If it's null (and running in first batch push merge policy), then write the new value directly.
  * If the old replication metadata exists, then deserialize it and run Merge<BB>.
@@ -43,21 +44,23 @@ import org.apache.commons.lang3.Validate;
 @Threadsafe
 public class MergeConflictResolver {
   private final String storeName;
-  private final MapKeyStringAnnotatedStoreSchemaCache storeSchemaCache;
+  private final StringAnnotatedStoreSchemaCache storeSchemaCache;
   private final Function<Integer, GenericRecord> newRmdCreator;
   private final MergeGenericRecord mergeGenericRecord;
   private final MergeByteBuffer mergeByteBuffer;
   private final MergeResultValueSchemaResolver mergeResultValueSchemaResolver;
   private final RmdSerDe rmdSerde;
+  private final boolean useFieldLevelTimestamp;
 
   MergeConflictResolver(
-      MapKeyStringAnnotatedStoreSchemaCache storeSchemaCache,
+      StringAnnotatedStoreSchemaCache storeSchemaCache,
       String storeName,
       Function<Integer, GenericRecord> newRmdCreator,
       MergeGenericRecord mergeGenericRecord,
       MergeByteBuffer mergeByteBuffer,
       MergeResultValueSchemaResolver mergeResultValueSchemaResolver,
-      RmdSerDe rmdSerde) {
+      RmdSerDe rmdSerde,
+      boolean useFieldLevelTimestamp) {
     this.storeSchemaCache = Validate.notNull(storeSchemaCache);
     this.storeName = Validate.notNull(storeName);
     this.newRmdCreator = Validate.notNull(newRmdCreator);
@@ -65,6 +68,7 @@ public class MergeConflictResolver {
     this.mergeResultValueSchemaResolver = Validate.notNull(mergeResultValueSchemaResolver);
     this.mergeByteBuffer = Validate.notNull(mergeByteBuffer);
     this.rmdSerde = Validate.notNull(rmdSerde);
+    this.useFieldLevelTimestamp = useFieldLevelTimestamp;
   }
 
   /**
@@ -108,36 +112,142 @@ public class MergeConflictResolver {
     }
     final GenericRecord oldRmdRecord = rmdWithValueSchemaID.getRmdRecord();
     final Object oldTimestampObject = oldRmdRecord.get(TIMESTAMP_FIELD_NAME);
-    RmdTimestampType rmdTimestampType = RmdUtils.getRmdTimestampType(oldTimestampObject);
 
-    switch (rmdTimestampType) {
-      case VALUE_LEVEL_TIMESTAMP:
-        return mergePutWithValueLevelTimestamp(
-            oldValueBytesProvider,
-            oldRmdRecord,
-            putOperationTimestamp,
-            newValueBytes,
-            newValueColoID,
-            newValueSourceOffset,
-            newValueSourceBrokerID,
-            newValueSchemaID);
-
-      case PER_FIELD_TIMESTAMP:
-        return mergePutWithFieldLevelTimestamp(
-            rmdWithValueSchemaID.getValueSchemaId(),
-            oldTimestampObject,
-            oldValueBytesProvider,
-            oldRmdRecord,
-            putOperationTimestamp,
-            newValueBytes,
-            newValueColoID,
-            newValueSourceOffset,
-            newValueSourceBrokerID,
-            newValueSchemaID);
-
-      default:
-        throw new VeniceUnsupportedOperationException("Not supported replication metadata type: " + rmdTimestampType);
+    /**
+     * Ideally the "useFieldLevelTimestamp" flag should be sufficient to decide here. However, since current write compute
+     * flag is a store-level config, when an A/A store enabled write compute feature, it will accept incoming UPDATE message
+     * without changing version level write computation flag. This is a safeguard to make sure the version ingestion won't
+     * fail even though the version should be recreated / repushed with correct config setup.
+     */
+    if (useFieldLevelTimestamp || RmdUtils.getRmdTimestampType(oldTimestampObject).equals(PER_FIELD_TIMESTAMP)) {
+      return mergePutWithFieldLevelTimestamp(
+          rmdWithValueSchemaID.getValueSchemaId(),
+          oldTimestampObject,
+          oldValueBytesProvider,
+          oldRmdRecord,
+          putOperationTimestamp,
+          newValueBytes,
+          newValueColoID,
+          newValueSourceOffset,
+          newValueSourceBrokerID,
+          newValueSchemaID);
     }
+    return mergePutWithValueLevelTimestamp(
+        oldValueBytesProvider,
+        oldRmdRecord,
+        putOperationTimestamp,
+        newValueBytes,
+        newValueColoID,
+        newValueSourceOffset,
+        newValueSourceBrokerID,
+        newValueSchemaID);
+  }
+
+  /**
+   * Perform conflict resolution when the incoming operation is a DELETE operation.
+   *
+   * @param rmdWithValueSchemaID The replication metadata of the currently persisted value and the value schema ID.
+   * @param deleteOperationTimestamp The logical timestamp of the incoming record.
+   * @param deleteOperationSourceOffset The offset from which the delete operation originates in the realtime stream.
+   *                                    Used to build the ReplicationMetadata for the newly inserted record.
+   * @param deleteOperationSourceBrokerID The ID of the broker from which the new value originates.  ID's should correspond
+   *                                 to the kafkaClusterUrlIdMap configured in the LeaderFollowerIngestionTask.  Used to build
+   *                                 the ReplicationMetadata for the newly inserted record.
+   * @param deleteOperationColoID ID of the colo/fabric where this new Delete request came from.
+   * @return A MergeConflictResult which denotes what update should be applied or if the operation should be ignored.
+   */
+  public MergeConflictResult delete(
+      Lazy<ByteBuffer> oldValueBytesProvider,
+      RmdWithValueSchemaId rmdWithValueSchemaID,
+      final long deleteOperationTimestamp,
+      final long deleteOperationSourceOffset,
+      final int deleteOperationSourceBrokerID,
+      final int deleteOperationColoID) {
+    // TODO: Honor BatchConflictResolutionPolicy when replication metadata is null
+    if (rmdWithValueSchemaID == null) {
+      return deleteWithoutRmd(deleteOperationTimestamp, deleteOperationSourceOffset, deleteOperationSourceBrokerID);
+    }
+    final int oldValueSchemaID = rmdWithValueSchemaID.getValueSchemaId();
+    if (oldValueSchemaID <= 0) {
+      throw new VeniceException(
+          "Invalid schema ID of old value found when replication metadata exists for store " + storeName
+              + "; invalid value schema ID: " + oldValueSchemaID);
+    }
+
+    final GenericRecord oldRmdRecord = rmdWithValueSchemaID.getRmdRecord();
+    final Object oldTimestampObject = oldRmdRecord.get(TIMESTAMP_FIELD_NAME);
+    /**
+     * Ideally the "useFieldLevelTimestamp" flag should be sufficient to decide here. However, since current write compute
+     * flag is a store-level config, when an A/A store enabled write compute feature, it will accept incoming UPDATE message
+     * without changing version level write computation flag. This is a safeguard to make sure the version ingestion won't
+     * fail even though the version should be recreated / repushed with correct config setup.
+     */
+    if (useFieldLevelTimestamp || RmdUtils.getRmdTimestampType(oldTimestampObject).equals(PER_FIELD_TIMESTAMP)) {
+      return mergeDeleteWithFieldLevelTimestamp(
+          oldValueBytesProvider,
+          (GenericRecord) oldTimestampObject,
+          oldValueSchemaID,
+          oldRmdRecord,
+          deleteOperationColoID,
+          deleteOperationTimestamp,
+          deleteOperationSourceOffset,
+          deleteOperationSourceBrokerID);
+    }
+    return mergeDeleteWithValueLevelTimestamp(
+        oldValueSchemaID,
+        oldRmdRecord,
+        deleteOperationColoID,
+        deleteOperationTimestamp,
+        deleteOperationSourceOffset,
+        deleteOperationSourceBrokerID);
+  }
+
+  public MergeConflictResult update(
+      Lazy<ByteBuffer> oldValueBytesProvider,
+      RmdWithValueSchemaId rmdWithValueSchemaId,
+      ByteBuffer updateBytes,
+      final int incomingValueSchemaId,
+      final int incomingUpdateProtocolVersion,
+      final long updateOperationTimestamp,
+      final long newValueSourceOffset,
+      final int newValueSourceBrokerID,
+      final int newValueColoID) {
+    final SchemaEntry supersetValueSchemaEntry = storeSchemaCache.getSupersetSchema();
+    if (supersetValueSchemaEntry == null) {
+      throw new IllegalStateException("Expect to get superset value schema for store: " + storeName);
+    }
+
+    GenericRecord writeComputeRecord = deserializeWriteComputeBytes(
+        incomingValueSchemaId,
+        supersetValueSchemaEntry.getId(),
+        incomingUpdateProtocolVersion,
+        updateBytes);
+    if (ignoreNewUpdate(updateOperationTimestamp, writeComputeRecord, rmdWithValueSchemaId)) {
+      return MergeConflictResult.getIgnoredResult();
+    }
+    ValueAndRmd<GenericRecord> oldValueAndRmd =
+        prepareValueAndRmdForUpdate(oldValueBytesProvider.get(), rmdWithValueSchemaId, supersetValueSchemaEntry);
+
+    int oldValueSchemaID = oldValueAndRmd.getValueSchemaID();
+    if (oldValueSchemaID == -1) {
+      oldValueSchemaID = supersetValueSchemaEntry.getId();
+    }
+    Schema oldValueSchema = getValueSchema(oldValueSchemaID);
+    ValueAndRmd<GenericRecord> updatedValueAndRmd = mergeGenericRecord.update(
+        oldValueAndRmd,
+        Lazy.of(() -> writeComputeRecord),
+        oldValueSchema,
+        updateOperationTimestamp,
+        newValueColoID,
+        newValueSourceOffset,
+        newValueSourceBrokerID);
+    if (updatedValueAndRmd.isUpdateIgnored()) {
+      return MergeConflictResult.getIgnoredResult();
+    }
+    final ByteBuffer updatedValueBytes = updatedValueAndRmd.getValue() == null
+        ? null
+        : serializeMergedValueRecord(oldValueSchema, updatedValueAndRmd.getValue());
+    return new MergeConflictResult(updatedValueBytes, oldValueSchemaID, false, updatedValueAndRmd.getRmd());
   }
 
   private MergeConflictResult mergePutWithValueLevelTimestamp(
@@ -211,12 +321,70 @@ public class MergeConflictResolver {
         newValueColoID,
         newValueSourceOffset,
         newValueSourceBrokerID);
+    if (mergedValueAndRmd.isUpdateIgnored()) {
+      return MergeConflictResult.getIgnoredResult();
+    }
     ByteBuffer mergedValueBytes = serializeMergedValueRecord(mergeResultValueSchema, mergedValueAndRmd.getValue());
     return new MergeConflictResult(mergedValueBytes, newValueSchemaID, false, mergedValueAndRmd.getRmd());
   }
 
+  private MergeConflictResult mergeDeleteWithValueLevelTimestamp(
+      int valueSchemaID,
+      GenericRecord oldRmdRecord,
+      int deleteOperationColoID,
+      long deleteOperationTimestamp,
+      long newValueSourceOffset,
+      int deleteOperationSourceBrokerID) {
+    ValueAndRmd<ByteBuffer> valueAndRmd = new ValueAndRmd<>(
+        Lazy.of(() -> null), // In this case, we do not need the current value to handle the Delete request.
+        oldRmdRecord);
+    ValueAndRmd<ByteBuffer> mergedValueAndRmd = mergeByteBuffer.delete(
+        valueAndRmd,
+        deleteOperationTimestamp,
+        deleteOperationColoID,
+        newValueSourceOffset,
+        deleteOperationSourceBrokerID);
+
+    if (mergedValueAndRmd.isUpdateIgnored()) {
+      return MergeConflictResult.getIgnoredResult();
+    } else {
+      return new MergeConflictResult(null, valueSchemaID, false, oldRmdRecord);
+    }
+  }
+
+  private MergeConflictResult mergeDeleteWithFieldLevelTimestamp(
+      Lazy<ByteBuffer> oldValueBytesProvider,
+      GenericRecord oldValueFieldTimestampsRecord,
+      int oldValueSchemaID,
+      GenericRecord oldRmdRecord,
+      int deleteOperationColoID,
+      long deleteOperationTimestamp,
+      long deleteOperationSourceOffset,
+      int deleteOperationSourceBrokerID) {
+    if (ignoreNewDelete(oldValueFieldTimestampsRecord, deleteOperationTimestamp)) {
+      return MergeConflictResult.getIgnoredResult();
+    }
+    // In this case, the writer and reader schemas are the same because deletion does not introduce any new schema.
+    final Schema oldValueSchema = getValueSchema(oldValueSchemaID);
+    ValueAndRmd<GenericRecord> oldValueAndRmd =
+        createOldValueAndRmd(oldValueSchema, oldValueSchemaID, oldValueSchemaID, oldValueBytesProvider, oldRmdRecord);
+    ValueAndRmd<GenericRecord> mergedValueAndRmd = mergeGenericRecord.delete(
+        oldValueAndRmd,
+        deleteOperationTimestamp,
+        deleteOperationColoID,
+        deleteOperationSourceOffset,
+        deleteOperationSourceBrokerID);
+    if (mergedValueAndRmd.isUpdateIgnored()) {
+      return MergeConflictResult.getIgnoredResult();
+    }
+    final ByteBuffer mergedValueBytes = mergedValueAndRmd.getValue() == null
+        ? null
+        : serializeMergedValueRecord(oldValueSchema, mergedValueAndRmd.getValue());
+    return new MergeConflictResult(mergedValueBytes, oldValueSchemaID, false, mergedValueAndRmd.getRmd());
+  }
+
   /**
-   * This methods create a pair of deserialized value of type {@link GenericRecord} and its corresponding replication metadata.
+   * This method create a pair of deserialized value of type {@link GenericRecord} and its corresponding replication metadata.
    * It takes into account the writer schema and reader schema. If the writer schema is different from the reader schema,
    * the replication metadata record will be converted to use the RMD schema generated from the reader schema.
    *
@@ -234,7 +402,7 @@ public class MergeConflictResolver {
       Lazy<ByteBuffer> oldValueBytesProvider,
       GenericRecord oldRmdRecord) {
     final GenericRecord oldValueRecord =
-        createOldValueRecord(readerValueSchema, oldValueWriterSchemaID, oldValueBytesProvider.get());
+        createValueRecordFromByteBuffer(readerValueSchema, oldValueWriterSchemaID, oldValueBytesProvider.get());
 
     // RMD record should contain a per-field timestamp and it should use the RMD schema generated from
     // mergeResultValueSchema.
@@ -247,7 +415,7 @@ public class MergeConflictResolver {
     return createdOldValueAndRmd;
   }
 
-  private GenericRecord createOldValueRecord(
+  private GenericRecord createValueRecordFromByteBuffer(
       Schema readerValueSchema,
       int oldValueWriterSchemaID,
       ByteBuffer oldValueBytes) {
@@ -372,66 +540,12 @@ public class MergeConflictResolver {
         REPLICATION_CHECKPOINT_VECTOR_FIELD,
         MergeUtils.mergeOffsetVectors(null, newValueSourceOffset, newValueSourceBrokerID));
 
+    if (useFieldLevelTimestamp) {
+      Schema valueSchema = getValueSchema(newValueSchemaID);
+      newRmd = createOldValueAndRmd(valueSchema, newValueSchemaID, newValueSchemaID, Lazy.of(() -> newValue), newRmd)
+          .getRmd();
+    }
     return new MergeConflictResult(newValue, newValueSchemaID, true, newRmd);
-  }
-
-  /**
-   * Perform conflict resolution when the incoming operation is a DELETE operation.
-   *
-   * @param rmdWithValueSchemaID The replication metadata of the currently persisted value and the value schema ID.
-   * @param deleteOperationTimestamp The logical timestamp of the incoming record.
-   * @param deleteOperationSourceOffset The offset from which the delete operation originates in the realtime stream.
-   *                                    Used to build the ReplicationMetadata for the newly inserted record.
-   * @param deleteOperationSourceBrokerID The ID of the broker from which the new value originates.  ID's should correspond
-   *                                 to the kafkaClusterUrlIdMap configured in the LeaderFollowerIngestionTask.  Used to build
-   *                                 the ReplicationMetadata for the newly inserted record.
-   * @param deleteOperationColoID ID of the colo/fabric where this new Delete request came from.
-   * @return A MergeConflictResult which denotes what update should be applied or if the operation should be ignored.
-   */
-  public MergeConflictResult delete(
-      Lazy<ByteBuffer> oldValueBytesProvider,
-      RmdWithValueSchemaId rmdWithValueSchemaID,
-      final long deleteOperationTimestamp,
-      final long deleteOperationSourceOffset,
-      final int deleteOperationSourceBrokerID,
-      final int deleteOperationColoID) {
-    // TODO: Honor BatchConflictResolutionPolicy when replication metadata is null
-    if (rmdWithValueSchemaID == null) {
-      return deleteWithoutRmd(deleteOperationTimestamp, deleteOperationSourceOffset, deleteOperationSourceBrokerID);
-    }
-    final int oldValueSchemaID = rmdWithValueSchemaID.getValueSchemaId();
-    if (oldValueSchemaID <= 0) {
-      throw new VeniceException(
-          "Invalid schema ID of old value found when replication metadata exists for store " + storeName
-              + "; invalid value schema ID: " + oldValueSchemaID);
-    }
-
-    final GenericRecord oldRmdRecord = rmdWithValueSchemaID.getRmdRecord();
-    final Object oldTimestampObject = oldRmdRecord.get(TIMESTAMP_FIELD_NAME);
-    final RmdTimestampType rmdTimestampType = RmdUtils.getRmdTimestampType(oldTimestampObject);
-
-    switch (rmdTimestampType) {
-      case VALUE_LEVEL_TIMESTAMP:
-        return mergeDeleteWithValueLevelTimestamp(
-            oldValueSchemaID,
-            oldRmdRecord,
-            deleteOperationColoID,
-            deleteOperationTimestamp,
-            deleteOperationSourceOffset,
-            deleteOperationSourceBrokerID);
-      case PER_FIELD_TIMESTAMP:
-        return mergeDeleteWithFieldLevelTimestamp(
-            oldValueBytesProvider,
-            (GenericRecord) oldTimestampObject,
-            oldValueSchemaID,
-            oldRmdRecord,
-            deleteOperationColoID,
-            deleteOperationTimestamp,
-            deleteOperationSourceOffset,
-            deleteOperationSourceBrokerID);
-      default:
-        throw new VeniceUnsupportedOperationException("Not supported replication metadata type: " + rmdTimestampType);
-    }
   }
 
   private MergeConflictResult deleteWithoutRmd(
@@ -441,7 +555,7 @@ public class MergeConflictResolver {
     /**
      * oldReplicationMetadata can be null in two cases:
      * 1. There is no value corresponding to the key
-     * 2. There is a value corresponding to the key but it came from the batch push and the BatchConflictResolutionPolicy
+     * 2. There is a value corresponding to the key, but it came from the batch push and the BatchConflictResolutionPolicy
      * specifies that no per-record replication metadata should be persisted for batch push data.
      *
      * In such cases, the incoming Delete operation will be applied directly and we should store a tombstone for it.
@@ -452,104 +566,11 @@ public class MergeConflictResolver {
     newRmd.put(
         REPLICATION_CHECKPOINT_VECTOR_FIELD,
         MergeUtils.mergeOffsetVectors(null, newValueSourceOffset, deleteOperationSourceBrokerID));
+    if (useFieldLevelTimestamp) {
+      Schema valueSchema = getValueSchema(valueSchemaID);
+      newRmd = createOldValueAndRmd(valueSchema, valueSchemaID, valueSchemaID, Lazy.of(() -> null), newRmd).getRmd();
+    }
     return new MergeConflictResult(null, valueSchemaID, false, newRmd);
-  }
-
-  private MergeConflictResult mergeDeleteWithValueLevelTimestamp(
-      int valueSchemaID,
-      GenericRecord oldRmdRecord,
-      int deleteOperationColoID,
-      long deleteOperationTimestamp,
-      long newValueSourceOffset,
-      int deleteOperationSourceBrokerID) {
-    ValueAndRmd<ByteBuffer> valueAndRmd = new ValueAndRmd<>(
-        Lazy.of(() -> null), // In this case, we do not need the current value to handle the Delete request.
-        oldRmdRecord);
-    ValueAndRmd<ByteBuffer> mergedValueAndRmd = mergeByteBuffer.delete(
-        valueAndRmd,
-        deleteOperationTimestamp,
-        deleteOperationColoID,
-        newValueSourceOffset,
-        deleteOperationSourceBrokerID);
-
-    if (mergedValueAndRmd.isUpdateIgnored()) {
-      return MergeConflictResult.getIgnoredResult();
-    } else {
-      return new MergeConflictResult(null, valueSchemaID, false, oldRmdRecord);
-    }
-  }
-
-  private MergeConflictResult mergeDeleteWithFieldLevelTimestamp(
-      Lazy<ByteBuffer> oldValueBytesProvider,
-      GenericRecord oldValueFieldTimestampsRecord,
-      int oldValueSchemaID,
-      GenericRecord oldRmdRecord,
-      int deleteOperationColoID,
-      long deleteOperationTimestamp,
-      long deleteOperationSourceOffset,
-      int deleteOperationSourceBrokerID) {
-    if (ignoreNewDelete(oldValueFieldTimestampsRecord, deleteOperationTimestamp)) {
-      return MergeConflictResult.getIgnoredResult();
-    }
-    // In this case, the writer and reader schemas are the same because deletion does not introduce any new schema.
-    final Schema oldValueSchema = getValueSchema(oldValueSchemaID);
-    ValueAndRmd<GenericRecord> oldValueAndRmd =
-        createOldValueAndRmd(oldValueSchema, oldValueSchemaID, oldValueSchemaID, oldValueBytesProvider, oldRmdRecord);
-    ValueAndRmd<GenericRecord> mergedValueAndRmd = mergeGenericRecord.delete(
-        oldValueAndRmd,
-        deleteOperationTimestamp,
-        deleteOperationColoID,
-        deleteOperationSourceOffset,
-        deleteOperationSourceBrokerID);
-    final ByteBuffer mergedValueBytes = mergedValueAndRmd.getValue() == null
-        ? null
-        : serializeMergedValueRecord(oldValueSchema, mergedValueAndRmd.getValue());
-    return new MergeConflictResult(mergedValueBytes, oldValueSchemaID, false, mergedValueAndRmd.getRmd());
-  }
-
-  public MergeConflictResult update(
-      Lazy<ByteBuffer> oldValueBytesProvider,
-      RmdWithValueSchemaId rmdWithValueSchemaId,
-      ByteBuffer updateBytes,
-      final int incomingValueSchemaId,
-      final int incomingUpdateProtocolVersion,
-      final long updateOperationTimestamp,
-      final long newValueSourceOffset,
-      final int newValueSourceBrokerID,
-      final int newValueColoID) {
-    final SchemaEntry supersetValueSchemaEntry = storeSchemaCache.getSupersetSchema();
-    if (supersetValueSchemaEntry == null) {
-      throw new IllegalStateException("Expect to get superset value schema for store: " + storeName);
-    }
-
-    GenericRecord writeComputeRecord = deserializeWriteComputeBytes(
-        incomingValueSchemaId,
-        supersetValueSchemaEntry.getId(),
-        incomingUpdateProtocolVersion,
-        updateBytes);
-    if (ignoreNewUpdate(updateOperationTimestamp, writeComputeRecord, rmdWithValueSchemaId)) {
-      return MergeConflictResult.getIgnoredResult();
-    }
-    ValueAndRmd<GenericRecord> oldValueAndRmd =
-        prepareValueAndRmdForUpdate(oldValueBytesProvider.get(), rmdWithValueSchemaId, supersetValueSchemaEntry);
-
-    int oldValueSchemaID = oldValueAndRmd.getValueSchemaID();
-    if (oldValueSchemaID == -1) {
-      oldValueSchemaID = supersetValueSchemaEntry.getId();
-    }
-    Schema oldValueSchema = getValueSchema(oldValueSchemaID);
-    ValueAndRmd<GenericRecord> updatedValueAndRmd = mergeGenericRecord.update(
-        oldValueAndRmd,
-        Lazy.of(() -> writeComputeRecord),
-        oldValueSchema,
-        updateOperationTimestamp,
-        newValueColoID,
-        newValueSourceOffset,
-        newValueSourceBrokerID);
-    final ByteBuffer updatedValueBytes = updatedValueAndRmd.getValue() == null
-        ? null
-        : serializeMergedValueRecord(oldValueSchema, updatedValueAndRmd.getValue());
-    return new MergeConflictResult(updatedValueBytes, oldValueSchemaID, false, updatedValueAndRmd.getRmd());
   }
 
   private GenericRecord deserializeWriteComputeBytes(
@@ -679,12 +700,12 @@ public class MergeConflictResolver {
     switch (rmdTimestampType) {
       case VALUE_LEVEL_TIMESTAMP:
         final long valueLevelTimestamp = (long) oldTimestampObject;
-        if (updateOperationTimestamp > valueLevelTimestamp) {
+        if (updateOperationTimestamp >= valueLevelTimestamp) {
           return false;
         }
-        toUpdateFieldNames = WriteComputeSchemaConverter.getNamesOfFieldsToBeUpdated(writeComputeRecord);
-        for (String toUpdateFieldName: toUpdateFieldNames) {
-          if (oldValueSchema.getField(toUpdateFieldName) == null) {
+        for (Schema.Field field: writeComputeRecord.getSchema().getFields()) {
+          if (getFieldOperationType(writeComputeRecord.get(field.pos())) != NO_OP_ON_FIELD
+              && oldValueSchema.getField(field.name()) == null) {
             return false; // Write Compute tries to update a non-existing field in the old value (schema).
           }
         }
@@ -692,12 +713,12 @@ public class MergeConflictResolver {
 
       case PER_FIELD_TIMESTAMP:
         GenericRecord timestampRecord = (GenericRecord) oldTimestampObject;
-        toUpdateFieldNames = WriteComputeSchemaConverter.getNamesOfFieldsToBeUpdated(writeComputeRecord);
-        for (String toUpdateFieldName: toUpdateFieldNames) {
-          if (timestampRecord.get(toUpdateFieldName) == null) {
+        for (Schema.Field field: writeComputeRecord.getSchema().getFields()) {
+          if (getFieldOperationType(writeComputeRecord.get(field.pos())) != NO_OP_ON_FIELD
+              && timestampRecord.get(field.name()) == null) {
             return false; // Write Compute tries to update a non-existing field.
           }
-          if (isRmdFieldTimestampSmaller(timestampRecord, toUpdateFieldName, updateOperationTimestamp, false)) {
+          if (isRmdFieldTimestampSmaller(timestampRecord, field.name(), updateOperationTimestamp, false)) {
             return false; // One existing field must be updated.
           }
         }

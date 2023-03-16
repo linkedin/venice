@@ -2,6 +2,7 @@ package com.linkedin.venice;
 
 import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
+import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 import static org.apache.kafka.clients.consumer.ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG;
 import static org.apache.kafka.clients.consumer.ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG;
 import static org.apache.kafka.clients.consumer.ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG;

@@ -6,6 +6,7 @@ import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
 import static com.linkedin.venice.hadoop.VenicePushJob.REWIND_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_KAFKA;
+import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL_TS_FIELD_NAME;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingDeleteRecord;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
@@ -27,6 +28,7 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTaskBackdoor;
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
 import com.linkedin.davinci.replication.merge.RmdSerDe;
+import com.linkedin.davinci.replication.merge.StringAnnotatedStoreSchemaCache;
 import com.linkedin.davinci.storage.chunking.SingleGetChunkingAdapter;
 import com.linkedin.davinci.store.AbstractStorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
@@ -52,6 +54,7 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.rmd.RmdConstants;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
@@ -149,7 +152,9 @@ public class PartialUpdateTest {
     when(schemaRepo.getReplicationMetadataSchema(storeName, 1, 1)).thenReturn(new RmdSchemaEntry(1, 1, rmdSchema));
     when(schemaRepo.getDerivedSchema(storeName, 1, 1)).thenReturn(new DerivedSchemaEntry(1, 1, writeComputeSchema));
     when(schemaRepo.getValueSchema(storeName, 1)).thenReturn(new SchemaEntry(1, valueSchema));
-    RmdSerDe rmdSerDe = new RmdSerDe(schemaRepo, storeName, 1);
+    StringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
+        new StringAnnotatedStoreSchemaCache(storeName, schemaRepo);
+    RmdSerDe rmdSerDe = new RmdSerDe(stringAnnotatedStoreSchemaCache, 1);
 
     try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl)) {
       assertCommand(
@@ -303,8 +308,12 @@ public class PartialUpdateTest {
         assertTrue(nullRecord);
       });
       validateRmdData(rmdSerDe, kafkaTopic, key, rmdWithValueSchemaId -> {
-        long timestampField = (Long) rmdWithValueSchemaId.getRmdRecord().get("timestamp");
-        assertEquals(timestampField, (long) updateCount * 10);
+        Assert.assertTrue(
+            rmdWithValueSchemaId.getRmdRecord().get(RmdConstants.TIMESTAMP_FIELD_NAME) instanceof GenericRecord);
+        GenericRecord timestampRecord =
+            (GenericRecord) rmdWithValueSchemaId.getRmdRecord().get(RmdConstants.TIMESTAMP_FIELD_NAME);
+        GenericRecord stringMapTimestampRecord = (GenericRecord) timestampRecord.get("stringMap");
+        assertEquals(stringMapTimestampRecord.get(TOP_LEVEL_TS_FIELD_NAME), (long) (updateCount) * 10);
       });
     } finally {
       veniceProducer.stop();

@@ -7,7 +7,7 @@ import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 /**
  * A simple implementation of PubSubProducerCallback interface for testing purposes.
  */
-public class SimplePubSubProducerCallbackImpl implements PubSubProducerCallback {
+public class PubSubProducerCallbackSimpleImpl implements PubSubProducerCallback {
   private PubSubProduceResult produceResult;
   private Exception exception;
   private boolean isInvoked;

@@ -118,7 +118,6 @@ public class MergeGenericRecord extends AbstractMerge<GenericRecord> {
     updateReplicationCheckpointVector(oldReplicationMetadata, sourceOffsetOfNewValue, newValueSourceBrokerID);
 
     List<Schema.Field> fieldsInNewRecord = newValue.getSchema().getFields();
-    boolean allFieldsNew = true;
     boolean noFieldUpdated = true;
     // Iterate fields in the new record because old record fields set must be a superset of the new record fields set.
     for (Schema.Field newRecordField: fieldsInNewRecord) {
@@ -130,12 +129,7 @@ public class MergeGenericRecord extends AbstractMerge<GenericRecord> {
           newValue.get(fieldName),
           putOperationTimestamp,
           putOperationColoID);
-
-      allFieldsNew &= (fieldUpdateResult == UpdateResultStatus.COMPLETELY_UPDATED);
       noFieldUpdated &= (fieldUpdateResult == UpdateResultStatus.NOT_UPDATED_AT_ALL);
-    }
-    if (allFieldsNew) {
-      oldReplicationMetadata.put(TIMESTAMP_FIELD_NAME, putOperationTimestamp);
     }
     if (noFieldUpdated) {
       oldValueAndRmd.setUpdateIgnored(true);
@@ -180,7 +174,6 @@ public class MergeGenericRecord extends AbstractMerge<GenericRecord> {
         if (recordDeleteResultStatus == UpdateResultStatus.COMPLETELY_UPDATED) {
           // Full delete
           oldValueAndRmd.setValue(null);
-          oldReplicationMetadata.put(TIMESTAMP_FIELD_NAME, deleteOperationTimestamp);
         } else if (recordDeleteResultStatus == UpdateResultStatus.NOT_UPDATED_AT_ALL) {
           oldValueAndRmd.setUpdateIgnored(true);
         }

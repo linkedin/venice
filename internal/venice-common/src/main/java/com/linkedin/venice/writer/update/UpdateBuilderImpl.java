@@ -4,7 +4,8 @@ import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.annotation.NotThreadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.writecompute.WriteComputeConstants;
-import com.linkedin.venice.serializer.AvroSerializer;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
+import com.linkedin.venice.serializer.RecordSerializer;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -21,7 +22,7 @@ import org.apache.commons.lang3.Validate;
 @Experimental
 public class UpdateBuilderImpl implements UpdateBuilder {
   private final GenericRecord updateRecord;
-  private final AvroSerializer<GenericRecord> serializer;
+  private final RecordSerializer<GenericRecord> serializer;
   private final Set<String> updateFieldNameSet;
   private final Set<String> collectionMergeFieldNameSet;
 
@@ -31,7 +32,7 @@ public class UpdateBuilderImpl implements UpdateBuilder {
   public UpdateBuilderImpl(Schema updateSchema) {
     validateUpdateSchema(updateSchema);
     this.updateRecord = new GenericData.Record(updateSchema);
-    this.serializer = new AvroSerializer<>(updateSchema);
+    this.serializer = FastSerializerDeserializerFactory.getAvroGenericSerializer(updateSchema);
     this.updateFieldNameSet = new HashSet<>();
     this.collectionMergeFieldNameSet = new HashSet<>();
   }
@@ -178,7 +179,13 @@ public class UpdateBuilderImpl implements UpdateBuilder {
     if (updateRecord.get(listFieldName) != null) {
       return (GenericRecord) updateRecord.get(listFieldName);
     }
-    Schema listMergeRecordSchema = updateRecord.getSchema().getField(listFieldName).schema().getTypes().get(1);
+    Schema listMergeRecordSchema = null;
+    for (Schema unionBranchSchema: updateRecord.getSchema().getField(listFieldName).schema().getTypes()) {
+      if (unionBranchSchema.getType().equals(Schema.Type.RECORD) && !unionBranchSchema.getFields().isEmpty()) {
+        listMergeRecordSchema = unionBranchSchema;
+        break;
+      }
+    }
     GenericRecord listMergeRecord = new GenericData.Record(listMergeRecordSchema);
     listMergeRecord.put(WriteComputeConstants.SET_UNION, Collections.emptyList());
     listMergeRecord.put(WriteComputeConstants.SET_DIFF, Collections.emptyList());
@@ -191,7 +198,13 @@ public class UpdateBuilderImpl implements UpdateBuilder {
     if (updateRecord.get(mapFieldName) != null) {
       return (GenericRecord) updateRecord.get(mapFieldName);
     }
-    Schema mapMergeRecordSchema = updateRecord.getSchema().getField(mapFieldName).schema().getTypes().get(1);
+    Schema mapMergeRecordSchema = null;
+    for (Schema unionBranchSchema: updateRecord.getSchema().getField(mapFieldName).schema().getTypes()) {
+      if (unionBranchSchema.getType().equals(Schema.Type.RECORD) && !unionBranchSchema.getFields().isEmpty()) {
+        mapMergeRecordSchema = unionBranchSchema;
+        break;
+      }
+    }
     GenericRecord mapMergeRecord = new GenericData.Record(mapMergeRecordSchema);
     mapMergeRecord.put(WriteComputeConstants.MAP_UNION, Collections.emptyMap());
     mapMergeRecord.put(WriteComputeConstants.MAP_DIFF, Collections.emptyList());

@@ -1,8 +1,10 @@
 import com.github.spotbugs.snom.SpotBugsTask
 import org.apache.tools.ant.taskdefs.condition.Os
-import org.gradle.internal.logging.text.StyledTextOutputFactory
 import org.gradle.internal.logging.text.StyledTextOutput.Style
+import org.gradle.internal.logging.text.StyledTextOutputFactory
+
 import java.nio.file.Files
+
 
 plugins {
   id 'idea'
@@ -99,7 +101,7 @@ ext.libraries = [
     snappy: 'org.iq80.snappy:snappy:0.4',
     spark: 'com.sparkjava:spark-core:2.9.4',
     spotbugs: 'com.github.spotbugs:spotbugs:4.5.2',
-    tehuti: 'io.tehuti:tehuti:0.9.1',
+    tehuti: 'io.tehuti:tehuti:0.9.2',
     testng: 'org.testng:testng:6.14.3',
     // Resolves java.lang.UnsupportedOperationException:  setXIncludeAware is not supported on this JAXP implementation or earlier: class org.apache.xerces.jaxp.DocumentBuilderFactoryImpl
     xalan: 'xalan:xalan:2.7.1',
@@ -572,7 +574,8 @@ ext.createDiffFile = { ->
   def exclusionFilter = [
         ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceHelixAdmin.java',
         ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceParentHelixAdmin.java',
-        ':!internal/venice-test-common/*'
+        ':!internal/venice-test-common/*',
+        ':!services/venice-server/src/main/java/com/linkedin/venice/server/VeniceServer.java'
   ]
   def file = Files.createTempFile(URLEncoder.encode(project.name, 'UTF-8'), '.diff').toFile()
   def diffBase = "${git.getUpstreamRemote()}/main"

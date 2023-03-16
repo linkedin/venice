@@ -101,4 +101,25 @@ public class OutboundHttpWrapperHandlerTest {
 
     outboundHttpWrapperHandler.write(mockCtx, msg, null);
   }
+
+  @Test
+  public void testWriteDefaultFullHttpResponse() {
+    FullHttpResponse msg = new DefaultFullHttpResponse(HTTP_1_1, HttpResponseStatus.OK);
+    StatsHandler statsHandler = mock(StatsHandler.class);
+    ChannelHandlerContext mockCtx = mock(ChannelHandlerContext.class);
+
+    FullHttpResponse response = new DefaultFullHttpResponse(HTTP_1_1, HttpResponseStatus.OK);
+
+    OutboundHttpWrapperHandler outboundHttpWrapperHandler = new OutboundHttpWrapperHandler(statsHandler);
+
+    when(mockCtx.writeAndFlush(any())).then(i -> {
+      FullHttpResponse actualResponse = (DefaultFullHttpResponse) i.getArguments()[0];
+      Assert.assertEquals(actualResponse.content(), response.content());
+      Assert.assertTrue(actualResponse.headers().equals(response.headers()));
+      Assert.assertTrue(actualResponse.equals(response));
+      return null;
+    });
+
+    outboundHttpWrapperHandler.write(mockCtx, msg, null);
+  }
 }

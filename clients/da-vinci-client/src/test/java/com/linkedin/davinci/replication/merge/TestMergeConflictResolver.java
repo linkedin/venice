@@ -8,7 +8,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
-import com.linkedin.davinci.replication.merge.helper.utils.ValueAndRmdSchema;
+import com.linkedin.davinci.replication.merge.helper.utils.ValueAndDerivedSchemas;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.SchemaUtils;
@@ -50,11 +50,11 @@ public class TestMergeConflictResolver {
   public void setUp() {
     this.storeName = "store";
     this.schemaRepository = mock(ReadOnlySchemaRepository.class);
-    ValueAndRmdSchema userV1Schema = new ValueAndRmdSchema("avro/UserV1.avsc", RMD_VERSION_ID);
-    ValueAndRmdSchema userV2Schema = new ValueAndRmdSchema("avro/UserV2.avsc", RMD_VERSION_ID);
-    ValueAndRmdSchema personV1Schema = new ValueAndRmdSchema("avro/PersonV1.avsc", RMD_VERSION_ID);
-    ValueAndRmdSchema personV2Schema = new ValueAndRmdSchema("avro/PersonV2.avsc", RMD_VERSION_ID);
-    ValueAndRmdSchema personV3Schema = new ValueAndRmdSchema("avro/PersonV3.avsc", RMD_VERSION_ID);
+    ValueAndDerivedSchemas userV1Schema = new ValueAndDerivedSchemas(storeName, -1, "avro/UserV1.avsc");
+    ValueAndDerivedSchemas userV2Schema = new ValueAndDerivedSchemas(storeName, -1, "avro/UserV2.avsc");
+    ValueAndDerivedSchemas personV1Schema = new ValueAndDerivedSchemas(storeName, -1, "avro/PersonV1.avsc");
+    ValueAndDerivedSchemas personV2Schema = new ValueAndDerivedSchemas(storeName, -1, "avro/PersonV2.avsc");
+    ValueAndDerivedSchemas personV3Schema = new ValueAndDerivedSchemas(storeName, -1, "avro/PersonV3.avsc");
     this.userSchemaV1 = userV1Schema.getValueSchema();
     this.userRmdSchemaV1 = userV1Schema.getRmdSchema();
     this.userSchemaV2 = userV2Schema.getValueSchema();

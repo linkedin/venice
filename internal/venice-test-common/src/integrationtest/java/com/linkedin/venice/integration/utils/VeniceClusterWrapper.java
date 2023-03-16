@@ -1,9 +1,6 @@
 package com.linkedin.venice.integration.utils;
 
-import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_KAFKA_OPENSSL;
-import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
+import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.CLIENT_CONFIG_FOR_CONSUMER;
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.SERVER_ENABLE_SERVER_ALLOW_LIST;
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.SERVER_ENABLE_SSL;
@@ -115,6 +112,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   private final boolean sslToStorageNodes;
   private final boolean sslToKafka;
   private final Map<String, String> clusterToD2;
+  private final String serverD2ServiceName;
 
   private static Process veniceClusterProcess;
   // Controller discovery URLs are controllers that's created outside of this cluster wrapper but are overseeing the
@@ -148,7 +146,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       int mintActiveReplica,
       boolean sslToStorageNodes,
       boolean sslToKafka,
-      Map<String, String> clusterToD2) {
+      Map<String, String> clusterToD2,
+      String serverD2ServiceName) {
 
     super(SERVICE_NAME, null);
     this.regionName = regionName;
@@ -166,6 +165,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     this.sslToStorageNodes = sslToStorageNodes;
     this.sslToKafka = sslToKafka;
     this.clusterToD2 = clusterToD2;
+    this.serverD2ServiceName = serverD2ServiceName;
   }
 
   static ServiceProvider<VeniceClusterWrapper> generateService(VeniceClusterCreateOptions options) {
@@ -249,6 +249,10 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         featureProperties.setProperty(SERVER_IS_AUTO_JOIN, Boolean.toString(options.isEnableAutoJoinAllowlist()));
         featureProperties.setProperty(SERVER_ENABLE_SSL, Boolean.toString(options.isSslToStorageNodes()));
         featureProperties.setProperty(SERVER_SSL_TO_KAFKA, Boolean.toString(options.isSslToKafka()));
+
+        // Half of servers on each mode, with 1 server clusters aligning with the default (true)
+        featureProperties.setProperty(STORE_WRITER_BUFFER_AFTER_LEADER_LOGIC_ENABLED, Boolean.toString(i % 2 == 0));
+
         if (!veniceRouterWrappers.isEmpty()) {
           ClientConfig clientConfig = new ClientConfig().setVeniceURL(zkAddress)
               .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
@@ -270,7 +274,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
             options.getExtraProperties(),
             options.isForkServer(),
             serverName,
-            options.getKafkaClusterMap());
+            options.getKafkaClusterMap(),
+            options.getServerD2ServiceName());
         LOGGER.info(
             "[{}][{}] Created server on port {}",
             options.getRegionName(),
@@ -304,7 +309,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
               options.getMinActiveReplica(),
               options.isSslToStorageNodes(),
               options.isSslToKafka(),
-              clusterToD2);
+              clusterToD2,
+              options.getServerD2ServiceName());
           // Wait for all the asynchronous ClusterLeaderInitializationRoutine to complete before returning the
           // VeniceClusterWrapper to tests.
           if (!veniceClusterWrapper.getVeniceControllers().isEmpty()) {
@@ -573,7 +579,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         kafkaBrokerWrapper,
         zkServerWrapper.getAddress(),
         featureProperties,
-        new Properties());
+        new Properties(),
+        serverD2ServiceName);
     synchronized (this) {
       veniceServerWrappers.put(veniceServerWrapper.getPort(), veniceServerWrapper);
     }
@@ -593,7 +600,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         kafkaBrokerWrapper,
         zkServerWrapper.getAddress(),
         new Properties(),
-        properties);
+        properties,
+        serverD2ServiceName);
     synchronized (this) {
       veniceServerWrappers.put(veniceServerWrapper.getPort(), veniceServerWrapper);
     }
@@ -607,7 +615,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         kafkaBrokerWrapper,
         zkServerWrapper.getAddress(),
         featureProperties,
-        configProperties);
+        configProperties,
+        serverD2ServiceName);
     synchronized (this) {
       veniceServerWrappers.put(veniceServerWrapper.getPort(), veniceServerWrapper);
     }
@@ -1057,5 +1066,9 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
   public String getRegionName() {
     return regionName;
+  }
+
+  public String getServerD2ServiceName() {
+    return serverD2ServiceName;
   }
 }

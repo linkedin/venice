@@ -336,8 +336,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private static final ByteBuffer EMPTY_PUSH_ZSTD_DICTIONARY =
       ByteBuffer.wrap(ZstdWithDictCompressor.buildDictionaryOnSyntheticAvroData());
   private static final String ZK_INSTANCES_SUB_PATH = "INSTANCES";
-  private static final String ZK_CUSTOMIZEDSTATES_SUB_PATH =
-      "CUSTOMIZEDSTATES/" + HelixPartitionState.OFFLINE_PUSH.toString();
+  private static final String ZK_CUSTOMIZEDSTATES_SUB_PATH = "CUSTOMIZEDSTATES/" + HelixPartitionState.OFFLINE_PUSH;
 
   /**
    * Level-1 controller, it always being connected to Helix. And will create sub-controller for specific cluster when
@@ -366,6 +365,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   private final Map<String, Map<String, ControllerClient>> clusterControllerClientPerColoMap =
       new VeniceConcurrentHashMap<>();
+  private final Map<String, HelixLiveInstanceMonitor> liveInstanceMonitorMap = new HashMap<>();
 
   private VeniceDistClusterControllerStateModelFactory controllerStateModelFactory;
 
@@ -404,7 +404,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     this.minNumberOfStoreVersionsToPreserve = multiClusterConfigs.getMinNumberOfStoreVersionsToPreserve();
     this.d2Client = d2Client;
-
     if (sslEnabled) {
       try {
         String sslFactoryClassName = multiClusterConfigs.getSslFactoryClassName();
@@ -591,7 +590,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         helixAdminClient);
 
     for (String clusterName: multiClusterConfigs.getClusters()) {
+      if (!multiClusterConfigs.getControllerConfig(clusterName).isErrorLeaderReplicaFailOverEnabled()) {
+        continue;
+      }
       HelixLiveInstanceMonitor liveInstanceMonitor = new HelixLiveInstanceMonitor(this.zkClient, clusterName);
+      liveInstanceMonitorMap.put(clusterName, liveInstanceMonitor);
       // Register new instance callback
       liveInstanceMonitor.registerLiveInstanceChangedListener(new LiveInstanceChangedListener() {
         @Override
@@ -617,6 +620,30 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
       });
     }
+  }
+
+  public void startInstanceMonitor(String clusterName) {
+    if (!multiClusterConfigs.getControllerConfig(clusterName).isErrorLeaderReplicaFailOverEnabled()) {
+      return;
+    }
+    HelixLiveInstanceMonitor liveInstanceMonitor = liveInstanceMonitorMap.get(clusterName);
+    if (liveInstanceMonitor == null) {
+      LOGGER.warn("Could not find live instance monitor for cluster {}", clusterName);
+      return;
+    }
+    liveInstanceMonitor.refresh();
+  }
+
+  public void clearInstanceMonitor(String clusterName) {
+    if (!multiClusterConfigs.getControllerConfig(clusterName).isErrorLeaderReplicaFailOverEnabled()) {
+      return;
+    }
+    HelixLiveInstanceMonitor liveInstanceMonitor = liveInstanceMonitorMap.get(clusterName);
+    if (liveInstanceMonitor == null) {
+      LOGGER.warn("Could not find live instance monitor for cluster {}", clusterName);
+      return;
+    }
+    liveInstanceMonitor.clear();
   }
 
   private void checkAndCreateVeniceControllerCluster(boolean isControllerInAzure) {
@@ -4926,7 +4953,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * @return a map containing the storage node name and its connectivity status (<code>InstanceStatus</code>).
    */
   @Override
-  public Map<String, String> getStorageNodesStatus(String clusterName) {
+  public Map<String, String> getStorageNodesStatus(String clusterName, boolean enableReplica) {
     checkControllerLeadershipFor(clusterName);
     List<String> instances = helixAdminClient.getInstancesInCluster(clusterName);
     RoutingDataRepository routingDataRepository =
@@ -4937,6 +4964,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         instancesStatusesMap.put(instance, InstanceStatus.CONNECTED.toString());
       } else {
         instancesStatusesMap.put(instance, InstanceStatus.DISCONNECTED.toString());
+      }
+      if (enableReplica) {
+        Map<String, List<String>> disabledPartitions = helixAdminClient.getDisabledPartitionsMap(clusterName, instance);
+        for (Map.Entry<String, List<String>> entry: disabledPartitions.entrySet()) {
+          helixAdminClient.enablePartition(true, clusterName, instance, entry.getKey(), entry.getValue());
+          LOGGER.info(
+              "Enabled disabled replica of resource {}, partitions {} in cluster {}",
+              entry.getKey(),
+              entry.getValue(),
+              clusterName);
+        }
       }
     }
     return instancesStatusesMap;
@@ -5910,7 +5948,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * @see Admin#getStorageNodesStatus(String)
+   * @see Admin#getStorageNodesStatus(String, boolean)
    */
   @Override
   public StorageNodeStatus getStorageNodesStatus(String clusterName, String instanceId) {

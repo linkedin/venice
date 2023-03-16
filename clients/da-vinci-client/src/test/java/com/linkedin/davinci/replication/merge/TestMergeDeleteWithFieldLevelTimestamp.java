@@ -20,10 +20,12 @@ import org.testng.annotations.Test;
 public class TestMergeDeleteWithFieldLevelTimestamp extends TestMergeConflictResolver {
   @Test
   public void testDeleteIgnored() {
+    StringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
+        new StringAnnotatedStoreSchemaCache(storeName, schemaRepository);
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
-            mock(ReadOnlySchemaRepository.class),
-            new RmdSerDe(schemaRepository, storeName, RMD_VERSION_ID),
+            stringAnnotatedStoreSchemaCache,
+            new RmdSerDe(stringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
             storeName);
 
     Map<String, Long> fieldNameToTimestampMap = new HashMap<>();
@@ -61,11 +63,12 @@ public class TestMergeDeleteWithFieldLevelTimestamp extends TestMergeConflictRes
     final ByteBuffer oldValueBytes = ByteBuffer.wrap(getSerializer(userSchemaV1).serialize(oldValueRecord));
     ReadOnlySchemaRepository schemaRepository = mock(ReadOnlySchemaRepository.class);
     doReturn(new SchemaEntry(1, userSchemaV1)).when(schemaRepository).getValueSchema(storeName, valueSchemaID);
-
+    StringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
+        new StringAnnotatedStoreSchemaCache(storeName, schemaRepository);
     MergeConflictResolver mergeConflictResolver = MergeConflictResolverFactory.getInstance()
         .createMergeConflictResolver(
-            schemaRepository,
-            new RmdSerDe(schemaRepository, storeName, RMD_VERSION_ID),
+            stringAnnotatedStoreSchemaCache,
+            new RmdSerDe(stringAnnotatedStoreSchemaCache, RMD_VERSION_ID),
             storeName);
 
     // Case 1: Delete one field with the same delete timestamp.
@@ -112,8 +115,11 @@ public class TestMergeDeleteWithFieldLevelTimestamp extends TestMergeConflictRes
     updatedRmd = result.getRmdRecord();
     Object timestampObj = updatedRmd.get(TIMESTAMP_FIELD_NAME);
     // Because all fields are deleted. Timestamp should be converted to be a value-level timestamp.
-    Assert.assertTrue(timestampObj instanceof Long);
-    Assert.assertEquals((long) timestampObj, 99L);
+    Assert.assertTrue(timestampObj instanceof GenericRecord);
+    GenericRecord timestampRecord = (GenericRecord) timestampObj;
+    Assert.assertEquals(timestampRecord.get("id"), 99L);
+    Assert.assertEquals(timestampRecord.get("name"), 99L);
+    Assert.assertEquals(timestampRecord.get("age"), 99L);
 
     // Because all fields being deleted is equivalent to the whole value record being deleted.
     updatedValueOptional = result.getNewValue();

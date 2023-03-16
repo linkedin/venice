@@ -1,6 +1,5 @@
 package com.linkedin.davinci.replication.merge;
 
-import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.merge.CollectionTimestampMergeRecordHelper;
 import com.linkedin.venice.schema.merge.MergeRecordHelper;
 import com.linkedin.venice.schema.writecompute.WriteComputeProcessor;
@@ -19,12 +18,11 @@ public class MergeConflictResolverFactory {
   }
 
   public MergeConflictResolver createMergeConflictResolver(
-      ReadOnlySchemaRepository schemaRepository,
+      StringAnnotatedStoreSchemaCache annotatedReadOnlySchemaRepository,
       RmdSerDe rmdSerDe,
-      String storeName) {
+      String storeName,
+      boolean rmdUseFieldLevelTs) {
     MergeRecordHelper mergeRecordHelper = new CollectionTimestampMergeRecordHelper();
-    MapKeyStringAnnotatedStoreSchemaCache annotatedReadOnlySchemaRepository =
-        new MapKeyStringAnnotatedStoreSchemaCache(storeName, schemaRepository);
     return new MergeConflictResolver(
         annotatedReadOnlySchemaRepository,
         storeName,
@@ -32,6 +30,14 @@ public class MergeConflictResolverFactory {
         new MergeGenericRecord(new WriteComputeProcessor(mergeRecordHelper), mergeRecordHelper),
         new MergeByteBuffer(),
         new MergeResultValueSchemaResolverImpl(annotatedReadOnlySchemaRepository, storeName),
-        rmdSerDe);
+        rmdSerDe,
+        rmdUseFieldLevelTs);
+  }
+
+  public MergeConflictResolver createMergeConflictResolver(
+      StringAnnotatedStoreSchemaCache annotatedReadOnlySchemaRepository,
+      RmdSerDe rmdSerDe,
+      String storeName) {
+    return createMergeConflictResolver(annotatedReadOnlySchemaRepository, rmdSerDe, storeName, false);
   }
 }

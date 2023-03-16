@@ -91,6 +91,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_SYSTEM_STORE_PROMOTION_TO_LE
 import static com.linkedin.venice.ConfigKeys.SERVER_UNSUB_AFTER_BATCHPUSH;
 import static com.linkedin.venice.ConfigKeys.SEVER_CALCULATE_QUOTA_USAGE_BASED_ON_PARTITIONS_ASSIGNMENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SORTED_INPUT_DRAINER_SIZE;
+import static com.linkedin.venice.ConfigKeys.STORE_WRITER_BUFFER_AFTER_LEADER_LOGIC_ENABLED;
 import static com.linkedin.venice.ConfigKeys.STORE_WRITER_BUFFER_MEMORY_CAPACITY;
 import static com.linkedin.venice.ConfigKeys.STORE_WRITER_BUFFER_NOTIFY_DELTA;
 import static com.linkedin.venice.ConfigKeys.STORE_WRITER_NUMBER;
@@ -168,6 +169,12 @@ public class VeniceServerConfig extends VeniceClusterConfig {
    * Thread pool size of unsorted ingestion drainer when dedicatedDrainerQueue is enabled.
    */
   private final int drainerPoolSizeUnsortedInput;
+
+  /**
+   * Whether to queue writes into the {@link com.linkedin.davinci.kafka.consumer.StoreBufferService} after the
+   * leader-specific logic (DCR, produce to Kafka) has been performed.
+   */
+  private final boolean storeWriterBufferAfterLeaderLogicEnabled;
 
   /**
    * Buffer capacity being used by each writer.
@@ -403,6 +410,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     drainerPoolSizeSortedInput = serverProperties.getInt(SORTED_INPUT_DRAINER_SIZE, 8);
     drainerPoolSizeUnsortedInput = serverProperties.getInt(UNSORTED_INPUT_DRAINER_SIZE, 8);
 
+    storeWriterBufferAfterLeaderLogicEnabled =
+        serverProperties.getBoolean(STORE_WRITER_BUFFER_AFTER_LEADER_LOGIC_ENABLED, true);
     // To minimize the GC impact during heavy ingestion.
     storeWriterBufferMemoryCapacity =
         serverProperties.getSizeInBytes(STORE_WRITER_BUFFER_MEMORY_CAPACITY, 10 * 1024 * 1024);
@@ -636,6 +645,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getStoreWriterNumber() {
     return this.storeWriterNumber;
+  }
+
+  public boolean isStoreWriterBufferAfterLeaderLogicEnabled() {
+    return this.storeWriterBufferAfterLeaderLogicEnabled;
   }
 
   public long getStoreWriterBufferMemoryCapacity() {

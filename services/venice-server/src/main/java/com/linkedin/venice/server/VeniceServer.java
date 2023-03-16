@@ -53,6 +53,7 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.SchemaPresenceChecker;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
+import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
 import com.linkedin.venice.stats.AggRocksDBStats;
 import com.linkedin.venice.stats.BackupVersionOptimizationServiceStats;
 import com.linkedin.venice.stats.DiskHealthStats;
@@ -82,6 +83,7 @@ import org.apache.logging.log4j.Logger;
 public class VeniceServer {
   private static final Logger LOGGER = LogManager.getLogger(VeniceServer.class);
 
+  private final List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers;
   private static final String SERVER_SERVICE_NAME = "venice-server";
 
   private final VeniceConfigLoader veniceConfigLoader;
@@ -144,6 +146,28 @@ public class VeniceServer {
   }
 
   /**
+   * @see #VeniceServer(VeniceConfigLoader, MetricsRepository, Optional, Optional, Optional, Optional, ICProvider, List<ServiceDiscoveryAnnouncer>)
+   */
+  public VeniceServer(
+      VeniceConfigLoader veniceConfigLoader,
+      MetricsRepository metricsRepository,
+      Optional<SSLFactory> sslFactory,
+      Optional<StaticAccessController> routerAccessController,
+      Optional<DynamicAccessController> storeAccessController,
+      Optional<ClientConfig> clientConfigForConsumer,
+      ICProvider icProvider) {
+    this(
+        veniceConfigLoader,
+        metricsRepository,
+        sslFactory,
+        routerAccessController,
+        storeAccessController,
+        clientConfigForConsumer,
+        icProvider,
+        Collections.emptyList());
+  }
+
+  /**
    * Allocates a new {@code VeniceServer} object.
    * @param veniceConfigLoader a config loader to load configs related to cluster and server.
    * @param metricsRepository a registry for reporting metrics.
@@ -152,6 +176,7 @@ public class VeniceServer {
    * @param storeAccessController validates the accesses/requests from clients.
    * @param clientConfigForConsumer kafka client configurations.
    * @param icProvider Provide IC(invocation-context) to remote calls inside services.
+   * @param serviceDiscoveryAnnouncers list of server discovery announcers
    * @see VeniceConfigLoader
    * @see ServerStoreAclHandler
    */
@@ -163,7 +188,8 @@ public class VeniceServer {
       Optional<StaticAccessController> routerAccessController,
       Optional<DynamicAccessController> storeAccessController,
       Optional<ClientConfig> clientConfigForConsumer,
-      ICProvider icProvider) {
+      ICProvider icProvider,
+      List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers) {
 
     // force out any potential config errors using a wildcard store name
     veniceConfigLoader.getStoreConfig("");
@@ -187,6 +213,7 @@ public class VeniceServer {
     this.storeAccessController = storeAccessController;
     this.clientConfigForConsumer = clientConfigForConsumer;
     this.icProvider = icProvider;
+    this.serviceDiscoveryAnnouncers = serviceDiscoveryAnnouncers;
   }
 
   /**
@@ -555,6 +582,12 @@ public class VeniceServer {
     for (AbstractVeniceService service: veniceServiceList) {
       service.start();
     }
+
+    for (ServiceDiscoveryAnnouncer serviceDiscoveryAnnouncer: serviceDiscoveryAnnouncers) {
+      LOGGER.info("Registering to service discovery: {}", serviceDiscoveryAnnouncer);
+      serviceDiscoveryAnnouncer.register();
+    }
+
     LOGGER.info("Startup completed in {} ms.", (System.currentTimeMillis() - start));
   }
 
@@ -575,6 +608,15 @@ public class VeniceServer {
         LOGGER.info("The server has been already stopped, ignoring reattempt.");
         return;
       }
+      for (ServiceDiscoveryAnnouncer serviceDiscoveryAnnouncer: serviceDiscoveryAnnouncers) {
+        LOGGER.info("Unregistering from service discovery: {}", serviceDiscoveryAnnouncer);
+        try {
+          serviceDiscoveryAnnouncer.unregister();
+        } catch (RuntimeException e) {
+          LOGGER.error("Service discovery announcer {} failed to unregister properly", serviceDiscoveryAnnouncer, e);
+        }
+      }
+
       for (AbstractVeniceService service: CollectionUtils.reversed(services.get())) {
         try {
           LOGGER.info("Stopping service: {}", service.getName());

@@ -31,4 +31,8 @@ public interface PubSubTopic {
   default boolean isVersionTopicOrStreamReprocessingTopic() {
     return isStreamReprocessingTopic() || isVersionTopic();
   }
+
+  default boolean isViewTopic() {
+    return getPubSubTopicType() == PubSubTopicType.VIEW_TOPIC;
+  }
 }
