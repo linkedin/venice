@@ -84,10 +84,6 @@ public class TestDataRecoveryClient {
     planningExecutor = spy(PlanningExecutor.class);
     controllerClient = mock(ControllerClient.class);
 
-    List<String> mockCmd = new ArrayList<>();
-    mockCmd.add("sh");
-    mockCmd.add("-c");
-
     Set<String> storeNames = new HashSet<>(Arrays.asList("store1", "store2"));
     List<PlanningTask> tasks = buildPlanningTasks(storeNames, cmdParams);
     doReturn(tasks).when(planningExecutor).buildTasks(anyString(), any(), eq(controllerClient));
