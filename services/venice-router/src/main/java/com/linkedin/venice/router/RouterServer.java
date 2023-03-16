@@ -771,7 +771,7 @@ public class RouterServer extends AbstractVeniceService {
     registry.waitForShutdown();
     LOGGER.info("Other resources managed by local ResourceRegistry have been shutdown completely");
 
-    routersClusterManager.unregisterRouter(Utils.getHelixNodeIdentifier(config.getPort()));
+    routersClusterManager.unregisterRouter(Utils.getHelixNodeIdentifier(config.getHostname(), config.getPort()));
     routersClusterManager.clear();
     routingDataRepository.clear();
     metadataRepository.clear();
@@ -857,7 +857,7 @@ public class RouterServer extends AbstractVeniceService {
           config.getRefreshAttemptsForZkReconnect(),
           config.getRefreshIntervalForZkReconnectInMs());
       routersClusterManager.refresh();
-      routersClusterManager.registerRouter(Utils.getHelixNodeIdentifier(config.getPort()));
+      routersClusterManager.registerRouter(Utils.getHelixNodeIdentifier(config.getHostname(), config.getPort()));
       routingDataRepository.refresh();
       hybridStoreQuotaRepository.ifPresent(HelixHybridStoreQuotaRepository::refresh);
 

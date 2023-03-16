@@ -41,7 +41,7 @@ public class ZkRoutersClusterManagerTest {
     ZkRoutersClusterManager[] managers = new ZkRoutersClusterManager[routersCount];
     for (int i = 0; i < routersCount; i++) {
       int port = 10555 + i;
-      String instanceId = Utils.getHelixNodeIdentifier(port);
+      String instanceId = Utils.getHelixNodeIdentifier(Utils.getHostName(), port);
       ZkRoutersClusterManager manager = createManager(zkClient);
       managers[i] = manager;
       manager.registerRouter(instanceId);
@@ -69,8 +69,8 @@ public class ZkRoutersClusterManagerTest {
     ZkClient failedZkClient = new ZkClient(zkServerWrapper.getAddress());
     ZkRoutersClusterManager failedManager = createManager(failedZkClient);
     // Register two routers through different zk clients.
-    manager.registerRouter(Utils.getHelixNodeIdentifier(port));
-    failedManager.registerRouter(Utils.getHelixNodeIdentifier(port + 1));
+    manager.registerRouter(Utils.getHelixNodeIdentifier(Utils.getHostName(), port));
+    failedManager.registerRouter(Utils.getHelixNodeIdentifier(Utils.getHostName(), port + 1));
     // Eventually both manager wil get notification to update router count.
     TestUtils.waitForNonDeterministicCompletion(1, TimeUnit.SECONDS, () -> manager.getLiveRoutersCount() == 2);
     TestUtils.waitForNonDeterministicCompletion(1, TimeUnit.SECONDS, () -> failedManager.getLiveRoutersCount() == 2);
@@ -83,7 +83,7 @@ public class ZkRoutersClusterManagerTest {
   @Test
   public void testUnregisterLiveOuter() {
     int port = 10555;
-    String instanceId = Utils.getHelixNodeIdentifier(port);
+    String instanceId = Utils.getHelixNodeIdentifier(Utils.getHostName(), port);
     ZkRoutersClusterManager manager = createManager(zkClient);
     manager.registerRouter(instanceId);
     Assert.assertEquals(
@@ -100,7 +100,7 @@ public class ZkRoutersClusterManagerTest {
   @Test
   public void testEnableThrottling() {
     int port = 10555;
-    String instanceId = Utils.getHelixNodeIdentifier(port);
+    String instanceId = Utils.getHelixNodeIdentifier(Utils.getHostName(), port);
     ZkRoutersClusterManager manager = createManager(zkClient);
     manager.registerRouter(instanceId);
 
@@ -113,7 +113,7 @@ public class ZkRoutersClusterManagerTest {
   @Test
   public void testEnableQuotaRebalance() {
     int port = 10555;
-    String instanceId = Utils.getHelixNodeIdentifier(port);
+    String instanceId = Utils.getHelixNodeIdentifier(Utils.getHostName(), port);
     ZkRoutersClusterManager manager = createManager(zkClient);
     manager.registerRouter(instanceId);
     int expectRouterNumber = 200;
@@ -128,7 +128,7 @@ public class ZkRoutersClusterManagerTest {
   @Test
   public void testUPdateExpectRouterCount() {
     int port = 10555;
-    String instanceId = Utils.getHelixNodeIdentifier(port);
+    String instanceId = Utils.getHelixNodeIdentifier(Utils.getHostName(), port);
     ZkRoutersClusterManager manager = createManager(zkClient);
     manager.registerRouter(instanceId);
     int expectRouterNumber = -1;
@@ -149,7 +149,7 @@ public class ZkRoutersClusterManagerTest {
   @Test
   public void testEnableMaxCapacityProtection() {
     int port = 10555;
-    String instanceId = Utils.getHelixNodeIdentifier(port);
+    String instanceId = Utils.getHelixNodeIdentifier(Utils.getHostName(), port);
     ZkRoutersClusterManager manager = createManager(zkClient);
     manager.registerRouter(instanceId);
 
@@ -166,7 +166,7 @@ public class ZkRoutersClusterManagerTest {
   @Test
   public void testHandleRouterClusterConfigChange() {
     int port = 10555;
-    String instanceId = Utils.getHelixNodeIdentifier(port);
+    String instanceId = Utils.getHelixNodeIdentifier(Utils.getHostName(), port);
     ZkRoutersClusterManager controller = createManager(zkClient);
     ZkRoutersClusterManager router = createManager(new ZkClient(zkServerWrapper.getAddress()));
     router.registerRouter(instanceId);
@@ -194,7 +194,7 @@ public class ZkRoutersClusterManagerTest {
   @Test
   public void testTriggerRouterClusterConfigChangedEvent() {
     int port = 10555;
-    String instanceId = Utils.getHelixNodeIdentifier(port);
+    String instanceId = Utils.getHelixNodeIdentifier(Utils.getHostName(), port);
     ZkRoutersClusterManager manager = createManager(zkClient);
     manager.registerRouter(instanceId);
     int expectedNumber = 100;

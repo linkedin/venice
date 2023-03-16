@@ -826,7 +826,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     int testPort = 5555;
     Assert.assertEquals(veniceAdmin.getAllowlist(clusterName).size(), 0, "Allow list should be empty.");
 
-    veniceAdmin.addInstanceToAllowlist(clusterName, Utils.getHelixNodeIdentifier(testPort));
+    veniceAdmin.addInstanceToAllowlist(clusterName, Utils.getHelixNodeIdentifier(Utils.getHostName(), testPort));
     Assert.assertEquals(
         veniceAdmin.getAllowlist(clusterName).size(),
         1,
@@ -834,9 +834,9 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
 
     Assert.assertEquals(
         veniceAdmin.getAllowlist(clusterName).iterator().next(),
-        Utils.getHelixNodeIdentifier(testPort),
+        Utils.getHelixNodeIdentifier(Utils.getHostName(), testPort),
         "Instance in the allowlist is not the one added before.");
-    veniceAdmin.removeInstanceFromAllowList(clusterName, Utils.getHelixNodeIdentifier(testPort));
+    veniceAdmin.removeInstanceFromAllowList(clusterName, Utils.getHelixNodeIdentifier(Utils.getHostName(), testPort));
     Assert.assertEquals(
         veniceAdmin.getAllowlist(clusterName).size(),
         0,
@@ -847,7 +847,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   public void testKillOfflinePush() throws Exception {
     String participantStoreRTTopic =
         Version.composeRealTimeTopic(VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName));
-    String newNodeId = Utils.getHelixNodeIdentifier(9786);
+    String newNodeId = Utils.getHelixNodeIdentifier(Utils.getHostName(), 9786);
     // Ensure original participant store would hang on bootstrap state.
     delayParticipantJobCompletion(true);
     startParticipant(true, newNodeId);

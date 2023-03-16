@@ -8,6 +8,7 @@ import static com.linkedin.venice.ConfigKeys.HEARTBEAT_TIMEOUT;
 import static com.linkedin.venice.ConfigKeys.HELIX_HYBRID_STORE_QUOTA_ENABLED;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KEY_VALUE_PROFILING_ENABLED;
+import static com.linkedin.venice.ConfigKeys.LISTENER_HOSTNAME;
 import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
 import static com.linkedin.venice.ConfigKeys.LISTENER_SSL_PORT;
 import static com.linkedin.venice.ConfigKeys.MAX_READ_CAPACITY;
@@ -98,6 +99,7 @@ import com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy;
 import com.linkedin.venice.router.api.routing.helix.HelixGroupSelectionStrategyEnum;
 import com.linkedin.venice.router.httpclient.StorageNodeClientType;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Arrays;
 import java.util.List;
@@ -117,6 +119,7 @@ public class VeniceRouterConfig {
   private String clusterName;
   private String zkConnection;
   private int port;
+  private String hostname;
   private int sslPort;
   private double heartbeatTimeoutMs;
   private long heartbeatCycleMs;
@@ -217,6 +220,7 @@ public class VeniceRouterConfig {
   private void checkProperties(VeniceProperties props) {
     clusterName = props.getString(CLUSTER_NAME);
     port = props.getInt(LISTENER_PORT);
+    hostname = props.getString(LISTENER_HOSTNAME, () -> Utils.getHostName());
     sslPort = props.getInt(LISTENER_SSL_PORT);
     zkConnection = props.getString(ZOOKEEPER_ADDRESS);
     kafkaBootstrapServers = props.getString(KAFKA_BOOTSTRAP_SERVERS);
@@ -393,6 +397,10 @@ public class VeniceRouterConfig {
 
   public int getPort() {
     return port;
+  }
+
+  public String getHostname() {
+    return hostname;
   }
 
   public int getSslPort() {

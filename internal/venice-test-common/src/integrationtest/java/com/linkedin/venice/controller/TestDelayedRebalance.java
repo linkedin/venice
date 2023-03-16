@@ -107,7 +107,8 @@ public class TestDelayedRebalance {
     PartitionAssignment partitionAssignment =
         cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
     Assert.assertNull(
-        partitionAssignment.getPartition(0).getInstanceStatusById(Utils.getHelixNodeIdentifier(failServerPort)));
+        partitionAssignment.getPartition(0)
+            .getInstanceStatusById(Utils.getHelixNodeIdentifier(Utils.getHostName(), failServerPort)));
   }
 
   @Test
@@ -157,7 +158,7 @@ public class TestDelayedRebalance {
       RoutingDataRepository routingDataRepository = cluster.getRandomVeniceRouter().getRoutingDataRepository();
       Assert.assertTrue(routingDataRepository.containsKafkaTopic(topicName));
       Assert.assertEquals(routingDataRepository.getReadyToServeInstances(topicName, 0).size(), 2);
-      String instanceId = Utils.getHelixNodeIdentifier(failServerPort);
+      String instanceId = Utils.getHelixNodeIdentifier(Utils.getHostName(), failServerPort);
       Assert.assertNull(
           routingDataRepository.getPartitionAssignments(topicName).getPartition(0).getInstanceStatusById(instanceId));
     });
@@ -200,7 +201,8 @@ public class TestDelayedRebalance {
         cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
     // The restart server get the original replica and become ONLINE again.
     Assert.assertEquals(
-        partitionAssignment.getPartition(0).getInstanceStatusById(Utils.getHelixNodeIdentifier(failServerPort)),
+        partitionAssignment.getPartition(0)
+            .getInstanceStatusById(Utils.getHelixNodeIdentifier(Utils.getHostName(), failServerPort)),
         ExecutionStatus.COMPLETED.name());
   }
 
