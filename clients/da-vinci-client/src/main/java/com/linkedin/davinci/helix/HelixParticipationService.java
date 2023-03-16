@@ -112,12 +112,6 @@ public class HelixParticipationService extends AbstractVeniceService
     this.helixReadOnlyStoreRepository = helixReadOnlyStoreRepository;
     this.metricsRepository = metricsRepository;
     this.instance = new Instance(participantName, hostname, port);
-    LOGGER.info(
-        "Instance name: {}, hostname: {}, port: {}, url {}",
-        participantName,
-        hostname,
-        port,
-        instance.getUrl(false));
     this.managerFuture = managerFuture;
     this.partitionPushStatusAccessorFuture = new CompletableFuture<>();
     if (!(storeIngestionService instanceof KafkaStoreIngestionService)) {
