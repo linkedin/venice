@@ -49,8 +49,12 @@ public class TestDataRecoveryClient {
   }
 
   private void verifyEstimationResults() {
-    int expectedAverage = 7200;
-    Assert.assertEquals((int) planningExecutor.getTasks().get(0).getEstimatedTimeResult(), expectedAverage);
+    Integer expectedAverage = 14400;
+    Integer result = 0;
+    for (PlanningTask t: planningExecutor.getTasks()) {
+      result += t.getEstimatedTimeResult();
+    }
+    Assert.assertEquals(result, expectedAverage);
   }
 
   private void verifyRecoveryResults(boolean isSuccess) {
@@ -84,7 +88,7 @@ public class TestDataRecoveryClient {
     mockCmd.add("sh");
     mockCmd.add("-c");
 
-    Set<String> storeNames = new HashSet<>(Arrays.asList("store1"));
+    Set<String> storeNames = new HashSet<>(Arrays.asList("store1", "store2"));
     List<PlanningTask> tasks = buildPlanningTasks(storeNames, cmdParams);
     doReturn(tasks).when(planningExecutor).buildTasks(anyString(), any(), eq(controllerClient));
     DataRecoveryClient dataRecoveryClient = mock(DataRecoveryClient.class);
@@ -99,6 +103,7 @@ public class TestDataRecoveryClient {
     RegionPushDetails det2 = new RegionPushDetails();
     det2.setPushStartTimestamp("2023-03-09T00:20:15.063472");
     det2.setPushEndTimestamp("2023-03-09T01:20:15.063472");
+
     mockResponse.setRegionPushDetails(new HashMap<String, RegionPushDetails>() {
       {
         put("region1", det);
@@ -110,7 +115,7 @@ public class TestDataRecoveryClient {
     doReturn("testcluster").when(controllerClient).getClusterName();
 
     dataRecoveryClient.estimateRecoveryTime(
-        new DataRecoveryClient.DataRecoveryParams("store1"),
+        new DataRecoveryClient.DataRecoveryParams("store1,store2", true),
         controllerClient.getClusterName(),
         controllerClient);
   }
