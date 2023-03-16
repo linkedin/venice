@@ -493,6 +493,9 @@ public class AdminTool {
         case EXECUTE_DATA_RECOVERY:
           executeDataRecovery(cmd);
           break;
+        case ESTIMATE_DATA_RECOVERY_TIME:
+          estimateDataRecoveryTime(cmd);
+          break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
           for (Command c: Command.values()) {
@@ -620,6 +623,16 @@ public class AdminTool {
     DataRecoveryClient dataRecoveryClient = new DataRecoveryClient();
     DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(stores);
     dataRecoveryClient.execute(params, cmdParams);
+  }
+
+  private static void estimateDataRecoveryTime(CommandLine cmd) {
+    String stores = getRequiredArgument(cmd, Arg.STORES);
+    String cluster = getRequiredArgument(cmd, Arg.CLUSTER);
+    String url = getRequiredArgument(cmd, Arg.URL);
+
+    DataRecoveryClient dataRecoveryClient = new DataRecoveryClient();
+    DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(stores);
+    dataRecoveryClient.estimateRecoveryTime(params, cluster, controllerClient);
   }
 
   private static void createNewStore(CommandLine cmd) throws Exception {

@@ -1,5 +1,6 @@
 package com.linkedin.venice.datarecovery;
 
+import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.utils.Utils;
 import java.util.Scanner;
 import java.util.Set;
@@ -15,6 +16,7 @@ import org.apache.logging.log4j.Logger;
 public class DataRecoveryClient {
   private static final Logger LOGGER = LogManager.getLogger(DataRecoveryClient.class);
   private final DataRecoveryExecutor executor;
+  private final PlanningExecutor _planningExecutor;
 
   public DataRecoveryClient() {
     this(new DataRecoveryExecutor());
@@ -22,10 +24,15 @@ public class DataRecoveryClient {
 
   public DataRecoveryClient(DataRecoveryExecutor module) {
     this.executor = module;
+    this._planningExecutor = new PlanningExecutor();
   }
 
   public DataRecoveryExecutor getExecutor() {
     return executor;
+  }
+
+  public PlanningExecutor getPlanningExecutor() {
+    return _planningExecutor;
   }
 
   public void execute(DataRecoveryParams drParams, StoreRepushCommand.Params cmdParams) {
@@ -39,6 +46,16 @@ public class DataRecoveryClient {
     }
 
     getExecutor().perform(storeNames, cmdParams);
+  }
+
+  public void estimateRecoveryTime(DataRecoveryParams drParams, String clusterName, ControllerClient controllerClient) {
+    Set<String> storeNames = drParams.getRecoveryStores();
+    if (storeNames == null || storeNames.isEmpty()) {
+      LOGGER.warn("store list is empty, exit.");
+      return;
+    }
+
+    getPlanningExecutor().perform(clusterName, storeNames, controllerClient);
   }
 
   public boolean confirmStores(Set<String> storeNames) {

@@ -436,6 +436,10 @@ public enum Command {
   EXECUTE_DATA_RECOVERY(
       "execute-data-recovery", "Execute data recovery for a group of stores",
       new Arg[] { RECOVERY_COMMAND, STORES, SOURCE_FABRIC }, new Arg[] { EXTRA_COMMAND_ARGS, DEBUG }
+  ),
+  ESTIMATE_DATA_RECOVERY_TIME(
+      "estimate-data-recovery-time", "Estimates the time it would take to execute data recovery for a group of stores.",
+      new Arg[] { URL, STORES, CLUSTER }
   );
 
   private final String commandName;
