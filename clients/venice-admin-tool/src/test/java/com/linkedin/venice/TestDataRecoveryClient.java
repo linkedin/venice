@@ -15,9 +15,7 @@ import com.linkedin.venice.datarecovery.EstimateDataRecoveryTimeCommand;
 import com.linkedin.venice.datarecovery.PlanningExecutor;
 import com.linkedin.venice.datarecovery.PlanningTask;
 import com.linkedin.venice.datarecovery.StoreRepushCommand;
-import com.linkedin.venice.meta.PartitionDetail;
 import com.linkedin.venice.meta.RegionPushDetails;
-import com.linkedin.venice.meta.ReplicaDetail;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -36,11 +34,16 @@ public class TestDataRecoveryClient {
   @Test
   public void testExecutor() {
     for (boolean isSuccess: new boolean[] { true, false }) {
-      controllerClient = mock(ControllerClient.class);
       estimateRecovery();
       executeRecovery(isSuccess);
+      verifyEstimationResults();
       verifyRecoveryResults(isSuccess);
     }
+  }
+
+  private void verifyEstimationResults() {
+    int expectedAverage = 3600;
+    Assert.assertEquals((int) planningExecutor.getTasks().get(0).getEstimatedTimeResult(), expectedAverage);
   }
 
   private void verifyRecoveryResults(boolean isSuccess) {
@@ -62,55 +65,32 @@ public class TestDataRecoveryClient {
   private void estimateRecovery() {
     EstimateDataRecoveryTimeCommand.Params cmdParams = new EstimateDataRecoveryTimeCommand.Params();
     planningExecutor = spy(PlanningExecutor.class);
+    controllerClient = mock(ControllerClient.class);
 
     List<String> mockCmd = new ArrayList<>();
     mockCmd.add("sh");
     mockCmd.add("-c");
 
-    EstimateDataRecoveryTimeCommand mockEstimateTimeCmd = spy(EstimateDataRecoveryTimeCommand.class);
-    mockEstimateTimeCmd.setUrl("https://localhost:7036");
-    doReturn(mockCmd).when(mockEstimateTimeCmd).getShellCmd();
-
     Set<String> storeNames = new HashSet<>(Arrays.asList("store1"));
-    List<PlanningTask> tasks = buildPlanningTasks(storeNames, mockEstimateTimeCmd, cmdParams);
+    List<PlanningTask> tasks = buildPlanningTasks(storeNames, cmdParams);
     doReturn(tasks).when(planningExecutor).buildTasks(any(), any(), any());
     DataRecoveryClient dataRecoveryClient = mock(DataRecoveryClient.class);
     doReturn(executor).when(dataRecoveryClient).getPlanningExecutor();
     doCallRealMethod().when(dataRecoveryClient).estimateRecoveryTime(any(), any(), any());
 
     StoreHealthAuditResponse mockResponse = new StoreHealthAuditResponse();
-    List<ReplicaDetail> mockReplicaDetails = new ArrayList<ReplicaDetail>();
-    for (int i = 0; i != 3; i++) {
-      ReplicaDetail rep = new ReplicaDetail();
-      rep.setPushStartDateTime("2023-03-09T00:20:15.063472");
-      rep.setPushStartDateTime("2023-03-09T00:21:15.063472");
-      mockReplicaDetails.add(rep);
-    }
-    List<ReplicaDetail> mockReplicaDetails2 = new ArrayList<ReplicaDetail>();
-    for (int i = 0; i != 3; i++) {
-      ReplicaDetail rep = new ReplicaDetail();
-      rep.setPushStartDateTime("2023-03-09T00:20:15.063472");
-      rep.setPushStartDateTime("2023-03-09T00:22:15.063472");
-      mockReplicaDetails2.add(rep);
-    }
-    PartitionDetail a = new PartitionDetail();
-    PartitionDetail b = new PartitionDetail();
-    a.setReplicaDetails(mockReplicaDetails);
-    b.setReplicaDetails(mockReplicaDetails2);
-
-    List<PartitionDetail> partitionDetails = new ArrayList<PartitionDetail>();
-    partitionDetails.add(a);
-    partitionDetails.add(b);
 
     RegionPushDetails det = new RegionPushDetails();
-    det.setPartitionDetails(partitionDetails);
+    det.setPushStartTimestamp("2023-03-09T00:20:15.063472");
+    det.setPushEndTimestamp("2023-03-09T00:21:15.063472");
     mockResponse.setRegionPushDetails(new HashMap<String, RegionPushDetails>() {
       {
         put("store1", det);
       }
     });
 
-    // doReturn(mockResponse).when(controllerClient).listStorePushInfo(any(), any());
+    doReturn(mockResponse).when(controllerClient).listStorePushInfo(any(), any());
+
     dataRecoveryClient.estimateRecoveryTime(
         new DataRecoveryClient.DataRecoveryParams("store1"),
         controllerClient.getClusterName(),
@@ -166,10 +146,7 @@ public class TestDataRecoveryClient {
     return tasks;
   }
 
-  private List<PlanningTask> buildPlanningTasks(
-      Set<String> storeNames,
-      EstimateDataRecoveryTimeCommand cmd,
-      EstimateDataRecoveryTimeCommand.Params params) {
+  private List<PlanningTask> buildPlanningTasks(Set<String> storeNames, EstimateDataRecoveryTimeCommand.Params params) {
     List<PlanningTask> tasks = new ArrayList<>();
     for (String name: storeNames) {
       PlanningTask.TaskParams taskParams = new PlanningTask.TaskParams(name, params.getClusterName());
