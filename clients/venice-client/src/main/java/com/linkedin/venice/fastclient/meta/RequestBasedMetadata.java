@@ -48,8 +48,8 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-public class SystemStoreFreeMetadata extends AbstractStoreMetadata {
-  private static final Logger LOGGER = LogManager.getLogger(SystemStoreFreeMetadata.class);
+public class RequestBasedMetadata extends AbstractStoreMetadata {
+  private static final Logger LOGGER = LogManager.getLogger(RequestBasedMetadata.class);
   private static final String VERSION_PARTITION_SEPARATOR = "_";
   private static final long ZSTD_DICT_FETCH_TIMEOUT = 10;
   private static final long DEFAULT_REFRESH_INTERVAL_IN_SECONDS = 60;
@@ -71,7 +71,7 @@ public class SystemStoreFreeMetadata extends AbstractStoreMetadata {
   private final ClusterStats clusterStats;
   private volatile boolean isServiceDiscovered;
 
-  public SystemStoreFreeMetadata(ClientConfig clientConfig, D2TransportClient discoveryClient, D2Client d2Client) {
+  public RequestBasedMetadata(ClientConfig clientConfig, D2TransportClient discoveryClient, D2Client d2Client) {
     super(clientConfig);
     this.refreshIntervalInSeconds = clientConfig.getMetadataRefreshIntervalInSeconds() > 0
         ? clientConfig.getMetadataRefreshIntervalInSeconds()
@@ -146,6 +146,7 @@ public class SystemStoreFreeMetadata extends AbstractStoreMetadata {
     }
   }
 
+  // TODO: onDemandRefresh is only being used a retry for store migration
   private synchronized void updateCache(boolean onDemandRefresh) {
     // call the METADATA endpoint
     try {
@@ -245,8 +246,9 @@ public class SystemStoreFreeMetadata extends AbstractStoreMetadata {
       throw new VeniceClientException("Metadata fetch operation was interrupted");
     } catch (ExecutionException e) {
       // perform an on demand refresh if update fails in case of store migration
+      // TODO: need a better way to handle store migration
       if (!onDemandRefresh) {
-        LOGGER.warn("Metadata fetch operation has failed with exception {}, attempting to retry", e.getMessage());
+        LOGGER.warn("Metadata fetch operation has failed with exception {}", e.getMessage());
         discoverD2Service(true);
         updateCache(true);
       } else {

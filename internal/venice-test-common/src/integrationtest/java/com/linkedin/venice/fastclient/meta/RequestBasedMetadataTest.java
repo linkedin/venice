@@ -37,14 +37,14 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
-public class SystemStoreFreeMetadataTest {
+public class RequestBasedMetadataTest {
   protected static final int KEY_COUNT = 100;
   protected static final long TIME_OUT = 60 * Time.MS_PER_SECOND;
 
   private final VenicePartitioner defaultPartitioner = new DefaultVenicePartitioner();
   protected VeniceClusterWrapper veniceCluster;
   protected String storeName;
-  protected SystemStoreFreeMetadata systemStoreFreeMetadata;
+  protected RequestBasedMetadata requestBasedMetadata;
   private RecordSerializer<Object> keySerializer;
   private Client r2Client;
   private D2Client d2Client;
@@ -61,7 +61,7 @@ public class SystemStoreFreeMetadataTest {
     keySerializer =
         SerializerDeserializerFactory.getAvroGenericSerializer(Schema.parse(VeniceClusterWrapper.DEFAULT_KEY_SCHEMA));
 
-    // Populate required ClientConfig fields for initializing SystemStoreFreeMetadata
+    // Populate required ClientConfig fields for initializing RequestBasedMetadata
     ClientConfig.ClientConfigBuilder clientConfigBuilder = new ClientConfig.ClientConfigBuilder();
     clientConfigBuilder.setStoreName(storeName);
     clientConfigBuilder.setR2Client(r2Client);
@@ -72,9 +72,9 @@ public class SystemStoreFreeMetadataTest {
 
     String routerD2ServiceName =
         veniceCluster.getVeniceRouters().get(0).getD2ServiceNameForCluster(veniceCluster.getClusterName());
-    systemStoreFreeMetadata =
-        new SystemStoreFreeMetadata(clientConfig, new D2TransportClient(routerD2ServiceName, d2Client), d2Client);
-    systemStoreFreeMetadata.start();
+    requestBasedMetadata =
+        new RequestBasedMetadata(clientConfig, new D2TransportClient(routerD2ServiceName, d2Client), d2Client);
+    requestBasedMetadata.start();
   }
 
   protected void createStore() throws Exception {
@@ -87,7 +87,7 @@ public class SystemStoreFreeMetadataTest {
     ReadOnlyStoreRepository storeRepository = routerWrapper.getMetaDataRepository();
     OnlineInstanceFinder onlineInstanceFinder = routerWrapper.getRoutingDataRepository();
     assertEquals(
-        systemStoreFreeMetadata.getCurrentStoreVersion(),
+        requestBasedMetadata.getCurrentStoreVersion(),
         storeRepository.getStore(storeName).getCurrentVersion());
     List<Version> versions = storeRepository.getStore(storeName).getVersions();
     assertFalse(versions.isEmpty(), "Version list cannot be empty.");
@@ -103,7 +103,7 @@ public class SystemStoreFreeMetadataTest {
         30,
         TimeUnit.SECONDS,
         () -> assertEquals(
-            systemStoreFreeMetadata.getCurrentStoreVersion(),
+            requestBasedMetadata.getCurrentStoreVersion(),
             storeRepository.getStore(storeName).getCurrentVersion()));
     versions = storeRepository.getStore(storeName).getVersions();
     assertFalse(versions.isEmpty(), "Version list cannot be empty.");
@@ -115,12 +115,12 @@ public class SystemStoreFreeMetadataTest {
   @Test(timeOut = TIME_OUT)
   public void testMetadataSchemaRetriever() {
     ReadOnlySchemaRepository schemaRepository = veniceCluster.getRandomVeniceRouter().getSchemaRepository();
-    assertEquals(systemStoreFreeMetadata.getKeySchema(), schemaRepository.getKeySchema(storeName).getSchema());
+    assertEquals(requestBasedMetadata.getKeySchema(), schemaRepository.getKeySchema(storeName).getSchema());
     SchemaEntry latestValueSchema = schemaRepository.getSupersetOrLatestValueSchema(storeName);
-    assertEquals(systemStoreFreeMetadata.getLatestValueSchemaId().intValue(), latestValueSchema.getId());
-    assertEquals(systemStoreFreeMetadata.getLatestValueSchema(), latestValueSchema.getSchema());
-    assertEquals(systemStoreFreeMetadata.getValueSchema(latestValueSchema.getId()), latestValueSchema.getSchema());
-    assertEquals(systemStoreFreeMetadata.getValueSchemaId(latestValueSchema.getSchema()), latestValueSchema.getId());
+    assertEquals(requestBasedMetadata.getLatestValueSchemaId().intValue(), latestValueSchema.getId());
+    assertEquals(requestBasedMetadata.getLatestValueSchema(), latestValueSchema.getSchema());
+    assertEquals(requestBasedMetadata.getValueSchema(latestValueSchema.getId()), latestValueSchema.getSchema());
+    assertEquals(requestBasedMetadata.getValueSchemaId(latestValueSchema.getSchema()), latestValueSchema.getId());
   }
 
   private void verifyMetadata(
@@ -133,12 +133,12 @@ public class SystemStoreFreeMetadataTest {
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       assertEquals(
           defaultPartitioner.getPartitionId(key, partitionCount),
-          systemStoreFreeMetadata.getPartitionId(versionNumber, key));
+          requestBasedMetadata.getPartitionId(versionNumber, key));
       Set<String> routerReadyToServeView = onlineInstanceFinder.getReadyToServeInstances(resourceName, partitionId)
           .stream()
           .map(instance -> instance.getUrl(true))
           .collect(Collectors.toSet());
-      Set<String> metadataView = new HashSet<>(systemStoreFreeMetadata.getReplicas(versionNumber, partitionId));
+      Set<String> metadataView = new HashSet<>(requestBasedMetadata.getReplicas(versionNumber, partitionId));
       assertEquals(
           metadataView.size(),
           routerReadyToServeView.size(),
@@ -151,7 +151,7 @@ public class SystemStoreFreeMetadataTest {
 
   @AfterClass
   public void cleanUp() {
-    Utils.closeQuietlyWithErrorLogged(systemStoreFreeMetadata);
+    Utils.closeQuietlyWithErrorLogged(requestBasedMetadata);
     if (d2Client != null) {
       D2ClientUtils.shutdownClient(d2Client);
     }

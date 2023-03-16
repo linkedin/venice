@@ -13,7 +13,7 @@ import java.util.concurrent.TimeUnit;
 import org.testng.annotations.Test;
 
 
-public class SystemStoreFreeMetadataZstdTest extends SystemStoreFreeMetadataTest {
+public class RequestBasedMetadataZstdTest extends RequestBasedMetadataTest {
   protected void createStore() throws Exception {
     storeName = veniceCluster.createStoreWithZstdDictionary(KEY_COUNT);
   }
@@ -26,9 +26,9 @@ public class SystemStoreFreeMetadataZstdTest extends SystemStoreFreeMetadataTest
         30,
         TimeUnit.SECONDS,
         () -> assertEquals(
-            systemStoreFreeMetadata.getCurrentStoreVersion(),
+            requestBasedMetadata.getCurrentStoreVersion(),
             storeRepository.getStore(storeName).getCurrentVersion()));
-    VeniceCompressor compressor = systemStoreFreeMetadata
+    VeniceCompressor compressor = requestBasedMetadata
         .getCompressor(CompressionStrategy.ZSTD_WITH_DICT, storeRepository.getStore(storeName).getCurrentVersion());
     assertNotNull(compressor);
     ClusterStats clusterStats = clientConfig.getClusterStats();

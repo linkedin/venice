@@ -88,26 +88,30 @@ public abstract class AbstractStoreMetadata implements StoreMetadata {
       int version,
       CompressorFactory compressorFactory,
       Map<Integer, ByteBuffer> versionZstdDictionaryMap) {
-    if (compressionStrategy != CompressionStrategy.ZSTD_WITH_DICT) {
+    if (compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
+      String resourceName = getResourceName(version);
+      VeniceCompressor compressor = compressorFactory.getVersionSpecificCompressor(resourceName);
+      if (compressor == null) {
+        ByteBuffer dictionary = versionZstdDictionaryMap.get(version);
+        if (dictionary == null) {
+          throw new VeniceClientException(
+              String.format(
+                  "No dictionary available for decompressing zstd payload for store %s version %d ",
+                  storeName,
+                  version));
+        } else {
+          compressor = compressorFactory
+              .createVersionSpecificCompressorIfNotExist(compressionStrategy, resourceName, dictionary.array());
+        }
+      }
+      return compressor;
+    } else {
       return compressorFactory.getCompressor(compressionStrategy);
     }
+  }
 
-    String resourceName = storeName + "_v" + version;
-    VeniceCompressor compressor = compressorFactory.getVersionSpecificCompressor(resourceName);
-    if (compressor == null) {
-      ByteBuffer dictionary = versionZstdDictionaryMap.get(version);
-      if (dictionary == null) {
-        throw new VeniceClientException(
-            String.format(
-                "No dictionary available for decompressing zstd payload for store %s version %d ",
-                storeName,
-                version));
-      } else {
-        compressor = compressorFactory
-            .createVersionSpecificCompressorIfNotExist(compressionStrategy, resourceName, dictionary.array());
-      }
-    }
-    return compressor;
+  private String getResourceName(int version) {
+    return storeName + "_v" + version;
   }
 
 }
