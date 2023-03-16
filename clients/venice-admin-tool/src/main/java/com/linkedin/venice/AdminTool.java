@@ -632,7 +632,8 @@ public class AdminTool {
 
     DataRecoveryClient dataRecoveryClient = new DataRecoveryClient();
     DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(stores);
-    dataRecoveryClient.estimateRecoveryTime(params, cluster, controllerClient);
+    Integer total = dataRecoveryClient.estimateRecoveryTime(params, cluster, controllerClient);
+    printObject("total recovery time: " + (total / 360) + ":" + ((total / 60) % 60) + ":" + (total % 10));
   }
 
   private static void createNewStore(CommandLine cmd) throws Exception {

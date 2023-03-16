@@ -31,8 +31,8 @@ public class PlanningTask implements Runnable {
 
     // examine and record/avg push times
     for (Map.Entry<String, RegionPushDetails> entry: pushDetails.entrySet()) {
-      Instant startTime = Instant.parse(entry.getValue().getPushStartTimestamp());
-      Instant endTime = Instant.parse(entry.getValue().getPushEndTimestamp());
+      Instant startTime = Instant.parse(entry.getValue().getPushStartTimestamp() + "Z");
+      Instant endTime = Instant.parse(entry.getValue().getPushEndTimestamp() + "Z");
       ret += startTime.until(endTime, ChronoUnit.SECONDS);
     }
 

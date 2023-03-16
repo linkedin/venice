@@ -15,7 +15,6 @@ public class EstimateDataRecoveryTimeCommand {
   public static class Params {
     private String clusterName;
     private String parentUrl;
-    private boolean debug = false;
 
     public String getClusterName() {
       return clusterName;
@@ -31,10 +30,6 @@ public class EstimateDataRecoveryTimeCommand {
 
     public void setParentUrl(String parentUrl) {
       this.parentUrl = parentUrl;
-    }
-
-    public void setDebug(boolean debug) {
-      this.debug = debug;
     }
   }
 

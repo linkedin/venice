@@ -35,17 +35,21 @@ public class TestDataRecoveryClient {
   private ControllerClient controllerClient;
 
   @Test
+  public void testMonitor() {
+    estimateRecovery();
+    verifyEstimationResults();
+  }
+
+  @Test
   public void testExecutor() {
     for (boolean isSuccess: new boolean[] { true, false }) {
-      estimateRecovery();
       executeRecovery(isSuccess);
-      verifyEstimationResults();
       verifyRecoveryResults(isSuccess);
     }
   }
 
   private void verifyEstimationResults() {
-    int expectedAverage = 3600;
+    int expectedAverage = 7200;
     Assert.assertEquals((int) planningExecutor.getTasks().get(0).getEstimatedTimeResult(), expectedAverage);
   }
 
@@ -85,10 +89,14 @@ public class TestDataRecoveryClient {
 
     RegionPushDetails det = new RegionPushDetails();
     det.setPushStartTimestamp("2023-03-09T00:20:15.063472");
-    det.setPushEndTimestamp("2023-03-09T00:21:15.063472");
+    det.setPushEndTimestamp("2023-03-09T01:20:15.063472");
+    RegionPushDetails det2 = new RegionPushDetails();
+    det2.setPushStartTimestamp("2023-03-09T00:20:15.063472");
+    det2.setPushEndTimestamp("2023-03-09T01:20:15.063472");
     mockResponse.setRegionPushDetails(new HashMap<String, RegionPushDetails>() {
       {
-        put("store1", det);
+        put("region1", det);
+        put("region2", det2);
       }
     });
 
@@ -153,7 +161,7 @@ public class TestDataRecoveryClient {
   private List<PlanningTask> buildPlanningTasks(Set<String> storeNames, EstimateDataRecoveryTimeCommand.Params params) {
     List<PlanningTask> tasks = new ArrayList<>();
     for (String name: storeNames) {
-      PlanningTask.TaskParams taskParams = new PlanningTask.TaskParams(name, params.getClusterName());
+      PlanningTask.TaskParams taskParams = new PlanningTask.TaskParams(params.getClusterName(), name);
       tasks.add(new PlanningTask(taskParams, controllerClient));
     }
     return tasks;

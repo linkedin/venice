@@ -48,14 +48,22 @@ public class DataRecoveryClient {
     getExecutor().perform(storeNames, cmdParams);
   }
 
-  public void estimateRecoveryTime(DataRecoveryParams drParams, String clusterName, ControllerClient controllerClient) {
+  public Integer estimateRecoveryTime(
+      DataRecoveryParams drParams,
+      String clusterName,
+      ControllerClient controllerClient) {
     Set<String> storeNames = drParams.getRecoveryStores();
     if (storeNames == null || storeNames.isEmpty()) {
       LOGGER.warn("store list is empty, exit.");
-      return;
+      return -1;
     }
 
     getPlanningExecutor().perform(clusterName, storeNames, controllerClient);
+    Integer totalRecoveryTime = 0;
+    for (PlanningTask t: getPlanningExecutor().getTasks()) {
+      totalRecoveryTime += t.getEstimatedTimeResult();
+    }
+    return totalRecoveryTime;
   }
 
   public boolean confirmStores(Set<String> storeNames) {
