@@ -100,17 +100,24 @@ public class HelixParticipationService extends AbstractVeniceService
       String zkAddress,
       String clusterName,
       int port,
+      String hostname,
       CompletableFuture<SafeHelixManager> managerFuture) {
     this.ingestionService = storeIngestionService;
     this.storageService = storageService;
     this.clusterName = clusterName;
     // The format of instance name must be "$host_$port", otherwise Helix can not get these information correctly.
-    this.participantName = Utils.getHelixNodeIdentifier(port);
+    this.participantName = Utils.getHelixNodeIdentifier(hostname, port);
     this.zkAddress = zkAddress;
     this.veniceConfigLoader = veniceConfigLoader;
     this.helixReadOnlyStoreRepository = helixReadOnlyStoreRepository;
     this.metricsRepository = metricsRepository;
-    this.instance = new Instance(participantName, Utils.getHostName(), port);
+    this.instance = new Instance(participantName, hostname, port);
+    LOGGER.info(
+        "Instance name: {}, hostname: {}, port: {}, url {}",
+        participantName,
+        hostname,
+        port,
+        instance.getUrl(false));
     this.managerFuture = managerFuture;
     this.partitionPushStatusAccessorFuture = new CompletableFuture<>();
     if (!(storeIngestionService instanceof KafkaStoreIngestionService)) {

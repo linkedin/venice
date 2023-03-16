@@ -12,6 +12,8 @@ public class ConfigKeys {
   public static final String ZOOKEEPER_ADDRESS = "zookeeper.address";
 
   public static final String ADMIN_PORT = "admin.port";
+  public static final String ADMIN_HOSTNAME = "admin.hostname";
+
   public static final String ADMIN_SECURE_PORT = "admin.secure.port";
 
   /**
@@ -330,6 +332,9 @@ public class ConfigKeys {
 
   // Server specific configs
   public static final String LISTENER_PORT = "listener.port";
+
+  public static final String LISTENER_HOSTNAME = "listener.hostname";
+
   public static final String DATA_BASE_PATH = "data.base.path";
   public static final String AUTOCREATE_DATA_PATH = "autocreate.data.path";
   public static final String ENABLE_SERVER_ALLOW_LIST = "enable.server.allowlist";

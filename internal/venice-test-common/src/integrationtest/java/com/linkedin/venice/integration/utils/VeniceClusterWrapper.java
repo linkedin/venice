@@ -667,7 +667,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
    */
   public synchronized List<Replica> stopVeniceServer(int port) {
     Admin admin = getLeaderVeniceController().getVeniceAdmin();
-    List<Replica> effectedReplicas = admin.getReplicasOfStorageNode(clusterName, Utils.getHelixNodeIdentifier(port));
+    List<Replica> effectedReplicas =
+        admin.getReplicasOfStorageNode(clusterName, Utils.getHelixNodeIdentifier(Utils.getHostName(), port));
     stopVeniceComponent(veniceServerWrappers, port);
     return effectedReplicas;
   }

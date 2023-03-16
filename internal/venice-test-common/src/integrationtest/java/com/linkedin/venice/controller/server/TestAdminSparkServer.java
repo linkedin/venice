@@ -470,7 +470,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
   @Test(timeOut = TEST_TIMEOUT)
   public void controllerClientCanQueryRemovability() {
     VeniceServerWrapper server = cluster.getVeniceServers().get(0);
-    String nodeId = Utils.getHelixNodeIdentifier(server.getPort());
+    String nodeId = Utils.getHelixNodeIdentifier(Utils.getHostName(), server.getPort());
 
     ControllerResponse response = controllerClient.isNodeRemovable(nodeId);
     Assert.assertFalse(response.isError(), response.getError());
@@ -612,7 +612,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
   public void controllerClientCanUpdateAllowList() {
     Admin admin = cluster.getLeaderVeniceController().getVeniceAdmin();
 
-    String nodeId = Utils.getHelixNodeIdentifier(34567);
+    String nodeId = Utils.getHelixNodeIdentifier(Utils.getHostName(), 34567);
     Assert.assertFalse(
         admin.getAllowlist(cluster.getClusterName()).contains(nodeId),
         nodeId + " has not been added into allowlist.");

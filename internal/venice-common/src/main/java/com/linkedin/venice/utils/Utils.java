@@ -249,6 +249,7 @@ public class Utils {
     }
     try {
       String hostName = InetAddress.getLocalHost().getHostName();
+      LOGGER.info("Resolved local hostname from InetAddress.getLocalHost() {}", hostName);
       if (StringUtils.isEmpty(hostName)) {
         throw new VeniceException("Unable to get the hostname.");
       }
@@ -330,8 +331,8 @@ public class Utils {
     }
   }
 
-  public static String getHelixNodeIdentifier(int port) {
-    return Utils.getHostName() + "_" + port;
+  public static String getHelixNodeIdentifier(String hostname, int port) {
+    return hostname + "_" + port;
   }
 
   public static String parseHostFromHelixNodeIdentifier(String nodeId) {

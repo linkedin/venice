@@ -281,7 +281,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
 
   private static void joinClusterAllowlist(String zkAddress, String clusterName, int port) throws IOException {
     try (AllowlistAccessor accessor = new ZkAllowlistAccessor(zkAddress)) {
-      accessor.addInstanceToAllowList(clusterName, Utils.getHelixNodeIdentifier(port));
+      accessor.addInstanceToAllowList(clusterName, Utils.getHelixNodeIdentifier(Utils.getHostName(), port));
     }
   }
 

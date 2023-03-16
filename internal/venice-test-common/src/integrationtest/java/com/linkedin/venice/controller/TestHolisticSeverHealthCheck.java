@@ -66,7 +66,7 @@ public class TestHolisticSeverHealthCheck {
   private void verifyNodesAreReady() {
     String wrongNodeId = "incorrect_node_id";
     for (VeniceServerWrapper server: cluster.getVeniceServers()) {
-      String nodeId = Utils.getHelixNodeIdentifier(server.getPort());
+      String nodeId = Utils.getHelixNodeIdentifier(Utils.getHostName(), server.getPort());
       Assert.assertTrue(verifyNodeReplicasState(nodeId, NodeReplicasReadinessState.READY));
       Assert.assertTrue(verifyNodeIsError(wrongNodeId));
     }
@@ -74,7 +74,7 @@ public class TestHolisticSeverHealthCheck {
 
   private void verifyNodesAreInExpectedState(NodeReplicasReadinessState state) {
     for (VeniceServerWrapper server: cluster.getVeniceServers()) {
-      String nodeId = Utils.getHelixNodeIdentifier(server.getPort());
+      String nodeId = Utils.getHelixNodeIdentifier(Utils.getHostName(), server.getPort());
       Assert.assertTrue(verifyNodeReplicasState(nodeId, state));
     }
   }
@@ -157,7 +157,7 @@ public class TestHolisticSeverHealthCheck {
 
     // Wait until the servers are in the ready state again.
     for (VeniceServerWrapper server: cluster.getVeniceServers()) {
-      String nodeId = Utils.getHelixNodeIdentifier(server.getPort());
+      String nodeId = Utils.getHelixNodeIdentifier(Utils.getHostName(), server.getPort());
       TestUtils.waitForNonDeterministicCompletion(
           120,
           TimeUnit.SECONDS,
