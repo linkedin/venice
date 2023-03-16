@@ -31,23 +31,29 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
   public UpdateResultStatus handlePutList(
       final long putTimestamp,
       final int coloID,
-      List<Object> toPutList,
+      Object newFieldValue,
       CollectionRmdTimestamp<Object> collectionFieldRmd,
       GenericRecord currValueRecord,
       String fieldName) {
     if (ignoreIncomingRequest(putTimestamp, coloID, collectionFieldRmd)) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
-    validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.ARRAY, false); // Validate before modifying any
-                                                                                   // state.
+    validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.ARRAY, true);
 
     // Current list will be updated.
     final long currTopLevelTimestamp = collectionFieldRmd.getTopLevelFieldTimestamp();
     collectionFieldRmd.setTopLevelFieldTimestamp(putTimestamp);
     collectionFieldRmd.setTopLevelColoID(coloID);
 
+    List<Object> toPutList;
+    if (newFieldValue == null) {
+      toPutList = Collections.emptyList();
+    } else {
+      toPutList = (List<Object>) newFieldValue;
+    }
+
     if (collectionFieldRmd.isInPutOnlyState()) {
-      currValueRecord.put(fieldName, toPutList);
+      currValueRecord.put(fieldName, newFieldValue);
       collectionFieldRmd.setPutOnlyPartLength(toPutList.size());
       return UpdateResultStatus.COMPLETELY_UPDATED;
     }
@@ -193,28 +199,35 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
   public UpdateResultStatus handlePutMap(
       final long putTimestamp,
       final int coloID,
-      IndexedHashMap<String, Object> toPutMap,
+      Object newFieldValue,
       CollectionRmdTimestamp<String> collectionFieldRmd,
       GenericRecord currValueRecord,
       String fieldName) {
     if (ignoreIncomingRequest(putTimestamp, coloID, collectionFieldRmd)) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
-    validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.MAP, true); // Validate before modifying any state.
+    validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.MAP, true);
     collectionFieldRmd.setTopLevelFieldTimestamp(putTimestamp);
     collectionFieldRmd.setTopLevelColoID(coloID);
+    IndexedHashMap<String, Object> toPutMap;
+    if (newFieldValue == null) {
+      toPutMap = new IndexedHashMap<>();
+    } else {
+      if (!(newFieldValue instanceof IndexedHashMap)) {
+        throw new IllegalStateException(
+            "Expect the value to put on the field to be an IndexedHashMap. Got: " + newFieldValue.getClass());
+      }
+      toPutMap = (IndexedHashMap<String, Object>) newFieldValue;
+    }
 
     // Current map will be updated.
     if (collectionFieldRmd.isInPutOnlyState()) {
-      currValueRecord.put(fieldName, toPutMap);
+      currValueRecord.put(fieldName, newFieldValue);
       collectionFieldRmd.setPutOnlyPartLength(toPutMap.size());
       return UpdateResultStatus.COMPLETELY_UPDATED;
     }
 
     // Handle Put on a map that is in the collection-merge state.
-    if (toPutMap.isEmpty()) {
-      return UpdateResultStatus.NOT_UPDATED_AT_ALL;
-    }
     IndexedHashMap<String, Object> currMap = (IndexedHashMap<String, Object>) currValueRecord.get(fieldName);
     List<KeyValPair> currKeyValPairs = new ArrayList<>(currMap.size());
     currMap.forEach((key, value) -> currKeyValPairs.add(new KeyValPair(key, value)));
@@ -292,8 +305,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     if (ignoreIncomingRequest(deleteTimestamp, coloID, collectionFieldRmd)) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
-    validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.ARRAY, false); // Validate before modifying any
-                                                                                   // state.
+    validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.ARRAY, true);
     // Current list will be deleted (partially or completely).
     final int currPutOnlyPartLength = collectionFieldRmd.getPutOnlyPartLength();
     collectionFieldRmd.setTopLevelFieldTimestamp(deleteTimestamp);
@@ -342,7 +354,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     if (ignoreIncomingRequest(deleteTimestamp, coloID, collectionFieldRmd)) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
-    validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.MAP, true); // Validate before modifying any state.
+    validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.MAP, true);
     // Handle Delete on a map that is in the collection-merge mode.
     final int originalPutOnlyPartLength = collectionFieldRmd.getPutOnlyPartLength();
     final long originalTopLevelFieldTimestamp = collectionFieldRmd.getTopLevelFieldTimestamp();
@@ -393,7 +405,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     if (ignoreIncomingRequest(modifyTimestamp, Integer.MIN_VALUE, collectionFieldRmd)) {
       return UpdateResultStatus.NOT_UPDATED_AT_ALL;
     }
-    validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.ARRAY, false);
+    validateFieldSchemaType(currValueRecord, fieldName, Schema.Type.ARRAY, true);
     Set<Object> toAddElementSet = new HashSet<>(toAddElements);
     Set<Object> toRemoveElementSet = new HashSet<>(toRemoveElements);
     removeIntersectionElements(toAddElementSet, toRemoveElementSet);
