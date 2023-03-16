@@ -1,5 +1,6 @@
 package com.linkedin.venice;
 
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyString;
@@ -75,10 +76,10 @@ public class TestDataRecoveryClient {
 
     Set<String> storeNames = new HashSet<>(Arrays.asList("store1"));
     List<PlanningTask> tasks = buildPlanningTasks(storeNames, cmdParams);
-    doReturn(tasks).when(planningExecutor).buildTasks(any(), any(), any());
+    doReturn(tasks).when(planningExecutor).buildTasks(anyString(), any(), eq(controllerClient));
     DataRecoveryClient dataRecoveryClient = mock(DataRecoveryClient.class);
     doReturn(planningExecutor).when(dataRecoveryClient).getPlanningExecutor();
-    doCallRealMethod().when(dataRecoveryClient).estimateRecoveryTime(any(), any(), any());
+    doCallRealMethod().when(dataRecoveryClient).estimateRecoveryTime(any(), anyString(), any());
 
     StoreHealthAuditResponse mockResponse = new StoreHealthAuditResponse();
 
