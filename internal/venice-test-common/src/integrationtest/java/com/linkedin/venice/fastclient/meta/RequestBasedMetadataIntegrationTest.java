@@ -5,6 +5,7 @@ import static org.testng.Assert.*;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.client.store.D2ServiceDiscovery;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.fastclient.utils.ClientTestUtils;
@@ -37,7 +38,7 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
-public class RequestBasedMetadataTest {
+public class RequestBasedMetadataIntegrationTest {
   protected static final int KEY_COUNT = 100;
   protected static final long TIME_OUT = 60 * Time.MS_PER_SECOND;
 
@@ -72,8 +73,11 @@ public class RequestBasedMetadataTest {
 
     String routerD2ServiceName =
         veniceCluster.getVeniceRouters().get(0).getD2ServiceNameForCluster(veniceCluster.getClusterName());
-    requestBasedMetadata =
-        new RequestBasedMetadata(clientConfig, new D2TransportClient(routerD2ServiceName, d2Client), d2Client);
+    requestBasedMetadata = new RequestBasedMetadata(
+        clientConfig,
+        new D2TransportClient(routerD2ServiceName, d2Client),
+        new D2ServiceDiscovery(),
+        routerD2ServiceName);
     requestBasedMetadata.start();
   }
 

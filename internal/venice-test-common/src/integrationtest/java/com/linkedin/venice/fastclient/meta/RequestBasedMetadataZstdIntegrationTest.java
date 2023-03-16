@@ -13,7 +13,7 @@ import java.util.concurrent.TimeUnit;
 import org.testng.annotations.Test;
 
 
-public class RequestBasedMetadataZstdTest extends RequestBasedMetadataTest {
+public class RequestBasedMetadataZstdIntegrationTest extends RequestBasedMetadataIntegrationTest {
   protected void createStore() throws Exception {
     storeName = veniceCluster.createStoreWithZstdDictionary(KEY_COUNT);
   }

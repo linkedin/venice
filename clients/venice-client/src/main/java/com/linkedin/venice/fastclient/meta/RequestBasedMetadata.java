@@ -1,10 +1,8 @@
 package com.linkedin.venice.fastclient.meta;
 
-import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.D2ServiceDiscovery;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
-import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
@@ -65,19 +63,24 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private final Map<Integer, PartitionerPair> versionPartitionerMap = new VeniceConcurrentHashMap<>();
   private final Map<Integer, ByteBuffer> versionZstdDictionaryMap = new VeniceConcurrentHashMap<>();
   private final CompressorFactory compressorFactory;
-  private final D2TransportClient discoveryClient;
-  private TransportClient transportClient;
-  private final D2Client d2Client;
+  private final D2TransportClient transportClient;
+  private final D2ServiceDiscovery d2ServiceDiscovery;
+  private final String routerD2ServiceName;
   private final ClusterStats clusterStats;
   private volatile boolean isServiceDiscovered;
 
-  public RequestBasedMetadata(ClientConfig clientConfig, D2TransportClient discoveryClient, D2Client d2Client) {
+  public RequestBasedMetadata(
+      ClientConfig clientConfig,
+      D2TransportClient transportClient,
+      D2ServiceDiscovery d2ServiceDiscovery,
+      String routerD2ServiceName) {
     super(clientConfig);
     this.refreshIntervalInSeconds = clientConfig.getMetadataRefreshIntervalInSeconds() > 0
         ? clientConfig.getMetadataRefreshIntervalInSeconds()
         : DEFAULT_REFRESH_INTERVAL_IN_SECONDS;
-    this.discoveryClient = discoveryClient;
-    this.d2Client = d2Client;
+    this.transportClient = transportClient;
+    this.d2ServiceDiscovery = d2ServiceDiscovery;
+    this.routerD2ServiceName = routerD2ServiceName;
     this.compressorFactory = new CompressorFactory();
     this.clusterStats = clientConfig.getClusterStats();
   }
@@ -138,10 +141,10 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       if (isServiceDiscovered) {
         return;
       }
-      D2ServiceDiscovery d2ServiceDiscovery = new D2ServiceDiscovery();
+      transportClient.setServiceName(routerD2ServiceName);
       String serverD2ServiceName =
-          d2ServiceDiscovery.find(discoveryClient, storeName, retryOnFailure).getServerD2Service();
-      transportClient = new D2TransportClient(serverD2ServiceName, d2Client);
+          d2ServiceDiscovery.find(transportClient, storeName, retryOnFailure).getServerD2Service();
+      transportClient.setServiceName(serverD2ServiceName);
       isServiceDiscovered = true;
     }
   }
