@@ -21,6 +21,8 @@ import java.util.Optional;
 import java.util.Properties;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.samza.system.OutgoingMessageEnvelope;
+import org.apache.samza.system.SystemStream;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
@@ -94,7 +96,10 @@ public class VeniceSystemProducerTest {
     Assert.assertEquals(result.get("lastName"), partialUpdateRecord.get("lastName"));
     Assert.assertEquals(result.get("age"), -1);
 
-    Assert.assertThrows(() -> producerInDC0.send("", partialUpdateRecord));
+    OutgoingMessageEnvelope envelope =
+        new OutgoingMessageEnvelope(new SystemStream("venice", "storeName"), "key1", partialUpdateRecord);
+
+    Assert.assertThrows(() -> producerInDC0.send("venice", envelope));
   }
 
   @Test(dataProvider = "BatchOrStreamReprocessing")
