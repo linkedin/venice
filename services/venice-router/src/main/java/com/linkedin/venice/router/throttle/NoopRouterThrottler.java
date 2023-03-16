@@ -7,7 +7,6 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import java.util.List;
-import java.util.Optional;
 
 
 public class NoopRouterThrottler
@@ -29,7 +28,7 @@ public class NoopRouterThrottler
   }
 
   @Override
-  public void mayThrottleRead(String storeName, double readCapacityUnit, Optional<String> storageNodeId) {
+  public void mayThrottleRead(String storeName, double readCapacityUnit, String storageNodeId) {
     // noop
   }
 
