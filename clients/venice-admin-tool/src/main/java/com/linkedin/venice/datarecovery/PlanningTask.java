@@ -66,7 +66,6 @@ public class PlanningTask implements Runnable {
     // Store name.
     private final String storeName;
     private String clusterName;
-    private boolean debug = false;
 
     public TaskParams(String clusterName, String storeName) {
       this.storeName = storeName;
@@ -75,6 +74,10 @@ public class PlanningTask implements Runnable {
 
     public String getStoreName() {
       return storeName;
+    }
+
+    public String getClusterName() {
+      return clusterName;
     }
   }
 }

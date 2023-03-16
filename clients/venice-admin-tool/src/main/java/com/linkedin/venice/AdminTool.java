@@ -628,7 +628,7 @@ public class AdminTool {
   private static void estimateDataRecoveryTime(CommandLine cmd) {
     String stores = getRequiredArgument(cmd, Arg.STORES);
     String cluster = getRequiredArgument(cmd, Arg.CLUSTER);
-    String url = getRequiredArgument(cmd, Arg.URL);
+    // String url = getRequiredArgument(cmd, Arg.URL);
 
     DataRecoveryClient dataRecoveryClient = new DataRecoveryClient();
     DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(stores);

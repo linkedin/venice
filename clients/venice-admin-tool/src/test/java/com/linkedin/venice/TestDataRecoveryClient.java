@@ -93,7 +93,6 @@ public class TestDataRecoveryClient {
       rep.setPushStartDateTime("2023-03-09T00:22:15.063472");
       mockReplicaDetails2.add(rep);
     }
-    List<PartitionDetail> mockPartitionDetails = new ArrayList<PartitionDetail>();
     PartitionDetail a = new PartitionDetail();
     PartitionDetail b = new PartitionDetail();
     a.setReplicaDetails(mockReplicaDetails);
