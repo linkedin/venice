@@ -92,12 +92,12 @@ public class TestHelixCustomizedViewOfflinePushRepository {
         HelixControllerMain.startHelixController(
             zkAddress,
             clusterName,
-            Utils.getHelixNodeIdentifier(adminPort),
+            Utils.getHelixNodeIdentifier(Utils.getHostName(), adminPort),
             HelixControllerMain.STANDALONE));
 
     manager0 = TestUtils.getParticipant(
         clusterName,
-        Utils.getHelixNodeIdentifier(httpPort0),
+        Utils.getHelixNodeIdentifier(Utils.getHostName(), httpPort0),
         zkAddress,
         httpPort0,
         MockTestStateModel.UNIT_TEST_STATE_MODEL);
@@ -107,7 +107,7 @@ public class TestHelixCustomizedViewOfflinePushRepository {
 
     manager1 = TestUtils.getParticipant(
         clusterName,
-        Utils.getHelixNodeIdentifier(httpPort1),
+        Utils.getHelixNodeIdentifier(Utils.getHostName(), httpPort1),
         zkAddress,
         httpPort1,
         MockTestStateModel.UNIT_TEST_STATE_MODEL);
@@ -230,7 +230,7 @@ public class TestHelixCustomizedViewOfflinePushRepository {
     int newHttpPort = httpPort0 + 10;
     SafeHelixManager newManager = TestUtils.getParticipant(
         clusterName,
-        Utils.getHelixNodeIdentifier(newHttpPort),
+        Utils.getHelixNodeIdentifier(Utils.getHostName(), newHttpPort),
         zkAddress,
         newHttpPort,
         MockTestStateModel.UNIT_TEST_STATE_MODEL);

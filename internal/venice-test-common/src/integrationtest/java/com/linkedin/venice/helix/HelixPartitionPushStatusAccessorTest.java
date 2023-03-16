@@ -62,7 +62,7 @@ public class HelixPartitionPushStatusAccessorTest {
     httpPort1 = 50000 + (int) (System.currentTimeMillis() % 10000);
     manager1 = TestUtils.getParticipant(
         clusterName,
-        Utils.getHelixNodeIdentifier(httpPort1),
+        Utils.getHelixNodeIdentifier(Utils.getHostName(), httpPort1),
         zkAddress,
         httpPort1,
         MockTestStateModel.UNIT_TEST_STATE_MODEL);
@@ -74,7 +74,7 @@ public class HelixPartitionPushStatusAccessorTest {
     httpPort2 = 50000 + (int) (System.currentTimeMillis() % 10000) + 1;
     manager2 = TestUtils.getParticipant(
         clusterName,
-        Utils.getHelixNodeIdentifier(httpPort2),
+        Utils.getHelixNodeIdentifier(Utils.getHostName(), httpPort2),
         zkAddress,
         httpPort2,
         MockTestStateModel.UNIT_TEST_STATE_MODEL);

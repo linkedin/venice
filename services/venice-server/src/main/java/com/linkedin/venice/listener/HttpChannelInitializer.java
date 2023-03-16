@@ -99,7 +99,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
         : Optional.empty();
 
     if (serverConfig.isQuotaEnforcementEnabled()) {
-      String nodeId = Utils.getHelixNodeIdentifier(serverConfig.getListenerPort());
+      String nodeId = Utils.getHelixNodeIdentifier(serverConfig.getListenerHostname(), serverConfig.getListenerPort());
       this.quotaUsageStats = new AggServerQuotaUsageStats(metricsRepository);
       this.quotaEnforcer = new ReadQuotaEnforcementHandler(
           serverConfig.getNodeCapacityInRcu(),

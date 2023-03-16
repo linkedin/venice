@@ -197,6 +197,7 @@ public class VeniceServer {
     if (!isServerInAllowList(
         veniceConfigLoader.getVeniceClusterConfig().getZookeeperAddress(),
         veniceConfigLoader.getVeniceClusterConfig().getClusterName(),
+        veniceConfigLoader.getVeniceServerConfig().getListenerHostname(),
         veniceConfigLoader.getVeniceServerConfig().getListenerPort(),
         veniceConfigLoader.getVeniceServerConfig().isServerAllowlistEnabled())) {
       throw new VeniceException(
@@ -471,6 +472,7 @@ public class VeniceServer {
         clusterConfig.getZookeeperAddress(),
         clusterConfig.getClusterName(),
         veniceConfigLoader.getVeniceServerConfig().getListenerPort(),
+        veniceConfigLoader.getVeniceServerConfig().getListenerHostname(),
         managerFuture);
     services.add(helixParticipationService);
 
@@ -653,6 +655,7 @@ public class VeniceServer {
   protected static boolean isServerInAllowList(
       String zkAddress,
       String clusterName,
+      String hostname,
       int listenPort,
       boolean enableServerAllowlist) {
     if (!enableServerAllowlist) {
@@ -664,7 +667,7 @@ public class VeniceServer {
        * Note: If a server has been added in to the allowlist, then node is failed or shutdown by SRE. once it
        * starts up again, it will automatically join the cluster because it already exists in the allowlist.
        */
-      String participantName = Utils.getHelixNodeIdentifier(listenPort);
+      String participantName = Utils.getHelixNodeIdentifier(hostname, listenPort);
       if (!accessor.isInstanceInAllowlist(clusterName, participantName)) {
         LOGGER.info("{} is not in the allowlist of {}, stop starting venice server", participantName, clusterName);
         return false;

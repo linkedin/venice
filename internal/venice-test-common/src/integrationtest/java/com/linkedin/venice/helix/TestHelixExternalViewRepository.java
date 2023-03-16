@@ -78,12 +78,12 @@ public class TestHelixExternalViewRepository {
         HelixControllerMain.startHelixController(
             zkAddress,
             clusterName,
-            Utils.getHelixNodeIdentifier(adminPort),
+            Utils.getHelixNodeIdentifier(Utils.getHostName(), adminPort),
             HelixControllerMain.STANDALONE));
 
     manager = TestUtils.getParticipant(
         clusterName,
-        Utils.getHelixNodeIdentifier(httpPort),
+        Utils.getHelixNodeIdentifier(Utils.getHostName(), httpPort),
         zkAddress,
         httpPort,
         MockTestStateModel.UNIT_TEST_STATE_MODEL);
@@ -130,7 +130,7 @@ public class TestHelixExternalViewRepository {
     int newHttpPort = httpPort + 10;
     SafeHelixManager newManager = TestUtils.getParticipant(
         clusterName,
-        Utils.getHelixNodeIdentifier(newHttpPort),
+        Utils.getHelixNodeIdentifier(Utils.getHostName(), newHttpPort),
         zkAddress,
         newHttpPort,
         MockTestStateModel.UNIT_TEST_STATE_MODEL);
@@ -259,7 +259,7 @@ public class TestHelixExternalViewRepository {
     SafeHelixManager newLeader = new SafeHelixManager(
         HelixManagerFactory.getZKHelixManager(
             clusterName,
-            Utils.getHelixNodeIdentifier(newAdminPort),
+            Utils.getHelixNodeIdentifier(Utils.getHostName(), newAdminPort),
             InstanceType.CONTROLLER,
             zkAddress));
     newLeader.connect();
@@ -301,7 +301,7 @@ public class TestHelixExternalViewRepository {
     factory.setBlockTransition(true);
     manager = TestUtils.getParticipant(
         clusterName,
-        Utils.getHelixNodeIdentifier(httpPort + 1),
+        Utils.getHelixNodeIdentifier(Utils.getHostName(), httpPort + 1),
         zkAddress,
         httpPort + 1,
         factory,
@@ -350,7 +350,7 @@ public class TestHelixExternalViewRepository {
 
     SafeHelixManager newManager = TestUtils.getParticipant(
         clusterName,
-        Utils.getHelixNodeIdentifier(httpPort + 1000),
+        Utils.getHelixNodeIdentifier(Utils.getHostName(), httpPort + 1000),
         zkAddress,
         httpPort + 1000,
         MockTestStateModel.UNIT_TEST_STATE_MODEL);

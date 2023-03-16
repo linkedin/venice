@@ -5,6 +5,7 @@ import static com.linkedin.venice.ConfigKeys.ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABR
 import static com.linkedin.venice.ConfigKeys.ADMIN_CHECK_READ_METHOD_FOR_KAFKA;
 import static com.linkedin.venice.ConfigKeys.ADMIN_CONSUMPTION_TIMEOUT_MINUTES;
 import static com.linkedin.venice.ConfigKeys.ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED;
+import static com.linkedin.venice.ConfigKeys.ADMIN_HOSTNAME;
 import static com.linkedin.venice.ConfigKeys.ADMIN_PORT;
 import static com.linkedin.venice.ConfigKeys.ADMIN_SECURE_PORT;
 import static com.linkedin.venice.ConfigKeys.ADMIN_TOPIC_REMOTE_CONSUMPTION_ENABLED;
@@ -111,6 +112,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private static final Logger LOGGER = LogManager.getLogger(VeniceControllerConfig.class);
 
   private final int adminPort;
+
+  private final String adminHostname;
   private final int adminSecurePort;
   private final int controllerClusterReplica;
   private final String controllerClusterName;
@@ -245,6 +248,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
     this.adminPort = props.getInt(ADMIN_PORT);
+    this.adminHostname = props.getString(ADMIN_HOSTNAME, () -> Utils.getHostName());
     this.adminSecurePort = props.getInt(ADMIN_SECURE_PORT);
     /**
      * Override the config to false if the "Read" method check is not working as expected.
@@ -461,6 +465,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public int getAdminPort() {
     return adminPort;
+  }
+
+  public String getAdminHostname() {
+    return adminHostname;
   }
 
   public int getAdminSecurePort() {
