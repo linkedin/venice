@@ -266,8 +266,8 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     offlinePushStatus =
         veniceAdmin.getOffLinePushStatus(clusterName, Version.composeKafkaTopic(storeName, versionNumber));
     Assert.assertEquals(offlinePushStatus.getExecutionStatus(), ExecutionStatus.ERROR);
-    Assert.assertTrue(offlinePushStatus.getStatusDetails().isPresent());
-    Assert.assertEquals(offlinePushStatus.getStatusDetails().get(), statusDetails);
+    Assert.assertNotNull(offlinePushStatus.getStatusDetails());
+    Assert.assertEquals(offlinePushStatus.getStatusDetails(), statusDetails);
 
     delayParticipantJobCompletion(false);
     stateModelFactoryByNodeID
@@ -610,7 +610,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Admin.OfflinePushStatusInfo statusInfo =
         veniceAdmin.getOffLinePushStatus(clusterName, Version.composeKafkaTopic(storeName, 101));
     Assert.assertEquals(statusInfo.getExecutionStatus(), ExecutionStatus.NOT_CREATED);
-    Assert.assertTrue(statusInfo.getStatusDetails().get().contains("in maintenance mode"));
+    Assert.assertTrue(statusInfo.getStatusDetails().contains("in maintenance mode"));
 
     // disable maintenance mode
     veniceAdmin.getHelixAdmin().enableMaintenanceMode(clusterName, false);

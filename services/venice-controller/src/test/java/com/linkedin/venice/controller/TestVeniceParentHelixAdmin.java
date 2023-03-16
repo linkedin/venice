@@ -1708,38 +1708,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
-  public void testGetProgress() {
-    JobStatusQueryResponse tenResponse = new JobStatusQueryResponse();
-    Map<String, Long> tenPerTaskProgress = new HashMap<>();
-    tenPerTaskProgress.put("task1", 10L);
-    tenPerTaskProgress.put("task2", 10L);
-    tenResponse.setPerTaskProgress(tenPerTaskProgress);
-    ControllerClient tenStatusClient = mock(ControllerClient.class);
-    doReturn(tenResponse).when(tenStatusClient).queryJobStatus(anyString());
-
-    JobStatusQueryResponse failResponse = new JobStatusQueryResponse();
-    failResponse.setError("error2");
-    ControllerClient failClient = mock(ControllerClient.class);
-    doReturn(failResponse).when(failClient).queryJobStatus(anyString());
-
-    // Clients work as expected
-    JobStatusQueryResponse status = tenStatusClient.queryJobStatus("topic");
-    Map<String, Long> perTask = status.getPerTaskProgress();
-    Assert.assertEquals((long) perTask.get("task1"), 10L);
-    Assert.assertTrue(failClient.queryJobStatus("topic").isError());
-
-    // Test logic
-    Map<String, ControllerClient> tenMap = new HashMap<>();
-    tenMap.put("cluster1", tenStatusClient);
-    tenMap.put("cluster2", tenStatusClient);
-    tenMap.put("cluster3", failClient);
-    Map<String, Long> tenProgress = VeniceParentHelixAdmin.getOfflineJobProgress("cluster", "topic", tenMap);
-    Assert.assertEquals(tenProgress.values().size(), 4); // nothing from fail client
-    Assert.assertEquals((long) tenProgress.get("cluster1_task1"), 10L);
-    Assert.assertEquals((long) tenProgress.get("cluster2_task2"), 10L);
-  }
-
-  @Test
   public void testUpdateStore() {
     String storeName = Utils.getUniqueString("testUpdateStore");
     Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());

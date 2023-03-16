@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller.server;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.PUSH_JOB_DETAILS;
@@ -59,8 +60,14 @@ public class JobRoutes extends AbstractRoute {
         String store = request.queryParams(NAME);
         int versionNumber = Utils.parseIntFromString(request.queryParams(VERSION), VERSION);
         String incrementalPushVersion = AdminSparkServer.getOptionalParameterValue(request, INCREMENTAL_PUSH_VERSION);
-        responseObject =
-            populateJobStatus(cluster, store, versionNumber, admin, Optional.ofNullable(incrementalPushVersion));
+        String region = AdminSparkServer.getOptionalParameterValue(request, FABRIC);
+        responseObject = populateJobStatus(
+            cluster,
+            store,
+            versionNumber,
+            admin,
+            Optional.ofNullable(incrementalPushVersion),
+            region);
       } catch (Throwable e) {
         responseObject.setError(e);
         AdminSparkServer.handleError(e, request, response);
@@ -74,33 +81,20 @@ public class JobRoutes extends AbstractRoute {
       String store,
       int versionNumber,
       Admin admin,
-      Optional<String> incrementalPushVersion) {
+      Optional<String> incrementalPushVersion,
+      String region) {
     JobStatusQueryResponse responseObject = new JobStatusQueryResponse();
 
     Version version = new VersionImpl(store, versionNumber);
     String kafkaTopicName = version.kafkaTopicName();
 
-    /**
-     * Offset progress is not being used by VenicePushJob, and sometimes, it will timeout because of Kafka operation timeout
-     * while retrieving the latest offset.
-     * So we decided to disable this feature, TODO: might remove it completely in the future.
-     */
-    responseObject.setMessagesAvailable(-1);
-    responseObject.setPerPartitionCapacity(Collections.emptyMap());
-    responseObject.setMessagesConsumed(-1);
-    responseObject.setPerTaskProgress(Collections.emptyMap());
-
-    /**
-     * Job status
-     * Job status query should happen after 'querying offset' since job status query could
-     * delete current topic
-     */
     Admin.OfflinePushStatusInfo offlineJobStatus =
-        admin.getOffLinePushStatus(cluster, kafkaTopicName, incrementalPushVersion);
+        admin.getOffLinePushStatus(cluster, kafkaTopicName, incrementalPushVersion, region);
     responseObject.setStatus(offlineJobStatus.getExecutionStatus().toString());
-    responseObject.setStatusDetails(offlineJobStatus.getStatusDetails().orElse(null));
+    responseObject.setStatusDetails(offlineJobStatus.getStatusDetails());
     responseObject.setExtraInfo(offlineJobStatus.getExtraInfo());
     responseObject.setExtraDetails(offlineJobStatus.getExtraDetails());
+    responseObject.setUncompletedPartitions(offlineJobStatus.getUncompletedPartitions());
 
     responseObject.setCluster(cluster);
     responseObject.setName(store);

@@ -294,7 +294,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   /**
    * Here is the way how Parent Controller is keeping errored topics when {@link #maxErroredTopicNumToKeep} > 0:
-   * 1. For errored topics, {@link #getOfflineJobProgress(String, String, Map)} won't truncate them;
+   * 1. For errored topics, {@link #getOffLineJobStatus(String, String, Map, Optional)} won't truncate them;
    * 2. For errored topics, {@link #killOfflinePush(String, String, boolean)} won't truncate them;
    * 3. {@link #getTopicForCurrentPushJob(String, String, boolean, boolean)} will truncate the errored topics based on
    * {@link #maxErroredTopicNumToKeep};
@@ -1717,8 +1717,7 @@ public class VeniceParentHelixAdmin implements Admin {
   public Version getIncrementalPushVersion(String clusterName, String storeName) {
     Version incrementalPushVersion = getVeniceHelixAdmin().getIncrementalPushVersion(clusterName, storeName);
     String incrementalPushTopic = incrementalPushVersion.kafkaTopicName();
-    ExecutionStatus status =
-        getOffLinePushStatus(clusterName, incrementalPushTopic, Optional.empty()).getExecutionStatus();
+    ExecutionStatus status = getOffLinePushStatus(clusterName, incrementalPushTopic).getExecutionStatus();
 
     return getIncrementalPushVersion(incrementalPushVersion, status);
   }
@@ -3284,8 +3283,24 @@ public class VeniceParentHelixAdmin implements Admin {
   public OfflinePushStatusInfo getOffLinePushStatus(
       String clusterName,
       String kafkaTopic,
-      Optional<String> incrementalPushVersion) {
+      Optional<String> incrementalPushVersion,
+      String region) {
     Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+    if (region != null) {
+      if (!controllerClients.containsKey(region)) {
+        throw new VeniceException("Region " + region + " does not exist in " + controllerClients.keySet());
+      }
+      JobStatusQueryResponse response = controllerClients.get(region).queryDetailedJobStatus(kafkaTopic, region);
+      if (response.isError()) {
+        throw new VeniceException(
+            "Couldn't query " + region + " for job " + kafkaTopic + " status: " + response.getError());
+      }
+      ExecutionStatus status = ExecutionStatus.valueOf(response.getStatus());
+      String statusDetails = response.getOptionalStatusDetails().orElse(null);
+      OfflinePushStatusInfo offlinePushStatusInfo = new OfflinePushStatusInfo(status, statusDetails);
+      offlinePushStatusInfo.setUncompletedPartitions(response.getUncompletedPartitions());
+      return offlinePushStatusInfo;
+    }
     return getOffLineJobStatus(clusterName, kafkaTopic, controllerClients, incrementalPushVersion);
   }
 
@@ -3303,7 +3318,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<String> incrementalPushVersion) {
     Set<String> childClusters = controllerClients.keySet();
     ExecutionStatus currentReturnStatus = ExecutionStatus.NEW;
-    Optional<String> currentReturnStatusDetails = Optional.empty();
+    String currentReturnStatusDetails = null;
     List<ExecutionStatus> statuses = new ArrayList<>();
     Map<String, String> extraInfo = new HashMap<>();
     Map<String, String> extraDetails = new HashMap<>();
@@ -3311,14 +3326,14 @@ public class VeniceParentHelixAdmin implements Admin {
     for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
       String region = entry.getKey();
       ControllerClient controllerClient = entry.getValue();
-      String leaderControllerUrl = "Unspecified leader controller url";
+      String leaderControllerUrl;
       try {
         leaderControllerUrl = controllerClient.getLeaderControllerUrl();
-      } catch (VeniceException getMasterException) {
-        LOGGER.warn("Couldn't query {} for job status of {}", region, kafkaTopic, getMasterException);
+      } catch (VeniceException exception) {
+        LOGGER.warn("Couldn't query {} for job status of {}", region, kafkaTopic, exception);
         statuses.add(ExecutionStatus.UNKNOWN);
         extraInfo.put(region, ExecutionStatus.UNKNOWN.toString());
-        extraDetails.put(region, "Failed to get leader controller url " + getMasterException.getMessage());
+        extraDetails.put(region, "Failed to get leader controller url " + exception.getMessage());
         continue;
       }
       JobStatusQueryResponse response = controllerClient.queryJobStatus(kafkaTopic, incrementalPushVersion);
@@ -3330,13 +3345,10 @@ public class VeniceParentHelixAdmin implements Admin {
         extraDetails.put(region, leaderControllerUrl + " " + response.getError());
       } else {
         ExecutionStatus status = ExecutionStatus.valueOf(response.getStatus());
-
         statuses.add(status);
         extraInfo.put(region, response.getStatus());
         Optional<String> statusDetails = response.getOptionalStatusDetails();
-        if (statusDetails.isPresent()) {
-          extraDetails.put(region, leaderControllerUrl + " " + statusDetails.get());
-        }
+        statusDetails.ifPresent(s -> extraDetails.put(region, leaderControllerUrl + " " + s));
       }
     }
     // Sort the per-datacenter status in this order, and return the first one in the list
@@ -3349,19 +3361,18 @@ public class VeniceParentHelixAdmin implements Admin {
     }
 
     int successCount = childClusters.size() - failCount;
-    if (!(successCount >= (childClusters.size() / 2) + 1)) { // Strict majority must be reachable, otherwise keep
-                                                             // polling
+    if (!(successCount >= (childClusters.size() / 2) + 1)) {
+      // Strict majority must be reachable, otherwise keep polling
       currentReturnStatus = ExecutionStatus.PROGRESS;
     }
 
     if (currentReturnStatus.isTerminal()) {
       // If there is a temporary datacenter connection failure, we want VPJ to report failure while allowing the push
-      // to succeed in remaining datacenters. If we want to allow the push to succeed in asyc in the remaining
-      // datacenter
-      // then put the topic delete into an else block under `if (failcount > 0)`
+      // to succeed in remaining datacenters. If we want to allow the push to succeed in async in the remaining
+      // datacenter, then put the topic delete into an else block under `if (failCount > 0)`
       if (failCount > 0) {
         currentReturnStatus = ExecutionStatus.ERROR;
-        currentReturnStatusDetails = Optional.of(failCount + "/" + childClusters.size() + " DCs unreachable. ");
+        currentReturnStatusDetails = failCount + "/" + childClusters.size() + " DCs unreachable. ";
       }
 
       // TODO: Set parent controller's version status based on currentReturnStatus
@@ -3370,7 +3381,7 @@ public class VeniceParentHelixAdmin implements Admin {
       // TODO: remove this if statement since it was only for debugging purpose
       if (maxErroredTopicNumToKeep > 0 && currentReturnStatus.equals(ExecutionStatus.ERROR)) {
         currentReturnStatusDetails =
-            Optional.of(currentReturnStatusDetails.orElse("") + "Parent Kafka topic won't be truncated");
+            Optional.ofNullable(currentReturnStatusDetails).orElse("") + "Parent Kafka topic won't be truncated";
         LOGGER.info(
             "The errored kafka topic {} won't be truncated since it will be used to investigate some Kafka related issue",
             kafkaTopic);
@@ -3383,12 +3394,12 @@ public class VeniceParentHelixAdmin implements Admin {
          */
         Store store = getVeniceHelixAdmin().getStore(clusterName, Version.parseStoreFromKafkaTopicName(kafkaTopic));
         boolean failedBatchPush = !incrementalPushVersion.isPresent() && currentReturnStatus == ExecutionStatus.ERROR;
-        boolean incPushEnabledBatchpushSuccess =
+        boolean incPushEnabledBatchPushSuccess =
             !incrementalPushVersion.isPresent() && store.isIncrementalPushEnabled();
-        boolean nonIncPushBatchSucess =
+        boolean nonIncPushBatchSuccess =
             !store.isIncrementalPushEnabled() && currentReturnStatus != ExecutionStatus.ERROR;
 
-        if ((failedBatchPush || nonIncPushBatchSucess || incPushEnabledBatchpushSuccess)
+        if ((failedBatchPush || nonIncPushBatchSuccess || incPushEnabledBatchPushSuccess)
             && !getMultiClusterConfigs().getCommonConfig().disableParentTopicTruncationUponCompletion()) {
           LOGGER.info("Truncating kafka topic: {} with job status: {}", kafkaTopic, currentReturnStatus);
           truncateKafkaTopic(kafkaTopic);
@@ -3397,47 +3408,12 @@ public class VeniceParentHelixAdmin implements Admin {
             truncateKafkaTopic(Version.composeStreamReprocessingTopic(store.getName(), version.get().getNumber()));
           }
           currentReturnStatusDetails =
-              Optional.of(currentReturnStatusDetails.orElse("") + "Parent Kafka topic truncated");
+              Optional.ofNullable(currentReturnStatusDetails).orElse("") + "Parent Kafka topic truncated";
         }
       }
     }
 
     return new OfflinePushStatusInfo(currentReturnStatus, extraInfo, currentReturnStatusDetails, extraDetails);
-  }
-
-  /**
-   * Queries child clusters for job progress.  Prepends the cluster name to the task ID and provides an aggregate
-   * Map of progress for all tasks.
-   */
-  @Override
-  public Map<String, Long> getOfflinePushProgress(String clusterName, String kafkaTopic) {
-    Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
-    return getOfflineJobProgress(clusterName, kafkaTopic, controllerClients);
-  }
-
-  static Map<String, Long> getOfflineJobProgress(
-      String clusterName,
-      String kafkaTopic,
-      Map<String, ControllerClient> controllerClients) {
-    Map<String, Long> aggregateProgress = new HashMap<>();
-    for (Map.Entry<String, ControllerClient> clientEntry: controllerClients.entrySet()) {
-      String childCluster = clientEntry.getKey();
-      ControllerClient client = clientEntry.getValue();
-      JobStatusQueryResponse statusResponse = client.queryJobStatus(kafkaTopic);
-      if (statusResponse.isError()) {
-        LOGGER.warn(
-            "Failed to query {} for job progress on topic {}. Error: {}",
-            childCluster,
-            kafkaTopic,
-            statusResponse.getError());
-      } else {
-        Map<String, Long> clusterProgress = statusResponse.getPerTaskProgress();
-        for (Map.Entry<String, Long> entry: clusterProgress.entrySet()) {
-          aggregateProgress.put(childCluster + "_" + entry.getKey(), entry.getValue());
-        }
-      }
-    }
-    return aggregateProgress;
   }
 
   /**
