@@ -34,8 +34,12 @@ public class DataRecoveryExecutor {
     this.pool = Executors.newFixedThreadPool(this.poolSize);
   }
 
-  public boolean requiresSentinelRun(DataRecoveryTask task) {
-    return task.requiresSentinelRun();
+  /**
+   * For some task, it is benefit to wait for the first task to complete before starting to run the remaining ones.
+   * e.g. the first run of task can set up local session files that can be used by follow-up tasks.
+   */
+  public boolean needWaitForFirstTaskToComplete(DataRecoveryTask task) {
+    return task.needWaitForFirstTaskToComplete();
   }
 
   public void perform(Set<String> storeNames, StoreRepushCommand.Params params) {
@@ -46,8 +50,8 @@ public class DataRecoveryExecutor {
 
     List<DataRecoveryTask> concurrentTasks = tasks;
     DataRecoveryTask firstTask = tasks.get(0);
-    if (requiresSentinelRun(firstTask)) {
-      // If sentinel run is required for a task, let the main thread to run it to completion.
+    if (needWaitForFirstTaskToComplete(firstTask)) {
+      // Let the main thread run the first task to completion if there is a need.
       DataRecoveryTask sentinel = firstTask;
       sentinel.run();
       if (sentinel.getTaskResult().isError()) {
