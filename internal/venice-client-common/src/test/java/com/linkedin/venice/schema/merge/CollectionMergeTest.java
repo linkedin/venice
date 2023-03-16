@@ -105,7 +105,7 @@ public class CollectionMergeTest {
     Assert.assertEquals(UpdateResultStatus.PARTIALLY_UPDATED, resultStatus);
     Assert.assertEquals(((List<String>) oldRecord.get(NULLABLE_LIST_FIELD_NAME)).get(0), "item3");
 
-    // Case 4: Test nullable MAP can handle setField to null when there is active elements.
+    // Case 4: Test nullable List can handle setField to null when there is active elements.
     resultStatus = collectionTimestampMergeRecordHelper.putOnField(
         oldRecord,
         (GenericRecord) oldRmdRecord.get(RmdConstants.TIMESTAMP_FIELD_NAME),
