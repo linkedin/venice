@@ -376,7 +376,7 @@ public class VeniceRouterConfig {
      */
     routerIOWorkerCount = props.getInt(ROUTER_IO_WORKER_COUNT, 24);
     perRouterStorageNodeThrottlerEnabled = props.getBoolean(ROUTER_PER_STORAGE_NODE_THROTTLER_ENABLED, true);
-    perStoreRouterQuotaBuffer = props.getDouble(ROUTER_PER_STORE_ROUTER_QUOTA_BUFFER, 3.0);
+    perStoreRouterQuotaBuffer = props.getDouble(ROUTER_PER_STORE_ROUTER_QUOTA_BUFFER, 1.5);
   }
 
   public double getPerStoreRouterQuotaBuffer() {
