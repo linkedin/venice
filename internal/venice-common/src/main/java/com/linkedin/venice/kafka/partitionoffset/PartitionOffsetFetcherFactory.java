@@ -1,8 +1,8 @@
 package com.linkedin.venice.kafka.partitionoffset;
 
-import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.pubsub.factory.PubSubClientFactory;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.utils.SystemTime;
@@ -15,7 +15,7 @@ import java.util.Properties;
 
 public class PartitionOffsetFetcherFactory {
   public static PartitionOffsetFetcher createDefaultPartitionOffsetFetcher(
-      KafkaClientFactory kafkaClientFactory,
+      PubSubClientFactory pubSubClientFactory,
       Lazy<KafkaAdminWrapper> kafkaAdminWrapper,
       long kafkaOperationTimeoutMs,
       Optional<MetricsRepository> optionalMetricsRepository) {
@@ -25,15 +25,15 @@ public class PartitionOffsetFetcherFactory {
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
     PartitionOffsetFetcher partitionOffsetFetcher = new PartitionOffsetFetcherImpl(
         kafkaAdminWrapper,
-        Lazy.of(() -> kafkaClientFactory.getConsumer(new Properties(), kafkaPubSubMessageDeserializer)),
+        Lazy.of(() -> pubSubClientFactory.getConsumer(new Properties(), kafkaPubSubMessageDeserializer)),
         kafkaOperationTimeoutMs,
-        kafkaClientFactory.getKafkaBootstrapServers());
+        pubSubClientFactory.getPubSubBootstrapServers());
     if (optionalMetricsRepository.isPresent()) {
       return new InstrumentedPartitionOffsetFetcher(
           partitionOffsetFetcher,
           new PartitionOffsetFetcherStats(
               optionalMetricsRepository.get(),
-              "PartitionOffsetFetcherStats_" + kafkaClientFactory.getKafkaBootstrapServers()),
+              "PartitionOffsetFetcherStats_" + pubSubClientFactory.getPubSubBootstrapServers()),
           new SystemTime());
     } else {
       return partitionOffsetFetcher;

@@ -3,11 +3,18 @@ package com.linkedin.venice.kafka;
 import static com.linkedin.venice.ConfigConstants.DEFAULT_KAFKA_ADMIN_GET_TOPIC_CONFIG_RETRY_IN_SECONDS;
 
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.SSLConfig;
+import com.linkedin.venice.exceptions.UndefinedPropertyException;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.admin.InstrumentedKafkaAdmin;
+import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
 import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumer;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
+import com.linkedin.venice.pubsub.factory.MetricsParameters;
+import com.linkedin.venice.pubsub.factory.PubSubClientFactory;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.utils.ReflectUtils;
@@ -17,6 +24,7 @@ import java.util.Optional;
 import java.util.Properties;
 import javax.annotation.Nonnull;
 import org.apache.commons.lang.Validate;
+import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
@@ -28,15 +36,17 @@ import org.apache.logging.log4j.Logger;
 /**
  * A factory that creates Kafka clients, specifically Kafka consumer and Kafka admin client.
  */
-public abstract class KafkaClientFactory {
+public class KafkaClientFactory implements PubSubClientFactory {
   private static final Logger LOGGER = LogManager.getLogger(KafkaClientFactory.class);
-
-  protected final Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader;
 
   private final Optional<MetricsParameters> metricsParameters;
 
-  protected KafkaClientFactory() {
+  protected VeniceProperties veniceProperties; // TODO: change it after we remove KafkaConsumerFactoryImpl
+  protected final Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader;
+
+  public KafkaClientFactory(VeniceProperties veniceProperties) {
     this(Optional.empty(), Optional.empty());
+    this.veniceProperties = veniceProperties;
   }
 
   protected KafkaClientFactory(
@@ -51,15 +61,20 @@ public abstract class KafkaClientFactory {
     return metricsParameters;
   }
 
-  public PubSubConsumer getConsumer(Properties props, KafkaPubSubMessageDeserializer kafkaPubSubMessageDeserializer) {
+  @Override
+  public PubSubConsumer getConsumer(Properties props, PubSubMessageDeserializer pubSubMessageDeserializer) {
     props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
-    Properties propertiesWithSSL = setupSSL(props);
-    return new ApacheKafkaConsumer(
-        getKafkaConsumer(propertiesWithSSL),
-        new VeniceProperties(props),
-        isKafkaConsumerOffsetCollectionEnabled(),
-        kafkaPubSubMessageDeserializer);
+    if (pubSubMessageDeserializer instanceof KafkaPubSubMessageDeserializer) {
+      Properties propertiesWithSSL = setupSSL(props);
+      return new ApacheKafkaConsumer(
+          getKafkaConsumer(propertiesWithSSL),
+          new VeniceProperties(props),
+          isKafkaConsumerOffsetCollectionEnabled(),
+          (KafkaPubSubMessageDeserializer) pubSubMessageDeserializer);
+    } else {
+      throw new VeniceException("Only support " + KafkaPubSubMessageDeserializer.class);
+    }
   }
 
   private <K, V> Consumer<K, V> getKafkaConsumer(Properties properties) {
@@ -67,7 +82,8 @@ public abstract class KafkaClientFactory {
     return new KafkaConsumer<>(propertiesWithSSL);
   }
 
-  public KafkaAdminWrapper getWriteOnlyKafkaAdmin(
+  @Override
+  public KafkaAdminWrapper getWriteOnlyPubSubAdmin(
       Optional<MetricsRepository> optionalMetricsRepository,
       PubSubTopicRepository pubSubTopicRepository) {
     return createAdminClient(
@@ -77,7 +93,8 @@ public abstract class KafkaClientFactory {
         pubSubTopicRepository);
   }
 
-  public KafkaAdminWrapper getReadOnlyKafkaAdmin(
+  @Override
+  public KafkaAdminWrapper getReadOnlyPubSubAdmin(
       Optional<MetricsRepository> optionalMetricsRepository,
       PubSubTopicRepository pubSubTopicRepository) {
     return createAdminClient(
@@ -87,7 +104,8 @@ public abstract class KafkaClientFactory {
         pubSubTopicRepository);
   }
 
-  public KafkaAdminWrapper getKafkaAdminClient(
+  @Override
+  public KafkaAdminWrapper getPubSubAdmin(
       Optional<MetricsRepository> optionalMetricsRepository,
       PubSubTopicRepository pubSubTopicRepository) {
     return createAdminClient(getKafkaAdminClass(), optionalMetricsRepository, "KafkaAdminStats", pubSubTopicRepository);
@@ -109,7 +127,7 @@ public abstract class KafkaClientFactory {
           DEFAULT_KAFKA_ADMIN_GET_TOPIC_CONFIG_RETRY_IN_SECONDS);
     }
     adminWrapper.initialize(properties, pubSubTopicRepository);
-    final String kafkaBootstrapServers = getKafkaBootstrapServers();
+    final String kafkaBootstrapServers = getPubSubBootstrapServers();
 
     if (optionalMetricsRepository.isPresent()) {
       // Use Kafka bootstrap server to identify which Kafka admin client stats it is
@@ -138,9 +156,24 @@ public abstract class KafkaClientFactory {
   /**
    * Setup essential ssl related configuration by putting all ssl properties of this factory into the given properties.
    */
-  public abstract Properties setupSSL(Properties properties);
+  @Override
+  public Properties setupSSL(Properties properties) {
+    properties.putAll(veniceProperties.toProperties());
+    try {
+      SSLConfig sslConfig = new SSLConfig(veniceProperties);
+      properties.putAll(sslConfig.getKafkaSSLConfig());
+      properties.setProperty(
+          CommonClientConfigs.SECURITY_PROTOCOL_CONFIG,
+          veniceProperties.getString(ConfigKeys.KAFKA_SECURITY_PROTOCOL));
+    } catch (UndefinedPropertyException e) {
+      LOGGER.warn("SSL properties are missing, Kafka consumer will not be able to consume if SSL is required.");
+    }
+    return properties;
+  }
 
-  abstract protected String getKafkaAdminClass();
+  protected String getKafkaAdminClass() {
+    return KafkaAdminClient.class.getName();
+  }
 
   /**
    * Get the class name of an admin client that is used for "write-only" tasks such as create topics, update topic configs,
@@ -148,7 +181,9 @@ public abstract class KafkaClientFactory {
    *
    * @return Fully-qualified name name. For example: "com.linkedin.venice.kafka.admin.KafkaAdminClient"
    */
-  abstract protected String getWriteOnlyAdminClass();
+  protected String getWriteOnlyAdminClass() {
+    return getKafkaAdminClass();
+  }
 
   /**
    * Get the class name of an admin client that is used for "read-only" tasks such as check topic existence, get topic configs,
@@ -156,31 +191,20 @@ public abstract class KafkaClientFactory {
    *
    * @return Fully-qualified name name. For example: "com.linkedin.venice.kafka.admin.KafkaAdminClient"
    */
-  abstract protected String getReadOnlyAdminClass();
 
-  public abstract String getKafkaBootstrapServers();
+  protected String getReadOnlyAdminClass() {
+    return getKafkaAdminClass();
+  }
 
-  abstract protected KafkaClientFactory clone(
-      String kafkaBootstrapServers,
-      Optional<MetricsParameters> metricsParameters);
+  @Override
+  public String getPubSubBootstrapServers() {
+    return veniceProperties.getString(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
+  }
 
-  public static class MetricsParameters {
-    final String uniqueName;
-    final MetricsRepository metricsRepository;
-
-    public MetricsParameters(String uniqueMetricNamePrefix, MetricsRepository metricsRepository) {
-      this.uniqueName = uniqueMetricNamePrefix;
-      this.metricsRepository = metricsRepository;
-    }
-
-    public MetricsParameters(
-        Class kafkaFactoryClass,
-        Class usingClass,
-        String kafkaBootstrapUrl,
-        MetricsRepository metricsRepository) {
-      this(
-          kafkaFactoryClass.getSimpleName() + "_used_by_" + usingClass + "_for_" + kafkaBootstrapUrl,
-          metricsRepository);
-    }
+  @Override
+  public KafkaClientFactory clone(String kafkaBootstrapServers, Optional<MetricsParameters> metricsParameters) {
+    Properties clonedProperties = this.veniceProperties.toProperties();
+    clonedProperties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafkaBootstrapServers);
+    return new KafkaClientFactory(new VeniceProperties(clonedProperties));
   }
 }

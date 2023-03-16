@@ -16,7 +16,6 @@ import com.linkedin.davinci.kafka.consumer.TopicExistenceChecker;
 import com.linkedin.venice.integration.utils.PubSubBrokerConfigs;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerFactoryImpl;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.EndOfPush;
 import com.linkedin.venice.kafka.protocol.GUID;
@@ -179,7 +178,7 @@ public class KafkaConsumptionTest {
     doReturn(clusterUrlToIdMap).when(veniceServerConfig).getKafkaClusterUrlToIdMap();
 
     TopicExistenceChecker topicExistenceChecker = mock(TopicExistenceChecker.class);
-    KafkaClientFactory kafkaClientFactory = new KafkaConsumerFactoryImpl(new VeniceProperties());
+    KafkaClientFactory kafkaClientFactory = new KafkaClientFactory(new VeniceProperties());
     KafkaPubSubMessageDeserializer pubSubDeserializer = new KafkaPubSubMessageDeserializer(
         new OptimizedKafkaValueSerializer(),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),

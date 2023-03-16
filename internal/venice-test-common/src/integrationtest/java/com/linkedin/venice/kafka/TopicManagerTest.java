@@ -504,8 +504,8 @@ public class TopicManagerTest {
     doReturn(true).when(mockKafkaAdminWrapper)
         .containsTopicWithPartitionCheckExpectationAndRetry(eq(pubSubTopicPartition), anyInt(), eq(true));
     doThrow(new TimeoutException()).when(mockKafkaAdminWrapper).endOffsets(any(), any());
-    doReturn(mockKafkaAdminWrapper).when(mockKafkaClientFactory).getWriteOnlyKafkaAdmin(any(), any());
-    doReturn(mockKafkaAdminWrapper).when(mockKafkaClientFactory).getReadOnlyKafkaAdmin(any(), any());
+    doReturn(mockKafkaAdminWrapper).when(mockKafkaClientFactory).getWriteOnlyPubSubAdmin(any(), any());
+    doReturn(mockKafkaAdminWrapper).when(mockKafkaClientFactory).getReadOnlyPubSubAdmin(any(), any());
     // Throw Kafka TimeoutException when trying to get max offset
     doReturn(mockKafkaClientFactory).when(mockKafkaClientFactory).clone(any(), any());
 

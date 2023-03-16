@@ -148,8 +148,7 @@ public class PubSubSharedProducerAdapterFactoryTest {
       }
     }
 
-    try (KafkaAdminWrapper adminWrapper =
-        kafkaClientFactory.getKafkaAdminClient(Optional.empty(), pubSubTopicRepository)) {
+    try (KafkaAdminWrapper adminWrapper = kafkaClientFactory.getPubSubAdmin(Optional.empty(), pubSubTopicRepository)) {
       PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(existingTopic, 0);
       Long end = adminWrapper.endOffset(pubSubTopicPartition);
       Assert.assertTrue(end > 100L); // to account for the SOP that VW sends internally.

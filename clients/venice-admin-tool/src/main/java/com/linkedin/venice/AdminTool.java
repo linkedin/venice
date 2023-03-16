@@ -67,7 +67,6 @@ import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerFactoryImpl;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
@@ -1308,8 +1307,8 @@ public class AdminTool {
     Properties properties = loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
     properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafkaBootstrapServer);
     VeniceProperties veniceProperties = new VeniceProperties(properties);
-    KafkaClientFactory kafkaClientFactory = new KafkaConsumerFactoryImpl(veniceProperties);
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+    KafkaClientFactory kafkaClientFactory = new KafkaClientFactory(veniceProperties);
     int kafkaTimeOut = 30 * Time.MS_PER_SECOND;
     int topicDeletionStatusPollingInterval = 2 * Time.MS_PER_SECOND;
     if (cmd.hasOption(Arg.KAFKA_OPERATION_TIMEOUT.toString())) {

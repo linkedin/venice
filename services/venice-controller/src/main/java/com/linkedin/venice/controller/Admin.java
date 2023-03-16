@@ -3,7 +3,6 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
-import com.linkedin.venice.controller.kafka.consumer.ControllerKafkaClientFactory;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
 import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.StoreComparisonInfo;
@@ -26,6 +25,7 @@ import com.linkedin.venice.meta.UncompletedPartition;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.persona.StoragePersona;
+import com.linkedin.venice.pubsub.factory.PubSubClientFactory;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.schema.GeneratedSchemaID;
@@ -582,7 +582,7 @@ public interface Admin extends AutoCloseable, Closeable {
 
   VeniceWriterFactory getVeniceWriterFactory();
 
-  ControllerKafkaClientFactory getVeniceConsumerFactory();
+  PubSubClientFactory getVeniceConsumerFactory();
 
   void close();
 

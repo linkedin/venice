@@ -173,7 +173,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final PriorityBlockingQueue<ConsumerAction> consumerActionsQueue;
   protected final StorageMetadataService storageMetadataService;
   protected final TopicManagerRepository topicManagerRepository;
-  protected final TopicManagerRepository topicManagerRepositoryJavaBased;
   protected final CachedKafkaMetadataGetter cachedKafkaMetadataGetter;
   /** Per-partition consumption state map */
   protected final ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap;
@@ -338,7 +337,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.kafkaDataIntegrityValidator = new KafkaDataIntegrityValidator(this.kafkaVersionTopic);
     this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, kafkaVersionTopic);
     this.topicManagerRepository = builder.getTopicManagerRepository();
-    this.topicManagerRepositoryJavaBased = builder.getTopicManagerRepositoryJavaBased();
     this.cachedKafkaMetadataGetter = new CachedKafkaMetadataGetter(storeConfig.getTopicOffsetCheckIntervalMs());
 
     this.hostLevelIngestionStats = builder.getIngestionStats().getStoreStats(storeName);
@@ -3281,7 +3279,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return topicManagerRepository.getTopicManager();
     }
     // Use java-based kafka admin client to get remote topic manager
-    return topicManagerRepositoryJavaBased.getTopicManager(sourceKafkaServer);
+    return topicManagerRepository.getTopicManager(sourceKafkaServer);
   }
 
   /**

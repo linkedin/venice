@@ -95,7 +95,6 @@ import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
-import com.linkedin.venice.kafka.KafkaClientFactory.MetricsParameters;
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
@@ -143,6 +142,8 @@ import com.linkedin.venice.participant.protocol.enums.ParticipantMessageType;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.factory.MetricsParameters;
+import com.linkedin.venice.pubsub.factory.PubSubClientFactory;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
@@ -319,7 +320,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final long deprecatedJobTopicMaxRetentionMs;
   private final HelixReadOnlyStoreConfigRepository storeConfigRepo;
   private final VeniceWriterFactory veniceWriterFactory;
-  private final ControllerKafkaClientFactory veniceConsumerFactory;
+  private final PubSubClientFactory veniceConsumerFactory;
   private final int minNumberOfStoreVersionsToPreserve;
   private final StoreGraveyard storeGraveyard;
   private final Map<String, String> participantMessageStoreRTTMap;
@@ -6365,10 +6366,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * @return a <code>ControllerKafkaClientFactory</code> object used by the Venice controller to create Kafka clients.
+   * @return a <code>PubSubClientFactory</code> object used by the Venice controller to create Pubsub clients.
    */
   @Override
-  public ControllerKafkaClientFactory getVeniceConsumerFactory() {
+  public PubSubClientFactory getVeniceConsumerFactory() {
     return veniceConsumerFactory;
   }
 

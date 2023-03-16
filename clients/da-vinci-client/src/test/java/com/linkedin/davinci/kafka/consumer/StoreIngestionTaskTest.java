@@ -2659,10 +2659,7 @@ public abstract class StoreIngestionTaskTest {
         Optional.empty(),
         1,
         extraServerProperties,
-        false).setIsDaVinciClient(isDaVinciClient)
-            .setTopicManagerRepositoryJavaBased(mockTopicManagerRepository)
-            .setAggKafkaConsumerService(aggKafkaConsumerService)
-            .build();
+        false).setIsDaVinciClient(isDaVinciClient).setAggKafkaConsumerService(aggKafkaConsumerService).build();
 
     TopicManager mockTopicManagerRemoteKafka = mock(TopicManager.class);
 
@@ -2829,10 +2826,7 @@ public abstract class StoreIngestionTaskTest {
         Optional.empty(),
         1,
         new HashMap<>(),
-        false).setIsDaVinciClient(isDaVinciClient)
-            .setTopicManagerRepositoryJavaBased(mockTopicManagerRepository)
-            .setAggKafkaConsumerService(aggKafkaConsumerService)
-            .build();
+        false).setIsDaVinciClient(isDaVinciClient).setAggKafkaConsumerService(aggKafkaConsumerService).build();
 
     TopicManager mockTopicManagerRemoteKafka = mock(TopicManager.class);
     doReturn(mockTopicManager).when(mockTopicManagerRepository)
@@ -2914,9 +2908,7 @@ public abstract class StoreIngestionTaskTest {
         Optional.empty(),
         amplificationFactor,
         new HashMap<>(),
-        false).setIsDaVinciClient(isDaVinciClient)
-            .setTopicManagerRepositoryJavaBased(mockTopicManagerRepository)
-            .build();
+        false).setIsDaVinciClient(isDaVinciClient).build();
     int leaderSubPartition = PartitionUtils.getLeaderSubPartition(PARTITION_FOO, amplificationFactor);
     Properties kafkaProps = new Properties();
     kafkaProps.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());

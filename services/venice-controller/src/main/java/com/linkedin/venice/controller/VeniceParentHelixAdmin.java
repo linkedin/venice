@@ -76,7 +76,6 @@ import com.linkedin.venice.controller.authorization.SystemStoreAclSynchronizatio
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask;
-import com.linkedin.venice.controller.kafka.consumer.ControllerKafkaClientFactory;
 import com.linkedin.venice.controller.kafka.protocol.admin.AbortMigration;
 import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
@@ -175,6 +174,7 @@ import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.factory.PubSubClientFactory;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
@@ -3891,7 +3891,7 @@ public class VeniceParentHelixAdmin implements Admin {
    * @see VeniceHelixAdmin#getVeniceConsumerFactory()
    */
   @Override
-  public ControllerKafkaClientFactory getVeniceConsumerFactory() {
+  public PubSubClientFactory getVeniceConsumerFactory() {
     return getVeniceHelixAdmin().getVeniceConsumerFactory();
   }
 

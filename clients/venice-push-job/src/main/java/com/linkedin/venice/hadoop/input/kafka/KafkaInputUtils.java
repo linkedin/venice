@@ -11,7 +11,6 @@ import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.UserCredentialsFactory;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.kafka.KafkaClientFactory;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerFactoryImpl;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.KafkaSSLUtils;
@@ -51,7 +50,7 @@ public class KafkaInputUtils {
     consumerFactoryProperties
         .setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, config.get(KAFKA_INPUT_BROKER_URL));
 
-    return new KafkaConsumerFactoryImpl(new VeniceProperties(consumerFactoryProperties));
+    return new KafkaClientFactory(new VeniceProperties(consumerFactoryProperties));
   }
 
   public static VeniceCompressor getCompressor(

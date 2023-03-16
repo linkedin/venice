@@ -37,7 +37,6 @@ import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
-import com.linkedin.venice.kafka.KafkaClientFactory.MetricsParameters;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumer;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -61,6 +60,7 @@ import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdap
 import com.linkedin.venice.pubsub.adapter.kafka.producer.SharedKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
+import com.linkedin.venice.pubsub.factory.MetricsParameters;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.SchemaReader;
@@ -170,8 +170,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final boolean isIsolatedIngestion;
 
   private final TopicManagerRepository topicManagerRepository;
-  private final TopicManagerRepository topicManagerRepositoryJavaBased;
-
   private ExecutorService participantStoreConsumerExecutorService;
 
   private ExecutorService ingestionExecutorService;
@@ -236,15 +234,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         serverConfig,
         kafkaMessageEnvelopeSchemaReader,
         Optional.of(new MetricsParameters(ServerKafkaClientFactory.class.getSimpleName(), metricsRepository)));
-
-    /**
-     * This new veniceConsumerJavaBasedFactory (underneath it works with java based admin client only) is needed for leader_offset_lag metrics to work.
-     * TODO: This should be removed once the VeniceServerConsumerFactory uses java based admin client in production reliably.
-     */
-    ServerJavaKafkaClientFactory veniceConsumerJavaBasedFactory = new ServerJavaKafkaClientFactory(
-        serverConfig,
-        kafkaMessageEnvelopeSchemaReader,
-        Optional.of(new MetricsParameters(ServerJavaKafkaClientFactory.class.getSimpleName(), metricsRepository)));
 
     Properties veniceWriterProperties =
         veniceConfigLoader.getVeniceClusterConfig().getClusterProperties().toProperties();
@@ -323,14 +312,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         new KafkaClusterBasedRecordThrottler(kafkaUrlToRecordsThrottler);
 
     this.topicManagerRepository = new TopicManagerRepository(
-        veniceConsumerFactory.getKafkaBootstrapServers(),
+        veniceConsumerFactory.getPubSubBootstrapServers(),
         veniceConsumerFactory,
-        metricsRepository,
-        pubSubTopicRepository);
-
-    this.topicManagerRepositoryJavaBased = new TopicManagerRepository(
-        veniceConsumerFactory.getKafkaBootstrapServers(),
-        veniceConsumerJavaBasedFactory,
         metricsRepository,
         pubSubTopicRepository);
 
@@ -468,7 +451,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setSchemaRepository(schemaRepo)
         .setMetadataRepository(metadataRepo)
         .setTopicManagerRepository(topicManagerRepository)
-        .setTopicManagerRepositoryJavaBased(topicManagerRepositoryJavaBased)
         .setHostLevelIngestionStats(hostLevelIngestionStats)
         .setVersionedDIVStats(versionedDIVStats)
         .setVersionedIngestionStats(versionedIngestionStats)
@@ -618,7 +600,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     // close drainer service at the very end as it does not depend on any other service.
     Utils.closeQuietlyWithErrorLogged(storeBufferService);
     Utils.closeQuietlyWithErrorLogged(topicManagerRepository);
-    Utils.closeQuietlyWithErrorLogged(topicManagerRepositoryJavaBased);
     topicLockManager.removeAllLocks();
   }
 

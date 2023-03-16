@@ -5,7 +5,6 @@ import static com.linkedin.venice.ConfigConstants.DEFAULT_TOPIC_DELETION_STATUS_
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.KafkaClientFactory.MetricsParameters;
 import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
 import com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcher;
 import com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcherFactory;
@@ -15,6 +14,8 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.factory.MetricsParameters;
+import com.linkedin.venice.pubsub.factory.PubSubClientFactory;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.Time;
@@ -86,11 +87,11 @@ public class TopicManager implements Closeable {
 
   // Immutable state
   private final Logger logger;
-  private final String kafkaBootstrapServers;
+  private final String pubSubBootstrapServers;
   private final long kafkaOperationTimeoutMs;
   private final long topicDeletionStatusPollIntervalMs;
   private final long topicMinLogCompactionLagMs;
-  private final KafkaClientFactory kafkaClientFactory;
+  private final PubSubClientFactory pubSubClientFactory;
   private final Lazy<KafkaAdminWrapper> kafkaWriteOnlyAdmin;
   private final Lazy<KafkaAdminWrapper> kafkaReadOnlyAdmin;
   private final PartitionOffsetFetcher partitionOffsetFetcher;
@@ -104,19 +105,19 @@ public class TopicManager implements Closeable {
       long kafkaOperationTimeoutMs,
       long topicDeletionStatusPollIntervalMs,
       long topicMinLogCompactionLagMs,
-      KafkaClientFactory kafkaClientFactory,
+      PubSubClientFactory pubSubClientFactory,
       Optional<MetricsRepository> optionalMetricsRepository,
       PubSubTopicRepository pubSubTopicRepository) {
     this.kafkaOperationTimeoutMs = kafkaOperationTimeoutMs;
     this.topicDeletionStatusPollIntervalMs = topicDeletionStatusPollIntervalMs;
     this.topicMinLogCompactionLagMs = topicMinLogCompactionLagMs;
-    this.kafkaClientFactory = kafkaClientFactory;
-    this.kafkaBootstrapServers = kafkaClientFactory.getKafkaBootstrapServers();
-    this.logger = LogManager.getLogger(this.getClass().getSimpleName() + " [" + kafkaBootstrapServers + "]");
+    this.pubSubClientFactory = pubSubClientFactory;
+    this.pubSubBootstrapServers = pubSubClientFactory.getPubSubBootstrapServers();
+    this.logger = LogManager.getLogger(this.getClass().getSimpleName() + " [" + pubSubBootstrapServers + "]");
 
     this.kafkaReadOnlyAdmin = Lazy.of(() -> {
       KafkaAdminWrapper kafkaReadOnlyAdmin =
-          kafkaClientFactory.getReadOnlyKafkaAdmin(optionalMetricsRepository, pubSubTopicRepository);
+          pubSubClientFactory.getReadOnlyPubSubAdmin(optionalMetricsRepository, pubSubTopicRepository);
       logger.info(
           "{} is using kafka read-only admin client of class: {}",
           this.getClass().getSimpleName(),
@@ -126,7 +127,7 @@ public class TopicManager implements Closeable {
 
     this.kafkaWriteOnlyAdmin = Lazy.of(() -> {
       KafkaAdminWrapper kafkaWriteOnlyAdmin =
-          kafkaClientFactory.getWriteOnlyKafkaAdmin(optionalMetricsRepository, pubSubTopicRepository);
+          pubSubClientFactory.getWriteOnlyPubSubAdmin(optionalMetricsRepository, pubSubTopicRepository);
       logger.info(
           "{} is using kafka write-only admin client of class: {}",
           this.getClass().getSimpleName(),
@@ -134,15 +135,15 @@ public class TopicManager implements Closeable {
       return kafkaWriteOnlyAdmin;
     });
 
-    Optional<MetricsParameters> metricsForPartitionOffsetFetcher = kafkaClientFactory.getMetricsParameters()
+    Optional<MetricsParameters> metricsForPartitionOffsetFetcher = pubSubClientFactory.getMetricsParameters()
         .map(
             mp -> new MetricsParameters(
-                this.kafkaClientFactory.getClass(),
+                this.pubSubClientFactory.getClass(),
                 PartitionOffsetFetcher.class,
-                kafkaClientFactory.getKafkaBootstrapServers(),
+                pubSubClientFactory.getPubSubBootstrapServers(),
                 mp.metricsRepository));
     this.partitionOffsetFetcher = PartitionOffsetFetcherFactory.createDefaultPartitionOffsetFetcher(
-        kafkaClientFactory.clone(kafkaClientFactory.getKafkaBootstrapServers(), metricsForPartitionOffsetFetcher),
+        pubSubClientFactory.clone(pubSubClientFactory.getPubSubBootstrapServers(), metricsForPartitionOffsetFetcher),
         kafkaReadOnlyAdmin,
         kafkaOperationTimeoutMs,
         optionalMetricsRepository);
@@ -153,13 +154,14 @@ public class TopicManager implements Closeable {
       long kafkaOperationTimeoutMs,
       long topicDeletionStatusPollIntervalMs,
       long topicMinLogCompactionLagMs,
-      KafkaClientFactory kafkaClientFactory,
+      PubSubClientFactory pubSubClientFactory,
       PubSubTopicRepository pubSubTopicRepository) {
+
     this(
         kafkaOperationTimeoutMs,
         topicDeletionStatusPollIntervalMs,
         topicMinLogCompactionLagMs,
-        kafkaClientFactory,
+        pubSubClientFactory,
         Optional.empty(),
         pubSubTopicRepository);
   }
@@ -169,12 +171,12 @@ public class TopicManager implements Closeable {
    * topic.deletion.status.poll.interval.ms, so we use default config defined in this class; besides, TopicManager
    * in server doesn't use the config mentioned above.
    */
-  public TopicManager(KafkaClientFactory kafkaClientFactory, PubSubTopicRepository pubSubTopicRepository) {
+  public TopicManager(PubSubClientFactory pubSubClientFactory, PubSubTopicRepository pubSubTopicRepository) {
     this(
         DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
         DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS,
         DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS,
-        kafkaClientFactory,
+        pubSubClientFactory,
         pubSubTopicRepository);
   }
 
@@ -379,7 +381,7 @@ public class TopicManager implements Closeable {
           "Updated topic: {} with retention.ms: {} in cluster [{}]",
           topicName,
           retentionInMS,
-          this.kafkaBootstrapServers);
+          this.pubSubBootstrapServers);
       return true;
     }
     // Retention time has already been updated for this topic before
@@ -769,7 +771,7 @@ public class TopicManager implements Closeable {
   }
 
   public String getKafkaBootstrapServers() {
-    return this.kafkaBootstrapServers;
+    return this.pubSubBootstrapServers;
   }
 
   @Override

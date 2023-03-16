@@ -8,6 +8,7 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
+import com.linkedin.venice.pubsub.factory.MetricsParameters;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -32,6 +33,7 @@ public class ServerKafkaClientFactory extends KafkaClientFactory {
     this.serverConfig = serverConfig;
   }
 
+  @Override
   public Properties setupSSL(Properties properties) {
     String kafkaBootstrapUrls = properties.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
     if (kafkaBootstrapUrls == null) {
@@ -78,7 +80,7 @@ public class ServerKafkaClientFactory extends KafkaClientFactory {
   }
 
   @Override
-  public String getKafkaBootstrapServers() {
+  public String getPubSubBootstrapServers() {
     return serverConfig.getKafkaBootstrapServers();
   }
 
@@ -88,7 +90,7 @@ public class ServerKafkaClientFactory extends KafkaClientFactory {
   }
 
   @Override
-  protected KafkaClientFactory clone(String kafkaBootstrapServers, Optional<MetricsParameters> metricsParameters) {
+  public ServerKafkaClientFactory clone(String kafkaBootstrapServers, Optional<MetricsParameters> metricsParameters) {
     Properties clonedProperties = this.serverConfig.getClusterProperties().toProperties();
     clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers);
     return new ServerKafkaClientFactory(

@@ -8,6 +8,7 @@ import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
+import com.linkedin.venice.pubsub.factory.MetricsParameters;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Optional;
@@ -28,6 +29,7 @@ public class ControllerKafkaClientFactory extends KafkaClientFactory {
     this.controllerConfig = controllerConfig;
   }
 
+  @Override
   public Properties setupSSL(Properties properties) {
     if (KafkaSSLUtils.isKafkaSSLProtocol(controllerConfig.getKafkaSecurityProtocol())) {
       Optional<SSLConfig> sslConfig = controllerConfig.getSslConfig();
@@ -60,14 +62,16 @@ public class ControllerKafkaClientFactory extends KafkaClientFactory {
   }
 
   @Override
-  public String getKafkaBootstrapServers() {
+  public String getPubSubBootstrapServers() {
     return controllerConfig.isSslToKafka()
         ? controllerConfig.getSslKafkaBootstrapServers()
         : controllerConfig.getKafkaBootstrapServers();
   }
 
   @Override
-  protected KafkaClientFactory clone(String kafkaBootstrapServers, Optional<MetricsParameters> metricsParameters) {
+  public ControllerKafkaClientFactory clone(
+      String kafkaBootstrapServers,
+      Optional<MetricsParameters> metricsParameters) {
     VeniceProperties originalPros = this.controllerConfig.getProps();
     Properties clonedProperties = originalPros.toProperties();
     if (originalPros.getBoolean(SSL_TO_KAFKA, false)) {

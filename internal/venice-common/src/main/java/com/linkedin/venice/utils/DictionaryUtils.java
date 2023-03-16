@@ -1,6 +1,6 @@
 package com.linkedin.venice.utils;
 
-import com.linkedin.venice.kafka.consumer.KafkaConsumerFactoryImpl;
+import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.StartOfPush;
@@ -35,7 +35,7 @@ public class DictionaryUtils {
   }
 
   public static ByteBuffer readDictionaryFromKafka(String topicName, VeniceProperties props) {
-    KafkaConsumerFactoryImpl kafkaConsumerFactory = new KafkaConsumerFactoryImpl(props);
+    KafkaClientFactory kafkaConsumerFactory = new KafkaClientFactory(props);
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     KafkaPubSubMessageDeserializer kafkaPubSubMessageDeserializer = new KafkaPubSubMessageDeserializer(
         new KafkaValueSerializer(),

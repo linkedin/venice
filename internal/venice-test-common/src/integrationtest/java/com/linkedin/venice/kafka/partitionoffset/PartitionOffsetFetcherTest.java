@@ -38,7 +38,7 @@ public class PartitionOffsetFetcherTest {
     KafkaClientFactory kafkaClientFactory = IntegrationTestPushUtils.getVeniceConsumerFactory(pubSubBrokerWrapper);
     try (PartitionOffsetFetcher fetcher = PartitionOffsetFetcherFactory.createDefaultPartitionOffsetFetcher(
         kafkaClientFactory,
-        Lazy.of(() -> kafkaClientFactory.getKafkaAdminClient(Optional.empty(), pubSubTopicRepository)),
+        Lazy.of(() -> kafkaClientFactory.getPubSubAdmin(Optional.empty(), pubSubTopicRepository)),
         1 * Time.MS_PER_SECOND,
         Optional.empty())) {
       String topic = Utils.getUniqueString("topic") + "_v1";

@@ -734,7 +734,6 @@ public class TestUtils {
         .setSchemaRepository(mock(ReadOnlySchemaRepository.class))
         .setMetadataRepository(mockReadOnlyStoreRepository)
         .setTopicManagerRepository(mock(TopicManagerRepository.class))
-        .setTopicManagerRepositoryJavaBased(mock(TopicManagerRepository.class))
         .setHostLevelIngestionStats(mock(AggHostLevelIngestionStats.class))
         .setVersionedDIVStats(mock(AggVersionedDIVStats.class))
         .setVersionedIngestionStats(mock(AggVersionedIngestionStats.class))

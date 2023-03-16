@@ -39,6 +39,7 @@ import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.factory.MetricsParameters;
 import com.linkedin.venice.samza.VeniceObjectWithTimestamp;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import java.util.Arrays;
@@ -367,6 +368,7 @@ public class IntegrationTestPushUtils {
     private final String kafkaBootstrapServers;
 
     public TestKafkaClientFactory(String kafkaBootstrapServers) {
+      super(new VeniceProperties());
       this.kafkaBootstrapServers = kafkaBootstrapServers;
     }
 
@@ -392,12 +394,12 @@ public class IntegrationTestPushUtils {
     }
 
     @Override
-    public String getKafkaBootstrapServers() {
+    public String getPubSubBootstrapServers() {
       return kafkaBootstrapServers;
     }
 
     @Override
-    protected KafkaClientFactory clone(String kafkaBootstrapServers, Optional<MetricsParameters> metricsParameters) {
+    public KafkaClientFactory clone(String kafkaBootstrapServers, Optional<MetricsParameters> metricsParameters) {
       return new TestKafkaClientFactory(kafkaBootstrapServers);
     }
   }

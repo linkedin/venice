@@ -13,9 +13,10 @@ import static org.mockito.Mockito.mock;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
-import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.factory.MetricsParameters;
+import com.linkedin.venice.pubsub.factory.PubSubClientFactory;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -55,9 +56,9 @@ public class TestAdminConsumerService {
         .build();
     VeniceControllerConfig controllerConfig = new VeniceControllerConfig(props);
 
-    ControllerKafkaClientFactory consumerFactory = new ControllerKafkaClientFactory(
+    PubSubClientFactory consumerFactory = new ControllerKafkaClientFactory(
         controllerConfig,
-        Optional.of(new KafkaClientFactory.MetricsParameters("test", metricsRepository)));
+        Optional.of(new MetricsParameters("test", metricsRepository)));
 
     VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
     doReturn(mock(ZkClient.class)).when(admin).getZkClient();
