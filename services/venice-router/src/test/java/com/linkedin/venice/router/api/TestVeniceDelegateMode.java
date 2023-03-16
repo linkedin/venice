@@ -482,7 +482,7 @@ public class TestVeniceDelegateMode {
     Assert.assertEquals(requests.size(), 3);
 
     // Verify throttling
-    verify(throttler).mayThrottleRead(storeName, 4, Optional.of(instance1.getNodeId()));
+    verify(throttler).mayThrottleRead(storeName, 4, instance1.getNodeId());
     verify(throttler, times(2)).mayThrottleRead(eq(storeName), eq(1.0d), any());
 
     // each request should only have one 'Instance'
