@@ -48,10 +48,9 @@ public class CollectionMergeTest {
     GenericRecord timestampRecord = (GenericRecord) oldRmdRecord.get(RmdConstants.TIMESTAMP_FIELD_NAME);
     List<String> listValue = Collections.singletonList("item1");
     GenericRecord nullableListTsRecord = (GenericRecord) timestampRecord.get(NULLABLE_LIST_FIELD_NAME);
-    nullableListTsRecord.put(TOP_LEVEL_TS_FIELD_NAME, 1L);
-    nullableListTsRecord.put(TOP_LEVEL_COLO_ID_FIELD_NAME, 1);
-    nullableListTsRecord.put(PUT_ONLY_PART_LENGTH_FIELD_NAME, 1);
-    oldRecord.put(NULLABLE_LIST_FIELD_NAME, listValue);
+    nullableListTsRecord.put(TOP_LEVEL_TS_FIELD_NAME, 0L);
+    nullableListTsRecord.put(TOP_LEVEL_COLO_ID_FIELD_NAME, 0);
+    nullableListTsRecord.put(PUT_ONLY_PART_LENGTH_FIELD_NAME, 0);
     GenericRecord listTsRecord = (GenericRecord) timestampRecord.get(LIST_FIELD_NAME);
     listTsRecord.put(TOP_LEVEL_TS_FIELD_NAME, 1L);
     listTsRecord.put(TOP_LEVEL_COLO_ID_FIELD_NAME, 1);
@@ -134,10 +133,9 @@ public class CollectionMergeTest {
     IndexedHashMap<String, Integer> mapValue = new IndexedHashMap<>();
     mapValue.put("key1", 1);
     GenericRecord nullableMapTsRecord = (GenericRecord) timestampRecord.get(NULLABLE_MAP_FIELD_NAME);
-    nullableMapTsRecord.put(TOP_LEVEL_TS_FIELD_NAME, 1L);
-    nullableMapTsRecord.put(TOP_LEVEL_COLO_ID_FIELD_NAME, 1);
-    nullableMapTsRecord.put(PUT_ONLY_PART_LENGTH_FIELD_NAME, 1);
-    oldRecord.put(NULLABLE_MAP_FIELD_NAME, mapValue);
+    nullableMapTsRecord.put(TOP_LEVEL_TS_FIELD_NAME, 0L);
+    nullableMapTsRecord.put(TOP_LEVEL_COLO_ID_FIELD_NAME, 0);
+    nullableMapTsRecord.put(PUT_ONLY_PART_LENGTH_FIELD_NAME, 0);
     GenericRecord mapTsRecord = (GenericRecord) timestampRecord.get(MAP_FIELD_NAME);
     mapTsRecord.put(TOP_LEVEL_TS_FIELD_NAME, 1L);
     mapTsRecord.put(TOP_LEVEL_COLO_ID_FIELD_NAME, 1);
