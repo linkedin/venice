@@ -680,7 +680,7 @@ public class PartialUpdateTest {
     }
   }
 
-  @Test(timeOut = 1200 * Time.MS_PER_SECOND)
+  @Test(timeOut = 120 * Time.MS_PER_SECOND)
   public void testWriteComputeWithSamzaBatchJob() throws Exception {
 
     SystemProducer veniceProducer = null;
@@ -689,13 +689,10 @@ public class PartialUpdateTest {
 
     String storeName = Utils.getUniqueString("write-compute-store");
     File inputDir = getTempDataDirectory();
-    String inputDirPath = "file://" + inputDir.getAbsolutePath();
     String parentControllerURL = parentController.getControllerUrl();
     // Records 1-100, id string to name record
     Schema recordSchema = writeSimpleAvroFileWithStringToRecordSchema(inputDir, true);
     VeniceClusterWrapper veniceClusterWrapper = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
-    Properties vpjProperties =
-        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
     try (ControllerClient controllerClient = new ControllerClient(CLUSTER_NAME, parentControllerURL);
         AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName)
@@ -771,7 +768,7 @@ public class PartialUpdateTest {
             assertNotNull(retrievedValue, "Key " + i + " should not be missing!");
             assertEquals(retrievedValue.get("firstName").toString(), firstName);
             assertEquals(retrievedValue.get("lastName").toString(), lastName);
-            // TODO verify default fields
+            assertEquals(retrievedValue.get("age").toString(), "-1");
           }
         } catch (Exception e) {
           throw new VeniceException(e);

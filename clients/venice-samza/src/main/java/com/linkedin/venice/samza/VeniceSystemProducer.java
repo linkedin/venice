@@ -773,7 +773,7 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     return out.toByteArray();
   }
 
-  private Object convertPartialUpdateToFullPut(Pair<Integer, Integer> schemaIds, Object incomingWriteValueObject) {
+  protected Object convertPartialUpdateToFullPut(Pair<Integer, Integer> schemaIds, Object incomingWriteValueObject) {
     Pair<Integer, Integer> baseSchemaIds = new Pair(schemaIds.getFirst(), -1);
     Schema baseSchema = valueSchemaIdsToSchemaMap.get(baseSchemaIds);
     if (baseSchema == null) {
@@ -797,17 +797,18 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   }
 
   /**
-   * Only used by tests
+   * Test methods
    */
   public String getKafkaBootstrapServers() {
     return this.kafkaBootstrapServers;
   }
 
-  /**
-   * For testing only.
-   */
   public VeniceWriter<byte[], byte[], byte[]> getInternalProducer() {
     return this.veniceWriter;
+  }
+
+  protected void setControllerClient(D2ControllerClient controllerClient) {
+    this.controllerClient = controllerClient;
   }
 
   private D2Client getStartedD2Client(String d2ZkHost) {
