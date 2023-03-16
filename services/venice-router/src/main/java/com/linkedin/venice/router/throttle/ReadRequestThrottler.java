@@ -215,6 +215,7 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
     Optional<PartitionAssignment> partitionAssignment;
     if (perStorageNodeThrottlerEnabled && routingDataRepository.containsKafkaTopic(topicName)) {
       partitionAssignment = Optional.of(routingDataRepository.getPartitionAssignments(topicName));
+      routingDataRepository.subscribeRoutingDataChange(Version.composeKafkaTopic(storeName, currentVersion), this);
     } else {
       partitionAssignment = Optional.empty();
       LOGGER.warn(
@@ -344,6 +345,7 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
         return;
       }
       stats.recordQuota(storeName, 0);
+      throttler.clearStorageNodesThrottlers();
       routingDataRepository
           .unSubscribeRoutingDataChange(Version.composeKafkaTopic(storeName, throttler.getCurrentVersion()), this);
     });
