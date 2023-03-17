@@ -7,7 +7,6 @@ import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
-import com.linkedin.venice.exceptions.MissingKeyInStoreMetadataException;
 import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.fastclient.stats.ClusterStats;
 import com.linkedin.venice.meta.QueryAction;
@@ -33,7 +32,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -46,6 +44,9 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
+/**
+ * Store metadata class that uses the server's endpoint to fetch metadata and keep the local cache up to date.
+ */
 public class RequestBasedMetadata extends AbstractStoreMetadata {
   private static final Logger LOGGER = LogManager.getLogger(RequestBasedMetadata.class);
   private static final String VERSION_PARTITION_SEPARATOR = "_";
@@ -64,7 +65,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private final Map<Integer, ByteBuffer> versionZstdDictionaryMap = new VeniceConcurrentHashMap<>();
   private final CompressorFactory compressorFactory;
   private final D2TransportClient transportClient;
-  private final D2ServiceDiscovery d2ServiceDiscovery;
+  private D2ServiceDiscovery d2ServiceDiscovery;
   private final String routerD2ServiceName;
   private final ClusterStats clusterStats;
   private volatile boolean isServiceDiscovered;
@@ -72,14 +73,13 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   public RequestBasedMetadata(
       ClientConfig clientConfig,
       D2TransportClient transportClient,
-      D2ServiceDiscovery d2ServiceDiscovery,
       String routerD2ServiceName) {
     super(clientConfig);
     this.refreshIntervalInSeconds = clientConfig.getMetadataRefreshIntervalInSeconds() > 0
         ? clientConfig.getMetadataRefreshIntervalInSeconds()
         : DEFAULT_REFRESH_INTERVAL_IN_SECONDS;
     this.transportClient = transportClient;
-    this.d2ServiceDiscovery = d2ServiceDiscovery;
+    this.d2ServiceDiscovery = new D2ServiceDiscovery();
     this.routerD2ServiceName = routerD2ServiceName;
     this.compressorFactory = new CompressorFactory();
     this.clusterStats = clientConfig.getClusterStats();
@@ -115,22 +115,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
     discoverD2Service(false);
 
     // build a base for future metadata updates then start periodic refresh
-    long timeoutTime = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(INITIAL_UPDATE_CACHE_TIMEOUT_IN_SECONDS);
-    while (true) {
-      try {
-        updateCache(false);
-        break;
-      } catch (MissingKeyInStoreMetadataException e) {
-        if (System.currentTimeMillis() > timeoutTime) {
-          throw e;
-        }
-      }
-      try {
-        Thread.sleep(RETRY_WAIT_TIME_IN_MS);
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-      }
-    }
+    refresh();
   }
 
   private void discoverD2Service(boolean retryOnFailure) {
@@ -149,7 +134,11 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
     }
   }
 
-  // TODO: onDemandRefresh is only being used a retry for store migration
+  /**
+   * Update is only performed if the version from the fetched metadata is different from the local version. We evict
+   * old values as we perform updates, while making sure we keep the two most recent versions in the cache.
+   * @param onDemandRefresh
+   */
   private synchronized void updateCache(boolean onDemandRefresh) {
     // call the METADATA endpoint
     try {
@@ -259,10 +248,6 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
         throw new VeniceClientException("Metadata fetch retry has failed", e.getCause());
       }
     }
-
-    // update the refresh interval to a random interval and queue the next refresh
-    long randomRefreshInterval = refreshIntervalInSeconds + ThreadLocalRandom.current().nextInt(-10, 10);
-    scheduler.schedule(this::refresh, randomRefreshInterval, TimeUnit.SECONDS);
   }
 
   private void refresh() {
@@ -271,6 +256,8 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
     } catch (Exception e) {
       // Catch all errors so periodic refresh doesn't break on transient errors.
       LOGGER.error("Encountered unexpected error during periodic refresh", e);
+    } finally {
+      scheduler.schedule(this::refresh, refreshIntervalInSeconds, TimeUnit.SECONDS);
     }
   }
 
@@ -362,5 +349,13 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       latestValueSchemaId = schemas.get().getMaxValueSchemaId();
     }
     return latestValueSchemaId;
+  }
+
+  /**
+   * Used for test only
+   * @param d2ServiceDiscovery
+   */
+  public void setD2ServiceDiscovery(D2ServiceDiscovery d2ServiceDiscovery) {
+    this.d2ServiceDiscovery = d2ServiceDiscovery;
   }
 }

@@ -5,7 +5,6 @@ import static org.testng.Assert.*;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.D2.D2ClientUtils;
-import com.linkedin.venice.client.store.D2ServiceDiscovery;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.fastclient.utils.ClientTestUtils;
@@ -76,7 +75,6 @@ public class RequestBasedMetadataIntegrationTest {
     requestBasedMetadata = new RequestBasedMetadata(
         clientConfig,
         new D2TransportClient(routerD2ServiceName, d2Client),
-        new D2ServiceDiscovery(),
         routerD2ServiceName);
     requestBasedMetadata.start();
   }

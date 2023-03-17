@@ -73,6 +73,7 @@ import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DiskUsage;
+import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
@@ -1122,7 +1123,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
       Map<CharSequence, Integer> helixGroupInfo = new HashMap<>();
       for (Map.Entry<String, Integer> entry: helixInstanceConfigRepository.getInstanceGroupIdMapping().entrySet()) {
-        helixGroupInfo.put("https://" + entry.getKey().replace("_", ":"), entry.getValue());
+        helixGroupInfo.put(HelixUtils.instanceIdToUrl(entry.getKey()), entry.getValue());
       }
 
       response.setVersionMetadata(versionProperties);
