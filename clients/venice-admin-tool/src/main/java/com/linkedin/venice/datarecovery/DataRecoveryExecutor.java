@@ -2,7 +2,6 @@ package com.linkedin.venice.datarecovery;
 
 import static java.lang.Thread.*;
 
-import java.io.Console;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -35,25 +34,42 @@ public class DataRecoveryExecutor {
     this.pool = Executors.newFixedThreadPool(this.poolSize);
   }
 
+  /**
+   * For some task, it is benefit to wait for the first task to complete before starting to run the remaining ones.
+   * e.g. the first run of task can set up local session files that can be used by follow-up tasks.
+   */
+  public boolean needWaitForFirstTaskToComplete(DataRecoveryTask task) {
+    return task.needWaitForFirstTaskToComplete();
+  }
+
   public void perform(Set<String> storeNames, StoreRepushCommand.Params params) {
-    String pass = getUserCredentials();
-    if (pass == null) {
-      LOGGER.error("Cannot get password, exit");
+    tasks = buildTasks(storeNames, params);
+    if (tasks.isEmpty()) {
       return;
     }
-    params.setPassword(pass);
 
-    tasks = buildTasks(storeNames, params);
-    List<CompletableFuture<Void>> taskFutures = tasks.stream()
+    List<DataRecoveryTask> concurrentTasks = tasks;
+    DataRecoveryTask firstTask = tasks.get(0);
+    if (needWaitForFirstTaskToComplete(firstTask)) {
+      // Let the main thread run the first task to completion if there is a need.
+      DataRecoveryTask sentinel = firstTask;
+      sentinel.run();
+      if (sentinel.getTaskResult().isError()) {
+        displayTaskResult(sentinel);
+        return;
+      }
+      // Exclude the 1st item from the list as it has finished.
+      concurrentTasks = tasks.subList(1, tasks.size());
+    }
+
+    List<CompletableFuture<Void>> taskFutures = concurrentTasks.stream()
         .map(dataRecoveryTask -> CompletableFuture.runAsync(dataRecoveryTask, pool))
         .collect(Collectors.toList());
     taskFutures.stream().map(CompletableFuture::join).collect(Collectors.toList());
-    displayTaskResult();
-
-    shutdownAndAwaitTermination();
+    displayAllTasksResult();
   }
 
-  private void shutdownAndAwaitTermination() {
+  public void shutdownAndAwaitTermination() {
     pool.shutdown();
     try {
       if (!pool.awaitTermination(DEFAULT_POOL_TIMEOUT_IN_SECONDS, TimeUnit.SECONDS)) {
@@ -75,27 +91,18 @@ public class DataRecoveryExecutor {
     return tasks;
   }
 
-  public String getUserCredentials() {
-    Console console = System.console();
-    if (console == null) {
-      LOGGER.warn("System.console is null");
-      return null;
+  private void displayAllTasksResult() {
+    for (DataRecoveryTask dataRecoveryTask: tasks) {
+      displayTaskResult(dataRecoveryTask);
     }
-    // Read password into character array.
-    char[] passwordVip = console.readPassword("Enter Credentials: ");
-    return String.copyValueOf(passwordVip);
   }
 
-  private void displayTaskResult() {
-    for (DataRecoveryTask dataRecoveryTask: tasks) {
-      LOGGER.info(
-          "[store: {}, status: {}, message: {}]",
-          dataRecoveryTask.getTaskParams().getStore(),
-          dataRecoveryTask.getTaskResult().isError() ? "failed" : "started",
-          dataRecoveryTask.getTaskResult().isError()
-              ? dataRecoveryTask.getTaskResult().getError()
-              : dataRecoveryTask.getTaskResult().getMessage());
-    }
+  private void displayTaskResult(DataRecoveryTask task) {
+    LOGGER.info(
+        "[store: {}, status: {}, message: {}]",
+        task.getTaskParams().getStore(),
+        task.getTaskResult().isError() ? "failed" : "started",
+        task.getTaskResult().isError() ? task.getTaskResult().getError() : task.getTaskResult().getMessage());
   }
 
   public List<DataRecoveryTask> getTasks() {
