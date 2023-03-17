@@ -1,5 +1,6 @@
 package com.linkedin.venice.fastclient;
 
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -60,6 +61,12 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
   private final int longTailRetryThresholdForBatchGetInMicroSeconds;
   private final ClusterStats clusterStats;
   private final boolean isVsonStore;
+  /**
+   * For using RequestBasedMetadata instead of the ThinClientBasedMetadata based store metadata.
+   */
+  private final boolean isRequestBasedMetadata;
+  private final D2Client d2Client;
+  private final String routerD2Service;
 
   private ClientConfig(
       String storeName,
@@ -85,7 +92,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       int longTailRetryThresholdForSingleGetInMicroSeconds,
       boolean longTailRetryEnabledForBatchGet,
       int longTailRetryThresholdForBatchGetInMicroSeconds,
-      boolean isVsonStore) {
+      boolean isVsonStore,
+      boolean isRequestBasedMetadata,
+      D2Client d2Client,
+      String routerD2Service) {
     if (storeName == null || storeName.isEmpty()) {
       throw new VeniceClientException("storeName param shouldn't be empty");
     }
@@ -179,6 +189,14 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     }
 
     this.isVsonStore = isVsonStore;
+    this.isRequestBasedMetadata = isRequestBasedMetadata;
+    this.d2Client = d2Client;
+    this.routerD2Service = routerD2Service;
+    if (this.isRequestBasedMetadata) {
+      if (this.d2Client == null || this.routerD2Service == null) {
+        throw new VeniceClientException("d2Client must be specified when request based metadata is enabled");
+      }
+    }
   }
 
   public String getStoreName() {
@@ -278,6 +296,18 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return this.clusterStats;
   }
 
+  public boolean isRequestBasedMetadata() {
+    return this.isRequestBasedMetadata;
+  }
+
+  public D2Client getD2Client() {
+    return this.d2Client;
+  }
+
+  public String getRouterD2Service() {
+    return this.routerD2Service;
+  }
+
   public static class ClientConfigBuilder<K, V, T extends SpecificRecord> {
     private MetricsRepository metricsRepository;
     private String statsPrefix = "";
@@ -319,6 +349,9 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private int longTailRetryThresholdForBatchGetInMicroSeconds = 10000; // 10ms.
 
     private boolean isVsonStore = false;
+    private boolean isRequestBasedMetadata = false;
+    private D2Client d2Client;
+    private String routerD2Service;
 
     public ClientConfigBuilder<K, V, T> setStoreName(String storeName) {
       this.storeName = storeName;
@@ -449,6 +482,21 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
+    public ClientConfigBuilder<K, V, T> setRequestBasedMetadata(boolean requestBasedMetadata) {
+      this.isRequestBasedMetadata = requestBasedMetadata;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setD2Client(D2Client d2Client) {
+      this.d2Client = d2Client;
+      return this;
+    }
+
+    public ClientConfigBuilder<K, V, T> setRouterD2Service(String routerD2Service) {
+      this.routerD2Service = routerD2Service;
+      return this;
+    }
+
     public ClientConfigBuilder<K, V, T> clone() {
       return new ClientConfigBuilder().setStoreName(storeName)
           .setR2Client(r2Client)
@@ -473,7 +521,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setLongTailRetryThresholdForSingleGetInMicroSeconds(longTailRetryThresholdForSingleGetInMicroSeconds)
           .setLongTailRetryEnabledForBatchGet(longTailRetryEnabledForBatchGet)
           .setLongTailRetryThresholdForBatchGetInMicroSeconds(longTailRetryThresholdForBatchGetInMicroSeconds)
-          .setVsonStore(isVsonStore);
+          .setVsonStore(isVsonStore)
+          .setRequestBasedMetadata(isRequestBasedMetadata)
+          .setD2Client(d2Client)
+          .setRouterD2Service(routerD2Service);
     }
 
     public ClientConfig<K, V, T> build() {
@@ -501,7 +552,10 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           longTailRetryThresholdForSingleGetInMicroSeconds,
           longTailRetryEnabledForBatchGet,
           longTailRetryThresholdForBatchGetInMicroSeconds,
-          isVsonStore);
+          isVsonStore,
+          isRequestBasedMetadata,
+          d2Client,
+          routerD2Service);
     }
   }
 }

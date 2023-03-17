@@ -2,6 +2,7 @@ package com.linkedin.venice.fastclient.factory;
 
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
+import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.fastclient.DispatchingAvroGenericStoreClient;
 import com.linkedin.venice.fastclient.DispatchingAvroSpecificStoreClient;
@@ -12,6 +13,7 @@ import com.linkedin.venice.fastclient.RetriableAvroGenericStoreClient;
 import com.linkedin.venice.fastclient.RetriableAvroSpecificStoreClient;
 import com.linkedin.venice.fastclient.StatsAvroGenericStoreClient;
 import com.linkedin.venice.fastclient.StatsAvroSpecificStoreClient;
+import com.linkedin.venice.fastclient.meta.RequestBasedMetadata;
 import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import com.linkedin.venice.fastclient.meta.ThinClientBasedMetadata;
 import org.apache.avro.specific.SpecificRecord;
@@ -25,9 +27,18 @@ public class ClientFactory {
 
   // Use Venice thin client based store metadata by default
   public static <K, V> AvroGenericStoreClient<K, V> getAndStartGenericStoreClient(ClientConfig clientConfig) {
-    return getAndStartGenericStoreClient(
-        new ThinClientBasedMetadata(clientConfig, clientConfig.getThinClientForMetaStore()),
-        clientConfig);
+    if (clientConfig.isRequestBasedMetadata()) {
+      return getAndStartGenericStoreClient(
+          new RequestBasedMetadata(
+              clientConfig,
+              new D2TransportClient(clientConfig.getRouterD2Service(), clientConfig.getD2Client()),
+              clientConfig.getRouterD2Service()),
+          clientConfig);
+    } else {
+      return getAndStartGenericStoreClient(
+          new ThinClientBasedMetadata(clientConfig, clientConfig.getThinClientForMetaStore()),
+          clientConfig);
+    }
   }
 
   // Use Venice thin client based store metadata default
@@ -38,9 +49,18 @@ public class ClientFactory {
      * Need to construct {@link DaVinciClientBasedMetadata} inside store client, so that the store client could control
      * the lifecycle of the metadata instance.
      */
-    return getAndStartSpecificStoreClient(
-        new ThinClientBasedMetadata(clientConfig, clientConfig.getThinClientForMetaStore()),
-        clientConfig);
+    if (clientConfig.isRequestBasedMetadata()) {
+      return getAndStartSpecificStoreClient(
+          new RequestBasedMetadata(
+              clientConfig,
+              new D2TransportClient(clientConfig.getRouterD2Service(), clientConfig.getD2Client()),
+              clientConfig.getRouterD2Service()),
+          clientConfig);
+    } else {
+      return getAndStartSpecificStoreClient(
+          new ThinClientBasedMetadata(clientConfig, clientConfig.getThinClientForMetaStore()),
+          clientConfig);
+    }
   }
 
   /**
