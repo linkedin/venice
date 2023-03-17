@@ -25,12 +25,13 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
-import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -248,7 +249,7 @@ public class SchemaRoutes extends AbstractRoute {
   /**
    * @see Admin#getValueSchemaId(String, String, String)
    */
-  public Route getDerivedSchemaID(Admin admin) {
+  public Route getValueOrDerivedSchemaID(Admin admin) {
     return (request, response) -> {
       SchemaResponse responseObject = new SchemaResponse();
       response.type(HttpConstants.JSON);
@@ -259,31 +260,50 @@ public class SchemaRoutes extends AbstractRoute {
         String store = request.queryParams(NAME);
         String schemaStr = request.queryParams(DERIVED_SCHEMA);
 
-        responseObject.setCluster(cluster);
-        responseObject.setName(store);
-        responseObject.setSchemaStr(schemaStr);
-
-        int id = admin.getValueSchemaId(cluster, store, schemaStr);
-
-        if (SchemaData.INVALID_VALUE_SCHEMA_ID == id) {
-          Pair<Integer, Integer> idPair = admin.getDerivedSchemaId(cluster, store, schemaStr);
-          if (SchemaData.INVALID_VALUE_SCHEMA_ID == idPair.getFirst()) {
-            throw new VeniceException(
-                "Can not find any registered derived schema for the store " + store
-                    + " that matches the schema of data being pushed. mismatched derived schema: \n" + schemaStr);
-          }
-          responseObject.setId(idPair.getFirst());
-          responseObject.setDerivedSchemaId(idPair.getSecond());
-        } else {
-          responseObject.setId(id);
-        }
-
+        responseObject = populateSchemaResponseForValueOrDerivedSchemaID(admin, cluster, store, schemaStr);
       } catch (Throwable e) {
         responseObject.setError(e);
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
       return AdminSparkServer.OBJECT_MAPPER.writeValueAsString(responseObject);
     };
+  }
+
+  SchemaResponse populateSchemaResponseForValueOrDerivedSchemaID(
+      Admin admin,
+      String cluster,
+      String store,
+      String schemaStr) {
+    SchemaResponse responseObject = new SchemaResponse();
+    responseObject.setCluster(cluster);
+    responseObject.setName(store);
+    responseObject.setSchemaStr(schemaStr);
+
+    int id = admin.getValueSchemaId(cluster, store, schemaStr);
+
+    if (id == SchemaData.INVALID_VALUE_SCHEMA_ID) {
+      Store storeInfo = admin.getStore(cluster, store);
+      if (storeInfo == null) {
+        throw new VeniceNoStoreException(store, cluster);
+      }
+      if (storeInfo.isWriteComputationEnabled()) {
+        GeneratedSchemaID idPair = admin.getDerivedSchemaId(cluster, store, schemaStr);
+        if (SchemaData.INVALID_VALUE_SCHEMA_ID == idPair.getValueSchemaID()) {
+          throw new VeniceException(
+              "Can not find any registered value schema nor derived schema for the store " + store
+                  + " that matches the schema of data being pushed. Requested schema: \n" + schemaStr);
+        }
+        responseObject.setId(idPair.getValueSchemaID());
+        responseObject.setDerivedSchemaId(idPair.getGeneratedSchemaVersion());
+      } else {
+        throw new VeniceException(
+            "Can not find any registered value schema for the store " + store
+                + " that matches the schema of data being pushed. Requested schema: \n" + schemaStr);
+      }
+    } else {
+      responseObject.setId(id);
+    }
+    return responseObject;
   }
 
   /**

@@ -10,7 +10,7 @@ import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
-import com.linkedin.venice.schema.SchemaData;
+import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -24,7 +24,6 @@ import com.linkedin.venice.systemstore.schemas.StoreValueSchema;
 import com.linkedin.venice.systemstore.schemas.StoreValueSchemas;
 import com.linkedin.venice.systemstore.schemas.storeReplicaStatusesMapOps;
 import com.linkedin.venice.systemstore.schemas.storeValueSchemaIdsWrittenPerStoreVersionListOps;
-import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Timer;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -356,13 +355,13 @@ public class MetaStoreWriter implements Closeable {
        * Fetch the derived compute schema id on demand for integration test since the meta system store is being created
        * during cluster initialization.
        */
-      Pair<Integer, Integer> derivedSchemaId = zkSharedSchemaRepository
+      GeneratedSchemaID derivedSchemaId = zkSharedSchemaRepository
           .getDerivedSchemaId(VeniceSystemStoreType.META_STORE.getZkSharedStoreName(), derivedComputeSchema.toString());
-      if (derivedSchemaId.getFirst() == SchemaData.INVALID_VALUE_SCHEMA_ID) {
+      if (!derivedSchemaId.isValid()) {
         throw new VeniceException(
             "The derived compute schema for meta system store hasn't been registered to Venice yet");
       }
-      this.derivedComputeSchemaId = derivedSchemaId.getSecond();
+      this.derivedComputeSchemaId = derivedSchemaId.getGeneratedSchemaVersion();
     }
     StoreMetaKey key = dataType.getStoreMetaKey(keyStringSupplier.get());
     SpecificRecord update = updateSupplier.get();

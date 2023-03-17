@@ -27,6 +27,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
+import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
@@ -282,7 +283,7 @@ public interface Admin extends AutoCloseable, Closeable {
 
   int getValueSchemaId(String clusterName, String storeName, String valueSchemaStr);
 
-  Pair<Integer, Integer> getDerivedSchemaId(String clusterName, String storeName, String schemaStr);
+  GeneratedSchemaID getDerivedSchemaId(String clusterName, String storeName, String schemaStr);
 
   SchemaEntry getValueSchema(String clusterName, String storeName, int id);
 
