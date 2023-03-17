@@ -35,7 +35,6 @@ public class AggVersionedIngestionStatsTest {
   private final VeniceServerConfig mockVeniceServerConfig = Mockito.mock(VeniceServerConfig.class);
 
   private String totalKey;
-  private String backupKey;
   private String currentKey;
   private String futureKey;
 
