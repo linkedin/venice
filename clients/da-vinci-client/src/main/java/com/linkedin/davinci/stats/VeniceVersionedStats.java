@@ -55,20 +55,12 @@ public class VeniceVersionedStats<STATS, STATS_REPORTER extends AbstractVeniceSt
     return reporters.getFutureVersion();
   }
 
-  public int getBackupVersion() {
-    return reporters.getBackupVersion();
-  }
-
   public void setCurrentVersion(int version) {
     reporters.setCurrentStats(version, getStats(version));
   }
 
   public void setFutureVersion(int version) {
     reporters.setFutureStats(version, getStats(version));
-  }
-
-  public void setBackupVersion(int version) {
-    reporters.setBackupStats(version, getStats(version));
   }
 
   /**

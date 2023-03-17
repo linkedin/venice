@@ -17,11 +17,9 @@ public class VeniceVersionedStatsReporter<STATS, STATS_REPORTER extends Abstract
 
   private int currentVersion = NON_EXISTING_VERSION;
   private int futureVersion = NON_EXISTING_VERSION;
-  private int backupVersion = NON_EXISTING_VERSION;
 
   private final STATS_REPORTER currentStatsReporter;
   private final STATS_REPORTER futureStatsReporter;
-  private final STATS_REPORTER backupStatsReporter;
   private final STATS_REPORTER totalStatsReporter;
   private final boolean isSystemStore;
 
@@ -46,18 +44,15 @@ public class VeniceVersionedStatsReporter<STATS, STATS_REPORTER extends Abstract
       registerSensor("current_version", new VersionStat(() -> (double) currentVersion));
       if (!isSystemStore) {
         registerSensor("future_version", new VersionStat(() -> (double) futureVersion));
-        registerSensor("backup_version", new VersionStat(() -> (double) backupVersion));
       }
     }
 
     this.currentStatsReporter = statsSupplier.get(metricsRepository, storeName + "_current");
     if (!isSystemStore) {
       this.futureStatsReporter = statsSupplier.get(metricsRepository, storeName + "_future");
-      this.backupStatsReporter = statsSupplier.get(metricsRepository, storeName + "_backup");
       this.totalStatsReporter = statsSupplier.get(metricsRepository, storeName + "_total");
     } else {
       this.futureStatsReporter = null;
-      this.backupStatsReporter = null;
       this.totalStatsReporter = null;
     }
   }
@@ -66,7 +61,6 @@ public class VeniceVersionedStatsReporter<STATS, STATS_REPORTER extends Abstract
     this.currentStatsReporter.registerConditionalStats();
     if (!isSystemStore) {
       this.futureStatsReporter.registerConditionalStats();
-      this.backupStatsReporter.registerConditionalStats();
       this.totalStatsReporter.registerConditionalStats();
     }
   }
@@ -75,7 +69,6 @@ public class VeniceVersionedStatsReporter<STATS, STATS_REPORTER extends Abstract
     this.currentStatsReporter.unregisterStats();
     if (!isSystemStore) {
       this.futureStatsReporter.unregisterStats();
-      this.backupStatsReporter.unregisterStats();
       this.totalStatsReporter.unregisterStats();
     }
     super.unregisterAllSensors();
@@ -89,10 +82,6 @@ public class VeniceVersionedStatsReporter<STATS, STATS_REPORTER extends Abstract
     return futureVersion;
   }
 
-  public int getBackupVersion() {
-    return backupVersion;
-  }
-
   public void setCurrentStats(int version, STATS stats) {
     currentVersion = version;
     linkStatsWithReporter(currentStatsReporter, stats);
@@ -101,11 +90,6 @@ public class VeniceVersionedStatsReporter<STATS, STATS_REPORTER extends Abstract
   public void setFutureStats(int version, STATS stats) {
     futureVersion = version;
     linkStatsWithReporter(futureStatsReporter, stats);
-  }
-
-  public void setBackupStats(int version, STATS stats) {
-    backupVersion = version;
-    linkStatsWithReporter(backupStatsReporter, stats);
   }
 
   public void setTotalStats(STATS totalStats) {
