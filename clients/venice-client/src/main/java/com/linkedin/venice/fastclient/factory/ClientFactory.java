@@ -31,8 +31,7 @@ public class ClientFactory {
       return getAndStartGenericStoreClient(
           new RequestBasedMetadata(
               clientConfig,
-              new D2TransportClient(clientConfig.getRouterD2Service(), clientConfig.getD2Client()),
-              clientConfig.getRouterD2Service()),
+              new D2TransportClient(clientConfig.getRouterD2Service(), clientConfig.getD2Client())),
           clientConfig);
     } else {
       return getAndStartGenericStoreClient(
@@ -53,8 +52,7 @@ public class ClientFactory {
       return getAndStartSpecificStoreClient(
           new RequestBasedMetadata(
               clientConfig,
-              new D2TransportClient(clientConfig.getRouterD2Service(), clientConfig.getD2Client()),
-              clientConfig.getRouterD2Service()),
+              new D2TransportClient(clientConfig.getRouterD2Service(), clientConfig.getD2Client())),
           clientConfig);
     } else {
       return getAndStartSpecificStoreClient(

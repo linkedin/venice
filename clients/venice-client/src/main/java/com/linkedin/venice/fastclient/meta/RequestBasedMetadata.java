@@ -70,17 +70,14 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private final ClusterStats clusterStats;
   private volatile boolean isServiceDiscovered;
 
-  public RequestBasedMetadata(
-      ClientConfig clientConfig,
-      D2TransportClient transportClient,
-      String routerD2ServiceName) {
+  public RequestBasedMetadata(ClientConfig clientConfig, D2TransportClient transportClient) {
     super(clientConfig);
     this.refreshIntervalInSeconds = clientConfig.getMetadataRefreshIntervalInSeconds() > 0
         ? clientConfig.getMetadataRefreshIntervalInSeconds()
         : DEFAULT_REFRESH_INTERVAL_IN_SECONDS;
     this.transportClient = transportClient;
     this.d2ServiceDiscovery = new D2ServiceDiscovery();
-    this.routerD2ServiceName = routerD2ServiceName;
+    this.routerD2ServiceName = transportClient.getServiceName();
     this.compressorFactory = new CompressorFactory();
     this.clusterStats = clientConfig.getClusterStats();
   }

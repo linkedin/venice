@@ -40,8 +40,7 @@ public class RequestBasedMetadataTest {
     ClientConfig clientConfig = getMockClientConfig(storeName);
     D2TransportClient d2TransportClient = getMockD2TransportClient(storeName);
     D2ServiceDiscovery d2ServiceDiscovery = getMockD2ServiceDiscovery(d2TransportClient, storeName);
-    RequestBasedMetadata requestBasedMetadata =
-        new RequestBasedMetadata(clientConfig, d2TransportClient, "routerD2ServiceName");
+    RequestBasedMetadata requestBasedMetadata = new RequestBasedMetadata(clientConfig, d2TransportClient);
     requestBasedMetadata.setD2ServiceDiscovery(d2ServiceDiscovery);
     requestBasedMetadata.start();
 
