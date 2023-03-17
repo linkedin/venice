@@ -19,7 +19,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
 import java.io.File;
 import java.io.FileInputStream;
@@ -897,10 +896,6 @@ public class Utils {
       throw new VeniceException("Store " + storeName + " version " + versionNumber + " does not exist.");
     }
     return storeVersionPair;
-  }
-
-  public static <T> Set<T> newConcurrentSet() {
-    return VeniceConcurrentHashMap.newKeySet();
   }
 
   public static <K, V> Iterator<V> iterateOnMapOfLists(Map<K, List<V>> mapOfLists) {
