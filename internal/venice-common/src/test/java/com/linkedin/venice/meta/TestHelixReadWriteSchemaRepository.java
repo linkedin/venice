@@ -43,10 +43,10 @@ public class TestHelixReadWriteSchemaRepository {
     derivedSchemaEntryMap.put(1, Arrays.asList(entry));
     Mockito.doReturn(Arrays.asList(entry)).when(accessor).getAllDerivedSchemas(Mockito.eq(storeName));
     GeneratedSchemaID derivedSchemaId = helixReadWriteSchemaRepository.getDerivedSchemaId(storeName, schemaStr);
-    Assert.assertEquals(derivedSchemaId.getGeneratedSchemaID(), 1);
+    Assert.assertEquals(derivedSchemaId.getGeneratedSchemaVersion(), 1);
     derivedSchemaId = helixReadWriteSchemaRepository.getDerivedSchemaId(storeName, schemaStr);
-    Assert.assertEquals(derivedSchemaId.getGeneratedSchemaID(), 1);
+    Assert.assertEquals(derivedSchemaId.getGeneratedSchemaVersion(), 1);
     derivedSchemaId = helixReadWriteSchemaRepository.getDerivedSchemaId(storeName, schemaStr1);
-    Assert.assertEquals(derivedSchemaId.getGeneratedSchemaID(), -1);
+    Assert.assertEquals(derivedSchemaId.getGeneratedSchemaVersion(), -1);
   }
 }

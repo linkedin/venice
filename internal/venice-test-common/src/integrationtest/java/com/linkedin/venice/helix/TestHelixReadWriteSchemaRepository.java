@@ -388,7 +388,7 @@ public class TestHelixReadWriteSchemaRepository {
     schemaRepo.addDerivedSchema(storeName, derivedSchemaStr, 1);
     GeneratedSchemaID schemaId = schemaRepo.getDerivedSchemaId(storeName, derivedSchemaAvroStr);
     Assert.assertEquals(
-        schemaId.getGeneratedSchemaID(),
+        schemaId.getGeneratedSchemaVersion(),
         1,
         "getValueSchemaId did not get the correct schema which is an exact match");
   }

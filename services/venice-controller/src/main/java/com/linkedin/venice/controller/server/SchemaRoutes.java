@@ -294,7 +294,7 @@ public class SchemaRoutes extends AbstractRoute {
                   + " that matches the schema of data being pushed. Requested schema: \n" + schemaStr);
         }
         responseObject.setId(idPair.getValueSchemaID());
-        responseObject.setDerivedSchemaId(idPair.getGeneratedSchemaID());
+        responseObject.setDerivedSchemaId(idPair.getGeneratedSchemaVersion());
       } else {
         throw new VeniceException(
             "Can not find any registered value schema for the store " + store

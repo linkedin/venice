@@ -361,7 +361,7 @@ public class MetaStoreWriter implements Closeable {
         throw new VeniceException(
             "The derived compute schema for meta system store hasn't been registered to Venice yet");
       }
-      this.derivedComputeSchemaId = derivedSchemaId.getGeneratedSchemaID();
+      this.derivedComputeSchemaId = derivedSchemaId.getGeneratedSchemaVersion();
     }
     StoreMetaKey key = dataType.getStoreMetaKey(keyStringSupplier.get());
     SpecificRecord update = updateSupplier.get();

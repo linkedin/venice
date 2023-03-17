@@ -2989,7 +2989,8 @@ public class VeniceParentHelixAdmin implements Admin {
       if (newDerivedSchemaId == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
         return new DerivedSchemaEntry(
             valueSchemaId,
-            getVeniceHelixAdmin().getDerivedSchemaId(clusterName, storeName, derivedSchemaStr).getGeneratedSchemaID(),
+            getVeniceHelixAdmin().getDerivedSchemaId(clusterName, storeName, derivedSchemaStr)
+                .getGeneratedSchemaVersion(),
             derivedSchemaStr);
       }
 
@@ -3020,14 +3021,14 @@ public class VeniceParentHelixAdmin implements Admin {
       // defensive code checking
       GeneratedSchemaID actualValueSchemaIdPair = getDerivedSchemaId(clusterName, storeName, derivedSchemaStr);
       if (actualValueSchemaIdPair.getValueSchemaID() != valueSchemaId
-          || actualValueSchemaIdPair.getGeneratedSchemaID() != newDerivedSchemaId) {
+          || actualValueSchemaIdPair.getGeneratedSchemaVersion() != newDerivedSchemaId) {
         throw new VeniceException(
             String.format(
                 "Something bad happened, the expected new value schema id pair is:" + "%d_%d, but got: %d_%d",
                 valueSchemaId,
                 newDerivedSchemaId,
                 actualValueSchemaIdPair.getValueSchemaID(),
-                actualValueSchemaIdPair.getGeneratedSchemaID()));
+                actualValueSchemaIdPair.getGeneratedSchemaVersion()));
       }
 
       return new DerivedSchemaEntry(valueSchemaId, newDerivedSchemaId, derivedSchemaStr);

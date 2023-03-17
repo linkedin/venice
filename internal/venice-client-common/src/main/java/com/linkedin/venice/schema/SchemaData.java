@@ -8,8 +8,8 @@ import java.util.Collection;
 import java.util.Map;
 import java.util.Set;
 import java.util.SortedMap;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.ConcurrentSkipListSet;
 import org.apache.avro.Schema;
 
 
@@ -48,8 +48,8 @@ public final class SchemaData {
     this.rmdSchemaMap = new VeniceConcurrentHashMap<>();
     this.rmdSchemaRMap = new VeniceConcurrentHashMap<>();
 
-    this.updateSchemaExistenceSet = ConcurrentHashMap.newKeySet();
-    this.rmdSchemaExistenceSet = ConcurrentHashMap.newKeySet();
+    this.updateSchemaExistenceSet = new ConcurrentSkipListSet<>();
+    this.rmdSchemaExistenceSet = new ConcurrentSkipListSet<>();
   }
 
   public String getStoreName() {

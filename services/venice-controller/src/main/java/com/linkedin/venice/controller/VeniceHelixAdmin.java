@@ -4696,7 +4696,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     return new DerivedSchemaEntry(
         valueSchemaId,
-        schemaRepository.getDerivedSchemaId(storeName, derivedSchemaStr).getGeneratedSchemaID(),
+        schemaRepository.getDerivedSchemaId(storeName, derivedSchemaStr).getGeneratedSchemaVersion(),
         derivedSchemaStr);
   }
 
