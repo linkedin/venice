@@ -608,6 +608,7 @@ public class AdminTool {
 
     String extraCommandArgs = getOptionalArgument(cmd, Arg.EXTRA_COMMAND_ARGS);
     boolean isDebuggingEnabled = cmd.hasOption(Arg.DEBUG.toString());
+    boolean isNonInteractive = cmd.hasOption(Arg.NON_INTERACTIVE.toString());
 
     StoreRepushCommand.Params cmdParams = new StoreRepushCommand.Params();
     cmdParams.setCommand(recoveryCommand);
@@ -618,7 +619,7 @@ public class AdminTool {
     cmdParams.setDebug(isDebuggingEnabled);
 
     DataRecoveryClient dataRecoveryClient = new DataRecoveryClient();
-    DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(stores);
+    DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(stores, isNonInteractive);
     dataRecoveryClient.execute(params, cmdParams);
   }
 
