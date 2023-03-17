@@ -5,7 +5,6 @@ import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdVersionId;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
-import com.linkedin.venice.utils.Pair;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.Objects;
@@ -59,7 +58,7 @@ public class TestSchemaData {
     RmdSchemaEntry rmdSchema = new RmdSchemaEntry(1, 1, UPDATE_SCHEMA.toString());
     SchemaData schemaData = new SchemaData("testStore");
 
-    Assert.assertEquals(schemaData.getDerivedSchemaId(derivedSchema), new Pair<>(-1, -1));
+    Assert.assertEquals(schemaData.getDerivedSchemaId(derivedSchema.getSchemaStr()), GeneratedSchemaID.INVALID);
     Assert.assertEquals(schemaData.getReplicationMetadataVersionId(rmdSchema), new RmdVersionId(-1, -1));
 
     schemaData.addValueSchema(valueSchema);
@@ -67,7 +66,7 @@ public class TestSchemaData {
     schemaData.addReplicationMetadataSchema(rmdSchema);
     Assert.assertEquals(schemaData.getDerivedSchemas(), Collections.singletonList(derivedSchema));
     Assert.assertEquals(schemaData.getReplicationMetadataSchemas(), Collections.singletonList(rmdSchema));
-    Assert.assertEquals(schemaData.getDerivedSchemaId(derivedSchema), new Pair<>(1, 1));
+    Assert.assertEquals(schemaData.getDerivedSchemaId(derivedSchema.getSchemaStr()), new GeneratedSchemaID(1, 1));
     Assert.assertEquals(schemaData.getReplicationMetadataVersionId(rmdSchema), new RmdVersionId(1, 1));
   }
 

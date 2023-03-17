@@ -18,6 +18,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
+import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
@@ -27,7 +28,6 @@ import com.linkedin.venice.system.store.MetaStoreDataType;
 import com.linkedin.venice.systemstore.schemas.StoreClusterConfig;
 import com.linkedin.venice.systemstore.schemas.StoreMetaKey;
 import com.linkedin.venice.systemstore.schemas.StoreMetaValue;
-import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayList;
@@ -303,7 +303,7 @@ public abstract class NativeMetadataRepository
   }
 
   @Override
-  public Pair<Integer, Integer> getDerivedSchemaId(String storeName, String derivedSchemaStr) {
+  public GeneratedSchemaID getDerivedSchemaId(String storeName, String derivedSchemaStr) {
     throw new VeniceException("Derived schema is not included in system store.");
   }
 

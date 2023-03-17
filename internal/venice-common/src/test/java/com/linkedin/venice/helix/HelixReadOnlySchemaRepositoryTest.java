@@ -8,11 +8,17 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertThrows;
 
 import com.linkedin.alpini.io.IOUtils;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.InvalidVeniceSchemaException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
@@ -21,12 +27,15 @@ import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.update.UpdateBuilderImplTest;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.apache.avro.Schema;
+import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
@@ -106,7 +115,6 @@ public class HelixReadOnlySchemaRepositoryTest {
     HelixReadOnlyStoreRepository storeRepository = mock(HelixReadOnlyStoreRepository.class);
     when(storeRepository.getStore(storeName)).thenReturn(store);
     when(storeRepository.getStoreOrThrow(storeName)).thenReturn(store);
-    when(storeRepository.hasStore(storeName)).thenReturn(true);
     when(schemaRepository.getStoreRepository()).thenReturn(storeRepository);
 
     Map<String, SchemaData> schemaDataMap = new VeniceConcurrentHashMap<>();
@@ -129,6 +137,50 @@ public class HelixReadOnlySchemaRepositoryTest {
 
     when(store.getLatestSuperSetValueSchemaId()).thenReturn(SchemaData.INVALID_VALUE_SCHEMA_ID);
     Assert.assertNull(schemaRepository.getSupersetSchema(storeName));
+  }
+
+  @Test
+  public void getDerivedSchemaIdTest() {
+    ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
+    ZkClient zkClient = mock(ZkClient.class);
+    HelixSchemaAccessor accessor = mock(HelixSchemaAccessor.class);
+    HelixReadOnlySchemaRepository schemaRepository =
+        new HelixReadOnlySchemaRepository(storeRepository, zkClient, accessor, 10, 100);
+    String storeName = "store";
+    String schemaStr = "int";
+    Store store = mock(Store.class);
+    when(store.isWriteComputationEnabled()).thenReturn(false);
+    when(store.isActiveActiveReplicationEnabled()).thenReturn(false);
+    when(storeRepository.getStoreOrThrow(storeName)).thenReturn(store);
+    GeneratedSchemaID generatedSchemaID = schemaRepository.getDerivedSchemaId(storeName, schemaStr);
+    assertNotNull(generatedSchemaID);
+    assertEquals(generatedSchemaID, GeneratedSchemaID.INVALID);
+
+    when(storeRepository.getStoreOrThrow(storeName)).thenThrow(new VeniceNoStoreException(storeName));
+    assertThrows(VeniceNoStoreException.class, () -> schemaRepository.getDerivedSchemaId(storeName, schemaStr));
+  }
+
+  @Test
+  public void getSupersetOrLatestValueSchemaTest() {
+    ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
+    ZkClient zkClient = mock(ZkClient.class);
+    HelixSchemaAccessor accessor = mock(HelixSchemaAccessor.class);
+    HelixReadOnlySchemaRepository schemaRepository =
+        new HelixReadOnlySchemaRepository(storeRepository, zkClient, accessor, 10, 100);
+    String storeName = "store";
+    Store store = mock(Store.class);
+    when(store.isWriteComputationEnabled()).thenReturn(false);
+    when(store.isActiveActiveReplicationEnabled()).thenReturn(false);
+    when(store.getLatestSuperSetValueSchemaId()).thenReturn(SchemaData.INVALID_VALUE_SCHEMA_ID);
+    when(storeRepository.getStoreOrThrow(storeName)).thenReturn(store);
+
+    SchemaEntry schemaEntryToReturn = new SchemaEntry(1, "\"int\"");
+    List<SchemaEntry> listOfSchemaEntriesToReturn = new ArrayList<>();
+    listOfSchemaEntriesToReturn.add(schemaEntryToReturn);
+    when(accessor.getAllValueSchemas(storeName)).thenReturn(listOfSchemaEntriesToReturn);
+    SchemaEntry schemaEntry = schemaRepository.getSupersetOrLatestValueSchema(storeName);
+    assertNotNull(schemaEntry);
+    assertEquals(schemaEntry, schemaEntryToReturn);
   }
 
   private static String loadFileAsString(String fileName) {

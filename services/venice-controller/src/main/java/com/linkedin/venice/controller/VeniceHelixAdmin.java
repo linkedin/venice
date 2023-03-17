@@ -151,6 +151,7 @@ import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
+import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
@@ -4495,16 +4496,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * @return the derived schema id for the specified store and derived schema.
    */
   @Override
-  public Pair<Integer, Integer> getDerivedSchemaId(String clusterName, String storeName, String schemaStr) {
+  public GeneratedSchemaID getDerivedSchemaId(String clusterName, String storeName, String schemaStr) {
     checkControllerLeadershipFor(clusterName);
     ReadWriteSchemaRepository schemaRepo = getHelixVeniceClusterResources(clusterName).getSchemaRepository();
-    Pair<Integer, Integer> schamaID = schemaRepo.getDerivedSchemaId(storeName, schemaStr);
+    GeneratedSchemaID schemaID = schemaRepo.getDerivedSchemaId(storeName, schemaStr);
     // validate the schema as VPJ uses this method to fetch the value schema. Fail loudly if the schema user trying
     // to push is bad.
-    if (schamaID.getFirst() != SchemaData.INVALID_VALUE_SCHEMA_ID) {
+    if (schemaID.isValid()) {
       AvroSchemaUtils.validateAvroSchemaStr(schemaStr);
     }
-    return schamaID;
+    return schemaID;
   }
 
   /**
@@ -4695,7 +4696,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     return new DerivedSchemaEntry(
         valueSchemaId,
-        schemaRepository.getDerivedSchemaId(storeName, derivedSchemaStr).getSecond(),
+        schemaRepository.getDerivedSchemaId(storeName, derivedSchemaStr).getGeneratedSchemaVersion(),
         derivedSchemaStr);
   }
 

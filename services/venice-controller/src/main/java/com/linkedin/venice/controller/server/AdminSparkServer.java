@@ -350,7 +350,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.post(ADD_DERIVED_SCHEMA.getPath(), schemaRoutes.addDerivedSchema(admin));
     httpService.get(GET_VALUE_SCHEMA.getPath(), schemaRoutes.getValueSchema(admin));
     httpService.post(GET_VALUE_SCHEMA_ID.getPath(), schemaRoutes.getValueSchemaID(admin));
-    httpService.post(GET_VALUE_OR_DERIVED_SCHEMA_ID.getPath(), schemaRoutes.getDerivedSchemaID(admin));
+    httpService.post(GET_VALUE_OR_DERIVED_SCHEMA_ID.getPath(), schemaRoutes.getValueOrDerivedSchemaID(admin));
     httpService.get(GET_ALL_VALUE_SCHEMA.getPath(), schemaRoutes.getAllValueSchema(admin));
     httpService.get(GET_ALL_VALUE_AND_DERIVED_SCHEMA.getPath(), schemaRoutes.getAllValueAndDerivedSchema(admin));
     httpService.post(REMOVE_DERIVED_SCHEMA.getPath(), schemaRoutes.removeDerivedSchema(admin));

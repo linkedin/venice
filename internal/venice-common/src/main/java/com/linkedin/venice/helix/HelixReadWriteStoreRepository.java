@@ -1,7 +1,5 @@
 package com.linkedin.venice.helix;
 
-import static com.linkedin.venice.common.VeniceSystemStoreUtils.getZkStoreName;
-
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceStoreAlreadyExistsException;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
@@ -78,7 +76,7 @@ public class HelixReadWriteStoreRepository extends CachedReadOnlyStoreRepository
 
   @Override
   public Store getStore(String storeName) {
-    Store store = storeMap.get(getZkStoreName(storeName));
+    Store store = storeMap.get(storeName);
     if (store != null) {
       return store.cloneStore();
     }
