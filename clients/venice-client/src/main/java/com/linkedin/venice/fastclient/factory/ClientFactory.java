@@ -27,17 +27,16 @@ public class ClientFactory {
 
   // Use Venice thin client based store metadata by default
   public static <K, V> AvroGenericStoreClient<K, V> getAndStartGenericStoreClient(ClientConfig clientConfig) {
+    StoreMetadata storeMetadata;
     if (clientConfig.isRequestBasedMetadata()) {
-      return getAndStartGenericStoreClient(
-          new RequestBasedMetadata(
-              clientConfig,
-              new D2TransportClient(clientConfig.getRouterD2Service(), clientConfig.getD2Client())),
-          clientConfig);
+      storeMetadata = new RequestBasedMetadata(
+          clientConfig,
+          new D2TransportClient(clientConfig.getRouterD2Service(), clientConfig.getD2Client()));
     } else {
-      return getAndStartGenericStoreClient(
-          new ThinClientBasedMetadata(clientConfig, clientConfig.getThinClientForMetaStore()),
-          clientConfig);
+      storeMetadata = new ThinClientBasedMetadata(clientConfig, clientConfig.getThinClientForMetaStore());
     }
+
+    return getAndStartGenericStoreClient(storeMetadata, clientConfig);
   }
 
   // Use Venice thin client based store metadata default
@@ -48,17 +47,16 @@ public class ClientFactory {
      * Need to construct {@link DaVinciClientBasedMetadata} inside store client, so that the store client could control
      * the lifecycle of the metadata instance.
      */
+    StoreMetadata storeMetadata;
     if (clientConfig.isRequestBasedMetadata()) {
-      return getAndStartSpecificStoreClient(
-          new RequestBasedMetadata(
-              clientConfig,
-              new D2TransportClient(clientConfig.getRouterD2Service(), clientConfig.getD2Client())),
-          clientConfig);
+      storeMetadata = new RequestBasedMetadata(
+          clientConfig,
+          new D2TransportClient(clientConfig.getRouterD2Service(), clientConfig.getD2Client()));
     } else {
-      return getAndStartSpecificStoreClient(
-          new ThinClientBasedMetadata(clientConfig, clientConfig.getThinClientForMetaStore()),
-          clientConfig);
+      storeMetadata = new ThinClientBasedMetadata(clientConfig, clientConfig.getThinClientForMetaStore());
     }
+
+    return getAndStartSpecificStoreClient(storeMetadata, clientConfig);
   }
 
   /**
