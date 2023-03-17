@@ -52,8 +52,6 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private static final String VERSION_PARTITION_SEPARATOR = "_";
   private static final long ZSTD_DICT_FETCH_TIMEOUT = 10;
   private static final long DEFAULT_REFRESH_INTERVAL_IN_SECONDS = 60;
-  private static final long INITIAL_UPDATE_CACHE_TIMEOUT_IN_SECONDS = 30;
-  private static final long RETRY_WAIT_TIME_IN_MS = 1000;
   private final long refreshIntervalInSeconds;
   private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
 
@@ -104,6 +102,16 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
 
   private String getVersionPartitionMapKey(int version, int partition) {
     return version + VERSION_PARTITION_SEPARATOR + partition;
+  }
+
+  /**
+   * Given a version partitioner key formatted as "1_0" which represents partition 0 of version 1, return the version
+   * number.
+   * @param key
+   * @return version number
+   */
+  private int getVersionFromKey(String key) {
+    return Integer.parseInt(key.split(VERSION_PARTITION_SEPARATOR)[0]);
   }
 
   @Override
@@ -179,19 +187,16 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
         }
 
         // Update partitioner pair map (versionPartitionerMap)
-        versionPartitionerMap.computeIfAbsent(fetchedVersion, k -> {
-          Properties params = new Properties();
-          params.putAll(partitionerParams);
-          VenicePartitioner partitioner =
-              PartitionUtils.getVenicePartitioner(partitionerClass, amplificationFactor, new VeniceProperties(params));
-          return new PartitionerPair(partitioner, partitionCount);
-        });
+        Properties params = new Properties();
+        params.putAll(partitionerParams);
+        VenicePartitioner partitioner =
+            PartitionUtils.getVenicePartitioner(partitionerClass, amplificationFactor, new VeniceProperties(params));
+        versionPartitionerMap.put(fetchedVersion, new PartitionerPair(partitioner, partitionCount));
 
         // Update readyToServeInstanceMap
-        for (int i = 0; i < partitionCount; i++) {
-          final int partitionId = i;
+        for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
           String key = getVersionPartitionMapKey(fetchedVersion, partitionId);
-          readyToServeInstancesMap.compute(key, (k, v) -> routingInfo.get(partitionId));
+          readyToServeInstancesMap.put(key, routingInfo.get(partitionId));
         }
 
         // Update schemas
@@ -205,9 +210,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
         schemas.set(schemaData);
 
         // Evict entries that are over two versions behind from the latest fetched version
-        readyToServeInstancesMap.entrySet()
-            .removeIf(
-                entry -> Integer.parseInt(entry.getKey().split(VERSION_PARTITION_SEPARATOR)[0]) < fetchedVersion - 2);
+        readyToServeInstancesMap.entrySet().removeIf(entry -> getVersionFromKey(entry.getKey()) < fetchedVersion - 2);
         versionPartitionerMap.entrySet().removeIf(entry -> entry.getKey() < fetchedVersion - 2);
         versionZstdDictionaryMap.entrySet().removeIf(entry -> entry.getKey() < fetchedVersion - 2);
 
@@ -238,6 +241,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       // TODO: need a better way to handle store migration
       if (!onDemandRefresh) {
         LOGGER.warn("Metadata fetch operation has failed with exception {}", e.getMessage());
+        isServiceDiscovered = false;
         discoverD2Service(true);
         updateCache(true);
       } else {
@@ -352,7 +356,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
    * Used for test only
    * @param d2ServiceDiscovery
    */
-  public void setD2ServiceDiscovery(D2ServiceDiscovery d2ServiceDiscovery) {
+  public synchronized void setD2ServiceDiscovery(D2ServiceDiscovery d2ServiceDiscovery) {
     this.d2ServiceDiscovery = d2ServiceDiscovery;
   }
 }
