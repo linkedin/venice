@@ -2,6 +2,7 @@ package com.linkedin.venice.helix;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import com.linkedin.venice.meta.VeniceSerializer;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.io.IOException;
@@ -19,6 +20,7 @@ public class VeniceJsonSerializer<T> implements VeniceSerializer<T> {
   public VeniceJsonSerializer(Class<T> type) {
     // Ignore unknown properties
     OBJECT_MAPPER.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+    OBJECT_MAPPER.registerModule(new Jdk8Module());
     this.type = type;
   }
 
