@@ -285,7 +285,7 @@ public class TestChannelPoolManager {
 
       @Override
       void debugAcquireResolved(Future<Channel> promise) {
-        Time.sleepUninterruptably(1);
+        Time.sleepUninterruptably(100);
         super.debugAcquireResolved(promise);
         if (promise == _cancelInAcquireResolved) {
           _cancelInAcquireResolved.cancel(false);
@@ -294,7 +294,7 @@ public class TestChannelPoolManager {
 
       @Override
       void debugAcquireInEventLoop(Future<Channel> promise) {
-        Time.sleepUninterruptably(1);
+        Time.sleepUninterruptably(100);
         super.debugAcquireInEventLoop(promise);
         if (promise == _cancelInAcquireEventLoop) {
           _cancelInAcquireEventLoop.cancel(false);
@@ -303,7 +303,7 @@ public class TestChannelPoolManager {
 
       @Override
       void debugAcquireInEventLoopListener(Future<Channel> promise) {
-        Time.sleepUninterruptably(1);
+        Time.sleepUninterruptably(100);
         super.debugAcquireInEventLoopListener(promise);
         if (promise == _cancelInAcquireEventLoopListener) {
           _cancelInAcquireEventLoopListener.cancel(false);
@@ -312,7 +312,7 @@ public class TestChannelPoolManager {
 
       @Override
       void debugAcquireInTrySuccess(Future<Channel> promise) {
-        Time.sleepUninterruptably(1);
+        Time.sleepUninterruptably(100);
         super.debugAcquireInTrySuccess(promise);
         if (promise == _cancelInAcquireTrySuccess) {
           _cancelInAcquireTrySuccess.cancel(false);
