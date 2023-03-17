@@ -10,7 +10,7 @@
 
 name: VeniceCI
 
-on: [push, pull_request]
+on: [push, pull_request, workflow_dispatch]
 
 jobs:
   StaticAnalysis:
@@ -41,7 +41,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DmaxParallelForks=2 --parallel -Pspotallbugs clean check -x spotlessCheck -x test -x integrationTest -x jacocoTestCoverageVerification"
+          arguments: "--stacktrace --continue --no-daemon -DmaxParallelForks=2 --parallel -Pspotallbugs clean check -x spotlessCheck -x test -x integrationTest -x jacocoTestCoverageVerification"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -176,7 +176,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestA"
+          arguments: "--stacktrace --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestA"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -221,7 +221,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestB"
+          arguments: "--stacktrace --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestB"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -266,7 +266,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestC"
+          arguments: "--stacktrace --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestC"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -311,7 +311,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestD"
+          arguments: "--stacktrace --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestD"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -356,7 +356,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestE"
+          arguments: "--stacktrace --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestE"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -401,7 +401,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestF"
+          arguments: "--stacktrace --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestF"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -446,7 +446,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestG"
+          arguments: "--stacktrace --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestG"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -491,7 +491,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestH"
+          arguments: "--stacktrace --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestH"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -536,7 +536,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestI"
+          arguments: "--stacktrace --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestI"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -581,7 +581,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestJ"
+          arguments: "--stacktrace --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestJ"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -626,7 +626,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestK"
+          arguments: "--stacktrace --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestK"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -671,7 +671,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestL"
+          arguments: "--stacktrace --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestL"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -716,7 +716,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestM"
+          arguments: "--stacktrace --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestM"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -761,7 +761,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestN"
+          arguments: "--stacktrace --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestN"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -806,7 +806,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestO"
+          arguments: "--stacktrace --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestO"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -851,7 +851,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestP"
+          arguments: "--stacktrace --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestP"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -896,7 +896,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestQ"
+          arguments: "--stacktrace --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestQ"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -941,7 +941,7 @@ jobs:
       - name: Build with Gradle
         uses: gradle/gradle-build-action@v2
         with:
-          arguments: "--continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestZ"
+          arguments: "--stacktrace --continue --no-daemon -DforkEvery=1 -DmaxParallelForks=1 integrationTestZ"
       - name: Package Build Artifacts
         if: success() || failure()
         shell: bash
@@ -958,6 +958,154 @@ jobs:
           path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
 
+  AlpiniUnitTests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        jdk: [11]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    outputs:
+      alpini_touched: ${{ steps.check_alpini_files_changed.outputs.alpini }}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          # Checkout as many commits as needed for the diff
+          fetch-depth: 2
+      - name: Check if files have changed
+        uses: dorny/paths-filter@v2
+        id: check_alpini_files_changed
+        with:
+          filters: |
+            alpini:
+              - 'internal/alpini/**'
+      - uses: actions/checkout@v3
+        if: steps.check_alpini_files_changed.outputs.alpini == 'true'
+        with:
+          fetch-depth: 0
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        if: steps.check_alpini_files_changed.outputs.alpini == 'true'
+        with:
+          java-version: ${{ matrix.jdk }}
+          distribution: 'microsoft'
+          cache: 'gradle'
+      # - name: Allow Deprecated TLS versions for Alpini tests
+      #   run: |
+      #     echo "java.security file before modifications: "
+      #     cat "$JAVA_HOME/conf/security/java.security"
+
+      #     # This is possibly flaky but
+      #     sed -i 's/TLSv1, //g' "$JAVA_HOME/conf/security/java.security" # Allow TLSv1
+      #     sed -i 's/TLSv1.1, //g' "$JAVA_HOME/conf/security/java.security" # Allow TLSv1.1
+
+      #     echo "java.security file after modifications: "
+      #     cat "$JAVA_HOME/conf/security/java.security"
+      - shell: bash
+        if: steps.check_alpini_files_changed.outputs.alpini == 'true'
+        run: |
+          git remote set-head origin --auto
+          git remote add upstream https://github.com/linkedin/venice
+          git fetch upstream
+      - name: Validate Gradle wrapper
+        if: steps.check_alpini_files_changed.outputs.alpini == 'true'
+        uses: gradle/wrapper-validation-action@v1
+      - name: Build with Gradle
+        if: steps.check_alpini_files_changed.outputs.alpini == 'true'
+        uses: gradle/gradle-build-action@v2
+        with:
+          arguments: "--stacktrace --continue --no-daemon -DmaxParallelForks=1 alpiniUnitTest"
+      - name: Package Build Artifacts
+        if: steps.check_alpini_files_changed.outputs.alpini == 'true' && (success() || failure())
+        shell: bash
+        run: |
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Build Artifacts
+        if: steps.check_alpini_files_changed.outputs.alpini == 'true' && (success() || failure())
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ github.job }}
+          path: ${{ github.job }}-artifacts.tar.gz
+          retention-days: 30
+
+  AlpiniFunctionalTests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        jdk: [11]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    outputs:
+      alpini_touched: ${{ steps.check_alpini_files_changed.outputs.alpini }}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          # Checkout as many commits as needed for the diff
+          fetch-depth: 2
+      - name: Check if files have changed
+        uses: dorny/paths-filter@v2
+        id: check_alpini_files_changed
+        with:
+          filters: |
+            alpini:
+              - 'internal/alpini/**'
+      - uses: actions/checkout@v3
+        if: steps.check_alpini_files_changed.outputs.alpini == 'true'
+        with:
+          fetch-depth: 0
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        if: steps.check_alpini_files_changed.outputs.alpini == 'true'
+        with:
+          java-version: ${{ matrix.jdk }}
+          distribution: 'microsoft'
+          cache: 'gradle'
+      # - name: Allow Deprecated TLS versions for Alpini tests
+      #   run: |
+      #     echo "java.security file before modifications: "
+      #     cat "$JAVA_HOME/conf/security/java.security"
+
+      #     # This is possibly flaky but
+      #     sed -i 's/TLSv1, //g' "$JAVA_HOME/conf/security/java.security" # Allow TLSv1
+      #     sed -i 's/TLSv1.1, //g' "$JAVA_HOME/conf/security/java.security" # Allow TLSv1.1
+
+      #     echo "java.security file after modifications: "
+      #     cat "$JAVA_HOME/conf/security/java.security"
+      - shell: bash
+        if: steps.check_alpini_files_changed.outputs.alpini == 'true'
+        run: |
+          git remote set-head origin --auto
+          git remote add upstream https://github.com/linkedin/venice
+          git fetch upstream
+      - name: Validate Gradle wrapper
+        if: steps.check_alpini_files_changed.outputs.alpini == 'true'
+        uses: gradle/wrapper-validation-action@v1
+      - name: Build with Gradle
+        if: steps.check_alpini_files_changed.outputs.alpini == 'true'
+        uses: gradle/gradle-build-action@v2
+        with:
+          arguments: "--stacktrace --continue --no-daemon -DmaxParallelForks=1 alpiniFunctionalTest"
+      - name: Package Build Artifacts
+        if: steps.check_alpini_files_changed.outputs.alpini == 'true' && (success() || failure())
+        shell: bash
+        run: |
+          mkdir ${{ github.job }}-artifacts
+          find . -path "**/build/reports/*" -or -path "**/build/test-results/*" > artifacts.list
+          rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
+          tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
+      - name: Upload Build Artifacts
+        if: steps.check_alpini_files_changed.outputs.alpini == 'true' && (success() || failure())
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ github.job }}
+          path: ${{ github.job }}-artifacts.tar.gz
+          retention-days: 30
+
   DummyStep:
     strategy:
       fail-fast: false
@@ -965,7 +1113,7 @@ jobs:
         os: [ubuntu-latest]
         jdk: [11]
     runs-on: ${{ matrix.os }}
-    needs: [StaticAnalysis, UnitTestsAndCodeCoverage, AvroCompatibilityTests, IntegrationTestsA, IntegrationTestsB, IntegrationTestsC, IntegrationTestsD, IntegrationTestsE, IntegrationTestsF, IntegrationTestsG, IntegrationTestsH, IntegrationTestsI, IntegrationTestsJ, IntegrationTestsK, IntegrationTestsL, IntegrationTestsM, IntegrationTestsN, IntegrationTestsO, IntegrationTestsP, IntegrationTestsQ, IntegrationTestsZ]
+    needs: [StaticAnalysis, UnitTestsAndCodeCoverage, AvroCompatibilityTests, IntegrationTestsA, IntegrationTestsB, IntegrationTestsC, IntegrationTestsD, IntegrationTestsE, IntegrationTestsF, IntegrationTestsG, IntegrationTestsH, IntegrationTestsI, IntegrationTestsJ, IntegrationTestsK, IntegrationTestsL, IntegrationTestsM, IntegrationTestsN, IntegrationTestsO, IntegrationTestsP, IntegrationTestsQ, IntegrationTestsZ, AlpiniUnitTests, AlpiniFunctionalTests]
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v3

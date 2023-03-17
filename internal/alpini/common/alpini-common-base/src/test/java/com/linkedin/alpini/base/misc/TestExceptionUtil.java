@@ -16,12 +16,12 @@ public class TestExceptionUtil {
     Assert.assertTrue(
         Pattern.compile(
             "java\\.lang\\.RuntimeException: Hello World\n"
-                + "\tat com\\.linkedin\\.ddsstorage\\.base\\.misc\\.TestExceptionUtil\\.testGetStackTrace\\(TestExceptionUtil\\.java:\\d+\\)\n"
+                + "\tat com\\.linkedin\\.alpini\\.base\\.misc\\.TestExceptionUtil\\.testGetStackTrace\\(TestExceptionUtil\\.java:\\d+\\)\n"
                 + "(\tat [^\\n]+\n)+" + "Caused by: java\\.lang\\.IllegalArgumentException\n"
-                + "\tat com\\.linkedin\\.ddsstorage\\.base\\.misc\\.TestExceptionUtil\\.innerException\\(TestExceptionUtil\\.java:\\d+\\)\n"
+                + "\tat com\\.linkedin\\.alpini\\.base\\.misc\\.TestExceptionUtil\\.innerException\\(TestExceptionUtil\\.java:\\d+\\)\n"
                 + "\t\\.\\.\\. \\d+ more\n" + "\tSuppressed: java\\.lang\\.NullPointerException\n"
-                + "\t\tat com\\.linkedin\\.ddsstorage\\.base\\.misc\\.TestExceptionUtil\\.suppressedException\\(TestExceptionUtil\\.java:\\d+\\)\n"
-                + "\t\tat com\\.linkedin\\.ddsstorage\\.base\\.misc\\.TestExceptionUtil\\.innerException\\(TestExceptionUtil\\.java:\\d+\\)\n"
+                + "\t\tat com\\.linkedin\\.alpini\\.base\\.misc\\.TestExceptionUtil\\.suppressedException\\(TestExceptionUtil\\.java:\\d+\\)\n"
+                + "\t\tat com\\.linkedin\\.alpini\\.base\\.misc\\.TestExceptionUtil\\.innerException\\(TestExceptionUtil\\.java:\\d+\\)\n"
                 + "\t\t\\.\\.\\. \\d+ more\n",
             Pattern.MULTILINE | Pattern.DOTALL).matcher(stackTrace).matches(),
         stackTrace);

@@ -199,7 +199,11 @@ task generateGHCI() {
 
   def paramFile = new File(targetDir, "gh-ci-parameterized-flow.txt")
   def paramFilePath = Paths.get(paramFile.getPath())
-  def paramFileContent = new String(Files.readAllBytes(paramFilePath));
+  def paramFileContent = new String(Files.readAllBytes(paramFilePath))
+
+  def alpiniParamFile = new File(targetDir, "gh-ci-alpini-parametrized-flow.txt")
+  def alpiniParamFilePath = Paths.get(alpiniParamFile.getPath())
+  def alpiniParamFileContent = new String(Files.readAllBytes(alpiniParamFilePath))
 
   targetFile.delete()
   targetFile.createNewFile()
@@ -209,13 +213,14 @@ task generateGHCI() {
   append(targetFilePath, "# To regenerate, run:\n#\n#     ./gradlew generateGHCI\n\n")
 
   append(targetFilePath, "name: VeniceCI\n\n")
-  append(targetFilePath, "on: [push, pull_request]\n\n")
+  append(targetFilePath, "on: [push, pull_request, workflow_dispatch]\n\n")
   append(targetFilePath, "jobs:\n")
 
   def jobs = []
 
-  def common = "--continue --no-daemon "
+  def common = "--stacktrace --continue --no-daemon "
   def staticAnalysisFlowGradleArgs = common + "-DmaxParallelForks=2 --parallel -Pspotallbugs clean check -x spotlessCheck -x test -x integrationTest -x jacocoTestCoverageVerification"
+
   def staticAnalysis = "StaticAnalysis"
   appendToGHCI(paramFileContent, targetFilePath, staticAnalysis, 20, staticAnalysisFlowGradleArgs)
   jobs << staticAnalysis
@@ -240,6 +245,14 @@ task generateGHCI() {
   appendToGHCI(paramFileContent, targetFilePath, otherTest, 120, integTestGradleArgs + "Z")
   jobs << otherTest
 
+  def alpiniUnitTests = "AlpiniUnitTests"
+  appendToGHCI(alpiniParamFileContent, targetFilePath, alpiniUnitTests, 120, common + "-DmaxParallelForks=1 alpiniUnitTest")
+  jobs << alpiniUnitTests
+
+  def alpiniFunctionalTests = "AlpiniFunctionalTests"
+  appendToGHCI(alpiniParamFileContent, targetFilePath, alpiniFunctionalTests, 120, common + "-DmaxParallelForks=1 alpiniFunctionalTest")
+  jobs << alpiniFunctionalTests
+
   // define a job that depends others to manage the status check
   appendToGHCI(paramFileContent, targetFilePath, "DummyStep", 120, "clean", jobs)
 
@@ -247,7 +260,7 @@ task generateGHCI() {
   Files.move(targetFilePath, finalDestinationPath, StandardCopyOption.REPLACE_EXISTING)
 }
 
-def appendToGHCI(String paramFileContent, Path targetFilePath, String flowName, int timeOut, String gradleArguments, ArrayList dependency=null) {
+def appendToGHCI(String paramFileContent, Path targetFilePath, String flowName, int timeOut, String gradleArguments, ArrayList dependency=null, String conditional=null) {
   String postProcessing = paramFileContent
       .replace("\$FlowName", flowName)
       .replace("\$TimeOut", Integer.toString(timeOut))
@@ -257,6 +270,12 @@ def appendToGHCI(String paramFileContent, Path targetFilePath, String flowName, 
     postProcessing = postProcessing.replace("    needs: \$Dependency\n", "")
   } else {
     postProcessing = postProcessing.replace("\$Dependency", dependency.toString())
+  }
+
+  if (conditional == null) {
+    postProcessing = postProcessing.replace("    if: \$Conditional\n", "")
+  } else {
+    postProcessing = postProcessing.replace("\$Conditional", conditional.toString())
   }
 
   append(targetFilePath, postProcessing)
