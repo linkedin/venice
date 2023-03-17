@@ -17,6 +17,8 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_QUOTA_TIME_WINDOW_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_QUOTA_UNORDERED_BYTES_PER_SECOND;
 import static com.linkedin.venice.ConfigKeys.KAFKA_FETCH_QUOTA_UNORDERED_RECORDS_PER_SECOND;
 import static com.linkedin.venice.ConfigKeys.KAFKA_READ_CYCLE_DELAY_MS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_SASL_JAAS_CONFIG;
+import static com.linkedin.venice.ConfigKeys.KAFKA_SASL_MECHANISM;
 import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
 import static com.linkedin.venice.ConfigKeys.REFRESH_ATTEMPTS_FOR_ZK_RECONNECT;
@@ -59,6 +61,9 @@ public class VeniceClusterConfig {
   private final String zookeeperAddress;
   private final PersistenceType persistenceType;
   private final String kafkaBootstrapServers;
+  private String kafkaSaslJaasConfig;
+
+  private String kafkaSaslMechanism;
   private final long kafkaFetchQuotaTimeWindow;
   private final long kafkaFetchQuotaBytesPerSecond;
   private final long kafkaFetchQuotaRecordPerSecond;
@@ -108,6 +113,8 @@ public class VeniceClusterConfig {
     if (baseKafkaBootstrapServers == null || baseKafkaBootstrapServers.isEmpty()) {
       throw new ConfigurationException("kafkaBootstrapServers can't be empty");
     }
+    this.kafkaSaslJaasConfig = clusterProps.getString(KAFKA_SASL_JAAS_CONFIG, (String) null);
+    this.kafkaSaslMechanism = clusterProps.getString(KAFKA_SASL_MECHANISM, (String) null);
 
     this.kafkaFetchQuotaTimeWindow =
         clusterProps.getLong(KAFKA_FETCH_QUOTA_TIME_WINDOW_MS, TimeUnit.SECONDS.toMillis(5));
@@ -258,6 +265,14 @@ public class VeniceClusterConfig {
 
   public String getKafkaBootstrapServers() {
     return kafkaBootstrapServers;
+  }
+
+  public String getKafkaSaslJaasConfig() {
+    return kafkaSaslJaasConfig;
+  }
+
+  public String getKafkaSaslMechanism() {
+    return kafkaSaslMechanism;
   }
 
   public SecurityProtocol getKafkaSecurityProtocol(String kafkaBootstrapUrl) {

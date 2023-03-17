@@ -371,7 +371,7 @@ public class IntegrationTestPushUtils {
     }
 
     @Override
-    public Properties setupSSL(Properties properties) {
+    public Properties setupSecurity(Properties properties) {
       properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafkaBootstrapServers);
       return properties;
     }

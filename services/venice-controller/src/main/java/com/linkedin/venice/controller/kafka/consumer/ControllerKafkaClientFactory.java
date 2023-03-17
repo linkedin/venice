@@ -13,12 +13,16 @@ import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Optional;
 import java.util.Properties;
 import org.apache.kafka.clients.CommonClientConfigs;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import spark.utils.StringUtils;
 
 
 /**
  * A factory used by the Venice controller to create Kafka clients, specifically Kafka consumer and Kafka admin client.
  */
 public class ControllerKafkaClientFactory extends KafkaClientFactory {
+  private static final Logger LOGGER = LogManager.getLogger(ControllerKafkaClientFactory.class);
   private final VeniceControllerConfig controllerConfig;
 
   public ControllerKafkaClientFactory(
@@ -28,7 +32,7 @@ public class ControllerKafkaClientFactory extends KafkaClientFactory {
     this.controllerConfig = controllerConfig;
   }
 
-  public Properties setupSSL(Properties properties) {
+  public Properties setupSecurity(Properties properties) {
     if (KafkaSSLUtils.isKafkaSSLProtocol(controllerConfig.getKafkaSecurityProtocol())) {
       Optional<SSLConfig> sslConfig = controllerConfig.getSslConfig();
       if (!sslConfig.isPresent()) {
@@ -40,6 +44,11 @@ public class ControllerKafkaClientFactory extends KafkaClientFactory {
           .setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, controllerConfig.getSslKafkaBootstrapServers());
     } else {
       properties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, controllerConfig.getKafkaBootstrapServers());
+    }
+    if (!StringUtils.isBlank(controllerConfig.getKafkaSaslMechanism())) {
+      properties.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, controllerConfig.getKafkaSecurityProtocol());
+      properties.setProperty("sasl.mechanism", controllerConfig.getKafkaSaslMechanism());
+      properties.setProperty("sasl.jaas.config", controllerConfig.getKafkaSaslJaasConfig());
     }
     return properties;
   }

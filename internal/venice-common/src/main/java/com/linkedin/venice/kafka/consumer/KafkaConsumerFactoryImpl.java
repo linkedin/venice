@@ -22,7 +22,7 @@ public class KafkaConsumerFactoryImpl extends KafkaClientFactory {
   }
 
   @Override
-  public Properties setupSSL(Properties properties) {
+  public Properties setupSecurity(Properties properties) {
     properties.putAll(veniceProperties.toProperties());
     try {
       SSLConfig sslConfig = new SSLConfig(veniceProperties);
@@ -33,6 +33,7 @@ public class KafkaConsumerFactoryImpl extends KafkaClientFactory {
     } catch (UndefinedPropertyException e) {
       LOGGER.warn("SSL properties are missing, Kafka consumer will not be able to consume if SSL is required.");
     }
+    // SASL properties are read from the properties variable
     return properties;
   }
 

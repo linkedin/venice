@@ -13,8 +13,11 @@ import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Optional;
 import java.util.Properties;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.common.protocol.SecurityProtocol;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 /**
@@ -22,6 +25,8 @@ import org.apache.kafka.common.protocol.SecurityProtocol;
  * admin client.
  */
 public class ServerKafkaClientFactory extends KafkaClientFactory {
+  private static final Logger LOGGER = LogManager.getLogger(ServerKafkaClientFactory.class);
+
   protected final VeniceServerConfig serverConfig;
 
   public ServerKafkaClientFactory(
@@ -32,7 +37,7 @@ public class ServerKafkaClientFactory extends KafkaClientFactory {
     this.serverConfig = serverConfig;
   }
 
-  public Properties setupSSL(Properties properties) {
+  public Properties setupSecurity(Properties properties) {
     String kafkaBootstrapUrls = properties.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
     if (kafkaBootstrapUrls == null) {
       /** Override the bootstrap servers config if it's not set in the proposed properties. */
@@ -59,6 +64,14 @@ public class ServerKafkaClientFactory extends KafkaClientFactory {
     }
     properties.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, securityProtocol.name);
 
+    if (!StringUtils.isBlank(serverConfig.getKafkaSaslMechanism())) {
+      properties.setProperty(
+          CommonClientConfigs.SECURITY_PROTOCOL_CONFIG,
+          serverConfig.getKafkaSecurityProtocol(kafkaBootstrapUrls).name);
+      properties.setProperty("sasl.mechanism", serverConfig.getKafkaSaslMechanism());
+      properties.setProperty("sasl.jaas.config", serverConfig.getKafkaSaslJaasConfig());
+    }
+    LOGGER.info("Kafka client properties: {}", properties);
     return properties;
   }
 

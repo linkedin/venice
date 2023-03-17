@@ -31,6 +31,10 @@ public class ConfigKeys {
   public static final String KAFKA_CONFIG_PREFIX = ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX;
   public static final String KAFKA_BOOTSTRAP_SERVERS = ApacheKafkaProducerConfig.KAFKA_BOOTSTRAP_SERVERS;
   public static final String SSL_KAFKA_BOOTSTRAP_SERVERS = ApacheKafkaProducerConfig.SSL_KAFKA_BOOTSTRAP_SERVERS;
+
+  public static final String KAFKA_SASL_JAAS_CONFIG = ApacheKafkaProducerConfig.KAFKA_SASL_JAAS_CONFIG;
+
+  public static final String KAFKA_SASL_MECHANISM = ApacheKafkaProducerConfig.KAFKA_SASL_MECHANISM;
   public static final String KAFKA_LINGER_MS = ApacheKafkaProducerConfig.KAFKA_LINGER_MS;
   public static final String KAFKA_BATCH_SIZE = ApacheKafkaProducerConfig.KAFKA_BATCH_SIZE;
   public static final String KAFKA_PRODUCER_REQUEST_TIMEOUT_MS =

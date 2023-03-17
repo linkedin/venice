@@ -39,6 +39,10 @@ public class ApacheKafkaProducerConfig {
   // of them may be external to this repo
   public static final String SSL_TO_KAFKA = "ssl.to.kakfa";
 
+  public static final String KAFKA_SASL_JAAS_CONFIG = "sasl.jaas.config";
+
+  public static final String KAFKA_SASL_MECHANISM = "sasl.mechanism";
+
   private final Properties producerProperties;
 
   public ApacheKafkaProducerConfig(Properties allVeniceProperties) {

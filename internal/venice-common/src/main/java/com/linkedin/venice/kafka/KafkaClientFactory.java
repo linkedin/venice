@@ -58,7 +58,7 @@ public abstract class KafkaClientFactory {
   public PubSubConsumer getConsumer(Properties props, KafkaPubSubMessageDeserializer kafkaPubSubMessageDeserializer) {
     props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
-    Properties propertiesWithSSL = setupSSL(props);
+    Properties propertiesWithSSL = setupSecurity(props);
     return new ApacheKafkaConsumer(
         getKafkaConsumer(propertiesWithSSL),
         new VeniceProperties(props),
@@ -94,7 +94,7 @@ public abstract class KafkaClientFactory {
   }
 
   private <K, V> Consumer<K, V> getKafkaConsumer(Properties properties) {
-    Properties propertiesWithSSL = setupSSL(properties);
+    Properties propertiesWithSSL = setupSecurity(properties);
     return new KafkaConsumer<>(propertiesWithSSL);
   }
 
@@ -116,7 +116,7 @@ public abstract class KafkaClientFactory {
       String statsNamePrefix) {
     KafkaAdminWrapper adminWrapper =
         ReflectUtils.callConstructor(ReflectUtils.loadClass(kafkaAdminClientClass), new Class[0], new Object[0]);
-    Properties properties = setupSSL(new Properties());
+    Properties properties = setupSecurity(new Properties());
     if (!properties.contains(ConfigKeys.KAFKA_ADMIN_GET_TOPIC_CONFIG_MAX_RETRY_TIME_SEC)) {
       properties.put(
           ConfigKeys.KAFKA_ADMIN_GET_TOPIC_CONFIG_MAX_RETRY_TIME_SEC,
@@ -165,7 +165,7 @@ public abstract class KafkaClientFactory {
   /**
    * Setup essential ssl related configuration by putting all ssl properties of this factory into the given properties.
    */
-  public abstract Properties setupSSL(Properties properties);
+  public abstract Properties setupSecurity(Properties properties);
 
   abstract protected String getKafkaAdminClass();
 

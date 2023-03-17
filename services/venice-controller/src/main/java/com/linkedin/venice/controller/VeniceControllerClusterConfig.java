@@ -47,6 +47,8 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPIC
 import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_LOG_COMPACTION_LAG_MS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR_RT_TOPICS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_SASL_JAAS_CONFIG;
+import static com.linkedin.venice.ConfigKeys.KAFKA_SASL_MECHANISM;
 import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.LEAKED_PUSH_STATUS_CLEAN_UP_SERVICE_SLEEP_INTERVAL_MS;
 import static com.linkedin.venice.ConfigKeys.MIN_ACTIVE_REPLICA;
@@ -219,6 +221,10 @@ public class VeniceControllerClusterConfig {
 
   private String sslKafkaBootStrapServers;
 
+  private String kafkaSaslJaasConfig;
+
+  private String kafkaSaslMechanism;
+
   /**
    * Number of replicas for each kafka topic. It can be different from the Venice Storage Node replication factor,
    * defined by {@value com.linkedin.venice.ConfigKeys#DEFAULT_REPLICA_FACTOR}.
@@ -355,6 +361,9 @@ public class VeniceControllerClusterConfig {
       // In that case , ssl kafka broker list is an mandatory field
       sslKafkaBootStrapServers = props.getString(SSL_KAFKA_BOOTSTRAP_SERVERS);
     }
+
+    kafkaSaslJaasConfig = props.getString(KAFKA_SASL_JAAS_CONFIG, (String) null);
+    kafkaSaslMechanism = props.getString(KAFKA_SASL_MECHANISM, (String) null);
     helixSendMessageTimeoutMilliseconds = props.getInt(HELIX_SEND_MESSAGE_TIMEOUT_MS, 10000);
 
     kafkaSecurityProtocol = props.getString(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.PLAINTEXT.name());
@@ -521,6 +530,14 @@ public class VeniceControllerClusterConfig {
 
   public String getSslKafkaBootstrapServers() {
     return sslKafkaBootStrapServers;
+  }
+
+  public String getKafkaSaslJaasConfig() {
+    return kafkaSaslJaasConfig;
+  }
+
+  public String getKafkaSaslMechanism() {
+    return kafkaSaslMechanism;
   }
 
   public int getHelixSendMessageTimeoutMs() {

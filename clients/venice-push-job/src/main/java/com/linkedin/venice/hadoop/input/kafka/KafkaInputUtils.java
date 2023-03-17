@@ -51,6 +51,8 @@ public class KafkaInputUtils {
     consumerFactoryProperties
         .setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, config.get(KAFKA_INPUT_BROKER_URL));
 
+    // TODO: handle SASL ?
+
     return new KafkaConsumerFactoryImpl(new VeniceProperties(consumerFactoryProperties));
   }
 
