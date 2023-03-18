@@ -43,6 +43,7 @@ import static com.linkedin.venice.Arg.HYBRID_STORE_OVERHEAD_BYPASS;
 import static com.linkedin.venice.Arg.HYBRID_TIME_LAG;
 import static com.linkedin.venice.Arg.INCLUDE_SYSTEM_STORES;
 import static com.linkedin.venice.Arg.INCREMENTAL_PUSH_ENABLED;
+import static com.linkedin.venice.Arg.INTERVAL;
 import static com.linkedin.venice.Arg.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.Arg.KAFKA_CONSUMER_CONFIG_FILE;
 import static com.linkedin.venice.Arg.KAFKA_OPERATION_TIMEOUT;
@@ -437,6 +438,10 @@ public enum Command {
   EXECUTE_DATA_RECOVERY(
       "execute-data-recovery", "Execute data recovery for a group of stores",
       new Arg[] { RECOVERY_COMMAND, STORES, SOURCE_FABRIC }, new Arg[] { EXTRA_COMMAND_ARGS, DEBUG, NON_INTERACTIVE }
+  ),
+  MONITOR_DATA_RECOVERY(
+      "monitor-data-recovery", "Monitor data recovery progress for a group of stores",
+      new Arg[] { URL, STORES, DEST_FABRIC }, new Arg[] { INTERVAL }
   );
 
   private final String commandName;

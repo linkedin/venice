@@ -23,21 +23,18 @@ import org.apache.logging.log4j.Logger;
  *    failure: failure_reason
  */
 
-public class StoreRepushCommand {
+public class StoreRepushCommand extends Command {
   private static final Logger LOGGER = LogManager.getLogger(StoreRepushCommand.class);
 
-  // Store name.
-  private String store;
   private Params params;
-  private Result result;
+  private Result result = new Result();
   private List<String> shellCmd;
 
   // For unit test only.
   public StoreRepushCommand() {
   }
 
-  public StoreRepushCommand(String store, Params params) {
-    this.store = store;
+  public StoreRepushCommand(Params params) {
     this.params = params;
     this.shellCmd = generateShellCmd();
   }
@@ -47,19 +44,21 @@ public class StoreRepushCommand {
     this.params = params;
   }
 
-  public String getStore() {
-    return store;
+  @Override
+  public StoreRepushCommand.Result getResult() {
+    return result;
   }
 
-  public Result getResult() {
-    return result;
+  @Override
+  public boolean needWaitForFirstTaskToComplete() {
+    return true;
   }
 
   private List<String> generateRepushCommand() {
     List<String> cmd = new ArrayList<>();
     cmd.add(this.params.command);
     cmd.add(this.params.extraCommandArgs);
-    cmd.add(String.format("--store '%s'", store));
+    cmd.add(String.format("--store '%s'", this.params.store));
     cmd.add(String.format("--fabric '%s'", this.params.sourceFabric));
     return cmd;
   }
@@ -80,13 +79,14 @@ public class StoreRepushCommand {
     return shellCmd;
   }
 
-  public void processOutput(String output, int exitCode) {
-    result = new Result();
+  private void processOutput(String output, int exitCode) {
     result.setStdOut(output);
     result.setExitCode(exitCode);
     result.parseStandardOutput();
+    result.setCoreWorkDone(true);
   }
 
+  @Override
   public void execute() {
     ProcessBuilder pb = new ProcessBuilder(getShellCmd());
     // so we can ignore the error stream.
@@ -133,7 +133,7 @@ public class StoreRepushCommand {
     return "StoreRepushCommand{\n" + String.join(" ", shellCmd) + "\n}";
   }
 
-  public static class Params {
+  public static class Params extends Command.Params {
     // command name.
     private String command;
     // source fabric.
@@ -160,13 +160,9 @@ public class StoreRepushCommand {
     }
   }
 
-  public static class Result {
-    private String cluster;
-    private String store;
+  public static class Result extends Command.Result {
     private String stdOut;
     private int exitCode;
-    private String error;
-    private String message;
 
     public int getExitCode() {
       return exitCode;
@@ -182,42 +178,6 @@ public class StoreRepushCommand {
 
     public void setStdOut(String stdOut) {
       this.stdOut = stdOut;
-    }
-
-    public boolean isError() {
-      return error != null;
-    }
-
-    public String getCluster() {
-      return cluster;
-    }
-
-    public void setCluster(String cluster) {
-      this.cluster = cluster;
-    }
-
-    public String getStore() {
-      return store;
-    }
-
-    public void setStore(String store) {
-      this.store = store;
-    }
-
-    public void setError(String error) {
-      this.error = error;
-    }
-
-    public String getError() {
-      return error;
-    }
-
-    public String getMessage() {
-      return message;
-    }
-
-    public void setMessage(String message) {
-      this.message = message;
     }
 
     public void parseStandardOutput() {
