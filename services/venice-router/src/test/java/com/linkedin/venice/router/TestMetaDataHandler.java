@@ -386,15 +386,15 @@ public class TestMetaDataHandler {
     Mockito.doReturn(Optional.of(storeConfig)).when(storeConfigRepository).getStoreConfig(storeName);
     Map<String, String> clusterToD2Map = new HashMap<>();
     clusterToD2Map.put(clusterName, d2Service);
-    Map<String, String> clusterToServerD2ServiceMap = new HashMap<>();
-    clusterToServerD2ServiceMap.put(clusterName, serverD2Service);
+    Map<String, String> clusterToServerD2Map = new HashMap<>();
+    clusterToServerD2Map.put(clusterName, serverD2Service);
     FullHttpResponse response = passRequestToMetadataHandler(
         "http://myRouterHost:4567/discover_cluster/" + storeName,
         null,
         null,
         storeConfigRepository,
         clusterToD2Map,
-        clusterToServerD2ServiceMap);
+        clusterToServerD2Map);
 
     Assert.assertEquals(response.status().code(), 200);
     Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");

@@ -145,11 +145,11 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       }
 
       Map<String, String> clusterToServerD2;
-      if (options.getClusterToD2() == null || options.getClusterToD2().isEmpty()) {
+      if (options.getClusterToServerD2() == null || options.getClusterToServerD2().isEmpty()) {
         clusterToServerD2 = Arrays.stream(options.getClusterNames())
             .collect(Collectors.toMap(c -> c, c -> Utils.getUniqueString("server_d2_service")));
       } else {
-        clusterToServerD2 = options.getClusterToD2();
+        clusterToServerD2 = options.getClusterToServerD2();
       }
 
       for (String clusterName: options.getClusterNames()) {

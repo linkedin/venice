@@ -32,6 +32,7 @@ public class VeniceControllerCreateOptions {
   private final Properties extraProperties;
   private final AuthorizerService authorizerService;
   private final String regionName;
+  private final Map<String, String> clusterToServerD2;
 
   private VeniceControllerCreateOptions(Builder builder) {
     sslToKafka = builder.sslToKafka;
@@ -49,6 +50,7 @@ public class VeniceControllerCreateOptions {
     authorizerService = builder.authorizerService;
     isParent = builder.childControllers != null && builder.childControllers.length != 0;
     regionName = builder.regionName;
+    clusterToServerD2 = builder.clusterToServerD2;
   }
 
   @Override
@@ -94,6 +96,8 @@ public class VeniceControllerCreateOptions {
         .append(", ")
         .append("childControllers:")
         .append(getAddressesOfChildControllers())
+        .append("clusterToServerD2:")
+        .append(clusterToServerD2)
         .toString();
   }
 
@@ -167,6 +171,10 @@ public class VeniceControllerCreateOptions {
     return regionName;
   }
 
+  public Map<String, String> getClusterToServerD2() {
+    return clusterToServerD2;
+  }
+
   public static class Builder {
     private final String[] clusterNames;
     private final ZkServerWrapper zkServer;
@@ -183,6 +191,7 @@ public class VeniceControllerCreateOptions {
     private Properties extraProperties = new Properties();
     private AuthorizerService authorizerService;
     private String regionName = "";
+    private Map<String, String> clusterToServerD2 = null;
 
     public Builder(String[] clusterNames, ZkServerWrapper zkServer, KafkaBrokerWrapper kafkaBroker) {
       this.clusterNames = Objects.requireNonNull(clusterNames, "clusterNames cannot be null when creating controller");
@@ -248,6 +257,11 @@ public class VeniceControllerCreateOptions {
 
     public Builder regionName(String regionName) {
       this.regionName = regionName;
+      return this;
+    }
+
+    public Builder clusterToServerD2(Map<String, String> clusterToServerD2) {
+      this.clusterToServerD2 = clusterToServerD2;
       return this;
     }
 
