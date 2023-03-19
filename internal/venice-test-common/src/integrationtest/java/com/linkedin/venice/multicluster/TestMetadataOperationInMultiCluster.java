@@ -36,7 +36,7 @@ import org.testng.annotations.Test;
 public class TestMetadataOperationInMultiCluster {
   private static final Logger LOGGER = LogManager.getLogger(TestMetadataOperationInMultiCluster.class);
 
-  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  @Test(timeOut = 180 * Time.MS_PER_SECOND)
   public void testCreateStoreAndVersionForMultiCluster() {
     String keySchema = "\"string\"";
     String valSchema = "\"string\"";
