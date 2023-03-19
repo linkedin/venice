@@ -285,7 +285,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
             options.isForkServer(),
             serverName,
             options.getKafkaClusterMap(),
-            clusterToServerD2);
+            clusterToServerD2.get(options.getClusterName()));
         LOGGER.info(
             "[{}][{}] Created server on port {}",
             options.getRegionName(),
@@ -592,7 +592,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         zkServerWrapper.getAddress(),
         featureProperties,
         new Properties(),
-        clusterToServerD2);
+        clusterToServerD2.get(clusterName));
     synchronized (this) {
       veniceServerWrappers.put(veniceServerWrapper.getPort(), veniceServerWrapper);
     }
@@ -613,7 +613,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         zkServerWrapper.getAddress(),
         new Properties(),
         properties,
-        clusterToServerD2);
+        clusterToServerD2.get(clusterName));
     synchronized (this) {
       veniceServerWrappers.put(veniceServerWrapper.getPort(), veniceServerWrapper);
     }
@@ -628,7 +628,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         zkServerWrapper.getAddress(),
         featureProperties,
         configProperties,
-        clusterToServerD2);
+        clusterToServerD2.get(clusterName));
     synchronized (this) {
       veniceServerWrappers.put(veniceServerWrapper.getPort(), veniceServerWrapper);
     }

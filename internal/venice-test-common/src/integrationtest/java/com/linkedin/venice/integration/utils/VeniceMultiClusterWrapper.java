@@ -64,19 +64,13 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       }
       String[] clusterNames = new String[options.getNumberOfClusters()];
       Map<String, String> clusterToD2 = new HashMap<>();
+      Map<String, String> clusterToServerD2 = new HashMap<>();
       for (int i = 0; i < options.getNumberOfClusters(); i++) {
         String clusterName =
             options.isRandomizeClusterName() ? Utils.getUniqueString("venice-cluster" + i) : "venice-cluster" + i;
         clusterNames[i] = clusterName;
         String d2ServiceName = "venice-" + i;
         clusterToD2.put(clusterName, d2ServiceName);
-      }
-
-      Map<String, String> clusterToServerD2 = new HashMap<>();
-      for (int i = 0; i < options.getNumberOfClusters(); i++) {
-        String clusterName =
-            options.isRandomizeClusterName() ? Utils.getUniqueString("venice-cluster" + i) : "venice-cluster" + i;
-        clusterNames[i] = clusterName;
         String serverD2ServiceName = Utils.getUniqueString(clusterName + "_d2");
         clusterToServerD2.put(clusterName, serverD2ServiceName);
       }
