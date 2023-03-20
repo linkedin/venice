@@ -4,6 +4,7 @@ import static org.apache.avro.Schema.Type.ARRAY;
 import static org.apache.avro.Schema.Type.MAP;
 
 import com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp;
+import com.linkedin.venice.utils.IndexedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.apache.avro.Schema;
@@ -85,7 +86,7 @@ public class CollectionTimestampMergeRecordHelper extends PerFieldTimestampMerge
       return collectionFieldOperationHandler.handlePutList(
           putOperationTimestamp,
           putOperationColoID,
-          putFieldValue,
+          (List<Object>) putFieldValue,
           collectionRmd,
           currValueRecord,
           fieldName);
@@ -93,7 +94,7 @@ public class CollectionTimestampMergeRecordHelper extends PerFieldTimestampMerge
       return collectionFieldOperationHandler.handlePutMap(
           putOperationTimestamp,
           putOperationColoID,
-          putFieldValue,
+          (IndexedHashMap<String, Object>) putFieldValue,
           collectionRmd,
           currValueRecord,
           fieldName);

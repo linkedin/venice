@@ -31,7 +31,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
   public UpdateResultStatus handlePutList(
       final long putTimestamp,
       final int coloID,
-      Object newFieldValue,
+      List<Object> newFieldValue,
       CollectionRmdTimestamp<Object> collectionFieldRmd,
       GenericRecord currValueRecord,
       String fieldName) {
@@ -49,7 +49,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     if (newFieldValue == null) {
       toPutList = Collections.emptyList();
     } else {
-      toPutList = (List<Object>) newFieldValue;
+      toPutList = newFieldValue;
     }
 
     if (collectionFieldRmd.isInPutOnlyState()) {
@@ -199,7 +199,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
   public UpdateResultStatus handlePutMap(
       final long putTimestamp,
       final int coloID,
-      Object newFieldValue,
+      IndexedHashMap<String, Object> newFieldValue,
       CollectionRmdTimestamp<String> collectionFieldRmd,
       GenericRecord currValueRecord,
       String fieldName) {
@@ -217,7 +217,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
         throw new IllegalStateException(
             "Expect the value to put on the field to be an IndexedHashMap. Got: " + newFieldValue.getClass());
       }
-      toPutMap = (IndexedHashMap<String, Object>) newFieldValue;
+      toPutMap = newFieldValue;
     }
 
     // Current map will be updated.
@@ -1069,7 +1069,10 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
   }
 
   private boolean shouldUpdateMapFieldItemValueWithSameTs(Object currentValue, Object newValue, Schema fieldSchema) {
-    // This is a safeguard not to compare with null value.
+    /**
+     * For complex map item value type, it is possible that the item value can be null. This is the safeguard to not
+     * compare with the null value and always let the not-null value win in the given case.
+     */
     if (currentValue == null) {
       return true;
     }

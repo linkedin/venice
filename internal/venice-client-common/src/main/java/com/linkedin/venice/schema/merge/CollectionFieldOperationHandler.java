@@ -1,6 +1,7 @@
 package com.linkedin.venice.schema.merge;
 
 import com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp;
+import com.linkedin.venice.utils.IndexedHashMap;
 import java.util.List;
 import java.util.Map;
 import javax.annotation.concurrent.ThreadSafe;
@@ -23,7 +24,7 @@ public abstract class CollectionFieldOperationHandler {
   public abstract UpdateResultStatus handlePutList(
       final long putTimestamp,
       final int coloID,
-      Object newFieldValue,
+      List<Object> newFieldValue,
       CollectionRmdTimestamp<Object> collectionFieldRmd,
       GenericRecord currValueRecord,
       String fieldName);
@@ -31,7 +32,7 @@ public abstract class CollectionFieldOperationHandler {
   public abstract UpdateResultStatus handlePutMap(
       final long putTimestamp,
       final int coloID,
-      Object newFieldValue,
+      IndexedHashMap<String, Object> newFieldValue,
       CollectionRmdTimestamp<String> collectionFieldRmd,
       GenericRecord currValueRecord,
       String fieldName);
