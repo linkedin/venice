@@ -1072,8 +1072,9 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
 
   private boolean shouldUpdateMapFieldItemValueWithSameTs(Object currentValue, Object newValue, Schema fieldSchema) {
     /**
-     * For complex map item value type, it is possible that the item value can be null. This is the safeguard to not
-     * compare with the null value and always let the not-null value win in the given case.
+     * For complex map item value type, for example union type [null, item value type], it is possible that the item
+     * value can be null. This is the safeguard to not compare with the null value and always let the not-null value win
+     * in the given case.
      */
     if (currentValue == null) {
       return true;
