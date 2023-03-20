@@ -24,7 +24,7 @@ public abstract class CollectionFieldOperationHandler {
   public abstract UpdateResultStatus handlePutList(
       final long putTimestamp,
       final int coloID,
-      List<Object> newList,
+      List<Object> newFieldValue,
       CollectionRmdTimestamp<Object> collectionFieldRmd,
       GenericRecord currValueRecord,
       String fieldName);
@@ -32,7 +32,7 @@ public abstract class CollectionFieldOperationHandler {
   public abstract UpdateResultStatus handlePutMap(
       final long putTimestamp,
       final int coloID,
-      IndexedHashMap<String, Object> newMap,
+      IndexedHashMap<String, Object> newFieldValue,
       CollectionRmdTimestamp<String> collectionFieldRmd,
       GenericRecord currValueRecord,
       String fieldName);
