@@ -19,6 +19,7 @@ public class VeniceClusterCreateOptions {
   private final String clusterName;
   private final String regionName;
   private final Map<String, String> clusterToD2;
+  private final Map<String, String> clusterToServerD2;
   private final int numberOfControllers;
   private final int numberOfServers;
   private final int numberOfRouters;
@@ -37,12 +38,12 @@ public class VeniceClusterCreateOptions {
   private final Map<String, Map<String, String>> kafkaClusterMap;
   private final ZkServerWrapper zkServerWrapper;
   private final KafkaBrokerWrapper kafkaBrokerWrapper;
-  private final Map<String, String> clusterToServerD2;
 
   private VeniceClusterCreateOptions(Builder builder) {
     this.clusterName = builder.clusterName;
     this.regionName = builder.regionName;
     this.clusterToD2 = builder.clusterToD2;
+    this.clusterToServerD2 = builder.clusterToServerD2;
     this.numberOfControllers = builder.numberOfControllers;
     this.numberOfServers = builder.numberOfServers;
     this.numberOfRouters = builder.numberOfRouters;
@@ -61,7 +62,6 @@ public class VeniceClusterCreateOptions {
     this.kafkaClusterMap = builder.kafkaClusterMap;
     this.zkServerWrapper = builder.zkServerWrapper;
     this.kafkaBrokerWrapper = builder.kafkaBrokerWrapper;
-    this.clusterToServerD2 = builder.clusterToServerD2;
   }
 
   public String getClusterName() {
@@ -74,6 +74,10 @@ public class VeniceClusterCreateOptions {
 
   public Map<String, String> getClusterToD2() {
     return clusterToD2;
+  }
+
+  public Map<String, String> getClusterToServerD2() {
+    return clusterToServerD2;
   }
 
   public int getNumberOfControllers() {
@@ -148,10 +152,6 @@ public class VeniceClusterCreateOptions {
     return kafkaBrokerWrapper;
   }
 
-  public Map<String, String> getClusterToServerD2() {
-    return clusterToServerD2;
-  }
-
   @Override
   public String toString() {
     return new StringBuilder().append("VeniceClusterCreateOptions - ")
@@ -208,6 +208,9 @@ public class VeniceClusterCreateOptions {
         .append(", ")
         .append("clusterToD2:")
         .append(clusterToD2)
+        .append(",")
+        .append("clusterToServerD2:")
+        .append(clusterToServerD2)
         .append(", ")
         .append("zk:")
         .append(zkServerWrapper == null ? "null" : zkServerWrapper.getAddress())
@@ -217,8 +220,6 @@ public class VeniceClusterCreateOptions {
         .append(", ")
         .append("kafkaClusterMap:")
         .append(kafkaClusterMap)
-        .append("clusterToServerD2:")
-        .append(clusterToServerD2)
         .toString();
   }
 
@@ -226,6 +227,7 @@ public class VeniceClusterCreateOptions {
     private String clusterName;
     private String regionName = "";
     private Map<String, String> clusterToD2 = null;
+    private Map<String, String> clusterToServerD2 = null;
     private int numberOfControllers = DEFAULT_NUMBER_OF_CONTROLLERS;
     private int numberOfServers = DEFAULT_NUMBER_OF_SERVERS;
     private int numberOfRouters = DEFAULT_NUMBER_OF_ROUTERS;
@@ -245,7 +247,6 @@ public class VeniceClusterCreateOptions {
     private Map<String, Map<String, String>> kafkaClusterMap;
     private ZkServerWrapper zkServerWrapper;
     private KafkaBrokerWrapper kafkaBrokerWrapper;
-    private Map<String, String> clusterToServerD2 = null;
 
     public Builder clusterName(String clusterName) {
       this.clusterName = clusterName;
@@ -259,6 +260,11 @@ public class VeniceClusterCreateOptions {
 
     public Builder clusterToD2(Map<String, String> clusterToD2) {
       this.clusterToD2 = clusterToD2;
+      return this;
+    }
+
+    public Builder clusterToServerD2(Map<String, String> clusterToServerD2) {
+      this.clusterToServerD2 = clusterToServerD2;
       return this;
     }
 
@@ -350,11 +356,6 @@ public class VeniceClusterCreateOptions {
 
     public Builder kafkaBrokerWrapper(KafkaBrokerWrapper kafkaBrokerWrapper) {
       this.kafkaBrokerWrapper = kafkaBrokerWrapper;
-      return this;
-    }
-
-    public Builder clusterToServerD2(Map<String, String> clusterToServerD2) {
-      this.clusterToServerD2 = clusterToServerD2;
       return this;
     }
 

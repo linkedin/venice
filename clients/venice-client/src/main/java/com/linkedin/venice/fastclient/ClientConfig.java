@@ -189,12 +189,14 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     }
 
     this.isVsonStore = isVsonStore;
+
     this.isRequestBasedMetadata = isRequestBasedMetadata;
     this.d2Client = d2Client;
     this.routerD2Service = routerD2Service;
     if (this.isRequestBasedMetadata) {
       if (this.d2Client == null || this.routerD2Service == null) {
-        throw new VeniceClientException("d2Client must be specified when request based metadata is enabled");
+        throw new VeniceClientException(
+            "Both param: d2Client and param: routerD2Service must be specified when request based metadata is enabled");
       }
     }
   }
