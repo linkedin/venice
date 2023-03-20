@@ -53,6 +53,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     }
 
     if (collectionFieldRmd.isInPutOnlyState()) {
+      // This is to make sure we put the exact value when the new value is null.
       currValueRecord.put(fieldName, newFieldValue);
       collectionFieldRmd.setPutOnlyPartLength(toPutList.size());
       return UpdateResultStatus.COMPLETELY_UPDATED;
@@ -222,6 +223,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
 
     // Current map will be updated.
     if (collectionFieldRmd.isInPutOnlyState()) {
+      // This is to make sure we put the exact value when the new value is null.
       currValueRecord.put(fieldName, newFieldValue);
       collectionFieldRmd.setPutOnlyPartLength(toPutMap.size());
       return UpdateResultStatus.COMPLETELY_UPDATED;
