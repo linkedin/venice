@@ -79,6 +79,7 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
   public static final String TYPE_VALUE_SCHEMA = "value_schema";
   public static final String TYPE_UPDATE_SCHEMA = "update_schema";
   public static final String TYPE_CLUSTER_DISCOVERY = "discover_cluster";
+  public static final String TYPE_REQUEST_TOPIC = "request_topic";
   public static final String TYPE_HEALTH_CHECK = "admin";
   public static final String TYPE_ADMIN = "admin"; // Creating a new variable name for code sanity
   public static final String TYPE_RESOURCE_STATE = "resource_state";
