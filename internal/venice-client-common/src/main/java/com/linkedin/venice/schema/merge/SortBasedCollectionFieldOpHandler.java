@@ -214,10 +214,6 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     if (newFieldValue == null) {
       toPutMap = new IndexedHashMap<>();
     } else {
-      if (!(newFieldValue instanceof IndexedHashMap)) {
-        throw new IllegalStateException(
-            "Expect the value to put on the field to be an IndexedHashMap. Got: " + newFieldValue.getClass());
-      }
       toPutMap = newFieldValue;
     }
 

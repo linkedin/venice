@@ -91,6 +91,10 @@ public class CollectionTimestampMergeRecordHelper extends PerFieldTimestampMerge
           currValueRecord,
           fieldName);
     } else if (isMapField(currValueRecord, fieldName)) {
+      if ((putFieldValue != null) && (!(putFieldValue instanceof IndexedHashMap))) {
+        throw new IllegalStateException(
+            "Expect the value to put on the field to be an IndexedHashMap. Got: " + putFieldValue.getClass());
+      }
       return collectionFieldOperationHandler.handlePutMap(
           putOperationTimestamp,
           putOperationColoID,
