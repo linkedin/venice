@@ -7,7 +7,6 @@ import com.linkedin.venice.systemstore.schemas.StoreVersion;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 
 
 /**
@@ -420,12 +419,12 @@ public class SystemStore extends AbstractStore {
   }
 
   @Override
-  public Optional<Integer> getRmdVersionID() {
-    return zkSharedStore.getRmdVersionID();
+  public int getRmdVersion() {
+    return zkSharedStore.getRmdVersion();
   }
 
   @Override
-  public void setRmdVersionID(Optional<Integer> rmdVersionID) {
+  public void setRmdVersion(int rmdVersion) {
     throwUnsupportedOperationException("Cannot set RmdVersionID here.");
   }
 

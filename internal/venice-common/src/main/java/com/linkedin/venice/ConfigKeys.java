@@ -1697,7 +1697,7 @@ public class ConfigKeys {
    * This will indicate which ReplicationMetadataSchemaGenerator version to use to generate replication metadata schema.
    * This config should be set on a per-cluster level, meaning that each cluster can have its own RMD version ID.
    */
-  public static final String REPLICATION_METADATA_VERSION_ID = "replication.metadata.version.id";
+  public static final String REPLICATION_METADATA_VERSION = "replication.metadata.version";
 
   /*
    * This config will specify the offset lag threshold to be used for offset lag comparison in making partition online faster.
