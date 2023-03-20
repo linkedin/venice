@@ -905,22 +905,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
             Object currentValue = currMap.get(newKey);
             Object newValue = newKeyValue.getVal();
             Schema fieldSchema = currValueRecord.getSchema().getField(fieldName).schema();
-            Schema mapValueSchema = null;
-            if (fieldSchema.isUnion()) {
-              for (Schema schema: fieldSchema.getTypes()) {
-                if (schema.getType().equals(Schema.Type.MAP)) {
-                  mapValueSchema = schema.getValueType();
-                  break;
-                }
-              }
-            } else {
-              mapValueSchema = fieldSchema.getValueType();
-            }
-            if (mapValueSchema == null) {
-              throw new VeniceException("Could not find map schema in map field: " + fieldSchema.toString(true));
-            }
-
-            if (AvroCollectionElementComparator.INSTANCE.compare(newValue, currentValue, mapValueSchema) > 0) {
+            if (shouldUpdateMapFieldItemValueWithSameTs(currentValue, newValue, fieldSchema)) {
               activeEntriesToTsMap.remove(newKeyValue);
               activeEntriesToTsMap.put(newKeyValue, modifyTimestamp);
               updated = true;
@@ -1081,5 +1066,30 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       return currCollectionFieldRmd.getTopLevelColoID() > incomingRequestColoID;
     }
     return false;
+  }
+
+  private boolean shouldUpdateMapFieldItemValueWithSameTs(Object currentValue, Object newValue, Schema fieldSchema) {
+    // This is a safeguard not to compare with null value.
+    if (currentValue == null) {
+      return true;
+    }
+    if (newValue == null) {
+      return false;
+    }
+    Schema mapValueSchema = null;
+    if (fieldSchema.isUnion()) {
+      for (Schema schema: fieldSchema.getTypes()) {
+        if (schema.getType().equals(Schema.Type.MAP)) {
+          mapValueSchema = schema.getValueType();
+          break;
+        }
+      }
+    } else {
+      mapValueSchema = fieldSchema.getValueType();
+    }
+    if (mapValueSchema == null) {
+      throw new VeniceException("Could not find map schema in map field: " + fieldSchema.toString(true));
+    }
+    return AvroCollectionElementComparator.INSTANCE.compare(newValue, currentValue, mapValueSchema) > 0;
   }
 }
