@@ -330,6 +330,12 @@ public class ConfigKeys {
   public static final String CONTROLLER_STORE_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MINUTES =
       "controller.store.graveyard.cleanup.sleep.interval.between.list.fetch.minutes";
 
+  /**
+   * Whether the superset schema generation in Parent Controller should be done via passed callback or not.
+   */
+  public static final String CONTROLLER_PARENT_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED =
+      "controller.parent.external.superset.schema.generation.enabled";
+
   // Server specific configs
   public static final String LISTENER_PORT = "listener.port";
 
