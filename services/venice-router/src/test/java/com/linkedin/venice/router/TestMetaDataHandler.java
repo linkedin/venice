@@ -771,6 +771,7 @@ public class TestMetaDataHandler {
         null,
         storeConfigRepository,
         Collections.emptyMap(),
+        Collections.emptyMap(),
         storeRepository);
     Assert.assertEquals(response.status().code(), 400);
     Assert.assertEquals(
@@ -803,6 +804,7 @@ public class TestMetaDataHandler {
         null,
         null,
         storeConfigRepository,
+        Collections.emptyMap(),
         Collections.emptyMap(),
         storeRepository);
     Assert.assertEquals(response.status().code(), 400);
@@ -837,6 +839,7 @@ public class TestMetaDataHandler {
         null,
         null,
         storeConfigRepository,
+        Collections.emptyMap(),
         Collections.emptyMap(),
         storeRepository);
     Assert.assertEquals(response.status().code(), 500);
@@ -877,6 +880,7 @@ public class TestMetaDataHandler {
         null,
         storeConfigRepository,
         Collections.emptyMap(),
+        Collections.emptyMap(),
         storeRepository);
     Assert.assertEquals(response.status().code(), 400);
     Assert.assertEquals(
@@ -914,6 +918,7 @@ public class TestMetaDataHandler {
         null,
         null,
         storeConfigRepository,
+        Collections.emptyMap(),
         Collections.emptyMap(),
         storeRepository);
     Assert.assertEquals(response.status().code(), 400);
@@ -959,6 +964,7 @@ public class TestMetaDataHandler {
         null,
         null,
         storeConfigRepository,
+        Collections.emptyMap(),
         Collections.emptyMap(),
         storeRepository);
     Assert.assertEquals(response.status().code(), 200);
@@ -1010,6 +1016,7 @@ public class TestMetaDataHandler {
         null,
         null,
         storeConfigRepository,
+        Collections.emptyMap(),
         Collections.emptyMap(),
         storeRepository);
     Assert.assertEquals(response.status().code(), 200);
@@ -1066,6 +1073,7 @@ public class TestMetaDataHandler {
         null,
         storeConfigRepository,
         Collections.emptyMap(),
+        Collections.emptyMap(),
         storeRepository);
     Assert.assertEquals(response.status().code(), 200);
     VersionCreationResponse versionCreationResponse =
@@ -1117,6 +1125,7 @@ public class TestMetaDataHandler {
         null,
         null,
         storeConfigRepository,
+        Collections.emptyMap(),
         Collections.emptyMap(),
         storeRepository);
     Assert.assertEquals(response.status().code(), 400);
