@@ -3,9 +3,9 @@ package com.linkedin.davinci.kafka.consumer;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -34,7 +34,7 @@ import org.apache.logging.log4j.Logger;
 public class AggKafkaConsumerService extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(AggKafkaConsumerService.class);
 
-  private final KafkaClientFactory consumerFactory;
+  private final PubSubConsumerAdapterFactory consumerFactory;
   private final int numOfConsumersPerKafkaCluster;
   private final long readCycleDelayMs;
   private final long sharedConsumerNonExistingTopicCleanupDelayMS;
@@ -51,7 +51,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   private final KafkaPubSubMessageDeserializer pubSubDeserializer;
 
   public AggKafkaConsumerService(
-      final KafkaClientFactory consumerFactory,
+      final PubSubConsumerAdapterFactory consumerFactory,
       final VeniceServerConfig serverConfig,
       final EventThrottler bandwidthThrottler,
       final EventThrottler recordsThrottler,

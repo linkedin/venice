@@ -17,6 +17,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -51,12 +52,16 @@ public class TestDeleteStoreDeletesRealtimeTopic {
     venice = ServiceFactory.getVeniceCluster();
     controllerClient =
         ControllerClient.constructClusterControllerClient(venice.getClusterName(), venice.getRandomRouterURL());
-    topicManager = new TopicManager(
+
+    try (TopicManagerRepository topicManagerRepository = IntegrationTestPushUtils.getTopicManagerRepo(
         DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
         100,
         0l,
-        IntegrationTestPushUtils.getVeniceConsumerFactory(venice.getKafka()),
-        pubSubTopicRepository);
+        venice.getKafka().getAddress(),
+        pubSubTopicRepository)) {
+      topicManager = topicManagerRepository.getTopicManager();
+    }
+
     storeName = Utils.getUniqueString("hybrid-store");
     venice.getNewStore(storeName);
     makeStoreHybrid(venice, storeName, 100L, 5L);

@@ -1,16 +1,7 @@
 package com.linkedin.venice.endToEnd;
 
 import static com.linkedin.davinci.store.rocksdb.RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED;
-import static com.linkedin.venice.ConfigKeys.DEFAULT_MAX_NUMBER_OF_PARTITIONS;
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.PERSISTENCE_TYPE;
-import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER;
-import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
-import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED;
-import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
-import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_CONSUMER_ASSIGNMENT_STRATEGY;
-import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA;
+import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFER_VERSION_SWAP;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_KEY_SCHEMA;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.DEFAULT_VALUE_SCHEMA;
@@ -187,12 +178,15 @@ public class TestHybrid {
                 .build());
         ControllerClient controllerClient =
             new ControllerClient(venice.getClusterName(), parentController.getControllerUrl());
-        TopicManager topicManager = new TopicManager(
-            DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
-            100,
-            0L,
-            IntegrationTestPushUtils.getVeniceConsumerFactory(venice.getKafka()),
-            sharedVenice.getPubSubTopicRepository())) {
+        TopicManager topicManager =
+            IntegrationTestPushUtils
+                .getTopicManagerRepo(
+                    DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+                    100,
+                    0l,
+                    venice.getKafka().getAddress(),
+                    venice.getPubSubTopicRepository())
+                .getTopicManager()) {
       long streamingRewindSeconds = 25L;
       long streamingMessageLag = 2L;
       final String storeName = Utils.getUniqueString("multi-colo-hybrid-store");
@@ -317,12 +311,15 @@ public class TestHybrid {
       try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
           AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
               ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()));
-          TopicManager topicManager = new TopicManager(
-              DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
-              100,
-              MIN_COMPACTION_LAG,
-              IntegrationTestPushUtils.getVeniceConsumerFactory(venice.getKafka()),
-              sharedVenice.getPubSubTopicRepository())) {
+          TopicManager topicManager =
+              IntegrationTestPushUtils
+                  .getTopicManagerRepo(
+                      DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+                      100,
+                      0l,
+                      venice.getKafka().getAddress(),
+                      sharedVenice.getPubSubTopicRepository())
+                  .getTopicManager()) {
 
         Cache cacheNothingCache = Mockito.mock(Cache.class);
         Mockito.when(cacheNothingCache.getIfPresent(Mockito.any())).thenReturn(null);
@@ -1118,12 +1115,15 @@ public class TestHybrid {
       try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
           AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
               ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()));
-          TopicManager topicManager = new TopicManager(
-              DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
-              100,
-              MIN_COMPACTION_LAG,
-              IntegrationTestPushUtils.getVeniceConsumerFactory(venice.getKafka()),
-              sharedVenice.getPubSubTopicRepository())) {
+          TopicManager topicManager =
+              IntegrationTestPushUtils
+                  .getTopicManagerRepo(
+                      DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+                      100L,
+                      MIN_COMPACTION_LAG,
+                      venice.getKafka().getAddress(),
+                      sharedVenice.getPubSubTopicRepository())
+                  .getTopicManager()) {
 
         ControllerResponse response = controllerClient.updateStore(
             storeName,

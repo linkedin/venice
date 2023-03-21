@@ -1,9 +1,12 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.ConfigConstants.*;
 import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_DERIVED_SCHEMA_ID;
 import static com.linkedin.venice.controller.UserSystemStoreLifeCycleHelper.AUTO_META_SYSTEM_STORE_PUSH_ID_PREFIX;
+import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
+import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REWIND_TIME_IN_SECONDS;
@@ -46,7 +49,6 @@ import com.linkedin.venice.controller.init.InternalRTStoreInitializationRoutine;
 import com.linkedin.venice.controller.init.SystemSchemaInitializationRoutine;
 import com.linkedin.venice.controller.kafka.StoreStatusDecider;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
-import com.linkedin.venice.controller.kafka.consumer.ControllerKafkaClientFactory;
 import com.linkedin.venice.controller.kafka.protocol.admin.HybridStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreViewConfigRecord;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -99,6 +101,8 @@ import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
+import com.linkedin.venice.kafka.admin.ApacheKafkaAdminAdapterFactory;
+import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
@@ -141,9 +145,8 @@ import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.participant.protocol.enums.ParticipantMessageType;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
-import com.linkedin.venice.pubsub.factory.MetricsParameters;
-import com.linkedin.venice.pubsub.factory.PubSubClientFactory;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
@@ -181,6 +184,7 @@ import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
@@ -247,6 +251,7 @@ import org.apache.helix.participant.StateMachineEngine;
 import org.apache.helix.zookeeper.datamodel.ZNRecord;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.http.HttpStatus;
+import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -320,7 +325,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final long deprecatedJobTopicMaxRetentionMs;
   private final HelixReadOnlyStoreConfigRepository storeConfigRepo;
   private final VeniceWriterFactory veniceWriterFactory;
-  private final PubSubClientFactory veniceConsumerFactory;
+  private final PubSubConsumerAdapterFactory veniceConsumerFactory;
+  private final VeniceProperties pubSubSSLProperties;
   private final int minNumberOfStoreVersionsToPreserve;
   private final StoreGraveyard storeGraveyard;
   private final Map<String, String> participantMessageStoreRTTMap;
@@ -396,6 +402,23 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         pubSubTopicRepository);
   }
 
+  private VeniceProperties getPubSubSSLPropertiesFromControllerConfig(VeniceControllerConfig controllerConfig) {
+    Properties properties = new Properties();
+    if (KafkaSSLUtils.isKafkaSSLProtocol(controllerConfig.getKafkaSecurityProtocol())) {
+      Optional<SSLConfig> sslConfig = controllerConfig.getSslConfig();
+      if (!sslConfig.isPresent()) {
+        throw new VeniceException("SSLConfig should be present when Kafka SSL is enabled");
+      }
+      properties.putAll(sslConfig.get().getKafkaSSLConfig());
+      properties.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, controllerConfig.getKafkaSecurityProtocol());
+      properties
+          .setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, controllerConfig.getSslKafkaBootstrapServers());
+    } else {
+      properties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, controllerConfig.getKafkaBootstrapServers());
+    }
+    return new VeniceProperties(properties);
+  }
+
   // TODO Use different configs for different clusters when creating helix admin.
   public VeniceHelixAdmin(
       VeniceControllerMultiClusterConfig multiClusterConfigs,
@@ -458,23 +481,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     this.zkClient = ZkClientFactory.newZkClient(multiClusterConfigs.getZkAddress());
     this.zkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, "controller-zk-client"));
     this.adapterSerializer = new HelixAdapterSerializer();
-    this.veniceConsumerFactory = new ControllerKafkaClientFactory(
-        commonConfig,
-        Optional.of(
-            new MetricsParameters(
-                ControllerKafkaClientFactory.class,
-                this.getClass(),
-                kafkaBootstrapServers,
-                metricsRepository)));
 
-    this.topicManagerRepository = new TopicManagerRepository(
-        getKafkaBootstrapServers(isSslToKafka()),
-        multiClusterConfigs.getTopicManagerKafkaOperationTimeOutMs(),
-        multiClusterConfigs.getTopicDeletionStatusPollIntervalMs(),
-        multiClusterConfigs.getKafkaMinLogCompactionLagInMs(),
-        veniceConsumerFactory,
-        metricsRepository,
-        pubSubTopicRepository);
+    this.pubSubSSLProperties = getPubSubSSLPropertiesFromControllerConfig(commonConfig);
+    this.veniceConsumerFactory = new ApacheKafkaConsumerAdapterFactory();
+    this.topicManagerRepository = TopicManagerRepository.builder()
+        .setPubSubTopicRepository(pubSubTopicRepository)
+        .setMetricsRepository(metricsRepository)
+        .setLocalKafkaBootstrapServers(getKafkaBootstrapServers(isSslToKafka()))
+        .setTopicDeletionStatusPollIntervalMs(DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS)
+        .setTopicMinLogCompactionLagMs(DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS)
+        .setKafkaOperationTimeoutMs(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS)
+        .setPubSubProperties(pubSubSSLProperties)
+        .setPubSubAdminAdapterFactory(new ApacheKafkaAdminAdapterFactory())
+        .setPubSubConsumerAdapterFactory(new ApacheKafkaConsumerAdapterFactory())
+        .build();
+
     this.allowlistAccessor = new ZkAllowlistAccessor(zkClient, adapterSerializer);
     this.executionIdAccessor = new ZkExecutionIdAccessor(zkClient, adapterSerializer);
     this.storeConfigRepo = new HelixReadOnlyStoreConfigRepository(
@@ -6369,8 +6390,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * @return a <code>PubSubClientFactory</code> object used by the Venice controller to create Pubsub clients.
    */
   @Override
-  public PubSubClientFactory getVeniceConsumerFactory() {
+  public PubSubConsumerAdapterFactory getVeniceConsumerFactory() {
     return veniceConsumerFactory;
+  }
+
+  @Override
+  public VeniceProperties getPubSubSSLProperties() {
+    return pubSubSSLProperties;
   }
 
   private void startMonitorOfflinePush(

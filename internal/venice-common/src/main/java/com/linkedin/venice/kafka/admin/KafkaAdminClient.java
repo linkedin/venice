@@ -71,6 +71,7 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
       throw new IllegalArgumentException("properties cannot be null!");
     }
     this.kafkaAdminClient = AdminClient.create(properties);
+    // TODO: remove these 3 configs.
     properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class);
     properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, OptimizedKafkaValueSerializer.class);
     properties.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);

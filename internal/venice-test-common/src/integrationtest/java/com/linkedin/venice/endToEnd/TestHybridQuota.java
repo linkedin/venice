@@ -123,12 +123,15 @@ public class TestHybridQuota {
     try (
         ControllerClient controllerClient =
             createStoreForJob(sharedVenice.getClusterName(), recordSchema, vpjProperties);
-        TopicManager topicManager = new TopicManager(
-            DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
-            100,
-            0L,
-            IntegrationTestPushUtils.getVeniceConsumerFactory(sharedVenice.getKafka()),
-            sharedVenice.getPubSubTopicRepository())) {
+        TopicManager topicManager =
+            IntegrationTestPushUtils
+                .getTopicManagerRepo(
+                    DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+                    100L,
+                    0L,
+                    sharedVenice.getKafka().getAddress(),
+                    sharedVenice.getPubSubTopicRepository())
+                .getTopicManager()) {
 
       // Setting the hybrid store quota here will cause the VPJ push failed.
       ControllerResponse response = controllerClient.updateStore(

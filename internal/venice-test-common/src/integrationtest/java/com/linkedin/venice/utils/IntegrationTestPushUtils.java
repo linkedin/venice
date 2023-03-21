@@ -30,16 +30,18 @@ import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
-import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
-import com.linkedin.venice.kafka.KafkaClientFactory;
-import com.linkedin.venice.kafka.admin.KafkaAdminClient;
+import com.linkedin.venice.kafka.TopicManagerRepository;
+import com.linkedin.venice.kafka.admin.ApacheKafkaAdminAdapterFactory;
+import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.pubsub.factory.MetricsParameters;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubAdminAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.samza.VeniceObjectWithTimestamp;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import java.util.Arrays;
@@ -211,8 +213,12 @@ public class IntegrationTestPushUtils {
     return veniceProducer;
   }
 
-  public static KafkaClientFactory getVeniceConsumerFactory(PubSubBrokerWrapper kafka) {
-    return new TestKafkaClientFactory(kafka.getAddress());
+  public static PubSubConsumerAdapterFactory getVeniceConsumerFactory() {
+    return new ApacheKafkaConsumerAdapterFactory();
+  }
+
+  public static PubSubAdminAdapterFactory getVeniceAdminFactory() {
+    return new ApacheKafkaAdminAdapterFactory();
   }
 
   public static ControllerClient createStoreForJob(String veniceClusterName, Schema recordSchema, Properties props) {
@@ -364,43 +370,23 @@ public class IntegrationTestPushUtils {
     sendStreamingRecord(producer, storeName, Integer.toString(recordId), new String(chars));
   }
 
-  private static class TestKafkaClientFactory extends KafkaClientFactory {
-    private final String kafkaBootstrapServers;
-
-    public TestKafkaClientFactory(String kafkaBootstrapServers) {
-      super(new VeniceProperties());
-      this.kafkaBootstrapServers = kafkaBootstrapServers;
-    }
-
-    @Override
-    public Properties setupSSL(Properties properties) {
-      properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafkaBootstrapServers);
-      return properties;
-    }
-
-    @Override
-    protected String getKafkaAdminClass() {
-      return KafkaAdminClient.class.getName();
-    }
-
-    @Override
-    protected String getWriteOnlyAdminClass() {
-      return getKafkaAdminClass();
-    }
-
-    @Override
-    protected String getReadOnlyAdminClass() {
-      return getKafkaAdminClass();
-    }
-
-    @Override
-    public String getPubSubBootstrapServers() {
-      return kafkaBootstrapServers;
-    }
-
-    @Override
-    public KafkaClientFactory clone(String kafkaBootstrapServers, Optional<MetricsParameters> metricsParameters) {
-      return new TestKafkaClientFactory(kafkaBootstrapServers);
-    }
+  public static TopicManagerRepository getTopicManagerRepo(
+      long kafkaOperationTimeoutMs,
+      long topicDeletionStatusPollIntervalMs,
+      long topicMinLogCompactionLagMs,
+      String pubSubBootstrapServers,
+      PubSubTopicRepository pubSubTopicRepository) {
+    Properties properties = new Properties();
+    properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, pubSubBootstrapServers);
+    return TopicManagerRepository.builder()
+        .setPubSubProperties(new VeniceProperties(properties))
+        .setPubSubTopicRepository(pubSubTopicRepository)
+        .setLocalKafkaBootstrapServers(pubSubBootstrapServers)
+        .setPubSubConsumerAdapterFactory(new ApacheKafkaConsumerAdapterFactory())
+        .setPubSubAdminAdapterFactory(new ApacheKafkaAdminAdapterFactory())
+        .setKafkaOperationTimeoutMs(kafkaOperationTimeoutMs)
+        .setTopicDeletionStatusPollIntervalMs(topicDeletionStatusPollIntervalMs)
+        .setTopicMinLogCompactionLagMs(topicMinLogCompactionLagMs)
+        .build();
   }
 }

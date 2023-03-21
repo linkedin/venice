@@ -24,6 +24,7 @@ import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAsserti
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicCompletion;
 import static com.linkedin.venice.utils.Time.MS_PER_DAY;
 import static com.linkedin.venice.utils.Time.MS_PER_HOUR;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.after;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyDouble;
@@ -81,7 +82,6 @@ import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.exceptions.validation.CorruptDataException;
 import com.linkedin.venice.exceptions.validation.FatalDataValidationException;
 import com.linkedin.venice.exceptions.validation.MissingDataException;
-import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
@@ -116,6 +116,7 @@ import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
@@ -334,7 +335,7 @@ public abstract class StoreIngestionTaskTest {
 
   private boolean databaseChecksumVerificationEnabled = false;
   private KafkaConsumerServiceStats kafkaConsumerServiceStats = mock(KafkaConsumerServiceStats.class);
-  private KafkaClientFactory mockFactory = mock(KafkaClientFactory.class);
+  private PubSubConsumerAdapterFactory mockFactory = mock(PubSubConsumerAdapterFactory.class);
 
   private Supplier<StoreVersionState> storeVersionStateSupplier = () -> new StoreVersionState();
 
@@ -803,13 +804,13 @@ public abstract class StoreIngestionTaskTest {
         new MockInMemoryConsumer(inMemoryRemoteKafkaBroker, pollStrategy, mockRemoteKafkaConsumer);
 
     doAnswer(invocation -> {
-      Properties consumerProps = invocation.getArgument(0, Properties.class);
-      String kafkaUrl = consumerProps.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
+      VeniceProperties consumerProps = invocation.getArgument(0, VeniceProperties.class);
+      String kafkaUrl = consumerProps.toProperties().getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
       if (kafkaUrl.equals(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer())) {
         return inMemoryRemoteKafkaConsumer;
       }
       return inMemoryLocalKafkaConsumer;
-    }).when(mockFactory).getConsumer(any(), any());
+    }).when(mockFactory).create(any(), anyBoolean(), any(), any());
 
     mockWriterFactory = mock(VeniceWriterFactory.class);
     doReturn(null).when(mockWriterFactory).createVeniceWriter(any());
@@ -888,7 +889,6 @@ public abstract class StoreIngestionTaskTest {
 
     return StoreIngestionTaskFactory.builder()
         .setVeniceWriterFactory(mockWriterFactory)
-        .setKafkaClientFactory(mockFactory)
         .setStorageEngineRepository(mockStorageEngineRepository)
         .setStorageMetadataService(offsetManager)
         .setLeaderFollowerNotifiersQueue(leaderFollowerNotifiers)

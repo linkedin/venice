@@ -41,12 +41,15 @@ public class TestKafkaInputFormat {
   @BeforeClass
   public void setUp() {
     kafka = ServiceFactory.getPubSubBroker();
-    manager = new TopicManager(
-        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
-        100,
-        24 * Time.MS_PER_HOUR,
-        IntegrationTestPushUtils.getVeniceConsumerFactory(kafka),
-        pubSubTopicRepository);
+    manager =
+        IntegrationTestPushUtils
+            .getTopicManagerRepo(
+                DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+                100L,
+                24 * Time.MS_PER_HOUR,
+                kafka.getAddress(),
+                pubSubTopicRepository)
+            .getTopicManager();
   }
 
   @AfterClass

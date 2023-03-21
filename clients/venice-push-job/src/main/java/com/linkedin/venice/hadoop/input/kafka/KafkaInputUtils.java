@@ -10,7 +10,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.UserCredentialsFactory;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
-import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.KafkaSSLUtils;
@@ -23,7 +22,7 @@ import org.apache.kafka.clients.CommonClientConfigs;
 
 
 public class KafkaInputUtils {
-  public static KafkaClientFactory getConsumerFactory(JobConf config) {
+  public static VeniceProperties getConsumerProperties(JobConf config) {
     Properties sslProps = null;
     Properties consumerFactoryProperties = new Properties();
     if (config.get(SSL_CONFIGURATOR_CLASS_CONFIG) != null) {
@@ -50,7 +49,7 @@ public class KafkaInputUtils {
     consumerFactoryProperties
         .setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, config.get(KAFKA_INPUT_BROKER_URL));
 
-    return new KafkaClientFactory(new VeniceProperties(consumerFactoryProperties));
+    return new VeniceProperties(consumerFactoryProperties);
   }
 
   public static VeniceCompressor getCompressor(

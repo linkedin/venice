@@ -25,7 +25,7 @@ import com.linkedin.venice.meta.UncompletedPartition;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.persona.StoragePersona;
-import com.linkedin.venice.pubsub.factory.PubSubClientFactory;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.schema.GeneratedSchemaID;
@@ -39,6 +39,7 @@ import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.Closeable;
 import java.io.IOException;
@@ -582,7 +583,9 @@ public interface Admin extends AutoCloseable, Closeable {
 
   VeniceWriterFactory getVeniceWriterFactory();
 
-  PubSubClientFactory getVeniceConsumerFactory();
+  PubSubConsumerAdapterFactory getVeniceConsumerFactory();
+
+  VeniceProperties getPubSubSSLProperties();
 
   void close();
 

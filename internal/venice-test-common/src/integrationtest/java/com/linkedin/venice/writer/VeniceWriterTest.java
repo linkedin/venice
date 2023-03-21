@@ -1,5 +1,6 @@
 package com.linkedin.venice.writer;
 
+import static com.linkedin.venice.kafka.TopicManager.*;
 import static com.linkedin.venice.writer.VeniceWriter.APP_DEFAULT_LOGICAL_TS;
 import static com.linkedin.venice.writer.VeniceWriter.DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES;
 import static com.linkedin.venice.writer.VeniceWriter.VENICE_DEFAULT_LOGICAL_TS;
@@ -14,6 +15,7 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.kafka.KafkaClientFactory;
+import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -24,6 +26,7 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -70,15 +73,17 @@ import org.testng.annotations.Test;
 public class VeniceWriterTest {
   private PubSubBrokerWrapper pubSubBrokerWrapper;
   private TopicManager topicManager;
-  private KafkaClientFactory kafkaClientFactory;
+  private PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory;
 
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @BeforeClass
   public void setUp() {
     pubSubBrokerWrapper = ServiceFactory.getPubSubBroker();
-    kafkaClientFactory = IntegrationTestPushUtils.getVeniceConsumerFactory(pubSubBrokerWrapper);
-    topicManager = new TopicManager(kafkaClientFactory, pubSubTopicRepository);
+    pubSubConsumerAdapterFactory = IntegrationTestPushUtils.getVeniceConsumerFactory();
+    topicManager = IntegrationTestPushUtils
+        .getTopicManagerRepo(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100L, 0L, pubSubBrokerWrapper.getAddress(), pubSubTopicRepository)
+        .getTopicManager();
   }
 
   @AfterClass
@@ -120,8 +125,8 @@ public class VeniceWriterTest {
         kafkaValueSerializer,
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
-    try (PubSubConsumer consumer = kafkaClientFactory.getConsumer(new Properties(), pubSubDeserializer)) {
-      // List<TopicPartition> partitions = Collections.singletonList(new TopicPartition(topicName, 0));
+    try (PubSubConsumer consumer =
+        pubSubConsumerAdapterFactory.create(new VeniceProperties(), false, pubSubDeserializer, pubSubBrokerWrapper.getAddress())) {
       PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(pubSubTopic, 0);
       consumer.subscribe(pubSubTopicPartition, -1);
       int lastSeenSequenceNumber = -1;

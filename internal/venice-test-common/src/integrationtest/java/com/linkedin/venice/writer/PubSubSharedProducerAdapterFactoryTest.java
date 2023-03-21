@@ -1,6 +1,7 @@
 package com.linkedin.venice.writer;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.kafka.TopicManager.*;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_BUFFER_MEMORY;
 import static org.mockito.Mockito.mock;
 
@@ -8,8 +9,8 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.kafka.admin.ApacheKafkaAdminAdapterFactory;
 import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
@@ -19,6 +20,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapter;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.SharedKafkaProducerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -43,18 +45,18 @@ import org.testng.annotations.Test;
 
 public class PubSubSharedProducerAdapterFactoryTest {
   private static final Logger LOGGER = LogManager.getLogger(PubSubSharedProducerAdapterFactoryTest.class);
-
   private PubSubBrokerWrapper pubSubBrokerWrapper;
   private TopicManager topicManager;
-  private KafkaClientFactory kafkaClientFactory;
-
+  private PubSubAdminAdapterFactory pubSubAdminAdapterFactory;
   private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @BeforeClass
   public void setUp() {
     pubSubBrokerWrapper = ServiceFactory.getPubSubBroker();
-    kafkaClientFactory = IntegrationTestPushUtils.getVeniceConsumerFactory(pubSubBrokerWrapper);
-    topicManager = new TopicManager(kafkaClientFactory, pubSubTopicRepository);
+    pubSubAdminAdapterFactory = new ApacheKafkaAdminAdapterFactory();
+    topicManager = IntegrationTestPushUtils
+        .getTopicManagerRepo(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, pubSubBrokerWrapper.getAddress(), pubSubTopicRepository)
+        .getTopicManager();
   }
 
   @AfterClass
@@ -148,7 +150,11 @@ public class PubSubSharedProducerAdapterFactoryTest {
       }
     }
 
-    try (KafkaAdminWrapper adminWrapper = kafkaClientFactory.getPubSubAdmin(Optional.empty(), pubSubTopicRepository)) {
+    try (KafkaAdminWrapper adminWrapper = pubSubAdminAdapterFactory.create(
+        new VeniceProperties(),
+        Optional.empty(),
+        "admin_stats",
+        pubSubTopicRepository, pubSubBrokerWrapper.getAddress())) {
       PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(existingTopic, 0);
       Long end = adminWrapper.endOffset(pubSubTopicPartition);
       Assert.assertTrue(end > 100L); // to account for the SOP that VW sends internally.

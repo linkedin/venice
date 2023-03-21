@@ -56,12 +56,9 @@ public class AdminConsumptionTaskIntegrationTest {
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
         PubSubBrokerWrapper kafka =
             ServiceFactory.getPubSubBroker(new PubSubBrokerConfigs.Builder().setZkWrapper(zkServer).build());
-        TopicManager topicManager = new TopicManager(
-            DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
-            100,
-            0L,
-            IntegrationTestPushUtils.getVeniceConsumerFactory(kafka),
-            pubSubTopicRepository)) {
+        TopicManager topicManager = IntegrationTestPushUtils
+            .getTopicManagerRepo(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, kafka.getAddress(), pubSubTopicRepository)
+            .getTopicManager()) {
       PubSubTopic adminTopic = pubSubTopicRepository.getTopic(AdminTopicUtils.getTopicNameFromClusterName(clusterName));
       topicManager.createTopic(adminTopic, 1, 1, true);
       String storeName = "test-store";

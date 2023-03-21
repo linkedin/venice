@@ -37,6 +37,8 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapter;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
+import com.linkedin.venice.pubsub.api.PubSubAdminAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -49,6 +51,7 @@ import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.time.Duration;
@@ -107,12 +110,15 @@ public class TopicManagerTest {
   public void setUp() {
     mockTime = new TestMockTime();
     kafka = ServiceFactory.getPubSubBroker(new PubSubBrokerConfigs.Builder().setMockTime(mockTime).build());
-    topicManager = new TopicManager(
-        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
-        100,
-        MIN_COMPACTION_LAG,
-        IntegrationTestPushUtils.getVeniceConsumerFactory(kafka),
-        pubSubTopicRepository);
+    topicManager =
+        IntegrationTestPushUtils
+            .getTopicManagerRepo(
+                DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+                100L,
+                MIN_COMPACTION_LAG,
+                kafka.getAddress(),
+                pubSubTopicRepository)
+            .getTopicManager();
     Cache cacheNothingCache = mock(Cache.class);
     Mockito.when(cacheNothingCache.getIfPresent(Mockito.any())).thenReturn(null);
     topicManager.setTopicConfigCache(cacheNothingCache);
@@ -298,12 +304,14 @@ public class TopicManagerTest {
     PubSubTopic topicName = pubSubTopicRepository.getTopic("mockTopicName_v1");
     // Without using mockito spy, the LOGGER inside TopicManager cannot be prepared.
     TopicManager partiallyMockedTopicManager = Mockito.spy(
-        new TopicManager(
-            DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
-            100,
-            MIN_COMPACTION_LAG,
-            IntegrationTestPushUtils.getVeniceConsumerFactory(kafka),
-            pubSubTopicRepository));
+        IntegrationTestPushUtils
+            .getTopicManagerRepo(
+                DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+                100,
+                MIN_COMPACTION_LAG,
+                kafka.getAddress(),
+                pubSubTopicRepository)
+            .getTopicManager());
     Mockito.doThrow(VeniceOperationAgainstKafkaTimedOut.class)
         .when(partiallyMockedTopicManager)
         .ensureTopicIsDeletedAndBlock(topicName);
@@ -498,23 +506,28 @@ public class TopicManagerTest {
   public void testTimeoutOnGettingMaxOffset() throws IOException {
     PubSubTopic topic = pubSubTopicRepository.getTopic(Utils.getUniqueTopicString("topic"));
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(topic, 0);
-    KafkaClientFactory mockKafkaClientFactory = mock(KafkaClientFactory.class);
     // Mock an admin client to pass topic existence check
     KafkaAdminWrapper mockKafkaAdminWrapper = mock(KafkaAdminWrapper.class);
     doReturn(true).when(mockKafkaAdminWrapper)
         .containsTopicWithPartitionCheckExpectationAndRetry(eq(pubSubTopicPartition), anyInt(), eq(true));
     doThrow(new TimeoutException()).when(mockKafkaAdminWrapper).endOffsets(any(), any());
-    doReturn(mockKafkaAdminWrapper).when(mockKafkaClientFactory).getWriteOnlyPubSubAdmin(any(), any());
-    doReturn(mockKafkaAdminWrapper).when(mockKafkaClientFactory).getReadOnlyPubSubAdmin(any(), any());
     // Throw Kafka TimeoutException when trying to get max offset
-    doReturn(mockKafkaClientFactory).when(mockKafkaClientFactory).clone(any(), any());
+    String localPubSubBrokerAddress = "localhost:1234";
 
-    try (TopicManager topicManagerForThisTest = new TopicManager(
-        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
-        100,
-        MIN_COMPACTION_LAG,
-        mockKafkaClientFactory,
-        pubSubTopicRepository)) {
+    PubSubAdminAdapterFactory adminAdapterFactory = mock(PubSubAdminAdapterFactory.class);
+    PubSubConsumerAdapterFactory consumerAdapterFactory = mock(PubSubConsumerAdapterFactory.class);
+    doReturn(mockKafkaAdminWrapper).when(adminAdapterFactory).create(any(), any(), any(), any(), any());
+    try (TopicManager topicManagerForThisTest = TopicManagerRepository.builder()
+        .setPubSubProperties(new VeniceProperties())
+        .setPubSubTopicRepository(pubSubTopicRepository)
+        .setLocalKafkaBootstrapServers(localPubSubBrokerAddress)
+        .setPubSubAdminAdapterFactory(adminAdapterFactory)
+        .setPubSubConsumerAdapterFactory(consumerAdapterFactory)
+        .setKafkaOperationTimeoutMs(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS)
+        .setTopicDeletionStatusPollIntervalMs(100)
+        .setTopicMinLogCompactionLagMs(MIN_COMPACTION_LAG)
+        .build()
+        .getTopicManager()) {
       Assert.assertThrows(
           VeniceOperationAgainstKafkaTimedOut.class,
           () -> topicManagerForThisTest.getPartitionLatestOffsetAndRetry(pubSubTopicPartition, 10));

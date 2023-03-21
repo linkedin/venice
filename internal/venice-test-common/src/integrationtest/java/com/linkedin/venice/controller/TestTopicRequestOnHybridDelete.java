@@ -20,6 +20,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
@@ -185,55 +186,59 @@ public class TestTopicRequestOnHybridDelete {
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void deleteStoreAfterStartedPushAllowsNewPush() {
     ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), venice.getRandomRouterURL());
-    TopicManager topicManager = new TopicManager(
+    try (TopicManagerRepository topicManagerRepository = IntegrationTestPushUtils.getTopicManagerRepo(
         DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
         100,
         0l,
-        IntegrationTestPushUtils.getVeniceConsumerFactory(venice.getKafka()),
-        pubSubTopicRepository);
+        venice.getKafka().getAddress(),
+        pubSubTopicRepository)) {
 
-    String storeName = Utils.getUniqueString("hybrid-store");
-    venice.getNewStore(storeName);
-    makeStoreHybrid(venice, storeName, 100L, 5L);
+      TopicManager topicManager = topicManagerRepository.getTopicManager();
 
-    // new version, but don't write records
-    VersionCreationResponse startedVersion = controllerClient.requestTopicForWrites(
-        storeName,
-        1L,
-        Version.PushType.BATCH,
-        Utils.getUniqueString("pushId"),
-        true,
-        true,
-        false,
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        false,
-        -1);
-    Assert.assertFalse(
-        startedVersion.isError(),
-        "The call to controllerClient.requestTopicForWrites() returned an error: " + startedVersion.getError());
-    Assert.assertEquals(
-        controllerClient.queryJobStatus(startedVersion.getKafkaTopic()).getStatus(),
-        ExecutionStatus.STARTED.toString());
-    Assert.assertTrue(
-        topicManager
-            .containsTopicAndAllPartitionsAreOnline(pubSubTopicRepository.getTopic(startedVersion.getKafkaTopic())));
+      String storeName = Utils.getUniqueString("hybrid-store");
+      venice.getNewStore(storeName);
+      makeStoreHybrid(venice, storeName, 100L, 5L);
 
-    // disable store
-    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setEnableReads(false).setEnableWrites(false));
-    // delete versions
-    controllerClient.deleteAllVersions(storeName);
-    // enable store
-    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setEnableReads(true).setEnableWrites(true));
+      // new version, but don't write records
+      VersionCreationResponse startedVersion = controllerClient.requestTopicForWrites(
+          storeName,
+          1L,
+          Version.PushType.BATCH,
+          Utils.getUniqueString("pushId"),
+          true,
+          true,
+          false,
+          Optional.empty(),
+          Optional.empty(),
+          Optional.empty(),
+          false,
+          -1);
+      Assert.assertFalse(
+          startedVersion.isError(),
+          "The call to controllerClient.requestTopicForWrites() returned an error: " + startedVersion.getError());
+      Assert.assertEquals(
+          controllerClient.queryJobStatus(startedVersion.getKafkaTopic()).getStatus(),
+          ExecutionStatus.STARTED.toString());
+      Assert.assertTrue(
+          topicManager
+              .containsTopicAndAllPartitionsAreOnline(pubSubTopicRepository.getTopic(startedVersion.getKafkaTopic())));
 
-    controllerClient.emptyPush(storeName, Utils.getUniqueString("push-id3"), 1L);
+      // disable store
+      controllerClient
+          .updateStore(storeName, new UpdateStoreQueryParams().setEnableReads(false).setEnableWrites(false));
+      // delete versions
+      controllerClient.deleteAllVersions(storeName);
+      // enable store
+      controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setEnableReads(true).setEnableWrites(true));
 
-    int expectedCurrentVersion = 2;
+      controllerClient.emptyPush(storeName, Utils.getUniqueString("push-id3"), 1L);
 
-    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-      StoreResponse storeResponse = controllerClient.getStore(storeName);
-      Assert.assertEquals(storeResponse.getStore().getCurrentVersion(), expectedCurrentVersion);
-    });
+      int expectedCurrentVersion = 2;
+
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+        StoreResponse storeResponse = controllerClient.getStore(storeName);
+        Assert.assertEquals(storeResponse.getStore().getCurrentVersion(), expectedCurrentVersion);
+      });
+    }
   }
 }

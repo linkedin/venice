@@ -2,20 +2,22 @@ package com.linkedin.venice.kafka.partitionoffset;
 
 import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.pubsub.factory.PubSubClientFactory;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.utils.SystemTime;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
-import java.util.Properties;
 
 
 public class PartitionOffsetFetcherFactory {
   public static PartitionOffsetFetcher createDefaultPartitionOffsetFetcher(
-      PubSubClientFactory pubSubClientFactory,
+      PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory,
+      VeniceProperties veniceProperties,
+      String pubSubBootstrapServers,
       Lazy<KafkaAdminWrapper> kafkaAdminWrapper,
       long kafkaOperationTimeoutMs,
       Optional<MetricsRepository> optionalMetricsRepository) {
@@ -25,15 +27,17 @@ public class PartitionOffsetFetcherFactory {
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
     PartitionOffsetFetcher partitionOffsetFetcher = new PartitionOffsetFetcherImpl(
         kafkaAdminWrapper,
-        Lazy.of(() -> pubSubClientFactory.getConsumer(new Properties(), kafkaPubSubMessageDeserializer)),
+        Lazy.of(
+            () -> pubSubConsumerAdapterFactory
+                .create(veniceProperties, false, kafkaPubSubMessageDeserializer, pubSubBootstrapServers)),
         kafkaOperationTimeoutMs,
-        pubSubClientFactory.getPubSubBootstrapServers());
+        pubSubBootstrapServers);
     if (optionalMetricsRepository.isPresent()) {
       return new InstrumentedPartitionOffsetFetcher(
           partitionOffsetFetcher,
           new PartitionOffsetFetcherStats(
               optionalMetricsRepository.get(),
-              "PartitionOffsetFetcherStats_" + pubSubClientFactory.getPubSubBootstrapServers()),
+              "PartitionOffsetFetcherStats_" + pubSubBootstrapServers),
           new SystemTime());
     } else {
       return partitionOffsetFetcher;

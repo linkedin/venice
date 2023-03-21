@@ -1,10 +1,9 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import static com.linkedin.venice.ConfigConstants.DEFAULT_KAFKA_BATCH_SIZE;
-import static com.linkedin.venice.ConfigConstants.DEFAULT_KAFKA_LINGER_MS;
-import static com.linkedin.venice.ConfigConstants.DEFAULT_KAFKA_SSL_CONTEXT_PROVIDER_CLASS_NAME;
+import static com.linkedin.venice.ConfigConstants.*;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BATCH_SIZE;
 import static com.linkedin.venice.ConfigKeys.KAFKA_LINGER_MS;
+import static com.linkedin.venice.kafka.TopicManager.*;
 import static java.lang.Thread.currentThread;
 import static java.lang.Thread.sleep;
 import static org.apache.kafka.common.config.SslConfigs.SSL_CONTEXT_PROVIDER_CLASS_CONFIG;
@@ -30,6 +29,7 @@ import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.view.VeniceViewWriterFactory;
+import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -38,7 +38,9 @@ import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.kafka.TopicManagerRepository;
+import com.linkedin.venice.kafka.admin.ApacheKafkaAdminAdapterFactory;
 import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumer;
+import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.meta.ClusterInfoProvider;
@@ -60,7 +62,6 @@ import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdap
 import com.linkedin.venice.pubsub.adapter.kafka.producer.SharedKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
-import com.linkedin.venice.pubsub.factory.MetricsParameters;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.SchemaReader;
@@ -75,12 +76,14 @@ import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.ResourceAutoClosableLockManager;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
@@ -109,6 +112,7 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -230,11 +234,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     helixInstanceFuture.ifPresent(future -> future.thenApply(helix -> this.helixInstanceConfigRepository = helix));
 
     VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
-    ServerKafkaClientFactory veniceConsumerFactory = new ServerKafkaClientFactory(
-        serverConfig,
-        kafkaMessageEnvelopeSchemaReader,
-        Optional.of(new MetricsParameters(ServerKafkaClientFactory.class.getSimpleName(), metricsRepository)));
-
     Properties veniceWriterProperties =
         veniceConfigLoader.getVeniceClusterConfig().getClusterProperties().toProperties();
     if (serverConfig.isKafkaOpenSSLEnabled()) {
@@ -311,11 +310,18 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler =
         new KafkaClusterBasedRecordThrottler(kafkaUrlToRecordsThrottler);
 
-    this.topicManagerRepository = new TopicManagerRepository(
-        veniceConsumerFactory.getPubSubBootstrapServers(),
-        veniceConsumerFactory,
-        metricsRepository,
-        pubSubTopicRepository);
+    Properties pubSubProperties = getPubSubSSLPropertiesFromServerConfig(serverConfig);
+    this.topicManagerRepository = TopicManagerRepository.builder()
+        .setPubSubTopicRepository(pubSubTopicRepository)
+        .setMetricsRepository(metricsRepository)
+        .setLocalKafkaBootstrapServers(serverConfig.getKafkaBootstrapServers())
+        .setPubSubConsumerAdapterFactory(new ApacheKafkaConsumerAdapterFactory())
+        .setTopicDeletionStatusPollIntervalMs(DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS)
+        .setTopicMinLogCompactionLagMs(DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS)
+        .setKafkaOperationTimeoutMs(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS)
+        .setPubSubProperties(new VeniceProperties(pubSubProperties))
+        .setPubSubAdminAdapterFactory(new ApacheKafkaAdminAdapterFactory())
+        .build();
 
     VeniceNotifier notifier = new LogNotifier();
     this.leaderFollowerNotifiers.add(notifier);
@@ -406,7 +412,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
 
     aggKafkaConsumerService = new AggKafkaConsumerService(
-        veniceConsumerFactory,
+        new ApacheKafkaConsumerAdapterFactory(),
         serverConfig,
         bandwidthThrottler,
         recordsThrottler,
@@ -444,7 +450,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     ingestionTaskFactory = StoreIngestionTaskFactory.builder()
         .setVeniceWriterFactory(veniceWriterFactory)
-        .setKafkaClientFactory(veniceConsumerFactory)
         .setStorageEngineRepository(storageEngineRepository)
         .setStorageMetadataService(storageMetadataService)
         .setLeaderFollowerNotifiersQueue(leaderFollowerNotifiers)
@@ -467,6 +472,36 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setVeniceViewWriterFactory(viewWriterFactory)
         .setPubSubTopicRepository(pubSubTopicRepository)
         .build();
+  }
+
+  private Properties getPubSubSSLPropertiesFromServerConfig(VeniceServerConfig serverConfig) {
+    Properties properties = new Properties();
+    String kafkaBootstrapUrls = properties.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
+    if (kafkaBootstrapUrls == null) {
+      /** Override the bootstrap servers config if it's not set in the proposed properties. */
+      kafkaBootstrapUrls = serverConfig.getKafkaBootstrapServers();
+    }
+    String resolvedKafkaUrl = serverConfig.getKafkaClusterUrlResolver().apply(kafkaBootstrapUrls);
+    if (resolvedKafkaUrl != null) {
+      kafkaBootstrapUrls = resolvedKafkaUrl;
+    }
+    properties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafkaBootstrapUrls);
+    SecurityProtocol securityProtocol = serverConfig.getKafkaSecurityProtocol(kafkaBootstrapUrls);
+    if (KafkaSSLUtils.isKafkaSSLProtocol(securityProtocol)) {
+      Optional<SSLConfig> sslConfig = serverConfig.getSslConfig();
+      if (!sslConfig.isPresent()) {
+        throw new VeniceException("SSLConfig should be present when Kafka SSL is enabled");
+      }
+      properties.putAll(sslConfig.get().getKafkaSSLConfig());
+      /**
+       * Check whether openssl is enabled for the kafka consumers in ingestion service.
+       */
+      if (serverConfig.isKafkaOpenSSLEnabled()) {
+        properties.setProperty(SSL_CONTEXT_PROVIDER_CLASS_CONFIG, DEFAULT_KAFKA_SSL_CONTEXT_PROVIDER_CLASS_NAME);
+      }
+    }
+    properties.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, securityProtocol.name);
+    return properties;
   }
 
   /**
@@ -987,7 +1022,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    * @return
    */
   private Properties getCommonKafkaConsumerProperties(VeniceServerConfig serverConfig) {
-    Properties kafkaConsumerProperties = new Properties();
+    Properties kafkaConsumerProperties = getPubSubSSLPropertiesFromServerConfig(serverConfig);
     kafkaConsumerProperties
         .setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, serverConfig.getKafkaBootstrapServers());
     kafkaConsumerProperties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");

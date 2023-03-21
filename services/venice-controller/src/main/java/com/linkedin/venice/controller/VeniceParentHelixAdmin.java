@@ -172,9 +172,9 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
-import com.linkedin.venice.pubsub.factory.PubSubClientFactory;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
@@ -3891,8 +3891,13 @@ public class VeniceParentHelixAdmin implements Admin {
    * @see VeniceHelixAdmin#getVeniceConsumerFactory()
    */
   @Override
-  public PubSubClientFactory getVeniceConsumerFactory() {
+  public PubSubConsumerAdapterFactory getVeniceConsumerFactory() {
     return getVeniceHelixAdmin().getVeniceConsumerFactory();
+  }
+
+  @Override
+  public VeniceProperties getPubSubSSLProperties() {
+    return getVeniceHelixAdmin().getPubSubSSLProperties();
   }
 
   /**

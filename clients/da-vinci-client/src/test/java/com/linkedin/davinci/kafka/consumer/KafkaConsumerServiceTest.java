@@ -1,5 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doReturn;
@@ -7,12 +8,12 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumer;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
@@ -60,8 +61,8 @@ public class KafkaConsumerServiceTest {
     when(task2.getVersionTopic()).thenReturn(topicForStoreName2);
     when(task2.isHybridMode()).thenReturn(true);
 
-    KafkaClientFactory factory = mock(KafkaClientFactory.class);
-    when(factory.getConsumer(any(), any())).thenReturn(consumer1, consumer2);
+    PubSubConsumerAdapterFactory factory = mock(PubSubConsumerAdapterFactory.class);
+    when(factory.create(any(), anyBoolean(), any(), any())).thenReturn(consumer1, consumer2);
 
     Properties properties = new Properties();
     properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, "test_kafka_url");
@@ -141,8 +142,8 @@ public class KafkaConsumerServiceTest {
     ApacheKafkaConsumer consumer2 = mock(ApacheKafkaConsumer.class);
     when(consumer1.hasAnySubscription()).thenReturn(false);
 
-    KafkaClientFactory factory = mock(KafkaClientFactory.class);
-    when(factory.getConsumer(any(), any())).thenReturn(consumer1, consumer2);
+    PubSubConsumerAdapterFactory factory = mock(PubSubConsumerAdapterFactory.class);
+    when(factory.create(any(), anyBoolean(), any(), any())).thenReturn(consumer1, consumer2);
 
     Properties properties = new Properties();
     properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, "test_kafka_url");
@@ -236,8 +237,8 @@ public class KafkaConsumerServiceTest {
     when(task2.getVersionTopic()).thenReturn(pubSubTopicForStoreName2);
     when(task2.isHybridMode()).thenReturn(true);
 
-    KafkaClientFactory factory = mock(KafkaClientFactory.class);
-    when(factory.getConsumer(any(), any())).thenReturn(consumer1, consumer2);
+    PubSubConsumerAdapterFactory factory = mock(PubSubConsumerAdapterFactory.class);
+    when(factory.create(any(), anyBoolean(), any(), any())).thenReturn(consumer1, consumer2);
 
     Properties properties = new Properties();
     properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, "test_kafka_url");

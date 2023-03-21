@@ -727,7 +727,6 @@ public class TestUtils {
     doReturn(Optional.of(version)).when(mockStore).getVersion(anyInt());
 
     return new StoreIngestionTaskFactory.Builder().setVeniceWriterFactory(mock(VeniceWriterFactory.class))
-        .setKafkaClientFactory(mockKafkaClientFactory)
         .setStorageEngineRepository(mockStorageEngineRepository)
         .setStorageMetadataService(mockStorageMetadataService)
         .setLeaderFollowerNotifiersQueue(new ArrayDeque<>())

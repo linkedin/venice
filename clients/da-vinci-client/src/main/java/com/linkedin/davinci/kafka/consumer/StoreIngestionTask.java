@@ -41,7 +41,6 @@ import com.linkedin.venice.exceptions.validation.FatalDataValidationException;
 import com.linkedin.venice.exceptions.validation.ImproperlyStartedSegmentException;
 import com.linkedin.venice.exceptions.validation.UnsupportedMessageTypeException;
 import com.linkedin.venice.guid.GuidUtils;
-import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
@@ -166,7 +165,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final ReadOnlyStoreRepository storeRepository;
   protected final String consumerTaskId;
   protected final Properties kafkaProps;
-  protected final KafkaClientFactory kafkaClientFactory;
   protected final AtomicBoolean isRunning;
   protected final AtomicBoolean emitMetrics; // TODO: remove this once we migrate to versioned stats
   protected final AtomicInteger consumerActionSequenceNumber = new AtomicInteger(0);
@@ -314,7 +312,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.emptyPollSleepMs = storeConfig.getKafkaEmptyPollSleepMs();
     this.databaseSyncBytesIntervalForTransactionalMode = storeConfig.getDatabaseSyncBytesIntervalForTransactionalMode();
     this.databaseSyncBytesIntervalForDeferredWriteMode = storeConfig.getDatabaseSyncBytesIntervalForDeferredWriteMode();
-    this.kafkaClientFactory = builder.getKafkaClientFactory();
     this.kafkaProps = kafkaConsumerProperties;
     this.storageEngineRepository = builder.getStorageEngineRepository();
     this.storageMetadataService = builder.getStorageMetadataService();

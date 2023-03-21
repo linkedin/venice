@@ -2,7 +2,7 @@ package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.KafkaClientFactory;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
@@ -35,7 +35,7 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
   private final Logger LOGGER;
 
   TopicWiseKafkaConsumerService(
-      final KafkaClientFactory consumerFactory,
+      final PubSubConsumerAdapterFactory consumerFactory,
       final Properties consumerProperties,
       final long readCycleDelayMs,
       final int numOfConsumersPerKafkaCluster,

@@ -3,9 +3,9 @@ package com.linkedin.davinci.kafka.consumer;
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
 import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -20,6 +20,7 @@ import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashMap;
@@ -82,7 +83,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
    * @param statsOverride injection of stats, for test purposes
    */
   protected KafkaConsumerService(
-      final KafkaClientFactory consumerFactory,
+      final PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory,
       final Properties consumerProperties,
       final long readCycleDelayMs,
       final int numOfConsumersPerKafkaCluster,
@@ -117,7 +118,13 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
        */
       consumerProperties.setProperty(ConsumerConfig.CLIENT_ID_CONFIG, getUniqueClientId(kafkaUrl, i));
       SharedKafkaConsumer pubSubConsumer = new SharedKafkaConsumer(
-          consumerFactory.getConsumer(consumerProperties, pubSubDeserializer),
+          pubSubConsumerAdapterFactory.create(new VeniceProperties(consumerProperties), true, pubSubDeserializer, null), // TODO:
+                                                                                                                         // change
+                                                                                                                         // this
+                                                                                                                         // boolean
+                                                                                                                         // from
+                                                                                                                         // server
+                                                                                                                         // config.
           stats,
           this::recordPartitionsPerConsumerSensor,
           this::handleUnsubscription);
@@ -368,7 +375,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
 
   interface KCSConstructor {
     KafkaConsumerService construct(
-        KafkaClientFactory consumerFactory,
+        PubSubConsumerAdapterFactory consumerFactory,
         Properties consumerProperties,
         long readCycleDelayMs,
         int numOfConsumersPerKafkaCluster,

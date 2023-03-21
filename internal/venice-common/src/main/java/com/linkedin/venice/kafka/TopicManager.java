@@ -1,7 +1,5 @@
 package com.linkedin.venice.kafka;
 
-import static com.linkedin.venice.ConfigConstants.DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS;
-
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -12,14 +10,14 @@ import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.factory.MetricsParameters;
-import com.linkedin.venice.pubsub.factory.PubSubClientFactory;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
 import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.ints.Int2LongMap;
@@ -91,7 +89,7 @@ public class TopicManager implements Closeable {
   private final long kafkaOperationTimeoutMs;
   private final long topicDeletionStatusPollIntervalMs;
   private final long topicMinLogCompactionLagMs;
-  private final PubSubClientFactory pubSubClientFactory;
+  private final PubSubAdminAdapterFactory<KafkaAdminWrapper> pubSubAdminAdapterFactory;
   private final Lazy<KafkaAdminWrapper> kafkaWriteOnlyAdmin;
   private final Lazy<KafkaAdminWrapper> kafkaReadOnlyAdmin;
   private final PartitionOffsetFetcher partitionOffsetFetcher;
@@ -100,34 +98,41 @@ public class TopicManager implements Closeable {
   // queried configs.
   Cache<PubSubTopic, Properties> topicConfigCache = Caffeine.newBuilder().expireAfterWrite(5, TimeUnit.MINUTES).build();
 
-  // TODO: Consider adding a builder for this class as the number of constructors is getting high.
-  public TopicManager(
-      long kafkaOperationTimeoutMs,
-      long topicDeletionStatusPollIntervalMs,
-      long topicMinLogCompactionLagMs,
-      PubSubClientFactory pubSubClientFactory,
-      Optional<MetricsRepository> optionalMetricsRepository,
-      PubSubTopicRepository pubSubTopicRepository) {
-    this.kafkaOperationTimeoutMs = kafkaOperationTimeoutMs;
-    this.topicDeletionStatusPollIntervalMs = topicDeletionStatusPollIntervalMs;
-    this.topicMinLogCompactionLagMs = topicMinLogCompactionLagMs;
-    this.pubSubClientFactory = pubSubClientFactory;
-    this.pubSubBootstrapServers = pubSubClientFactory.getPubSubBootstrapServers();
+  public TopicManager(TopicManagerRepository.Builder builder, String pubSubBootstrapServers) {
     this.logger = LogManager.getLogger(this.getClass().getSimpleName() + " [" + pubSubBootstrapServers + "]");
+    this.kafkaOperationTimeoutMs = builder.getKafkaOperationTimeoutMs();
+    this.topicDeletionStatusPollIntervalMs = builder.getTopicDeletionStatusPollIntervalMs();
+    this.topicMinLogCompactionLagMs = builder.getTopicMinLogCompactionLagMs();
+    this.pubSubAdminAdapterFactory = builder.getPubSubAdminAdapterFactory();
+
+    VeniceProperties pubSubProperties = builder.getPubSubProperties();
+    PubSubTopicRepository pubSubTopicRepository = builder.getPubSubTopicRepository();
+
+    Optional<MetricsRepository> optionalMetricsRepository = Optional.ofNullable(builder.getMetricsRepository());
+
+    this.pubSubBootstrapServers = pubSubBootstrapServers;
 
     this.kafkaReadOnlyAdmin = Lazy.of(() -> {
-      KafkaAdminWrapper kafkaReadOnlyAdmin =
-          pubSubClientFactory.getReadOnlyPubSubAdmin(optionalMetricsRepository, pubSubTopicRepository);
+      KafkaAdminWrapper kafkaReadOnlyAdmin = pubSubAdminAdapterFactory.create(
+          pubSubProperties,
+          optionalMetricsRepository,
+          "ReadOnlyKafkaAdminStats",
+          pubSubTopicRepository,
+          pubSubBootstrapServers);
       logger.info(
-          "{} is using kafka read-only admin client of class: {}",
+          "{} is using kafka read-only admin client of class: {} \n",
           this.getClass().getSimpleName(),
           kafkaReadOnlyAdmin.getClassName());
       return kafkaReadOnlyAdmin;
     });
 
     this.kafkaWriteOnlyAdmin = Lazy.of(() -> {
-      KafkaAdminWrapper kafkaWriteOnlyAdmin =
-          pubSubClientFactory.getWriteOnlyPubSubAdmin(optionalMetricsRepository, pubSubTopicRepository);
+      KafkaAdminWrapper kafkaWriteOnlyAdmin = pubSubAdminAdapterFactory.create(
+          pubSubProperties,
+          optionalMetricsRepository,
+          "WriteOnlyKafkaAdminStats",
+          pubSubTopicRepository,
+          pubSubBootstrapServers);
       logger.info(
           "{} is using kafka write-only admin client of class: {}",
           this.getClass().getSimpleName(),
@@ -135,63 +140,13 @@ public class TopicManager implements Closeable {
       return kafkaWriteOnlyAdmin;
     });
 
-    Optional<MetricsParameters> metricsForPartitionOffsetFetcher = pubSubClientFactory.getMetricsParameters()
-        .map(
-            mp -> new MetricsParameters(
-                this.pubSubClientFactory.getClass(),
-                PartitionOffsetFetcher.class,
-                pubSubClientFactory.getPubSubBootstrapServers(),
-                mp.metricsRepository));
     this.partitionOffsetFetcher = PartitionOffsetFetcherFactory.createDefaultPartitionOffsetFetcher(
-        pubSubClientFactory.clone(pubSubClientFactory.getPubSubBootstrapServers(), metricsForPartitionOffsetFetcher),
+        builder.getPubSubConsumerAdapterFactory(),
+        pubSubProperties,
+        pubSubBootstrapServers,
         kafkaReadOnlyAdmin,
         kafkaOperationTimeoutMs,
         optionalMetricsRepository);
-  }
-
-  // This constructor is used mostly for testing purpose
-  public TopicManager(
-      long kafkaOperationTimeoutMs,
-      long topicDeletionStatusPollIntervalMs,
-      long topicMinLogCompactionLagMs,
-      PubSubClientFactory pubSubClientFactory,
-      PubSubTopicRepository pubSubTopicRepository) {
-
-    this(
-        kafkaOperationTimeoutMs,
-        topicDeletionStatusPollIntervalMs,
-        topicMinLogCompactionLagMs,
-        pubSubClientFactory,
-        Optional.empty(),
-        pubSubTopicRepository);
-  }
-
-  /**
-   * This constructor is used in server only; server doesn't have access to controller config like
-   * topic.deletion.status.poll.interval.ms, so we use default config defined in this class; besides, TopicManager
-   * in server doesn't use the config mentioned above.
-   */
-  public TopicManager(PubSubClientFactory pubSubClientFactory, PubSubTopicRepository pubSubTopicRepository) {
-    this(
-        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
-        DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS,
-        DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS,
-        pubSubClientFactory,
-        pubSubTopicRepository);
-  }
-
-  // For testing only
-  public TopicManager(KafkaAdminWrapper kafkaWriteOnlyAdmin, KafkaAdminWrapper kafkaReadOnlyAdmin) {
-    this.kafkaWriteOnlyAdmin = Lazy.of(() -> kafkaWriteOnlyAdmin);
-    this.kafkaReadOnlyAdmin = Lazy.of(() -> kafkaReadOnlyAdmin);
-    this.logger = LogManager.getLogger(TopicManager.class);
-    this.kafkaBootstrapServers = null;
-    this.kafkaOperationTimeoutMs = TimeUnit.SECONDS.toMillis(60);
-    this.topicDeletionStatusPollIntervalMs = TimeUnit.SECONDS.toMillis(1);
-    this.topicMinLogCompactionLagMs = TimeUnit.SECONDS.toMillis(60);
-    this.kafkaClientFactory = null;
-    this.kafkaRawBytesConsumer = null;
-    this.partitionOffsetFetcher = null;
   }
 
   /**

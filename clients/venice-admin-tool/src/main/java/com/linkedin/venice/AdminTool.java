@@ -64,9 +64,11 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixSchemaAccessor;
 import com.linkedin.venice.helix.ZkClientFactory;
-import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
+import com.linkedin.venice.kafka.admin.ApacheKafkaAdminAdapterFactory;
+import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
@@ -1308,27 +1310,33 @@ public class AdminTool {
     properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafkaBootstrapServer);
     VeniceProperties veniceProperties = new VeniceProperties(properties);
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
-    KafkaClientFactory kafkaClientFactory = new KafkaClientFactory(veniceProperties);
     int kafkaTimeOut = 30 * Time.MS_PER_SECOND;
     int topicDeletionStatusPollingInterval = 2 * Time.MS_PER_SECOND;
     if (cmd.hasOption(Arg.KAFKA_OPERATION_TIMEOUT.toString())) {
       kafkaTimeOut = Integer.parseInt(getRequiredArgument(cmd, Arg.KAFKA_OPERATION_TIMEOUT)) * Time.MS_PER_SECOND;
     }
-    TopicManager topicManager = new TopicManager(
-        kafkaTimeOut,
-        topicDeletionStatusPollingInterval,
-        0L,
-        kafkaClientFactory,
-        pubSubTopicRepository);
-    String topicName = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
-    try {
-      topicManager.ensureTopicIsDeletedAndBlock(PUB_SUB_TOPIC_REPOSITORY.getTopic(topicName));
-      long runTime = System.currentTimeMillis() - startTime;
-      printObject("Topic '" + topicName + "' is deleted. Run time: " + runTime + " ms.");
-    } catch (VeniceOperationAgainstKafkaTimedOut e) {
-      printErrAndThrow(e, "Topic deletion timed out for: '" + topicName + "' after " + kafkaTimeOut + " ms.", null);
-    } catch (ExecutionException e) {
-      printErrAndThrow(e, "Topic deletion failed due to ExecutionException", null);
+
+    try (TopicManagerRepository topicManagerRepository = TopicManagerRepository.builder()
+        .setPubSubProperties(veniceProperties)
+        .setKafkaOperationTimeoutMs(kafkaTimeOut)
+        .setTopicDeletionStatusPollIntervalMs(topicDeletionStatusPollingInterval)
+        .setTopicMinLogCompactionLagMs(0L)
+        .setLocalKafkaBootstrapServers(kafkaBootstrapServer)
+        .setPubSubConsumerAdapterFactory(new ApacheKafkaConsumerAdapterFactory())
+        .setPubSubAdminAdapterFactory(new ApacheKafkaAdminAdapterFactory())
+        .setPubSubTopicRepository(pubSubTopicRepository)
+        .build()) {
+      TopicManager topicManager = topicManagerRepository.getTopicManager();
+      String topicName = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
+      try {
+        topicManager.ensureTopicIsDeletedAndBlock(PUB_SUB_TOPIC_REPOSITORY.getTopic(topicName));
+        long runTime = System.currentTimeMillis() - startTime;
+        printObject("Topic '" + topicName + "' is deleted. Run time: " + runTime + " ms.");
+      } catch (VeniceOperationAgainstKafkaTimedOut e) {
+        printErrAndThrow(e, "Topic deletion timed out for: '" + topicName + "' after " + kafkaTimeOut + " ms.", null);
+      } catch (ExecutionException e) {
+        printErrAndThrow(e, "Topic deletion failed due to ExecutionException", null);
+      }
     }
   }
 

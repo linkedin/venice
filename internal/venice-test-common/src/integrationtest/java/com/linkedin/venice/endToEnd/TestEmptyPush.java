@@ -77,12 +77,15 @@ public class TestEmptyPush {
     try (
         ControllerClient controllerClient =
             new ControllerClient(venice.getClusterName(), venice.getAllControllersURLs());
-        TopicManager topicManager = new TopicManager(
-            DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
-            100,
-            0L,
-            IntegrationTestPushUtils.getVeniceConsumerFactory(venice.getKafka()),
-            venice.getPubSubTopicRepository())) {
+        TopicManager topicManager =
+            IntegrationTestPushUtils
+                .getTopicManagerRepo(
+                    DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+                    100,
+                    0l,
+                    venice.getKafka().getAddress(),
+                    venice.getPubSubTopicRepository())
+                .getTopicManager()) {
       controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);
       controllerClient.updateStore(
           storeName,

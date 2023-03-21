@@ -16,6 +16,7 @@ import com.linkedin.davinci.kafka.consumer.TopicExistenceChecker;
 import com.linkedin.venice.integration.utils.PubSubBrokerConfigs;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.EndOfPush;
 import com.linkedin.venice.kafka.protocol.GUID;
@@ -30,6 +31,7 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapter;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -45,7 +47,6 @@ import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
@@ -81,8 +82,6 @@ public class KafkaConsumptionTest {
   private TestMockTime mockTime;
   private TestMockTime remoteMockTime;
   private PubSubTopic versionTopic;
-  private KafkaClientFactory localKafkaClientFactory;
-  private KafkaClientFactory remoteKafkaClientFactory;
 
   private PubSubTopic getTopic() {
     String callingFunction = Thread.currentThread().getStackTrace()[2].getMethodName();
@@ -106,26 +105,30 @@ public class KafkaConsumptionTest {
   public void setUp() {
     mockTime = new TestMockTime();
     localKafka = ServiceFactory.getPubSubBroker(new PubSubBrokerConfigs.Builder().setMockTime(mockTime).build());
-    localKafkaClientFactory = IntegrationTestPushUtils.getVeniceConsumerFactory(localKafka);
-    topicManager = new TopicManager(
-        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
-        100,
-        MIN_COMPACTION_LAG,
-        localKafkaClientFactory,
-        pubSubTopicRepository);
+    topicManager =
+        IntegrationTestPushUtils
+            .getTopicManagerRepo(
+                DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+                100L,
+                MIN_COMPACTION_LAG,
+                localKafka.getAddress(),
+                pubSubTopicRepository)
+            .getTopicManager();
     Cache cacheNothingCache = mock(Cache.class);
     Mockito.when(cacheNothingCache.getIfPresent(Mockito.any())).thenReturn(null);
     topicManager.setTopicConfigCache(cacheNothingCache);
 
     remoteMockTime = new TestMockTime();
     remoteKafka = ServiceFactory.getPubSubBroker(new PubSubBrokerConfigs.Builder().setMockTime(remoteMockTime).build());
-    remoteKafkaClientFactory = IntegrationTestPushUtils.getVeniceConsumerFactory(remoteKafka);
-    remoteTopicManager = new TopicManager(
-        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
-        100,
-        MIN_COMPACTION_LAG,
-        remoteKafkaClientFactory,
-        pubSubTopicRepository);
+    remoteTopicManager =
+        IntegrationTestPushUtils
+            .getTopicManagerRepo(
+                DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+                100L,
+                MIN_COMPACTION_LAG,
+                remoteKafka.getAddress(),
+                pubSubTopicRepository)
+            .getTopicManager();
     Cache remoteCacheNothingCache = mock(Cache.class);
     Mockito.when(remoteCacheNothingCache.getIfPresent(Mockito.any())).thenReturn(null);
     remoteTopicManager.setTopicConfigCache(remoteCacheNothingCache);
@@ -178,13 +181,13 @@ public class KafkaConsumptionTest {
     doReturn(clusterUrlToIdMap).when(veniceServerConfig).getKafkaClusterUrlToIdMap();
 
     TopicExistenceChecker topicExistenceChecker = mock(TopicExistenceChecker.class);
-    KafkaClientFactory kafkaClientFactory = new KafkaClientFactory(new VeniceProperties());
+    PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory = new ApacheKafkaConsumerAdapterFactory();
     KafkaPubSubMessageDeserializer pubSubDeserializer = new KafkaPubSubMessageDeserializer(
         new OptimizedKafkaValueSerializer(),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
     AggKafkaConsumerService aggKafkaConsumerService = new AggKafkaConsumerService(
-        kafkaClientFactory,
+        pubSubConsumerAdapterFactory,
         veniceServerConfig,
         mockBandwidthThrottler,
         mockRecordsThrottler,

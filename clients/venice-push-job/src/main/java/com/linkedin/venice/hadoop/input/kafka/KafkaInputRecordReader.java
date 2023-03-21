@@ -9,6 +9,7 @@ import com.linkedin.venice.hadoop.input.kafka.avro.MapperValueType;
 import com.linkedin.venice.hadoop.input.kafka.chunk.ChunkKeyValueTransformer;
 import com.linkedin.venice.hadoop.input.kafka.chunk.ChunkKeyValueTransformerImpl;
 import com.linkedin.venice.hadoop.input.kafka.chunk.RawKeyBytesAndChunkedKeySuffix;
+import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
 import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
@@ -32,7 +33,6 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.hadoop.mapred.InputSplit;
@@ -93,13 +93,14 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
         split,
         job,
         reporter,
-        KafkaInputUtils.getConsumerFactory(job)
-            .getConsumer(
-                new Properties(),
-                new KafkaPubSubMessageDeserializer(
-                    new OptimizedKafkaValueSerializer(),
-                    new LandFillObjectPool<>(KafkaMessageEnvelope::new),
-                    new LandFillObjectPool<>(KafkaMessageEnvelope::new))),
+        new ApacheKafkaConsumerAdapterFactory().create(
+            KafkaInputUtils.getConsumerProperties(job),
+            false,
+            new KafkaPubSubMessageDeserializer(
+                new OptimizedKafkaValueSerializer(),
+                new LandFillObjectPool<>(KafkaMessageEnvelope::new),
+                new LandFillObjectPool<>(KafkaMessageEnvelope::new)),
+            null),
         PUB_SUB_TOPIC_REPOSITORY);
   }
 

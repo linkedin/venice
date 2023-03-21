@@ -64,12 +64,15 @@ public class TestDictionaryUtils {
   public void setUp() {
     mockTime = new TestMockTime();
     kafka = ServiceFactory.getPubSubBroker(new PubSubBrokerConfigs.Builder().setMockTime(mockTime).build());
-    manager = new TopicManager(
-        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
-        100,
-        MIN_COMPACTION_LAG,
-        IntegrationTestPushUtils.getVeniceConsumerFactory(kafka),
-        pubSubTopicRepository);
+    manager =
+        IntegrationTestPushUtils
+            .getTopicManagerRepo(
+                DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+                100,
+                MIN_COMPACTION_LAG,
+                kafka.getAddress(),
+                pubSubTopicRepository)
+            .getTopicManager();
   }
 
   @AfterClass
