@@ -12,6 +12,25 @@
       "default": []
     },
     {
+      "name": "NullableStringListField",
+      "type": [
+        "null",
+        {
+          "type": "array",
+          "items": "string"
+        }
+      ],
+      "default": null
+    },
+    {
+      "name": "IntMapField",
+      "type": {
+        "type": "map",
+        "values": "int"
+      },
+      "default": {}
+    },
+    {
       "name": "NullableIntMapField",
       "type": [
         "null",

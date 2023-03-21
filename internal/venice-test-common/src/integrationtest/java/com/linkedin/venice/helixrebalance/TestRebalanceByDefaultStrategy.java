@@ -86,7 +86,7 @@ public class TestRebalanceByDefaultStrategy {
     Set<Integer> ports = new HashSet<>();
     cluster.getVeniceServers().forEach(wrapper -> ports.add(wrapper.getPort()));
     for (Integer port: ports) {
-      String instanceId = Utils.getHelixNodeIdentifier(port);
+      String instanceId = Utils.getHelixNodeIdentifier(Utils.getHostName(), port);
       TestUtils.waitForNonDeterministicCompletion(RETRY_REMOVE_TIMEOUT_MS, TimeUnit.MILLISECONDS, () -> {
         try {
           if (cluster.getLeaderVeniceController()

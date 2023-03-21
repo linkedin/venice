@@ -17,7 +17,7 @@ import org.apache.logging.log4j.Logger;
  * We expect the command to comply with the following contract:
  *
  * Input:
- *    <COMMAND> --store <store_name> --fabric <source_fabric> --password <credentials> [<EXTRA_COMMAND_ARGS>]
+ *    <COMMAND> [<EXTRA_COMMAND_ARGS>] --store <store_name> --fabric <source_fabric>
  * Output:
  *    success: link_to_running_task
  *    failure: failure_reason
@@ -58,10 +58,9 @@ public class StoreRepushCommand {
   private List<String> generateRepushCommand() {
     List<String> cmd = new ArrayList<>();
     cmd.add(this.params.command);
+    cmd.add(this.params.extraCommandArgs);
     cmd.add(String.format("--store '%s'", store));
     cmd.add(String.format("--fabric '%s'", this.params.sourceFabric));
-    cmd.add(String.format("--password '%s'", this.params.password));
-    cmd.add(this.params.extraCommandArgs);
     return cmd;
   }
 
@@ -131,10 +130,7 @@ public class StoreRepushCommand {
 
   @Override
   public String toString() {
-    String cmd = "StoreRepushCommand{\n" + String.join(" ", shellCmd) + "\n}";
-    // Hide user's password.
-    cmd = cmd.replace(params.getPassword(), "******");
-    return cmd;
+    return "StoreRepushCommand{\n" + String.join(" ", shellCmd) + "\n}";
   }
 
   public static class Params {
@@ -144,18 +140,8 @@ public class StoreRepushCommand {
     private String sourceFabric;
     // extra arguments to command.
     private String extraCommandArgs;
-    // User's credentials.
-    private String password;
     // Debug run.
     private boolean debug = false;
-
-    public void setPassword(String password) {
-      this.password = password;
-    }
-
-    public String getPassword() {
-      return this.password;
-    }
 
     public void setDebug(boolean debug) {
       this.debug = debug;

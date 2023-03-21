@@ -133,7 +133,7 @@ public class VeniceServerTest {
       cluster.stopVeniceServer(server.getPort());
       try (ControllerClient client = ControllerClient
           .constructClusterControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs())) {
-        client.removeNodeFromCluster(Utils.getHelixNodeIdentifier(server.getPort()));
+        client.removeNodeFromCluster(Utils.getHelixNodeIdentifier(Utils.getHostName(), server.getPort()));
       }
 
       cluster.restartVeniceServer(server.getPort());

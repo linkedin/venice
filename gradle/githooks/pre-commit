@@ -3,4 +3,5 @@
 echo 'Running pre-commit checks...'
 [ -z "$(git diff --staged --name-only --diff-filter=d)" ] && exit 0
 ./gradlew spotlessApply
+./gradlew generateGHCI && git add .github/workflows/gh-ci.yml
 git diff --staged --name-only --diff-filter=d | xargs git add

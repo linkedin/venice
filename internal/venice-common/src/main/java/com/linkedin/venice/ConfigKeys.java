@@ -12,6 +12,8 @@ public class ConfigKeys {
   public static final String ZOOKEEPER_ADDRESS = "zookeeper.address";
 
   public static final String ADMIN_PORT = "admin.port";
+  public static final String ADMIN_HOSTNAME = "admin.hostname";
+
   public static final String ADMIN_SECURE_PORT = "admin.secure.port";
 
   /**
@@ -331,6 +333,9 @@ public class ConfigKeys {
 
   // Server specific configs
   public static final String LISTENER_PORT = "listener.port";
+
+  public static final String LISTENER_HOSTNAME = "listener.hostname";
+
   public static final String DATA_BASE_PATH = "data.base.path";
   public static final String AUTOCREATE_DATA_PATH = "autocreate.data.path";
   public static final String ENABLE_SERVER_ALLOW_LIST = "enable.server.allowlist";
@@ -820,6 +825,11 @@ public class ConfigKeys {
   public static final String ROUTER_MAX_OUTGOING_CONNECTION = "router.max.outgoing.connection";
 
   /**
+   * Enable per router per storage node throttler by distributing the store quota among the partitions and replicas.
+   */
+  public static final String ROUTER_PER_STORAGE_NODE_THROTTLER_ENABLED = "router.per.storage.node.throttler.enabled";
+
+  /**
    * This config is used to bound the pending request.
    * Without this config, the accumulated requests in Http Async Client could grow unlimitedly,
    * which would put Router in a non-recoverable state because of long GC pause introduced
@@ -853,11 +863,7 @@ public class ConfigKeys {
    */
   public static final String ROUTER_PER_STORAGE_NODE_READ_QUOTA_BUFFER = "router.per.storage.node.read.quota.buffer";
 
-  /**
-   * The TTL for each entry in router cache (millisecond)
-   * If 0, TTL is not enabled; other, cache TTL is enabled
-   */
-  public static final String ROUTER_CACHE_TTL_MILLIS = "router.cache.ttl.millis";
+  public static final String ROUTER_PER_STORE_ROUTER_QUOTA_BUFFER = "router.per.store.router.quota.buffer";
 
   /**
    * Whether to enable customized dns cache in router or not.

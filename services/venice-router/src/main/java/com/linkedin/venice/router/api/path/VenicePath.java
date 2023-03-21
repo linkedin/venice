@@ -15,7 +15,6 @@ import com.linkedin.venice.router.streaming.VeniceChunkedResponse;
 import com.linkedin.venice.router.streaming.VeniceChunkedWriteHandler;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
-import com.linkedin.venice.utils.Utils;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.HttpMethod;
@@ -25,6 +24,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 import javax.annotation.Nonnull;
@@ -54,7 +54,7 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
    * When retry happens, the set will contain the storage nodes, which haven't finished the original scattered requests,
    * which will be treated as slow storage nodes, and Router will try to avoid retry requests to the storage nodes from this set.
    */
-  private Set<String> slowStorageNodeSet = Utils.newConcurrentSet();
+  private Set<String> slowStorageNodeSet = new ConcurrentSkipListSet<>();
   // Whether the request supports streaming or not
   private Optional<VeniceChunkedResponse> chunkedResponse = Optional.empty();
   // Response decompressor

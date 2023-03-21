@@ -6,8 +6,14 @@ import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
 import static com.linkedin.venice.hadoop.VenicePushJob.REWIND_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_KAFKA;
+import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.PARENT_D2_SERVICE_NAME;
+import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
+import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_AGGREGATE;
+import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_CONTROLLER_D2_SERVICE;
+import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_D2_ZK_HOSTS;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL_TS_FIELD_NAME;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducerConfig;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingDeleteRecord;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
@@ -53,6 +59,7 @@ import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClust
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdConstants;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
@@ -87,6 +94,7 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.DatumWriter;
 import org.apache.avro.util.Utf8;
+import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -665,6 +673,107 @@ public class PartialUpdateTest {
         });
 
       }
+    } finally {
+      if (veniceProducer != null) {
+        veniceProducer.stop();
+      }
+    }
+  }
+
+  @Test(timeOut = 120 * Time.MS_PER_SECOND)
+  public void testWriteComputeWithSamzaBatchJob() throws Exception {
+
+    SystemProducer veniceProducer = null;
+    long streamingRewindSeconds = 10L;
+    long streamingMessageLag = 2L;
+
+    String storeName = Utils.getUniqueString("write-compute-store");
+    File inputDir = getTempDataDirectory();
+    String parentControllerURL = parentController.getControllerUrl();
+    // Records 1-100, id string to name record
+    Schema recordSchema = writeSimpleAvroFileWithStringToRecordSchema(inputDir, true);
+    VeniceClusterWrapper veniceClusterWrapper = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
+    try (ControllerClient controllerClient = new ControllerClient(CLUSTER_NAME, parentControllerURL);
+        AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
+            ClientConfig.defaultGenericClientConfig(storeName)
+                .setVeniceURL(veniceClusterWrapper.getRandomRouterURL()))) {
+
+      String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+      String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
+      assertCommand(controllerClient.createNewStore(storeName, "test_owner", keySchemaStr, valueSchemaStr));
+
+      ControllerResponse response = controllerClient.updateStore(
+          storeName,
+          new UpdateStoreQueryParams().setHybridRewindSeconds(streamingRewindSeconds)
+              .setHybridOffsetLagThreshold(streamingMessageLag)
+              .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+              .setWriteComputationEnabled(true)
+              .setChunkingEnabled(true)
+              .setHybridRewindSeconds(10L)
+              .setHybridOffsetLagThreshold(2L));
+
+      assertFalse(response.isError());
+
+      // Add a new value schema v2 to store
+      SchemaResponse schemaResponse = controllerClient.addValueSchema(storeName, NESTED_SCHEMA_STRING_V2);
+      assertFalse(schemaResponse.isError());
+
+      // Add WC (Write Compute) schema associated to v2.
+      // (this is a test environment only needed step since theres no parent)
+      Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance()
+          .convertFromValueRecordSchema(AvroCompatibilityHelper.parse(NESTED_SCHEMA_STRING_V2));
+      schemaResponse =
+          controllerClient.addDerivedSchema(storeName, schemaResponse.getId(), writeComputeSchema.toString());
+      assertFalse(schemaResponse.isError());
+
+      // Run empty push to create a version and get everything created
+      controllerClient.sendEmptyPushAndWait(storeName, "foopush", 10000, 60 * Time.MS_PER_SECOND);
+
+      VeniceSystemFactory factory = new VeniceSystemFactory();
+      Version.PushType pushType = Version.PushType.BATCH;
+      Map<String, String> samzaConfig = getSamzaProducerConfig(veniceClusterWrapper, storeName, pushType);
+      // final boolean veniceAggregate = config.getBoolean(prefix + VENICE_AGGREGATE, false);
+      samzaConfig.put("systems.venice." + VENICE_AGGREGATE, "true");
+      samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, multiRegionMultiClusterWrapper.getZkServerWrapper().getAddress());
+      samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
+      samzaConfig.put(DEPLOYMENT_ID, Utils.getUniqueString("venice-push-id"));
+      veniceProducer = factory.getProducer("venice", new MapConfig(samzaConfig), null);
+      veniceProducer.start();
+
+      // build partial update
+      char[] chars = new char[5];
+      Arrays.fill(chars, 'f');
+      String firstName = new String(chars);
+      Arrays.fill(chars, 'l');
+      String lastName = new String(chars);
+
+      UpdateBuilder updateBuilder = new UpdateBuilderImpl(writeComputeSchema);
+      updateBuilder.setNewFieldValue("firstName", firstName);
+      updateBuilder.setNewFieldValue("lastName", lastName);
+      GenericRecord partialUpdateRecord = updateBuilder.build();
+
+      for (int i = 0; i < 10; i++) {
+        String key = String.valueOf(i);
+        sendStreamingRecord(veniceProducer, storeName, key, partialUpdateRecord);
+      }
+
+      // send end of push
+      controllerClient.writeEndOfPush(storeName, 2);
+
+      // Verify everything made it
+      TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+        try {
+          for (int i = 0; i < 10; i++) {
+            GenericRecord retrievedValue = readValue(storeReader, Integer.toString(i));
+            assertNotNull(retrievedValue, "Key " + i + " should not be missing!");
+            assertEquals(retrievedValue.get("firstName").toString(), firstName);
+            assertEquals(retrievedValue.get("lastName").toString(), lastName);
+            assertEquals(retrievedValue.get("age").toString(), "-1");
+          }
+        } catch (Exception e) {
+          throw new VeniceException(e);
+        }
+      });
     } finally {
       if (veniceProducer != null) {
         veniceProducer.stop();

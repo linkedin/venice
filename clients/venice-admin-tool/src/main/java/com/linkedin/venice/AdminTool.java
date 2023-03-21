@@ -608,6 +608,7 @@ public class AdminTool {
 
     String extraCommandArgs = getOptionalArgument(cmd, Arg.EXTRA_COMMAND_ARGS);
     boolean isDebuggingEnabled = cmd.hasOption(Arg.DEBUG.toString());
+    boolean isNonInteractive = cmd.hasOption(Arg.NON_INTERACTIVE.toString());
 
     StoreRepushCommand.Params cmdParams = new StoreRepushCommand.Params();
     cmdParams.setCommand(recoveryCommand);
@@ -618,7 +619,7 @@ public class AdminTool {
     cmdParams.setDebug(isDebuggingEnabled);
 
     DataRecoveryClient dataRecoveryClient = new DataRecoveryClient();
-    DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(stores);
+    DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(stores, isNonInteractive);
     dataRecoveryClient.execute(params, cmdParams);
   }
 
@@ -910,6 +911,7 @@ public class AdminTool {
         argSet);
     booleanParam(cmd, Arg.CLIENT_DECOMPRESSION_ENABLED, p -> params.setClientDecompressionEnabled(p), argSet);
     booleanParam(cmd, Arg.CHUNKING_ENABLED, p -> params.setChunkingEnabled(p), argSet);
+    booleanParam(cmd, Arg.RMD_CHUNKING_ENABLED, p -> params.setRmdChunkingEnabled(p), argSet);
     integerParam(cmd, Arg.BATCH_GET_LIMIT, p -> params.setBatchGetLimit(p), argSet);
     integerParam(cmd, Arg.NUM_VERSIONS_TO_PRESERVE, p -> params.setNumVersionsToPreserve(p), argSet);
     booleanParam(cmd, Arg.INCREMENTAL_PUSH_ENABLED, p -> params.setIncrementalPushEnabled(p), argSet);

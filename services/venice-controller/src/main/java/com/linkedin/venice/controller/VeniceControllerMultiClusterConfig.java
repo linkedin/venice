@@ -45,6 +45,10 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getAdminPort();
   }
 
+  public String getAdminHostname() {
+    return getCommonConfig().getAdminHostname();
+  }
+
   public int getAdminSecurePort() {
     return getCommonConfig().getAdminSecurePort();
   }

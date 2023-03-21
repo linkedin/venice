@@ -172,6 +172,7 @@ import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
+import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
@@ -2698,7 +2699,7 @@ public class VeniceParentHelixAdmin implements Admin {
    * @see VeniceHelixAdmin#getDerivedSchemaId(String, String, String)
    */
   @Override
-  public Pair<Integer, Integer> getDerivedSchemaId(String clusterName, String storeName, String schemaStr) {
+  public GeneratedSchemaID getDerivedSchemaId(String clusterName, String storeName, String schemaStr) {
     return getVeniceHelixAdmin().getDerivedSchemaId(clusterName, storeName, schemaStr);
   }
 
@@ -2988,7 +2989,8 @@ public class VeniceParentHelixAdmin implements Admin {
       if (newDerivedSchemaId == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
         return new DerivedSchemaEntry(
             valueSchemaId,
-            getVeniceHelixAdmin().getDerivedSchemaId(clusterName, storeName, derivedSchemaStr).getSecond(),
+            getVeniceHelixAdmin().getDerivedSchemaId(clusterName, storeName, derivedSchemaStr)
+                .getGeneratedSchemaVersion(),
             derivedSchemaStr);
       }
 
@@ -3017,16 +3019,16 @@ public class VeniceParentHelixAdmin implements Admin {
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
 
       // defensive code checking
-      Pair<Integer, Integer> actualValueSchemaIdPair = getDerivedSchemaId(clusterName, storeName, derivedSchemaStr);
-      if (actualValueSchemaIdPair.getFirst() != valueSchemaId
-          || actualValueSchemaIdPair.getSecond() != newDerivedSchemaId) {
+      GeneratedSchemaID actualValueSchemaIdPair = getDerivedSchemaId(clusterName, storeName, derivedSchemaStr);
+      if (actualValueSchemaIdPair.getValueSchemaID() != valueSchemaId
+          || actualValueSchemaIdPair.getGeneratedSchemaVersion() != newDerivedSchemaId) {
         throw new VeniceException(
             String.format(
                 "Something bad happened, the expected new value schema id pair is:" + "%d_%d, but got: %d_%d",
                 valueSchemaId,
                 newDerivedSchemaId,
-                actualValueSchemaIdPair.getFirst(),
-                actualValueSchemaIdPair.getSecond()));
+                actualValueSchemaIdPair.getValueSchemaID(),
+                actualValueSchemaIdPair.getGeneratedSchemaVersion()));
       }
 
       return new DerivedSchemaEntry(valueSchemaId, newDerivedSchemaId, derivedSchemaStr);

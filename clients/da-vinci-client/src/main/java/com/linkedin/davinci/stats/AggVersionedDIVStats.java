@@ -136,7 +136,6 @@ public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVSta
   @Override
   protected void updateTotalStats(String storeName) {
     IntSet existingVersions = new IntOpenHashSet(3);
-    existingVersions.add(getBackupVersion(storeName));
     existingVersions.add(getCurrentVersion(storeName));
     existingVersions.add(getFutureVersion(storeName));
     existingVersions.remove(NON_EXISTING_VERSION);

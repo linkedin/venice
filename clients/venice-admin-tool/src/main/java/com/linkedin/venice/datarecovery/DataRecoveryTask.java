@@ -19,6 +19,14 @@ public class DataRecoveryTask implements Runnable {
     taskResult = new TaskResult(command.getResult());
   }
 
+  /**
+   * For some task, it is benefit to wait for the first task to complete before starting to run the remaining ones.
+   * Thus, this is a task specific flag to set based on the purpose of the task.
+   */
+  public boolean needWaitForFirstTaskToComplete() {
+    return true;
+  }
+
   public TaskResult getTaskResult() {
     return taskResult;
   }

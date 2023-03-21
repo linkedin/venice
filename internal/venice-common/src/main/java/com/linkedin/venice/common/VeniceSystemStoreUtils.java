@@ -32,14 +32,6 @@ public class VeniceSystemStoreUtils {
     return storeName.startsWith(Store.SYSTEM_STORE_NAME_PREFIX);
   }
 
-  /**
-   * @param storeName
-   * @return the corresponding store name for shared Zookeeper if applicable. The same store name is returned otherwise.
-   */
-  public static String getZkStoreName(String storeName) {
-    return storeName;
-  }
-
   public static String getDaVinciPushStatusStoreName(String storeName) {
     return VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE.getSystemStoreName(storeName);
   }

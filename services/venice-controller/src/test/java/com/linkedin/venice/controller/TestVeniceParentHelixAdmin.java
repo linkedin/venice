@@ -72,6 +72,7 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.pushmonitor.PartitionStatus;
 import com.linkedin.venice.pushmonitor.StatusSnapshot;
+import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.DataProviderUtils;
@@ -514,7 +515,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(derivedSchemaId).when(internalAdmin)
         .checkPreConditionForAddDerivedSchemaAndGetNewSchemaId(clusterName, storeName, valueSchemaId, derivedSchemaStr);
 
-    doReturn(new Pair<>(valueSchemaId, derivedSchemaId)).when(internalAdmin)
+    doReturn(new GeneratedSchemaID(valueSchemaId, derivedSchemaId)).when(internalAdmin)
         .getDerivedSchemaId(clusterName, storeName, derivedSchemaStr);
 
     doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
