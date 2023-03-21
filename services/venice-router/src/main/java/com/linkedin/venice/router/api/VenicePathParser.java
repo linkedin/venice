@@ -118,8 +118,8 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
     BasicFullHttpRequest fullHttpRequest = (BasicFullHttpRequest) request;
 
     VenicePathParserHelper pathHelper = parseRequest(request);
-    String resourceType = pathHelper.getResourceType();
-    if (!resourceType.equals(TYPE_STORAGE) && !resourceType.equals(TYPE_COMPUTE)) {
+    RouterResourceType resourceType = pathHelper.getResourceType();
+    if (resourceType != RouterResourceType.TYPE_STORAGE && resourceType != RouterResourceType.TYPE_COMPUTE) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
           Optional.empty(),
           Optional.empty(),
@@ -150,7 +150,7 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
         // single-get request
         path = new VeniceSingleGetPath(resourceName, pathHelper.getKey(), uri, partitionFinder, statsOptional);
       } else if (VeniceRouterUtils.isHttpPost(method)) {
-        if (resourceType.equals(TYPE_STORAGE)) {
+        if (resourceType == RouterResourceType.TYPE_STORAGE) {
           // multi-get request
           path = new VeniceMultiGetPath(
               resourceName,
@@ -161,7 +161,7 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
               routerConfig.getSmartLongTailRetryAbortThresholdMs(),
               statsOptional,
               routerConfig.getLongTailRetryMaxRouteForMultiKeyReq());
-        } else if (resourceType.equals(TYPE_COMPUTE)) {
+        } else if (resourceType == RouterResourceType.TYPE_COMPUTE) {
           // read compute request
           path = new VeniceComputePath(
               resourceName,
