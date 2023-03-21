@@ -2408,13 +2408,25 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
 
       if (startIngestion) {
-        // Store write lock is released before polling status
-        waitUntilNodesAreAssignedForResource(
-            clusterName,
-            version.kafkaTopicName(),
-            strategy,
-            clusterConfig.getOffLineJobWaitTimeInMilliseconds(),
-            replicationFactor);
+        try {
+          // Store write lock is released before polling status
+          waitUntilNodesAreAssignedForResource(
+              clusterName,
+              version.kafkaTopicName(),
+              strategy,
+              clusterConfig.getOffLineJobWaitTimeInMilliseconds(),
+              replicationFactor);
+        } catch (VeniceNoClusterException e) {
+          if (!isLeaderControllerFor(clusterName)) {
+            int versionNumberInProgress = version == null ? versionNumber : version.getNumber();
+            LOGGER.warn(
+                "No longer the leader controller of cluster {}; do not fail the AddVersion command, since the new leader will monitor the push for store version {}_v{}",
+                clusterName,
+                storeName,
+                versionNumberInProgress);
+            return new Pair<>(true, version);
+          }
+        }
       }
       return new Pair<>(true, version);
 
