@@ -65,6 +65,7 @@ public abstract class AbstractClientEndToEndSetup {
   private VeniceWriter<Object, Object, Object> veniceWriter;
   protected Client r2Client;
   protected D2Client d2Client;
+  protected String routerD2Service;
   // thin client for the thin client based metadata
   protected AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> thinClientForMetaStore = null;
 
@@ -94,9 +95,10 @@ public abstract class AbstractClientEndToEndSetup {
     */
   public final Object[] BATCH_GET_KEY_SIZE = { 2, /*recordCnt*/ };
 
-  @DataProvider(name = "FastClient-Three-Boolean-And-A-Number")
-  public Object[][] threeBooleanAndANumber() {
+  @DataProvider(name = "FastClient-Four-Boolean-And-A-Number")
+  public Object[][] fourBooleanAndANumber() {
     return DataProviderUtils.allPermutationGenerator(
+        DataProviderUtils.BOOLEAN,
         DataProviderUtils.BOOLEAN,
         DataProviderUtils.BOOLEAN,
         DataProviderUtils.BOOLEAN,
@@ -112,7 +114,10 @@ public abstract class AbstractClientEndToEndSetup {
 
     r2Client = ClientTestUtils.getR2Client(ClientTestUtils.FastClientHTTPVariant.HTTP_2_BASED_HTTPCLIENT5);
 
-    d2Client = D2TestUtils.getAndStartD2Client(veniceCluster.getZk().getAddress());
+    d2Client = D2TestUtils.getAndStartHttpsD2Client(veniceCluster.getZk().getAddress());
+
+    routerD2Service =
+        veniceCluster.getVeniceRouters().get(0).getD2ServiceNameForCluster(veniceCluster.getClusterName());
 
     prepareData();
     prepareMetaSystemStore();
@@ -200,9 +205,10 @@ public abstract class AbstractClientEndToEndSetup {
   protected AvroGenericStoreClient<String, Object> getGenericFastVsonClient(
       ClientConfig.ClientConfigBuilder clientConfigBuilder,
       MetricsRepository metricsRepository,
-      Optional<AvroGenericStoreClient> vsonThinClient) throws IOException {
+      Optional<AvroGenericStoreClient> vsonThinClient,
+      boolean useRouterBasedMetadata) throws IOException {
     clientConfigBuilder.setVsonStore(true);
-    setupStoreMetadata(clientConfigBuilder);
+    setupStoreMetadata(clientConfigBuilder, useRouterBasedMetadata);
 
     // clientConfigBuilder will be used for building multiple clients over this test flow,
     // so, always specify a new MetricsRepository to avoid conflicts.
@@ -220,8 +226,9 @@ public abstract class AbstractClientEndToEndSetup {
 
   protected AvroGenericStoreClient<String, GenericRecord> getGenericFastClient(
       ClientConfig.ClientConfigBuilder clientConfigBuilder,
-      MetricsRepository metricsRepository) throws IOException {
-    setupStoreMetadata(clientConfigBuilder);
+      MetricsRepository metricsRepository,
+      boolean useRouterBasedMetadata) throws IOException {
+    setupStoreMetadata(clientConfigBuilder, useRouterBasedMetadata);
 
     // clientConfigBuilder will be used for building multiple clients over this test flow,
     // so, always specify a new MetricsRepository to avoid conflicts.
@@ -235,8 +242,9 @@ public abstract class AbstractClientEndToEndSetup {
   protected AvroSpecificStoreClient<String, TestValueSchema> getSpecificFastClient(
       ClientConfig.ClientConfigBuilder clientConfigBuilder,
       MetricsRepository metricsRepository,
-      Class specificValueClass) throws IOException {
-    setupStoreMetadata(clientConfigBuilder);
+      Class specificValueClass,
+      boolean useRouterBasedMetadata) throws IOException {
+    setupStoreMetadata(clientConfigBuilder, useRouterBasedMetadata);
 
     // clientConfigBuilder will be used for building multiple clients over this test flow,
     // so, always specify a new MetricsRepository to avoid conflicts.
@@ -248,9 +256,18 @@ public abstract class AbstractClientEndToEndSetup {
     return ClientFactory.getAndStartSpecificStoreClient(clientConfig);
   }
 
-  protected void setupStoreMetadata(ClientConfig.ClientConfigBuilder clientConfigBuilder) throws IOException {
-    setupThinClientBasedStoreMetadata();
-    clientConfigBuilder.setThinClientForMetaStore(thinClientForMetaStore);
+  protected void setupStoreMetadata(
+      ClientConfig.ClientConfigBuilder clientConfigBuilder,
+      boolean useRouterBasedMetadata) throws IOException {
+    if (useRouterBasedMetadata) {
+      clientConfigBuilder.setRequestBasedMetadata(true);
+      clientConfigBuilder.setD2Client(d2Client);
+      clientConfigBuilder.setRouterD2Service(routerD2Service);
+      clientConfigBuilder.setMetadataRefreshIntervalInSeconds(1);
+    } else {
+      setupThinClientBasedStoreMetadata();
+      clientConfigBuilder.setThinClientForMetaStore(thinClientForMetaStore);
+    }
   }
 
   private void setupThinClientBasedStoreMetadata() {

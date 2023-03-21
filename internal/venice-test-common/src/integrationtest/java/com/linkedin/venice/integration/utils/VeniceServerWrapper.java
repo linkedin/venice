@@ -190,7 +190,6 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
 
       // Generate server.properties in config directory
       int listenPort = Utils.getFreePort();
-      int sslPort = Utils.getFreePort();
       int ingestionIsolationApplicationPort = Utils.getFreePort();
       int ingestionIsolationServicePort = Utils.getFreePort();
       PropertyBuilder serverPropsBuilder = new PropertyBuilder().put(LISTENER_PORT, listenPort)
@@ -228,8 +227,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
 
       boolean https = serverProps.getBoolean(SERVER_HTTP2_INBOUND_ENABLED, false);
       String httpURI = "http://localhost:" + listenPort;
-      String httpsURI = "https://localhost:" + sslPort;
-
+      String httpsURI = "https://localhost:" + listenPort;
       String d2ClusterName = D2TestUtils.setupD2Config(zkAddress, https, serverD2ServiceName);
       List<ServiceDiscoveryAnnouncer> d2Servers =
           new ArrayList<>(D2TestUtils.getD2Servers(zkAddress, d2ClusterName, httpURI, httpsURI));

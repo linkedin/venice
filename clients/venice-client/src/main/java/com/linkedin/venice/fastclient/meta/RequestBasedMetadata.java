@@ -144,7 +144,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
    * old values as we perform updates, while making sure we keep the two most recent versions in the cache.
    * @param onDemandRefresh
    */
-  private synchronized void updateCache(boolean onDemandRefresh) {
+  private synchronized void updateCache(boolean onDemandRefresh) throws InterruptedException {
     // call the METADATA endpoint
     try {
       byte[] body = fetchMetadata().get().getBody();
@@ -233,9 +233,6 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
           clusterStats.recordVersionUpdateFailure();
         }
       }
-    } catch (InterruptedException interruptedException) {
-      Thread.currentThread().interrupt();
-      throw new VeniceClientException("Metadata fetch operation was interrupted");
     } catch (ExecutionException e) {
       // perform an on demand refresh if update fails in case of store migration
       // TODO: need a better way to handle store migration

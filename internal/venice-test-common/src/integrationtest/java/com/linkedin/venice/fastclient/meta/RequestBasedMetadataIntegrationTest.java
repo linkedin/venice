@@ -1,5 +1,6 @@
 package com.linkedin.venice.fastclient.meta;
 
+import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED;
 import static org.testng.Assert.*;
 
 import com.linkedin.d2.balancer.D2Client;
@@ -27,6 +28,7 @@ import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
@@ -53,9 +55,11 @@ public class RequestBasedMetadataIntegrationTest {
   @BeforeClass
   public void setUp() throws Exception {
     Utils.thisIsLocalhost();
-    veniceCluster = ServiceFactory.getVeniceCluster(1, 2, 1, 2);
+    Properties props = new Properties();
+    props.put(SERVER_HTTP2_INBOUND_ENABLED, "true");
+    veniceCluster = ServiceFactory.getVeniceCluster(1, 2, 1, 2, 100, true, false, props);
     r2Client = ClientTestUtils.getR2Client();
-    d2Client = D2TestUtils.getAndStartD2Client(veniceCluster.getZk().getAddress());
+    d2Client = D2TestUtils.getAndStartHttpsD2Client(veniceCluster.getZk().getAddress());
     createStore();
 
     keySerializer =
