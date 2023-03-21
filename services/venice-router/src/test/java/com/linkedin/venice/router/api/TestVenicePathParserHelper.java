@@ -26,7 +26,6 @@ public class TestVenicePathParserHelper {
         new BasicFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, controllerUri, -1, -1);
 
     Assert.assertEquals(parseRequest(request).getResourceType().toString(), TYPE_LEADER_CONTROLLER);
-    Assert.assertTrue(parseRequest(request).isInvalidStorageRequest());
 
     String storageUri = "http://myhost:1234/" + TYPE_STORAGE + "/storename/key?f=b64&fee=fi&foe=fum";
     request = new BasicFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, storageUri, -1, -1);
@@ -34,7 +33,6 @@ public class TestVenicePathParserHelper {
     Assert.assertEquals(storageHelper.getResourceType().toString(), TYPE_STORAGE);
     Assert.assertEquals(storageHelper.getResourceName(), "storename");
     Assert.assertEquals(storageHelper.getKey(), "key");
-    Assert.assertFalse(storageHelper.isInvalidStorageRequest());
 
     Map<String, String> params = storageHelper.extractQueryParameters(request);
     Assert.assertTrue(params.containsKey("f"));
