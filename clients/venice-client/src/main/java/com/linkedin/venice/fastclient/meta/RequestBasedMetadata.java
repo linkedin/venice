@@ -11,20 +11,19 @@ import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.fastclient.stats.ClusterStats;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
+import com.linkedin.venice.metadata.response.VersionProperties;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
-import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -38,8 +37,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericRecord;
-import org.apache.avro.util.Utf8;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -141,42 +138,35 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
 
   /**
    * Update is only performed if the version from the fetched metadata is different from the local version. We evict
-   * old values as we perform updates, while making sure we keep the two most recent versions in the cache.
+   * old values as we perform updates, while making sure we keep all currently active versions.
    * @param onDemandRefresh
    */
   private synchronized void updateCache(boolean onDemandRefresh) throws InterruptedException {
     // call the METADATA endpoint
     try {
       byte[] body = fetchMetadata().get().getBody();
-      RecordDeserializer<MetadataResponseRecord> metadataResponseRecordRecordDeserializer =
-          SerializerDeserializerFactory.getAvroGenericDeserializer(MetadataResponseRecord.SCHEMA$);
-      GenericRecord metadataResponse = metadataResponseRecordRecordDeserializer.deserialize(body);
-      GenericRecord versionMetadata = (GenericRecord) metadataResponse.get("versionMetadata");
+      RecordDeserializer<MetadataResponseRecord> metadataResponseDeserializer = FastSerializerDeserializerFactory
+          .getFastAvroSpecificDeserializer(MetadataResponseRecord.SCHEMA$, MetadataResponseRecord.class);
+      MetadataResponseRecord metadataResponse = metadataResponseDeserializer.deserialize(body);
+      VersionProperties versionMetadata = metadataResponse.getVersionMetadata();
 
-      Integer fetchedVersion = (Integer) versionMetadata.get("currentVersion");
-      Integer compressionStrategy = (Integer) versionMetadata.get("compressionStrategy");
-      Integer partitionCount = (Integer) versionMetadata.get("partitionCount");
-      String partitionerClass = ((Utf8) versionMetadata.get("partitionerClass")).toString();
-      Map<String, String> partitionerParams =
-          ((HashMap<Utf8, Utf8>) versionMetadata.get("partitionerParams")).entrySet()
-              .stream()
-              .collect(Collectors.toMap(entry -> entry.getKey().toString(), entry -> entry.getValue().toString()));
-      Integer amplificationFactor = (Integer) versionMetadata.get("amplificationFactor");
-      Integer newSuperSetValueSchemaId = (Integer) metadataResponse.get("latestSuperSetValueSchemaId");
-      Map<Integer, String> keySchema = ((HashMap<Utf8, Utf8>) metadataResponse.get("keySchema")).entrySet()
+      int fetchedVersion = versionMetadata.getCurrentVersion();
+      int compressionStrategy = versionMetadata.getCompressionStrategy();
+      int partitionCount = versionMetadata.getPartitionCount();
+      String partitionerClass = versionMetadata.getPartitionerClass().toString();
+      Map<CharSequence, CharSequence> partitionerParams = versionMetadata.getPartitionerParams();
+      int amplificationFactor = versionMetadata.getAmplificationFactor();
+      int newSuperSetValueSchemaId = metadataResponse.getLatestSuperSetValueSchemaId();
+      Map<CharSequence, CharSequence> keySchema = metadataResponse.getKeySchema();
+      Map<CharSequence, CharSequence> valueSchemas = metadataResponse.getValueSchemas();
+      // Map<CharSequence, Integer> helixGroupInfo = metadataResponse.getHelixGroupInfo();
+      Map<Integer, List<String>> routingInfo = metadataResponse.getRoutingInfo()
+          .entrySet()
           .stream()
-          .collect(Collectors.toMap(e -> Integer.valueOf(e.getKey().toString()), e -> e.getValue().toString()));
-      Map<Integer, String> valueSchemas = ((HashMap<Utf8, Utf8>) metadataResponse.get("valueSchemas")).entrySet()
-          .stream()
-          .collect(Collectors.toMap(e -> Integer.valueOf(e.getKey().toString()), e -> e.getValue().toString()));
-      // Map<Utf8, Integer> helixGroupInfo = (HashMap<Utf8, Integer>) metadataResponse.get("helixGroupInfo");
-      Map<Integer, List<String>> routingInfo =
-          ((HashMap<Utf8, Collection<Utf8>>) metadataResponse.get("routingInfo")).entrySet()
-              .stream()
-              .collect(
-                  Collectors.toMap(
-                      e -> Integer.valueOf(e.getKey().toString()),
-                      e -> e.getValue().stream().map(Utf8::toString).collect(Collectors.toList())));
+          .collect(
+              Collectors.toMap(
+                  e -> Integer.valueOf(e.getKey().toString()),
+                  e -> e.getValue().stream().map(CharSequence::toString).collect(Collectors.toList())));
 
       if (fetchedVersion != getCurrentStoreVersion()) {
         // call the DICTIONARY endpoint if needed
@@ -201,18 +191,15 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
 
         // Update schemas
         SchemaData schemaData = new SchemaData(storeName);
-        for (Map.Entry<Integer, String> entry: keySchema.entrySet()) {
-          schemaData.setKeySchema(new SchemaEntry(entry.getKey(), entry.getValue()));
+        for (Map.Entry<CharSequence, CharSequence> entry: keySchema.entrySet()) {
+          schemaData
+              .setKeySchema(new SchemaEntry(Integer.parseInt(entry.getKey().toString()), entry.getValue().toString()));
         }
-        for (Map.Entry<Integer, String> entry: valueSchemas.entrySet()) {
-          schemaData.addValueSchema(new SchemaEntry(entry.getKey(), entry.getValue()));
+        for (Map.Entry<CharSequence, CharSequence> entry: valueSchemas.entrySet()) {
+          schemaData.addValueSchema(
+              new SchemaEntry(Integer.parseInt(entry.getKey().toString()), entry.getValue().toString()));
         }
         schemas.set(schemaData);
-
-        // Evict entries that are over two versions behind from the latest fetched version
-        readyToServeInstancesMap.entrySet().removeIf(entry -> getVersionFromKey(entry.getKey()) < fetchedVersion - 2);
-        versionPartitionerMap.entrySet().removeIf(entry -> entry.getKey() < fetchedVersion - 2);
-        versionZstdDictionaryMap.entrySet().removeIf(entry -> entry.getKey() < fetchedVersion - 2);
 
         // Wait for dictionary fetch to finish if there is one
         try {
@@ -222,9 +209,6 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
           currentVersion.set(fetchedVersion);
           clusterStats.updateCurrentVersion(getCurrentStoreVersion());
           latestSuperSetValueSchemaId.set(newSuperSetValueSchemaId);
-        } catch (InterruptedException interruptedException) {
-          Thread.currentThread().interrupt();
-          throw new VeniceClientException("Dictionary fetch operation was interrupted");
         } catch (ExecutionException | TimeoutException e) {
           LOGGER.warn(
               "Dictionary fetch operation could not complete in time for some of the versions. "
@@ -232,6 +216,11 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
               e);
           clusterStats.recordVersionUpdateFailure();
         }
+
+        // Evict entries from inactive versions
+        readyToServeInstancesMap.entrySet().removeIf(entry -> getVersionFromKey(entry.getKey()) < fetchedVersion - 2);
+        versionPartitionerMap.entrySet().removeIf(entry -> entry.getKey() < fetchedVersion - 2);
+        versionZstdDictionaryMap.entrySet().removeIf(entry -> entry.getKey() < fetchedVersion - 2);
       }
     } catch (ExecutionException e) {
       // perform an on demand refresh if update fails in case of store migration
