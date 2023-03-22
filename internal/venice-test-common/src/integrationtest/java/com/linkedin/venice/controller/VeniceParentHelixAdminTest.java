@@ -2,7 +2,7 @@ package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE;
-import static com.linkedin.venice.ConfigKeys.REPLICATION_METADATA_VERSION_ID;
+import static com.linkedin.venice.ConfigKeys.REPLICATION_METADATA_VERSION;
 import static com.linkedin.venice.ConfigKeys.TERMINAL_STATE_TOPIC_CHECK_DELAY_MS;
 import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS;
 import static com.linkedin.venice.controller.SchemaConstants.BAD_VALUE_SCHEMA_FOR_WRITE_COMPUTE_V2;
@@ -113,7 +113,7 @@ public class VeniceParentHelixAdminTest {
   @Test(timeOut = 2 * DEFAULT_TEST_TIMEOUT_MS)
   public void testAddVersion() {
     Properties properties = new Properties();
-    properties.setProperty(REPLICATION_METADATA_VERSION_ID, String.valueOf(1));
+    properties.setProperty(REPLICATION_METADATA_VERSION, String.valueOf(1));
     try (
         VeniceControllerWrapper parentControllerWrapper = ServiceFactory.getVeniceController(
             new VeniceControllerCreateOptions.Builder(venice.getClusterName(), zkServerWrapper, venice.getKafka())

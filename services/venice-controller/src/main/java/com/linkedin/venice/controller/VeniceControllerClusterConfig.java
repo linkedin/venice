@@ -58,7 +58,7 @@ import static com.linkedin.venice.ConfigKeys.PUSH_SSL_ALLOWLIST;
 import static com.linkedin.venice.ConfigKeys.PUSH_SSL_WHITELIST;
 import static com.linkedin.venice.ConfigKeys.REFRESH_ATTEMPTS_FOR_ZK_RECONNECT;
 import static com.linkedin.venice.ConfigKeys.REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS;
-import static com.linkedin.venice.ConfigKeys.REPLICATION_METADATA_VERSION_ID;
+import static com.linkedin.venice.ConfigKeys.REPLICATION_METADATA_VERSION;
 import static com.linkedin.venice.ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA;
 import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
@@ -248,7 +248,7 @@ public class VeniceControllerClusterConfig {
   private boolean disableParentRequestTopicForStreamPushes;
 
   private int defaultReadQuotaPerRouter;
-  private int replicationMetadataVersionId;
+  private int replicationMetadataVersion;
 
   private boolean errorLeaderReplicaFailOverEnabled;
 
@@ -385,7 +385,7 @@ public class VeniceControllerClusterConfig {
         props.getBoolean(CONTROLLER_DISABLE_PARENT_REQUEST_TOPIC_FOR_STREAM_PUSHES, false);
     this.defaultReadQuotaPerRouter =
         props.getInt(CONTROLLER_DEFAULT_READ_QUOTA_PER_ROUTER, DEFAULT_PER_ROUTER_READ_QUOTA);
-    this.replicationMetadataVersionId = props.getInt(REPLICATION_METADATA_VERSION_ID, 1);
+    this.replicationMetadataVersion = props.getInt(REPLICATION_METADATA_VERSION, 1);
     this.childDatacenters = props.getString(CHILD_CLUSTER_ALLOWLIST);
     this.errorLeaderReplicaFailOverEnabled = props.getBoolean(FORCE_LEADER_ERROR_REPLICA_FAIL_OVER_ENABLED, true);
   }
@@ -633,8 +633,8 @@ public class VeniceControllerClusterConfig {
     return jettyConfigOverrides;
   }
 
-  public int getReplicationMetadataVersionId() {
-    return replicationMetadataVersionId;
+  public int getReplicationMetadataVersion() {
+    return replicationMetadataVersion;
   }
 
   public String getChildDatacenters() {

@@ -56,6 +56,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.linkedin.venice.ConfigConstants;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.acl.DynamicAccessController;
@@ -1105,22 +1106,22 @@ public class VeniceParentHelixAdmin implements Admin {
               + "Store name: {}, cluster: {}",
           storeName,
           clusterName);
-    } else if (store.getRmdVersionID().isPresent()) {
+    } else if (store.getRmdVersion() == ConfigConstants.UNSPECIFIED_REPLICATION_METADATA_VERSION) {
+      LOGGER.info("No store-level RMD version ID found for store {} in cluster {}", storeName, clusterName);
+    } else {
       LOGGER.info(
           "Found store-level RMD version ID {} for store {} in cluster {}",
-          store.getRmdVersionID().get(),
+          store.getRmdVersion(),
           storeName,
           clusterName);
-      return store.getRmdVersionID().get();
-    } else {
-      LOGGER.info("No store-level RMD version ID found for store {} in cluster {}", storeName, clusterName);
+      return store.getRmdVersion();
     }
 
     final VeniceControllerConfig controllerClusterConfig = getMultiClusterConfigs().getControllerConfig(clusterName);
     if (controllerClusterConfig == null) {
       throw new VeniceException("No controller cluster config found for cluster " + clusterName);
     }
-    final int rmdVersionID = controllerClusterConfig.getReplicationMetadataVersionId();
+    final int rmdVersionID = controllerClusterConfig.getReplicationMetadataVersion();
     LOGGER.info("Use RMD version ID {} for cluster {}", rmdVersionID, clusterName);
     return rmdVersionID;
   }
@@ -2423,7 +2424,7 @@ public class VeniceParentHelixAdmin implements Admin {
               .orElseGet(currStore::isWriteComputationEnabled);
       setStore.replicationMetadataVersionID = replicationMetadataVersionID
           .map(addToUpdatedConfigList(updatedConfigsList, REPLICATION_METADATA_PROTOCOL_VERSION_ID))
-          .orElse(currStore.getRmdVersionID().orElse(-1));
+          .orElse(currStore.getRmdVersion());
       setStore.readComputationEnabled =
           readComputationEnabled.map(addToUpdatedConfigList(updatedConfigsList, READ_COMPUTATION_ENABLED))
               .orElseGet(currStore::isReadComputationEnabled);

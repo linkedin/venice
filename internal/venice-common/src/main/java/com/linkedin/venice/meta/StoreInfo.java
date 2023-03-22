@@ -62,7 +62,7 @@ public class StoreInfo {
     storeInfo.setStoreMetadataSystemStoreEnabled(store.isStoreMetadataSystemStoreEnabled());
     storeInfo.setVersions(store.getVersions());
     storeInfo.setWriteComputationEnabled(store.isWriteComputationEnabled());
-    storeInfo.setReplicationMetadataVersionId(store.getRmdVersionID().orElse(-1));
+    storeInfo.setReplicationMetadataVersionId(store.getRmdVersion());
     storeInfo.setViewConfigs(store.getViewConfigs());
     return storeInfo;
   }

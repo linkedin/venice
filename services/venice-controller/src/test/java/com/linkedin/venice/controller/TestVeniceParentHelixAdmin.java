@@ -2249,6 +2249,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       Version newVersion = new VersionImpl(storeName, 2, newPushJobId);
 
       doReturn(24).when(store).getBootstrapToOnlineTimeoutInHours();
+      doReturn(-1).when(store).getRmdVersion();
       doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
       doReturn(Optional.of(version)).when(store).getVersion(1);
       doReturn(new Pair<>(store, version)).when(internalAdmin)
