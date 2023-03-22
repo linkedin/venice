@@ -24,7 +24,6 @@ public class DIVStats {
   private final WritePathLatencySensor producerLocalBrokerLatencySensor;
   private final WritePathLatencySensor localBrokerFollowerConsumerLatencySensor;
   private final WritePathLatencySensor producerFollowerConsumerLatencySensor;
-  private final WritePathLatencySensor dataValidationLatencySensor;
   private final WritePathLatencySensor leaderProducerCompletionLatencySensor;
 
   private long benignLeaderOffsetRewindCount = 0;
@@ -63,7 +62,6 @@ public class DIVStats {
         new WritePathLatencySensor(localRepository, metricConfig, "local_broker_to_follower_consumer_latency");
     producerFollowerConsumerLatencySensor =
         new WritePathLatencySensor(localRepository, metricConfig, "producer_to_follower_consumer_latency");
-    dataValidationLatencySensor = new WritePathLatencySensor(localRepository, metricConfig, "data_validation_latency");
     leaderProducerCompletionLatencySensor =
         new WritePathLatencySensor(localRepository, metricConfig, "leader_producer_completion_latency");
   }
@@ -210,14 +208,6 @@ public class DIVStats {
 
   public WritePathLatencySensor getLeaderProducerCompletionLatencySensor() {
     return leaderProducerCompletionLatencySensor;
-  }
-
-  public void recordDataValidationLatencyMs(double value) {
-    dataValidationLatencySensor.record(value);
-  }
-
-  public WritePathLatencySensor getDataValidationLatencySensor() {
-    return dataValidationLatencySensor;
   }
 
   public void recordBenignLeaderOffsetRewind() {

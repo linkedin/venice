@@ -109,10 +109,6 @@ public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVSta
     });
   }
 
-  public void recordDataValidationLatencyMs(String storeName, int version, double value) {
-    recordVersionedAndTotalStat(storeName, version, stat -> stat.recordDataValidationLatencyMs(value));
-  }
-
   public void recordLeaderProducerCompletionTime(String storeName, int version, double value) {
     recordVersionedAndTotalStat(storeName, version, stat -> stat.recordLeaderProducerCompletionLatencyMs(value));
   }

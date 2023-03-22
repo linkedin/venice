@@ -7,6 +7,7 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
@@ -52,7 +53,7 @@ public class KafkaDataIntegrityValidator {
   public void validateMessage(
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       boolean endOfPushReceived,
-      boolean tolerateMissingMsgs) throws DataValidationException {
+      Lazy<Boolean> tolerateMissingMsgs) throws DataValidationException {
     final GUID producerGUID = consumerRecord.getValue().producerMetadata.producerGUID;
     ProducerTracker producerTracker = registerProducer(producerGUID);
     producerTracker.validateMessage(consumerRecord, endOfPushReceived, tolerateMissingMsgs);
