@@ -56,7 +56,8 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private final AtomicInteger latestSuperSetValueSchemaId = new AtomicInteger();
   private final AtomicReference<SchemaData> schemas = new AtomicReference<>();
   private final Map<String, List<String>> readyToServeInstancesMap = new VeniceConcurrentHashMap<>();
-  private final Map<Integer, PartitionerPair> versionPartitionerMap = new VeniceConcurrentHashMap<>();
+  private final Map<Integer, VenicePartitioner> versionPartitionerMap = new VeniceConcurrentHashMap<>();
+  private final Map<Integer, Integer> versionPartitionCountMap = new VeniceConcurrentHashMap<>();
   private final Map<Integer, ByteBuffer> versionZstdDictionaryMap = new VeniceConcurrentHashMap<>();
   private final CompressorFactory compressorFactory;
   private final D2TransportClient transportClient;
@@ -84,11 +85,11 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
 
   @Override
   public int getPartitionId(int version, ByteBuffer key) {
-    PartitionerPair partitionerPair = versionPartitionerMap.get(version);
-    if (partitionerPair == null) {
+    VenicePartitioner partitioner = versionPartitionerMap.get(version);
+    if (partitioner == null) {
       throw new VeniceClientException("Unknown version number: " + version + " for store: " + storeName);
     }
-    return partitionerPair.getVenicePartitioner().getPartitionId(key, partitionerPair.getPartitionCount());
+    return partitioner.getPartitionId(key, versionPartitionCountMap.get(version));
   }
 
   @Override
@@ -181,7 +182,8 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
         params.putAll(partitionerParams);
         VenicePartitioner partitioner =
             PartitionUtils.getVenicePartitioner(partitionerClass, amplificationFactor, new VeniceProperties(params));
-        versionPartitionerMap.put(fetchedVersion, new PartitionerPair(partitioner, partitionCount));
+        versionPartitionerMap.put(fetchedVersion, partitioner);
+        versionPartitionCountMap.put(fetchedVersion, partitionCount);
 
         // Update readyToServeInstanceMap
         for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
@@ -220,6 +222,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
         // Evict entries from inactive versions
         readyToServeInstancesMap.entrySet().removeIf(entry -> getVersionFromKey(entry.getKey()) < fetchedVersion - 2);
         versionPartitionerMap.entrySet().removeIf(entry -> entry.getKey() < fetchedVersion - 2);
+        versionPartitionCountMap.entrySet().removeIf(entry -> entry.getKey() < fetchedVersion - 2);
         versionZstdDictionaryMap.entrySet().removeIf(entry -> entry.getKey() < fetchedVersion - 2);
       }
     } catch (ExecutionException e) {
