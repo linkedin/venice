@@ -2,6 +2,7 @@ package com.linkedin.venice.meta;
 
 import static org.testng.Assert.*;
 
+import com.linkedin.venice.ConfigConstants;
 import com.linkedin.venice.helix.StoreJSONSerializer;
 import java.io.IOException;
 import org.testng.annotations.Test;
@@ -52,9 +53,11 @@ public class TestStoreJsonSerde {
     StoreJSONSerializer storeJSONSerializer = new StoreJSONSerializer();
     byte[] serializedStore = SERIALIZED_WITH_EMPTY_OPTIONAL.getBytes();
     Store deserializedStore = storeJSONSerializer.deserialize(serializedStore, "/");
+    assertEquals(deserializedStore.getRmdVersion(), ConfigConstants.UNSPECIFIED_REPLICATION_METADATA_VERSION);
     byte[] reserializedStore = storeJSONSerializer.serialize(deserializedStore, "/");
     Store redeserializedStore = storeJSONSerializer.deserialize(reserializedStore, "/");
     assertEquals(redeserializedStore, deserializedStore);
+    assertEquals(redeserializedStore.getRmdVersion(), ConfigConstants.UNSPECIFIED_REPLICATION_METADATA_VERSION);
 
     Store store = new ZKStore(
         "storeName",

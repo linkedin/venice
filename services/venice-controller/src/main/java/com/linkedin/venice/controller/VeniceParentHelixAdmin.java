@@ -56,6 +56,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.linkedin.venice.ConfigConstants;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.acl.DynamicAccessController;
@@ -1105,7 +1106,7 @@ public class VeniceParentHelixAdmin implements Admin {
               + "Store name: {}, cluster: {}",
           storeName,
           clusterName);
-    } else if (store.getRmdVersion() == -1) {
+    } else if (store.getRmdVersion() == ConfigConstants.UNSPECIFIED_REPLICATION_METADATA_VERSION) {
       LOGGER.info("No store-level RMD version ID found for store {} in cluster {}", storeName, clusterName);
     } else {
       LOGGER.info(

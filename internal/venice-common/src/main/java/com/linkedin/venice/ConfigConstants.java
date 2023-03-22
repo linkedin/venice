@@ -21,6 +21,8 @@ public class ConfigConstants {
 
   public static final long DEFAULT_KAFKA_ADMIN_GET_TOPIC_CONFIG_RETRY_IN_SECONDS = 600;
 
+  public static final int UNSPECIFIED_REPLICATION_METADATA_VERSION = -1;
+
   /**
    * End of controller config default value
    */
