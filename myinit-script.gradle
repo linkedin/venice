@@ -1,0 +1,10 @@
+if (hasProperty('extraDependencies')) {
+  def extraDeps = property('extraDependencies').split(',')
+  allprojects {
+    buildscript {
+      dependencies {
+        classpath extraDeps
+      }
+    }
+  }
+}

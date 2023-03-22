@@ -35,6 +35,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
@@ -52,6 +53,9 @@ public class ServiceFactory {
   private static final Logger LOGGER = LogManager.getLogger(ServiceFactory.class);
   private static final String ULIMIT;
   private static final String VM_ARGS;
+  // private static final String PUBSUB_BACKEND_CLASS_FQDN = "pubsub.backend.class.fqdn";
+  private static final String PUBSUB_BACKEND_CLASS_FQDN = "pubsubBackend";
+
   /**
    * Calling {@link System#exit(int)} System.exit in tests is unacceptable. The Spark server lib, in particular, calls it.
    */
@@ -82,6 +86,20 @@ public class ServiceFactory {
     RuntimeMXBean runtimeMxBean = ManagementFactory.getRuntimeMXBean();
     List<String> args = runtimeMxBean.getInputArguments();
     VM_ARGS = args.stream().collect(Collectors.joining(", "));
+
+    String className = Objects.requireNonNull(System.getProperty(PUBSUB_BACKEND_CLASS_FQDN));
+    // if (System.getProperties().containsKey(PUBSUB_BACKEND_CLASS_FQDN)) {
+    // className = System.getProperty(PUBSUB_BACKEND_CLASS_FQDN);
+    // }
+    try {
+      LOGGER.info("Will be using: {} to create pub-sub backend", className);
+      Class<?> clazz = Class.forName(className);
+      ServiceFactoryTest serviceFactoryTest = (ServiceFactoryTest) clazz.newInstance();
+      serviceFactoryTest.sayHello();
+    } catch (ClassNotFoundException | IllegalAccessException | InstantiationException e) {
+      LOGGER.error("Failed to create an instance of pub-sub backend: {}", className, e);
+      throw new RuntimeException(e);
+    }
   }
 
   private static int maxAttempt = DEFAULT_MAX_ATTEMPT;
@@ -93,6 +111,10 @@ public class ServiceFactory {
     } finally {
       ServiceFactory.maxAttempt = DEFAULT_MAX_ATTEMPT;
     }
+  }
+
+  public static String testGame() {
+    return "Ok";
   }
 
   /**

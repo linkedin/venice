@@ -9,9 +9,9 @@ public abstract class PubSubBackendWrapper extends ProcessWrapper {
     super(serviceName, dataDirectory);
   }
 
-  abstract int getSslPort();
+  public abstract int getSslPort();
 
-  String getSSLAddress() {
+  public String getSSLAddress() {
     return getHost() + ":" + getSslPort();
   }
 
@@ -20,5 +20,5 @@ public abstract class PubSubBackendWrapper extends ProcessWrapper {
     return "PubSubService[" + getServiceName() + "@" + getHost() + ":" + getPort() + "/" + getSslPort() + "]";
   }
 
-  abstract PubSubClientsFactory getPubSubClientsFactory();
+  public abstract PubSubClientsFactory getPubSubClientsFactory();
 }

@@ -335,6 +335,10 @@ subprojects {
     maxParallelForks = Integer.valueOf(System.getProperty('maxParallelForks', '4'))
     minHeapSize = System.getProperty('minHeapSize', '1g')
     maxHeapSize = System.getProperty('maxHeapSize', '4g')
+
+    systemProperty 'pubsubBackend', System.getProperty('pubsubBackend')
+//    systemProperty 'pubsubBackend', System.getProperty('pubsubBackend', 'com.linkedin.venice.integration.utils.ServiceFactoryTest')
+
     System.getProperty('jvmArgs')?.eachMatch(/(?:[^\s'"]+|'[^']*'|"[^"]*")+/) { jvmArgs it }
 
     doFirst {

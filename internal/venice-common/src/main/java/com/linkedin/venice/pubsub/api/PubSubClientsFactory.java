@@ -13,6 +13,7 @@ import com.linkedin.venice.kafka.KafkaClientFactory;
  */
 public class PubSubClientsFactory {
   private final PubSubProducerAdapterFactory producerAdapterFactory;
+  // todo: replace KafkaClientFactory with consumer and admin factory once it is available
   private final KafkaClientFactory kafkaClientFactory;
 
   public PubSubClientsFactory(

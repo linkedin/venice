@@ -122,7 +122,6 @@ public class KafkaBrokerWrapper extends PubSubBackendWrapper {
     this.zkServerWrapper = zkServerWrapper;
     this.mockTime = mockTime;
     this.sslPort = sslPort;
-
     pubSubClientsFactory = new PubSubClientsFactory(new ApacheKafkaProducerAdapterFactory(), null);
   }
 
@@ -180,7 +179,7 @@ public class KafkaBrokerWrapper extends PubSubBackendWrapper {
   }
 
   @Override
-  PubSubClientsFactory getPubSubClientsFactory() {
+  public PubSubClientsFactory getPubSubClientsFactory() {
     return pubSubClientsFactory;
   }
 }
