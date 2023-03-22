@@ -2506,7 +2506,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       boolean versionSwapDeferred) {
     checkControllerLeadershipFor(clusterName);
     VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
-    int replicationMetadataVersionId = clusterConfig.getReplicationMetadataVersionId();
+    int replicationMetadataVersionId = clusterConfig.getReplicationMetadataVersion();
     return pushType.isIncremental()
         ? getIncrementalPushVersion(clusterName, storeName)
         : addVersion(
@@ -3670,9 +3670,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     });
   }
 
-  void setReplicationMetadataVersionID(String clusterName, String storeName, int rmdVersionID) {
+  void setReplicationMetadataVersionID(String clusterName, String storeName, int rmdVersion) {
     storeMetadataUpdate(clusterName, storeName, store -> {
-      store.setRmdVersionID(Optional.of(rmdVersionID));
+      store.setRmdVersion(rmdVersion);
       return store;
     });
   }
