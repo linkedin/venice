@@ -46,6 +46,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -882,6 +883,19 @@ public abstract class AbstractPushMonitorTest {
     } finally {
       TestUtils.shutdownExecutor(asyncExecutor);
     }
+  }
+
+  @Test
+  public void testGetUncompletedPartitions() {
+    monitor.startMonitorOfflinePush(
+        topic,
+        numberOfPartition,
+        replicationFactor,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    Assert.assertEquals(monitor.getUncompletedPartitions(topic).size(), numberOfPartition);
+    OfflinePushStatus pushStatus = monitor.getOfflinePushOrThrow(topic);
+    monitor.updatePushStatus(pushStatus, ExecutionStatus.COMPLETED, Optional.empty());
+    Assert.assertTrue(monitor.getUncompletedPartitions(topic).isEmpty());
   }
 
   protected Store prepareMockStore(String topic) {

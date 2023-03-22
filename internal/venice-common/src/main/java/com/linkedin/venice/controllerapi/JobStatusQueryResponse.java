@@ -1,7 +1,9 @@
 package com.linkedin.venice.controllerapi;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.linkedin.venice.meta.UncompletedPartition;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -17,11 +19,7 @@ public class JobStatusQueryResponse
   private Map<String, String> extraInfo;
   private Map<String, String> extraDetails;
 
-  // The folllowing progress info won't be valid any more, and they could be removed eventually in the future.
-  private long messagesConsumed;
-  private long messagesAvailable;
-  private Map<String, Long> perTaskProgress;
-  private Map<Integer, Long> perPartitionCapacity;
+  private List<UncompletedPartition> uncompletedPartitions;
 
   public int getVersion() {
     return version;
@@ -60,47 +58,6 @@ public class JobStatusQueryResponse
   }
 
   /**
-   * Aggregate number of kafka offsets consumed by all storage nodes for this store version
-   * @return
-   */
-  public long getMessagesConsumed() {
-    return messagesConsumed;
-  }
-
-  public void setMessagesConsumed(long messagesConsumed) {
-    this.messagesConsumed = messagesConsumed;
-  }
-
-  /**
-   * Current aggregate number of kafka offsets available to storage nodes for this store version.
-   * Effectively this is the sum of the highest offset for each partition times the Venice replication factor
-   * @return
-   */
-  public long getMessagesAvailable() {
-    return messagesAvailable;
-  }
-
-  public void setMessagesAvailable(long messagesAvailable) {
-    this.messagesAvailable = messagesAvailable;
-  }
-
-  public Map<String, Long> getPerTaskProgress() {
-    return perTaskProgress;
-  }
-
-  public void setPerTaskProgress(Map<String, Long> perTaskProgress) {
-    this.perTaskProgress = perTaskProgress;
-  }
-
-  public Map<Integer, Long> getPerPartitionCapacity() {
-    return perPartitionCapacity;
-  }
-
-  public void setPerPartitionCapacity(Map<Integer, Long> perPartitionCapacity) {
-    this.perPartitionCapacity = perPartitionCapacity;
-  }
-
-  /**
    * N.B.: The values in this map conform to {@link ExecutionStatus} values.
    *
    * @return A map of datacenter -> status, which can be returned by a parent controller.
@@ -135,10 +92,12 @@ public class JobStatusQueryResponse
     this.extraDetails = extraDetails;
   }
 
-  public static JobStatusQueryResponse createErrorResponse(String errorMessage) {
-    JobStatusQueryResponse response = new JobStatusQueryResponse();
-    response.setError(errorMessage);
-    return response;
+  public void setUncompletedPartitions(List<UncompletedPartition> uncompletedPartitions) {
+    this.uncompletedPartitions = uncompletedPartitions;
+  }
+
+  public List<UncompletedPartition> getUncompletedPartitions() {
+    return uncompletedPartitions;
   }
 
   public String toString() {
