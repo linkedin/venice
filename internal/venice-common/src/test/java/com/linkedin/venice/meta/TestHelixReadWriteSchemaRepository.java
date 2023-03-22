@@ -2,9 +2,9 @@ package com.linkedin.venice.meta;
 
 import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
 import com.linkedin.venice.helix.HelixSchemaAccessor;
+import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.system.store.MetaStoreWriter;
-import com.linkedin.venice.utils.Pair;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -42,11 +42,11 @@ public class TestHelixReadWriteSchemaRepository {
     Mockito.doReturn(true).when(storeRepository).hasStore(Mockito.anyString());
     derivedSchemaEntryMap.put(1, Arrays.asList(entry));
     Mockito.doReturn(Arrays.asList(entry)).when(accessor).getAllDerivedSchemas(Mockito.eq(storeName));
-    Pair<Integer, Integer> pair = helixReadWriteSchemaRepository.getDerivedSchemaId(storeName, schemaStr);
-    Assert.assertEquals(pair.getSecond().intValue(), 1);
-    pair = helixReadWriteSchemaRepository.getDerivedSchemaId(storeName, schemaStr);
-    Assert.assertEquals(pair.getSecond().intValue(), 1);
-    pair = helixReadWriteSchemaRepository.getDerivedSchemaId(storeName, schemaStr1);
-    Assert.assertEquals(pair.getSecond().intValue(), -1);
+    GeneratedSchemaID derivedSchemaId = helixReadWriteSchemaRepository.getDerivedSchemaId(storeName, schemaStr);
+    Assert.assertEquals(derivedSchemaId.getGeneratedSchemaVersion(), 1);
+    derivedSchemaId = helixReadWriteSchemaRepository.getDerivedSchemaId(storeName, schemaStr);
+    Assert.assertEquals(derivedSchemaId.getGeneratedSchemaVersion(), 1);
+    derivedSchemaId = helixReadWriteSchemaRepository.getDerivedSchemaId(storeName, schemaStr1);
+    Assert.assertEquals(derivedSchemaId.getGeneratedSchemaVersion(), -1);
   }
 }

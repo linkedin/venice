@@ -7,15 +7,16 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.atomic.AtomicInteger;
 
 
 public class TestView extends VeniceView {
   private static TestView thisView = null;
   // The number of records processed by this view per store
-  private static Map<String, Integer> storeRecordCount = new HashMap<>();
+  private static Map<String, AtomicInteger> storeRecordCount = new HashMap<>();
 
   // The number of version swaps processed by this view per store
-  private static Map<String, Integer> storeVersionSwapCount = new HashMap<>();
+  private static Map<String, AtomicInteger> storeVersionSwapCount = new HashMap<>();
 
   // The highest version encountered by this store
   private static Map<String, Integer> storeHighestVersionEncountered = new HashMap<>();
@@ -49,25 +50,25 @@ public class TestView extends VeniceView {
   }
 
   synchronized public void incrementRecordCount(String store) {
-    Integer value = storeRecordCount.putIfAbsent(store, 1);
+    AtomicInteger value = storeRecordCount.putIfAbsent(store, new AtomicInteger(1));
     if (value != null) {
-      storeRecordCount.put(store, value + 1);
+      storeRecordCount.get(store).addAndGet(1);
     }
   }
 
   public int getRecordCountForStore(String store) {
-    return storeRecordCount.getOrDefault(store, 0);
+    return storeRecordCount.getOrDefault(store, new AtomicInteger(0)).get();
   }
 
   synchronized public void incrementVersionSwapMessageCountForStore(String store) {
-    Integer value = storeVersionSwapCount.putIfAbsent(store, 1);
+    AtomicInteger value = storeVersionSwapCount.putIfAbsent(store, new AtomicInteger(1));
     if (value != null) {
-      storeVersionSwapCount.put(store, value + 1);
+      storeVersionSwapCount.get(store).addAndGet(1);
     }
   }
 
   public int getVersionSwapCountForStore(String store) {
-    return storeVersionSwapCount.getOrDefault(store, 0);
+    return storeVersionSwapCount.getOrDefault(store, new AtomicInteger(0)).get();
   }
 
   synchronized public static void resetCounters() {

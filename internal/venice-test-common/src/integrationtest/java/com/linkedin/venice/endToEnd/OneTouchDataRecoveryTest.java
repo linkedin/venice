@@ -1,9 +1,10 @@
 package com.linkedin.venice.endToEnd;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.utils.TestWriteUtils.*;
+import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
+import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.StoreHealthAuditResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -103,8 +104,7 @@ public class OneTouchDataRecoveryTest {
                   storeName,
                   new UpdateStoreQueryParams().setNativeReplicationEnabled(true).setPartitionCount(1))
               .isError());
-      TestUtils.verifyDCConfigNativeAndActiveRepl(dc0Client, storeName, true, false);
-      TestUtils.verifyDCConfigNativeAndActiveRepl(dc1Client, storeName, true, false);
+      TestUtils.verifyDCConfigNativeAndActiveRepl(storeName, true, false, dc0Client, dc1Client);
       VersionCreationResponse versionCreationResponse = parentControllerCli.requestTopicForWrites(
           storeName,
           1024,
@@ -125,6 +125,9 @@ public class OneTouchDataRecoveryTest {
           STRING_SCHEMA,
           IntStream.range(0, 10).mapToObj(i -> new AbstractMap.SimpleEntry<>(String.valueOf(i), String.valueOf(i))),
           HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID);
+      JobStatusQueryResponse response = parentControllerCli
+          .queryDetailedJobStatus(versionCreationResponse.getKafkaTopic(), childDatacenters.get(0).getRegionName());
+      Assert.assertFalse(response.isError());
       TestUtils.waitForNonDeterministicPushCompletion(
           versionCreationResponse.getKafkaTopic(),
           parentControllerCli,

@@ -8,6 +8,7 @@ import static com.linkedin.venice.ConfigKeys.HEARTBEAT_TIMEOUT;
 import static com.linkedin.venice.ConfigKeys.HELIX_HYBRID_STORE_QUOTA_ENABLED;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.KEY_VALUE_PROFILING_ENABLED;
+import static com.linkedin.venice.ConfigKeys.LISTENER_HOSTNAME;
 import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
 import static com.linkedin.venice.ConfigKeys.LISTENER_SSL_PORT;
 import static com.linkedin.venice.ConfigKeys.MAX_READ_CAPACITY;
@@ -71,6 +72,8 @@ import static com.linkedin.venice.ConfigKeys.ROUTER_PENDING_CONNECTION_RESUME_TH
 import static com.linkedin.venice.ConfigKeys.ROUTER_PER_NODE_CLIENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ROUTER_PER_NODE_CLIENT_THREAD_COUNT;
 import static com.linkedin.venice.ConfigKeys.ROUTER_PER_STORAGE_NODE_READ_QUOTA_BUFFER;
+import static com.linkedin.venice.ConfigKeys.ROUTER_PER_STORAGE_NODE_THROTTLER_ENABLED;
+import static com.linkedin.venice.ConfigKeys.ROUTER_PER_STORE_ROUTER_QUOTA_BUFFER;
 import static com.linkedin.venice.ConfigKeys.ROUTER_QUOTA_CHECK_WINDOW;
 import static com.linkedin.venice.ConfigKeys.ROUTER_READ_QUOTA_THROTTLING_LEASE_TIMEOUT_MS;
 import static com.linkedin.venice.ConfigKeys.ROUTER_SINGLEGET_TARDY_LATENCY_MS;
@@ -96,6 +99,7 @@ import com.linkedin.venice.router.api.VeniceMultiKeyRoutingStrategy;
 import com.linkedin.venice.router.api.routing.helix.HelixGroupSelectionStrategyEnum;
 import com.linkedin.venice.router.httpclient.StorageNodeClientType;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Arrays;
 import java.util.List;
@@ -115,6 +119,7 @@ public class VeniceRouterConfig {
   private String clusterName;
   private String zkConnection;
   private int port;
+  private String hostname;
   private int sslPort;
   private double heartbeatTimeoutMs;
   private long heartbeatCycleMs;
@@ -198,6 +203,8 @@ public class VeniceRouterConfig {
   private boolean metaStoreShadowReadEnabled;
   private boolean unregisterMetricForDeletedStoreEnabled;
   private int routerIOWorkerCount;
+  private boolean perRouterStorageNodeThrottlerEnabled;
+  private double perStoreRouterQuotaBuffer;
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
@@ -213,6 +220,7 @@ public class VeniceRouterConfig {
   private void checkProperties(VeniceProperties props) {
     clusterName = props.getString(CLUSTER_NAME);
     port = props.getInt(LISTENER_PORT);
+    hostname = props.getString(LISTENER_HOSTNAME, () -> Utils.getHostName());
     sslPort = props.getInt(LISTENER_SSL_PORT);
     zkConnection = props.getString(ZOOKEEPER_ADDRESS);
     kafkaBootstrapServers = props.getString(KAFKA_BOOTSTRAP_SERVERS);
@@ -371,6 +379,12 @@ public class VeniceRouterConfig {
      * should consider to use some number, which is proportional to the available cores.
      */
     routerIOWorkerCount = props.getInt(ROUTER_IO_WORKER_COUNT, 24);
+    perRouterStorageNodeThrottlerEnabled = props.getBoolean(ROUTER_PER_STORAGE_NODE_THROTTLER_ENABLED, true);
+    perStoreRouterQuotaBuffer = props.getDouble(ROUTER_PER_STORE_ROUTER_QUOTA_BUFFER, 1.5);
+  }
+
+  public double getPerStoreRouterQuotaBuffer() {
+    return perStoreRouterQuotaBuffer;
   }
 
   public String getClusterName() {
@@ -383,6 +397,10 @@ public class VeniceRouterConfig {
 
   public int getPort() {
     return port;
+  }
+
+  public String getHostname() {
+    return hostname;
   }
 
   public int getSslPort() {
@@ -796,5 +814,9 @@ public class VeniceRouterConfig {
 
   public int getRouterIOWorkerCount() {
     return routerIOWorkerCount;
+  }
+
+  public boolean isPerRouterStorageNodeThrottlerEnabled() {
+    return perRouterStorageNodeThrottlerEnabled;
   }
 }

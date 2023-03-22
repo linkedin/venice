@@ -145,9 +145,6 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
     if (futureVersion != versionedDIVStats.getFutureVersion()) {
       versionedDIVStats.setFutureVersion(futureVersion);
     }
-    if (backupVersion != versionedDIVStats.getBackupVersion()) {
-      versionedDIVStats.setBackupVersion(backupVersion);
-    }
 
     /**
      * Since versions are changed, update the total stats accordingly.
@@ -197,9 +194,6 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
   /**
    * return {@link Store#NON_EXISTING_VERSION} if backup version doesn't exist.
    */
-  protected int getBackupVersion(String storeName) {
-    return getVersionedStats(storeName).getBackupVersion();
-  }
 
   /**
    * Some versioned stats might always increasing; in this case, the value in the total stats should be updated with

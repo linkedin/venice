@@ -1,8 +1,10 @@
 import com.github.spotbugs.snom.SpotBugsTask
 import org.apache.tools.ant.taskdefs.condition.Os
-import org.gradle.internal.logging.text.StyledTextOutputFactory
 import org.gradle.internal.logging.text.StyledTextOutput.Style
+import org.gradle.internal.logging.text.StyledTextOutputFactory
+
 import java.nio.file.Files
+
 
 plugins {
   id 'idea'
@@ -99,7 +101,7 @@ ext.libraries = [
     snappy: 'org.iq80.snappy:snappy:0.4',
     spark: 'com.sparkjava:spark-core:2.9.4',
     spotbugs: 'com.github.spotbugs:spotbugs:4.5.2',
-    tehuti: 'io.tehuti:tehuti:0.9.1',
+    tehuti: 'io.tehuti:tehuti:0.9.2',
     testng: 'org.testng:testng:6.14.3',
     // Resolves java.lang.UnsupportedOperationException:  setXIncludeAware is not supported on this JAXP implementation or earlier: class org.apache.xerces.jaxp.DocumentBuilderFactoryImpl
     xalan: 'xalan:xalan:2.7.1',
@@ -309,6 +311,8 @@ subprojects {
 
   def ALPINI_TEST_FILTER = 'com.linkedin.alpini.*'
   def ALPINI_NETTY_TEST_FILTER = 'io.netty.*'
+  def ALPINI_UNIT_TEST_TASK_NAME = 'alpiniUnitTest'
+  def ALPINI_FUNCTIONAL_TEST_TASK_NAME = 'alpiniFunctionalTest'
 
   tasks.withType(Test) {
     mustRunAfter tasks.withType(SpotBugsTask)
@@ -339,10 +343,12 @@ subprojects {
       println "jvmArgs=$allJvmArgs"
     }
 
-    filter {
-      excludeTestsMatching ALPINI_TEST_FILTER
-      excludeTestsMatching ALPINI_NETTY_TEST_FILTER
-      failOnNoMatchingTests = false
+    if (name != ALPINI_UNIT_TEST_TASK_NAME && name != ALPINI_FUNCTIONAL_TEST_TASK_NAME) {
+      filter {
+        excludeTestsMatching ALPINI_TEST_FILTER
+        excludeTestsMatching ALPINI_NETTY_TEST_FILTER
+        failOnNoMatchingTests = false
+      }
     }
 
     useTestNG {
@@ -418,8 +424,21 @@ subprojects {
     }
   }
 
-  task alpiniTest(type: Test) {
-    useTestNG()
+  task "$ALPINI_UNIT_TEST_TASK_NAME"(type: Test) {
+    useTestNG() {
+      includeGroups 'unit'
+    }
+    filter {
+      includeTestsMatching ALPINI_TEST_FILTER
+      includeTestsMatching ALPINI_NETTY_TEST_FILTER
+      failOnNoMatchingTests = false
+    }
+  }
+
+  task "$ALPINI_FUNCTIONAL_TEST_TASK_NAME"(type: Test) {
+    useTestNG() {
+      includeGroups 'functional'
+    }
     filter {
       includeTestsMatching ALPINI_TEST_FILTER
       includeTestsMatching ALPINI_NETTY_TEST_FILTER
@@ -572,7 +591,11 @@ ext.createDiffFile = { ->
   def exclusionFilter = [
         ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceHelixAdmin.java',
         ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceParentHelixAdmin.java',
-        ':!internal/venice-test-common/*'
+        ':!internal/venice-test-common/*',
+        ':!services/venice-server/src/main/java/com/linkedin/venice/server/VeniceServer.java',
+
+        // Other files that have tests but are not executed in the regular unit test task
+        ':!internal/alpini/*'
   ]
   def file = Files.createTempFile(URLEncoder.encode(project.name, 'UTF-8'), '.diff').toFile()
   def diffBase = "${git.getUpstreamRemote()}/main"

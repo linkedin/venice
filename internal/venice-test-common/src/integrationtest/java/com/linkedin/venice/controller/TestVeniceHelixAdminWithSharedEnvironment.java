@@ -266,8 +266,8 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     offlinePushStatus =
         veniceAdmin.getOffLinePushStatus(clusterName, Version.composeKafkaTopic(storeName, versionNumber));
     Assert.assertEquals(offlinePushStatus.getExecutionStatus(), ExecutionStatus.ERROR);
-    Assert.assertTrue(offlinePushStatus.getStatusDetails().isPresent());
-    Assert.assertEquals(offlinePushStatus.getStatusDetails().get(), statusDetails);
+    Assert.assertNotNull(offlinePushStatus.getStatusDetails());
+    Assert.assertEquals(offlinePushStatus.getStatusDetails(), statusDetails);
 
     delayParticipantJobCompletion(false);
     stateModelFactoryByNodeID
@@ -482,13 +482,13 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).isHybridStoreDiskQuotaEnabled());
 
     // test setting per-store RMD (replication metadata) version ID
-    Optional<Integer> rmdVersionID = veniceAdmin.getStore(clusterName, storeName).getRmdVersionID();
-    Assert.assertFalse(rmdVersionID.isPresent());
+    int rmdVersion = veniceAdmin.getStore(clusterName, storeName).getRmdVersion();
+    Assert.assertEquals(rmdVersion, -1);
 
     veniceAdmin.setReplicationMetadataVersionID(clusterName, storeName, 2);
-    rmdVersionID = veniceAdmin.getStore(clusterName, storeName).getRmdVersionID();
-    Assert.assertTrue(rmdVersionID.isPresent());
-    Assert.assertEquals((int) rmdVersionID.get(), 2);
+    rmdVersion = veniceAdmin.getStore(clusterName, storeName).getRmdVersion();
+    Assert.assertNotEquals(rmdVersion, -1);
+    Assert.assertEquals(rmdVersion, 2);
 
     // test hybrid config
     // set incrementalPushEnabled to be false as hybrid and incremental are mutex
@@ -561,7 +561,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
               Version.PushType.BATCH,
               null,
               -1,
-              multiClusterConfig.getCommonConfig().getReplicationMetadataVersionId(),
+              multiClusterConfig.getCommonConfig().getReplicationMetadataVersion(),
               false));
     }
     Assert.assertFalse(veniceAdmin.getStore(clusterName, storeName).getVersion(1).isPresent());
@@ -577,7 +577,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         Version.PushType.BATCH,
         null,
         -1,
-        multiClusterConfig.getCommonConfig().getReplicationMetadataVersionId(),
+        multiClusterConfig.getCommonConfig().getReplicationMetadataVersion(),
         false);
     Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).getVersion(1).isPresent());
     Assert.assertEquals(
@@ -610,7 +610,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Admin.OfflinePushStatusInfo statusInfo =
         veniceAdmin.getOffLinePushStatus(clusterName, Version.composeKafkaTopic(storeName, 101));
     Assert.assertEquals(statusInfo.getExecutionStatus(), ExecutionStatus.NOT_CREATED);
-    Assert.assertTrue(statusInfo.getStatusDetails().get().contains("in maintenance mode"));
+    Assert.assertTrue(statusInfo.getStatusDetails().contains("in maintenance mode"));
 
     // disable maintenance mode
     veniceAdmin.getHelixAdmin().enableMaintenanceMode(clusterName, false);
@@ -826,7 +826,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     int testPort = 5555;
     Assert.assertEquals(veniceAdmin.getAllowlist(clusterName).size(), 0, "Allow list should be empty.");
 
-    veniceAdmin.addInstanceToAllowlist(clusterName, Utils.getHelixNodeIdentifier(testPort));
+    veniceAdmin.addInstanceToAllowlist(clusterName, Utils.getHelixNodeIdentifier(Utils.getHostName(), testPort));
     Assert.assertEquals(
         veniceAdmin.getAllowlist(clusterName).size(),
         1,
@@ -834,9 +834,9 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
 
     Assert.assertEquals(
         veniceAdmin.getAllowlist(clusterName).iterator().next(),
-        Utils.getHelixNodeIdentifier(testPort),
+        Utils.getHelixNodeIdentifier(Utils.getHostName(), testPort),
         "Instance in the allowlist is not the one added before.");
-    veniceAdmin.removeInstanceFromAllowList(clusterName, Utils.getHelixNodeIdentifier(testPort));
+    veniceAdmin.removeInstanceFromAllowList(clusterName, Utils.getHelixNodeIdentifier(Utils.getHostName(), testPort));
     Assert.assertEquals(
         veniceAdmin.getAllowlist(clusterName).size(),
         0,
@@ -847,7 +847,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   public void testKillOfflinePush() throws Exception {
     String participantStoreRTTopic =
         Version.composeRealTimeTopic(VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName));
-    String newNodeId = Utils.getHelixNodeIdentifier(9786);
+    String newNodeId = Utils.getHelixNodeIdentifier(Utils.getHostName(), 9786);
     // Ensure original participant store would hang on bootstrap state.
     delayParticipantJobCompletion(true);
     startParticipant(true, newNodeId);
@@ -1768,7 +1768,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   public void testAddMetadataSchema() {
     String storeName = Utils.getUniqueString("aa_store");
     String recordSchemaStr = TestWriteUtils.USER_SCHEMA_STRING_WITH_DEFAULT;
-    int replicationMetadataVersionId = multiClusterConfig.getCommonConfig().getReplicationMetadataVersionId();
+    int replicationMetadataVersionId = multiClusterConfig.getCommonConfig().getReplicationMetadataVersion();
     Schema metadataSchema = RmdSchemaGenerator.generateMetadataSchema(recordSchemaStr, replicationMetadataVersionId);
 
     veniceAdmin.createStore(clusterName, storeName, storeOwner, KEY_SCHEMA, recordSchemaStr);

@@ -153,7 +153,8 @@ public class ServiceFactory {
       KafkaBrokerWrapper kafkaBrokerWrapper,
       String zkAddress,
       Properties featureProperties,
-      Properties configProperties) {
+      Properties configProperties,
+      String serverD2ServiceName) {
     return getVeniceServer(
         regionName,
         clusterName,
@@ -163,7 +164,8 @@ public class ServiceFactory {
         configProperties,
         false,
         "",
-        Collections.emptyMap());
+        Collections.emptyMap(),
+        serverD2ServiceName);
   }
 
   public static VeniceServerWrapper getVeniceServer(
@@ -175,7 +177,8 @@ public class ServiceFactory {
       Properties configProperties,
       boolean forkServer,
       String serverName,
-      Map<String, Map<String, String>> kafkaClusterMap) {
+      Map<String, Map<String, String>> kafkaClusterMap,
+      String serverD2ServiceName) {
     // Set ZK host needed for D2 client creation ingestion isolation ingestion.
     configProperties.setProperty(D2_ZK_HOSTS_ADDRESS, zkAddress);
     return getStatefulService(
@@ -189,7 +192,8 @@ public class ServiceFactory {
             configProperties,
             forkServer,
             serverName,
-            kafkaClusterMap));
+            kafkaClusterMap,
+            serverD2ServiceName));
   }
 
   static VeniceRouterWrapper getVeniceRouter(

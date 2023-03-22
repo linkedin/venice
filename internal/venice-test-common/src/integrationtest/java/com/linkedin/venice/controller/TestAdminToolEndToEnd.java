@@ -154,7 +154,7 @@ public class TestAdminToolEndToEnd {
     VeniceServerWrapper server = venice.getVeniceServers().get(0);
     String[] nodeReplicasReadinessArgs =
         { "--node-replicas-readiness", "--url", venice.getLeaderVeniceController().getControllerUrl(), "--cluster",
-            clusterName, "--storage-node", Utils.getHelixNodeIdentifier(server.getPort()) };
+            clusterName, "--storage-node", Utils.getHelixNodeIdentifier(Utils.getHostName(), server.getPort()) };
     AdminTool.main(nodeReplicasReadinessArgs);
   }
 }

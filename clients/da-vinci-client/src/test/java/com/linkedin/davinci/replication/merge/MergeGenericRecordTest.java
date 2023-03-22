@@ -48,14 +48,14 @@ public class MergeGenericRecordTest {
     valueRecord.put("id", "id1");
     valueRecord.put("name", "name1");
     valueRecord.put("age", 10);
-    GenericRecord timeStampRecord = new GenericData.Record(aaSchema);
+    GenericRecord timestampRecord = new GenericData.Record(aaSchema);
     GenericRecord ts = new GenericData.Record(aaSchema.getFields().get(0).schema().getTypes().get(1));
     ts.put("id", 10L);
     ts.put("name", 10L);
     ts.put("age", 25L);
-    timeStampRecord.put(0, ts);
+    timestampRecord.put(0, ts);
 
-    ValueAndRmd<GenericRecord> valueAndRmd = new ValueAndRmd<>(Lazy.of(() -> valueRecord), timeStampRecord);
+    ValueAndRmd<GenericRecord> valueAndRmd = new ValueAndRmd<>(Lazy.of(() -> valueRecord), timestampRecord);
 
     Merge<GenericRecord> genericRecordMerge = createMergeGenericRecord();
     ValueAndRmd<GenericRecord> deletedValueAndRmd1 = genericRecordMerge.delete(valueAndRmd, 20, -1, 1, 0);
@@ -68,30 +68,34 @@ public class MergeGenericRecordTest {
     Assert.assertEquals(ts.get("name"), 20L);
     Assert.assertEquals(ts.get("age"), 25L);
     // Verify that the same object is returned
-    Assert.assertTrue(deletedValueAndRmd1 == valueAndRmd);
+    Assert.assertSame(deletedValueAndRmd1, valueAndRmd);
 
     // full delete. expect null value
-    timeStampRecord.put(0, 20L);
-    valueAndRmd.setRmd(timeStampRecord);
+    timestampRecord.put(0, 20L);
+    valueAndRmd.setRmd(timestampRecord);
     ValueAndRmd<GenericRecord> deletedValueAndRmd2 = genericRecordMerge.delete(valueAndRmd, 30, -1, 1, 0);
     Assert.assertNull(deletedValueAndRmd2.getValue());
     // Verify that the same object is returned
-    Assert.assertTrue(deletedValueAndRmd2 == valueAndRmd);
+    Assert.assertSame(deletedValueAndRmd2, valueAndRmd);
 
     // full delete based on field timestamp values
     ts.put("id", 10L);
     ts.put("name", 10L);
     ts.put("age", 20L);
-    timeStampRecord.put(0, ts);
-    valueAndRmd.setRmd(timeStampRecord);
+    timestampRecord.put(0, ts);
+    valueAndRmd.setRmd(timestampRecord);
     valueAndRmd.setValue(valueRecord);
     valueAndRmd = genericRecordMerge.delete(valueAndRmd, 30, 1, -1, 0);
     Assert.assertNull(valueAndRmd.getValue());
-    Assert.assertEquals(valueAndRmd.getRmd().get(TIMESTAMP_FIELD_NAME), 30L);
+    Assert.assertTrue(valueAndRmd.getRmd().get(TIMESTAMP_FIELD_NAME) instanceof GenericRecord);
+    GenericRecord newTimestampRecord = (GenericRecord) valueAndRmd.getRmd().get(TIMESTAMP_FIELD_NAME);
+    Assert.assertEquals(newTimestampRecord.get("id"), 30L);
+    Assert.assertEquals(newTimestampRecord.get("name"), 30L);
+    Assert.assertEquals(newTimestampRecord.get("age"), 30L);
 
     // no delete, return same object
-    timeStampRecord.put(0, ts);
-    valueAndRmd.setRmd(timeStampRecord);
+    timestampRecord.put(0, ts);
+    valueAndRmd.setRmd(timestampRecord);
     valueAndRmd.setValue(valueRecord);
     ValueAndRmd<GenericRecord> deletedValueAndRmd3 = genericRecordMerge.delete(valueAndRmd, 5, -1, 1, 0);
 
@@ -132,13 +136,13 @@ public class MergeGenericRecordTest {
     Assert.assertEquals(mergedValueAndRmd1.getValue().get("name"), newRecord.get(1));
     Assert.assertEquals(mergedValueAndRmd1.getValue().get("age"), newRecord.get(2));
     // Verify that the same object is returned
-    Assert.assertTrue(mergedValueAndRmd1 == valueAndRmd);
+    Assert.assertSame(mergedValueAndRmd1, valueAndRmd);
 
     // verify we reuse the same instance when nothings changed.
     ValueAndRmd<GenericRecord> mergedValueAndRmd2 = genericRecordMerge.put(valueAndRmd, newRecord, 10, -1, 1, 0);
     Assert.assertEquals(mergedValueAndRmd2.getValue(), valueAndRmd.getValue());
     // Verify that the same object is returned
-    Assert.assertTrue(mergedValueAndRmd2 == valueAndRmd);
+    Assert.assertSame(mergedValueAndRmd2, valueAndRmd);
 
     Schema schema2 = AvroCompatibilityHelper.parse(
         "{" + "\"fields\": ["
@@ -223,26 +227,26 @@ public class MergeGenericRecordTest {
     List<Long> writeTs = new ArrayList<>();
     GenericRecord origRecord = new GenericData.Record(schema);
     Schema aaSchema = RmdSchemaGenerator.generateMetadataSchema(schema, 1);
-    GenericRecord timeStampRecord = new GenericData.Record(aaSchema);
+    GenericRecord timestampRecord = new GenericData.Record(aaSchema);
 
     GenericRecord ts = new GenericData.Record(aaSchema.getFields().get(0).schema().getTypes().get(1));
     ts.put("id", 10L);
     ts.put("name", 10L);
     ts.put("age", 20L);
-    timeStampRecord.put(0, ts);
+    timestampRecord.put(0, ts);
     origRecord.put("id", "id0");
     origRecord.put("name", "name0");
-    origRecord.put("age", 10);
+    origRecord.put("age", 0);
 
-    for (int i = 1; i <= 100; i++) {
+    for (int i = 0; i < 100; i++) {
       GenericRecord record = new GenericData.Record(schema);
       record.put("id", "id" + i);
       record.put("name", "name" + i);
-      record.put("age", 10 + i);
+      record.put("age", i);
       payload.add(record);
-      writeTs.add((long) (i + 10));
+      writeTs.add((long) (i));
     }
-    ValueAndRmd<GenericRecord> valueAndRmd = new ValueAndRmd<>(Lazy.of(() -> origRecord), timeStampRecord);
+    ValueAndRmd<GenericRecord> valueAndRmd = new ValueAndRmd<>(Lazy.of(() -> origRecord), timestampRecord);
     Merge<GenericRecord> genericRecordMerge = createMergeGenericRecord();
 
     for (int i = 0; i < 100; i++) {
@@ -254,10 +258,14 @@ public class MergeGenericRecordTest {
     // timestamp record should always contain the latest value
     Assert.assertEquals(valueAndRmd.getValue().get("id").toString(), "id99");
     Assert.assertEquals(valueAndRmd.getValue().get("name").toString(), "name99");
-    Assert.assertEquals(valueAndRmd.getValue().get("age"), 109);
-    Assert.assertEquals((long) valueAndRmd.getRmd().get(TIMESTAMP_FIELD_NAME), 110);
+    Assert.assertEquals(valueAndRmd.getValue().get("age"), 99);
+    Assert.assertTrue(valueAndRmd.getRmd().get(TIMESTAMP_FIELD_NAME) instanceof GenericRecord);
+    GenericRecord newTimestampRecord = (GenericRecord) valueAndRmd.getRmd().get(TIMESTAMP_FIELD_NAME);
+    Assert.assertEquals(newTimestampRecord.get("id"), 99L);
+    Assert.assertEquals(newTimestampRecord.get("name"), 99L);
+    Assert.assertEquals(newTimestampRecord.get("age"), 99L);
 
-    valueAndRmd = new ValueAndRmd<>(Lazy.of(() -> origRecord), timeStampRecord);
+    valueAndRmd = new ValueAndRmd<>(Lazy.of(() -> origRecord), timestampRecord);
     // swap timestamp and record order
     for (int i = 0; i < 100; i++) {
       for (int j = 0; j < 100; j++) {
@@ -268,8 +276,13 @@ public class MergeGenericRecordTest {
     // timestamp record should always contain the latest value
     Assert.assertEquals(valueAndRmd.getValue().get("id").toString(), "id99");
     Assert.assertEquals(valueAndRmd.getValue().get("name").toString(), "name99");
-    Assert.assertEquals(valueAndRmd.getValue().get("age"), 109);
-    Assert.assertEquals((long) valueAndRmd.getRmd().get(TIMESTAMP_FIELD_NAME), 110);
+    Assert.assertEquals(valueAndRmd.getValue().get("age"), 99);
+    Assert.assertTrue(valueAndRmd.getRmd().get(TIMESTAMP_FIELD_NAME) instanceof GenericRecord);
+    newTimestampRecord = (GenericRecord) valueAndRmd.getRmd().get(TIMESTAMP_FIELD_NAME);
+    Assert.assertEquals(newTimestampRecord.get("id"), 99L);
+    Assert.assertEquals(newTimestampRecord.get("name"), 99L);
+    Assert.assertEquals(newTimestampRecord.get("age"), 99L);
+
   }
 
   private Merge<GenericRecord> createMergeGenericRecord() {

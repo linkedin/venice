@@ -32,18 +32,9 @@ import org.testng.annotations.Test;
  */
 
 public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
-  protected void runTest(
-      ClientConfig.ClientConfigBuilder clientConfigBuilder,
-      boolean useDaVinciClientBasedMetadata,
-      boolean batchGet,
-      int batchGetKeySize) throws Exception {
-    runTest(
-        clientConfigBuilder,
-        useDaVinciClientBasedMetadata,
-        batchGet,
-        batchGetKeySize,
-        (metricsRepository) -> {},
-        Optional.empty());
+  protected void runTest(ClientConfig.ClientConfigBuilder clientConfigBuilder, boolean batchGet, int batchGetKeySize)
+      throws Exception {
+    runTest(clientConfigBuilder, batchGet, batchGetKeySize, (metricsRepository) -> {}, Optional.empty());
   }
 
   /**
@@ -51,28 +42,23 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
    * Only RouterBasedStoreMetadata can be reused. Other StoreMetadata implementation cannot be used after close() is called.
    *
    * @param clientConfigBuilder config to build client
-   * @param useDaVinciClientBasedMetadata true: use DaVinci based meta data, false: use Router based meta data
    * @param batchGet singleGet or batchGet
    * @throws Exception
    */
   protected void runTest(
       ClientConfig.ClientConfigBuilder clientConfigBuilder,
-      boolean useDaVinciClientBasedMetadata,
       boolean batchGet,
       int batchGetKeySize,
       Consumer<MetricsRepository> statsValidation,
       Optional<AvroGenericStoreClient> vsonThinClient) throws Exception {
     MetricsRepository metricsRepositoryForGenericClient = new MetricsRepository();
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
-        getGenericFastClient(clientConfigBuilder, metricsRepositoryForGenericClient, useDaVinciClientBasedMetadata);
+        getGenericFastClient(clientConfigBuilder, metricsRepositoryForGenericClient);
 
     AvroGenericStoreClient<String, Object> genericFastVsonClient = null;
     // Construct a Vson store client
-    genericFastVsonClient = getGenericFastVsonClient(
-        clientConfigBuilder.clone(),
-        new MetricsRepository(),
-        useDaVinciClientBasedMetadata,
-        vsonThinClient);
+    genericFastVsonClient =
+        getGenericFastVsonClient(clientConfigBuilder.clone(), new MetricsRepository(), vsonThinClient);
     try {
       if (batchGet) {
         // test batch get of size 2 (current default max)
@@ -158,17 +144,13 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
       if (genericFastVsonClient != null) {
         genericFastVsonClient.close();
       }
-      cleanupDaVinciClientForMetaStore();
     }
 
     // Test specific store client
     MetricsRepository metricsRepositoryForSpecificClient = new MetricsRepository();
     ClientConfig.ClientConfigBuilder specificClientConfigBuilder = clientConfigBuilder.clone();
-    AvroSpecificStoreClient<String, TestValueSchema> specificFastClient = getSpecificFastClient(
-        specificClientConfigBuilder,
-        metricsRepositoryForSpecificClient,
-        useDaVinciClientBasedMetadata,
-        TestValueSchema.class);
+    AvroSpecificStoreClient<String, TestValueSchema> specificFastClient =
+        getSpecificFastClient(specificClientConfigBuilder, metricsRepositoryForSpecificClient, TestValueSchema.class);
     try {
       if (batchGet) {
         // test batch get of size 2 (default)
@@ -213,13 +195,11 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
       if (specificFastClient != null) {
         specificFastClient.close();
       }
-      cleanupDaVinciClientForMetaStore();
     }
   }
 
-  @Test(dataProvider = "FastClient-Four-Boolean-And-A-Number", timeOut = TIME_OUT)
+  @Test(dataProvider = "FastClient-Three-Boolean-And-A-Number", timeOut = TIME_OUT)
   public void testFastClientGet(
-      boolean useDaVinciClientBasedMetadata,
       boolean multiGet,
       boolean dualRead,
       boolean speculativeQueryEnabled,
@@ -250,21 +230,9 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
         clientConfigBuilder.setSpecificThinClient(specificThinClient);
         genericVsonThinClient = getGenericVsonThinClient();
 
-        runTest(
-            clientConfigBuilder,
-            useDaVinciClientBasedMetadata,
-            multiGet,
-            batchGetKeySize,
-            m -> {},
-            Optional.of(genericVsonThinClient));
+        runTest(clientConfigBuilder, multiGet, batchGetKeySize, m -> {}, Optional.of(genericVsonThinClient));
       } else {
-        runTest(
-            clientConfigBuilder,
-            useDaVinciClientBasedMetadata,
-            multiGet,
-            batchGetKeySize,
-            m -> {},
-            Optional.empty());
+        runTest(clientConfigBuilder, multiGet, batchGetKeySize, m -> {}, Optional.empty());
       }
     } finally {
       if (genericThinClient != null) {
@@ -282,7 +250,6 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
   @Test(dataProvider = "fastClientHTTPVariants", dataProviderClass = ClientTestUtils.class, timeOut = TIME_OUT)
   public void testFastClientGetWithDifferentHTTPVariants(ClientTestUtils.FastClientHTTPVariant fastClientHTTPVariant)
       throws Exception {
-    boolean useDaVinciClientBasedMetadata = true;
     Client r2Client = ClientTestUtils.getR2Client(fastClientHTTPVariant);
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
@@ -290,8 +257,8 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
             .setDualReadEnabled(false);
 
     // test both single and multiGet
-    runTest(clientConfigBuilder, useDaVinciClientBasedMetadata, false, 2);
-    runTest(clientConfigBuilder, useDaVinciClientBasedMetadata, true, 2);
+    runTest(clientConfigBuilder, false, 2);
+    runTest(clientConfigBuilder, true, 2);
   }
 
   // TODO This test fails for the first time and then succeeds when the entire fastclient
@@ -306,7 +273,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
             .setLongTailRetryThresholdForSingleGetInMicroSeconds(10); // Try to trigger long-tail retry as much as
                                                                       // possible.
 
-    runTest(clientConfigBuilder, true, false, 2, metricsRepository -> {
+    runTest(clientConfigBuilder, false, 2, metricsRepository -> {
       // Validate long-tail retry related metrics
       metricsRepository.metrics().forEach((mName, metric) -> {
         if (mName.contains("--long_tail_retry_request.OccurrenceRate")) {

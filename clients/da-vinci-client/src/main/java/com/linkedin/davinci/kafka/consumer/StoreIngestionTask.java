@@ -1864,9 +1864,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   public void processConsumerRecord(
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record,
       LeaderProducedRecordContext leaderProducedRecordContext,
+      int subPartition,
       String kafkaUrl,
       long beforeProcessingRecordTimestamp) throws InterruptedException {
-    int subPartition = PartitionUtils.getSubPartition(record.getTopicPartition(), amplificationFactor);
     // The partitionConsumptionStateMap can be modified by other threads during consumption (for example when
     // unsubscribing)
     // in order to maintain thread safety, we hold onto the reference to the partitionConsumptionState and pass that

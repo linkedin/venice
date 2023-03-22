@@ -29,6 +29,7 @@ import com.linkedin.venice.controllerapi.D2ControllerClientFactory;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.hadoop.VenicePushJob;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
@@ -46,9 +47,12 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.kafka.clients.CommonClientConfigs;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.OutgoingMessageEnvelope;
 import org.apache.samza.system.SystemProducer;
@@ -57,6 +61,8 @@ import org.testng.Assert;
 
 
 public class IntegrationTestPushUtils {
+  private static final Logger LOGGER = LogManager.getLogger(IntegrationTestPushUtils.class);
+
   public static Properties defaultVPJProps(VeniceClusterWrapper veniceCluster, String inputDirPath, String storeName) {
     Map<String, String> childRegionNamesToZkAddress =
         Collections.singletonMap(veniceCluster.getRegionName(), veniceCluster.getZk().getAddress());
@@ -120,6 +126,24 @@ public class IntegrationTestPushUtils {
     Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
     props.putAll(KafkaSSLUtils.getLocalKafkaClientSSLConfig());
     return props;
+  }
+
+  /**
+   * Blocking, waits for new version to go online
+   */
+  public static void runVPJ(Properties vpjProperties, int expectedVersionNumber, ControllerClient controllerClient) {
+    long vpjStart = System.currentTimeMillis();
+    String jobName = Utils.getUniqueString("hybrid-job-" + expectedVersionNumber);
+    try (VenicePushJob job = new VenicePushJob(jobName, vpjProperties)) {
+      job.run();
+      TestUtils.waitForNonDeterministicCompletion(
+          5,
+          TimeUnit.SECONDS,
+          () -> controllerClient.getStore((String) vpjProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP))
+              .getStore()
+              .getCurrentVersion() == expectedVersionNumber);
+      LOGGER.info("**TIME** VPJ #{} takes {} ms", expectedVersionNumber, (System.currentTimeMillis() - vpjStart));
+    }
   }
 
   public static ControllerClient createStoreForJob(

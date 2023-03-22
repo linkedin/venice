@@ -170,10 +170,14 @@ public class TestActiveActiveReplicationForIncPush {
       TestWriteUtils.updateStore(storeName, parentControllerClient, enableAARepl);
 
       // verify store configs
-      TestUtils.verifyDCConfigNativeAndActiveRepl(parentControllerClient, storeName, true, true);
-      TestUtils.verifyDCConfigNativeAndActiveRepl(dc0ControllerClient, storeName, true, true);
-      TestUtils.verifyDCConfigNativeAndActiveRepl(dc1ControllerClient, storeName, true, true);
-      TestUtils.verifyDCConfigNativeAndActiveRepl(dc2ControllerClient, storeName, true, true);
+      TestUtils.verifyDCConfigNativeAndActiveRepl(
+          storeName,
+          true,
+          true,
+          parentControllerClient,
+          dc0ControllerClient,
+          dc1ControllerClient,
+          dc2ControllerClient);
 
       // Run a batch push first
       try (VenicePushJob job = new VenicePushJob("Test push job batch with NR + A/A all fabrics", propsBatch)) {

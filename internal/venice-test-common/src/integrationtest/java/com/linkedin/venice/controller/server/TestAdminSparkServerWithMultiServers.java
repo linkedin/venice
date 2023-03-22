@@ -440,7 +440,7 @@ public class TestAdminSparkServerWithMultiServers {
   public void controllerClientCanRemoveNodeFromCluster() {
     Admin admin = cluster.getLeaderVeniceController().getVeniceAdmin();
     VeniceServerWrapper server = cluster.getVeniceServers().get(0);
-    String nodeId = Utils.getHelixNodeIdentifier(server.getPort());
+    String nodeId = Utils.getHelixNodeIdentifier(Utils.getHostName(), server.getPort());
     // Trying to remove a live node.
     ControllerResponse response = controllerClient.removeNodeFromCluster(nodeId);
     Assert.assertTrue(response.isError(), "Node is still connected to cluster, could not be removed.");

@@ -1,5 +1,6 @@
 package com.linkedin.venice.pushmonitor;
 
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.COMPLETED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.ERROR;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.NOT_CREATED;
@@ -17,6 +18,8 @@ import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreCleaner;
+import com.linkedin.venice.meta.UncompletedPartition;
+import com.linkedin.venice.meta.UncompletedReplica;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
@@ -71,6 +74,7 @@ public abstract class AbstractPushMonitor
   private final List<String> activeActiveRealTimeSourceKafkaURLs;
   private final HelixAdminClient helixAdminClient;
   private final EventThrottler helixClientThrottler;
+  private final boolean disableErrorLeaderReplica;
 
   public AbstractPushMonitor(
       String clusterName,
@@ -83,7 +87,8 @@ public abstract class AbstractPushMonitor
       ClusterLockManager clusterLockManager,
       String aggregateRealTimeSourceKafkaUrl,
       List<String> activeActiveRealTimeSourceKafkaURLs,
-      HelixAdminClient helixAdminClient) {
+      HelixAdminClient helixAdminClient,
+      boolean disableErrorLeaderReplica) {
     this.clusterName = clusterName;
     this.offlinePushAccessor = offlinePushAccessor;
     this.storeCleaner = storeCleaner;
@@ -95,6 +100,7 @@ public abstract class AbstractPushMonitor
     this.aggregateRealTimeSourceKafkaUrl = aggregateRealTimeSourceKafkaUrl;
     this.activeActiveRealTimeSourceKafkaURLs = activeActiveRealTimeSourceKafkaURLs;
     this.helixAdminClient = helixAdminClient;
+    this.disableErrorLeaderReplica = disableErrorLeaderReplica;
     this.helixClientThrottler =
         new EventThrottler(10, "push_monitor_helix_client_throttler", false, EventThrottler.BLOCK_STRATEGY);
   }
@@ -292,13 +298,13 @@ public abstract class AbstractPushMonitor
   }
 
   @Override
-  public Pair<ExecutionStatus, Optional<String>> getIncrementalPushStatusAndDetails(
+  public Pair<ExecutionStatus, String> getIncrementalPushStatusAndDetails(
       String kafkaTopic,
       String incrementalPushVersion,
       HelixCustomizedViewOfflinePushRepository customizedViewRepo) {
     OfflinePushStatus pushStatus = getOfflinePush(kafkaTopic);
     if (pushStatus == null) {
-      return new Pair<>(ExecutionStatus.NOT_CREATED, Optional.of("Offline job hasn't been created yet."));
+      return new Pair<>(ExecutionStatus.NOT_CREATED, "Offline job hasn't been created yet.");
     }
     Map<Integer, Map<CharSequence, Integer>> pushStatusMap = pushStatus.getIncrementalPushStatus(
         getRoutingDataRepository().getPartitionAssignments(kafkaTopic),
@@ -313,18 +319,18 @@ public abstract class AbstractPushMonitor
             incrementalPushVersion,
             pushStatus.getNumberOfPartition(),
             pushStatus.getReplicationFactor()),
-        Optional.empty());
+        null);
   }
 
   @Override
-  public Pair<ExecutionStatus, Optional<String>> getIncrementalPushStatusFromPushStatusStore(
+  public Pair<ExecutionStatus, String> getIncrementalPushStatusFromPushStatusStore(
       String kafkaTopic,
       String incrementalPushVersion,
       HelixCustomizedViewOfflinePushRepository customizedViewRepo,
       PushStatusStoreReader pushStatusStoreReader) {
     OfflinePushStatus pushStatus = getOfflinePush(kafkaTopic);
     if (pushStatus == null) {
-      return new Pair<>(ExecutionStatus.NOT_CREATED, Optional.of("Offline job hasn't been created yet."));
+      return new Pair<>(ExecutionStatus.NOT_CREATED, "Offline job hasn't been created yet.");
     }
     return getIncrementalPushStatusFromPushStatusStore(
         kafkaTopic,
@@ -335,7 +341,7 @@ public abstract class AbstractPushMonitor
         pushStatus.getReplicationFactor());
   }
 
-  public Pair<ExecutionStatus, Optional<String>> getIncrementalPushStatusFromPushStatusStore(
+  public Pair<ExecutionStatus, String> getIncrementalPushStatusFromPushStatusStore(
       String kafkaTopic,
       String incrementalPushVersion,
       HelixCustomizedViewOfflinePushRepository customizedViewRepo,
@@ -356,7 +362,7 @@ public abstract class AbstractPushMonitor
             incrementalPushVersion,
             numberOfPartitions,
             replicationFactor),
-        Optional.empty());
+        null);
   }
 
   private ExecutionStatus checkIncrementalPushStatus(
@@ -457,12 +463,12 @@ public abstract class AbstractPushMonitor
   }
 
   @Override
-  public Pair<ExecutionStatus, Optional<String>> getPushStatusAndDetails(String topic) {
+  public Pair<ExecutionStatus, String> getPushStatusAndDetails(String topic) {
     OfflinePushStatus pushStatus = getOfflinePush(topic);
     if (pushStatus == null) {
-      return new Pair<>(ExecutionStatus.NOT_CREATED, Optional.of("Offline job hasn't been created yet."));
+      return new Pair<>(ExecutionStatus.NOT_CREATED, "Offline job hasn't been created yet.");
     }
-    return new Pair<>(pushStatus.getCurrentStatus(), pushStatus.getOptionalStatusDetails());
+    return new Pair<>(pushStatus.getCurrentStatus(), pushStatus.getStatusDetails());
   }
 
   @Override
@@ -478,16 +484,34 @@ public abstract class AbstractPushMonitor
   }
 
   @Override
-  public Map<String, Long> getOfflinePushProgress(String topic) {
+  public List<UncompletedPartition> getUncompletedPartitions(String topic) {
     OfflinePushStatus pushStatus = getOfflinePush(topic);
-    if (pushStatus == null) {
-      return Collections.emptyMap();
+    if (pushStatus == null || pushStatus.getCurrentStatus().equals(COMPLETED)) {
+      return Collections.emptyList();
     }
-    Map<String, Long> progress = new HashMap<>(pushStatus.getProgress());
-    progress.keySet()
-        .removeIf(
-            replicaId -> !routingDataRepository.isLiveInstance(ReplicaStatus.getInstanceIdFromReplicaId(replicaId)));
-    return progress;
+    PushStatusDecider decider = PushStatusDecider.getDecider(pushStatus.getStrategy());
+    List<UncompletedPartition> uncompletedPartitions = new ArrayList<>();
+    for (PartitionStatus partitionStatus: pushStatus.getPartitionStatuses()) {
+      int completedReplicaInPartition = 0;
+      List<UncompletedReplica> uncompletedReplicas = new ArrayList<>();
+      for (ReplicaStatus replicaStatus: partitionStatus.getReplicaStatuses()) {
+        ExecutionStatus currentStatus = PushStatusDecider.getReplicaCurrentStatus(replicaStatus.getStatusHistory());
+        if (currentStatus.equals(COMPLETED)) {
+          completedReplicaInPartition++;
+        } else {
+          UncompletedReplica uncompletedReplica = new UncompletedReplica(
+              replicaStatus.getInstanceId(),
+              currentStatus,
+              replicaStatus.getCurrentProgress(),
+              replicaStatus.getIncrementalPushVersion());
+          uncompletedReplicas.add(uncompletedReplica);
+        }
+      }
+      if (!decider.hasEnoughReplicasForOnePartition(completedReplicaInPartition, pushStatus.getReplicationFactor())) {
+        uncompletedPartitions.add(new UncompletedPartition(partitionStatus.getPartitionId(), uncompletedReplicas));
+      }
+    }
+    return uncompletedPartitions;
   }
 
   @Override
@@ -671,6 +695,9 @@ public abstract class AbstractPushMonitor
   }
 
   protected DisableReplicaCallback getDisableReplicaCallback(String kafkaTopic) {
+    if (!disableErrorLeaderReplica) {
+      return null;
+    }
     DisableReplicaCallback callback = new DisableReplicaCallback() {
       private final Map<String, Set<Integer>> disabledReplicaMap = new HashMap<>();
 

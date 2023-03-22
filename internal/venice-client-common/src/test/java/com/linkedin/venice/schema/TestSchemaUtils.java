@@ -37,7 +37,9 @@ public class TestSchemaUtils {
   private static final Schema VALUE_SCHEMA =
       AvroSchemaParseUtils.parseSchemaFromJSONStrictValidation(loadSchemaFileAsString("testMergeSchema.avsc"));
   private static final String LIST_FIELD_NAME = "StringListField";
-  private static final String MAP_FIELD_NAME = "NullableIntMapField";
+  private static final String MAP_FIELD_NAME = "IntMapField";
+  private static final String NULLABLE_LIST_FIELD_NAME = "NullableStringListField";
+  private static final String NULLABLE_MAP_FIELD_NAME = "NullableIntMapField";
 
   @Test
   public void testAnnotateValueSchema() {
@@ -96,6 +98,8 @@ public class TestSchemaUtils {
     Schema tsSchema = rmdSchema.getField(TIMESTAMP_FIELD_NAME).schema().getTypes().get(1);
     Schema listFieldTsSchema = tsSchema.getField(LIST_FIELD_NAME).schema();
     Schema mapFieldTsSchema = tsSchema.getField(MAP_FIELD_NAME).schema();
+    Schema nullableListFieldTsSchema = tsSchema.getField(NULLABLE_LIST_FIELD_NAME).schema();
+    Schema nullableMapFieldTsSchema = tsSchema.getField(NULLABLE_MAP_FIELD_NAME).schema();
 
     GenericRecord listFieldTsRecord = new GenericData.Record(listFieldTsSchema);
     listFieldTsRecord.put(TOP_LEVEL_TS_FIELD_NAME, 1L);
@@ -113,9 +117,27 @@ public class TestSchemaUtils {
     mapFieldTsRecord.put(DELETED_ELEM_FIELD_NAME, Collections.singletonList("key2"));
     mapFieldTsRecord.put(DELETED_ELEM_TS_FIELD_NAME, Collections.singletonList(5L));
 
+    GenericRecord nullableListFieldTsRecord = new GenericData.Record(nullableListFieldTsSchema);
+    nullableListFieldTsRecord.put(TOP_LEVEL_TS_FIELD_NAME, 1L);
+    nullableListFieldTsRecord.put(TOP_LEVEL_COLO_ID_FIELD_NAME, 0);
+    nullableListFieldTsRecord.put(PUT_ONLY_PART_LENGTH_FIELD_NAME, 0);
+    nullableListFieldTsRecord.put(ACTIVE_ELEM_TS_FIELD_NAME, Collections.emptyList());
+    nullableListFieldTsRecord.put(DELETED_ELEM_FIELD_NAME, Collections.emptyList());
+    nullableListFieldTsRecord.put(DELETED_ELEM_TS_FIELD_NAME, Collections.emptyList());
+
+    GenericRecord nullableMapFieldTsRecord = new GenericData.Record(nullableMapFieldTsSchema);
+    nullableMapFieldTsRecord.put(TOP_LEVEL_TS_FIELD_NAME, 1L);
+    nullableMapFieldTsRecord.put(TOP_LEVEL_COLO_ID_FIELD_NAME, 0);
+    nullableMapFieldTsRecord.put(PUT_ONLY_PART_LENGTH_FIELD_NAME, 0);
+    nullableMapFieldTsRecord.put(ACTIVE_ELEM_TS_FIELD_NAME, Collections.emptyList());
+    nullableMapFieldTsRecord.put(DELETED_ELEM_FIELD_NAME, Collections.emptyList());
+    nullableMapFieldTsRecord.put(DELETED_ELEM_TS_FIELD_NAME, Collections.emptyList());
+
     GenericRecord tsRecord = new GenericData.Record(tsSchema);
     tsRecord.put(LIST_FIELD_NAME, listFieldTsRecord);
     tsRecord.put(MAP_FIELD_NAME, mapFieldTsRecord);
+    tsRecord.put(NULLABLE_LIST_FIELD_NAME, nullableListFieldTsRecord);
+    tsRecord.put(NULLABLE_MAP_FIELD_NAME, nullableMapFieldTsRecord);
     rmdRecord.put(TIMESTAMP_FIELD_NAME, tsRecord);
     rmdRecord.put(REPLICATION_CHECKPOINT_VECTOR_FIELD, Collections.emptyList());
     byte[] serializedBytes = getSerializer(rmdSchema).serialize(rmdRecord);

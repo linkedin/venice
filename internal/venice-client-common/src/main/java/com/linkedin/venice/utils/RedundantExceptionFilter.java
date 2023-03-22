@@ -34,11 +34,6 @@ public class RedundantExceptionFilter {
     return getRedundantExceptionFilter(DEFAULT_BITSET_SIZE, DEFAULT_NO_REDUNDANT_EXCEPTION_DURATION_MS);
   }
 
-  public synchronized static RedundantExceptionFilter getDailyRedundantExceptionFilter() {
-    // clean up the bitset every day for the use case do not need to clean up frequently.
-    return getRedundantExceptionFilter(DEFAULT_BITSET_SIZE, Time.MS_PER_DAY);
-  }
-
   public synchronized static RedundantExceptionFilter getRedundantExceptionFilter(
       int bitSetSize,
       long noRedundantExceptionDurationMs) {

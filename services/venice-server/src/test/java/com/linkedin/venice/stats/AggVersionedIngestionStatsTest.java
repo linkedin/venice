@@ -35,7 +35,6 @@ public class AggVersionedIngestionStatsTest {
   private final VeniceServerConfig mockVeniceServerConfig = Mockito.mock(VeniceServerConfig.class);
 
   private String totalKey;
-  private String backupKey;
   private String currentKey;
   private String futureKey;
 
@@ -50,7 +49,6 @@ public class AggVersionedIngestionStatsTest {
     String prefix = "." + STORE_FOO;
     String postfix = IngestionStats.VERSION_TOPIC_END_OFFSET_REWIND_COUNT + ".IngestionStatsGauge";
     totalKey = prefix + "_total--" + postfix;
-    backupKey = prefix + "_backup--" + postfix;
     currentKey = prefix + "_current--" + postfix;
     futureKey = prefix + "_future--" + postfix;
 
@@ -102,17 +100,17 @@ public class AggVersionedIngestionStatsTest {
     for (int i = 0; i < backupVerCnt; i++) {
       aggIngestionStats.recordVersionTopicEndOffsetRewind(STORE_FOO, backupVer.getNumber());
     }
-    verifyCounters(backupVerCnt, backupVerCnt, 0, 0);
+    verifyCounters(backupVerCnt, 0, 0);
 
     for (int i = 0; i < curVerCnt; i++) {
       aggIngestionStats.recordVersionTopicEndOffsetRewind(STORE_FOO, currentVer.getNumber());
     }
-    verifyCounters(backupVerCnt + curVerCnt, backupVerCnt, curVerCnt, 0);
+    verifyCounters(backupVerCnt + curVerCnt, curVerCnt, 0);
 
     for (int i = 0; i < futureVerCnt; i++) {
       aggIngestionStats.recordVersionTopicEndOffsetRewind(STORE_FOO, futureVer.getNumber());
     }
-    verifyCounters(backupVerCnt + curVerCnt + futureVerCnt, backupVerCnt, curVerCnt, futureVerCnt);
+    verifyCounters(backupVerCnt + curVerCnt + futureVerCnt, curVerCnt, futureVerCnt);
 
     aggIngestionStats.handleStoreDeleted(STORE_FOO);
     // Metrics are unregistered when UNREGISTER_METRIC_FOR_DELETED_STORE_ENABLED is enabled.
@@ -133,16 +131,14 @@ public class AggVersionedIngestionStatsTest {
         1);
   }
 
-  private void verifyCounters(double total, double backup, double current, double future) {
+  private void verifyCounters(double total, double current, double future) {
     Assert.assertEquals(reporter.query(totalKey).value(), total);
-    Assert.assertEquals(reporter.query(backupKey).value(), backup);
     Assert.assertEquals(reporter.query(currentKey).value(), current);
     Assert.assertEquals(reporter.query(futureKey).value(), future);
   }
 
   private void verifyNoMetrics() {
     Assert.assertNull(metricsRepo.getMetric(totalKey));
-    Assert.assertNull(metricsRepo.getMetric(backupKey));
     Assert.assertNull(metricsRepo.getMetric(currentKey));
     Assert.assertNull(metricsRepo.getMetric(futureKey));
   }

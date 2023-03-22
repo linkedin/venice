@@ -262,9 +262,9 @@ public interface Store {
 
   boolean isNativeReplicationEnabled();
 
-  Optional<Integer> getRmdVersionID();
+  int getRmdVersion();
 
-  void setRmdVersionID(Optional<Integer> rmdVersionID);
+  void setRmdVersion(int rmdVersion);
 
   void setNativeReplicationEnabled(boolean nativeReplicationEnabled);
 

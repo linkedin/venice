@@ -20,7 +20,8 @@ public class MergeConflictResolverFactory {
   public MergeConflictResolver createMergeConflictResolver(
       StringAnnotatedStoreSchemaCache annotatedReadOnlySchemaRepository,
       RmdSerDe rmdSerDe,
-      String storeName) {
+      String storeName,
+      boolean rmdUseFieldLevelTs) {
     MergeRecordHelper mergeRecordHelper = new CollectionTimestampMergeRecordHelper();
     return new MergeConflictResolver(
         annotatedReadOnlySchemaRepository,
@@ -29,6 +30,14 @@ public class MergeConflictResolverFactory {
         new MergeGenericRecord(new WriteComputeProcessor(mergeRecordHelper), mergeRecordHelper),
         new MergeByteBuffer(),
         new MergeResultValueSchemaResolverImpl(annotatedReadOnlySchemaRepository, storeName),
-        rmdSerDe);
+        rmdSerDe,
+        rmdUseFieldLevelTs);
+  }
+
+  public MergeConflictResolver createMergeConflictResolver(
+      StringAnnotatedStoreSchemaCache annotatedReadOnlySchemaRepository,
+      RmdSerDe rmdSerDe,
+      String storeName) {
+    return createMergeConflictResolver(annotatedReadOnlySchemaRepository, rmdSerDe, storeName, false);
   }
 }

@@ -113,7 +113,6 @@ public class ReplicationMetadataRocksDBStoragePartitionTest extends AbstractStor
     when(mockVersion.isActiveActiveReplicationEnabled()).thenReturn(true);
     Store mockStore = mock(Store.class);
     when(mockStore.getVersion(versionNumber)).thenReturn(Optional.of(mockVersion));
-    when(mockReadOnlyStoreRepository.hasStore(storeName)).thenReturn(true);
     when(mockReadOnlyStoreRepository.getStoreOrThrow(storeName)).thenReturn(mockStore);
     VeniceProperties serverProps = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
     storageService = new StorageService(

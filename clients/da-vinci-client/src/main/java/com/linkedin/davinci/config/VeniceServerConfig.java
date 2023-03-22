@@ -15,6 +15,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_READ_ONLY_ADMIN_CLASS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_WRITE_ONLY_ADMIN_CLASS;
 import static com.linkedin.venice.ConfigKeys.KEY_VALUE_PROFILING_ENABLED;
 import static com.linkedin.venice.ConfigKeys.LEADER_FOLLOWER_STATE_TRANSITION_THREAD_POOL_STRATEGY;
+import static com.linkedin.venice.ConfigKeys.LISTENER_HOSTNAME;
 import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
 import static com.linkedin.venice.ConfigKeys.MAX_FUTURE_VERSION_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER;
 import static com.linkedin.venice.ConfigKeys.MAX_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER;
@@ -90,6 +91,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_SYSTEM_STORE_PROMOTION_TO_LE
 import static com.linkedin.venice.ConfigKeys.SERVER_UNSUB_AFTER_BATCHPUSH;
 import static com.linkedin.venice.ConfigKeys.SEVER_CALCULATE_QUOTA_USAGE_BASED_ON_PARTITIONS_ASSIGNMENT_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SORTED_INPUT_DRAINER_SIZE;
+import static com.linkedin.venice.ConfigKeys.STORE_WRITER_BUFFER_AFTER_LEADER_LOGIC_ENABLED;
 import static com.linkedin.venice.ConfigKeys.STORE_WRITER_BUFFER_MEMORY_CAPACITY;
 import static com.linkedin.venice.ConfigKeys.STORE_WRITER_BUFFER_NOTIFY_DELTA;
 import static com.linkedin.venice.ConfigKeys.STORE_WRITER_NUMBER;
@@ -106,6 +108,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.file.Paths;
 import java.util.Arrays;
@@ -134,6 +137,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   public static final int MINIMUM_CONSUMER_NUM_IN_CONSUMER_POOL_PER_KAFKA_CLUSTER = 3;
 
   private final int listenerPort;
+  private final String listernerHostname;
   private final String dataBasePath;
   private final RocksDBServerConfig rocksDBServerConfig;
   private final boolean enableServerAllowList;
@@ -165,6 +169,12 @@ public class VeniceServerConfig extends VeniceClusterConfig {
    * Thread pool size of unsorted ingestion drainer when dedicatedDrainerQueue is enabled.
    */
   private final int drainerPoolSizeUnsortedInput;
+
+  /**
+   * Whether to queue writes into the {@link com.linkedin.davinci.kafka.consumer.StoreBufferService} after the
+   * leader-specific logic (DCR, produce to Kafka) has been performed.
+   */
+  private final boolean storeWriterBufferAfterLeaderLogicEnabled;
 
   /**
    * Buffer capacity being used by each writer.
@@ -374,6 +384,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
       throws ConfigurationException {
     super(serverProperties, kafkaClusterMap);
     listenerPort = serverProperties.getInt(LISTENER_PORT, 0);
+    listernerHostname = serverProperties.getString(LISTENER_HOSTNAME, () -> Utils.getHostName());
     dataBasePath = serverProperties.getString(
         DATA_BASE_PATH,
         Paths.get(System.getProperty("java.io.tmpdir"), "venice-server-data").toAbsolutePath().toString());
@@ -399,6 +410,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     drainerPoolSizeSortedInput = serverProperties.getInt(SORTED_INPUT_DRAINER_SIZE, 8);
     drainerPoolSizeUnsortedInput = serverProperties.getInt(UNSORTED_INPUT_DRAINER_SIZE, 8);
 
+    storeWriterBufferAfterLeaderLogicEnabled =
+        serverProperties.getBoolean(STORE_WRITER_BUFFER_AFTER_LEADER_LOGIC_ENABLED, true);
     // To minimize the GC impact during heavy ingestion.
     storeWriterBufferMemoryCapacity =
         serverProperties.getSizeInBytes(STORE_WRITER_BUFFER_MEMORY_CAPACITY, 10 * 1024 * 1024);
@@ -593,6 +606,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return listenerPort;
   }
 
+  public String getListenerHostname() {
+    return listernerHostname;
+  }
+
   /**
    * Get base path of Venice storage data.
    *
@@ -628,6 +645,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getStoreWriterNumber() {
     return this.storeWriterNumber;
+  }
+
+  public boolean isStoreWriterBufferAfterLeaderLogicEnabled() {
+    return this.storeWriterBufferAfterLeaderLogicEnabled;
   }
 
   public long getStoreWriterBufferMemoryCapacity() {

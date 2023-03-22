@@ -72,7 +72,7 @@ public class SendStatusMessageIntegrationTest {
     DelayedZkClientUtils.startDelayingSocketIoForNewZkClients(lowerDelay, upperDelay);
     SafeHelixManager participant = TestUtils.getParticipant(
         cluster,
-        Utils.getHelixNodeIdentifier(port),
+        Utils.getHelixNodeIdentifier(Utils.getHostName(), port),
         zkAddress,
         port,
         MockTestStateModel.UNIT_TEST_STATE_MODEL);

@@ -75,7 +75,7 @@ public class TestHelixStatusMessageChannel {
         HelixControllerMain
             .startHelixController(zkAddress, cluster, "UnitTestController", HelixControllerMain.STANDALONE));
     controller.connect();
-    instanceId = Utils.getHelixNodeIdentifier(port);
+    instanceId = Utils.getHelixNodeIdentifier(Utils.getHostName(), port);
     manager = TestUtils.getParticipant(cluster, instanceId, zkAddress, port, MockTestStateModel.UNIT_TEST_STATE_MODEL);
     manager.connect();
     helixMessageChannelStats = new HelixMessageChannelStats(new MetricsRepository(), cluster);
@@ -240,7 +240,7 @@ public class TestHelixStatusMessageChannel {
     // Start a new participant
     SafeHelixManager newParticipant = TestUtils.getParticipant(
         cluster,
-        Utils.getHelixNodeIdentifier(port + 1),
+        Utils.getHelixNodeIdentifier(Utils.getHostName(), port + 1),
         zkAddress,
         port + 1,
         MockTestStateModel.UNIT_TEST_STATE_MODEL);
@@ -277,7 +277,7 @@ public class TestHelixStatusMessageChannel {
     // Start a new participant
     SafeHelixManager newParticipant = TestUtils.getParticipant(
         cluster,
-        Utils.getHelixNodeIdentifier(port + 1),
+        Utils.getHelixNodeIdentifier(Utils.getHostName(), port + 1),
         zkAddress,
         port + 1,
         MockTestStateModel.UNIT_TEST_STATE_MODEL);
@@ -290,7 +290,7 @@ public class TestHelixStatusMessageChannel {
     TestUtils.waitForNonDeterministicCompletion(
         WAIT_ZK_TIME,
         TimeUnit.MILLISECONDS,
-        () -> routingDataRepository.isLiveInstance(Utils.getHelixNodeIdentifier(port + 1)));
+        () -> routingDataRepository.isLiveInstance(Utils.getHelixNodeIdentifier(Utils.getHostName(), port + 1)));
 
     HelixStatusMessageChannel controllerChannel =
         getControllerChannel(new TimeoutTestStoreStatusMessageHandler(timeoutCount));
@@ -313,7 +313,7 @@ public class TestHelixStatusMessageChannel {
     // Start a new participant
     SafeHelixManager newParticipant = TestUtils.getParticipant(
         cluster,
-        Utils.getHelixNodeIdentifier(port + 1),
+        Utils.getHelixNodeIdentifier(Utils.getHostName(), port + 1),
         zkAddress,
         port + 1,
         MockTestStateModel.UNIT_TEST_STATE_MODEL);
@@ -390,7 +390,7 @@ public class TestHelixStatusMessageChannel {
       }
     });
 
-    String id = Utils.getHelixNodeIdentifier(port + 10);
+    String id = Utils.getHelixNodeIdentifier(Utils.getHostName(), port + 10);
     SafeHelixManager newClusterParticipant =
         TestUtils.getParticipant(newCluster, id, zkAddress, port + 10, MockTestStateModel.UNIT_TEST_STATE_MODEL);
     newClusterParticipant.connect();

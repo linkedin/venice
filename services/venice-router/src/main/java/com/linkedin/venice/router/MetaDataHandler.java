@@ -4,11 +4,15 @@ import static com.linkedin.venice.VeniceConstants.TYPE_PUSH_STATUS;
 import static com.linkedin.venice.VeniceConstants.TYPE_STORE_STATE;
 import static com.linkedin.venice.VeniceConstants.TYPE_STREAM_HYBRID_STORE_QUOTA;
 import static com.linkedin.venice.VeniceConstants.TYPE_STREAM_REPROCESSING_HYBRID_STORE_QUOTA;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITIONERS;
 import static com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2.D2_SERVICE_DISCOVERY_RESPONSE_V2_ENABLED;
+import static com.linkedin.venice.meta.DataReplicationPolicy.ACTIVE_ACTIVE;
+import static com.linkedin.venice.meta.DataReplicationPolicy.NON_AGGREGATE;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_CLUSTER_DISCOVERY;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_KEY_SCHEMA;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_LEADER_CONTROLLER;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_LEADER_CONTROLLER_LEGACY;
+import static com.linkedin.venice.router.api.VenicePathParser.TYPE_REQUEST_TOPIC;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_RESOURCE_STATE;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_UPDATE_SCHEMA;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_VALUE_SCHEMA;
@@ -21,17 +25,22 @@ import static io.netty.handler.codec.http.HttpResponseStatus.OK;
 import static io.netty.handler.codec.http.HttpResponseStatus.UNAUTHORIZED;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2;
 import com.linkedin.venice.controllerapi.LeaderControllerResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
+import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.helix.HelixHybridStoreQuotaRepository;
 import com.linkedin.venice.helix.StoreJSONSerializer;
 import com.linkedin.venice.helix.SystemStoreJSONSerializer;
+import com.linkedin.venice.meta.DataReplicationPolicy;
+import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -41,6 +50,7 @@ import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.SystemStore;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
+import com.linkedin.venice.router.api.RouterResourceType;
 import com.linkedin.venice.router.api.VenicePathParserHelper;
 import com.linkedin.venice.routerapi.HybridStoreQuotaStatusResponse;
 import com.linkedin.venice.routerapi.PushStatusResponse;
@@ -104,6 +114,19 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private final String zkAddress;
   private final String kafkaBootstrapServers;
 
+  static final String REQUEST_TOPIC_ERROR_BATCH_ONLY_STORE = "Online writes are only supported for hybrid stores.";
+  static final String REQUEST_TOPIC_ERROR_NO_CURRENT_VERSION =
+      "Store doesn't have an active version. Please push data to the store.";
+  static final String REQUEST_TOPIC_ERROR_MISSING_CURRENT_VERSION =
+      "Store has a current version, but the configs for the current version are not present. This is unexpected.";
+  static final String REQUEST_TOPIC_ERROR_CURRENT_VERSION_NOT_HYBRID =
+      "Online writes are only supported for stores with a current version capable of receiving hybrid writes.";
+  static final String REQUEST_TOPIC_ERROR_UNSUPPORTED_REPLICATION_POLICY =
+      "Online writes are only supported for hybrid stores that have " + ACTIVE_ACTIVE + " or " + NON_AGGREGATE
+          + " data replication policy.";
+  static final String REQUEST_TOPIC_ERROR_FORMAT_UNSUPPORTED_PARTITIONER =
+      "Expected partitioner class %s cannot be found.";
+
   public MetaDataHandler(
       RoutingDataRepository routingDataRepository,
       ReadOnlySchemaRepository schemaRepo,
@@ -130,44 +153,59 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   public void channelRead0(ChannelHandlerContext ctx, HttpRequest req) throws IOException {
     VenicePathParserHelper helper = parseRequest(req);
 
-    String resourceType = helper.getResourceType(); // may be null
-    if (TYPE_LEADER_CONTROLLER.equals(resourceType) || TYPE_LEADER_CONTROLLER_LEGACY.equals(resourceType)) {
-      // go/inclusivecode deprecated(alias="leader_controller")
-      // URI: /leader_controller or /master_controller
-      handleControllerLookup(ctx);
-    } else if (TYPE_KEY_SCHEMA.equals(resourceType)) {
-      // URI: /key_schema/${storeName}
-      // For key schema lookup, we only consider storeName
-      handleKeySchemaLookup(ctx, helper);
-    } else if (TYPE_VALUE_SCHEMA.equals(resourceType)) {
-      // The request could fetch one value schema by id or all the value schema for the given store
-      // URI: /value_schema/{$storeName} - Get all the value schema
-      // URI: /value_schema/{$storeName}/{$valueSchemaId} - Get single value schema
-      handleValueSchemaLookup(ctx, helper);
-    } else if (TYPE_UPDATE_SCHEMA.equals(resourceType)) {
-      // URI: /update_schema/{$storeName}/{$valueSchemaId}
-      // The request could fetch the latest derived update schema of a specific value schema
-      handleUpdateSchemaLookup(ctx, helper);
-    } else if (TYPE_CLUSTER_DISCOVERY.equals(resourceType)) {
-      // URI: /discover_cluster/${storeName}
-      hanldeD2ServiceLookup(ctx, helper, req.headers());
-    } else if (TYPE_RESOURCE_STATE.equals(resourceType)) {
-      // URI: /resource_state
-      handleResourceStateLookup(ctx, helper);
-    } else if (TYPE_PUSH_STATUS.equals(resourceType)) {
-      // URI: /push_status
-      handlePushStatusLookUp(ctx, helper);
-    } else if (TYPE_STREAM_HYBRID_STORE_QUOTA.equals(resourceType)) {
-      handleStreamHybridStoreQuotaStatusLookup(ctx, helper);
-    } else if (TYPE_STREAM_REPROCESSING_HYBRID_STORE_QUOTA.equals(resourceType)) {
-      handleStreamReprocessingHybridStoreQuotaStatusLookup(ctx, helper);
-    } else if (TYPE_STORE_STATE.equals(resourceType)) {
-      handleStoreStateLookup(ctx, helper);
-    } else {
-      // SimpleChannelInboundHandler automatically releases the request after channelRead0 is done.
-      // since we're passing it on to the next handler, we need to retain an extra reference.
-      ReferenceCountUtil.retain(req);
-      ctx.fireChannelRead(req);
+    RouterResourceType resourceType = helper.getResourceType(); // may be null
+
+    switch (resourceType) {
+      case TYPE_LEADER_CONTROLLER:
+      case TYPE_LEADER_CONTROLLER_LEGACY:
+        // URI: /leader_controller or /master_controller
+        handleControllerLookup(ctx);
+        break;
+      case TYPE_KEY_SCHEMA:
+        // URI: /key_schema/${storeName}
+        // For key schema lookup, we only consider storeName
+        handleKeySchemaLookup(ctx, helper);
+        break;
+      case TYPE_VALUE_SCHEMA:
+        // The request could fetch one value schema by id or all the value schema for the given store
+        // URI: /value_schema/{$storeName} - Get all the value schema
+        // URI: /value_schema/{$storeName}/{$valueSchemaId} - Get single value schema
+        handleValueSchemaLookup(ctx, helper);
+        break;
+      case TYPE_UPDATE_SCHEMA:
+        // URI: /update_schema/{$storeName}/{$valueSchemaId}
+        // The request could fetch the latest derived update schema of a specific value schema
+        handleUpdateSchemaLookup(ctx, helper);
+        break;
+      case TYPE_CLUSTER_DISCOVERY:
+        // URI: /discover_cluster/${storeName}
+        hanldeD2ServiceLookup(ctx, helper, req.headers());
+        break;
+      case TYPE_RESOURCE_STATE:
+        // URI: /resource_state
+        handleResourceStateLookup(ctx, helper);
+        break;
+      case TYPE_PUSH_STATUS:
+        // URI: /push_status
+        handlePushStatusLookUp(ctx, helper);
+        break;
+      case TYPE_STREAM_HYBRID_STORE_QUOTA:
+        handleStreamHybridStoreQuotaStatusLookup(ctx, helper);
+        break;
+      case TYPE_STREAM_REPROCESSING_HYBRID_STORE_QUOTA:
+        handleStreamReprocessingHybridStoreQuotaStatusLookup(ctx, helper);
+        break;
+      case TYPE_STORE_STATE:
+        handleStoreStateLookup(ctx, helper);
+        break;
+      case TYPE_REQUEST_TOPIC:
+        handleRequestTopic(ctx, helper, req);
+        break;
+      default:
+        // SimpleChannelInboundHandler automatically releases the request after channelRead0 is done.
+        // since we're passing it on to the next handler, we need to retain an extra reference.
+        ReferenceCountUtil.retain(req);
+        ctx.fireChannelRead(req);
     }
   }
 
@@ -456,6 +494,91 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       body = STORE_SERIALIZER.serialize(store, null);
     }
     setupResponseAndFlush(OK, body, true, ctx);
+  }
+
+  private void handleRequestTopic(ChannelHandlerContext ctx, VenicePathParserHelper helper, HttpRequest request)
+      throws IOException {
+    String storeName = helper.getResourceName();
+    checkResourceName(storeName, "/" + TYPE_REQUEST_TOPIC + "/${storeName}");
+
+    Store store = storeRepository.getStore(storeName);
+
+    // Only allow router request_topic for hybrid stores
+    if (!store.isHybrid()) {
+      setupResponseAndFlush(BAD_REQUEST, REQUEST_TOPIC_ERROR_BATCH_ONLY_STORE.getBytes(), false, ctx);
+      return;
+    }
+
+    int currentVersionNumber = store.getCurrentVersion();
+    if (currentVersionNumber == Store.NON_EXISTING_VERSION) {
+      setupResponseAndFlush(BAD_REQUEST, REQUEST_TOPIC_ERROR_NO_CURRENT_VERSION.getBytes(), false, ctx);
+      return;
+    }
+
+    Optional<Version> currentVersionOptional = store.getVersion(currentVersionNumber);
+    if (!currentVersionOptional.isPresent()) {
+      setupResponseAndFlush(INTERNAL_SERVER_ERROR, REQUEST_TOPIC_ERROR_MISSING_CURRENT_VERSION.getBytes(), false, ctx);
+      return;
+    }
+
+    final HybridStoreConfig hybridStoreConfig;
+    Version currentVersion = currentVersionOptional.get();
+    if (currentVersion.isUseVersionLevelHybridConfig()) {
+      if (currentVersion.getHybridStoreConfig() == null) {
+        setupResponseAndFlush(BAD_REQUEST, REQUEST_TOPIC_ERROR_CURRENT_VERSION_NOT_HYBRID.getBytes(), false, ctx);
+        return;
+      }
+      hybridStoreConfig = currentVersion.getHybridStoreConfig();
+    } else {
+      hybridStoreConfig = store.getHybridStoreConfig();
+    }
+
+    /**
+     * Only allow router request_topic for hybrid stores that have data replication policy:
+     * 1. NON_AGGREGATE
+     * 2. ACTIVE_ACTIVE
+     */
+    DataReplicationPolicy dataReplicationPolicy = hybridStoreConfig.getDataReplicationPolicy();
+    if (!dataReplicationPolicy.equals(NON_AGGREGATE) && !dataReplicationPolicy.equals(ACTIVE_ACTIVE)) {
+      setupResponseAndFlush(BAD_REQUEST, REQUEST_TOPIC_ERROR_UNSUPPORTED_REPLICATION_POLICY.getBytes(), false, ctx);
+      return;
+    }
+
+    // Retrieve partitioner config from the store
+    PartitionerConfig storePartitionerConfig = store.getPartitionerConfig();
+    Map<String, String> queryParams = helper.extractQueryParameters(request);
+    if (queryParams.get(PARTITIONERS) != null) {
+      // Retrieve provided partitioner class list from the request
+      boolean hasMatchedPartitioner = false;
+      for (String partitioner: queryParams.get(PARTITIONERS).split(",")) {
+        if (partitioner.equals(storePartitionerConfig.getPartitionerClass())) {
+          hasMatchedPartitioner = true;
+          break;
+        }
+      }
+      if (!hasMatchedPartitioner) {
+        String errorMsg = String
+            .format(REQUEST_TOPIC_ERROR_FORMAT_UNSUPPORTED_PARTITIONER, storePartitionerConfig.getPartitionerClass());
+        setupResponseAndFlush(BAD_REQUEST, errorMsg.getBytes(), false, ctx);
+        return;
+      }
+    }
+
+    VersionCreationResponse responseObject = new VersionCreationResponse();
+    responseObject.setCluster(clusterName);
+    responseObject.setName(storeName);
+    responseObject.setPartitions(currentVersion.getPartitionCount());
+    responseObject.setKafkaTopic(Version.composeRealTimeTopic(storeName));
+    // RT topic only supports NO_OP compression
+    responseObject.setCompressionStrategy(CompressionStrategy.NO_OP);
+    // disable amplificationFactor logic on real-time topic
+    responseObject.setAmplificationFactor(1);
+    responseObject.setKafkaBootstrapServers(kafkaBootstrapServers);
+    responseObject.setDaVinciPushStatusStoreEnabled(store.isDaVinciPushStatusStoreEnabled());
+    responseObject.setPartitionerClass(storePartitionerConfig.getPartitionerClass());
+    responseObject.setPartitionerParams(storePartitionerConfig.getPartitionerParams());
+
+    setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(responseObject), true, ctx);
   }
 
   private void prepareHybridStoreQuotaStatusResponse(String resourceName, ChannelHandlerContext ctx)

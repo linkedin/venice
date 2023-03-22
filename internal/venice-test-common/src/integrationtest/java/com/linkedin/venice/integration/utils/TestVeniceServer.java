@@ -18,8 +18,10 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.server.VeniceServer;
+import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
 import io.netty.channel.ChannelHandlerContext;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -44,6 +46,24 @@ public class TestVeniceServer extends VeniceServer {
       Optional<StaticAccessController> accessController,
       Optional<ClientConfig> consumerClientConfig) {
     super(configLoader, metricsRepository, sslFactory, accessController, consumerClientConfig);
+  }
+
+  public TestVeniceServer(
+      VeniceConfigLoader configLoader,
+      MetricsRepository metricsRepository,
+      Optional<SSLFactory> sslFactory,
+      Optional<StaticAccessController> accessController,
+      Optional<ClientConfig> consumerClientConfig,
+      List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers) {
+    super(
+        configLoader,
+        metricsRepository,
+        sslFactory,
+        accessController,
+        Optional.empty(),
+        consumerClientConfig,
+        null,
+        serviceDiscoveryAnnouncers);
   }
 
   @Override

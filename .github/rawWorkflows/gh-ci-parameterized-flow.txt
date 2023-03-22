@@ -6,6 +6,7 @@
         jdk: [11]
     runs-on: ${{ matrix.os }}
     needs: $Dependency
+    if: $Conditional
     timeout-minutes: $TimeOut
     steps:
       - uses: actions/checkout@v3
@@ -37,7 +38,7 @@
           rsync -R --files-from=artifacts.list . ${{ github.job }}-artifacts
           tar -zcvf ${{ github.job }}-artifacts.tar.gz ${{ github.job }}-artifacts
       - name: Upload Build Artifacts
-        if: success()
+        if: success() || failure()
         uses: actions/upload-artifact@v3
         with:
           name: ${{ github.job }}

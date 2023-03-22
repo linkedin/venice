@@ -79,9 +79,6 @@ public class AggVersionedDIVStatsTest {
         reporter.query("." + storeName + "_current--duplicate_msg.DIVStatsCounter").value(),
         (double) NULL_DIV_STATS.code);
     Assert.assertEquals(
-        reporter.query("." + storeName + "_backup--missing_msg.DIVStatsCounter").value(),
-        (double) NULL_DIV_STATS.code);
-    Assert.assertEquals(
         reporter.query("." + storeName + "_future--corrupted_msg.DIVStatsCounter").value(),
         (double) NULL_DIV_STATS.code);
   }
@@ -100,9 +97,6 @@ public class AggVersionedDIVStatsTest {
 
     Assert.assertEquals(
         reporter.query("." + storeName + "_current--current_idle_time.DIVStatsCounter").value(),
-        (double) NULL_DIV_STATS.code);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_backup--overall_idle_time.DIVStatsCounter").value(),
         (double) NULL_DIV_STATS.code);
     Assert.assertEquals(reporter.query("." + storeName + "_total--corrupted_msg.DIVStatsCounter").value(), 0d);
     Assert.assertEquals(reporter.query("." + storeName + "_total--success_msg.DIVStatsCounter").value(), 0d);
@@ -269,7 +263,6 @@ public class AggVersionedDIVStatsTest {
     // v2's stats on backup reporter
     Assert.assertEquals(reporter.query("." + storeName + "_current--current_idle_time.DIVStatsCounter").value(), 2d);
     Assert.assertEquals(reporter.query("." + storeName + "_future--duplicate_msg.DIVStatsCounter").value(), 0d);
-    Assert.assertEquals(reporter.query("." + storeName + "_backup--duplicate_msg.DIVStatsCounter").value(), 1d);
 
     // v2 becomes the current version
     mockStore.setCurrentVersionWithoutCheck(2);
@@ -277,19 +270,12 @@ public class AggVersionedDIVStatsTest {
 
     // expect to see v2's stats on current reporter and v1's stats on backup reporter
     Assert.assertEquals(reporter.query("." + storeName + "_current--duplicate_msg.DIVStatsCounter").value(), 1d);
-    Assert.assertEquals(reporter.query("." + storeName + "_backup--current_idle_time.DIVStatsCounter").value(), 2d);
     Assert.assertEquals(
         reporter.query("." + storeName + "_current--broker_to_consumer_latency_avg_ms.DIVStatsCounter").value(),
         v2BrokerConsumerLatencyMs);
     Assert.assertEquals(
         reporter.query("." + storeName + "_current--broker_to_consumer_latency_max_ms.DIVStatsCounter").value(),
         v2BrokerConsumerLatencyMs);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_backup--producer_to_broker_latency_avg_ms.DIVStatsCounter").value(),
-        v1ProducerBrokerLatencyMs);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_backup--producer_to_broker_latency_max_ms.DIVStatsCounter").value(),
-        v1ProducerBrokerLatencyMs);
 
     // v3 finishes pushing and the status becomes to be online
     Version version3 = new VersionImpl(storeName, 3);
@@ -298,9 +284,6 @@ public class AggVersionedDIVStatsTest {
     mockStore.deleteVersion(1);
     stats.handleStoreChanged(mockStore);
     stats.recordMissingMsg(storeName, 3);
-
-    // expect to see v1 stats being removed from reporters
-    Assert.assertEquals(reporter.query("." + storeName + "_backup--missing_msg.DIVStatsCounter").value(), 1d);
   }
 
   @Test(dependsOnMethods = { "testStatsCanLoadAllStoresInTime" })

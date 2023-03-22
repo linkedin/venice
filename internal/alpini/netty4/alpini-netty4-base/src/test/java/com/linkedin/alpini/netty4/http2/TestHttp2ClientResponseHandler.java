@@ -314,7 +314,7 @@ public final class TestHttp2ClientResponseHandler extends AbstractLeakDetect {
     Mockito.doAnswer(invocation -> {
       ChannelHandlerContext ctx = invocation.getArgument(0);
       int streamId = invocation.getArgument(1);
-      ChannelPromise writePromise = invocation.getArgument(8);
+      ChannelPromise writePromise = invocation.getArgument(5);
       streamIds.add(Pair.make(ctx, streamId));
       return writePromise.setSuccess();
     })
@@ -323,9 +323,6 @@ public final class TestHttp2ClientResponseHandler extends AbstractLeakDetect {
             Mockito.any(),
             Mockito.anyInt(),
             Mockito.any(),
-            Mockito.anyInt(),
-            Mockito.anyShort(),
-            Mockito.anyBoolean(),
             Mockito.anyInt(),
             Mockito.anyBoolean(),
             Mockito.any());
