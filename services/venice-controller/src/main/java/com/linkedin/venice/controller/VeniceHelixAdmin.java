@@ -5072,7 +5072,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if (!incrementalPushVersion.isPresent()) {
       OfflinePushStatusInfo offlinePushStatusInfo =
           getOfflinePushStatusInfo(clusterName, kafkaTopic, incrementalPushVersion, monitor, store, versionNumber);
-      if (region != null && !offlinePushStatusInfo.getExecutionStatus().equals(ExecutionStatus.COMPLETED)) {
+      if (region != null) {
         offlinePushStatusInfo.setUncompletedPartitions(monitor.getUncompletedPartitions(kafkaTopic));
       }
       return offlinePushStatusInfo;

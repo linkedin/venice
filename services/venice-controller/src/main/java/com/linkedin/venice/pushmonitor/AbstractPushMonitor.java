@@ -486,7 +486,7 @@ public abstract class AbstractPushMonitor
   @Override
   public List<UncompletedPartition> getUncompletedPartitions(String topic) {
     OfflinePushStatus pushStatus = getOfflinePush(topic);
-    if (pushStatus == null) {
+    if (pushStatus == null || pushStatus.getCurrentStatus().equals(COMPLETED)) {
       return Collections.emptyList();
     }
     PushStatusDecider decider = PushStatusDecider.getDecider(pushStatus.getStrategy());

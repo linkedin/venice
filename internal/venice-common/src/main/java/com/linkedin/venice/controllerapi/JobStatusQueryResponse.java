@@ -103,6 +103,6 @@ public class JobStatusQueryResponse
   public String toString() {
     return JobStatusQueryResponse.class.getSimpleName() + "(\n" + "version: " + version + ",\n" + "status: " + status
         + ",\n" + "statusDetails: " + statusDetails + ",\n" + "extraInfo: " + extraInfo + ",\n" + "extraDetails: "
-        + extraDetails + ",\n" + "uncompletedPartitions: " + uncompletedPartitions + ",\n" + super.toString() + ")";
+        + extraDetails + ",\n" + super.toString() + ")";
   }
 }
