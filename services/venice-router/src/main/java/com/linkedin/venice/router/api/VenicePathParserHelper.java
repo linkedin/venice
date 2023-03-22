@@ -1,7 +1,5 @@
 package com.linkedin.venice.router.api;
 
-import static com.linkedin.venice.router.api.VenicePathParser.TYPE_STORAGE;
-
 import com.linkedin.alpini.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.venice.router.utils.VeniceRouterUtils;
 import io.netty.handler.codec.http.HttpRequest;
@@ -12,7 +10,6 @@ import java.net.URLDecoder;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
-import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -23,7 +20,7 @@ import org.apache.logging.log4j.Logger;
 public class VenicePathParserHelper {
   private static final Logger LOGGER = LogManager.getLogger(VenicePathParserHelper.class);
 
-  private String resourceType = null;
+  private RouterResourceType resourceType = null;
   private String resourceName = null;
   private String key = null;
 
@@ -75,6 +72,7 @@ public class VenicePathParserHelper {
   private VenicePathParserHelper(String uri) {
     try {
       URI uriObject = new URI(uri);
+      String typeName = null;
       String[] path = uriObject.getPath().split("/"); // getPath does not include the querystring '?f=b64'
       if (path.length > 0) {
         int offset = 0;
@@ -82,7 +80,7 @@ public class VenicePathParserHelper {
           offset = 1; // leading slash in uri splits to an empty path section
         }
         if (path.length - offset >= 1) {
-          resourceType = path[0 + offset];
+          typeName = path[0 + offset];
           if (path.length - offset >= 2) {
             resourceName = path[1 + offset];
             if (path.length - offset >= 3) {
@@ -91,12 +89,14 @@ public class VenicePathParserHelper {
           }
         }
       }
+      this.resourceType = RouterResourceType.getTypeResourceType(typeName);
     } catch (URISyntaxException e) {
       LOGGER.warn("Failed to parse uri: {}", uri);
+      this.resourceType = RouterResourceType.TYPE_INVALID;
     }
   }
 
-  public String getResourceType() {
+  public RouterResourceType getResourceType() {
     return resourceType;
   }
 
@@ -106,10 +106,5 @@ public class VenicePathParserHelper {
 
   public String getKey() {
     return key;
-  }
-
-  public boolean isInvalidStorageRequest() {
-    return StringUtils.isEmpty(resourceType) || (!resourceType.equals(TYPE_STORAGE))
-        || StringUtils.isEmpty(resourceName);
   }
 }
