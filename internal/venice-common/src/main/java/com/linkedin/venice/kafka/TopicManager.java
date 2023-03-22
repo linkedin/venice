@@ -17,7 +17,6 @@ import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
 import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.ints.Int2LongMap;
@@ -105,7 +104,7 @@ public class TopicManager implements Closeable {
     this.topicMinLogCompactionLagMs = builder.getTopicMinLogCompactionLagMs();
     this.pubSubAdminAdapterFactory = builder.getPubSubAdminAdapterFactory();
 
-    VeniceProperties pubSubProperties = builder.getPubSubProperties();
+    TopicManagerRepository.SSLPropertiesSupplier pubSubProperties = builder.getPubSubProperties();
     PubSubTopicRepository pubSubTopicRepository = builder.getPubSubTopicRepository();
 
     Optional<MetricsRepository> optionalMetricsRepository = Optional.ofNullable(builder.getMetricsRepository());
@@ -114,7 +113,7 @@ public class TopicManager implements Closeable {
 
     this.kafkaReadOnlyAdmin = Lazy.of(() -> {
       KafkaAdminWrapper kafkaReadOnlyAdmin = pubSubAdminAdapterFactory.create(
-          pubSubProperties,
+          pubSubProperties.get(pubSubBootstrapServers),
           optionalMetricsRepository,
           "ReadOnlyKafkaAdminStats",
           pubSubTopicRepository,
@@ -128,7 +127,7 @@ public class TopicManager implements Closeable {
 
     this.kafkaWriteOnlyAdmin = Lazy.of(() -> {
       KafkaAdminWrapper kafkaWriteOnlyAdmin = pubSubAdminAdapterFactory.create(
-          pubSubProperties,
+          pubSubProperties.get(pubSubBootstrapServers),
           optionalMetricsRepository,
           "WriteOnlyKafkaAdminStats",
           pubSubTopicRepository,
@@ -142,7 +141,7 @@ public class TopicManager implements Closeable {
 
     this.partitionOffsetFetcher = PartitionOffsetFetcherFactory.createDefaultPartitionOffsetFetcher(
         builder.getPubSubConsumerAdapterFactory(),
-        pubSubProperties,
+        pubSubProperties.get(pubSubBootstrapServers),
         pubSubBootstrapServers,
         kafkaReadOnlyAdmin,
         kafkaOperationTimeoutMs,

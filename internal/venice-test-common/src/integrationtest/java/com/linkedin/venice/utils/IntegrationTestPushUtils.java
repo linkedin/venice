@@ -379,7 +379,7 @@ public class IntegrationTestPushUtils {
     Properties properties = new Properties();
     properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, pubSubBootstrapServers);
     return TopicManagerRepository.builder()
-        .setPubSubProperties(new VeniceProperties(properties))
+        .setPubSubProperties(k -> new VeniceProperties(properties))
         .setPubSubTopicRepository(pubSubTopicRepository)
         .setLocalKafkaBootstrapServers(pubSubBootstrapServers)
         .setPubSubConsumerAdapterFactory(new ApacheKafkaConsumerAdapterFactory())

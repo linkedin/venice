@@ -1,7 +1,6 @@
 package com.linkedin.venice.kafka.admin;
 
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -18,7 +17,7 @@ import org.apache.logging.log4j.Logger;
  */
 
 public class ApacheKafkaAdminAdapterFactory implements PubSubAdminAdapterFactory<KafkaAdminWrapper> {
-  private static final Logger LOGGER = LogManager.getLogger(ApacheKafkaProducerConfig.class);
+  private static final Logger LOGGER = LogManager.getLogger(ApacheKafkaAdminConfig.class);
 
   private static final String NAME = "ApacheKafkaAdmin";
 

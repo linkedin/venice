@@ -43,7 +43,7 @@ public class KafkaInputFormat implements InputFormat<KafkaInputMapperKey, KafkaI
   protected Map<TopicPartition, Long> getLatestOffsets(JobConf config) {
     VeniceProperties consumerProperties = getConsumerProperties(config);
     try (TopicManagerRepository topicManagerRepository = TopicManagerRepository.builder()
-        .setPubSubProperties(consumerProperties)
+        .setPubSubProperties(k -> consumerProperties)
         .setLocalKafkaBootstrapServers(config.get(KAFKA_INPUT_BROKER_URL))
         .setPubSubTopicRepository(pubSubTopicRepository)
         .setPubSubAdminAdapterFactory(new ApacheKafkaAdminAdapterFactory())

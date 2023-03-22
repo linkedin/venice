@@ -84,7 +84,7 @@ public class TopicManagerRepository implements Closeable {
     private PubSubConsumerAdapterFactory<PubSubConsumer> pubSubConsumerAdapterFactory;
     private PubSubTopicRepository pubSubTopicRepository;
     private MetricsRepository metricsRepository;
-    private VeniceProperties pubSubProperties;
+    private SSLPropertiesSupplier pubSubProperties;
 
     private interface Setter {
       void apply();
@@ -135,7 +135,7 @@ public class TopicManagerRepository implements Closeable {
       return pubSubConsumerAdapterFactory;
     }
 
-    public VeniceProperties getPubSubProperties() {
+    public SSLPropertiesSupplier getPubSubProperties() {
       return pubSubProperties;
     }
 
@@ -173,8 +173,12 @@ public class TopicManagerRepository implements Closeable {
       return set(() -> this.pubSubConsumerAdapterFactory = pubSubConsumerAdapterFactory);
     }
 
-    public Builder setPubSubProperties(VeniceProperties pubSubProperties) {
+    public Builder setPubSubProperties(SSLPropertiesSupplier pubSubProperties) {
       return set(() -> this.pubSubProperties = pubSubProperties);
     }
+  }
+
+  public interface SSLPropertiesSupplier {
+    VeniceProperties get(String pubSubBootstrapServers);
   }
 }

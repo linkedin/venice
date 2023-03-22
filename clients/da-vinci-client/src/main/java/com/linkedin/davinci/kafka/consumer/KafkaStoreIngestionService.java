@@ -1,8 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
 import static com.linkedin.venice.ConfigConstants.*;
-import static com.linkedin.venice.ConfigKeys.KAFKA_BATCH_SIZE;
-import static com.linkedin.venice.ConfigKeys.KAFKA_LINGER_MS;
+import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.kafka.TopicManager.*;
 import static java.lang.Thread.currentThread;
 import static java.lang.Thread.sleep;
@@ -310,7 +309,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     KafkaClusterBasedRecordThrottler kafkaClusterBasedRecordThrottler =
         new KafkaClusterBasedRecordThrottler(kafkaUrlToRecordsThrottler);
 
-    Properties pubSubProperties = getPubSubSSLPropertiesFromServerConfig(serverConfig);
     this.topicManagerRepository = TopicManagerRepository.builder()
         .setPubSubTopicRepository(pubSubTopicRepository)
         .setMetricsRepository(metricsRepository)
@@ -319,7 +317,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setTopicDeletionStatusPollIntervalMs(DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS)
         .setTopicMinLogCompactionLagMs(DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS)
         .setKafkaOperationTimeoutMs(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS)
-        .setPubSubProperties(new VeniceProperties(pubSubProperties))
+        .setPubSubProperties(this::getPubSubSSLPropertiesFromServerConfig)
         .setPubSubAdminAdapterFactory(new ApacheKafkaAdminAdapterFactory())
         .build();
 
@@ -474,9 +472,16 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .build();
   }
 
-  private Properties getPubSubSSLPropertiesFromServerConfig(VeniceServerConfig serverConfig) {
+  private VeniceProperties getPubSubSSLPropertiesFromServerConfig(String kafkaBootstrapUrls) {
+
+    VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
+    if (!kafkaBootstrapUrls.equals(serverConfig.getKafkaBootstrapServers())) {
+      Properties clonedProperties = serverConfig.getClusterProperties().toProperties();
+      clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapUrls);
+      serverConfig = new VeniceServerConfig(new VeniceProperties(clonedProperties), serverConfig.getKafkaClusterMap());
+    }
     Properties properties = new Properties();
-    String kafkaBootstrapUrls = properties.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
+    kafkaBootstrapUrls = properties.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
     if (kafkaBootstrapUrls == null) {
       /** Override the bootstrap servers config if it's not set in the proposed properties. */
       kafkaBootstrapUrls = serverConfig.getKafkaBootstrapServers();
@@ -501,7 +506,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       }
     }
     properties.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, securityProtocol.name);
-    return properties;
+    properties.put("controllerOrNot", "false"); // TODO: remove this
+    return new VeniceProperties(properties);
   }
 
   /**
@@ -1022,7 +1028,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    * @return
    */
   private Properties getCommonKafkaConsumerProperties(VeniceServerConfig serverConfig) {
-    Properties kafkaConsumerProperties = getPubSubSSLPropertiesFromServerConfig(serverConfig);
+    Properties kafkaConsumerProperties =
+        getPubSubSSLPropertiesFromServerConfig(serverConfig.getKafkaBootstrapServers()).toProperties();
     kafkaConsumerProperties
         .setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, serverConfig.getKafkaBootstrapServers());
     kafkaConsumerProperties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");

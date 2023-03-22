@@ -1317,7 +1317,7 @@ public class AdminTool {
     }
 
     try (TopicManagerRepository topicManagerRepository = TopicManagerRepository.builder()
-        .setPubSubProperties(veniceProperties)
+        .setPubSubProperties(k -> veniceProperties)
         .setKafkaOperationTimeoutMs(kafkaTimeOut)
         .setTopicDeletionStatusPollIntervalMs(topicDeletionStatusPollingInterval)
         .setTopicMinLogCompactionLagMs(0L)

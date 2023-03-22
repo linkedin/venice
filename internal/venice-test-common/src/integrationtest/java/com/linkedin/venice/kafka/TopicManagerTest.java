@@ -518,7 +518,7 @@ public class TopicManagerTest {
     PubSubConsumerAdapterFactory consumerAdapterFactory = mock(PubSubConsumerAdapterFactory.class);
     doReturn(mockKafkaAdminWrapper).when(adminAdapterFactory).create(any(), any(), any(), any(), any());
     try (TopicManager topicManagerForThisTest = TopicManagerRepository.builder()
-        .setPubSubProperties(new VeniceProperties())
+        .setPubSubProperties(k -> new VeniceProperties())
         .setPubSubTopicRepository(pubSubTopicRepository)
         .setLocalKafkaBootstrapServers(localPubSubBrokerAddress)
         .setPubSubAdminAdapterFactory(adminAdapterFactory)
