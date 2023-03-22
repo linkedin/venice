@@ -50,6 +50,7 @@ import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.SystemStore;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
+import com.linkedin.venice.router.api.RouterResourceType;
 import com.linkedin.venice.router.api.VenicePathParserHelper;
 import com.linkedin.venice.routerapi.HybridStoreQuotaStatusResponse;
 import com.linkedin.venice.routerapi.PushStatusResponse;
@@ -155,46 +156,59 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   public void channelRead0(ChannelHandlerContext ctx, HttpRequest req) throws IOException {
     VenicePathParserHelper helper = parseRequest(req);
 
-    String resourceType = helper.getResourceType(); // may be null
-    if (TYPE_LEADER_CONTROLLER.equals(resourceType) || TYPE_LEADER_CONTROLLER_LEGACY.equals(resourceType)) {
-      // go/inclusivecode deprecated(alias="leader_controller")
-      // URI: /leader_controller or /master_controller
-      handleControllerLookup(ctx);
-    } else if (TYPE_KEY_SCHEMA.equals(resourceType)) {
-      // URI: /key_schema/${storeName}
-      // For key schema lookup, we only consider storeName
-      handleKeySchemaLookup(ctx, helper);
-    } else if (TYPE_VALUE_SCHEMA.equals(resourceType)) {
-      // The request could fetch one value schema by id or all the value schema for the given store
-      // URI: /value_schema/{$storeName} - Get all the value schema
-      // URI: /value_schema/{$storeName}/{$valueSchemaId} - Get single value schema
-      handleValueSchemaLookup(ctx, helper);
-    } else if (TYPE_UPDATE_SCHEMA.equals(resourceType)) {
-      // URI: /update_schema/{$storeName}/{$valueSchemaId}
-      // The request could fetch the latest derived update schema of a specific value schema
-      handleUpdateSchemaLookup(ctx, helper);
-    } else if (TYPE_CLUSTER_DISCOVERY.equals(resourceType)) {
-      // URI: /discover_cluster/${storeName}
-      handleD2ServiceLookup(ctx, helper, req.headers());
-    } else if (TYPE_RESOURCE_STATE.equals(resourceType)) {
-      // URI: /resource_state
-      handleResourceStateLookup(ctx, helper);
-    } else if (TYPE_PUSH_STATUS.equals(resourceType)) {
-      // URI: /push_status
-      handlePushStatusLookUp(ctx, helper);
-    } else if (TYPE_STREAM_HYBRID_STORE_QUOTA.equals(resourceType)) {
-      handleStreamHybridStoreQuotaStatusLookup(ctx, helper);
-    } else if (TYPE_STREAM_REPROCESSING_HYBRID_STORE_QUOTA.equals(resourceType)) {
-      handleStreamReprocessingHybridStoreQuotaStatusLookup(ctx, helper);
-    } else if (TYPE_STORE_STATE.equals(resourceType)) {
-      handleStoreStateLookup(ctx, helper);
-    } else if (TYPE_REQUEST_TOPIC.equals(resourceType)) {
-      handleRequestTopic(ctx, helper, req);
-    } else {
-      // SimpleChannelInboundHandler automatically releases the request after channelRead0 is done.
-      // since we're passing it on to the next handler, we need to retain an extra reference.
-      ReferenceCountUtil.retain(req);
-      ctx.fireChannelRead(req);
+    RouterResourceType resourceType = helper.getResourceType(); // may be null
+
+    switch (resourceType) {
+      case TYPE_LEADER_CONTROLLER:
+      case TYPE_LEADER_CONTROLLER_LEGACY:
+        // URI: /leader_controller or /master_controller
+        handleControllerLookup(ctx);
+        break;
+      case TYPE_KEY_SCHEMA:
+        // URI: /key_schema/${storeName}
+        // For key schema lookup, we only consider storeName
+        handleKeySchemaLookup(ctx, helper);
+        break;
+      case TYPE_VALUE_SCHEMA:
+        // The request could fetch one value schema by id or all the value schema for the given store
+        // URI: /value_schema/{$storeName} - Get all the value schema
+        // URI: /value_schema/{$storeName}/{$valueSchemaId} - Get single value schema
+        handleValueSchemaLookup(ctx, helper);
+        break;
+      case TYPE_UPDATE_SCHEMA:
+        // URI: /update_schema/{$storeName}/{$valueSchemaId}
+        // The request could fetch the latest derived update schema of a specific value schema
+        handleUpdateSchemaLookup(ctx, helper);
+        break;
+      case TYPE_CLUSTER_DISCOVERY:
+        // URI: /discover_cluster/${storeName}
+        handleD2ServiceLookup(ctx, helper, req.headers());
+        break;
+      case TYPE_RESOURCE_STATE:
+        // URI: /resource_state
+        handleResourceStateLookup(ctx, helper);
+        break;
+      case TYPE_PUSH_STATUS:
+        // URI: /push_status
+        handlePushStatusLookUp(ctx, helper);
+        break;
+      case TYPE_STREAM_HYBRID_STORE_QUOTA:
+        handleStreamHybridStoreQuotaStatusLookup(ctx, helper);
+        break;
+      case TYPE_STREAM_REPROCESSING_HYBRID_STORE_QUOTA:
+        handleStreamReprocessingHybridStoreQuotaStatusLookup(ctx, helper);
+        break;
+      case TYPE_STORE_STATE:
+        handleStoreStateLookup(ctx, helper);
+        break;
+      case TYPE_REQUEST_TOPIC:
+        handleRequestTopic(ctx, helper, req);
+        break;
+      default:
+        // SimpleChannelInboundHandler automatically releases the request after channelRead0 is done.
+        // since we're passing it on to the next handler, we need to retain an extra reference.
+        ReferenceCountUtil.retain(req);
+        ctx.fireChannelRead(req);
     }
   }
 
