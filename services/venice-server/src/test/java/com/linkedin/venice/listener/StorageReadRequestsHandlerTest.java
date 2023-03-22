@@ -385,6 +385,7 @@ public class StorageReadRequestsHandlerTest {
     MetadataResponse expectedMetadataResponse = new MetadataResponse();
     VersionProperties versionProperties = new VersionProperties(
         123,
+        Collections.singletonList(456),
         0,
         1,
         "test_partitioner_class",

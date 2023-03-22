@@ -24,9 +24,11 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
@@ -152,6 +154,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       VersionProperties versionMetadata = metadataResponse.getVersionMetadata();
 
       int fetchedVersion = versionMetadata.getCurrentVersion();
+      Set<Integer> activeVersions = new HashSet<>(versionMetadata.getVersions());
       int compressionStrategy = versionMetadata.getCompressionStrategy();
       int partitionCount = versionMetadata.getPartitionCount();
       String partitionerClass = versionMetadata.getPartitionerClass().toString();
@@ -220,10 +223,11 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
         }
 
         // Evict entries from inactive versions
-        readyToServeInstancesMap.entrySet().removeIf(entry -> getVersionFromKey(entry.getKey()) < fetchedVersion - 2);
-        versionPartitionerMap.entrySet().removeIf(entry -> entry.getKey() < fetchedVersion - 2);
-        versionPartitionCountMap.entrySet().removeIf(entry -> entry.getKey() < fetchedVersion - 2);
-        versionZstdDictionaryMap.entrySet().removeIf(entry -> entry.getKey() < fetchedVersion - 2);
+        readyToServeInstancesMap.entrySet()
+            .removeIf(entry -> !activeVersions.contains(getVersionFromKey(entry.getKey())));
+        versionPartitionerMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
+        versionPartitionCountMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
+        versionZstdDictionaryMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
       }
     } catch (ExecutionException e) {
       // perform an on demand refresh if update fails in case of store migration

@@ -70,6 +70,7 @@ public class RequestBasedMetadataTest {
 
     VersionProperties versionProperties = new VersionProperties(
         CURRENT_VERSION,
+        Collections.singletonList(CURRENT_VERSION),
         CompressionStrategy.ZSTD_WITH_DICT.getValue(),
         1,
         "com.linkedin.venice.partitioner.DefaultVenicePartitioner",
