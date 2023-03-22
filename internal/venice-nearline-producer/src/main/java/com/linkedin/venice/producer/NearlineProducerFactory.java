@@ -1,9 +1,8 @@
-package com.linkedin.venice.samza;
+package com.linkedin.venice.producer;
 
 import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
 import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_LOCATION;
-import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_PASSWORD;
 import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_TYPE;
 import static com.linkedin.venice.CommonConfigKeys.SSL_KEY_PASSWORD;
 import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_LOCATION;
@@ -16,35 +15,25 @@ import static com.linkedin.venice.VeniceConstants.SYSTEM_PROPERTY_FOR_APP_RUNNIN
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.producer.NearlineProducerFactory;
 import com.linkedin.venice.security.SSLFactory;
-import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SslUtils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import java.io.Serializable;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Properties;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.samza.SamzaException;
-import org.apache.samza.config.Config;
-import org.apache.samza.metrics.MetricsRegistry;
-import org.apache.samza.system.SystemAdmin;
-import org.apache.samza.system.SystemConsumer;
-import org.apache.samza.system.SystemFactory;
-import org.apache.samza.system.SystemProducer;
-import org.apache.samza.util.SinglePartitionWithoutOffsetsSystemAdmin;
 
 
 /**
- * Samza jobs talk to either parent or child controller depending on the aggregate mode config.
- * The decision of which controller should be used is made in {@link VeniceSystemFactory}.
- * The "Primary Controller" term is used to refer to whichever controller the Samza job should talk to.
+ * Nearline writers talk to either parent or child controller depending on the aggregate mode config.
+ * The decision of which controller should be used is made in {@link NearlineProducerFactory}.
+ * The "Primary Controller" term is used to refer to whichever controller the nearline job should talk to.
  *
  * The primary controller should be:
  * 1. The parent controller when the Venice system is deployed in a multi-colo mode and either:
@@ -55,15 +44,12 @@ import org.apache.samza.util.SinglePartitionWithoutOffsetsSystemAdmin;
  *     b. The {@link PushType} is {@link PushType.STREAM} and the job is configured to write data in NON_AGGREGATE mode
  */
 
-public class VeniceSystemFactory extends NearlineProducerFactory implements SystemFactory, Serializable {
-  private static final long serialVersionUID = 1L;
-  private static final Logger LOGGER = LogManager.getLogger(VeniceSystemFactory.class);
+public class NearlineProducerFactory {
+  private static final Logger LOGGER = LogManager.getLogger(NearlineProducerFactory.class);
 
   public static final String LEGACY_CHILD_D2_ZK_HOSTS_PROPERTY = "__r2d2DefaultClient__.r2d2Client.zkHosts";
 
-  public static final String SYSTEMS_PREFIX = "systems.";
-  public static final String DOT = ".";
-  public static final String DEPLOYMENT_ID = "deployment.id";
+  public static final String JOB_ID = "job.id";
 
   public static final String VENICE_PUSH_TYPE = "push.type";
 
@@ -110,14 +96,14 @@ public class VeniceSystemFactory extends NearlineProducerFactory implements Syst
   private static final AtomicInteger FACTORY_INSTANCE_NUMBER = new AtomicInteger(0);
 
   /**
-   * Key: VeniceSystemProducer instance;
+   * Key: NearlineProducer instance;
    * Value: a pair of boolean: <isActive, isStreamReprocessingJobSucceeded>
    *
-   * For each SystemProducer created through this factory, keep track of its status in
+   * For each NearlineProducer created through this factory, keep track of its status in
    * the below Map. {@link com.linkedin.venice.pushmonitor.RouterBasedPushMonitor} will update
-   * the status of the SystemProducer.
+   * the status of the NearlineProducer.
    */
-  private final Map<SystemProducer, Pair<Boolean, Boolean>> systemProducerStatues;
+  private final Map<NearlineProducer, JobState> nearlineProducerStates;
 
   /**
    * All the required configs to build a SSL Factory
@@ -129,116 +115,49 @@ public class VeniceSystemFactory extends NearlineProducerFactory implements Syst
       SSL_TRUSTSTORE_LOCATION,
       SSL_TRUSTSTORE_PASSWORD);
 
-  public VeniceSystemFactory() {
-    systemProducerStatues = new VeniceConcurrentHashMap<>();
+  public NearlineProducerFactory() {
+    nearlineProducerStates = new VeniceConcurrentHashMap<>();
     int totalNumberOfFactory = FACTORY_INSTANCE_NUMBER.incrementAndGet();
     if (totalNumberOfFactory > 1) {
-      LOGGER.warn("There are {} VeniceSystemProducer factory instances in one process.", totalNumberOfFactory);
+      LOGGER.warn("There are {} NearlineProducer factory instances in one process.", totalNumberOfFactory);
     }
   }
 
-  @Override
-  public SystemAdmin getAdmin(String systemName, Config config) {
-    return new SinglePartitionWithoutOffsetsSystemAdmin();
-  }
-
-  @Override
-  public SystemConsumer getConsumer(String systemName, Config config, MetricsRegistry registry) {
-    throw new SamzaException("There is no Venice Consumer");
-  }
-
   /**
-   * @deprecated Left in to maintain backward compatibility
-   */
-  @Deprecated
-  protected SystemProducer createSystemProducer(
-      String primaryControllerColoD2ZKHost,
-      String primaryControllerD2Service,
-      String storeName,
-      Version.PushType venicePushType,
-      String samzaJobId,
-      String runningFabric,
-      Config config,
-      Optional<SSLFactory> sslFactory,
-      Optional<String> partitioners) {
-    return new VeniceSystemProducer(
-        primaryControllerColoD2ZKHost,
-        primaryControllerColoD2ZKHost,
-        primaryControllerD2Service,
-        storeName,
-        venicePushType,
-        samzaJobId,
-        runningFabric,
-        config.getBoolean(VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION, true),
-        this,
-        sslFactory,
-        partitioners);
-  }
-
-  /**
-   * @deprecated Left in to maintain backward compatibility
-    */
-  @Deprecated
-  protected SystemProducer createSystemProducer(
-      String primaryControllerColoD2ZKHost,
-      String primaryControllerD2Service,
-      String storeName,
-      Version.PushType venicePushType,
-      String samzaJobId,
-      String runningFabric,
-      boolean verifyLatestProtocolPresent,
-      Config config,
-      Optional<SSLFactory> sslFactory,
-      Optional<String> partitioners) {
-    return createSystemProducer(
-        primaryControllerColoD2ZKHost,
-        primaryControllerColoD2ZKHost,
-        primaryControllerD2Service,
-        storeName,
-        venicePushType,
-        samzaJobId,
-        runningFabric,
-        verifyLatestProtocolPresent,
-        config,
-        sslFactory,
-        partitioners);
-  }
-
-  /**
-   * Construct a new instance of {@link VeniceSystemProducer}
+   * Construct a new instance of {@link NearlineProducer}
    * @param veniceChildD2ZkHost D2 Zk Address where the components in the child colo are announcing themselves
    * @param primaryControllerColoD2ZKHost D2 Zk Address of the colo where the primary controller resides
    * @param primaryControllerD2ServiceName The service name that the primary controller uses to announce itself to D2
    * @param storeName The store to write to
    * @param pushType The {@link PushType} to use to write to the store
-   * @param samzaJobId A unique id used to identify jobs that can concurrently write to the same store
+   * @param jobId A unique id used to identify jobs that can concurrently write to the same store
    * @param runningFabric The colo where the job is running. It is used to find the best destination for the data to be written to
    * @param verifyLatestProtocolPresent Config to check whether the protocol versions used at runtime are valid in Venice backend
-   * @param factory The {@link VeniceSystemFactory} object that was used to create this object
-   * @param config A Config object that may be used by the factory implementation to create an overridden SystemProducer instance
+   * @param factory The {@link NearlineProducerFactory} object that was used to create this object
+   * @param config A Config object that may be used by the factory implementation to create an overridden NearlineProducer instance
    * @param sslFactory An optional {@link SSLFactory} that is used to communicate with other components using SSL
    * @param partitioners A list of comma-separated partitioners class names that are supported.
    */
   @SuppressWarnings("unused")
-  protected SystemProducer createSystemProducer(
+  protected NearlineProducer createNearlineProducer(
       String veniceChildD2ZkHost,
       String primaryControllerColoD2ZKHost,
       String primaryControllerD2Service,
       String storeName,
       Version.PushType venicePushType,
-      String samzaJobId,
+      String jobId,
       String runningFabric,
       boolean verifyLatestProtocolPresent,
-      Config config,
+      VeniceProperties properties,
       Optional<SSLFactory> sslFactory,
       Optional<String> partitioners) {
-    return createSystemProducer(
+    return createNearlineProducer(
         veniceChildD2ZkHost,
         primaryControllerColoD2ZKHost,
         primaryControllerD2Service,
         storeName,
         venicePushType,
-        samzaJobId,
+        jobId,
         runningFabric,
         verifyLatestProtocolPresent,
         sslFactory,
@@ -246,37 +165,37 @@ public class VeniceSystemFactory extends NearlineProducerFactory implements Syst
   }
 
   /**
-   * Construct a new instance of {@link VeniceSystemProducer}
+   * Construct a new instance of {@link NearlineProducer}
    * @param veniceChildD2ZkHost D2 Zk Address where the components in the child colo are announcing themselves
    * @param primaryControllerColoD2ZKHost D2 Zk Address of the colo where the primary controller resides
    * @param primaryControllerD2ServiceName The service name that the primary controller uses to announce itself to D2
    * @param storeName The store to write to
    * @param pushType The {@link PushType} to use to write to the store
-   * @param samzaJobId A unique id used to identify jobs that can concurrently write to the same store
+   * @param jobId A unique id used to identify jobs that can concurrently write to the same store
    * @param runningFabric The colo where the job is running. It is used to find the best destination for the data to be written to
    * @param verifyLatestProtocolPresent Config to check whether the protocol versions used at runtime are valid in Venice backend
-   * @param factory The {@link VeniceSystemFactory} object that was used to create this object
+   * @param factory The {@link NearlineProducerFactory} object that was used to create this object
    * @param sslFactory An optional {@link SSLFactory} that is used to communicate with other components using SSL
    * @param partitioners A list of comma-separated partitioners class names that are supported.
    */
-  protected SystemProducer createSystemProducer(
+  protected NearlineProducer createNearlineProducer(
       String veniceChildD2ZkHost,
       String primaryControllerColoD2ZKHost,
       String primaryControllerD2Service,
       String storeName,
       Version.PushType venicePushType,
-      String samzaJobId,
+      String jobId,
       String runningFabric,
       boolean verifyLatestProtocolPresent,
       Optional<SSLFactory> sslFactory,
       Optional<String> partitioners) {
-    return new VeniceSystemProducer(
+    return new NearlineProducer(
         veniceChildD2ZkHost,
         primaryControllerColoD2ZKHost,
         primaryControllerD2Service,
         storeName,
         venicePushType,
-        samzaJobId,
+        jobId,
         runningFabric,
         verifyLatestProtocolPresent,
         this,
@@ -286,53 +205,51 @@ public class VeniceSystemFactory extends NearlineProducerFactory implements Syst
 
   /**
    * Samza table writer would directly call this function to create venice system producer instead of calling the general
-   * {@link VeniceSystemFactory#getProducer(String, Config, MetricsRegistry)} function.
+   * {@link NearlineProducerFactory#getProducer(String, Config, MetricsRegistry)} function.
    */
-  public SystemProducer getProducer(
-      String systemName,
+  public NearlineProducer getProducer(
       String storeName,
       boolean veniceAggregate,
       String pushTypeString,
-      Config config) {
+      VeniceProperties props) {
     if (isEmpty(storeName)) {
-      throw new SamzaException(VENICE_STORE + " should not be null for system " + systemName);
+      throw new VeniceException(VENICE_STORE + " should not be null");
     }
 
-    String samzaJobId = config.get(DEPLOYMENT_ID);
-    String prefix = SYSTEMS_PREFIX + systemName + DOT;
+    String jobId = props.getString(JOB_ID);
     Version.PushType venicePushType;
     try {
       venicePushType = Version.PushType.valueOf(pushTypeString);
     } catch (Exception e) {
-      throw new SamzaException(
+      throw new VeniceException(
           "Cannot parse venice push type: " + pushTypeString + ".  Must be one of: "
               + Arrays.stream(Version.PushType.values()).map(Enum::toString).collect(Collectors.joining(",")));
     }
 
-    String veniceParentZKHosts = config.get(VENICE_PARENT_D2_ZK_HOSTS);
+    String veniceParentZKHosts = props.getString(VENICE_PARENT_D2_ZK_HOSTS);
     if (isEmpty(veniceParentZKHosts)) {
-      throw new SamzaException(
+      throw new VeniceException(
           VENICE_PARENT_D2_ZK_HOSTS + " should not be null, please put this property in your app-def.xml");
     }
 
-    String localVeniceZKHosts = config.get(VENICE_CHILD_D2_ZK_HOSTS);
-    String legacyLocalVeniceZKHosts = config.get(LEGACY_CHILD_D2_ZK_HOSTS_PROPERTY);
+    String localVeniceZKHosts = props.getString(VENICE_CHILD_D2_ZK_HOSTS);
+    String legacyLocalVeniceZKHosts = props.getString(LEGACY_CHILD_D2_ZK_HOSTS_PROPERTY);
     if (isEmpty(localVeniceZKHosts)) {
       if (isEmpty(legacyLocalVeniceZKHosts)) {
-        throw new SamzaException(
+        throw new VeniceException(
             "Either " + VENICE_CHILD_D2_ZK_HOSTS + " or " + LEGACY_CHILD_D2_ZK_HOSTS_PROPERTY + " should be defined");
       }
       localVeniceZKHosts = legacyLocalVeniceZKHosts;
     }
 
-    String localControllerD2Service = config.get(VENICE_CHILD_CONTROLLER_D2_SERVICE);
+    String localControllerD2Service = props.getString(VENICE_CHILD_CONTROLLER_D2_SERVICE);
     if (isEmpty(localControllerD2Service)) {
       LOGGER.info(
           VENICE_CHILD_CONTROLLER_D2_SERVICE + " is not defined. Using " + LEGACY_VENICE_CHILD_CONTROLLER_D2_SERVICE);
       localControllerD2Service = LEGACY_VENICE_CHILD_CONTROLLER_D2_SERVICE;
     }
 
-    String parentControllerD2Service = config.get(VENICE_PARENT_CONTROLLER_D2_SERVICE);
+    String parentControllerD2Service = props.getString(VENICE_PARENT_CONTROLLER_D2_SERVICE);
     if (isEmpty(parentControllerD2Service)) {
       LOGGER.info(
           VENICE_PARENT_CONTROLLER_D2_SERVICE + " is not defined. Using " + LEGACY_VENICE_PARENT_CONTROLLER_D2_SERVICE);
@@ -341,27 +258,26 @@ public class VeniceSystemFactory extends NearlineProducerFactory implements Syst
 
     // Build Ssl Factory if Controller SSL is enabled
     Optional<SSLFactory> sslFactory = Optional.empty();
-    boolean controllerSslEnabled = config.getBoolean(SSL_ENABLED, true);
+    boolean controllerSslEnabled = props.getBoolean(SSL_ENABLED, true);
     if (controllerSslEnabled) {
       LOGGER.info("Controller ACL is enabled.");
-      String sslFactoryClassName = config.get(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
-      Properties sslProps = getSslProperties(config);
-      sslFactory = Optional.of(SslUtils.getSSLFactory(sslProps, sslFactoryClassName));
+      String sslFactoryClassName = props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
+      sslFactory = Optional.of(SslUtils.getSSLFactory(props.getPropertiesCopy(), sslFactoryClassName));
     }
 
-    Optional<String> partitioners = Optional.ofNullable(config.get(VENICE_PARTITIONERS));
+    Optional<String> partitioners = Optional.ofNullable(props.getString(VENICE_PARTITIONERS));
 
-    LOGGER.info("Configs for {} producer: ", systemName);
-    LOGGER.info("{}{}: {}", prefix, VENICE_STORE, storeName);
-    LOGGER.info("{}{}: {}", prefix, VENICE_AGGREGATE, veniceAggregate);
-    LOGGER.info("{}{}: {}", prefix, VENICE_PUSH_TYPE, venicePushType);
+    LOGGER.info("Configs for producer: ");
+    LOGGER.info("{}: {}", VENICE_STORE, storeName);
+    LOGGER.info("{}: {}", VENICE_AGGREGATE, veniceAggregate);
+    LOGGER.info("{}: {}", VENICE_PUSH_TYPE, venicePushType);
     LOGGER.info("{}: {}", VENICE_PARENT_D2_ZK_HOSTS, veniceParentZKHosts);
     LOGGER.info("{}: {}", VENICE_CHILD_D2_ZK_HOSTS, localVeniceZKHosts);
     LOGGER.info("{}: {}", VENICE_PARENT_CONTROLLER_D2_SERVICE, parentControllerD2Service);
     LOGGER.info("{}: {}", VENICE_CHILD_CONTROLLER_D2_SERVICE, localControllerD2Service);
 
-    String runningFabric = config.get(SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION);
-    LOGGER.info("Running Fabric from config: {}", runningFabric);
+    String runningFabric = props.getString(SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION);
+    LOGGER.info("Running Fabric from props: {}", runningFabric);
     if (runningFabric == null) {
       runningFabric = System.getProperty(SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION);
       LOGGER.info("Running Fabric from environment: {}", runningFabric);
@@ -388,62 +304,60 @@ public class VeniceSystemFactory extends NearlineProducerFactory implements Syst
         primaryControllerColoD2ZKHost,
         primaryControllerD2Service);
 
-    boolean verifyLatestProtocolPresent = config.getBoolean(VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION, true);
-    SystemProducer systemProducer = createSystemProducer(
+    boolean verifyLatestProtocolPresent = props.getBoolean(VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION, true);
+    NearlineProducer systemProducer = createNearlineProducer(
         localVeniceZKHosts,
         primaryControllerColoD2ZKHost,
         primaryControllerD2Service,
         storeName,
         venicePushType,
-        samzaJobId,
+        jobId,
         runningFabric,
         verifyLatestProtocolPresent,
-        config, // Although we don't use this config in our default implementation, overridden implementations might
-                // need this
+        props, // Although we don't use this config in our default implementation, overridden implementations might
+        // need this
         sslFactory,
         partitioners);
-    this.systemProducerStatues.computeIfAbsent(systemProducer, k -> Pair.create(true, false));
+    this.nearlineProducerStates.computeIfAbsent(systemProducer, k -> new JobState(true, false));
     return systemProducer;
   }
 
   /**
-   * The core function of a {@link SystemFactory}; most Samza users would specify VeniceSystemFactory in the job
-   * config and Samza would invoke {@link SystemFactory#getProducer(String, Config, MetricsRegistry)} to create producers.
+   * The core function of a {@link NearlineProducerFactory}; most Nearline users would specify NearlineProducerFactory in the job
+   * config and Samza would invoke {@link NearlineProducerFactory#getProducer(Config, MetricsRegistry)} to create producers.
    */
-  @Override
-  public SystemProducer getProducer(String systemName, Config config, MetricsRegistry registry) {
-    final String prefix = SYSTEMS_PREFIX + systemName + DOT;
-    final String storeName = config.get(prefix + VENICE_STORE);
-    final boolean veniceAggregate = config.getBoolean(prefix + VENICE_AGGREGATE, false);
-    final String pushTypeString = config.get(prefix + VENICE_PUSH_TYPE);
-    return getProducer(systemName, storeName, veniceAggregate, pushTypeString, config);
+  public NearlineProducer getProducer(VeniceProperties props, MetricsRepository repository) {
+    final String storeName = props.getString(VENICE_STORE);
+    final boolean veniceAggregate = props.getBoolean(VENICE_AGGREGATE, false);
+    final String pushTypeString = props.getString(VENICE_PUSH_TYPE);
+    return getProducer(storeName, veniceAggregate, pushTypeString, props);
   }
 
   /**
    * Convenience method to hide the ugliness of casting in just one place.
    *
    * Ideally, we would change the return type of {@link #getProducer(String, Config, MetricsRegistry)} to
-   * {@link VeniceSystemProducer} but since there are existing users of this API, we are being extra careful
+   * {@link NearlineProducer} but since there are existing users of this API, we are being extra careful
    * not to disturb it.
    *
    * TODO: clean this up when we have the bandwidth to coordinate the refactoring with the existing users.
    */
-  public VeniceSystemProducer getClosableProducer(String systemName, Config config, MetricsRegistry registry) {
-    return (VeniceSystemProducer) getProducer(systemName, config, registry);
+  public NearlineProducer getClosableProducer(VeniceProperties props, MetricsRepository repository) {
+    return getProducer(props, repository);
   }
 
   /**
-   * Get the total number of active SystemProducer.
+   * Get the total number of active NearlineProducer.
    *
-   * The SystemProducer for push type: STREAM and BATCH will always be at active state; so if there is any
-   * real-time SystemProducer in the Samza task, the task will not be stopped even though all the stream reprocessing
+   * The NearlineProducer for push type: STREAM and BATCH will always be at active state; so if there is any
+   * real-time NearlineProducer in the Samza task, the task will not be stopped even though all the stream reprocessing
    * jobs have completed. Besides, a Samza task can not have a mix of BATCH push type and STREAM_REPROCESSING push type;
    * otherwise, the Samza task can not be automatically stopped.
    */
-  public int getNumberOfActiveSystemProducers() {
+  public int getNumberOfActiveNearlineProducers() {
     int count = 0;
-    for (Map.Entry<SystemProducer, Pair<Boolean, Boolean>> entry: systemProducerStatues.entrySet()) {
-      boolean isActive = entry.getValue().getFirst();
+    for (Map.Entry<NearlineProducer, JobState> entry: nearlineProducerStates.entrySet()) {
+      boolean isActive = entry.getValue().isActive();
       count += isActive ? 1 : 0;
     }
     return count;
@@ -453,8 +367,8 @@ public class VeniceSystemFactory extends NearlineProducerFactory implements Syst
    * Check whether all the stream reprocessing jobs have succeeded; return false if any of them fail.
    */
   public boolean getOverallExecutionStatus() {
-    for (Map.Entry<SystemProducer, Pair<Boolean, Boolean>> entry: systemProducerStatues.entrySet()) {
-      boolean jobSucceed = entry.getValue().getSecond();
+    for (Map.Entry<NearlineProducer, JobState> entry: nearlineProducerStates.entrySet()) {
+      boolean jobSucceed = entry.getValue().isSucceeded();
       if (!jobSucceed) {
         return false;
       }
@@ -463,37 +377,16 @@ public class VeniceSystemFactory extends NearlineProducerFactory implements Syst
   }
 
   /**
-   * {@link com.linkedin.venice.pushmonitor.RouterBasedPushMonitor} will update the status of a SystemProducer with
+   * {@link com.linkedin.venice.pushmonitor.RouterBasedPushMonitor} will update the status of a NearlineProducer with
    * push type STREAM_REPROCESSING:
    * END_OF_PUSH_RECEIVED: isActive -> false; isStreamReprocessingJobSucceeded -> true
    * COMPLETED: isActive -> false; isStreamReprocessingJobSucceeded -> true
    * ERROR: isActive -> false; isStreamReprocessingJobSucceeded -> false
    *
-   * For all the other push job status, SystemProducer status will not be updated.
+   * For all the other push job status, NearlineProducer status will not be updated.
    */
-  public void endStreamReprocessingSystemProducer(SystemProducer systemProducer, boolean jobSucceed) {
-    systemProducerStatues.put(systemProducer, Pair.create(false, jobSucceed));
-  }
-
-  /**
-   * Build SSL properties based on the Samza job config
-   */
-  private Properties getSslProperties(Config samzaConfig) {
-    // Make sure all mandatory configs exist
-    SSL_MANDATORY_CONFIGS.forEach(requiredConfig -> {
-      if (!samzaConfig.containsKey(requiredConfig)) {
-        throw new VeniceException("Missing a mandatory SSL config: " + requiredConfig);
-      }
-    });
-
-    Properties sslProperties = new Properties();
-    sslProperties.setProperty(SSL_ENABLED, "true");
-    sslProperties.setProperty(SSL_KEYSTORE_TYPE, samzaConfig.get(SSL_KEYSTORE_TYPE));
-    sslProperties.setProperty(SSL_KEYSTORE_LOCATION, samzaConfig.get(SSL_KEYSTORE_LOCATION));
-    sslProperties.setProperty(SSL_KEYSTORE_PASSWORD, samzaConfig.get(SSL_KEY_PASSWORD));
-    sslProperties.setProperty(SSL_TRUSTSTORE_LOCATION, samzaConfig.get(SSL_TRUSTSTORE_LOCATION));
-    sslProperties.setProperty(SSL_TRUSTSTORE_PASSWORD, samzaConfig.get(SSL_TRUSTSTORE_PASSWORD));
-    return sslProperties;
+  public void endStreamReprocessingNearlineProducer(NearlineProducer systemProducer, boolean jobSucceed) {
+    nearlineProducerStates.put(systemProducer, new JobState(false, jobSucceed));
   }
 
   private static boolean isEmpty(String input) {

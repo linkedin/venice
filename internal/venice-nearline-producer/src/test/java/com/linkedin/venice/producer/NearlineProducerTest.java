@@ -1,4 +1,4 @@
-package com.linkedin.venice.samza;
+package com.linkedin.venice.producer;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static org.mockito.Mockito.*;
@@ -21,18 +21,16 @@ import java.util.Optional;
 import java.util.Properties;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.samza.system.OutgoingMessageEnvelope;
-import org.apache.samza.system.SystemStream;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
-public class VeniceSystemProducerTest {
+public class NearlineProducerTest {
   @Test
   public void testPartialUpdateConversion() {
-    VeniceSystemProducer producerInDC0 = new VeniceSystemProducer(
+    NearlineProducer producerInDC0 = new NearlineProducer(
         "zookeeper.com:2181",
         "zookeeper.com:2181",
         "ChildController",
@@ -96,15 +94,14 @@ public class VeniceSystemProducerTest {
     Assert.assertEquals(result.get("lastName"), partialUpdateRecord.get("lastName"));
     Assert.assertEquals(result.get("age"), -1);
 
-    OutgoingMessageEnvelope envelope =
-        new OutgoingMessageEnvelope(new SystemStream("venice", "storeName"), "key1", partialUpdateRecord);
+    ProducerMessageEnvelope envelope = new ProducerMessageEnvelope("storeName", "key1", partialUpdateRecord);
 
     Assert.assertThrows(() -> producerInDC0.send("venice", envelope));
   }
 
   @Test(dataProvider = "BatchOrStreamReprocessing")
   public void testGetVeniceWriter(Version.PushType pushType) {
-    VeniceSystemProducer producerInDC0 = new VeniceSystemProducer(
+    NearlineProducer producerInDC0 = new NearlineProducer(
         "zookeeper.com:2181",
         "zookeeper.com:2181",
         "ChildController",
@@ -118,7 +115,7 @@ public class VeniceSystemProducerTest {
         Optional.empty(),
         SystemTime.INSTANCE);
 
-    VeniceSystemProducer veniceSystemProducerSpy = spy(producerInDC0);
+    NearlineProducer veniceSystemProducerSpy = spy(producerInDC0);
 
     VeniceWriter<byte[], byte[], byte[]> veniceWriterMock = mock(VeniceWriter.class);
     ArgumentCaptor<Properties> propertiesArgumentCaptor = ArgumentCaptor.forClass(Properties.class);

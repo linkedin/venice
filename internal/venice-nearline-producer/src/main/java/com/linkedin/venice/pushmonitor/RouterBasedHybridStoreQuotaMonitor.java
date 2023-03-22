@@ -1,9 +1,7 @@
 package com.linkedin.venice.pushmonitor;
 
-import static com.linkedin.venice.VeniceConstants.TYPE_STREAM_HYBRID_STORE_QUOTA;
-import static com.linkedin.venice.VeniceConstants.TYPE_STREAM_REPROCESSING_HYBRID_STORE_QUOTA;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -75,11 +73,11 @@ public class RouterBasedHybridStoreQuotaMonitor implements Closeable {
   }
 
   private static String buildStreamHybridStoreQuotaRequestPath(String storeName) {
-    return TYPE_STREAM_HYBRID_STORE_QUOTA + "/" + storeName;
+    return VeniceConstants.TYPE_STREAM_HYBRID_STORE_QUOTA + "/" + storeName;
   }
 
   private static String buildStreamReprocessingHybridStoreQuotaRequestPath(String versionTopic) {
-    return TYPE_STREAM_REPROCESSING_HYBRID_STORE_QUOTA + "/" + versionTopic;
+    return VeniceConstants.TYPE_STREAM_REPROCESSING_HYBRID_STORE_QUOTA + "/" + versionTopic;
   }
 
   private static class HybridQuotaMonitorTask implements Runnable, Closeable {

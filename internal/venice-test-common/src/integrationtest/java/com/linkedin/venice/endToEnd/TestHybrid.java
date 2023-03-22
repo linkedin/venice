@@ -84,7 +84,7 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.pushmonitor.PartitionStatus;
 import com.linkedin.venice.pushmonitor.ReplicaStatus;
-import com.linkedin.venice.samza.SamzaExitMode;
+import com.linkedin.venice.producer.NearlineProducerExitMode;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
@@ -598,7 +598,7 @@ public class TestHybrid {
         veniceBatchProducer.start();
         if (veniceBatchProducer instanceof VeniceSystemProducer) {
           // The default behavior would exit the process
-          ((VeniceSystemProducer) veniceBatchProducer).setExitMode(SamzaExitMode.NO_OP);
+          ((VeniceSystemProducer) veniceBatchProducer).setExitMode(NearlineProducerExitMode.NO_OP);
         }
 
         // Purposefully out of order, because Samza batch jobs should be allowed to write out of order
@@ -766,11 +766,11 @@ public class TestHybrid {
       veniceBatchProducer2.start();
       if (veniceBatchProducer1 instanceof VeniceSystemProducer) {
         // The default behavior would exit the process
-        ((VeniceSystemProducer) veniceBatchProducer1).setExitMode(SamzaExitMode.NO_OP);
+        ((VeniceSystemProducer) veniceBatchProducer1).setExitMode(NearlineProducerExitMode.NO_OP);
       }
       if (veniceBatchProducer2 instanceof VeniceSystemProducer) {
         // The default behavior would exit the process
-        ((VeniceSystemProducer) veniceBatchProducer2).setExitMode(SamzaExitMode.NO_OP);
+        ((VeniceSystemProducer) veniceBatchProducer2).setExitMode(NearlineProducerExitMode.NO_OP);
       }
 
       for (int i = 10; i >= 1; i--) {

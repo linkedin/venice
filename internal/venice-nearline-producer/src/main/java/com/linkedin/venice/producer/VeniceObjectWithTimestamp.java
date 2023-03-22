@@ -1,7 +1,4 @@
-package com.linkedin.venice.samza;
-
-import org.apache.samza.system.OutgoingMessageEnvelope;
-
+package com.linkedin.venice.producer;
 
 /**
  * This class defines a wrapper object to wrap up the actual object and the corresponding update timestamp.

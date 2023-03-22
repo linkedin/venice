@@ -1,4 +1,4 @@
-package com.linkedin.venice.samza;
+package com.linkedin.venice.producer;
 
 import com.linkedin.venice.exceptions.VeniceException;
 
@@ -6,7 +6,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 /**
  * Various methods for stopping/exiting a Samza task.
  */
-public enum SamzaExitMode {
+public enum NearlineProducerExitMode {
   /**
    * Directly exit the Samza process with status code 0, which should be only used by stream reprocessing job;
    * besides, status 0 will leave a green mark for Samza task, so this mode should be used when the stream reprocessing
@@ -26,7 +26,7 @@ public enum SamzaExitMode {
 
   private final int value;
 
-  SamzaExitMode(int value) {
+  NearlineProducerExitMode(int value) {
     this.value = value;
   }
 

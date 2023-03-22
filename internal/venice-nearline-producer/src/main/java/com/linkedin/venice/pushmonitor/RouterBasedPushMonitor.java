@@ -1,14 +1,14 @@
 package com.linkedin.venice.pushmonitor;
 
-import static com.linkedin.venice.VeniceConstants.TYPE_PUSH_STATUS;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.producer.NearlineProducer;
+import com.linkedin.venice.producer.NearlineProducerExitMode;
+import com.linkedin.venice.producer.NearlineProducerFactory;
 import com.linkedin.venice.routerapi.PushStatusResponse;
-import com.linkedin.venice.samza.SamzaExitMode;
-import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Utils;
@@ -20,7 +20,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.samza.system.SystemProducer;
 
 
 /**
@@ -42,8 +41,8 @@ public class RouterBasedPushMonitor implements Closeable {
   public RouterBasedPushMonitor(
       D2TransportClient d2TransportClient,
       String resourceName,
-      VeniceSystemFactory factory,
-      SystemProducer producer) {
+      NearlineProducerFactory factory,
+      NearlineProducer producer) {
     this.topicName = resourceName;
     executor = Executors.newSingleThreadExecutor(new DaemonThreadFactory("RouterBasedPushMonitor"));
     pushMonitorTask = new PushMonitorTask(d2TransportClient, topicName, this, factory, producer);
@@ -66,7 +65,7 @@ public class RouterBasedPushMonitor implements Closeable {
     return this.currentStatus;
   }
 
-  public void setStreamReprocessingExitMode(SamzaExitMode exitMode) {
+  public void setStreamReprocessingExitMode(NearlineProducerExitMode exitMode) {
     this.pushMonitorTask.exitMode = exitMode;
   }
 
@@ -78,17 +77,17 @@ public class RouterBasedPushMonitor implements Closeable {
     private final D2TransportClient transportClient;
     private final String requestPath;
     private final RouterBasedPushMonitor pushMonitorService;
-    private final VeniceSystemFactory factory;
-    private final SystemProducer producer;
+    private final NearlineProducerFactory factory;
+    private final NearlineProducer producer;
 
-    private SamzaExitMode exitMode = SamzaExitMode.SUCCESS_EXIT;
+    private NearlineProducerExitMode exitMode = NearlineProducerExitMode.SUCCESS_EXIT;
 
     public PushMonitorTask(
         D2TransportClient transportClient,
         String topicName,
         RouterBasedPushMonitor pushMonitorService,
-        VeniceSystemFactory factory,
-        SystemProducer producer) {
+        NearlineProducerFactory factory,
+        NearlineProducer producer) {
       this.transportClient = transportClient;
       this.topicName = topicName;
       this.requestPath = buildPushStatusRequestPath(topicName);
@@ -116,7 +115,7 @@ public class RouterBasedPushMonitor implements Closeable {
             case END_OF_PUSH_RECEIVED:
             case COMPLETED:
               LOGGER.info("Samza stream reprocessing has finished successfully for store version: {}", topicName);
-              factory.endStreamReprocessingSystemProducer(producer, true);
+              factory.endStreamReprocessingNearlineProducer(producer, true);
               /**
                * If there is no more active samza producer, check whether all the stream reprocessing jobs succeed;
                * if so, exit the Samza task; otherwise, let user knows some jobs have failed.
@@ -134,11 +133,11 @@ public class RouterBasedPushMonitor implements Closeable {
                * Unfortunately there is no solution to the above edge case at the moment; we can only pause the exit process
                * a bit and then check whether the active number of producers is still 0.
                */
-              if (factory.getNumberOfActiveSystemProducers() == 0) {
+              if (factory.getNumberOfActiveNearlineProducers() == 0) {
                 // Pause a bit just in case user suddenly create new producers from the factory
                 LOGGER.info("Pause 30 seconds before exiting the Samza process.");
                 Utils.sleep(30000);
-                if (factory.getNumberOfActiveSystemProducers() != 0) {
+                if (factory.getNumberOfActiveNearlineProducers() != 0) {
                   break;
                 }
                 if (factory.getOverallExecutionStatus()) {
@@ -154,7 +153,7 @@ public class RouterBasedPushMonitor implements Closeable {
               return;
             case ERROR:
               LOGGER.info("Stream reprocessing job failed for store version: {}", topicName);
-              factory.endStreamReprocessingSystemProducer(producer, false);
+              factory.endStreamReprocessingNearlineProducer(producer, false);
               // Stop polling
               return;
             default:
@@ -177,7 +176,7 @@ public class RouterBasedPushMonitor implements Closeable {
     }
 
     private static String buildPushStatusRequestPath(String topicName) {
-      return TYPE_PUSH_STATUS + "/" + topicName;
+      return VeniceConstants.TYPE_PUSH_STATUS + "/" + topicName;
     }
   }
 }

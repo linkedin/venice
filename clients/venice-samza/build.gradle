@@ -1,9 +1,6 @@
-configurations.implementation {
-  // jetty 6 conflicts with spark-java used in controller api
-  exclude group: 'org.mortbay.jetty'
-}
-
 dependencies {
+  compile project(':internal:venice-nearline-producer')
+
   // Schema related dependencies
   implementation (project(':internal:venice-common')) {
     //TODO, pull venice writer out of venice common so this is a smaller dependency

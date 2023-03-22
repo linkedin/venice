@@ -54,6 +54,7 @@ include 'internal:venice-avro-compatibility-test'
 include 'internal:venice-client-common'
 include 'internal:venice-common'
 include 'internal:venice-jdk-compatibility-test'
+include 'internal:venice-nearline-producer'
 include 'internal:venice-test-common'
 
 // Alpini modules
