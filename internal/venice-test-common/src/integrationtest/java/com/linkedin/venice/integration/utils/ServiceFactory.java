@@ -102,11 +102,11 @@ public class ServiceFactory {
     return getStatefulService(ZkServerWrapper.SERVICE_NAME, ZkServerWrapper.generateService());
   }
 
-  public static KafkaBrokerWrapper getKafkaBroker(ZkServerWrapper zkServerWrapper) {
+  public static PubSubBackendWrapper getKafkaBroker(ZkServerWrapper zkServerWrapper) {
     return getKafkaBroker(zkServerWrapper, Optional.empty());
   }
 
-  public static KafkaBrokerWrapper getKafkaBroker(ZkServerWrapper zkServerWrapper, Optional<TestMockTime> mockTime) {
+  public static PubSubBackendWrapper getKafkaBroker(ZkServerWrapper zkServerWrapper, Optional<TestMockTime> mockTime) {
     return getStatefulService(
         KafkaBrokerWrapper.SERVICE_NAME,
         KafkaBrokerWrapper.generateService(zkServerWrapper, mockTime));
@@ -150,7 +150,7 @@ public class ServiceFactory {
   public static VeniceServerWrapper getVeniceServer(
       String regionName,
       String clusterName,
-      KafkaBrokerWrapper kafkaBrokerWrapper,
+      PubSubBackendWrapper pubSubBackendWrapper,
       String zkAddress,
       Properties featureProperties,
       Properties configProperties,
@@ -158,7 +158,7 @@ public class ServiceFactory {
     return getVeniceServer(
         regionName,
         clusterName,
-        kafkaBrokerWrapper,
+        pubSubBackendWrapper,
         zkAddress,
         featureProperties,
         configProperties,
@@ -171,7 +171,7 @@ public class ServiceFactory {
   public static VeniceServerWrapper getVeniceServer(
       String regionName,
       String clusterName,
-      KafkaBrokerWrapper kafkaBrokerWrapper,
+      PubSubBackendWrapper pubSubBackendWrapper,
       String zkAddress,
       Properties featureProperties,
       Properties configProperties,
@@ -187,7 +187,7 @@ public class ServiceFactory {
             regionName,
             clusterName,
             zkAddress,
-            kafkaBrokerWrapper,
+            pubSubBackendWrapper,
             featureProperties,
             configProperties,
             forkServer,
@@ -200,7 +200,7 @@ public class ServiceFactory {
       String regionName,
       String clusterName,
       ZkServerWrapper zkServerWrapper,
-      KafkaBrokerWrapper kafkaBrokerWrapper,
+      PubSubBackendWrapper pubSubBackendWrapper,
       boolean sslToStorageNodes,
       Map<String, String> clusterToD2,
       Map<String, String> clusterToServerD2,
@@ -211,7 +211,7 @@ public class ServiceFactory {
             regionName,
             clusterName,
             zkServerWrapper,
-            kafkaBrokerWrapper,
+            pubSubBackendWrapper,
             sslToStorageNodes,
             clusterToD2,
             clusterToServerD2,

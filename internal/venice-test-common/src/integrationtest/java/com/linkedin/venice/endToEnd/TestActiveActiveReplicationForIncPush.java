@@ -16,7 +16,7 @@ import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.hadoop.VenicePushJob;
-import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
+import com.linkedin.venice.integration.utils.PubSubBackendWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
@@ -56,7 +56,7 @@ public class TestActiveActiveReplicationForIncPush {
   private List<VeniceMultiClusterWrapper> childDatacenters;
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
 
-  KafkaBrokerWrapper veniceParentDefaultKafka;
+  PubSubBackendWrapper veniceParentDefaultKafka;
 
   @BeforeClass(alwaysRun = true)
   public void setUp() {

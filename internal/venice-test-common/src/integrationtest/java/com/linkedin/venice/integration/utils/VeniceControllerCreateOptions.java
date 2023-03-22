@@ -29,7 +29,7 @@ public class VeniceControllerCreateOptions {
   private final Map<String, String> clusterToServerD2;
   private final VeniceControllerWrapper[] childControllers;
   private final ZkServerWrapper zkServer;
-  private final KafkaBrokerWrapper kafkaBroker;
+  private final PubSubBackendWrapper kafkaBroker;
   private final Properties extraProperties;
   private final AuthorizerService authorizerService;
   private final String regionName;
@@ -160,7 +160,7 @@ public class VeniceControllerCreateOptions {
     return childControllers;
   }
 
-  public KafkaBrokerWrapper getKafkaBroker() {
+  public PubSubBackendWrapper getKafkaBroker() {
     return kafkaBroker;
   }
 
@@ -179,7 +179,7 @@ public class VeniceControllerCreateOptions {
   public static class Builder {
     private final String[] clusterNames;
     private final ZkServerWrapper zkServer;
-    private final KafkaBrokerWrapper kafkaBroker;
+    private final PubSubBackendWrapper kafkaBroker;
     private boolean sslToKafka = false;
     private boolean d2Enabled = false;
     private boolean isMinActiveReplicaSet = false;
@@ -194,14 +194,14 @@ public class VeniceControllerCreateOptions {
     private AuthorizerService authorizerService;
     private String regionName = "";
 
-    public Builder(String[] clusterNames, ZkServerWrapper zkServer, KafkaBrokerWrapper kafkaBroker) {
+    public Builder(String[] clusterNames, ZkServerWrapper zkServer, PubSubBackendWrapper kafkaBroker) {
       this.clusterNames = Objects.requireNonNull(clusterNames, "clusterNames cannot be null when creating controller");
       this.zkServer = Objects.requireNonNull(zkServer, "ZkServerWrapper cannot be null when creating controller");
       this.kafkaBroker =
           Objects.requireNonNull(kafkaBroker, "KafkaBrokerWrapper cannot be null when creating controller");
     }
 
-    public Builder(String clusterName, ZkServerWrapper zkServer, KafkaBrokerWrapper kafkaBroker) {
+    public Builder(String clusterName, ZkServerWrapper zkServer, PubSubBackendWrapper kafkaBroker) {
       this(new String[] { clusterName }, zkServer, kafkaBroker);
     }
 

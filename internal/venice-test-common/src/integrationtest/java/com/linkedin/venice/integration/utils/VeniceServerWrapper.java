@@ -160,7 +160,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       String regionName,
       String clusterName,
       String zkAddress,
-      KafkaBrokerWrapper kafkaBrokerWrapper,
+      PubSubBackendWrapper pubSubBackendWrapper,
       Properties featureProperties,
       Properties configProperties,
       boolean forkServer,
@@ -184,7 +184,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
 
       // Generate cluster.properties in config directory
       VeniceProperties clusterProps =
-          IntegrationTestUtils.getClusterProps(clusterName, zkAddress, kafkaBrokerWrapper, sslToKafka);
+          IntegrationTestUtils.getClusterProps(clusterName, zkAddress, pubSubBackendWrapper, sslToKafka);
       File clusterConfigFile = new File(configDirectory, VeniceConfigLoader.CLUSTER_PROPERTIES_FILE);
       clusterProps.storeFlattened(clusterConfigFile);
 

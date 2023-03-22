@@ -2,7 +2,7 @@ package com.linkedin.venice.kafka.consumer;
 
 import static org.mockito.Mockito.*;
 
-import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
+import com.linkedin.venice.integration.utils.PubSubBackendWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
@@ -26,7 +26,7 @@ import org.testng.annotations.Test;
 
 public class ApacheKafkaConsumerTest {
   ApacheKafkaConsumer consumer;
-  KafkaBrokerWrapper kafkaBroker;
+  PubSubBackendWrapper kafkaBroker;
   private ZkServerWrapper zkServer;
 
   private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();

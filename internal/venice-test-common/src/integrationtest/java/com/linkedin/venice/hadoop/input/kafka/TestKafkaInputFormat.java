@@ -5,7 +5,7 @@ import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_MAX_RECORDS_P
 import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_TOPIC;
 import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
 
-import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
+import com.linkedin.venice.integration.utils.PubSubBackendWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.TopicManager;
@@ -34,7 +34,7 @@ public class TestKafkaInputFormat {
   private static final String KAFKA_MESSAGE_KEY_PREFIX = "key_";
   private static final String KAFKA_MESSAGE_VALUE_PREFIX = "value_";
 
-  private KafkaBrokerWrapper kafka;
+  private PubSubBackendWrapper kafka;
   private TopicManager manager;
   private ZkServerWrapper zkServer;
 

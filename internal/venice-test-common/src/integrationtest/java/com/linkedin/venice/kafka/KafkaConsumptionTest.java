@@ -13,7 +13,7 @@ import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.davinci.kafka.consumer.StorePartitionDataReceiver;
 import com.linkedin.davinci.kafka.consumer.TopicExistenceChecker;
-import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
+import com.linkedin.venice.integration.utils.PubSubBackendWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerFactoryImpl;
@@ -76,8 +76,8 @@ public class KafkaConsumptionTest {
 
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
-  private KafkaBrokerWrapper localKafka;
-  private KafkaBrokerWrapper remoteKafka;
+  private PubSubBackendWrapper localKafka;
+  private PubSubBackendWrapper remoteKafka;
   private TopicManager topicManager;
   private TopicManager remoteTopicManager;
   private TestMockTime mockTime;

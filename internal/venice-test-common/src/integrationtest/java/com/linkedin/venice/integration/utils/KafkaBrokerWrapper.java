@@ -45,7 +45,7 @@ public class KafkaBrokerWrapper extends PubSubBackendWrapper {
    *
    * @return a function which yields a {@link KafkaBrokerWrapper} instance
    */
-  static StatefulServiceProvider<KafkaBrokerWrapper> generateService(
+  static StatefulServiceProvider<PubSubBackendWrapper> generateService(
       ZkServerWrapper zkServerWrapper,
       Optional<TestMockTime> mockTime) {
     return (String serviceName, File dir) -> {

@@ -35,7 +35,7 @@ public class TestEnablingSSLPushInVeniceHelixAdminWithIsolatedEnvironment extend
   protected Properties getControllerProperties(String clusterName) throws IOException {
     Properties properties = super.getControllerProperties(clusterName);
     properties.put(ConfigKeys.SSL_TO_KAFKA, true);
-    properties.put(ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getSSLAddress());
+    properties.put(ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS, pubSubBackendWrapper.getSSLAddress());
     properties.put(ConfigKeys.ENABLE_OFFLINE_PUSH_SSL_ALLOWLIST, true);
     properties.put(ConfigKeys.ENABLE_HYBRID_PUSH_SSL_ALLOWLIST, false);
     properties.put(ConfigKeys.PUSH_SSL_ALLOWLIST, STORE_NAME_1);

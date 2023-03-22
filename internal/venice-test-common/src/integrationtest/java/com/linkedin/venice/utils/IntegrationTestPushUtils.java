@@ -30,7 +30,7 @@ import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
-import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
+import com.linkedin.venice.integration.utils.PubSubBackendWrapper;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
@@ -210,7 +210,7 @@ public class IntegrationTestPushUtils {
     return veniceProducer;
   }
 
-  public static KafkaClientFactory getVeniceConsumerFactory(KafkaBrokerWrapper kafka) {
+  public static KafkaClientFactory getVeniceConsumerFactory(PubSubBackendWrapper kafka) {
     return new TestKafkaClientFactory(kafka.getAddress());
   }
 

@@ -31,7 +31,7 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
-import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
+import com.linkedin.venice.integration.utils.PubSubBackendWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
@@ -557,14 +557,14 @@ public class VeniceParentHelixAdminTest {
     }
 
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
-        KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServer);
+        PubSubBackendWrapper pubSubBackendWrapper = ServiceFactory.getKafkaBroker(zkServer);
         VeniceControllerWrapper childControllerWrapper = ServiceFactory.getVeniceController(
-            new VeniceControllerCreateOptions.Builder(clusterName, zkServer, kafkaBrokerWrapper)
+            new VeniceControllerCreateOptions.Builder(clusterName, zkServer, pubSubBackendWrapper)
                 .sslToKafka(isControllerSslEnabled)
                 .build());
         ZkServerWrapper parentZk = ServiceFactory.getZkServer();
         VeniceControllerWrapper parentControllerWrapper = ServiceFactory.getVeniceController(
-            new VeniceControllerCreateOptions.Builder(clusterName, parentZk, kafkaBrokerWrapper)
+            new VeniceControllerCreateOptions.Builder(clusterName, parentZk, pubSubBackendWrapper)
                 .childControllers(new VeniceControllerWrapper[] { childControllerWrapper })
                 .extraProperties(properties)
                 .sslToKafka(isControllerSslEnabled)

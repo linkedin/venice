@@ -4,7 +4,7 @@ import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIM
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
+import com.linkedin.venice.integration.utils.PubSubBackendWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.TopicManager;
@@ -32,7 +32,7 @@ public class TestDictionaryUtils {
   /** Wait time for {@link #manager} operations, in seconds */
   private static final int WAIT_TIME = 10;
   private static final int PARTITION_COUNT = 1;
-  private KafkaBrokerWrapper kafka;
+  private PubSubBackendWrapper kafka;
   private ZkServerWrapper zkServer;
   private TopicManager manager;
   private TestMockTime mockTime;

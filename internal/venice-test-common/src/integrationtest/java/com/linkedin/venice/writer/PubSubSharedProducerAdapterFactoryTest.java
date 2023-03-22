@@ -6,7 +6,7 @@ import static org.mockito.Mockito.mock;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
+import com.linkedin.venice.integration.utils.PubSubBackendWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.KafkaClientFactory;
@@ -43,7 +43,7 @@ import org.testng.annotations.Test;
 public class PubSubSharedProducerAdapterFactoryTest {
   private static final Logger LOGGER = LogManager.getLogger(PubSubSharedProducerAdapterFactoryTest.class);
 
-  private KafkaBrokerWrapper kafka;
+  private PubSubBackendWrapper kafka;
   private TopicManager topicManager;
   private KafkaClientFactory kafkaClientFactory;
   private ZkServerWrapper zkServer;

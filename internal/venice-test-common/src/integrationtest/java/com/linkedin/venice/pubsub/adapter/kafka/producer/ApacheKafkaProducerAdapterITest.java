@@ -13,7 +13,7 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
+import com.linkedin.venice.integration.utils.PubSubBackendWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.protocol.GUID;
@@ -68,7 +68,7 @@ public class ApacheKafkaProducerAdapterITest {
   private static final Logger LOGGER = LogManager.getLogger(ApacheKafkaProducerAdapterITest.class);
 
   private ZkServerWrapper zkServerWrapper;
-  private KafkaBrokerWrapper kafkaBrokerWrapper;
+  private PubSubBackendWrapper pubSubBackendWrapper;
   // todo: The following AdminClient should be replaced with KafkaAdminClientAdapter when it is available
   private AdminClient kafkaAdminClient;
   private String topicName;
@@ -77,16 +77,16 @@ public class ApacheKafkaProducerAdapterITest {
   @BeforeClass(alwaysRun = true)
   public void setupKafka() {
     zkServerWrapper = ServiceFactory.getZkServer();
-    kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServerWrapper);
+    pubSubBackendWrapper = ServiceFactory.getKafkaBroker(zkServerWrapper);
     Properties kafkaAdminProperties = new Properties();
-    kafkaAdminProperties.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaBrokerWrapper.getAddress());
+    kafkaAdminProperties.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, pubSubBackendWrapper.getAddress());
     kafkaAdminClient = KafkaAdminClient.create(kafkaAdminProperties);
   }
 
   @AfterClass(alwaysRun = true)
   public void tearDown() {
     kafkaAdminClient.close(Duration.ZERO);
-    kafkaBrokerWrapper.close();
+    pubSubBackendWrapper.close();
     zkServerWrapper.close();
   }
 
@@ -94,7 +94,7 @@ public class ApacheKafkaProducerAdapterITest {
   public void setupProducerAdapter() {
     topicName = Utils.getUniqueString("test-topic");
     Properties properties = new Properties();
-    properties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getAddress());
+    properties.put(KAFKA_BOOTSTRAP_SERVERS, pubSubBackendWrapper.getAddress());
     properties.put(KAFKA_CLIENT_ID, topicName);
     ApacheKafkaProducerConfig producerConfig = new ApacheKafkaProducerConfig(properties);
     producerAdapter = new ApacheKafkaProducerAdapter(producerConfig);
