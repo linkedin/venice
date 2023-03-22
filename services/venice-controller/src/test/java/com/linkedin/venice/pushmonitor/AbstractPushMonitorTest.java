@@ -20,6 +20,7 @@ import static org.mockito.Mockito.when;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixState;
+import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
@@ -110,6 +111,7 @@ public abstract class AbstractPushMonitorTest {
     verify(mockAccessor, atLeastOnce()).createOfflinePushStatusAndItsPartitionStatuses(pushStatus);
     verify(mockAccessor, atLeastOnce()).subscribePartitionStatusChange(pushStatus, monitor);
     verify(mockRoutingDataRepo, atLeastOnce()).subscribeRoutingDataChange(getTopic(), monitor);
+    doReturn(mock(ResourceAssignment.class)).when(mockRoutingDataRepo).getResourceAssignment();
     try {
       monitor.startMonitorOfflinePush(
           topic,
