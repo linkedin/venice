@@ -50,6 +50,7 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceController;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
+import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.d2.D2Server;
 import com.linkedin.venice.kafka.admin.KafkaAdminClient;
@@ -88,6 +89,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
   public static final String D2_SERVICE_NAME = "ChildController";
   public static final String PARENT_D2_CLUSTER_NAME = "ParentControllerD2Cluster";
   public static final String PARENT_D2_SERVICE_NAME = "ParentController";
+
+  public static final String SUPERSET_SCHEMA_GENERATOR = "SupersetSchemaGenerator";
 
   public static final double DEFAULT_STORAGE_ENGINE_OVERHEAD_RATIO = 0.85d;
   public static final String DEFAULT_PARENT_DATA_CENTER_REGION_NAME = "dc-parent-0";
@@ -298,6 +301,11 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       if (clientConfig != null && clientConfig instanceof ClientConfig) {
         consumerClientConfig = Optional.of((ClientConfig) clientConfig);
       }
+      Optional<SupersetSchemaGenerator> supersetSchemaGenerator = Optional.empty();
+      Object passedSupersetSchemaGenerator = options.getExtraProperties().get(SUPERSET_SCHEMA_GENERATOR);
+      if (passedSupersetSchemaGenerator != null && passedSupersetSchemaGenerator instanceof SupersetSchemaGenerator) {
+        supersetSchemaGenerator = Optional.of((SupersetSchemaGenerator) passedSupersetSchemaGenerator);
+      }
       VeniceController veniceController = new VeniceController(
           propertiesList,
           metricsRepository,
@@ -306,7 +314,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           Optional.ofNullable(options.getAuthorizerService()),
           d2Client,
           consumerClientConfig,
-          Optional.empty());
+          Optional.empty(),
+          supersetSchemaGenerator);
       return new VeniceControllerWrapper(
           options.getRegionName(),
           serviceName,

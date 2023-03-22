@@ -12,6 +12,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentController;
 import com.linkedin.venice.controller.server.AdminSparkServer;
+import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.service.ICProvider;
@@ -52,12 +53,13 @@ public class VeniceController {
   private final D2Client d2Client;
   private final Optional<ClientConfig> routerClientConfig;
   private final Optional<ICProvider> icProvider;
+  private final Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator;
   private static final String CONTROLLER_SERVICE_NAME = "venice-controller";
 
   /**
    * This constructor is being used in integration test.
    *
-   * @see #VeniceController(List, MetricsRepository, List, Optional, Optional, D2Client, Optional, Optional)
+   * @see #VeniceController(List, MetricsRepository, List, Optional, Optional, D2Client, Optional, Optional, Optional)
    */
   public VeniceController(
       List<VeniceProperties> propertiesList,
@@ -90,6 +92,7 @@ public class VeniceController {
         authorizerService,
         d2Client,
         routerClientConfig,
+        Optional.empty(),
         Optional.empty());
   }
 
@@ -121,7 +124,8 @@ public class VeniceController {
       Optional<AuthorizerService> authorizerService,
       D2Client d2Client,
       Optional<ClientConfig> routerClientConfig,
-      Optional<ICProvider> icProvider) {
+      Optional<ICProvider> icProvider,
+      Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator) {
     this.multiClusterConfigs = new VeniceControllerMultiClusterConfig(propertiesList);
     this.metricsRepository = metricsRepository;
     this.serviceDiscoveryAnnouncers = serviceDiscoveryAnnouncers;
@@ -132,6 +136,7 @@ public class VeniceController {
     this.d2Client = d2Client;
     this.routerClientConfig = routerClientConfig;
     this.icProvider = icProvider;
+    this.externalSupersetSchemaGenerator = externalSupersetSchemaGenerator;
     createServices();
   }
 
@@ -145,7 +150,8 @@ public class VeniceController {
         authorizerService,
         d2Client,
         routerClientConfig,
-        icProvider);
+        icProvider,
+        externalSupersetSchemaGenerator);
 
     adminServer = new AdminSparkServer(
         // no need to pass the hostname, we are binding to all the addresses

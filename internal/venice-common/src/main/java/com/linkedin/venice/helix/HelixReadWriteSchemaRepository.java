@@ -479,16 +479,6 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   }
 
   @Override
-  public int getValueSchemaIdIgnoreFieldOrder(String storeName, SchemaEntry newSchemaEntry) {
-    for (SchemaEntry schemaEntry: getValueSchemas(storeName)) {
-      if (AvroSchemaUtils.compareSchemaIgnoreFieldOrder(schemaEntry.getSchema(), newSchemaEntry.getSchema())) {
-        return schemaEntry.getId();
-      }
-    }
-    return SchemaData.INVALID_VALUE_SCHEMA_ID;
-  }
-
-  @Override
   public GeneratedSchemaID getDerivedSchemaId(String storeName, String derivedSchemaStr) {
     preCheckStoreCondition(storeName);
     Schema derivedSchema = Schema.parse(derivedSchemaStr);

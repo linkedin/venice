@@ -4771,11 +4771,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return schemaRepository.addValueSchema(storeName, valueSchema, valueSchemaId);
   }
 
-  int getValueSchemaIdIgnoreFieldOrder(String clusterName, String storeName, String valueSchemaStr) {
+  int getValueSchemaIdIgnoreFieldOrder(
+      String clusterName,
+      String storeName,
+      String valueSchemaStr,
+      Comparator<Schema> schemaComparator) {
     checkControllerLeadershipFor(clusterName);
     SchemaEntry valueSchemaEntry = new SchemaEntry(SchemaData.UNKNOWN_SCHEMA_ID, valueSchemaStr);
-    ReadWriteSchemaRepository schemaRepository = getHelixVeniceClusterResources(clusterName).getSchemaRepository();
-    return schemaRepository.getValueSchemaIdIgnoreFieldOrder(storeName, valueSchemaEntry);
+
+    for (SchemaEntry schemaEntry: getValueSchemas(clusterName, storeName)) {
+      if (schemaComparator.compare(schemaEntry.getSchema(), valueSchemaEntry.getSchema()) == 0) {
+        return schemaEntry.getId();
+      }
+    }
+    return SchemaData.INVALID_VALUE_SCHEMA_ID;
+
   }
 
   int checkPreConditionForAddValueSchemaAndGetNewSchemaId(
