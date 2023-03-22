@@ -7,7 +7,10 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.r2.transport.common.Client;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
+import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.fastclient.ClientConfig;
+import com.linkedin.venice.fastclient.stats.ClusterStats;
 import com.linkedin.venice.fastclient.utils.ClientTestUtils;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -40,17 +43,17 @@ import org.testng.annotations.Test;
 
 
 public class RequestBasedMetadataIntegrationTest {
-  protected static final int KEY_COUNT = 100;
-  protected static final long TIME_OUT = 60 * Time.MS_PER_SECOND;
+  private static final int KEY_COUNT = 100;
+  private static final long TIME_OUT = 60 * Time.MS_PER_SECOND;
 
   private final VenicePartitioner defaultPartitioner = new DefaultVenicePartitioner();
-  protected VeniceClusterWrapper veniceCluster;
-  protected String storeName;
-  protected RequestBasedMetadata requestBasedMetadata;
+  private VeniceClusterWrapper veniceCluster;
+  private String storeName;
+  private RequestBasedMetadata requestBasedMetadata;
   private RecordSerializer<Object> keySerializer;
   private Client r2Client;
   private D2Client d2Client;
-  protected ClientConfig clientConfig;
+  private ClientConfig clientConfig;
 
   @BeforeClass
   public void setUp() throws Exception {
@@ -60,7 +63,7 @@ public class RequestBasedMetadataIntegrationTest {
     veniceCluster = ServiceFactory.getVeniceCluster(1, 2, 1, 2, 100, true, false, props);
     r2Client = ClientTestUtils.getR2Client();
     d2Client = D2TestUtils.getAndStartHttpsD2Client(veniceCluster.getZk().getAddress());
-    createStore();
+    storeName = veniceCluster.createStore(KEY_COUNT);
 
     keySerializer =
         SerializerDeserializerFactory.getAvroGenericSerializer(Schema.parse(VeniceClusterWrapper.DEFAULT_KEY_SCHEMA));
@@ -78,10 +81,6 @@ public class RequestBasedMetadataIntegrationTest {
         clientConfig,
         new D2TransportClient(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME, d2Client));
     requestBasedMetadata.start();
-  }
-
-  protected void createStore() throws Exception {
-    storeName = veniceCluster.createStore(KEY_COUNT);
   }
 
   @Test(timeOut = TIME_OUT)
@@ -124,6 +123,43 @@ public class RequestBasedMetadataIntegrationTest {
     assertEquals(requestBasedMetadata.getLatestValueSchema(), latestValueSchema.getSchema());
     assertEquals(requestBasedMetadata.getValueSchema(latestValueSchema.getId()), latestValueSchema.getSchema());
     assertEquals(requestBasedMetadata.getValueSchemaId(latestValueSchema.getSchema()), latestValueSchema.getId());
+  }
+
+  @Test(timeOut = TIME_OUT)
+  public void testMetadataZstdDictionaryFetch() {
+    String zstdStoreName = veniceCluster.createStoreWithZstdDictionary(KEY_COUNT);
+
+    ClientConfig.ClientConfigBuilder clientConfigBuilder = new ClientConfig.ClientConfigBuilder();
+    clientConfigBuilder.setStoreName(zstdStoreName);
+    clientConfigBuilder.setR2Client(r2Client);
+    clientConfigBuilder.setMetricsRepository(new MetricsRepository());
+    clientConfigBuilder.setSpeculativeQueryEnabled(true);
+    clientConfigBuilder.setMetadataRefreshIntervalInSeconds(1);
+    ClientConfig zstdClientConfig = clientConfigBuilder.build();
+
+    RequestBasedMetadata zstdRequestBasedMetadata = new RequestBasedMetadata(
+        zstdClientConfig,
+        new D2TransportClient(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME, d2Client));
+    zstdRequestBasedMetadata.start();
+
+    VeniceRouterWrapper routerWrapper = veniceCluster.getRandomVeniceRouter();
+    ReadOnlyStoreRepository storeRepository = routerWrapper.getMetaDataRepository();
+    TestUtils.waitForNonDeterministicAssertion(
+        30,
+        TimeUnit.SECONDS,
+        () -> assertEquals(
+            zstdRequestBasedMetadata.getCurrentStoreVersion(),
+            storeRepository.getStore(zstdStoreName).getCurrentVersion()));
+    VeniceCompressor compressor = zstdRequestBasedMetadata
+        .getCompressor(CompressionStrategy.ZSTD_WITH_DICT, storeRepository.getStore(zstdStoreName).getCurrentVersion());
+    assertNotNull(compressor);
+    ClusterStats clusterStats = zstdClientConfig.getClusterStats();
+    List<Double> version_update_failure = clusterStats.getMetricValues("version_update_failure", "OccurrenceRate");
+    List<Double> current_version = clusterStats.getMetricValues("current_version", "Gauge");
+    assertEquals(version_update_failure.size(), 1, "Unexpected statistic size");
+    assertEquals(version_update_failure.get(0), 0.0, "Unexpected version update failure");
+    assertEquals(current_version.size(), 1, "Unexpected statistic size");
+    assertEquals(current_version.get(0), 1.0, "Unexpected version number");
   }
 
   private void verifyMetadata(
