@@ -6198,6 +6198,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
+   * @see Admin#getServerD2Service(String)
+   */
+  @Override
+  public String getServerD2Service(String clusterName) {
+    String serverD2Service = multiClusterConfigs.getClusterToServerD2Map().get(clusterName);
+    if (serverD2Service == null) {
+      throw new VeniceException("Could not find server d2 service by given cluster: " + clusterName);
+    }
+    return serverD2Service;
+  }
+
+  /**
    * @see Admin#findAllBootstrappingVersions(String)
    * TODO: With L/F we need to deprecate this function OR augment it to read the customized view as opposed to helix states
    */

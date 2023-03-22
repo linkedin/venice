@@ -5,6 +5,7 @@ import static com.linkedin.venice.ConfigKeys.ADMIN_TOPIC_REPLICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_ALLOWLIST;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_D2;
+import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_SERVER_D2;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DEFAULT_READ_QUOTA_PER_ROUTER;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_DISABLE_PARENT_REQUEST_TOPIC_FOR_STREAM_PUSHES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_JETTY_CONFIG_OVERRIDE_PREFIX;
@@ -111,6 +112,7 @@ public class VeniceControllerClusterConfig {
   private long partitionSize;
   private long offLineJobWaitTimeInMilliseconds;
   private Map<String, String> clusterToD2Map;
+  private Map<String, String> clusterToServerD2Map;
   private boolean sslToKafka;
   private int helixSendMessageTimeoutMilliseconds;
   private int adminTopicReplicationFactor;
@@ -339,6 +341,7 @@ public class VeniceControllerClusterConfig {
     controllerSchemaValidationEnabled = props.getBoolean(CONTROLLER_SCHEMA_VALIDATION_ENABLED, true);
 
     clusterToD2Map = props.getMap(CLUSTER_TO_D2);
+    clusterToServerD2Map = props.getMap(CLUSTER_TO_SERVER_D2);
     this.sslToKafka = props.getBoolean(SSL_TO_KAFKA, false);
     // Enable ssl to kafka
     if (sslToKafka) {
@@ -491,6 +494,10 @@ public class VeniceControllerClusterConfig {
 
   public Map<String, String> getClusterToD2Map() {
     return clusterToD2Map;
+  }
+
+  public Map<String, String> getClusterToServerD2Map() {
+    return clusterToServerD2Map;
   }
 
   public boolean isSslToKafka() {
