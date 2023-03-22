@@ -501,6 +501,13 @@ public abstract class AbstractPushMonitor
           handleErrorPush(pushStatus, errorMsg);
           return new Pair<>(ExecutionStatus.ERROR, errorMsg);
         }
+      } else {
+        // Update the status details if this is the first time finding out Helix assignment completes
+        Optional<String> statusDetails = pushStatus.getOptionalStatusDetails();
+        if (statusDetails.isPresent() && Objects.equals(statusDetails.get(), "Helix Resource not created.")) {
+          refreshAndUpdatePushStatus(topic, ExecutionStatus.STARTED, Optional.of("Helix assignment complete"));
+          recordPushPreparationDuration(topic, getDurationInSec(pushStatus));
+        }
       }
     }
     return new Pair<>(currentPushStatus, pushStatus.getStatusDetails());
