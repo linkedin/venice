@@ -74,9 +74,9 @@ public class RequestBasedMetadataIntegrationTest {
     clientConfigBuilder.setMetadataRefreshIntervalInSeconds(1);
     clientConfig = clientConfigBuilder.build();
 
-    String routerD2ServiceName =
-        veniceCluster.getVeniceRouters().get(0).getD2ServiceNameForCluster(veniceCluster.getClusterName());
-    requestBasedMetadata = new RequestBasedMetadata(clientConfig, new D2TransportClient(routerD2ServiceName, d2Client));
+    requestBasedMetadata = new RequestBasedMetadata(
+        clientConfig,
+        new D2TransportClient(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME, d2Client));
     requestBasedMetadata.start();
   }
 

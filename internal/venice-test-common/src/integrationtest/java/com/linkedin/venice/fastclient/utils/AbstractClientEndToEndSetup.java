@@ -23,6 +23,7 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
@@ -65,7 +66,6 @@ public abstract class AbstractClientEndToEndSetup {
   private VeniceWriter<Object, Object, Object> veniceWriter;
   protected Client r2Client;
   protected D2Client d2Client;
-  protected String routerD2Service;
   // thin client for the thin client based metadata
   protected AvroSpecificStoreClient<StoreMetaKey, StoreMetaValue> thinClientForMetaStore = null;
 
@@ -115,9 +115,6 @@ public abstract class AbstractClientEndToEndSetup {
     r2Client = ClientTestUtils.getR2Client(ClientTestUtils.FastClientHTTPVariant.HTTP_2_BASED_HTTPCLIENT5);
 
     d2Client = D2TestUtils.getAndStartHttpsD2Client(veniceCluster.getZk().getAddress());
-
-    routerD2Service =
-        veniceCluster.getVeniceRouters().get(0).getD2ServiceNameForCluster(veniceCluster.getClusterName());
 
     prepareData();
     prepareMetaSystemStore();
@@ -262,7 +259,7 @@ public abstract class AbstractClientEndToEndSetup {
     if (useRouterBasedMetadata) {
       clientConfigBuilder.setRequestBasedMetadata(true);
       clientConfigBuilder.setD2Client(d2Client);
-      clientConfigBuilder.setRouterD2Service(routerD2Service);
+      clientConfigBuilder.setClusterDiscoveryD2Service(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME);
       clientConfigBuilder.setMetadataRefreshIntervalInSeconds(1);
     } else {
       setupThinClientBasedStoreMetadata();

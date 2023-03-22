@@ -31,7 +31,7 @@ public class ClientFactory {
     if (clientConfig.isRequestBasedMetadata()) {
       storeMetadata = new RequestBasedMetadata(
           clientConfig,
-          new D2TransportClient(clientConfig.getRouterD2Service(), clientConfig.getD2Client()));
+          new D2TransportClient(clientConfig.getClusterDiscoveryD2Service(), clientConfig.getD2Client()));
     } else {
       storeMetadata = new ThinClientBasedMetadata(clientConfig, clientConfig.getThinClientForMetaStore());
     }
@@ -51,7 +51,7 @@ public class ClientFactory {
     if (clientConfig.isRequestBasedMetadata()) {
       storeMetadata = new RequestBasedMetadata(
           clientConfig,
-          new D2TransportClient(clientConfig.getRouterD2Service(), clientConfig.getD2Client()));
+          new D2TransportClient(clientConfig.getClusterDiscoveryD2Service(), clientConfig.getD2Client()));
     } else {
       storeMetadata = new ThinClientBasedMetadata(clientConfig, clientConfig.getThinClientForMetaStore());
     }

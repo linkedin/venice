@@ -64,7 +64,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private final CompressorFactory compressorFactory;
   private final D2TransportClient transportClient;
   private D2ServiceDiscovery d2ServiceDiscovery;
-  private final String routerD2ServiceName;
+  private final String clusterDiscoveryD2ServiceName;
   private final ClusterStats clusterStats;
   private volatile boolean isServiceDiscovered;
 
@@ -75,7 +75,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
         : DEFAULT_REFRESH_INTERVAL_IN_SECONDS;
     this.transportClient = transportClient;
     this.d2ServiceDiscovery = new D2ServiceDiscovery();
-    this.routerD2ServiceName = transportClient.getServiceName();
+    this.clusterDiscoveryD2ServiceName = transportClient.getServiceName();
     this.compressorFactory = new CompressorFactory();
     this.clusterStats = clientConfig.getClusterStats();
   }
@@ -131,7 +131,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       if (isServiceDiscovered) {
         return;
       }
-      transportClient.setServiceName(routerD2ServiceName);
+      transportClient.setServiceName(clusterDiscoveryD2ServiceName);
       String serverD2ServiceName =
           d2ServiceDiscovery.find(transportClient, storeName, retryOnFailure).getServerD2Service();
       transportClient.setServiceName(serverD2ServiceName);

@@ -66,7 +66,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
    */
   private final boolean isRequestBasedMetadata;
   private final D2Client d2Client;
-  private final String routerD2Service;
+  private final String clusterDiscoveryD2Service;
 
   private ClientConfig(
       String storeName,
@@ -95,7 +95,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       boolean isVsonStore,
       boolean isRequestBasedMetadata,
       D2Client d2Client,
-      String routerD2Service) {
+      String clusterDiscoveryD2Service) {
     if (storeName == null || storeName.isEmpty()) {
       throw new VeniceClientException("storeName param shouldn't be empty");
     }
@@ -192,11 +192,11 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
 
     this.isRequestBasedMetadata = isRequestBasedMetadata;
     this.d2Client = d2Client;
-    this.routerD2Service = routerD2Service;
+    this.clusterDiscoveryD2Service = clusterDiscoveryD2Service;
     if (this.isRequestBasedMetadata) {
-      if (this.d2Client == null || this.routerD2Service == null) {
+      if (this.d2Client == null || this.clusterDiscoveryD2Service == null) {
         throw new VeniceClientException(
-            "Both param: d2Client and param: routerD2Service must be specified when request based metadata is enabled");
+            "Both param: d2Client and param: clusterDiscoveryD2Service must be specified when request based metadata is enabled");
       }
     }
   }
@@ -306,8 +306,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     return this.d2Client;
   }
 
-  public String getRouterD2Service() {
-    return this.routerD2Service;
+  public String getClusterDiscoveryD2Service() {
+    return this.clusterDiscoveryD2Service;
   }
 
   public static class ClientConfigBuilder<K, V, T extends SpecificRecord> {
@@ -353,7 +353,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
     private boolean isVsonStore = false;
     private boolean isRequestBasedMetadata = false;
     private D2Client d2Client;
-    private String routerD2Service;
+    private String clusterDiscoveryD2Service;
 
     public ClientConfigBuilder<K, V, T> setStoreName(String storeName) {
       this.storeName = storeName;
@@ -494,8 +494,8 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
       return this;
     }
 
-    public ClientConfigBuilder<K, V, T> setRouterD2Service(String routerD2Service) {
-      this.routerD2Service = routerD2Service;
+    public ClientConfigBuilder<K, V, T> setClusterDiscoveryD2Service(String clusterDiscoveryD2Service) {
+      this.clusterDiscoveryD2Service = clusterDiscoveryD2Service;
       return this;
     }
 
@@ -526,7 +526,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           .setVsonStore(isVsonStore)
           .setRequestBasedMetadata(isRequestBasedMetadata)
           .setD2Client(d2Client)
-          .setRouterD2Service(routerD2Service);
+          .setClusterDiscoveryD2Service(clusterDiscoveryD2Service);
     }
 
     public ClientConfig<K, V, T> build() {
@@ -557,7 +557,7 @@ public class ClientConfig<K, V, T extends SpecificRecord> {
           isVsonStore,
           isRequestBasedMetadata,
           d2Client,
-          routerD2Service);
+          clusterDiscoveryD2Service);
     }
   }
 }
