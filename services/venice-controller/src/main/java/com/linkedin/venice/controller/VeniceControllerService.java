@@ -12,6 +12,7 @@ import com.linkedin.venice.controller.lingeringjob.DefaultLingeringStoreVersionC
 import com.linkedin.venice.controller.lingeringjob.HeartbeatBasedCheckerStats;
 import com.linkedin.venice.controller.lingeringjob.HeartbeatBasedLingeringStoreVersionChecker;
 import com.linkedin.venice.controller.lingeringjob.LingeringStoreVersionChecker;
+import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
@@ -50,7 +51,8 @@ public class VeniceControllerService extends AbstractVeniceService {
       Optional<AuthorizerService> authorizerService,
       D2Client d2Client,
       Optional<ClientConfig> routerClientConfig,
-      Optional<ICProvider> icProvider) {
+      Optional<ICProvider> icProvider,
+      Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator) {
     this.multiClusterConfigs = multiClusterConfigs;
     VeniceHelixAdmin internalAdmin = new VeniceHelixAdmin(
         multiClusterConfigs,
@@ -70,7 +72,8 @@ public class VeniceControllerService extends AbstractVeniceService {
           accessController,
           authorizerService,
           createLingeringStoreVersionChecker(multiClusterConfigs, metricsRepository),
-          WriteComputeSchemaConverter.getInstance());
+          WriteComputeSchemaConverter.getInstance(),
+          externalSupersetSchemaGenerator);
       LOGGER.info("Controller works as a parent controller.");
     } else {
       this.admin = internalAdmin;
