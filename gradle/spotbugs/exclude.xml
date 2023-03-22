@@ -439,4 +439,11 @@
       <Class name="com.linkedin.davinci.kafka.consumer.ActiveActiveStoreIngestionTask"/>
     </Or>
   </Match>
+  <Match>
+    <Bug pattern="MS_MUTABLE_ARRAY"/>
+    <Or>
+      <!--Fields are being used for print-->
+      <Class name="com.linkedin.venice.utils.DataProviderUtils"/>
+    </Or>
+  </Match>
 </FindBugsFilter>
