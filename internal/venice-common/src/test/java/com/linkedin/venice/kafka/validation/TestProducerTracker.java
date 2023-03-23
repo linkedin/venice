@@ -20,6 +20,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -141,7 +142,7 @@ public class TestProducerTracker {
         offset++,
         System.currentTimeMillis() + 1000,
         0);
-    producerTracker.validateMessage(controlMessageConsumerRecord, false, false);
+    producerTracker.validateMessage(controlMessageConsumerRecord, false, Lazy.FALSE);
 
     Put firstPut = getPutMessage("first_message".getBytes());
     KafkaMessageEnvelope firstMessage =
@@ -155,7 +156,7 @@ public class TestProducerTracker {
         offset++,
         System.currentTimeMillis() + 1000,
         0);
-    producerTracker.validateMessage(firstConsumerRecord, false, false);
+    producerTracker.validateMessage(firstConsumerRecord, false, Lazy.FALSE);
 
     // Message with gap
     Put secondPut = getPutMessage("second_message".getBytes());
@@ -172,7 +173,7 @@ public class TestProducerTracker {
         0);
     Assert.assertThrows(
         MissingDataException.class,
-        () -> producerTracker.validateMessage(secondConsumerRecord, false, false));
+        () -> producerTracker.validateMessage(secondConsumerRecord, false, Lazy.FALSE));
 
     // Message without gap
     Put thirdPut = getPutMessage("third_message".getBytes());
@@ -188,7 +189,7 @@ public class TestProducerTracker {
         System.currentTimeMillis() + 1000,
         0);
     // It doesn't matter whether EOP is true/false. The result is same.
-    producerTracker.validateMessage(thirdConsumerRecord, false, false);
+    producerTracker.validateMessage(thirdConsumerRecord, false, Lazy.FALSE);
 
     // Message with gap but tolerate messages is allowed
     Put fourthPut = getPutMessage("fourth_message".getBytes());
@@ -203,7 +204,7 @@ public class TestProducerTracker {
         offset,
         System.currentTimeMillis() + 1000,
         0);
-    producerTracker.validateMessage(fourthConsumerRecord, false, true);
+    producerTracker.validateMessage(fourthConsumerRecord, false, Lazy.TRUE);
   }
 
   @Test
@@ -232,7 +233,7 @@ public class TestProducerTracker {
         offset++,
         System.currentTimeMillis() + 1000,
         0);
-    producerTracker.validateMessage(controlMessageConsumerRecord, true, false);
+    producerTracker.validateMessage(controlMessageConsumerRecord, true, Lazy.FALSE);
 
     // Send the second segment. Notice this segment number has a gap than previous one
     Put firstPut = getPutMessage("message".getBytes());
@@ -252,17 +253,17 @@ public class TestProducerTracker {
      */
     Assert.assertThrows(
         MissingDataException.class,
-        () -> producerTracker.validateMessage(firstConsumerRecord, true, false));
+        () -> producerTracker.validateMessage(firstConsumerRecord, true, Lazy.FALSE));
     /**
      * The new message with segment number gap will be accepted and tracked if tolerate message flag is true
      */
-    producerTracker.validateMessage(firstConsumerRecord, true, true);
+    producerTracker.validateMessage(firstConsumerRecord, true, Lazy.TRUE);
     /**
      * Adding the same message again will be treated as duplicated
      */
     Assert.assertThrows(
         DuplicateDataException.class,
-        () -> producerTracker.validateMessage(firstConsumerRecord, true, true));
+        () -> producerTracker.validateMessage(firstConsumerRecord, true, Lazy.TRUE));
     Assert.assertEquals(producerTracker.segments.get(partitionId).getSegmentNumber(), skipSegmentNumber);
     Assert.assertEquals(producerTracker.segments.get(partitionId).getSequenceNumber(), skipSequenceNumber);
   }
@@ -289,7 +290,7 @@ public class TestProducerTracker {
         offset++,
         System.currentTimeMillis() + 1000,
         0);
-    producerTracker.validateMessage(controlMessageConsumerRecord, true, false);
+    producerTracker.validateMessage(controlMessageConsumerRecord, true, Lazy.FALSE);
     Assert.assertEquals(producerTracker.segments.get(partitionId).getSequenceNumber(), 0);
 
     // send EOS
@@ -305,7 +306,7 @@ public class TestProducerTracker {
         offset++,
         System.currentTimeMillis() + 1000,
         0);
-    producerTracker.validateMessage(controlMessageConsumerRecord, true, true);
+    producerTracker.validateMessage(controlMessageConsumerRecord, true, Lazy.TRUE);
     Assert.assertEquals(producerTracker.segments.get(partitionId).getSequenceNumber(), 5);
 
     // Send a put msg following EOS
@@ -322,7 +323,7 @@ public class TestProducerTracker {
         0);
     Assert.assertThrows(
         DuplicateDataException.class,
-        () -> producerTracker.validateMessage(firstConsumerRecord, true, true));
+        () -> producerTracker.validateMessage(firstConsumerRecord, true, Lazy.TRUE));
     // The sequence number should not change
     Assert.assertEquals(producerTracker.segments.get(partitionId).getSequenceNumber(), 5);
   }
@@ -352,7 +353,7 @@ public class TestProducerTracker {
         offset++,
         System.currentTimeMillis() + 1000,
         0);
-    producerTracker.validateMessage(controlMessageConsumerRecord, true, false);
+    producerTracker.validateMessage(controlMessageConsumerRecord, true, Lazy.FALSE);
     producerTracker.updateOffsetRecord(partitionId, record);
     Assert.assertEquals(record.getProducerPartitionState(guid).checksumType, CheckSumType.MD5.getValue());
 
@@ -368,7 +369,7 @@ public class TestProducerTracker {
         offset,
         System.currentTimeMillis() + 1000,
         0);
-    producerTracker.validateMessage(firstConsumerRecord, true, true);
+    producerTracker.validateMessage(firstConsumerRecord, true, Lazy.TRUE);
     producerTracker.updateOffsetRecord(partitionId, record);
     Assert.assertEquals(record.getProducerPartitionState(guid).checksumType, CheckSumType.NONE.getValue());
     Assert.assertEquals(record.getProducerPartitionState(guid).checksumState, ByteBuffer.wrap(new byte[0]));
