@@ -1,7 +1,11 @@
 package com.linkedin.venice.kafka.consumer;
 
-import static com.linkedin.venice.ConfigKeys.*;
-import static org.mockito.Mockito.*;
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.offsets.OffsetRecord;

@@ -1,7 +1,12 @@
 package com.linkedin.venice.controller;
 
-import static com.linkedin.venice.ConfigConstants.*;
-import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.ConfigConstants.DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS;
+import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
+import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_DERIVED_SCHEMA_ID;
+import static com.linkedin.venice.ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA;
 import static com.linkedin.venice.controller.UserSystemStoreLifeCycleHelper.AUTO_META_SYSTEM_STORE_PUSH_ID_PREFIX;
 import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
 import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS;
@@ -324,7 +329,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private final HelixReadOnlyStoreConfigRepository storeConfigRepo;
   private final VeniceWriterFactory veniceWriterFactory;
   private final PubSubConsumerAdapterFactory veniceConsumerFactory;
-  private final VeniceProperties pubSubSSLProperties;
   private final int minNumberOfStoreVersionsToPreserve;
   private final StoreGraveyard storeGraveyard;
   private final Map<String, String> participantMessageStoreRTTMap;
@@ -463,7 +467,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     this.zkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, "controller-zk-client"));
     this.adapterSerializer = new HelixAdapterSerializer();
 
-    this.pubSubSSLProperties = getPubSubSSLPropertiesFromControllerConfig(commonConfig.getKafkaBootstrapServers());
     this.veniceConsumerFactory = new ApacheKafkaConsumerAdapterFactory();
     this.topicManagerRepository = TopicManagerRepository.builder()
         .setPubSubTopicRepository(pubSubTopicRepository)
@@ -474,7 +477,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         .setKafkaOperationTimeoutMs(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS)
         .setPubSubProperties(this::getPubSubSSLPropertiesFromControllerConfig)
         .setPubSubAdminAdapterFactory(new ApacheKafkaAdminAdapterFactory())
-        .setPubSubConsumerAdapterFactory(new ApacheKafkaConsumerAdapterFactory())
+        .setPubSubConsumerAdapterFactory(veniceConsumerFactory)
         .build();
 
     this.allowlistAccessor = new ZkAllowlistAccessor(zkClient, adapterSerializer);
@@ -654,17 +657,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   private VeniceProperties getPubSubSSLPropertiesFromControllerConfig(String pubSubBootstrapServers) {
     VeniceControllerConfig controllerConfig = multiClusterConfigs.getCommonConfig();
-    if (!pubSubBootstrapServers.equals(controllerConfig.getKafkaBootstrapServers())
-        && !pubSubBootstrapServers.equals(controllerConfig.getSslKafkaBootstrapServers())) {
-      VeniceProperties originalPros = controllerConfig.getProps();
-      Properties clonedProperties = originalPros.toProperties();
-      if (originalPros.getBoolean(SSL_TO_KAFKA, false)) {
-        clonedProperties.setProperty(SSL_KAFKA_BOOTSTRAP_SERVERS, pubSubBootstrapServers);
-      } else {
-        clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, pubSubBootstrapServers);
-      }
-      controllerConfig = new VeniceControllerConfig(new VeniceProperties(clonedProperties));
+
+    VeniceProperties originalPros = controllerConfig.getProps();
+    Properties clonedProperties = originalPros.toProperties();
+    if (originalPros.getBoolean(SSL_TO_KAFKA, false)) {
+      clonedProperties.setProperty(SSL_KAFKA_BOOTSTRAP_SERVERS, pubSubBootstrapServers);
+    } else {
+      clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, pubSubBootstrapServers);
     }
+    controllerConfig = new VeniceControllerConfig(new VeniceProperties(clonedProperties));
 
     Properties properties = new Properties();
     if (KafkaSSLUtils.isKafkaSSLProtocol(controllerConfig.getKafkaSecurityProtocol())) {

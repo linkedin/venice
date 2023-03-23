@@ -26,26 +26,26 @@ public class ApacheKafkaAdminAdapterFactory implements PubSubAdminAdapterFactory
       VeniceProperties veniceProperties,
       Optional<MetricsRepository> optionalMetricsRepository,
       String statsNamePrefix,
-      PubSubTopicRepository pubSubTopicRepository,
-      String brokerAddressToOverride) {
-    ApacheKafkaAdminConfig adminConfig = new ApacheKafkaAdminConfig(veniceProperties, brokerAddressToOverride);
+      PubSubTopicRepository pubSubTopicRepository) {
+    ApacheKafkaAdminConfig adminConfig = new ApacheKafkaAdminConfig(veniceProperties);
+    String brokerAddress = adminConfig.getBrokerAddress();
     KafkaAdminWrapper kafkaAdminWrapper = new KafkaAdminClient();
     kafkaAdminWrapper.initialize(adminConfig.getAdminProperties(), pubSubTopicRepository);
     if (optionalMetricsRepository.isPresent()) {
       // Use Kafka bootstrap server to identify which Kafka admin client stats it is
       final String kafkaAdminStatsName =
-          String.format("%s_%s_%s", statsNamePrefix, KafkaAdminClient.class, brokerAddressToOverride);
+          String.format("%s_%s_%s", statsNamePrefix, KafkaAdminClient.class, brokerAddress);
       kafkaAdminWrapper =
           new InstrumentedKafkaAdmin(kafkaAdminWrapper, optionalMetricsRepository.get(), kafkaAdminStatsName);
       LOGGER.info(
           "Created instrumented Kafka admin client for Kafka cluster with bootstrap "
               + "server {} and has stats name prefix {}" + adminConfig.getAdminProperties(),
-          brokerAddressToOverride,
+          brokerAddress,
           statsNamePrefix);
     } else {
       LOGGER.info(
           "Created non-instrumented Kafka admin client for Kafka cluster with bootstrap server {}",
-          brokerAddressToOverride);
+          brokerAddress);
     }
     return kafkaAdminWrapper;
   }

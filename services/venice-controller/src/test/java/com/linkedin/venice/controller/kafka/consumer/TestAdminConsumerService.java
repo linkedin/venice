@@ -13,7 +13,6 @@ import static org.mockito.Mockito.mock;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
-import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
@@ -55,7 +54,7 @@ public class TestAdminConsumerService {
         .build();
     VeniceControllerConfig controllerConfig = new VeniceControllerConfig(props);
 
-    PubSubConsumerAdapterFactory consumerFactory = new ApacheKafkaConsumerAdapterFactory();
+    PubSubConsumerAdapterFactory consumerFactory = mock(PubSubConsumerAdapterFactory.class);
 
     VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
     doReturn(mock(ZkClient.class)).when(admin).getZkClient();

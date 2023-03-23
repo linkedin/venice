@@ -17,14 +17,12 @@ public class ApacheKafkaAdminConfig {
   private static final Logger LOGGER = LogManager.getLogger(ApacheKafkaAdminConfig.class);
 
   private final Properties adminProperties;
+  private final String brokerAddress;
 
-  public ApacheKafkaAdminConfig(VeniceProperties veniceProperties, String brokerAddressToOverride) {
-    String brokerAddress = getPubsubBrokerAddress(veniceProperties);
+  public ApacheKafkaAdminConfig(VeniceProperties veniceProperties) {
+    this.brokerAddress = getPubsubBrokerAddress(veniceProperties);
     this.adminProperties = veniceProperties.clipAndFilterNamespace(KAFKA_CONFIG_PREFIX).toProperties();
     this.adminProperties.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, brokerAddress);
-    LOGGER.info(
-        "Kafka admin client will connect to broker address: " + brokerAddress + " with properties: " + veniceProperties
-            + " brokerAddressToOverride: " + brokerAddressToOverride);
     // Setup ssl config if needed.
     if (KafkaSSLUtils.validateAndCopyKafkaSSLConfig(veniceProperties, this.adminProperties)) {
       LOGGER.info("Will initialize an SSL Kafka admin client");
@@ -43,6 +41,10 @@ public class ApacheKafkaAdminConfig {
 
   public Properties getAdminProperties() {
     return adminProperties;
+  }
+
+  public String getBrokerAddress() {
+    return brokerAddress;
   }
 
 }

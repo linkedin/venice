@@ -103,23 +103,21 @@ public class TopicManager implements Closeable {
     this.topicDeletionStatusPollIntervalMs = builder.getTopicDeletionStatusPollIntervalMs();
     this.topicMinLogCompactionLagMs = builder.getTopicMinLogCompactionLagMs();
     this.pubSubAdminAdapterFactory = builder.getPubSubAdminAdapterFactory();
+    this.pubSubBootstrapServers = pubSubBootstrapServers;
 
     TopicManagerRepository.SSLPropertiesSupplier pubSubProperties = builder.getPubSubProperties();
     PubSubTopicRepository pubSubTopicRepository = builder.getPubSubTopicRepository();
 
     Optional<MetricsRepository> optionalMetricsRepository = Optional.ofNullable(builder.getMetricsRepository());
 
-    this.pubSubBootstrapServers = pubSubBootstrapServers;
-
     this.kafkaReadOnlyAdmin = Lazy.of(() -> {
       KafkaAdminWrapper kafkaReadOnlyAdmin = pubSubAdminAdapterFactory.create(
           pubSubProperties.get(pubSubBootstrapServers),
           optionalMetricsRepository,
           "ReadOnlyKafkaAdminStats",
-          pubSubTopicRepository,
-          pubSubBootstrapServers);
+          pubSubTopicRepository);
       logger.info(
-          "{} is using kafka read-only admin client of class: {} \n",
+          "{} is using kafka read-only admin client of class: {}",
           this.getClass().getSimpleName(),
           kafkaReadOnlyAdmin.getClassName());
       return kafkaReadOnlyAdmin;
@@ -130,8 +128,7 @@ public class TopicManager implements Closeable {
           pubSubProperties.get(pubSubBootstrapServers),
           optionalMetricsRepository,
           "WriteOnlyKafkaAdminStats",
-          pubSubTopicRepository,
-          pubSubBootstrapServers);
+          pubSubTopicRepository);
       logger.info(
           "{} is using kafka write-only admin client of class: {}",
           this.getClass().getSimpleName(),

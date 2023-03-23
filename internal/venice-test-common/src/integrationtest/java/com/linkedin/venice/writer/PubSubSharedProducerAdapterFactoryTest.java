@@ -10,7 +10,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.kafka.TopicManager;
-import com.linkedin.venice.kafka.admin.ApacheKafkaAdminAdapterFactory;
 import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
@@ -52,9 +51,14 @@ public class PubSubSharedProducerAdapterFactoryTest {
   @BeforeClass
   public void setUp() {
     pubSubBrokerWrapper = ServiceFactory.getPubSubBroker();
-    pubSubAdminAdapterFactory = new ApacheKafkaAdminAdapterFactory();
+    pubSubAdminAdapterFactory = IntegrationTestPushUtils.getVeniceAdminFactory();
     topicManager = IntegrationTestPushUtils
-        .getTopicManagerRepo(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, pubSubBrokerWrapper.getAddress(), pubSubTopicRepository)
+        .getTopicManagerRepo(
+            DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+            100,
+            0L,
+            pubSubBrokerWrapper.getAddress(),
+            pubSubTopicRepository)
         .getTopicManager();
   }
 
@@ -149,10 +153,7 @@ public class PubSubSharedProducerAdapterFactoryTest {
     }
 
     try (KafkaAdminWrapper adminWrapper = pubSubAdminAdapterFactory.create(
-        new VeniceProperties(),
-        Optional.empty(),
-        "admin_stats",
-        pubSubTopicRepository, pubSubBrokerWrapper.getAddress())) {
+        new VeniceProperties(properties), Optional.empty(), "admin_stats", pubSubTopicRepository)) {
       PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(existingTopic, 0);
       Long end = adminWrapper.endOffset(pubSubTopicPartition);
       Assert.assertTrue(end > 100L); // to account for the SOP that VW sends internally.

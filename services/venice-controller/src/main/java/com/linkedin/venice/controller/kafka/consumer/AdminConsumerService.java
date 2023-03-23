@@ -1,7 +1,5 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
-import static com.linkedin.venice.ConfigKeys.*;
-
 import com.linkedin.venice.controller.AdminTopicMetadataAccessor;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;

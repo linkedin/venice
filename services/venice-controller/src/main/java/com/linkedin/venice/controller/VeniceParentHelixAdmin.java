@@ -347,10 +347,15 @@ public class VeniceParentHelixAdmin implements Admin {
       boolean sslEnabled,
       Optional<SSLConfig> sslConfig,
       Optional<AuthorizerService> authorizerService) {
-    this(veniceHelixAdmin, multiClusterConfigs, sslEnabled, sslConfig, Optional.empty(), authorizerService,
+    this(
+        veniceHelixAdmin,
+        multiClusterConfigs,
+        sslEnabled,
+        sslConfig,
+        Optional.empty(),
+        authorizerService,
         new DefaultLingeringStoreVersionChecker());
   }
-
 
   public VeniceParentHelixAdmin(
       VeniceHelixAdmin veniceHelixAdmin,

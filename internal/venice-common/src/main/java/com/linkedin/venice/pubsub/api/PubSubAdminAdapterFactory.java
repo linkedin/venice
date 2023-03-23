@@ -25,16 +25,13 @@ public interface PubSubAdminAdapterFactory<ADAPTER extends KafkaAdminWrapper> ex
    *                                    non-instrumented admin client.
    * @param statsNamePrefix             Name prefix for admin related metrics when instrumented admin client is enabled.
    * @param pubSubTopicRepository       A repo to cache created {@link PubSubTopic}s.
-   * @param targetBrokerAddress         Broker address to use when creating an admin.
-   *                                    If this value is null, local broker address present in veniceProperties will be used.
    * @return                            Returns an instance of an admin adapter
    */
   ADAPTER create(
       VeniceProperties veniceProperties,
       Optional<MetricsRepository> optionalMetricsRepository,
       String statsNamePrefix,
-      PubSubTopicRepository pubSubTopicRepository,
-      String targetBrokerAddress);
+      PubSubTopicRepository pubSubTopicRepository);
 
   String getName();
 }

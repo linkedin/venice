@@ -3,7 +3,7 @@ package com.linkedin.davinci.kafka.consumer;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.RESET_OFFSET;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.SUBSCRIBE;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.UNSUBSCRIBE;
-import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static java.util.concurrent.TimeUnit.HOURS;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
@@ -2543,12 +2543,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // Tolerate missing message if store version is data recovery + hybrid and TS not received yet (due to source
       // topic
       // data may have been log compacted) or log compaction is enabled and record is old enough for log compaction.
-      String topicName = consumerRecord.getTopicPartition().getPubSubTopic().getName();
+      PubSubTopic pubSubTopic = consumerRecord.getTopicPartition().getPubSubTopic();
 
       return (isDataRecovery && isHybridMode() && partitionConsumptionState.getTopicSwitch() == null)
-          || (topicManager.isTopicCompactionEnabled(topicName)
+          || (topicManager.isTopicCompactionEnabled(pubSubTopic)
               && LatencyUtils.getElapsedTimeInMs(consumerRecord.getPubSubMessageTime()) >= topicManager
-                  .getTopicMinLogCompactionLagMs(topicName));
+                  .getTopicMinLogCompactionLagMs(pubSubTopic));
     });
 
     try {
