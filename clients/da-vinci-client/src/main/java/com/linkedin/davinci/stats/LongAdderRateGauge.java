@@ -9,6 +9,7 @@ import java.util.concurrent.atomic.LongAdder;
 public class LongAdderRateGauge extends Gauge {
   private final LongAdder adder = new LongAdder();
   private long lastMeasurementTime = System.currentTimeMillis();
+  private static final MetricConfig metricConfig = new MetricConfig();
 
   public void record() {
     this.adder.increment();
@@ -25,7 +26,7 @@ public class LongAdderRateGauge extends Gauge {
     return (double) this.adder.sumThenReset() / elapsedTimeInSeconds;
   }
 
-  public double getRate(MetricConfig config) {
-    return measure(config, System.currentTimeMillis());
+  public double getRate() {
+    return measure(metricConfig, System.currentTimeMillis());
   }
 }

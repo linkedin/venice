@@ -328,7 +328,7 @@ public class IngestionStats {
   }
 
   public double getRecordsConsumed() {
-    return recordsConsumedSensor.getRate(METRIC_CONFIG);
+    return recordsConsumedSensor.getRate();
   }
 
   public void recordRecordsConsumed() {
@@ -336,7 +336,7 @@ public class IngestionStats {
   }
 
   public double getBytesConsumed() {
-    return bytesConsumedSensor.getRate(METRIC_CONFIG);
+    return bytesConsumedSensor.getRate();
   }
 
   public void recordBytesConsumed(long value) {
@@ -344,7 +344,7 @@ public class IngestionStats {
   }
 
   public double getLeaderRecordsConsumed() {
-    return leaderRecordsConsumedSensor.getRate(METRIC_CONFIG);
+    return leaderRecordsConsumedSensor.getRate();
   }
 
   public void recordLeaderRecordsConsumed() {
@@ -352,7 +352,7 @@ public class IngestionStats {
   }
 
   public double getLeaderBytesConsumed() {
-    return leaderBytesConsumedSensor.getRate(METRIC_CONFIG);
+    return leaderBytesConsumedSensor.getRate();
   }
 
   public void recordLeaderBytesConsumed(long value) {
@@ -360,7 +360,7 @@ public class IngestionStats {
   }
 
   public double getFollowerRecordsConsumed() {
-    return followerRecordsConsumedSensor.getRate(METRIC_CONFIG);
+    return followerRecordsConsumedSensor.getRate();
   }
 
   public void recordFollowerRecordsConsumed() {
@@ -368,7 +368,7 @@ public class IngestionStats {
   }
 
   public double getFollowerBytesConsumed() {
-    return followerBytesConsumedSensor.getRate(METRIC_CONFIG);
+    return followerBytesConsumedSensor.getRate();
   }
 
   public void recordFollowerBytesConsumed(long value) {
@@ -432,27 +432,27 @@ public class IngestionStats {
   }
 
   public double getLeaderRecordsProduced() {
-    return leaderRecordsProducedSensor.getRate(METRIC_CONFIG);
+    return leaderRecordsProducedSensor.getRate();
   }
 
   public double getUpdateIgnoredRate() {
-    return conflictResolutionUpdateIgnoredSensor.getRate(METRIC_CONFIG);
+    return conflictResolutionUpdateIgnoredSensor.getRate();
   }
 
   public double getTotalDCRRate() {
-    return totalConflictResolutionCountSensor.getRate(METRIC_CONFIG);
+    return totalConflictResolutionCountSensor.getRate();
   }
 
   public double getTombstoneCreationDCRRate() {
-    return tombstoneCreationDCRSensor.getRate(METRIC_CONFIG);
+    return tombstoneCreationDCRSensor.getRate();
   }
 
   public double getTimestampRegressionDCRRate() {
-    return timestampRegressionDCRErrorSensor.getRate(METRIC_CONFIG);
+    return timestampRegressionDCRErrorSensor.getRate();
   }
 
   public double getOffsetRegressionDCRRate() {
-    return offsetRegressionDCRErrorSensor.getRate(METRIC_CONFIG);
+    return offsetRegressionDCRErrorSensor.getRate();
   }
 
   public void recordLeaderRecordsProduced(long value) {
@@ -460,7 +460,7 @@ public class IngestionStats {
   }
 
   public double getLeaderBytesProduced() {
-    return leaderBytesProducedSensor.getRate(METRIC_CONFIG);
+    return leaderBytesProducedSensor.getRate();
   }
 
   public void recordLeaderBytesProduced(long value) {
