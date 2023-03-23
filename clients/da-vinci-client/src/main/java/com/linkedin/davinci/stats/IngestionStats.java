@@ -328,7 +328,7 @@ public class IngestionStats {
   }
 
   public double getRecordsConsumed() {
-    return recordsConsumedSensor.measure(METRIC_CONFIG, System.currentTimeMillis());
+    return recordsConsumedSensor.getRate(METRIC_CONFIG);
   }
 
   public void recordRecordsConsumed() {
@@ -336,15 +336,15 @@ public class IngestionStats {
   }
 
   public double getBytesConsumed() {
-    return bytesConsumedSensor.measure(METRIC_CONFIG, System.currentTimeMillis());
+    return bytesConsumedSensor.getRate(METRIC_CONFIG);
   }
 
-  public void recordBytesConsumed(double value) {
-    bytesConsumedSensor.record((long) value);
+  public void recordBytesConsumed(long value) {
+    bytesConsumedSensor.record(value);
   }
 
   public double getLeaderRecordsConsumed() {
-    return leaderRecordsConsumedSensor.measure(METRIC_CONFIG, System.currentTimeMillis());
+    return leaderRecordsConsumedSensor.getRate(METRIC_CONFIG);
   }
 
   public void recordLeaderRecordsConsumed() {
@@ -352,15 +352,15 @@ public class IngestionStats {
   }
 
   public double getLeaderBytesConsumed() {
-    return leaderBytesConsumedSensor.measure(METRIC_CONFIG, System.currentTimeMillis());
+    return leaderBytesConsumedSensor.getRate(METRIC_CONFIG);
   }
 
-  public void recordLeaderBytesConsumed(double value) {
-    leaderBytesConsumedSensor.record((long) value);
+  public void recordLeaderBytesConsumed(long value) {
+    leaderBytesConsumedSensor.record(value);
   }
 
   public double getFollowerRecordsConsumed() {
-    return followerRecordsConsumedSensor.measure(METRIC_CONFIG, System.currentTimeMillis());
+    return followerRecordsConsumedSensor.getRate(METRIC_CONFIG);
   }
 
   public void recordFollowerRecordsConsumed() {
@@ -368,11 +368,11 @@ public class IngestionStats {
   }
 
   public double getFollowerBytesConsumed() {
-    return followerBytesConsumedSensor.measure(METRIC_CONFIG, System.currentTimeMillis());
+    return followerBytesConsumedSensor.getRate(METRIC_CONFIG);
   }
 
-  public void recordFollowerBytesConsumed(double value) {
-    followerBytesConsumedSensor.record((long) value);
+  public void recordFollowerBytesConsumed(long value) {
+    followerBytesConsumedSensor.record(value);
   }
 
   public void recordUpdateIgnoredDCR() {
@@ -432,39 +432,39 @@ public class IngestionStats {
   }
 
   public double getLeaderRecordsProduced() {
-    return leaderRecordsProducedSensor.measure(METRIC_CONFIG, System.currentTimeMillis());
+    return leaderRecordsProducedSensor.getRate(METRIC_CONFIG);
   }
 
   public double getUpdateIgnoredRate() {
-    return conflictResolutionUpdateIgnoredSensor.measure(METRIC_CONFIG, System.currentTimeMillis());
+    return conflictResolutionUpdateIgnoredSensor.getRate(METRIC_CONFIG);
   }
 
   public double getTotalDCRRate() {
-    return totalConflictResolutionCountSensor.measure(METRIC_CONFIG, System.currentTimeMillis());
+    return totalConflictResolutionCountSensor.getRate(METRIC_CONFIG);
   }
 
   public double getTombstoneCreationDCRRate() {
-    return tombstoneCreationDCRSensor.measure(METRIC_CONFIG, System.currentTimeMillis());
+    return tombstoneCreationDCRSensor.getRate(METRIC_CONFIG);
   }
 
   public double getTimestampRegressionDCRRate() {
-    return timestampRegressionDCRErrorSensor.measure(METRIC_CONFIG, System.currentTimeMillis());
+    return timestampRegressionDCRErrorSensor.getRate(METRIC_CONFIG);
   }
 
   public double getOffsetRegressionDCRRate() {
-    return offsetRegressionDCRErrorSensor.measure(METRIC_CONFIG, System.currentTimeMillis());
+    return offsetRegressionDCRErrorSensor.getRate(METRIC_CONFIG);
   }
 
-  public void recordLeaderRecordsProduced(double value) {
-    leaderRecordsProducedSensor.record((long) value);
+  public void recordLeaderRecordsProduced(long value) {
+    leaderRecordsProducedSensor.record(value);
   }
 
   public double getLeaderBytesProduced() {
-    return leaderBytesProducedSensor.measure(METRIC_CONFIG, System.currentTimeMillis());
+    return leaderBytesProducedSensor.getRate(METRIC_CONFIG);
   }
 
-  public void recordLeaderBytesProduced(double value) {
-    leaderBytesProducedSensor.record((long) value);
+  public void recordLeaderBytesProduced(long value) {
+    leaderBytesProducedSensor.record(value);
   }
 
   public void setIngestionTaskPushTimeoutGauge(int value) {

@@ -24,4 +24,8 @@ public class LongAdderRateGauge extends Gauge {
     this.lastMeasurementTime = now;
     return (double) this.adder.sumThenReset() / elapsedTimeInSeconds;
   }
+
+  public double getRate(MetricConfig config) {
+    return measure(config, System.currentTimeMillis());
+  }
 }
