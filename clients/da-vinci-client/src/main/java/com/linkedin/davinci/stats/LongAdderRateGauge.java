@@ -10,11 +10,11 @@ public class LongAdderRateGauge extends Gauge {
   private final LongAdder adder = new LongAdder();
   private long lastMeasurementTime = System.currentTimeMillis();
 
-  public void increment() {
+  public void record() {
     this.adder.increment();
   }
 
-  public void add(long amount) {
+  public void record(long amount) {
     this.adder.add(amount);
   }
 

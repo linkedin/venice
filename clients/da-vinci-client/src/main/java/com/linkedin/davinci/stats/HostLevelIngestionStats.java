@@ -377,12 +377,12 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
   /** Record a host-level byte consumption rate across all store versions */
   public void recordTotalBytesConsumed(long bytes) {
-    totalBytesConsumedSensor.add(bytes);
+    totalBytesConsumedSensor.record(bytes);
   }
 
   /** Record a host-level record consumption rate across all store versions */
   public void recordTotalRecordsConsumed() {
-    totalRecordsConsumedSensor.increment();
+    totalRecordsConsumedSensor.record();
   }
 
   public void recordTotalBytesReadFromKafkaAsUncompressedSize(long bytes) {
@@ -472,27 +472,27 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
   }
 
   public void recordUpdateIgnoredDCR() {
-    totalUpdateIgnoredDCRSensor.increment();
+    totalUpdateIgnoredDCRSensor.record();
   }
 
   public void recordTombstoneCreatedDCR() {
-    totalTombstoneCreationDCRSensor.increment();
+    totalTombstoneCreationDCRSensor.record();
   }
 
   public void recordTotalLeaderBytesConsumed(long bytes) {
-    totalLeaderBytesConsumedSensor.add(bytes);
+    totalLeaderBytesConsumedSensor.record(bytes);
   }
 
   public void recordTotalLeaderRecordsConsumed() {
-    totalLeaderRecordsConsumedSensor.increment();
+    totalLeaderRecordsConsumedSensor.record();
   }
 
   public void recordTotalFollowerBytesConsumed(long bytes) {
-    totalFollowerBytesConsumedSensor.add(bytes);
+    totalFollowerBytesConsumedSensor.record(bytes);
   }
 
   public void recordTotalFollowerRecordsConsumed() {
-    totalFollowerRecordsConsumedSensor.increment();
+    totalFollowerRecordsConsumedSensor.record();
   }
 
   public void recordTotalRegionHybridBytesConsumed(int regionId, long bytes) {
@@ -508,11 +508,11 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
   }
 
   public void recordTotalLeaderBytesProduced(long bytes) {
-    totalLeaderBytesProducedSensor.add(bytes);
+    totalLeaderBytesProducedSensor.record(bytes);
   }
 
   public void recordTotalLeaderRecordsProduced(int count) {
-    totalLeaderRecordsProducedSensor.add(count);
+    totalLeaderRecordsProducedSensor.record(count);
   }
 
   public void recordChecksumVerificationFailure() {
@@ -520,11 +520,11 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
   }
 
   public void recordTimestampRegressionDCRError() {
-    totalTimestampRegressionDCRErrorRate.increment();
+    totalTimestampRegressionDCRErrorRate.record();
   }
 
   public void recordOffsetRegressionDCRError() {
-    totalOffsetRegressionDCRErrorRate.increment();
+    totalOffsetRegressionDCRErrorRate.record();
   }
 
   public void recordLeaderDelegateRealTimeRecordLatency(double latency) {
