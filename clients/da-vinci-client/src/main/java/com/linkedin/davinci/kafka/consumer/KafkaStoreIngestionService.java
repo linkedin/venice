@@ -1087,20 +1087,20 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       Store store = metadataRepo.getStoreOrThrow(storeName);
 
       Version version = store.getVersion(store.getCurrentVersion()).get();
-      List<Integer> versions = new ArrayList<>();
-      for (Version v: store.getVersions()) {
-        versions.add(v.getNumber());
-      }
       Map<CharSequence, CharSequence> partitionerParams =
           new HashMap<>(version.getPartitionerConfig().getPartitionerParams());
       VersionProperties versionProperties = new VersionProperties(
           store.getCurrentVersion(),
-          versions,
           version.getCompressionStrategy().getValue(),
           version.getPartitionCount(),
           version.getPartitionerConfig().getPartitionerClass(),
           partitionerParams,
           version.getPartitionerConfig().getAmplificationFactor());
+
+      List<Integer> versions = new ArrayList<>();
+      for (Version v: store.getVersions()) {
+        versions.add(v.getNumber());
+      }
 
       Map<CharSequence, CharSequence> keySchema = Collections.singletonMap(
           String.valueOf(schemaRepo.getKeySchema(storeName).getId()),
@@ -1132,6 +1132,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       }
 
       response.setVersionMetadata(versionProperties);
+      response.setVersions(versions);
       response.setKeySchema(keySchema);
       response.setValueSchemas(valueSchemas);
       response.setLatestSuperSetValueSchemaId(latestSuperSetValueSchemaId);

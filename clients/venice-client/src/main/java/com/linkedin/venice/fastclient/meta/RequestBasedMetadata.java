@@ -154,12 +154,12 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       VersionProperties versionMetadata = metadataResponse.getVersionMetadata();
 
       int fetchedVersion = versionMetadata.getCurrentVersion();
-      Set<Integer> activeVersions = new HashSet<>(versionMetadata.getVersions());
       int compressionStrategy = versionMetadata.getCompressionStrategy();
       int partitionCount = versionMetadata.getPartitionCount();
       String partitionerClass = versionMetadata.getPartitionerClass().toString();
       Map<CharSequence, CharSequence> partitionerParams = versionMetadata.getPartitionerParams();
       int amplificationFactor = versionMetadata.getAmplificationFactor();
+      Set<Integer> activeVersions = new HashSet<>(metadataResponse.getVersions());
       int newSuperSetValueSchemaId = metadataResponse.getLatestSuperSetValueSchemaId();
       Map<CharSequence, CharSequence> keySchema = metadataResponse.getKeySchema();
       Map<CharSequence, CharSequence> valueSchemas = metadataResponse.getValueSchemas();

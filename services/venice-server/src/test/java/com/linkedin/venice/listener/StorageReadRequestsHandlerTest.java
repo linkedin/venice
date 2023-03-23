@@ -384,13 +384,13 @@ public class StorageReadRequestsHandlerTest {
     // Mock the MetadataResponse from ingestion task
     MetadataResponse expectedMetadataResponse = new MetadataResponse();
     VersionProperties versionProperties = new VersionProperties(
-        123,
-        Collections.singletonList(456),
+        1,
         0,
         1,
         "test_partitioner_class",
         Collections.singletonMap("test_partitioner_param", "test_param"),
         2);
+    expectedMetadataResponse.setVersions(Collections.singletonList(1));
     expectedMetadataResponse.setVersionMetadata(versionProperties);
     expectedMetadataResponse.setKeySchema(keySchema);
     expectedMetadataResponse.setValueSchemas(valueSchemas);

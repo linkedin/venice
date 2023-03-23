@@ -28,6 +28,10 @@ public class MetadataResponse {
     responseRecord.setVersionMetadata(versionProperties);
   }
 
+  public void setVersions(List<Integer> versions) {
+    responseRecord.setVersions(versions);
+  }
+
   public void setKeySchema(Map<CharSequence, CharSequence> keySchema) {
     responseRecord.setKeySchema(keySchema);
   }

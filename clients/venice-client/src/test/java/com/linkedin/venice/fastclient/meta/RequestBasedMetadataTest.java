@@ -70,7 +70,6 @@ public class RequestBasedMetadataTest {
 
     VersionProperties versionProperties = new VersionProperties(
         CURRENT_VERSION,
-        Collections.singletonList(CURRENT_VERSION),
         CompressionStrategy.ZSTD_WITH_DICT.getValue(),
         1,
         "com.linkedin.venice.partitioner.DefaultVenicePartitioner",
@@ -78,6 +77,7 @@ public class RequestBasedMetadataTest {
         1);
     MetadataResponseRecord metadataResponse = new MetadataResponseRecord(
         versionProperties,
+        Collections.singletonList(CURRENT_VERSION),
         Collections.singletonMap("1", KEY_SCHEMA),
         Collections.singletonMap("1", VALUE_SCHEMA),
         1,

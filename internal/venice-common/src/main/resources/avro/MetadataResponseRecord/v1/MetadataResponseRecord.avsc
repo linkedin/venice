@@ -19,14 +19,6 @@
               "type": "int"
             },
             {
-              "name": "versions",
-              "doc": "List of all version numbers",
-              "type": {
-                "type": "array",
-                "items": "int"
-              }
-            },
-            {
               "name": "compressionStrategy",
               "doc": "The current version's compression strategy. 0 -> NO_OP, 1 -> GZIP, 2 -> ZSTD, 3 -> ZSTD_WITH_DICT",
               "type": {
@@ -61,6 +53,14 @@
         }
       ],
       "default": null
+    },
+    {
+      "name": "versions",
+      "doc": "List of all version numbers",
+      "type": {
+        "type": "array",
+        "items": "int"
+      }
     },
     {
       "name": "keySchema",
