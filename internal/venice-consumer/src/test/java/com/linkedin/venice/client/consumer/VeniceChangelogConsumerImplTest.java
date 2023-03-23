@@ -103,7 +103,7 @@ public class VeniceChangelogConsumerImplTest {
         new ChangelogClientConfig<>().setD2ControllerClient(d2ControllerClient)
             .setSchemaReader(schemaReader)
             .setStoreName(storeName)
-            .setViewClassName(ChangeCaptureView.CHANGE_CAPTURE_VIEW_WRITER_CLASS_NAME);
+            .setViewClassName(ChangeCaptureView.class.getCanonicalName());
     VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
         new VeniceChangelogConsumerImpl<>(changelogClientConfig, mockKafkaConsumer);
     veniceChangelogConsumer.subscribe(new HashSet<>(Arrays.asList(0))).get();

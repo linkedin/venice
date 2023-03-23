@@ -3,13 +3,20 @@ package com.linkedin.venice.client.consumer;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.D2ControllerClientFactory;
+import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.views.ChangeCaptureView;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class VeniceChangelogConsumerClientFactory {
+  private static final Logger LOGGER = LogManager.getLogger(VeniceChangelogConsumerClientFactory.class);
+
   private final Map<String, VeniceChangelogConsumer> storeClientMap = new HashMap<>();
 
   private final ChangelogClientConfig globalChangelogClientConfig;
@@ -32,11 +39,32 @@ public class VeniceChangelogConsumerClientFactory {
       newStoreChangelogClientConfig.setD2ControllerClient(d2ControllerClient);
       newStoreChangelogClientConfig
           .setSchemaReader(ClientFactory.getSchemaReader(newStoreChangelogClientConfig.getInnerClientConfig()));
-      if (newStoreChangelogClientConfig.getViewClassName()
-          .equals(ChangeCaptureView.CHANGE_CAPTURE_VIEW_WRITER_CLASS_NAME)) {
+
+      String viewClass = getViewClass(
+          storeName,
+          newStoreChangelogClientConfig.getViewClassName(),
+          d2ControllerClient,
+          globalChangelogClientConfig.getControllerRequestRetryCount());
+      if (viewClass.equals(ChangeCaptureView.class.getCanonicalName())) {
         return new VeniceChangelogConsumerImpl(newStoreChangelogClientConfig);
       }
       return new VeniceAfterImageConsumerImpl(newStoreChangelogClientConfig);
     });
+  }
+
+  private String getViewClass(String storeName, String viewName, D2ControllerClient d2ControllerClient, int retries) {
+    StoreResponse response =
+        d2ControllerClient.retryableRequest(retries, controllerClient -> controllerClient.getStore(storeName));
+    if (response.isError()) {
+      throw new VeniceException(
+          "Couldn't retrieve store information when building change capture client for store " + storeName);
+    }
+    ViewConfig viewConfig = response.getStore().getViewConfigs().get(viewName);
+    if (viewConfig == null) {
+      throw new VeniceException(
+          "Couldn't retrieve store view information when building change capture client for store " + storeName
+              + " viewName " + viewName);
+    }
+    return viewConfig.getViewClassName();
   }
 }
