@@ -40,11 +40,16 @@ public class VeniceChangelogConsumerClientFactory {
       newStoreChangelogClientConfig
           .setSchemaReader(ClientFactory.getSchemaReader(newStoreChangelogClientConfig.getInnerClientConfig()));
 
-      String viewClass = getViewClass(
-          storeName,
-          newStoreChangelogClientConfig.getViewClassName(),
-          d2ControllerClient,
-          globalChangelogClientConfig.getControllerRequestRetryCount());
+      String viewClass = newStoreChangelogClientConfig.getViewClassName() == null
+          ? ""
+          : newStoreChangelogClientConfig.getViewClassName();
+      if (!viewClass.isEmpty()) {
+        viewClass = getViewClass(
+            storeName,
+            newStoreChangelogClientConfig.getViewClassName(),
+            d2ControllerClient,
+            globalChangelogClientConfig.getControllerRequestRetryCount());
+      }
       if (viewClass.equals(ChangeCaptureView.class.getCanonicalName())) {
         return new VeniceChangelogConsumerImpl(newStoreChangelogClientConfig);
       }

@@ -206,7 +206,7 @@ public class TestActiveActiveIngestion {
     consumerProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, KafkaValueSerializer.class);
     consumerProperties.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
     ChangelogClientConfig globalChangelogClientConfig =
-        new ChangelogClientConfig().setViewClassName(ChangeCaptureView.class.getCanonicalName())
+        new ChangelogClientConfig().setViewClassName("changeCaptureView")
             .setConsumerProperties(consumerProperties)
             .setControllerD2ServiceName(D2_SERVICE_NAME)
             .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
