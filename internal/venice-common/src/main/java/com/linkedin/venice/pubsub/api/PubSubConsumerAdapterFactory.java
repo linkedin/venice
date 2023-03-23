@@ -19,15 +19,15 @@ public interface PubSubConsumerAdapterFactory<ADAPTER extends PubSubConsumer> ex
    *                                    configs that start with "kafka." prefix will be used.
    * @param isOffsetCollectionEnabled   A flag to enable collection of offset or not.
    * @param pubSubMessageDeserializer   To deserialize the raw byte records into {@link PubSubMessage}s to process.
-   * @param targetBrokerAddress         Broker address to use when creating a consumer.
-   *                                    If this value is null, local broker address present in veniceProperties will be used.
+   * @param consumerName                Name of the consumer. If not null, it will be used to set the context
+   *                                    for consumer thread.
    * @return                            Returns an instance of a consumer adapter
    */
   ADAPTER create(
       VeniceProperties veniceProperties,
       boolean isOffsetCollectionEnabled,
       PubSubMessageDeserializer pubSubMessageDeserializer,
-      String targetBrokerAddress);
+      String consumerName);
 
   String getName();
 }

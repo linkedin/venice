@@ -1,6 +1,7 @@
 package com.linkedin.venice.utils;
 
 import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_PER_ROUTER_READ_QUOTA;
 import static com.linkedin.venice.hadoop.VenicePushJob.D2_ZK_HOSTS_PREFIX;
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_KEY_FIELD_PROP;
@@ -53,7 +54,6 @@ import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
-import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.samza.config.MapConfig;
@@ -377,7 +377,7 @@ public class IntegrationTestPushUtils {
       String pubSubBootstrapServers,
       PubSubTopicRepository pubSubTopicRepository) {
     Properties properties = new Properties();
-    properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, pubSubBootstrapServers);
+    properties.put(KAFKA_BOOTSTRAP_SERVERS, pubSubBootstrapServers);
     return TopicManagerRepository.builder()
         .setPubSubProperties(k -> new VeniceProperties(properties))
         .setPubSubTopicRepository(pubSubTopicRepository)

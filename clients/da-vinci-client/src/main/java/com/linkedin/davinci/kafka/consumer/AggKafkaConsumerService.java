@@ -1,13 +1,11 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import static com.linkedin.venice.ConfigConstants.*;
 import static com.linkedin.venice.ConfigKeys.*;
-import static org.apache.kafka.common.config.SslConfigs.*;
 
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
-import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
@@ -18,20 +16,15 @@ import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.throttle.EventThrottler;
-import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.SystemTime;
-import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
-import org.apache.kafka.clients.CommonClientConfigs;
-import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -58,11 +51,11 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   private final Map<String, String> kafkaClusterUrlToAliasMap;
   private final Object2IntMap<String> kafkaClusterUrlToIdMap;
   private final KafkaPubSubMessageDeserializer pubSubDeserializer;
-
-  private final VeniceServerConfig serverConfig;
+  private final TopicManagerRepository.SSLPropertiesSupplier sslPropertiesSupplier;
 
   public AggKafkaConsumerService(
       final PubSubConsumerAdapterFactory consumerFactory,
+      TopicManagerRepository.SSLPropertiesSupplier sslPropertiesSupplier,
       final VeniceServerConfig serverConfig,
       final EventThrottler bandwidthThrottler,
       final EventThrottler recordsThrottler,
@@ -71,7 +64,6 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
       TopicExistenceChecker topicExistenceChecker,
       KafkaPubSubMessageDeserializer pubSubDeserializer) {
     this.consumerFactory = consumerFactory;
-    this.serverConfig = serverConfig;
     this.readCycleDelayMs = serverConfig.getKafkaReadCycleDelayMs();
     this.numOfConsumersPerKafkaCluster = serverConfig.getConsumerPoolSizePerKafkaCluster();
     this.sharedConsumerNonExistingTopicCleanupDelayMS = serverConfig.getSharedConsumerNonExistingTopicCleanupDelayMS();
@@ -85,6 +77,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     this.kafkaClusterUrlToAliasMap = serverConfig.getKafkaClusterUrlToAliasMap();
     this.kafkaClusterUrlToIdMap = serverConfig.getKafkaClusterUrlToIdMap();
     this.pubSubDeserializer = pubSubDeserializer;
+    this.sslPropertiesSupplier = sslPropertiesSupplier;
     LOGGER.info("Successfully initialized AggKafkaConsumerService");
   }
 
@@ -112,44 +105,6 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     return kafkaServerToConsumerServiceMap.get(kafkaURL);
   }
 
-  private VeniceProperties getPubSubSSLPropertiesFromServerConfig(String kafkaBootstrapUrls) {
-    VeniceServerConfig tmpServerConfig = this.serverConfig;
-    if (!kafkaBootstrapUrls.equals(tmpServerConfig.getKafkaBootstrapServers())) {
-      Properties clonedProperties = tmpServerConfig.getClusterProperties().toProperties();
-      clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapUrls);
-      tmpServerConfig =
-          new VeniceServerConfig(new VeniceProperties(clonedProperties), tmpServerConfig.getKafkaClusterMap());
-    }
-    Properties properties = new Properties();
-    kafkaBootstrapUrls = properties.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
-    if (kafkaBootstrapUrls == null) {
-      /** Override the bootstrap servers config if it's not set in the proposed properties. */
-      kafkaBootstrapUrls = tmpServerConfig.getKafkaBootstrapServers();
-    }
-    String resolvedKafkaUrl = tmpServerConfig.getKafkaClusterUrlResolver().apply(kafkaBootstrapUrls);
-    if (resolvedKafkaUrl != null) {
-      kafkaBootstrapUrls = resolvedKafkaUrl;
-    }
-    properties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafkaBootstrapUrls);
-    SecurityProtocol securityProtocol = tmpServerConfig.getKafkaSecurityProtocol(kafkaBootstrapUrls);
-    if (KafkaSSLUtils.isKafkaSSLProtocol(securityProtocol)) {
-      Optional<SSLConfig> sslConfig = tmpServerConfig.getSslConfig();
-      if (!sslConfig.isPresent()) {
-        throw new VeniceException("SSLConfig should be present when Kafka SSL is enabled");
-      }
-      properties.putAll(sslConfig.get().getKafkaSSLConfig());
-      /**
-       * Check whether openssl is enabled for the kafka consumers in ingestion service.
-       */
-      if (tmpServerConfig.isKafkaOpenSSLEnabled()) {
-        properties.setProperty(SSL_CONTEXT_PROVIDER_CLASS_CONFIG, DEFAULT_KAFKA_SSL_CONTEXT_PROVIDER_CLASS_NAME);
-      }
-    }
-    properties.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, securityProtocol.name);
-    properties.put("controllerOrNot", "false"); // TODO: remove this
-    return new VeniceProperties(properties);
-  }
-
   /**
    * Create a new {@link KafkaConsumerService} given consumerProperties which must contain a value for "bootstrap.servers".
    * If a {@link KafkaConsumerService} for the given "bootstrap.servers" (Kafka URL) has already been created, this method
@@ -158,9 +113,9 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
    * @param consumerProperties consumer properties that are used to create {@link KafkaConsumerService}
    */
   public synchronized KafkaConsumerService createKafkaConsumerService(final Properties consumerProperties) {
-    final String kafkaUrl = consumerProperties.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
-    Properties properties = getPubSubSSLPropertiesFromServerConfig(kafkaUrl).toProperties();
-
+    final String kafkaUrl = consumerProperties.getProperty(KAFKA_BOOTSTRAP_SERVERS);
+    Properties properties = sslPropertiesSupplier.get(kafkaUrl).toProperties();
+    consumerProperties.putAll(properties);
     if (kafkaUrl == null || kafkaUrl.isEmpty()) {
       throw new IllegalArgumentException("Kafka URL must be set in the consumer properties config. Got: " + kafkaUrl);
     }
@@ -174,7 +129,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
         kafkaUrl,
         url -> sharedConsumerAssignmentStrategy.constructor.construct(
             consumerFactory,
-            properties,
+            consumerProperties,
             readCycleDelayMs,
             numOfConsumersPerKafkaCluster,
             bandwidthThrottler,

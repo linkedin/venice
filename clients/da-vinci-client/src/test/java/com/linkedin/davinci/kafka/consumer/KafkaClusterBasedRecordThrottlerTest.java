@@ -1,5 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.SERVER_ENABLE_LIVE_CONFIG_BASED_KAFKA_THROTTLING;
 import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.doReturn;
@@ -22,7 +23,6 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicLong;
-import org.apache.kafka.clients.CommonClientConfigs;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -40,7 +40,7 @@ public class KafkaClusterBasedRecordThrottlerTest {
     extraServerProperties.put(SERVER_ENABLE_LIVE_CONFIG_BASED_KAFKA_THROTTLING, true);
 
     Properties kafkaProps = new Properties();
-    kafkaProps.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
+    kafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
 
     AtomicLong remoteKafkaQuota = new AtomicLong(10);
 

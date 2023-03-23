@@ -1,5 +1,6 @@
 package com.linkedin.venice.kafka.consumer;
 
+import static com.linkedin.venice.ConfigKeys.*;
 import static org.mockito.Mockito.*;
 
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
@@ -16,7 +17,6 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.Properties;
 import java.util.Set;
-import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.TopicPartition;
@@ -39,7 +39,7 @@ public class ApacheKafkaPubSubConsumerTest {
     Properties properties = new Properties();
     properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
-    properties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, "broker address");
+    properties.setProperty(KAFKA_BOOTSTRAP_SERVERS, "broker address");
     KafkaPubSubMessageDeserializer kafkaPubSubMessageDeserializer = mock(KafkaPubSubMessageDeserializer.class);
     apacheKafkaConsumerWithOffsetTrackingDisabled = new ApacheKafkaConsumer(
         delegateKafkaConsumer,

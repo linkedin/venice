@@ -17,9 +17,8 @@ public class ApacheKafkaConsumerAdapterFactory implements PubSubConsumerAdapterF
       VeniceProperties veniceProperties,
       boolean isKafkaConsumerOffsetCollectionEnabled,
       PubSubMessageDeserializer pubSubMessageDeserializer,
-      String brokerAddressToOverride) {
-    ApacheKafkaConsumerConfig apacheKafkaConsumerConfig =
-        new ApacheKafkaConsumerConfig(veniceProperties, brokerAddressToOverride);
+      String consumerName) {
+    ApacheKafkaConsumerConfig apacheKafkaConsumerConfig = new ApacheKafkaConsumerConfig(veniceProperties, consumerName);
     if (pubSubMessageDeserializer instanceof KafkaPubSubMessageDeserializer) {
       return new ApacheKafkaConsumer(
           new KafkaConsumer<>(apacheKafkaConsumerConfig.getConsumerProperties()),

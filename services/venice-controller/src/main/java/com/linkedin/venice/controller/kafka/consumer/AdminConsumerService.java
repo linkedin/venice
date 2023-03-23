@@ -1,5 +1,7 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
+import static com.linkedin.venice.ConfigKeys.*;
+
 import com.linkedin.venice.controller.AdminTopicMetadataAccessor;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
@@ -40,9 +42,7 @@ public class AdminConsumerService extends AbstractVeniceService {
   private Thread consumerThread;
 
   private final PubSubTopicRepository pubSubTopicRepository;
-
-  private final VeniceProperties consumerProperties;
-
+  private final String localKafkaServerUrl;
   private final KafkaPubSubMessageDeserializer pubSubMessageDeserializer;
 
   public AdminConsumerService(
@@ -66,8 +66,8 @@ public class AdminConsumerService extends AbstractVeniceService {
     } else {
       remoteKafkaServerUrl = Optional.empty();
     }
+    this.localKafkaServerUrl = admin.getKafkaBootstrapServers(admin.isSslToKafka());
     this.consumerFactory = admin.getVeniceConsumerFactory();
-    this.consumerProperties = admin.getPubSubSSLProperties();
   }
 
   @Override
@@ -197,7 +197,8 @@ public class AdminConsumerService extends AbstractVeniceService {
   }
 
   private PubSubConsumer createKafkaConsumer(String clusterName) {
-    Properties kafkaConsumerProperties = consumerProperties.toProperties();
+    String pubSubServerUrl = remoteConsumptionEnabled ? remoteKafkaServerUrl.get() : localKafkaServerUrl;
+    Properties kafkaConsumerProperties = admin.getPubSubSSLProperties(pubSubServerUrl).toProperties();
     /**
      * {@link ConsumerConfig.CLIENT_ID_CONFIG} can be used to identify different consumers while checking Kafka related metrics.
      */
@@ -208,14 +209,7 @@ public class AdminConsumerService extends AbstractVeniceService {
      * 1. {@link AdminConsumptionTask} is persisting {@link com.linkedin.venice.offsets.OffsetRecord} in Zookeeper.
      */
     kafkaConsumerProperties.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
-    if (remoteConsumptionEnabled) {
-      return consumerFactory.create(
-          new VeniceProperties(kafkaConsumerProperties),
-          false,
-          pubSubMessageDeserializer,
-          remoteKafkaServerUrl.get());
-    }
     return consumerFactory
-        .create(new VeniceProperties(kafkaConsumerProperties), false, pubSubMessageDeserializer, null);
+        .create(new VeniceProperties(kafkaConsumerProperties), false, pubSubMessageDeserializer, clusterName);
   }
 }

@@ -21,7 +21,6 @@ import java.nio.ByteBuffer;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
-import org.apache.kafka.clients.CommonClientConfigs;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -54,7 +53,7 @@ public class TestDictionaryUtils {
 
   private Properties getKafkaProperties() {
     Properties props = new Properties();
-    props.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, manager.getKafkaBootstrapServers());
+    props.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, manager.getKafkaBootstrapServers());
     props.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafka.getAddress());
     props.put(ConfigKeys.PARTITIONER_CLASS, DefaultVenicePartitioner.class.getName());
     return props;

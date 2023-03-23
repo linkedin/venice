@@ -1,9 +1,10 @@
 package com.linkedin.venice.kafka.partitionoffset;
 
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
-import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapterFactory;
@@ -14,6 +15,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.util.Optional;
+import java.util.Properties;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -39,13 +41,15 @@ public class PartitionOffsetFetcherTest {
   public void testGetPartitionLatestOffsetAndRetry() {
 
     PubSubAdminAdapterFactory pubSubAdminAdapterFactory = IntegrationTestPushUtils.getVeniceAdminFactory();
+    Properties properties = new Properties();
+    properties.setProperty(KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
     try (PartitionOffsetFetcher fetcher = PartitionOffsetFetcherFactory.createDefaultPartitionOffsetFetcher(
-        new ApacheKafkaConsumerAdapterFactory(),
-        new VeniceProperties(),
+        IntegrationTestPushUtils.getVeniceConsumerFactory(),
+        new VeniceProperties(properties),
         pubSubBrokerWrapper.getAddress(),
         Lazy.of(
             () -> pubSubAdminAdapterFactory.create(
-                new VeniceProperties(),
+                new VeniceProperties(properties),
                 Optional.empty(),
                 "admin_stats",
                 pubSubTopicRepository,

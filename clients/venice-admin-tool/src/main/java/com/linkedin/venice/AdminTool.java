@@ -1,8 +1,8 @@
 package com.linkedin.venice;
 
 import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
-import static org.apache.kafka.clients.consumer.ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG;
 import static org.apache.kafka.clients.consumer.ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG;
 import static org.apache.kafka.clients.consumer.ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG;
 
@@ -129,7 +129,6 @@ import org.apache.commons.cli.OptionGroup;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 import org.apache.commons.lang.StringUtils;
-import org.apache.kafka.clients.CommonClientConfigs;
 
 
 public class AdminTool {
@@ -1307,7 +1306,7 @@ public class AdminTool {
     long startTime = System.currentTimeMillis();
     String kafkaBootstrapServer = getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS);
     Properties properties = loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
-    properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafkaBootstrapServer);
+    properties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServer);
     VeniceProperties veniceProperties = new VeniceProperties(properties);
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     int kafkaTimeOut = 30 * Time.MS_PER_SECOND;
@@ -1355,7 +1354,7 @@ public class AdminTool {
     Properties consumerProps = loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
     String kafkaUrl = getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS);
 
-    consumerProps.setProperty(BOOTSTRAP_SERVERS_CONFIG, kafkaUrl);
+    consumerProps.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
     // This is a temporary fix for the issue described here
     // https://stackoverflow.com/questions/37363119/kafka-producer-org-apache-kafka-common-serialization-stringserializer-could-no
     // In our case "com.linkedin.venice.serialization.KafkaKeySerializer" class can not be found
@@ -1376,7 +1375,7 @@ public class AdminTool {
   private static void queryKafkaTopic(CommandLine cmd) throws java.text.ParseException {
     Properties consumerProps = loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
     String kafkaUrl = getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS);
-    consumerProps.setProperty(BOOTSTRAP_SERVERS_CONFIG, kafkaUrl);
+    consumerProps.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
 
     String kafkaTopic = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
     String startDateInPST = getRequiredArgument(cmd, Arg.START_DATE);
@@ -1400,7 +1399,7 @@ public class AdminTool {
     Properties consumerProps = loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
     String kafkaUrl = getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS);
 
-    consumerProps.setProperty(BOOTSTRAP_SERVERS_CONFIG, kafkaUrl);
+    consumerProps.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
     consumerProps.put(KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class);
     consumerProps.put(VALUE_DESERIALIZER_CLASS_CONFIG, KafkaValueSerializer.class);
 

@@ -61,6 +61,8 @@ public class TestAdminConsumerService {
     doReturn(mock(ZkClient.class)).when(admin).getZkClient();
     doReturn(mock(HelixAdapterSerializer.class)).when(admin).getAdapterSerializer();
     doReturn(consumerFactory).when(admin).getVeniceConsumerFactory();
+    doReturn("localhost:1234").when(admin).getKafkaBootstrapServers(true);
+    doReturn(true).when(admin).isSslToKafka();
 
     AdminConsumerService adminConsumerService1 = null;
     AdminConsumerService adminConsumerService2 = null;

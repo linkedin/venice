@@ -3896,8 +3896,8 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public VeniceProperties getPubSubSSLProperties() {
-    return getVeniceHelixAdmin().getPubSubSSLProperties();
+  public VeniceProperties getPubSubSSLProperties(String pubSubBrokerAddress) {
+    return getVeniceHelixAdmin().getPubSubSSLProperties(pubSubBrokerAddress);
   }
 
   /**

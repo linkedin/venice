@@ -204,7 +204,6 @@ import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.mockito.ArgumentCaptor;
@@ -678,7 +677,7 @@ public abstract class StoreIngestionTaskTest {
         false).build();
 
     Properties kafkaProps = new Properties();
-    kafkaProps.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
+    kafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
 
     int leaderSubPartition = PartitionUtils.getLeaderSubPartition(PARTITION_FOO, amplificationFactor);
     storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(
@@ -805,7 +804,7 @@ public abstract class StoreIngestionTaskTest {
 
     doAnswer(invocation -> {
       VeniceProperties consumerProps = invocation.getArgument(0, VeniceProperties.class);
-      String kafkaUrl = consumerProps.toProperties().getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
+      String kafkaUrl = consumerProps.toProperties().getProperty(KAFKA_BOOTSTRAP_SERVERS);
       if (kafkaUrl.equals(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer())) {
         return inMemoryRemoteKafkaConsumer;
       }
@@ -843,8 +842,7 @@ public abstract class StoreIngestionTaskTest {
     final Sensor mockSensor = mock(Sensor.class);
     doReturn(mockSensor).when(mockMetricsRepository).sensor(anyString(), any());
     Properties localKafkaProps = new Properties();
-    localKafkaProps
-        .put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
+    localKafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
     localKafkaConsumerService = getConsumerAssignmentStrategy().constructor.construct(
         mockFactory,
         localKafkaProps,
@@ -864,8 +862,7 @@ public abstract class StoreIngestionTaskTest {
     localKafkaConsumerService.start();
 
     Properties remoteKafkaProps = new Properties();
-    remoteKafkaProps
-        .put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, inMemoryRemoteKafkaBroker.getKafkaBootstrapServer());
+    remoteKafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryRemoteKafkaBroker.getKafkaBootstrapServer());
     remoteKafkaConsumerService = getConsumerAssignmentStrategy().constructor.construct(
         mockFactory,
         remoteKafkaProps,
@@ -2531,7 +2528,7 @@ public abstract class StoreIngestionTaskTest {
         true).build();
 
     Properties kafkaProps = new Properties();
-    kafkaProps.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
+    kafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
 
     int leaderSubPartition = PartitionUtils.getLeaderSubPartition(PARTITION_FOO, amplificationFactor);
     storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(
@@ -2672,7 +2669,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(true).when(mockTopicManagerRemoteKafka).containsTopic(any());
 
     Properties kafkaProps = new Properties();
-    kafkaProps.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
+    kafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
 
     int leaderSubPartition = PartitionUtils.getLeaderSubPartition(PARTITION_FOO, amplificationFactor);
     storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(
@@ -2837,7 +2834,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(true).when(mockTopicManagerRemoteKafka).containsTopic(any());
 
     Properties kafkaProps = new Properties();
-    kafkaProps.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
+    kafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
     int leaderSubPartition = PartitionUtils.getLeaderSubPartition(PARTITION_FOO, amplificationFactor);
     storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(
         mockStore,
@@ -2911,7 +2908,7 @@ public abstract class StoreIngestionTaskTest {
         false).setIsDaVinciClient(isDaVinciClient).build();
     int leaderSubPartition = PartitionUtils.getLeaderSubPartition(PARTITION_FOO, amplificationFactor);
     Properties kafkaProps = new Properties();
-    kafkaProps.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
+    kafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
 
     storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(
         mockStore,
@@ -2966,8 +2963,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(activeActive).when(mockVersion).isActiveActiveReplicationEnabled();
 
     Properties mockKafkaConsumerProperties = mock(Properties.class);
-    doReturn("localhost").when(mockKafkaConsumerProperties)
-        .getProperty(eq(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG));
+    doReturn("localhost").when(mockKafkaConsumerProperties).getProperty(eq(KAFKA_BOOTSTRAP_SERVERS));
 
     VeniceServerConfig mockVeniceServerConfig = mock(VeniceServerConfig.class);
     VeniceProperties mockVeniceProperties = mock(VeniceProperties.class);

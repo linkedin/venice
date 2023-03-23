@@ -38,7 +38,6 @@ import com.linkedin.venice.helix.HelixInstanceConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.admin.ApacheKafkaAdminAdapterFactory;
-import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumer;
 import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -411,6 +410,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     aggKafkaConsumerService = new AggKafkaConsumerService(
         new ApacheKafkaConsumerAdapterFactory(),
+        this::getPubSubSSLPropertiesFromServerConfig,
         serverConfig,
         bandwidthThrottler,
         recordsThrottler,
@@ -470,44 +470,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setVeniceViewWriterFactory(viewWriterFactory)
         .setPubSubTopicRepository(pubSubTopicRepository)
         .build();
-  }
-
-  private VeniceProperties getPubSubSSLPropertiesFromServerConfig(String kafkaBootstrapUrls) {
-
-    VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
-    if (!kafkaBootstrapUrls.equals(serverConfig.getKafkaBootstrapServers())) {
-      Properties clonedProperties = serverConfig.getClusterProperties().toProperties();
-      clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapUrls);
-      serverConfig = new VeniceServerConfig(new VeniceProperties(clonedProperties), serverConfig.getKafkaClusterMap());
-    }
-    Properties properties = new Properties();
-    kafkaBootstrapUrls = properties.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
-    if (kafkaBootstrapUrls == null) {
-      /** Override the bootstrap servers config if it's not set in the proposed properties. */
-      kafkaBootstrapUrls = serverConfig.getKafkaBootstrapServers();
-    }
-    String resolvedKafkaUrl = serverConfig.getKafkaClusterUrlResolver().apply(kafkaBootstrapUrls);
-    if (resolvedKafkaUrl != null) {
-      kafkaBootstrapUrls = resolvedKafkaUrl;
-    }
-    properties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafkaBootstrapUrls);
-    SecurityProtocol securityProtocol = serverConfig.getKafkaSecurityProtocol(kafkaBootstrapUrls);
-    if (KafkaSSLUtils.isKafkaSSLProtocol(securityProtocol)) {
-      Optional<SSLConfig> sslConfig = serverConfig.getSslConfig();
-      if (!sslConfig.isPresent()) {
-        throw new VeniceException("SSLConfig should be present when Kafka SSL is enabled");
-      }
-      properties.putAll(sslConfig.get().getKafkaSSLConfig());
-      /**
-       * Check whether openssl is enabled for the kafka consumers in ingestion service.
-       */
-      if (serverConfig.isKafkaOpenSSLEnabled()) {
-        properties.setProperty(SSL_CONTEXT_PROVIDER_CLASS_CONFIG, DEFAULT_KAFKA_SSL_CONTEXT_PROVIDER_CLASS_NAME);
-      }
-    }
-    properties.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, securityProtocol.name);
-    properties.put("controllerOrNot", "false"); // TODO: remove this
-    return new VeniceProperties(properties);
   }
 
   /**
@@ -1028,37 +990,64 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    * @return
    */
   private Properties getCommonKafkaConsumerProperties(VeniceServerConfig serverConfig) {
-    Properties kafkaConsumerProperties =
-        getPubSubSSLPropertiesFromServerConfig(serverConfig.getKafkaBootstrapServers()).toProperties();
-    kafkaConsumerProperties
-        .setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, serverConfig.getKafkaBootstrapServers());
-    kafkaConsumerProperties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+    Properties kafkaConsumerProperties = new Properties();
+    kafkaConsumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, serverConfig.getKafkaBootstrapServers());
+    kafkaConsumerProperties.setProperty(KAFKA_AUTO_OFFSET_RESET_CONFIG, "earliest");
     // Venice is persisting offset in local offset db.
-    kafkaConsumerProperties.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
-    kafkaConsumerProperties.setProperty(
-        ConsumerConfig.FETCH_MIN_BYTES_CONFIG,
-        String.valueOf(serverConfig.getKafkaFetchMinSizePerSecond()));
-    kafkaConsumerProperties.setProperty(
-        ConsumerConfig.FETCH_MAX_BYTES_CONFIG,
-        String.valueOf(serverConfig.getKafkaFetchMaxSizePerSecond()));
+    kafkaConsumerProperties.setProperty(KAFKA_ENABLE_AUTO_COMMIT_CONFIG, "false");
+    kafkaConsumerProperties
+        .setProperty(KAFKA_FETCH_MIN_BYTES_CONFIG, String.valueOf(serverConfig.getKafkaFetchMinSizePerSecond()));
+    kafkaConsumerProperties
+        .setProperty(KAFKA_FETCH_MAX_BYTES_CONFIG, String.valueOf(serverConfig.getKafkaFetchMaxSizePerSecond()));
     /**
      * The following setting is used to control the maximum number of records to returned in one poll request.
      */
     kafkaConsumerProperties
-        .setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, Integer.toString(serverConfig.getKafkaMaxPollRecords()));
+        .setProperty(KAFKA_MAX_POLL_RECORDS_CONFIG, Integer.toString(serverConfig.getKafkaMaxPollRecords()));
     kafkaConsumerProperties
-        .setProperty(ConsumerConfig.FETCH_MAX_WAIT_MS_CONFIG, String.valueOf(serverConfig.getKafkaFetchMaxTimeMS()));
+        .setProperty(KAFKA_FETCH_MAX_WAIT_MS_CONFIG, String.valueOf(serverConfig.getKafkaFetchMaxTimeMS()));
     kafkaConsumerProperties.setProperty(
-        ConsumerConfig.MAX_PARTITION_FETCH_BYTES_CONFIG,
+        KAFKA_MAX_PARTITION_FETCH_BYTES_CONFIG,
         String.valueOf(serverConfig.getKafkaFetchPartitionMaxSizePerSecond()));
+    kafkaConsumerProperties
+        .setProperty(KAFKA_CONSUMER_POLL_RETRY_TIMES_CONFIG, String.valueOf(serverConfig.getKafkaPollRetryTimes()));
     kafkaConsumerProperties.setProperty(
-        ApacheKafkaConsumer.CONSUMER_POLL_RETRY_TIMES_CONFIG,
-        String.valueOf(serverConfig.getKafkaPollRetryTimes()));
-    kafkaConsumerProperties.setProperty(
-        ApacheKafkaConsumer.CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG,
+        KAFKA_CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG,
         String.valueOf(serverConfig.getKafkaPollRetryBackoffMs()));
 
     return kafkaConsumerProperties;
+  }
+
+  private VeniceProperties getPubSubSSLPropertiesFromServerConfig(String kafkaBootstrapUrls) {
+    VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
+    if (!kafkaBootstrapUrls.equals(serverConfig.getKafkaBootstrapServers())) {
+      Properties clonedProperties = serverConfig.getClusterProperties().toProperties();
+      clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapUrls);
+      serverConfig = new VeniceServerConfig(new VeniceProperties(clonedProperties), serverConfig.getKafkaClusterMap());
+    }
+    Properties properties = new Properties();
+    kafkaBootstrapUrls = serverConfig.getKafkaBootstrapServers();
+    String resolvedKafkaUrl = serverConfig.getKafkaClusterUrlResolver().apply(kafkaBootstrapUrls);
+    if (resolvedKafkaUrl != null) {
+      kafkaBootstrapUrls = resolvedKafkaUrl;
+    }
+    properties.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapUrls);
+    SecurityProtocol securityProtocol = serverConfig.getKafkaSecurityProtocol(kafkaBootstrapUrls);
+    if (KafkaSSLUtils.isKafkaSSLProtocol(securityProtocol)) {
+      Optional<SSLConfig> sslConfig = serverConfig.getSslConfig();
+      if (!sslConfig.isPresent()) {
+        throw new VeniceException("SSLConfig should be present when Kafka SSL is enabled");
+      }
+      properties.putAll(sslConfig.get().getKafkaSSLConfig());
+      /**
+       * Check whether openssl is enabled for the kafka consumers in ingestion service.
+       */
+      if (serverConfig.isKafkaOpenSSLEnabled()) {
+        properties.setProperty(SSL_CONTEXT_PROVIDER_CLASS_CONFIG, DEFAULT_KAFKA_SSL_CONTEXT_PROVIDER_CLASS_NAME);
+      }
+    }
+    properties.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, securityProtocol.name);
+    return new VeniceProperties(properties);
   }
 
   /**

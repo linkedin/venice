@@ -1,5 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.runVPJ;
@@ -37,7 +38,6 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
-import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.samza.system.SystemProducer;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -67,7 +67,7 @@ public class TestEmptyPush {
     String kafkaUrl = venice.getKafka().getAddress();
 
     Properties props = (Properties) properties.clone();
-    props.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafkaUrl);
+    props.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
     return DictionaryUtils.readDictionaryFromKafka(topic, new VeniceProperties(props));
   }
 

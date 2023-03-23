@@ -1,5 +1,6 @@
 package com.linkedin.venice.kafka;
 
+import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicCompletion;
 import static org.mockito.Mockito.doReturn;
@@ -47,6 +48,7 @@ import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
@@ -58,7 +60,6 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.mockito.Mockito;
@@ -188,6 +189,7 @@ public class KafkaConsumptionTest {
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
     AggKafkaConsumerService aggKafkaConsumerService = new AggKafkaConsumerService(
         pubSubConsumerAdapterFactory,
+        k -> new VeniceProperties(),
         veniceServerConfig,
         mockBandwidthThrottler,
         mockRecordsThrottler,
@@ -204,7 +206,7 @@ public class KafkaConsumptionTest {
 
     // Local consumer subscription.
     Properties consumerProperties = new Properties();
-    consumerProperties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, localKafkaUrl);
+    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, localKafkaUrl);
     consumerProperties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     consumerProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     consumerProperties.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
@@ -216,7 +218,7 @@ public class KafkaConsumptionTest {
 
     // Remote consumer subscription.
     consumerProperties = new Properties();
-    consumerProperties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, remoteKafkaUrl);
+    consumerProperties.put(KAFKA_BOOTSTRAP_SERVERS, remoteKafkaUrl);
     consumerProperties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     consumerProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     consumerProperties.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);

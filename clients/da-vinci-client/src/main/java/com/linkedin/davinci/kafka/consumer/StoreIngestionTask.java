@@ -3,6 +3,7 @@ package com.linkedin.davinci.kafka.consumer;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.RESET_OFFSET;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.SUBSCRIBE;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.UNSUBSCRIBE;
+import static com.linkedin.venice.ConfigKeys.*;
 import static java.util.concurrent.TimeUnit.HOURS;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
@@ -400,7 +401,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         amplificationFactorAdapter);
 
     this.cacheBackend = cacheBackend;
-    this.localKafkaServer = this.kafkaProps.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
+    this.localKafkaServer = this.kafkaProps.getProperty(KAFKA_BOOTSTRAP_SERVERS);
     this.localKafkaServerSingletonSet = Collections.singleton(localKafkaServer);
     this.isDaVinciClient = builder.isDaVinciClient();
     this.isActiveActiveReplicationEnabled = version.isActiveActiveReplicationEnabled();
@@ -3093,7 +3094,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       boolean consumeRemotely) {
     Properties newConsumerProps = new Properties();
     newConsumerProps.putAll(localConsumerProps);
-    newConsumerProps.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, remoteKafkaSourceAddress);
+    newConsumerProps.setProperty(KAFKA_BOOTSTRAP_SERVERS, remoteKafkaSourceAddress);
     VeniceProperties customizedConsumerConfigs = consumeRemotely
         ? serverConfig.getKafkaConsumerConfigsForRemoteConsumption()
         : serverConfig.getKafkaConsumerConfigsForLocalConsumption();

@@ -34,7 +34,6 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
@@ -75,10 +74,9 @@ public class PubSubSharedProducerAdapterFactoryTest {
     topicManager.createTopic(existingTopic, 1, 1, true);
 
     SharedKafkaProducerAdapterFactory sharedKafkaProducerAdapterFactory = null;
+    Properties properties = new Properties();
+    properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
     try {
-      Properties properties = new Properties();
-      properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
-      properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, pubSubBrokerWrapper.getAddress());
       properties.put(ConfigKeys.PARTITIONER_CLASS, DefaultVenicePartitioner.class.getName());
       properties.put(KAFKA_BUFFER_MEMORY, "16384");
       sharedKafkaProducerAdapterFactory = TestUtils.getSharedKafkaProducerService(properties);

@@ -1,5 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.venice.ConfigKeys.*;
+
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
 import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -35,7 +37,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.IntConsumer;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
-import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -98,7 +99,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
       final KafkaPubSubMessageDeserializer pubSubDeserializer,
       final Time time,
       final KafkaConsumerServiceStats statsOverride) {
-    this.kafkaUrl = consumerProperties.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
+    this.kafkaUrl = consumerProperties.getProperty(KAFKA_BOOTSTRAP_SERVERS);
     this.LOGGER = LogManager.getLogger(KafkaConsumerService.class.getSimpleName() + " [" + kafkaUrl + "]");
 
     // Initialize consumers and consumerExecutor

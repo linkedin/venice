@@ -400,36 +400,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         pubSubTopicRepository);
   }
 
-  private VeniceProperties getPubSubSSLPropertiesFromControllerConfig(String pubSubBootstrapServers) {
-    VeniceControllerConfig controllerConfig = multiClusterConfigs.getCommonConfig();
-    if (!pubSubBootstrapServers.equals(controllerConfig.getKafkaBootstrapServers())
-        && !pubSubBootstrapServers.equals(controllerConfig.getSslKafkaBootstrapServers())) {
-      VeniceProperties originalPros = controllerConfig.getProps();
-      Properties clonedProperties = originalPros.toProperties();
-      if (originalPros.getBoolean(SSL_TO_KAFKA, false)) {
-        clonedProperties.setProperty(SSL_KAFKA_BOOTSTRAP_SERVERS, pubSubBootstrapServers);
-      } else {
-        clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, pubSubBootstrapServers);
-      }
-      controllerConfig = new VeniceControllerConfig(new VeniceProperties(clonedProperties));
-    }
-
-    Properties properties = new Properties();
-    if (KafkaSSLUtils.isKafkaSSLProtocol(controllerConfig.getKafkaSecurityProtocol())) {
-      Optional<SSLConfig> sslConfig = controllerConfig.getSslConfig();
-      if (!sslConfig.isPresent()) {
-        throw new VeniceException("SSLConfig should be present when Kafka SSL is enabled");
-      }
-      properties.putAll(sslConfig.get().getKafkaSSLConfig());
-      properties.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, controllerConfig.getKafkaSecurityProtocol());
-      properties
-          .setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, controllerConfig.getSslKafkaBootstrapServers());
-    } else {
-      properties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, controllerConfig.getKafkaBootstrapServers());
-    }
-    return new VeniceProperties(properties);
-  }
-
   // TODO Use different configs for different clusters when creating helix admin.
   public VeniceHelixAdmin(
       VeniceControllerMultiClusterConfig multiClusterConfigs,
@@ -680,6 +650,35 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
       });
     }
+  }
+
+  private VeniceProperties getPubSubSSLPropertiesFromControllerConfig(String pubSubBootstrapServers) {
+    VeniceControllerConfig controllerConfig = multiClusterConfigs.getCommonConfig();
+    if (!pubSubBootstrapServers.equals(controllerConfig.getKafkaBootstrapServers())
+        && !pubSubBootstrapServers.equals(controllerConfig.getSslKafkaBootstrapServers())) {
+      VeniceProperties originalPros = controllerConfig.getProps();
+      Properties clonedProperties = originalPros.toProperties();
+      if (originalPros.getBoolean(SSL_TO_KAFKA, false)) {
+        clonedProperties.setProperty(SSL_KAFKA_BOOTSTRAP_SERVERS, pubSubBootstrapServers);
+      } else {
+        clonedProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, pubSubBootstrapServers);
+      }
+      controllerConfig = new VeniceControllerConfig(new VeniceProperties(clonedProperties));
+    }
+
+    Properties properties = new Properties();
+    if (KafkaSSLUtils.isKafkaSSLProtocol(controllerConfig.getKafkaSecurityProtocol())) {
+      Optional<SSLConfig> sslConfig = controllerConfig.getSslConfig();
+      if (!sslConfig.isPresent()) {
+        throw new VeniceException("SSLConfig should be present when Kafka SSL is enabled");
+      }
+      properties.putAll(sslConfig.get().getKafkaSSLConfig());
+      properties.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, controllerConfig.getKafkaSecurityProtocol());
+      properties.setProperty(KAFKA_BOOTSTRAP_SERVERS, controllerConfig.getSslKafkaBootstrapServers());
+    } else {
+      properties.setProperty(KAFKA_BOOTSTRAP_SERVERS, controllerConfig.getKafkaBootstrapServers());
+    }
+    return new VeniceProperties(properties);
   }
 
   public void startInstanceMonitor(String clusterName) {
@@ -5703,7 +5702,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * @see ConfigKeys#SSL_TO_KAFKA
    */
   @Override
-  public final boolean isSslToKafka() {
+  public boolean isSslToKafka() {
     return this.multiClusterConfigs.isSslToKafka();
   }
 
@@ -6406,8 +6405,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   @Override
-  public VeniceProperties getPubSubSSLProperties() {
-    return pubSubSSLProperties;
+  public VeniceProperties getPubSubSSLProperties(String pubSubBrokerAddress) {
+    return this.getPubSubSSLPropertiesFromControllerConfig(pubSubBrokerAddress);
   }
 
   private void startMonitorOfflinePush(

@@ -1,6 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
-import static org.mockito.ArgumentMatchers.*;
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doReturn;
@@ -29,7 +30,6 @@ import java.util.HashSet;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
-import org.apache.kafka.clients.CommonClientConfigs;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -65,7 +65,7 @@ public class KafkaConsumerServiceTest {
     when(factory.create(any(), anyBoolean(), any(), any())).thenReturn(consumer1, consumer2);
 
     Properties properties = new Properties();
-    properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, "test_kafka_url");
+    properties.put(KAFKA_BOOTSTRAP_SERVERS, "test_kafka_url");
 
     MetricsRepository mockMetricsRepository = mock(MetricsRepository.class);
     final Sensor mockSensor = mock(Sensor.class);
@@ -146,7 +146,7 @@ public class KafkaConsumerServiceTest {
     when(factory.create(any(), anyBoolean(), any(), any())).thenReturn(consumer1, consumer2);
 
     Properties properties = new Properties();
-    properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, "test_kafka_url");
+    properties.put(KAFKA_BOOTSTRAP_SERVERS, "test_kafka_url");
 
     MetricsRepository mockMetricsRepository = mock(MetricsRepository.class);
     final Sensor mockSensor = mock(Sensor.class);
@@ -241,7 +241,7 @@ public class KafkaConsumerServiceTest {
     when(factory.create(any(), anyBoolean(), any(), any())).thenReturn(consumer1, consumer2);
 
     Properties properties = new Properties();
-    properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, "test_kafka_url");
+    properties.put(KAFKA_BOOTSTRAP_SERVERS, "test_kafka_url");
 
     MetricsRepository mockMetricsRepository = mock(MetricsRepository.class);
     final Sensor mockSensor = mock(Sensor.class);
