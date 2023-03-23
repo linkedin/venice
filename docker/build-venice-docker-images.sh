@@ -1,4 +1,6 @@
-cd ../
+CURRENTDIR=$(dirname "$0")
+
+pushd $CURRENTDIR/..
 ./gradlew shadowJar
 cd docker
 
@@ -36,3 +38,4 @@ rm -f venice-controller/venice-controller-all.jar
 rm -f venice-router/venice-router-all.jar
 rm */*.py
 
+popd
