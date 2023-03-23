@@ -62,14 +62,14 @@ public class IngestionStats {
   private final Int2ObjectMap<Rate> regionIdToHybridRecordsConsumedRateMap;
   private final Int2ObjectMap<Avg> regionIdToHybridAvgConsumedOffsetMap;
   private final Count stalePartitionsWithoutIngestionTaskCount;
-  private final RateSensor recordsConsumedSensor;
-  private final RateSensor bytesConsumedSensor;
-  private final RateSensor leaderRecordsConsumedSensor;
-  private final RateSensor leaderBytesConsumedSensor;
-  private final RateSensor followerRecordsConsumedSensor;
-  private final RateSensor followerBytesConsumedSensor;
-  private final RateSensor leaderRecordsProducedSensor;
-  private final RateSensor leaderBytesProducedSensor;
+  private final LongAdderRateGauge recordsConsumedSensor = new LongAdderRateGauge();
+  private final LongAdderRateGauge bytesConsumedSensor = new LongAdderRateGauge();
+  private final LongAdderRateGauge leaderRecordsConsumedSensor = new LongAdderRateGauge();
+  private final LongAdderRateGauge leaderBytesConsumedSensor = new LongAdderRateGauge();
+  private final LongAdderRateGauge followerRecordsConsumedSensor = new LongAdderRateGauge();
+  private final LongAdderRateGauge followerBytesConsumedSensor = new LongAdderRateGauge();
+  private final LongAdderRateGauge leaderRecordsProducedSensor = new LongAdderRateGauge();
+  private final LongAdderRateGauge leaderBytesProducedSensor = new LongAdderRateGauge();
   private final Int2ObjectMap<Sensor> regionIdToHybridBytesConsumedSensorMap;
   private final Int2ObjectMap<Sensor> regionIdToHybridRecordsConsumedSensorMap;
   private final Int2ObjectMap<Sensor> regionIdToHybridAvgConsumedOffsetSensorMap;
@@ -77,12 +77,12 @@ public class IngestionStats {
   private final WritePathLatencySensor subscribePrepLatencySensor;
   private final WritePathLatencySensor consumedRecordEndToEndProcessingLatencySensor;
   // Measure the count of ignored updates due to conflict resolution
-  private final RateSensor conflictResolutionUpdateIgnoredSensor;
+  private final LongAdderRateGauge conflictResolutionUpdateIgnoredSensor = new LongAdderRateGauge();
   // Measure the total number of incoming conflict resolutions
-  private final RateSensor totalConflictResolutionCountSensor;
-  private final RateSensor timestampRegressionDCRErrorSensor;
-  private final RateSensor offsetRegressionDCRErrorSensor;
-  private final RateSensor tombstoneCreationDCRSensor;
+  private final LongAdderRateGauge totalConflictResolutionCountSensor = new LongAdderRateGauge();
+  private final LongAdderRateGauge timestampRegressionDCRErrorSensor = new LongAdderRateGauge();
+  private final LongAdderRateGauge offsetRegressionDCRErrorSensor = new LongAdderRateGauge();
+  private final LongAdderRateGauge tombstoneCreationDCRSensor = new LongAdderRateGauge();
 
   /** Record a version-level offset rewind events for VTs across all stores. */
   private final Count versionTopicEndOffsetRewindCount = new Count();
@@ -132,18 +132,14 @@ public class IngestionStats {
       regionIdToHybridAvgConsumedOffsetSensorMap.put(regionId, regionHybridAvgConsumedOffsetSensor);
     }
 
-    recordsConsumedSensor = new RateSensor(localMetricRepository, METRIC_CONFIG, RECORDS_CONSUMED_METRIC_NAME);
-    bytesConsumedSensor = new RateSensor(localMetricRepository, METRIC_CONFIG, BYTES_CONSUMED_METRIC_NAME);
-    leaderRecordsConsumedSensor =
-        new RateSensor(localMetricRepository, METRIC_CONFIG, LEADER_RECORDS_CONSUMED_METRIC_NAME);
-    leaderBytesConsumedSensor = new RateSensor(localMetricRepository, METRIC_CONFIG, LEADER_BYTES_CONSUMED_METRIC_NAME);
-    followerRecordsConsumedSensor =
-        new RateSensor(localMetricRepository, METRIC_CONFIG, FOLLOWER_RECORDS_CONSUMED_METRIC_NAME);
-    followerBytesConsumedSensor =
-        new RateSensor(localMetricRepository, METRIC_CONFIG, FOLLOWER_BYTES_CONSUMED_METRIC_NAME);
-    leaderRecordsProducedSensor =
-        new RateSensor(localMetricRepository, METRIC_CONFIG, LEADER_RECORDS_PRODUCED_METRIC_NAME);
-    leaderBytesProducedSensor = new RateSensor(localMetricRepository, METRIC_CONFIG, LEADER_BYTES_PRODUCED_METRIC_NAME);
+    registerSensor(localMetricRepository, RECORDS_CONSUMED_METRIC_NAME, recordsConsumedSensor);
+    registerSensor(localMetricRepository, BYTES_CONSUMED_METRIC_NAME, bytesConsumedSensor);
+    registerSensor(localMetricRepository, LEADER_RECORDS_CONSUMED_METRIC_NAME, leaderRecordsConsumedSensor);
+    registerSensor(localMetricRepository, LEADER_BYTES_CONSUMED_METRIC_NAME, leaderBytesConsumedSensor);
+    registerSensor(localMetricRepository, FOLLOWER_BYTES_CONSUMED_METRIC_NAME, followerBytesConsumedSensor);
+    registerSensor(localMetricRepository, FOLLOWER_RECORDS_CONSUMED_METRIC_NAME, followerRecordsConsumedSensor);
+    registerSensor(localMetricRepository, LEADER_RECORDS_PRODUCED_METRIC_NAME, leaderRecordsProducedSensor);
+    registerSensor(localMetricRepository, LEADER_BYTES_PRODUCED_METRIC_NAME, leaderBytesProducedSensor);
 
     stalePartitionsWithoutIngestionTaskCount = new Count();
     stalePartitionsWithoutIngestionTaskSensor =
@@ -161,12 +157,16 @@ public class IngestionStats {
     consumedRecordEndToEndProcessingLatencySensor =
         new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, CONSUMED_RECORD_END_TO_END_PROCESSING_LATENCY);
 
-    conflictResolutionUpdateIgnoredSensor = new RateSensor(localMetricRepository, METRIC_CONFIG, UPDATE_IGNORED_DCR);
-    totalConflictResolutionCountSensor = new RateSensor(localMetricRepository, METRIC_CONFIG, TOTAL_DCR);
-    timestampRegressionDCRErrorSensor =
-        new RateSensor(localMetricRepository, METRIC_CONFIG, TIMESTAMP_REGRESSION_DCR_ERROR);
-    offsetRegressionDCRErrorSensor = new RateSensor(localMetricRepository, METRIC_CONFIG, OFFSET_REGRESSION_DCR_ERROR);
-    tombstoneCreationDCRSensor = new RateSensor(localMetricRepository, METRIC_CONFIG, TOMBSTONE_CREATION_DCR);
+    registerSensor(localMetricRepository, UPDATE_IGNORED_DCR, conflictResolutionUpdateIgnoredSensor);
+    registerSensor(localMetricRepository, TOTAL_DCR, totalConflictResolutionCountSensor);
+    registerSensor(localMetricRepository, TIMESTAMP_REGRESSION_DCR_ERROR, timestampRegressionDCRErrorSensor);
+    registerSensor(localMetricRepository, OFFSET_REGRESSION_DCR_ERROR, offsetRegressionDCRErrorSensor);
+    registerSensor(localMetricRepository, TOMBSTONE_CREATION_DCR, tombstoneCreationDCRSensor);
+  }
+
+  private void registerSensor(MetricsRepository localMetricRepository, String sensorName, LongAdderRateGauge gauge) {
+    Sensor sensor = localMetricRepository.sensor(sensorName);
+    sensor.add(sensorName + "_rate", gauge);
   }
 
   public StoreIngestionTask getIngestionTask() {
@@ -328,7 +328,7 @@ public class IngestionStats {
   }
 
   public double getRecordsConsumed() {
-    return recordsConsumedSensor.getRate();
+    return recordsConsumedSensor.measure(METRIC_CONFIG, System.currentTimeMillis());
   }
 
   public void recordRecordsConsumed() {
@@ -336,15 +336,15 @@ public class IngestionStats {
   }
 
   public double getBytesConsumed() {
-    return bytesConsumedSensor.getRate();
+    return bytesConsumedSensor.measure(METRIC_CONFIG, System.currentTimeMillis());
   }
 
   public void recordBytesConsumed(double value) {
-    bytesConsumedSensor.record(value);
+    bytesConsumedSensor.record((long) value);
   }
 
   public double getLeaderRecordsConsumed() {
-    return leaderRecordsConsumedSensor.getRate();
+    return leaderRecordsConsumedSensor.measure(METRIC_CONFIG, System.currentTimeMillis());
   }
 
   public void recordLeaderRecordsConsumed() {
@@ -352,15 +352,15 @@ public class IngestionStats {
   }
 
   public double getLeaderBytesConsumed() {
-    return leaderBytesConsumedSensor.getRate();
+    return leaderBytesConsumedSensor.measure(METRIC_CONFIG, System.currentTimeMillis());
   }
 
   public void recordLeaderBytesConsumed(double value) {
-    leaderBytesConsumedSensor.record(value);
+    leaderBytesConsumedSensor.record((long) value);
   }
 
   public double getFollowerRecordsConsumed() {
-    return followerRecordsConsumedSensor.getRate();
+    return followerRecordsConsumedSensor.measure(METRIC_CONFIG, System.currentTimeMillis());
   }
 
   public void recordFollowerRecordsConsumed() {
@@ -368,11 +368,11 @@ public class IngestionStats {
   }
 
   public double getFollowerBytesConsumed() {
-    return followerBytesConsumedSensor.getRate();
+    return followerBytesConsumedSensor.measure(METRIC_CONFIG, System.currentTimeMillis());
   }
 
   public void recordFollowerBytesConsumed(double value) {
-    followerBytesConsumedSensor.record(value);
+    followerBytesConsumedSensor.record((long) value);
   }
 
   public void recordUpdateIgnoredDCR() {
@@ -432,39 +432,39 @@ public class IngestionStats {
   }
 
   public double getLeaderRecordsProduced() {
-    return leaderRecordsProducedSensor.getRate();
+    return leaderRecordsProducedSensor.measure(METRIC_CONFIG, System.currentTimeMillis());
   }
 
   public double getUpdateIgnoredRate() {
-    return conflictResolutionUpdateIgnoredSensor.getRate();
+    return conflictResolutionUpdateIgnoredSensor.measure(METRIC_CONFIG, System.currentTimeMillis());
   }
 
   public double getTotalDCRRate() {
-    return totalConflictResolutionCountSensor.getRate();
+    return totalConflictResolutionCountSensor.measure(METRIC_CONFIG, System.currentTimeMillis());
   }
 
   public double getTombstoneCreationDCRRate() {
-    return tombstoneCreationDCRSensor.getRate();
+    return tombstoneCreationDCRSensor.measure(METRIC_CONFIG, System.currentTimeMillis());
   }
 
   public double getTimestampRegressionDCRRate() {
-    return timestampRegressionDCRErrorSensor.getRate();
+    return timestampRegressionDCRErrorSensor.measure(METRIC_CONFIG, System.currentTimeMillis());
   }
 
   public double getOffsetRegressionDCRRate() {
-    return offsetRegressionDCRErrorSensor.getRate();
+    return offsetRegressionDCRErrorSensor.measure(METRIC_CONFIG, System.currentTimeMillis());
   }
 
   public void recordLeaderRecordsProduced(double value) {
-    leaderRecordsProducedSensor.record(value);
+    leaderRecordsProducedSensor.record((long) value);
   }
 
   public double getLeaderBytesProduced() {
-    return leaderBytesProducedSensor.getRate();
+    return leaderBytesProducedSensor.measure(METRIC_CONFIG, System.currentTimeMillis());
   }
 
   public void recordLeaderBytesProduced(double value) {
-    leaderBytesProducedSensor.record(value);
+    leaderBytesProducedSensor.record((long) value);
   }
 
   public void setIngestionTaskPushTimeoutGauge(int value) {
