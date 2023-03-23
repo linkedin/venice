@@ -9,10 +9,12 @@ import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.fastclient.stats.ClusterStats;
+import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.metadata.response.MetadataResponseRecord;
 import com.linkedin.venice.metadata.response.VersionProperties;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
@@ -66,6 +68,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private D2ServiceDiscovery d2ServiceDiscovery;
   private final String clusterDiscoveryD2ServiceName;
   private final ClusterStats clusterStats;
+  private final FastClientStats clientStats;
   private volatile boolean isServiceDiscovered;
 
   public RequestBasedMetadata(ClientConfig clientConfig, D2TransportClient transportClient) {
@@ -78,6 +81,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
     this.clusterDiscoveryD2ServiceName = transportClient.getServiceName();
     this.compressorFactory = new CompressorFactory();
     this.clusterStats = clientConfig.getClusterStats();
+    this.clientStats = clientConfig.getStats(RequestType.SINGLE_GET);
   }
 
   @Override
@@ -145,6 +149,8 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
    * @param onDemandRefresh
    */
   private synchronized void updateCache(boolean onDemandRefresh) throws InterruptedException {
+    boolean updateComplete = false;
+    long currentTimeMs = System.currentTimeMillis();
     // call the METADATA endpoint
     try {
       byte[] body = fetchMetadata().get().getBody();
@@ -214,6 +220,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
           currentVersion.set(fetchedVersion);
           clusterStats.updateCurrentVersion(getCurrentStoreVersion());
           latestSuperSetValueSchemaId.set(newSuperSetValueSchemaId);
+          updateComplete = true;
         } catch (ExecutionException | TimeoutException e) {
           LOGGER.warn(
               "Dictionary fetch operation could not complete in time for some of the versions. "
@@ -228,6 +235,10 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
         versionPartitionerMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
         versionPartitionCountMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
         versionZstdDictionaryMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
+      }
+
+      if (updateComplete) {
+        clientStats.updateCacheTimestamp(currentTimeMs);
       }
     } catch (ExecutionException e) {
       // perform an on demand refresh if update fails in case of store migration
