@@ -699,7 +699,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     // necessarily received an ack back yet).
     if (partitionConsumptionState.getLeaderFollowerState() == LEADER && partitionConsumptionState.isHybrid()
         && consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()) {
-      partitionConsumptionState.updateLatestRTOffsetProducedToVTMap(kafkaUrl, consumerRecord.getOffset());
+      partitionConsumptionState.updateLatestRTOffsetTriedToProduceToVTMap(kafkaUrl, consumerRecord.getOffset());
     }
   }
 

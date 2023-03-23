@@ -3032,6 +3032,24 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       latestLeaderOffset = 0;
     }
     long lag = lastOffsetInRealTimeTopic - latestLeaderOffset;
+
+    // Here we handle the case where the topic is actually empty,
+    // if consumerLag is a positive number then that means there is an existing offset that we've consumed to and a
+    // bigger offset out there somewhere. Meaning that there are at least two messages in the topic and it's not empty
+    long consumerLag = getPartitionOffsetLag(sourceRealTimeTopicKafkaURL, leaderTopic, partitionToGetLatestOffsetFor);
+    if (consumerLag <= 0) {
+      // We don't have a positive consumer lag, but this could be because we haven't polled.
+      // So as a final check to determine if the topic is empty, we check
+      // if the end offset is the same as the beginning
+      long earliestOffset = cachedKafkaMetadataGetter.getEarliestOffset(
+          getTopicManager(sourceRealTimeTopicKafkaURL),
+          leaderTopic.getName(),
+          partitionToGetLatestOffsetFor);
+      if (earliestOffset == lastOffsetInRealTimeTopic - 1) {
+        lag = 0;
+      }
+    }
+
     if (shouldLog) {
       LOGGER.info(
           "{} partition {} RT lag offset for {} is: Latest RT offset [{}] - persisted offset [{}] = Lag [{}]",

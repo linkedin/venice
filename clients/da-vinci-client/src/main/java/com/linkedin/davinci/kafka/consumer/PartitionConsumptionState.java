@@ -179,7 +179,7 @@ public class PartitionConsumptionState {
    * key: source Kafka url
    * Value: Latest upstream RT offset which has been published to VT
    */
-  private Map<String, Long> latestRTOffsetProducedToVTMap;
+  private Map<String, Long> latestRTOffsetTriedToProduceToVTMap;
 
   /**
    * Key: source Kafka url
@@ -229,7 +229,7 @@ public class PartitionConsumptionState {
     // if it was useful to skip ahead through a large number of dropped offsets at the start of consumption.
     this.latestIgnoredUpstreamRTOffsetMap = new HashMap<>();
     // On start we haven't sent anything
-    this.latestRTOffsetProducedToVTMap = new HashMap<>();
+    this.latestRTOffsetTriedToProduceToVTMap = new HashMap<>();
   }
 
   public int getPartition() {
@@ -339,8 +339,8 @@ public class PartitionConsumptionState {
         .append(latestProcessedUpstreamRTOffsetMap)
         .append(", latestIgnoredUpstreamRTOffsetMap=")
         .append(latestIgnoredUpstreamRTOffsetMap)
-        .append(", latestRTOffsetProducedToVTMap")
-        .append(latestRTOffsetProducedToVTMap)
+        .append(", latestRTOffsetTriedToProduceToVTMap")
+        .append(latestRTOffsetTriedToProduceToVTMap)
         .append(", offsetRecord=")
         .append(offsetRecord)
         .append(", errorReported=")
@@ -618,12 +618,12 @@ public class PartitionConsumptionState {
     latestProcessedUpstreamRTOffsetMap.put(kafkaUrl, offset);
   }
 
-  public void updateLatestRTOffsetProducedToVTMap(String kafkaUrl, long offset) {
-    latestRTOffsetProducedToVTMap.put(kafkaUrl, offset);
+  public void updateLatestRTOffsetTriedToProduceToVTMap(String kafkaUrl, long offset) {
+    latestRTOffsetTriedToProduceToVTMap.put(kafkaUrl, offset);
   }
 
-  public long getLatestRTOffsetProducedToVT(String kafkaUrl) {
-    return latestRTOffsetProducedToVTMap.getOrDefault(kafkaUrl, -1L);
+  public long getLatestRTOffsetTriedToProduceToVTMap(String kafkaUrl) {
+    return latestRTOffsetTriedToProduceToVTMap.getOrDefault(kafkaUrl, -1L);
   }
 
   public void updateLatestIgnoredUpstreamRTOffset(String kafkaUrl, long offset) {
@@ -635,13 +635,13 @@ public class PartitionConsumptionState {
   }
 
   public long getLatestProcessedUpstreamRTOffsetWithIgnoredMessages(String kafkaUrl) {
-    long processed = getLatestProcessedUpstreamRTOffset(kafkaUrl);
-    long ignored = getLatestIgnoredUpstreamRTOffset(kafkaUrl);
-    long produced = getLatestRTOffsetProducedToVT(kafkaUrl);
+    long lastOffsetFullyProcessed = getLatestProcessedUpstreamRTOffset(kafkaUrl);
+    long lastOffsetIgnored = getLatestIgnoredUpstreamRTOffset(kafkaUrl);
+    long offsetTriedToProduceToVT = getLatestRTOffsetTriedToProduceToVTMap(kafkaUrl);
 
     // we've committed messages at a higher offset then the last thing we ignored. Return the processed offset
-    if (processed >= ignored) {
-      return processed;
+    if (lastOffsetFullyProcessed >= lastOffsetIgnored) {
+      return lastOffsetFullyProcessed;
     }
 
     // We have messages which have been ignored at a higher offset then what we've processed but we still have committed
@@ -649,14 +649,14 @@ public class PartitionConsumptionState {
     // highest offset. Technically speaking, processed should never be 'greater' then produced, it can at most be
     // 'equal',
     // but we'll include the broader comparison as it's still technically correct.
-    if (processed >= produced) {
-      return ignored;
+    if (lastOffsetFullyProcessed >= offsetTriedToProduceToVT) {
+      return lastOffsetIgnored;
     }
 
     // We have messages that we're still waiting to commit, though the most recent messages we've ignored (probably
     // after failing a comparison against record in the transient record cache). In this case we'll return the offset
     // of what's been processed
-    return processed;
+    return lastOffsetFullyProcessed;
 
   }
 

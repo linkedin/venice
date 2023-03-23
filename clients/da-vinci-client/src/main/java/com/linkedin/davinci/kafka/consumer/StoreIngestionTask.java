@@ -908,6 +908,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record: records) {
       long beforeProcessingRecordTimestamp = System.nanoTime();
       if (!shouldProcessRecord(record, subPartition)) {
+        PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(subPartition);
+        if (partitionConsumptionState != null) {
+          partitionConsumptionState.updateLatestIgnoredUpstreamRTOffset(kafkaUrl, record.getOffset());
+        }
         continue;
       }
 
