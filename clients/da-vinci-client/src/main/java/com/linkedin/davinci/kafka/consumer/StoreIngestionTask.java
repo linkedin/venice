@@ -878,7 +878,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         kafkaUrl,
         beforeProcessingRecordTimestamp); // blocking call
 
-    hostLevelIngestionStats.recordProduceToDrainQueueRecordNum(1);
     if (emitMetrics.get()) {
       hostLevelIngestionStats.recordConsumerRecordsQueuePutLatency(LatencyUtils.getLatencyInMS(queuePutStartTimeInNS));
     }
@@ -900,10 +899,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int kafkaClusterId) throws InterruptedException {
     long totalBytesRead = 0;
     double elapsedTimeForPuttingIntoQueue = 0;
-    long beforeProcessingTimestamp = System.currentTimeMillis();
-    int recordQueuedToDrainer = 0;
-    int recordProducedToKafka = 0;
-    double elapsedTimeForProducingToKafka = 0;
     int subPartition = PartitionUtils.getSubPartition(topicPartition, amplificationFactor);
     for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record: records) {
       long beforeProcessingRecordTimestamp = System.nanoTime();
@@ -932,7 +927,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
       // Check schema id availability before putting consumer record to drainer queue
       waitReadyToProcessRecord(record);
-      long kafkaProduceStartTimeInNS = System.nanoTime();
       // This function may modify the original record in KME and it is unsafe to use the payload from KME directly after
       // this call.
       DelegateConsumerRecordResult delegateConsumerRecordResult =
@@ -944,20 +938,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               .putConsumerRecord(record, this, null, subPartition, kafkaUrl, beforeProcessingRecordTimestamp); // blocking
                                                                                                                // call
           elapsedTimeForPuttingIntoQueue += LatencyUtils.getLatencyInMS(queuePutStartTimeInNS);
-          ++recordQueuedToDrainer;
           break;
         case PRODUCED_TO_KAFKA:
-          elapsedTimeForProducingToKafka += LatencyUtils.getLatencyInMS(kafkaProduceStartTimeInNS);
-          ++recordProducedToKafka;
-          break;
         case SKIPPED_MESSAGE:
         case DUPLICATE_MESSAGE:
-          /**
-           * DuplicatedDataException can be thrown when leader is consuming from RT and is running DIV check on the message
-           * before producing it to VT. Still record the time spent on trying to produce to Kafka, but should not update
-           * the counter for records that have been produced to Kafka
-           */
-          elapsedTimeForProducingToKafka += LatencyUtils.getLatencyInMS(kafkaProduceStartTimeInNS);
           break;
         default:
           throw new VeniceException(
@@ -970,29 +954,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         partitionConsumptionState.setLatestMessageConsumptionTimestampInMs(System.currentTimeMillis());
       }
     }
-    hostLevelIngestionStats.recordProduceToDrainQueueRecordNum(recordQueuedToDrainer);
-    if (recordProducedToKafka > 0) {
-      hostLevelIngestionStats.recordProduceToKafkaRecordNum(recordProducedToKafka);
-    }
 
-    long quotaEnforcementStartTimeInNS = System.nanoTime();
     /**
      * Even if the records list is empty, we still need to check quota to potentially resume partition
      */
     storageUtilizationManager.enforcePartitionQuota(topicPartition.getPartitionNumber(), totalBytesRead);
 
     if (emitMetrics.get()) {
-      hostLevelIngestionStats.recordQuotaEnforcementLatency(LatencyUtils.getLatencyInMS(quotaEnforcementStartTimeInNS));
       if (totalBytesRead > 0) {
         hostLevelIngestionStats.recordTotalBytesReadFromKafkaAsUncompressedSize(totalBytesRead);
       }
-      long afterPutTimestamp = System.currentTimeMillis();
-      hostLevelIngestionStats.recordConsumerToQueueLatency(afterPutTimestamp - beforeProcessingTimestamp);
       if (elapsedTimeForPuttingIntoQueue > 0) {
         hostLevelIngestionStats.recordConsumerRecordsQueuePutLatency(elapsedTimeForPuttingIntoQueue);
-      }
-      if (elapsedTimeForProducingToKafka > 0) {
-        hostLevelIngestionStats.recordProduceToKafkaLatency(elapsedTimeForProducingToKafka);
       }
 
       hostLevelIngestionStats.recordStorageQuotaUsed(storageUtilizationManager.getDiskQuotaUsage());
@@ -2534,20 +2507,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       boolean endOfPushReceived,
       PartitionConsumptionState partitionConsumptionState) {
 
-    TopicManager topicManager = topicManagerRepository.getTopicManager();
-    // Tolerate missing message if store version is data recovery + hybrid and TS not received yet (due to source topic
-    // data may have been log compacted) or log compaction is enabled and record is old enough for log compaction.
-    String topicName = consumerRecord.getTopicPartition().getPubSubTopic().getName();
-    boolean tolerateMissingMsgs =
-        (isDataRecovery && isHybridMode() && partitionConsumptionState.getTopicSwitch() == null)
-            || (topicManager.isTopicCompactionEnabled(topicName)
-                && LatencyUtils.getElapsedTimeInMs(consumerRecord.getPubSubMessageTime()) >= topicManager
-                    .getTopicMinLogCompactionLagMs(topicName));
+    Lazy<Boolean> tolerateMissingMsgs = Lazy.of(() -> {
+      TopicManager topicManager = topicManagerRepository.getTopicManager();
+      // Tolerate missing message if store version is data recovery + hybrid and TS not received yet (due to source
+      // topic
+      // data may have been log compacted) or log compaction is enabled and record is old enough for log compaction.
+      String topicName = consumerRecord.getTopicPartition().getPubSubTopic().getName();
 
-    long startTimeForMessageValidationInNS = System.nanoTime();
+      return (isDataRecovery && isHybridMode() && partitionConsumptionState.getTopicSwitch() == null)
+          || (topicManager.isTopicCompactionEnabled(topicName)
+              && LatencyUtils.getElapsedTimeInMs(consumerRecord.getPubSubMessageTime()) >= topicManager
+                  .getTopicMinLogCompactionLagMs(topicName));
+    });
+
     try {
       validator.validateMessage(consumerRecord, endOfPushReceived, tolerateMissingMsgs);
-      return;
     } catch (FatalDataValidationException fatalException) {
       divErrorMetricCallback.execute(fatalException);
       /**
@@ -2573,14 +2547,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         /**
          * Run a dummy validation to update DIV metadata.
          */
-        validator.validateMessage(consumerRecord, endOfPushReceived, true);
-      }
-    } finally {
-      if (!isUserSystemStore) {
-        versionedDIVStats.recordDataValidationLatencyMs(
-            storeName,
-            versionNumber,
-            LatencyUtils.getLatencyInMS(startTimeForMessageValidationInNS));
+        validator.validateMessage(consumerRecord, endOfPushReceived, Lazy.TRUE);
       }
     }
   }
@@ -2810,22 +2777,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           delete = ((Delete) leaderProducedRecordContext.getValueUnion());
         }
         keyLen = keyBytes.length;
-        long deleteStartTimeNs = System.nanoTime();
 
         removeFromStorageEngine(producedPartition, keyBytes, delete);
         if (cacheBackend.isPresent()) {
           if (cacheBackend.get().getStorageEngine(kafkaVersionTopic) != null) {
             cacheBackend.get().getStorageEngine(kafkaVersionTopic).delete(producedPartition, keyBytes);
           }
-        }
-
-        if (LOGGER.isTraceEnabled()) {
-          LOGGER.trace(
-              "{} : Completed DELETE to Store: {} in {} ns at {}",
-              consumerTaskId,
-              kafkaVersionTopic,
-              System.nanoTime() - deleteStartTimeNs,
-              System.currentTimeMillis());
         }
         break;
 
@@ -2848,19 +2805,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // as needed in integration test.
     if (purgeTransientRecordBuffer && isTransientRecordBufferUsed() && partitionConsumptionState.isEndOfPushReceived()
         && leaderProducedRecordContext != null && leaderProducedRecordContext.getConsumedOffset() != -1) {
-      PartitionConsumptionState.TransientRecord transientRecord = partitionConsumptionState.mayRemoveTransientRecord(
+      partitionConsumptionState.mayRemoveTransientRecord(
           leaderProducedRecordContext.getConsumedKafkaClusterId(),
           leaderProducedRecordContext.getConsumedOffset(),
           kafkaKey.getKey());
-      if (transientRecord != null) {
-        // This is perfectly fine, logging to see how often it happens where we get multiple put/update/delete for same
-        // key in quick succession.
-        String msg = consumerTaskId + ": multiple put,update,delete for same key received from: "
-            + consumerRecord.getTopicPartition();
-        if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msg)) {
-          LOGGER.info(msg);
-        }
-      }
     }
 
     if (emitMetrics.get()) {
