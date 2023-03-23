@@ -68,7 +68,7 @@ public class LeaderFollowerThreadPoolTest {
    * It's better to destroy the testbed between each test runs.
    */
 
-  @Test(timeOut = 300 * Time.MS_PER_SECOND)
+  @Test(timeOut = 120 * Time.MS_PER_SECOND)
   public void testLeaderFollowerDualThreadPool() throws Exception {
     commonTestProcedures(true);
 
@@ -78,7 +78,7 @@ public class LeaderFollowerThreadPoolTest {
     // New version can complete successfully (it will not complete without having a separate thread pool for future
     // version)
     TestUtils.waitForNonDeterministicAssertion(
-        300,
+        60,
         TimeUnit.SECONDS,
         true,
         () -> Assert.assertEquals(
