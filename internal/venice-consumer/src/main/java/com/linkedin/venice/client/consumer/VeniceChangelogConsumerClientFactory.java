@@ -10,13 +10,9 @@ import com.linkedin.venice.views.ChangeCaptureView;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 
 public class VeniceChangelogConsumerClientFactory {
-  private static final Logger LOGGER = LogManager.getLogger(VeniceChangelogConsumerClientFactory.class);
-
   private final Map<String, VeniceChangelogConsumer> storeClientMap = new HashMap<>();
 
   private final ChangelogClientConfig globalChangelogClientConfig;
@@ -40,6 +36,8 @@ public class VeniceChangelogConsumerClientFactory {
       newStoreChangelogClientConfig
           .setSchemaReader(ClientFactory.getSchemaReader(newStoreChangelogClientConfig.getInnerClientConfig()));
 
+      // TODO: This is a redundant controller query. Need to condense it with the storeInfo query that happens
+      // inside the changecaptureclient itself
       String viewClass = newStoreChangelogClientConfig.getViewClassName() == null
           ? ""
           : newStoreChangelogClientConfig.getViewClassName();
