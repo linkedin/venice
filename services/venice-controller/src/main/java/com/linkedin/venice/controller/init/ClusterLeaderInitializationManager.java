@@ -44,12 +44,10 @@ public class ClusterLeaderInitializationManager implements ClusterLeaderInitiali
         initializedClusters.computeIfAbsent(clusterToInit, k -> new VeniceConcurrentHashMap());
 
     if (concurrentInit) {
-      LOGGER.info("[DEBUGDEBUG] ConcurrentInit!!");
       initRoutines.forEach(
           routine -> CompletableFuture
               .runAsync(() -> initRoutine(clusterToInit, initializedRoutinesForCluster, routine)));
     } else {
-      LOGGER.info("[DEBUGDEBUG] Sequential init!!");
       CompletableFuture.runAsync(
           () -> initRoutines.forEach(routine -> initRoutine(clusterToInit, initializedRoutinesForCluster, routine)));
     }

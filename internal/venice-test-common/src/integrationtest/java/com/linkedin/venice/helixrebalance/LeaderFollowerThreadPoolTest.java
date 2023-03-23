@@ -45,10 +45,8 @@ public class LeaderFollowerThreadPoolTest {
     int numOfController = 1;
     int numOfServers = 0;
     int numOfRouters = 1;
-    LOGGER.info("[DEBUGDEBUG] 111");
     cluster = ServiceFactory
         .getVeniceCluster(numOfController, numOfServers, numOfRouters, replicaFactor, partitionSize, false, false);
-    LOGGER.info("[DEBUGDEBUG] 222");
   }
 
   @AfterMethod
@@ -103,18 +101,14 @@ public class LeaderFollowerThreadPoolTest {
    */
   @Test(timeOut = 150 * Time.MS_PER_SECOND)
   public void testLeaderFollowerSingleThreadPool() throws Exception {
-    LOGGER.info("[DEBUGDEBUG] 333");
     commonTestProcedures(false);
-    LOGGER.info("[DEBUGDEBUG] 444");
 
     // Start a new version push and expect it to fail with exception.
     try {
       createVersionAndPushData(storeName);
       Assert.fail("new version creation should have failed.");
     } catch (AssertionError e) {
-      LOGGER.info("[DEBUGDEBUG] 999 Good, we got an exception.", e);
       Assert.assertTrue(e.getMessage().contains("does not have enough replicas"));
-      LOGGER.info("[DEBUGDEBUG] 101010 Good, test passed!!");
     }
   }
 
@@ -192,7 +186,6 @@ public class LeaderFollowerThreadPoolTest {
       veniceWriter.put("test", "test", 1);
       veniceWriter.broadcastEndOfPush(new HashMap<>());
     }
-    LOGGER.info("[DEBUGDEBUG] 777");
     return topicName;
   }
 
