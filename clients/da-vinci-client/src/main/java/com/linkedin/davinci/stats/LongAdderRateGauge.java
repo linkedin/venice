@@ -20,8 +20,8 @@ public class LongAdderRateGauge extends Gauge {
 
   @Override
   public double measure(MetricConfig config, long now) {
-    long elapsedTimeInSeconds = (now - this.lastMeasurementTime) / Time.MS_PER_SECOND;
+    double elapsedTimeInSeconds = (double) (now - this.lastMeasurementTime) / Time.MS_PER_SECOND;
     this.lastMeasurementTime = now;
-    return this.adder.sumThenReset() / elapsedTimeInSeconds;
+    return (double) this.adder.sumThenReset() / elapsedTimeInSeconds;
   }
 }
