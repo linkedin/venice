@@ -1,7 +1,6 @@
 package com.linkedin.venice.kafka.consumer;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.admin.ApacheKafkaConsumerConfig;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
@@ -12,6 +11,8 @@ import org.apache.kafka.clients.consumer.KafkaConsumer;
 
 
 public class ApacheKafkaConsumerAdapterFactory implements PubSubConsumerAdapterFactory<PubSubConsumer> {
+  private static final String NAME = "ApacheKafkaConsumer";
+
   @Override
   public ApacheKafkaConsumer create(
       VeniceProperties veniceProperties,
@@ -32,11 +33,10 @@ public class ApacheKafkaConsumerAdapterFactory implements PubSubConsumerAdapterF
 
   @Override
   public String getName() {
-    return null;
+    return NAME;
   }
 
   @Override
   public void close() throws IOException {
-
   }
 }

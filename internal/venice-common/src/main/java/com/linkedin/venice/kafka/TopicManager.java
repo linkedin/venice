@@ -3,6 +3,7 @@ package com.linkedin.venice.kafka;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.admin.InstrumentedKafkaAdmin;
 import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
 import com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcher;
 import com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcherFactory;
@@ -33,7 +34,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.common.config.TopicConfig;
 import org.apache.kafka.common.errors.InvalidReplicationFactorException;
 import org.apache.kafka.common.errors.TopicExistsException;
@@ -45,10 +45,10 @@ import org.apache.logging.log4j.Logger;
 /**
  * Topic Manager is shared by multiple cluster's controllers running in one physical Venice controller instance.
  *
- * This class contains one global {@link Consumer}, which is not thread-safe, so when you add new functions,
+ * This class contains one global {@link com.linkedin.venice.pubsub.consumer.PubSubConsumer}, which is not thread-safe, so when you add new functions,
  * which is using this global consumer, please add 'synchronized' keyword, otherwise this {@link TopicManager}
  * won't be thread-safe, and Kafka consumer will report the following error when multiple threads are trying to
- * use the same consumer: KafkaConsumer is not safe for multi-threaded access.
+ * use the same consumer: PubSubConsumer is not safe for multi-threaded access.
  */
 public class TopicManager implements Closeable {
   private static final int MINIMUM_TOPIC_DELETION_STATUS_POLL_TIMES = 10;
@@ -111,11 +111,13 @@ public class TopicManager implements Closeable {
     Optional<MetricsRepository> optionalMetricsRepository = Optional.ofNullable(builder.getMetricsRepository());
 
     this.kafkaReadOnlyAdmin = Lazy.of(() -> {
-      KafkaAdminWrapper kafkaReadOnlyAdmin = pubSubAdminAdapterFactory.create(
-          pubSubProperties.get(pubSubBootstrapServers),
+      KafkaAdminWrapper kafkaReadOnlyAdmin =
+          pubSubAdminAdapterFactory.create(pubSubProperties.get(pubSubBootstrapServers), pubSubTopicRepository);
+      kafkaReadOnlyAdmin = createInstrumentedPubSubAdmin(
           optionalMetricsRepository,
           "ReadOnlyKafkaAdminStats",
-          pubSubTopicRepository);
+          kafkaReadOnlyAdmin,
+          pubSubBootstrapServers);
       logger.info(
           "{} is using kafka read-only admin client of class: {}",
           this.getClass().getSimpleName(),
@@ -124,11 +126,13 @@ public class TopicManager implements Closeable {
     });
 
     this.kafkaWriteOnlyAdmin = Lazy.of(() -> {
-      KafkaAdminWrapper kafkaWriteOnlyAdmin = pubSubAdminAdapterFactory.create(
-          pubSubProperties.get(pubSubBootstrapServers),
+      KafkaAdminWrapper kafkaWriteOnlyAdmin =
+          pubSubAdminAdapterFactory.create(pubSubProperties.get(pubSubBootstrapServers), pubSubTopicRepository);
+      kafkaWriteOnlyAdmin = createInstrumentedPubSubAdmin(
           optionalMetricsRepository,
           "WriteOnlyKafkaAdminStats",
-          pubSubTopicRepository);
+          kafkaWriteOnlyAdmin,
+          pubSubBootstrapServers);
       logger.info(
           "{} is using kafka write-only admin client of class: {}",
           this.getClass().getSimpleName(),
@@ -143,6 +147,31 @@ public class TopicManager implements Closeable {
         kafkaReadOnlyAdmin,
         kafkaOperationTimeoutMs,
         optionalMetricsRepository);
+  }
+
+  private KafkaAdminWrapper createInstrumentedPubSubAdmin(
+      Optional<MetricsRepository> optionalMetricsRepository,
+      String statsNamePrefix,
+      KafkaAdminWrapper pubSubAdmin,
+      String pubSubBootstrapServers) {
+    if (optionalMetricsRepository.isPresent()) {
+      // Use pub sub bootstrap server to identify which pub sub admin client stats it is
+      final String kafkaAdminStatsName =
+          String.format("%s_%s_%s", statsNamePrefix, pubSubAdmin.getClassName(), pubSubBootstrapServers);
+      KafkaAdminWrapper instrumentedKafkaAdmin =
+          new InstrumentedKafkaAdmin(pubSubAdmin, optionalMetricsRepository.get(), kafkaAdminStatsName);
+      logger.info(
+          "Created instrumented Kafka admin client for Kafka cluster with bootstrap "
+              + "server {} and has stats name prefix {}",
+          pubSubBootstrapServers,
+          statsNamePrefix);
+      return instrumentedKafkaAdmin;
+    } else {
+      logger.info(
+          "Created non-instrumented Kafka admin client for Kafka cluster with bootstrap server {}",
+          pubSubBootstrapServers);
+      return pubSubAdmin;
+    }
   }
 
   /**

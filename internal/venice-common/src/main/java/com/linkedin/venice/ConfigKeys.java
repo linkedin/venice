@@ -1,6 +1,6 @@
 package com.linkedin.venice;
 
-import com.linkedin.venice.kafka.admin.ApacheKafkaConsumerConfig;
+import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumerConfig;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 
 

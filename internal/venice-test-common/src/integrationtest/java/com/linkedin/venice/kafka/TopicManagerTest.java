@@ -4,7 +4,6 @@ import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIM
 import static com.linkedin.venice.kafka.TopicManager.MAX_TOPIC_DELETE_RETRIES;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
-import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.eq;
@@ -517,7 +516,7 @@ public class TopicManagerTest {
 
     PubSubAdminAdapterFactory adminAdapterFactory = mock(PubSubAdminAdapterFactory.class);
     PubSubConsumerAdapterFactory consumerAdapterFactory = mock(PubSubConsumerAdapterFactory.class);
-    doReturn(mockKafkaAdminWrapper).when(adminAdapterFactory).create(any(), any(), anyString(), any());
+    doReturn(mockKafkaAdminWrapper).when(adminAdapterFactory).create(any(), eq(pubSubTopicRepository));
     try (TopicManager topicManagerForThisTest = TopicManagerRepository.builder()
         .setPubSubProperties(k -> new VeniceProperties())
         .setPubSubTopicRepository(pubSubTopicRepository)

@@ -69,7 +69,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
   private static final int CONSUMER_POLL_EMPTY_RESULT_RETRY_TIMES = 12;
   private static final long EMPTY_POLL_SLEEP_TIME_MS = TimeUnit.SECONDS.toMillis(5);
 
-  private static final PubSubTopicRepository PUB_SUB_TOPIC_REPOSITORY = new PubSubTopicRepository();
+  private static final PubSubTopicRepository PUBSUB_TOPIC_REPOSITORY = new PubSubTopicRepository();
 
   private final PubSubConsumer consumer;
   private final TopicPartition topicPartition;
@@ -101,7 +101,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
                 new LandFillObjectPool<>(KafkaMessageEnvelope::new),
                 new LandFillObjectPool<>(KafkaMessageEnvelope::new)),
             null),
-        PUB_SUB_TOPIC_REPOSITORY);
+        PUBSUB_TOPIC_REPOSITORY);
   }
 
   /** For unit tests */

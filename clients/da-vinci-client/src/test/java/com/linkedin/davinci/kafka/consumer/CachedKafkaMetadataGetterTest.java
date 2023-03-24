@@ -7,11 +7,11 @@ import static org.mockito.Mockito.when;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.stats.StatsErrorCode;
-import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
-import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -35,8 +35,7 @@ public class CachedKafkaMetadataGetterTest {
     String testBrokerUrl = "I_Am_A_Broker_dot_com.com";
     Long earliestOffset = 1L;
     when(mockTopicManager.getKafkaBootstrapServers()).thenReturn(testBrokerUrl);
-    when(mockTopicManager.getPartitionEarliestOffsetAndRetry(any(), anyInt()))
-        .thenReturn(earliestOffset);
+    when(mockTopicManager.getPartitionEarliestOffsetAndRetry(any(), anyInt())).thenReturn(earliestOffset);
     Assert.assertEquals(
         (Long) cachedKafkaMetadataGetter.getEarliestOffset(mockTopicManager, testTopicPartition),
         earliestOffset);
@@ -55,7 +54,8 @@ public class CachedKafkaMetadataGetterTest {
     // Now check for an uncached value and verify we get the error code for topic does not exist.
     Assert.assertEquals(
         cachedKafkaMetadataGetter.getEarliestOffset(
-            mockTopicManagerThatThrowsException, new PubSubTopicPartitionImpl(testTopic, partition + 1)),
+            mockTopicManagerThatThrowsException,
+            new PubSubTopicPartitionImpl(testTopic, partition + 1)),
         StatsErrorCode.LAG_MEASUREMENT_FAILURE.code);
 
   }

@@ -1528,15 +1528,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return Long.MAX_VALUE;
     }
 
-<<<<<<< HEAD
     // Followers and Davinci clients, use local VT to compute hybrid lag.
     if (isDaVinciClient || partitionConsumptionState.getLeaderFollowerState().equals(STANDBY)) {
-      return cachedKafkaMetadataGetter.getOffset(getTopicManager(localKafkaServer), kafkaVersionTopic, partition)
-=======
-    // Since DaVinci clients run in follower only mode, use local VT to compute hybrid lag.
-    if (isDaVinciClient) {
       return cachedKafkaMetadataGetter.getOffset(getTopicManager(localKafkaServer), versionTopic, partition)
->>>>>>> b99fa0160 (Initial change for PubSubAdmin interface.)
           - partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset();
     }
 
@@ -3070,8 +3064,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       // if the end offset is the same as the beginning
       long earliestOffset = cachedKafkaMetadataGetter.getEarliestOffset(
           getTopicManager(sourceRealTimeTopicKafkaURL),
-          leaderTopic.getName(),
-          partitionToGetLatestOffsetFor);
+          new PubSubTopicPartitionImpl(leaderTopic, partitionToGetLatestOffsetFor));
       if (earliestOffset == lastOffsetInRealTimeTopic - 1) {
         lag = 0;
       }

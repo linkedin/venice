@@ -4,49 +4,22 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
 import com.linkedin.venice.utils.VeniceProperties;
-import io.tehuti.metrics.MetricsRepository;
-import java.util.Optional;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 
 /**
- * Implementation of {@link PubSubProducerAdapterFactory} used to create Apache Kafka producers.
+ * Implementation of {@link PubSubProducerAdapterFactory} used to create Apache Kafka admin clients.
  *
- * A producer created using this factory is usually used to send data to a single pub-sub topic.
+ * A kafka based admin client created using this factory is for managing and inspecting topics, brokers, configurations and ACLs.
  */
 
 public class ApacheKafkaAdminAdapterFactory implements PubSubAdminAdapterFactory<KafkaAdminWrapper> {
-  private static final Logger LOGGER = LogManager.getLogger(ApacheKafkaAdminConfig.class);
-
   private static final String NAME = "ApacheKafkaAdmin";
 
   @Override
-  public KafkaAdminWrapper create(
-      VeniceProperties veniceProperties,
-      Optional<MetricsRepository> optionalMetricsRepository,
-      String statsNamePrefix,
-      PubSubTopicRepository pubSubTopicRepository) {
+  public KafkaAdminWrapper create(VeniceProperties veniceProperties, PubSubTopicRepository pubSubTopicRepository) {
     ApacheKafkaAdminConfig adminConfig = new ApacheKafkaAdminConfig(veniceProperties);
-    String brokerAddress = adminConfig.getBrokerAddress();
     KafkaAdminWrapper kafkaAdminWrapper = new KafkaAdminClient();
     kafkaAdminWrapper.initialize(adminConfig.getAdminProperties(), pubSubTopicRepository);
-    if (optionalMetricsRepository.isPresent()) {
-      // Use Kafka bootstrap server to identify which Kafka admin client stats it is
-      final String kafkaAdminStatsName =
-          String.format("%s_%s_%s", statsNamePrefix, KafkaAdminClient.class, brokerAddress);
-      kafkaAdminWrapper =
-          new InstrumentedKafkaAdmin(kafkaAdminWrapper, optionalMetricsRepository.get(), kafkaAdminStatsName);
-      LOGGER.info(
-          "Created instrumented Kafka admin client for Kafka cluster with bootstrap "
-              + "server {} and has stats name prefix {}" + adminConfig.getAdminProperties(),
-          brokerAddress,
-          statsNamePrefix);
-    } else {
-      LOGGER.info(
-          "Created non-instrumented Kafka admin client for Kafka cluster with bootstrap server {}",
-          brokerAddress);
-    }
     return kafkaAdminWrapper;
   }
 

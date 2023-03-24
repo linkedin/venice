@@ -1,7 +1,7 @@
 package com.linkedin.venice.writer;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.kafka.TopicManager.*;
+import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_BUFFER_MEMORY;
 import static org.mockito.Mockito.mock;
 
@@ -29,7 +29,6 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Collections;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -152,8 +151,8 @@ public class PubSubSharedProducerAdapterFactoryTest {
       }
     }
 
-    try (KafkaAdminWrapper adminWrapper = pubSubAdminAdapterFactory.create(
-        new VeniceProperties(properties), Optional.empty(), "admin_stats", pubSubTopicRepository)) {
+    try (KafkaAdminWrapper adminWrapper =
+        pubSubAdminAdapterFactory.create(new VeniceProperties(properties), pubSubTopicRepository)) {
       PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(existingTopic, 0);
       Long end = adminWrapper.endOffset(pubSubTopicPartition);
       Assert.assertTrue(end > 100L); // to account for the SOP that VW sends internally.

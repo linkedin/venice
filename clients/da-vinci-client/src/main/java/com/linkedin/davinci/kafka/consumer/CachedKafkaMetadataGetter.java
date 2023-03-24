@@ -54,7 +54,7 @@ class CachedKafkaMetadataGetter {
     } catch (TopicDoesNotExistException e) {
       // It's observed in production that with java based admin client the topic may not be found temporarily, return
       // error code
-      LOGGER.error("Failed to get offset for partition {} with error {}", pubSubTopicPartition, e);
+      LOGGER.error("Failed to get offset for topic partition {}", pubSubTopicPartition, e);
       return StatsErrorCode.LAG_MEASUREMENT_FAILURE.code;
     }
   }
@@ -73,7 +73,6 @@ class CachedKafkaMetadataGetter {
       return StatsErrorCode.LAG_MEASUREMENT_FAILURE.code;
     }
   }
-
 
   long getProducerTimestampOfLastDataMessage(TopicManager topicManager, PubSubTopicPartition pubSubTopicPartition) {
     try {

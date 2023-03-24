@@ -1,8 +1,7 @@
-package com.linkedin.venice.kafka.admin;
+package com.linkedin.venice.kafka.consumer;
 
-import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.*;
+import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.KAFKA_CONFIG_PREFIX;
 
-import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumer;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;

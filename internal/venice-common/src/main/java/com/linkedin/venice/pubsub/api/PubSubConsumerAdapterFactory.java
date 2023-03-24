@@ -6,10 +6,10 @@ import java.io.Closeable;
 
 
 /**
- * Generic producer factory interface.
+ * Generic consumer factory interface.
  *
  * A pus-sub specific concrete implementation of this interface should be provided to be able to create
- * and instantiate producers for that system.
+ * and instantiate consumers for that system.
  */
 public interface PubSubConsumerAdapterFactory<ADAPTER extends PubSubConsumer> extends Closeable {
   /**

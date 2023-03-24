@@ -47,11 +47,7 @@ public class PartitionOffsetFetcherTest {
         IntegrationTestPushUtils.getVeniceConsumerFactory(),
         new VeniceProperties(properties),
         pubSubBrokerWrapper.getAddress(),
-        Lazy.of(() -> pubSubAdminAdapterFactory.create(
-            new VeniceProperties(properties),
-            Optional.empty(),
-            "admin_stats",
-            pubSubTopicRepository)),
+        Lazy.of(() -> pubSubAdminAdapterFactory.create(new VeniceProperties(properties), pubSubTopicRepository)),
         Time.MS_PER_SECOND,
         Optional.empty())) {
       String topic = Utils.getUniqueString("topic") + "_v1";
