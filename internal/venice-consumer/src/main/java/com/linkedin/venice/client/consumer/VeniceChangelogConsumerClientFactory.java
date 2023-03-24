@@ -38,13 +38,12 @@ public class VeniceChangelogConsumerClientFactory {
 
       // TODO: This is a redundant controller query. Need to condense it with the storeInfo query that happens
       // inside the changecaptureclient itself
-      String viewClass = newStoreChangelogClientConfig.getViewClassName() == null
-          ? ""
-          : newStoreChangelogClientConfig.getViewClassName();
+      String viewClass =
+          newStoreChangelogClientConfig.getViewName() == null ? "" : newStoreChangelogClientConfig.getViewName();
       if (!viewClass.isEmpty()) {
         viewClass = getViewClass(
             storeName,
-            newStoreChangelogClientConfig.getViewClassName(),
+            newStoreChangelogClientConfig.getViewName(),
             d2ControllerClient,
             globalChangelogClientConfig.getControllerRequestRetryCount());
       }

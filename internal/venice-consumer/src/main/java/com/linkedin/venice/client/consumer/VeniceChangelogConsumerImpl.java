@@ -84,7 +84,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     this.storeCurrentVersion = store.getCurrentVersion();
     this.partitionCount = store.getPartitionCount();
     this.currentValuePayloadSize = new int[partitionCount];
-    this.viewClassName = changelogClientConfig.getViewClassName();
+    this.viewClassName = changelogClientConfig.getViewName();
     this.currentTopic =
         Version.composeKafkaTopic(storeName, storeCurrentVersion) + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX;
     this.replicationMetadataSchemaRepository = new ReplicationMetadataSchemaRepository(d2ControllerClient);

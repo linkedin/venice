@@ -205,18 +205,17 @@ public class TestActiveActiveIngestion {
     consumerProperties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class);
     consumerProperties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, KafkaValueSerializer.class);
     consumerProperties.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
-    ChangelogClientConfig globalChangelogClientConfig =
-        new ChangelogClientConfig().setViewClassName("changeCaptureView")
-            .setConsumerProperties(consumerProperties)
-            .setControllerD2ServiceName(D2_SERVICE_NAME)
-            .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
-            .setLocalD2ZkHosts(localZkServer.getAddress())
-            .setControllerRequestRetryCount(3);
+    ChangelogClientConfig globalChangelogClientConfig = new ChangelogClientConfig().setViewName("changeCaptureView")
+        .setConsumerProperties(consumerProperties)
+        .setControllerD2ServiceName(D2_SERVICE_NAME)
+        .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+        .setLocalD2ZkHosts(localZkServer.getAddress())
+        .setControllerRequestRetryCount(3);
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig);
 
     ChangelogClientConfig globalAfterImageClientConfig =
-        ChangelogClientConfig.cloneConfig(globalChangelogClientConfig).setViewClassName("");
+        ChangelogClientConfig.cloneConfig(globalChangelogClientConfig).setViewName("");
     VeniceChangelogConsumerClientFactory veniceAfterImageConsumerClientFactory =
         new VeniceChangelogConsumerClientFactory(globalAfterImageClientConfig);
 

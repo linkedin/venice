@@ -103,7 +103,7 @@ public class VeniceChangelogConsumerImplTest {
         new ChangelogClientConfig<>().setD2ControllerClient(d2ControllerClient)
             .setSchemaReader(schemaReader)
             .setStoreName(storeName)
-            .setViewClassName("changeCaptureView");
+            .setViewName("changeCaptureView");
     VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
         new VeniceChangelogConsumerImpl<>(changelogClientConfig, mockKafkaConsumer);
     veniceChangelogConsumer.subscribe(new HashSet<>(Arrays.asList(0))).get();
@@ -148,7 +148,7 @@ public class VeniceChangelogConsumerImplTest {
         new ChangelogClientConfig<>().setD2ControllerClient(d2ControllerClient)
             .setSchemaReader(schemaReader)
             .setStoreName(storeName)
-            .setViewClassName("");
+            .setViewName("");
     VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
         new VeniceAfterImageConsumerImpl<>(changelogClientConfig, kafkaConsumer);
     veniceChangelogConsumer.subscribe(new HashSet<>(Arrays.asList(0))).get();
