@@ -984,12 +984,12 @@ public class ReadOnlyStore implements Store {
   }
 
   @Override
-  public Optional<Integer> getRmdVersionID() {
-    return this.delegate.getRmdVersionID();
+  public int getRmdVersion() {
+    return this.delegate.getRmdVersion();
   }
 
   @Override
-  public void setRmdVersionID(Optional<Integer> rmdVersionID) {
+  public void setRmdVersion(int rmdVersion) {
     throw new UnsupportedOperationException("This class is read-only. Hence set/write operation is not allowed");
   }
 

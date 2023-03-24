@@ -1,8 +1,11 @@
 package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.ConfigConstants.DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS;
+import static com.linkedin.venice.ConfigKeys.ACTIVE_ACTIVE_ENABLED_ON_CONTROLLER;
 import static com.linkedin.venice.ConfigKeys.ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST;
 import static com.linkedin.venice.ConfigKeys.ADMIN_CHECK_READ_METHOD_FOR_KAFKA;
+import static com.linkedin.venice.ConfigKeys.ADMIN_CONSUMPTION_CYCLE_TIMEOUT_MS;
+import static com.linkedin.venice.ConfigKeys.ADMIN_CONSUMPTION_MAX_WORKER_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.ADMIN_CONSUMPTION_TIMEOUT_MINUTES;
 import static com.linkedin.venice.ConfigKeys.ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.ADMIN_HOSTNAME;
@@ -36,6 +39,8 @@ import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENABLE_BATCH_PUSH_FROM_A
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ENFORCE_SSL;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_HAAS_SUPER_CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_IN_AZURE_FABRIC;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED;
+import static com.linkedin.venice.ConfigKeys.CONTROLLER_PARENT_MODE;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_DELAY_MINUTES;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_STORE_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MINUTES;
@@ -58,6 +63,7 @@ import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_FABRIC_ALLOWLIST
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_FABRIC_WHITELIST;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC;
 import static com.linkedin.venice.ConfigKeys.PARENT_CONTROLLER_MAX_ERRORED_TOPIC_NUM_TO_KEEP;
+import static com.linkedin.venice.ConfigKeys.PARENT_CONTROLLER_WAITING_TIME_FOR_CONSUMPTION_MS;
 import static com.linkedin.venice.ConfigKeys.PARENT_KAFKA_CLUSTER_FABRIC_LIST;
 import static com.linkedin.venice.ConfigKeys.PARTICIPANT_MESSAGE_STORE_ENABLED;
 import static com.linkedin.venice.ConfigKeys.PUSH_JOB_STATUS_STORE_CLUSTER_NAME;
@@ -75,7 +81,6 @@ import static com.linkedin.venice.ConfigKeys.UNREGISTER_METRIC_FOR_DELETED_STORE
 import static com.linkedin.venice.ConfigKeys.USE_PUSH_STATUS_STORE_FOR_INCREMENTAL_PUSH;
 import static com.linkedin.venice.ConfigKeys.VENICE_STORAGE_CLUSTER_LEADER_HAAS;
 
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.authorization.DefaultIdentityParser;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.ControllerRoute;
@@ -245,6 +250,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   private final int storeGraveyardCleanupSleepIntervalBetweenListFetchMinutes;
 
+  private final boolean parentExternalSupersetSchemaGenerationEnabled;
+
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
     this.adminPort = props.getInt(ADMIN_PORT);
@@ -259,8 +266,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.controllerClusterZkAddress = props.getString(CONTROLLER_CLUSTER_ZK_ADDRESSS, getZkAddress());
     this.topicCreationThrottlingTimeWindowMs =
         props.getLong(TOPIC_CREATION_THROTTLING_TIME_WINDOW_MS, 10 * Time.MS_PER_SECOND);
-    this.parent = props.getBoolean(ConfigKeys.CONTROLLER_PARENT_MODE, false);
-    this.activeActiveEnabledOnController = props.getBoolean(ConfigKeys.ACTIVE_ACTIVE_ENABLED_ON_CONTROLLER, false);
+    this.parent = props.getBoolean(CONTROLLER_PARENT_MODE, false);
+    this.activeActiveEnabledOnController = props.getBoolean(ACTIVE_ACTIVE_ENABLED_ON_CONTROLLER, false);
     this.activeActiveRealTimeSourceFabrics =
         Utils.parseCommaSeparatedStringToSet(props.getString(ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST, ""));
     validateActiveActiveConfigs();
@@ -304,7 +311,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     }
     this.nativeReplicationSourceFabric = props.getString(NATIVE_REPLICATION_SOURCE_FABRIC, "");
     this.parentControllerWaitingTimeForConsumptionMs =
-        props.getInt(ConfigKeys.PARENT_CONTROLLER_WAITING_TIME_FOR_CONSUMPTION_MS, 30 * Time.MS_PER_SECOND);
+        props.getInt(PARENT_CONTROLLER_WAITING_TIME_FOR_CONSUMPTION_MS, 30 * Time.MS_PER_SECOND);
     this.batchJobHeartbeatStoreCluster = props.getString(
         BatchJobHeartbeatConfigs.HEARTBEAT_STORE_CLUSTER_CONFIG.getConfigName(),
         BatchJobHeartbeatConfigs.HEARTBEAT_STORE_CLUSTER_CONFIG.getDefaultValue());
@@ -321,9 +328,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
             BatchJobHeartbeatConfigs.HEARTBEAT_CONTROLLER_INITIAL_DELAY_CONFIG.getDefaultValue()));
     this.adminConsumptionTimeoutMinute = props.getLong(ADMIN_CONSUMPTION_TIMEOUT_MINUTES, TimeUnit.DAYS.toMinutes(5));
     this.adminConsumptionCycleTimeoutMs =
-        props.getLong(ConfigKeys.ADMIN_CONSUMPTION_CYCLE_TIMEOUT_MS, TimeUnit.MINUTES.toMillis(30));
-    this.adminConsumptionMaxWorkerThreadPoolSize =
-        props.getInt(ConfigKeys.ADMIN_CONSUMPTION_MAX_WORKER_THREAD_POOL_SIZE, 1);
+        props.getLong(ADMIN_CONSUMPTION_CYCLE_TIMEOUT_MS, TimeUnit.MINUTES.toMillis(30));
+    this.adminConsumptionMaxWorkerThreadPoolSize = props.getInt(ADMIN_CONSUMPTION_MAX_WORKER_THREAD_POOL_SIZE, 1);
     this.storageEngineOverheadRatio = props.getDouble(STORAGE_ENGINE_OVERHEAD_RATIO, 0.85d);
 
     // The default retention will allow Kafka remove as much data as possible.
@@ -436,6 +442,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
         props.getInt(CONTROLLER_STORE_GRAVEYARD_CLEANUP_SLEEP_INTERVAL_BETWEEN_LIST_FETCH_MINUTES, 15);
     this.clusterDiscoveryD2ServiceName =
         props.getString(CLUSTER_DISCOVERY_D2_SERVICE, ClientConfig.DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME);
+    this.parentExternalSupersetSchemaGenerationEnabled =
+        props.getBoolean(CONTROLLER_PARENT_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED, false);
   }
 
   private void validateActiveActiveConfigs() {
@@ -443,13 +451,13 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
       throw new VeniceException(
           String.format(
               "The config %s cannot be empty when the child controller has A/A enabled " + "(%s == true).",
-              ConfigKeys.ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST,
-              ConfigKeys.ACTIVE_ACTIVE_ENABLED_ON_CONTROLLER));
+              ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST,
+              ACTIVE_ACTIVE_ENABLED_ON_CONTROLLER));
 
     } else if (this.activeActiveEnabledOnController) {
       LOGGER.info(
           "A/A is enabled on a child controller and {} == {}",
-          ConfigKeys.ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST,
+          ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST,
           this.activeActiveRealTimeSourceFabrics);
     } else {
       LOGGER.info(
@@ -457,7 +465,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
           !this.activeActiveRealTimeSourceFabrics.isEmpty()
               ? String.format(
                   " But %s is still set to %s.",
-                  ConfigKeys.ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST,
+                  ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST,
                   this.activeActiveRealTimeSourceFabrics)
               : "");
     }
@@ -806,6 +814,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public int getStoreGraveyardCleanupSleepIntervalBetweenListFetchMinutes() {
     return storeGraveyardCleanupSleepIntervalBetweenListFetchMinutes;
+  }
+
+  public boolean isParentExternalSupersetSchemaGenerationEnabled() {
+    return parentExternalSupersetSchemaGenerationEnabled;
   }
 
   /**

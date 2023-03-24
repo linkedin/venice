@@ -27,6 +27,7 @@ import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.pushmonitor.RouterBasedHybridStoreQuotaMonitor;
 import com.linkedin.venice.pushmonitor.RouterBasedPushMonitor;
 import com.linkedin.venice.schema.SchemaReader;
+import com.linkedin.venice.schema.writecompute.WriteComputeHandlerV1;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.SchemaPresenceChecker;
@@ -57,6 +58,7 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Supplier;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumWriter;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.generic.IndexedRecord;
 import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.DatumWriter;
@@ -78,11 +80,11 @@ import org.apache.samza.system.SystemProducer;
  *
  * The primary controller should be:
  * 1. The parent controller when the Venice system is deployed in a multi-colo mode and either:
- *     a. {@link PushType} is {@link PushType.BATCH} or {@link PushType.STREAM_REPROCESSING}; or
- *     b. @deprecated {@link PushType} is {@link PushType.STREAM} and the job is configured to write data in AGGREGATE mode
+ *     a. {@link Version.PushType} is {@link PushType.BATCH} or {@link PushType.STREAM_REPROCESSING}; or
+ *     b. @deprecated {@link Version.PushType} is {@link PushType.STREAM} and the job is configured to write data in AGGREGATE mode
  * 2. The child controller when either:
  *     a. The Venice system is deployed in a single-colo mode; or
- *     b. The {@link PushType} is {@link PushType.STREAM} and the job is configured to write data in NON_AGGREGATE mode
+ *     b. The {@link Version.PushType} is {@link PushType.STREAM} and the job is configured to write data in NON_AGGREGATE mode
  */
 public class VeniceSystemProducer implements SystemProducer, Closeable {
   private static final Logger LOGGER = LogManager.getLogger(VeniceSystemProducer.class);
@@ -102,6 +104,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   private static final DatumWriter<ByteBuffer> BYTES_DATUM_WRITER = new GenericDatumWriter<>(BYTES_SCHEMA);
   private static final DatumWriter<Boolean> BOOL_DATUM_WRITER = new GenericDatumWriter<>(BOOL_SCHEMA);
 
+  private static final WriteComputeHandlerV1 writeComputeHandlerV1 = new WriteComputeHandlerV1();
+
   // Immutable state
   private final String veniceChildD2ZkHost;
   private final String primaryControllerColoD2ZKHost;
@@ -116,8 +120,12 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   private final String runningFabric;
   private final boolean verifyLatestProtocolPresent;
   private final Map<String, D2ClientEnvelope> d2ZkHostToClientEnvelopeMap = new HashMap<>();
-  private final VeniceConcurrentHashMap<Schema, Pair<Integer, Integer>> valueSchemaIds =
+  private final VeniceConcurrentHashMap<Schema, Pair<Integer, Integer>> valueSchemaToIdsMap =
       new VeniceConcurrentHashMap<>();
+
+  private final VeniceConcurrentHashMap<Pair<Integer, Integer>, Schema> valueSchemaIdsToSchemaMap =
+      new VeniceConcurrentHashMap<>();
+
   /**
    * key is schema
    * value is Avro serializer
@@ -430,15 +438,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     this.keySchema = parseSchemaFromJSONStrictValidation(keySchemaResponse.getSchemaStr());
     this.canonicalKeySchemaStr = AvroCompatibilityHelper.toParsingForm(this.keySchema);
 
-    MultiSchemaResponse valueSchemaResponse = (MultiSchemaResponse) controllerRequestWithRetry(
-        () -> this.controllerClient.getAllValueAndDerivedSchema(this.storeName),
-        2);
-    LOGGER.info("Got [store: {}] SchemaResponse for value schemas: {}", storeName, valueSchemaResponse);
-    for (MultiSchemaResponse.Schema valueSchema: valueSchemaResponse.getSchemas()) {
-      valueSchemaIds.put(
-          parseSchemaFromJSONLooseValidation(valueSchema.getSchemaStr()),
-          new Pair<>(valueSchema.getId(), valueSchema.getDerivedSchemaId()));
-    }
+    // Load Schemas from Venice
+    refreshSchemaCache();
 
     if (pushType.equals(Version.PushType.STREAM_REPROCESSING)) {
       String versionTopic = Version.composeVersionTopicFromStreamReprocessingTopic(topicName);
@@ -490,6 +491,20 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     }
   }
 
+  // Grabs all Venice schemas and their associated ID's and caches them
+  private void refreshSchemaCache() {
+    MultiSchemaResponse valueSchemaResponse = (MultiSchemaResponse) controllerRequestWithRetry(
+        () -> this.controllerClient.getAllValueAndDerivedSchema(this.storeName),
+        2);
+    LOGGER.info("Got [store: {}] SchemaResponse for value schemas: {}", storeName, valueSchemaResponse);
+    for (MultiSchemaResponse.Schema valueSchema: valueSchemaResponse.getSchemas()) {
+      Schema schema = parseSchemaFromJSONLooseValidation(valueSchema.getSchemaStr());
+      Pair<Integer, Integer> idPair = new Pair<>(valueSchema.getId(), valueSchema.getDerivedSchemaId());
+      valueSchemaToIdsMap.put(schema, idPair);
+      valueSchemaIdsToSchemaMap.put(idPair, schema);
+    }
+  }
+
   @Override
   public void close() {
     stop();
@@ -535,6 +550,9 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
 
   @Override
   public void send(String source, OutgoingMessageEnvelope outgoingMessageEnvelope) {
+    if (!isStarted) {
+      throw new SamzaException("Send called on Venice System Producer that is not started yet!");
+    }
     String storeOfIncomingMessage = outgoingMessageEnvelope.getSystemStream().getStream();
     if (!storeOfIncomingMessage.equals(storeName)) {
       throw new SamzaException(
@@ -598,7 +616,8 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     final PubSubProducerCallback callback = new CompletableFutureCallback(completableFuture);
 
     long logicalTimestamp = -1;
-    if (valueObject instanceof VeniceObjectWithTimestamp) {
+    // Only transmit the timestamp if this is a realtime topic.
+    if (valueObject instanceof VeniceObjectWithTimestamp && Version.isRealTimeTopic(topicName)) {
       VeniceObjectWithTimestamp objectWithTimestamp = (VeniceObjectWithTimestamp) valueObject;
       logicalTimestamp = objectWithTimestamp.getTimestamp();
       if (logicalTimestamp <= 0) {
@@ -618,13 +637,23 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     } else {
       Schema valueObjectSchema = getSchemaFromObject(valueObject);
 
-      Pair<Integer, Integer> valueSchemaIdPair = valueSchemaIds.computeIfAbsent(valueObjectSchema, valueSchema -> {
+      Pair<Integer, Integer> valueSchemaIdPair = valueSchemaToIdsMap.computeIfAbsent(valueObjectSchema, valueSchema -> {
         SchemaResponse valueSchemaResponse = (SchemaResponse) controllerRequestWithRetry(
             () -> controllerClient.getValueOrDerivedSchemaId(storeName, valueSchema.toString()),
             2);
         LOGGER.info("Got [store: {}] SchemaResponse for schema: {}", storeName, valueSchema);
         return new Pair<>(valueSchemaResponse.getId(), valueSchemaResponse.getDerivedSchemaId());
       });
+
+      if (Version.isATopicThatIsVersioned(topicName) && valueSchemaIdPair.getSecond() != -1) {
+        // This is a write compute request getting published to a version topic or reprocessing topic. We don't
+        // support partial records in the Venice version topic, so we will convert this request
+        // to a full put with default fields applied
+
+        int baseSchemaId = valueSchemaIdPair.getFirst();
+        valueObject = convertPartialUpdateToFullPut(valueSchemaIdPair, valueObject);
+        valueSchemaIdPair = new Pair<>(baseSchemaId, -1);
+      }
 
       byte[] value = serializeObject(topicName, valueObject);
 
@@ -744,6 +773,23 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
     return out.toByteArray();
   }
 
+  protected Object convertPartialUpdateToFullPut(Pair<Integer, Integer> schemaIds, Object incomingWriteValueObject) {
+    Pair<Integer, Integer> baseSchemaIds = new Pair(schemaIds.getFirst(), -1);
+    Schema baseSchema = valueSchemaIdsToSchemaMap.get(baseSchemaIds);
+    if (baseSchema == null) {
+      // refresh from venice once since we don't have this schema cached yet, then check again
+      this.refreshSchemaCache();
+      baseSchema = valueSchemaIdsToSchemaMap.get(baseSchemaIds);
+      if (baseSchema == null) {
+        // Something isn't right with this write. We can't seem to find an associated schema, so raise an exception.
+        throw new SamzaException(
+            "Unable to find base schema with id: " + schemaIds.getFirst() + " for write compute schema with id "
+                + schemaIds.getSecond());
+      }
+    }
+    return writeComputeHandlerV1.updateValueRecord(baseSchema, null, (GenericRecord) incomingWriteValueObject);
+  }
+
   public void setExitMode(SamzaExitMode exitMode) {
     if (pushMonitor.isPresent()) {
       pushMonitor.get().setStreamReprocessingExitMode(exitMode);
@@ -751,17 +797,18 @@ public class VeniceSystemProducer implements SystemProducer, Closeable {
   }
 
   /**
-   * Only used by tests
+   * Test methods
    */
   public String getKafkaBootstrapServers() {
     return this.kafkaBootstrapServers;
   }
 
-  /**
-   * For testing only.
-   */
   public VeniceWriter<byte[], byte[], byte[]> getInternalProducer() {
     return this.veniceWriter;
+  }
+
+  protected void setControllerClient(D2ControllerClient controllerClient) {
+    this.controllerClient = controllerClient;
   }
 
   private D2Client getStartedD2Client(String d2ZkHost) {

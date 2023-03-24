@@ -1,10 +1,10 @@
 package com.linkedin.venice.meta;
 
 import com.linkedin.venice.VeniceResource;
+import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
-import com.linkedin.venice.utils.Pair;
 import java.util.Collection;
 import java.util.Optional;
 
@@ -54,14 +54,12 @@ public interface ReadOnlySchemaRepository extends VeniceResource {
   SchemaEntry getSupersetSchema(String storeName);
 
   /**
-   * Look up derived schema id and its corresponding value schema id
-   * by given store name and derived schema. This is likely used by
-   * clients that write to Venice
+   * Look up derived schema id and its corresponding value schema id by given store name and derived schema. This is
+   * likely used by clients that write to Venice
    *
-   * @return a pair where the first value is value schema id and the
-   * second value is derived schema id
+   * @return a pair where the first value is value schema id and the second value is derived schema id
    */
-  Pair<Integer, Integer> getDerivedSchemaId(String storeName, String derivedSchemaStr);
+  GeneratedSchemaID getDerivedSchemaId(String storeName, String derivedSchemaStr);
 
   DerivedSchemaEntry getDerivedSchema(String storeName, int valueSchemaId, int writeComputeSchemaId);
 

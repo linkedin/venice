@@ -151,6 +151,7 @@ import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
+import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
@@ -2505,7 +2506,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       boolean versionSwapDeferred) {
     checkControllerLeadershipFor(clusterName);
     VeniceControllerClusterConfig clusterConfig = getHelixVeniceClusterResources(clusterName).getConfig();
-    int replicationMetadataVersionId = clusterConfig.getReplicationMetadataVersionId();
+    int replicationMetadataVersionId = clusterConfig.getReplicationMetadataVersion();
     return pushType.isIncremental()
         ? getIncrementalPushVersion(clusterName, storeName)
         : addVersion(
@@ -3669,9 +3670,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     });
   }
 
-  void setReplicationMetadataVersionID(String clusterName, String storeName, int rmdVersionID) {
+  void setReplicationMetadataVersionID(String clusterName, String storeName, int rmdVersion) {
     storeMetadataUpdate(clusterName, storeName, store -> {
-      store.setRmdVersionID(Optional.of(rmdVersionID));
+      store.setRmdVersion(rmdVersion);
       return store;
     });
   }
@@ -4495,16 +4496,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * @return the derived schema id for the specified store and derived schema.
    */
   @Override
-  public Pair<Integer, Integer> getDerivedSchemaId(String clusterName, String storeName, String schemaStr) {
+  public GeneratedSchemaID getDerivedSchemaId(String clusterName, String storeName, String schemaStr) {
     checkControllerLeadershipFor(clusterName);
     ReadWriteSchemaRepository schemaRepo = getHelixVeniceClusterResources(clusterName).getSchemaRepository();
-    Pair<Integer, Integer> schamaID = schemaRepo.getDerivedSchemaId(storeName, schemaStr);
+    GeneratedSchemaID schemaID = schemaRepo.getDerivedSchemaId(storeName, schemaStr);
     // validate the schema as VPJ uses this method to fetch the value schema. Fail loudly if the schema user trying
     // to push is bad.
-    if (schamaID.getFirst() != SchemaData.INVALID_VALUE_SCHEMA_ID) {
+    if (schemaID.isValid()) {
       AvroSchemaUtils.validateAvroSchemaStr(schemaStr);
     }
-    return schamaID;
+    return schemaID;
   }
 
   /**
@@ -4695,7 +4696,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     return new DerivedSchemaEntry(
         valueSchemaId,
-        schemaRepository.getDerivedSchemaId(storeName, derivedSchemaStr).getSecond(),
+        schemaRepository.getDerivedSchemaId(storeName, derivedSchemaStr).getGeneratedSchemaVersion(),
         derivedSchemaStr);
   }
 
@@ -4770,11 +4771,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return schemaRepository.addValueSchema(storeName, valueSchema, valueSchemaId);
   }
 
-  int getValueSchemaIdIgnoreFieldOrder(String clusterName, String storeName, String valueSchemaStr) {
+  int getValueSchemaIdIgnoreFieldOrder(
+      String clusterName,
+      String storeName,
+      String valueSchemaStr,
+      Comparator<Schema> schemaComparator) {
     checkControllerLeadershipFor(clusterName);
     SchemaEntry valueSchemaEntry = new SchemaEntry(SchemaData.UNKNOWN_SCHEMA_ID, valueSchemaStr);
-    ReadWriteSchemaRepository schemaRepository = getHelixVeniceClusterResources(clusterName).getSchemaRepository();
-    return schemaRepository.getValueSchemaIdIgnoreFieldOrder(storeName, valueSchemaEntry);
+
+    for (SchemaEntry schemaEntry: getValueSchemas(clusterName, storeName)) {
+      if (schemaComparator.compare(schemaEntry.getSchema(), valueSchemaEntry.getSchema()) == 0) {
+        return schemaEntry.getId();
+      }
+    }
+    return SchemaData.INVALID_VALUE_SCHEMA_ID;
+
   }
 
   int checkPreConditionForAddValueSchemaAndGetNewSchemaId(
@@ -5044,18 +5055,22 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    */
   @Override
   public OfflinePushStatusInfo getOffLinePushStatus(String clusterName, String kafkaTopic) {
-    return getOffLinePushStatus(clusterName, kafkaTopic, Optional.empty());
+    return getOffLinePushStatus(clusterName, kafkaTopic, Optional.empty(), null);
   }
 
   /**
-   * @see Admin#getOffLinePushStatus(String, String, Optional)
+   * @see Admin#getOffLinePushStatus(String, String, Optional, String)
    */
   @Override
   public OfflinePushStatusInfo getOffLinePushStatus(
       String clusterName,
       String kafkaTopic,
-      Optional<String> incrementalPushVersion) {
+      Optional<String> incrementalPushVersion,
+      String region) {
     checkControllerLeadershipFor(clusterName);
+    if (region != null) {
+      checkCurrentFabricMatchesExpectedFabric(region);
+    }
     PushMonitor monitor = getHelixVeniceClusterResources(clusterName).getPushMonitor();
     String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
     Store store = getStore(clusterName, storeName);
@@ -5065,7 +5080,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     int versionNumber = Version.parseVersionFromVersionTopicName(kafkaTopic);
 
     if (!incrementalPushVersion.isPresent()) {
-      return getOfflinePushStatusInfo(clusterName, kafkaTopic, incrementalPushVersion, monitor, store, versionNumber);
+      OfflinePushStatusInfo offlinePushStatusInfo =
+          getOfflinePushStatusInfo(clusterName, kafkaTopic, incrementalPushVersion, monitor, store, versionNumber);
+      if (region != null) {
+        offlinePushStatusInfo.setUncompletedPartitions(monitor.getUncompletedPartitions(kafkaTopic));
+      }
+      return offlinePushStatusInfo;
     }
 
     List<OfflinePushStatusInfo> list = new ArrayList<>();
@@ -5094,9 +5114,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       LOGGER.warn(
           "Could not find any valid incremental push status for store: {}, returning NOT_CREATED status.",
           storeName);
-      return new OfflinePushStatusInfo(
-          ExecutionStatus.NOT_CREATED,
-          Optional.of("Offline job hasn't been created yet."));
+      return new OfflinePushStatusInfo(ExecutionStatus.NOT_CREATED, "Offline job hasn't been created yet.");
     }
     // higher priority of EOIP followed by SOIP and NOT_CREATED
     list.sort(((o1, o2) -> {
@@ -5119,11 +5137,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     return list.get(0);
   }
 
-  private Pair<ExecutionStatus, Optional<String>> getIncrementalPushStatus(
+  private Pair<ExecutionStatus, String> getIncrementalPushStatus(
       String clusterName,
-      Store store,
       String kafkaTopic,
-      int storeVersion,
       String incrementalPushVersion,
       PushMonitor monitor) {
     HelixCustomizedViewOfflinePushRepository cvRepo =
@@ -5148,29 +5164,23 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       PushMonitor monitor,
       Store store,
       int versionNumber) {
-    Pair<ExecutionStatus, Optional<String>> statusAndDetails;
+    Pair<ExecutionStatus, String> statusAndDetails;
     if (incrementalPushVersion.isPresent()) {
-      statusAndDetails = getIncrementalPushStatus(
-          clusterName,
-          store,
-          kafkaTopic,
-          versionNumber,
-          incrementalPushVersion.get(),
-          monitor);
+      statusAndDetails = getIncrementalPushStatus(clusterName, kafkaTopic, incrementalPushVersion.get(), monitor);
     } else {
       statusAndDetails = monitor.getPushStatusAndDetails(kafkaTopic);
     }
     ExecutionStatus executionStatus = statusAndDetails.getFirst();
-    Optional<String> details = statusAndDetails.getSecond();
+    String details = statusAndDetails.getSecond();
     if (executionStatus.equals(ExecutionStatus.NOT_CREATED)) {
-      StringBuilder moreDetailsBuilder = new StringBuilder(details.map(s -> s + " and ").orElse(""));
+      StringBuilder moreDetailsBuilder = new StringBuilder(details == null ? "" : details + " and ");
       // Check whether cluster is in maintenance mode or not
       if (isClusterInMaintenanceMode(clusterName)) {
         moreDetailsBuilder.append("Cluster: ").append(clusterName).append(" is in maintenance mode");
       } else {
         moreDetailsBuilder.append("Version creation for topic: ").append(kafkaTopic).append(" got delayed");
       }
-      details = Optional.of(moreDetailsBuilder.toString());
+      details = moreDetailsBuilder.toString();
     }
 
     // Retrieve Da Vinci push status
@@ -5178,20 +5188,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     if (store.isDaVinciPushStatusStoreEnabled() && (versionNumber > 1 || incrementalPushVersion.isPresent())) {
       if (store.getVersion(versionNumber).isPresent()) {
         Version version = store.getVersion(versionNumber).get();
-        Pair<ExecutionStatus, Optional<String>> daVinciStatusAndDetails =
+        Pair<ExecutionStatus, String> daVinciStatusAndDetails =
             getDaVinciPushStatusAndDetails(version, incrementalPushVersion);
         ExecutionStatus daVinciStatus = daVinciStatusAndDetails.getFirst();
-        Optional<String> daVinciDetails = daVinciStatusAndDetails.getSecond();
+        String daVinciDetails = daVinciStatusAndDetails.getSecond();
         executionStatus = getOverallPushStatus(executionStatus, daVinciStatus);
-        if (details.isPresent() || daVinciDetails.isPresent()) {
+        if (details != null || daVinciDetails != null) {
           String overallDetails = "";
-          if (details.isPresent()) {
-            overallDetails += details.get();
+          if (details != null) {
+            overallDetails += details;
           }
-          if (daVinciDetails.isPresent()) {
-            overallDetails += (overallDetails.isEmpty() ? "" : " ") + daVinciDetails.get();
+          if (daVinciDetails != null) {
+            overallDetails += (overallDetails.isEmpty() ? "" : " ") + daVinciDetails;
           }
-          details = Optional.of(overallDetails);
+          details = overallDetails;
         }
       } else {
         LOGGER
@@ -5213,7 +5223,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * Inside each partition, getDaVinciPushStatusAndDetails will compute status based on all active replicas/Da Vinci instances.
    * A replica/Da Vinci instance sent heartbeat to controllers recently is considered active.
    */
-  private Pair<ExecutionStatus, Optional<String>> getDaVinciPushStatusAndDetails(
+  private Pair<ExecutionStatus, String> getDaVinciPushStatusAndDetails(
       Version version,
       Optional<String> incrementalPushVersion) {
     if (!pushStatusStoreReader.isPresent()) {
@@ -5262,7 +5272,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         incompletePartition.add(partitionId);
       }
     }
-    Optional<String> statusDetail;
+    String statusDetail = null;
     String details = "";
     if (completedPartitions > 0) {
       details += completedPartitions + "/" + partitionCount + " partitions completed in Da Vinci.";
@@ -5275,9 +5285,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       details += ". Following partitions still not complete " + incompletePartition;
     }
     if (details.length() != 0) {
-      statusDetail = Optional.of(details);
-    } else {
-      statusDetail = Optional.empty();
+      statusDetail = details;
     }
     if (completedPartitions == partitionCount) {
       return new Pair<>(completeStatus, statusDetail);
@@ -5288,16 +5296,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     } else {
       return new Pair<>(ExecutionStatus.STARTED, statusDetail);
     }
-  }
-
-  /**
-   * @see Admin#getOfflinePushProgress(String, String)
-   */
-  @Override
-  public Map<String, Long> getOfflinePushProgress(String clusterName, String kafkaTopic) {
-    checkControllerLeadershipFor(clusterName);
-    PushMonitor monitor = getHelixVeniceClusterResources(clusterName).getPushMonitor();
-    return monitor.getOfflinePushProgress(kafkaTopic);
   }
 
   // TODO remove this method once we are fully on HaaS

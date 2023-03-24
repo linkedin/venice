@@ -11,6 +11,7 @@ import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreCleaner;
+import com.linkedin.venice.meta.UncompletedPartition;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreReader;
 import com.linkedin.venice.utils.Pair;
@@ -138,12 +139,17 @@ public class PushMonitorDelegator implements PushMonitor {
   }
 
   @Override
-  public Pair<ExecutionStatus, Optional<String>> getPushStatusAndDetails(String topic) {
+  public Pair<ExecutionStatus, String> getPushStatusAndDetails(String topic) {
     return getPushMonitor(topic).getPushStatusAndDetails(topic);
   }
 
   @Override
-  public Pair<ExecutionStatus, Optional<String>> getIncrementalPushStatusAndDetails(
+  public List<UncompletedPartition> getUncompletedPartitions(String topic) {
+    return getPushMonitor(topic).getUncompletedPartitions(topic);
+  }
+
+  @Override
+  public Pair<ExecutionStatus, String> getIncrementalPushStatusAndDetails(
       String kafkaTopic,
       String incrementalPushVersion,
       HelixCustomizedViewOfflinePushRepository customizedViewRepo) {
@@ -152,7 +158,7 @@ public class PushMonitorDelegator implements PushMonitor {
   }
 
   @Override
-  public Pair<ExecutionStatus, Optional<String>> getIncrementalPushStatusFromPushStatusStore(
+  public Pair<ExecutionStatus, String> getIncrementalPushStatusFromPushStatusStore(
       String kafkaTopic,
       String incrementalPushVersion,
       HelixCustomizedViewOfflinePushRepository customizedViewRepo,
@@ -177,11 +183,6 @@ public class PushMonitorDelegator implements PushMonitor {
   @Override
   public List<String> getTopicsOfOngoingOfflinePushes() {
     return partitionStatusBasedPushStatusMonitor.getTopicsOfOngoingOfflinePushes();
-  }
-
-  @Override
-  public Map<String, Long> getOfflinePushProgress(String topic) {
-    return getPushMonitor(topic).getOfflinePushProgress(topic);
   }
 
   @Override

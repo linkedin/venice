@@ -26,6 +26,8 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.net.UnknownHostException;
+import java.security.cert.Certificate;
+import java.security.cert.X509Certificate;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
@@ -47,7 +49,9 @@ import javax.annotation.Nonnull;
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLHandshakeException;
 import javax.net.ssl.SSLParameters;
+import javax.net.ssl.SSLSession;
 import javax.net.ssl.SSLSessionContext;
+import javax.security.auth.x500.X500Principal;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -290,9 +294,26 @@ public class SslInitializer extends ChannelInitializer<Channel> {
           _handshakesFailed.increment();
         }
         if (ctx.channel().hasAttr(SSL_HANDSHAKE_START_TS)) {
+          SslHandler handler = ctx.pipeline().get(SslHandler.class);
+          SSLSession session = handler.engine().getSession();
+          String remoteCN = null;
+          try {
+            for (Certificate cert: session.getPeerCertificates()) {
+              if (cert instanceof X509Certificate) {
+                X500Principal cn = ((X509Certificate) cert).getSubjectX500Principal();
+                if (cn != null) {
+                  remoteCN = cn.getName();
+                  break;
+                }
+              }
+            }
+          } catch (Throwable ex) {
+            LOG.warn("Unable to obtain remote CN for {}", ctx.channel().remoteAddress(), ex);
+          }
           LOG.info(
-              "SSL Handshake between {} and router {} in {} ms.",
+              "SSL Handshake with {} ({}) {} in {} ms.",
               ctx.channel().remoteAddress(),
+              remoteCN != null ? remoteCN : "unknown principal",
               succeed ? "succeeded" : "failed",
               (Time.nanoTime() - ctx.channel().attr(SSL_HANDSHAKE_START_TS).getAndSet(null)) / 1000000);
         }

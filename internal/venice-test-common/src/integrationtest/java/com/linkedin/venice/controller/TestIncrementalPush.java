@@ -87,7 +87,7 @@ public class TestIncrementalPush {
         TimeUnit.SECONDS,
         () -> cluster.getLeaderVeniceController()
             .getVeniceAdmin()
-            .getOffLinePushStatus(cluster.getClusterName(), finalTopicName1, Optional.of(finalIncPushVerison1))
+            .getOffLinePushStatus(cluster.getClusterName(), finalTopicName1, Optional.of(finalIncPushVerison1), null)
             .getExecutionStatus()
             .equals(ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED));
 
@@ -101,7 +101,7 @@ public class TestIncrementalPush {
         TimeUnit.SECONDS,
         () -> cluster.getLeaderVeniceController()
             .getVeniceAdmin()
-            .getOffLinePushStatus(cluster.getClusterName(), finalTopicName, Optional.of(finalIncPushVerison))
+            .getOffLinePushStatus(cluster.getClusterName(), finalTopicName, Optional.of(finalIncPushVerison), null)
             .getExecutionStatus()
             .equals(ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED));
   }

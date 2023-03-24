@@ -621,6 +621,18 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.JOB, params, JobStatusQueryResponse.class, timeoutMs, 1, null);
   }
 
+  /**
+   * This method will retrieve detailed job status, including uncompleted partitions and replicas from a child region.
+   * If the request is sent to a parent controller, it will be forwarded to a child controller in the specified region.
+   * This method is used for data recovery progress monitoring.
+   */
+  public JobStatusQueryResponse queryDetailedJobStatus(String kafkaTopic, String region) {
+    String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
+    int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
+    QueryParams params = newParams().add(NAME, storeName).add(VERSION, version).add(FABRIC, region);
+    return request(ControllerRoute.JOB, params, JobStatusQueryResponse.class, QUERY_JOB_STATUS_TIMEOUT, 1, null);
+  }
+
   // TODO remove passing PushJobDetails as JSON string once all VPJ plugins are updated.
   public ControllerResponse sendPushJobDetails(String storeName, int version, String pushJobDetailsString) {
     QueryParams params =

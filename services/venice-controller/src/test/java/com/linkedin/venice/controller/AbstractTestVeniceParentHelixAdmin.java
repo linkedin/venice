@@ -112,7 +112,7 @@ public class AbstractTestVeniceParentHelixAdmin {
     doReturn(store).when(storeRepository).getStore(any());
 
     config = mockConfig(clusterName);
-    doReturn(1).when(config).getReplicationMetadataVersionId();
+    doReturn(1).when(config).getReplicationMetadataVersion();
 
     controllerClients
         .put(regionName, ControllerClient.constructClusterControllerClient(clusterName, "localhost", Optional.empty()));

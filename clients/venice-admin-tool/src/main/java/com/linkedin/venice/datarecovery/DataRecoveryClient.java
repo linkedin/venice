@@ -41,11 +41,12 @@ public class DataRecoveryClient {
       LOGGER.warn("store list is empty, exit.");
       return;
     }
-    if (!confirmStores(storeNames)) {
+    if (!drParams.isNonInteractive && !confirmStores(storeNames)) {
       return;
     }
 
     getExecutor().perform(storeNames, cmdParams);
+    getExecutor().shutdownAndAwaitTermination();
   }
 
   public Integer estimateRecoveryTime(
@@ -77,10 +78,12 @@ public class DataRecoveryClient {
   public static class DataRecoveryParams {
     private final String multiStores;
     private final Set<String> recoveryStores;
+    private final boolean isNonInteractive;
 
-    public DataRecoveryParams(String multiStores) {
+    public DataRecoveryParams(String multiStores, boolean isNonInteractive) {
       this.multiStores = multiStores;
       this.recoveryStores = calculateRecoveryStoreNames(this.multiStores);
+      this.isNonInteractive = isNonInteractive;
     }
 
     public Set<String> getRecoveryStores() {

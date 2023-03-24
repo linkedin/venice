@@ -72,6 +72,7 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.pushmonitor.PartitionStatus;
 import com.linkedin.venice.pushmonitor.StatusSnapshot;
+import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.DataProviderUtils;
@@ -514,7 +515,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
     doReturn(derivedSchemaId).when(internalAdmin)
         .checkPreConditionForAddDerivedSchemaAndGetNewSchemaId(clusterName, storeName, valueSchemaId, derivedSchemaStr);
 
-    doReturn(new Pair<>(valueSchemaId, derivedSchemaId)).when(internalAdmin)
+    doReturn(new GeneratedSchemaID(valueSchemaId, derivedSchemaId)).when(internalAdmin)
         .getDerivedSchemaId(clusterName, storeName, derivedSchemaStr);
 
     doReturn(CompletableFuture.completedFuture(new SimplePubSubProduceResultImpl(topicName, partitionId, 1, -1)))
@@ -1707,38 +1708,6 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
   }
 
   @Test
-  public void testGetProgress() {
-    JobStatusQueryResponse tenResponse = new JobStatusQueryResponse();
-    Map<String, Long> tenPerTaskProgress = new HashMap<>();
-    tenPerTaskProgress.put("task1", 10L);
-    tenPerTaskProgress.put("task2", 10L);
-    tenResponse.setPerTaskProgress(tenPerTaskProgress);
-    ControllerClient tenStatusClient = mock(ControllerClient.class);
-    doReturn(tenResponse).when(tenStatusClient).queryJobStatus(anyString());
-
-    JobStatusQueryResponse failResponse = new JobStatusQueryResponse();
-    failResponse.setError("error2");
-    ControllerClient failClient = mock(ControllerClient.class);
-    doReturn(failResponse).when(failClient).queryJobStatus(anyString());
-
-    // Clients work as expected
-    JobStatusQueryResponse status = tenStatusClient.queryJobStatus("topic");
-    Map<String, Long> perTask = status.getPerTaskProgress();
-    Assert.assertEquals((long) perTask.get("task1"), 10L);
-    Assert.assertTrue(failClient.queryJobStatus("topic").isError());
-
-    // Test logic
-    Map<String, ControllerClient> tenMap = new HashMap<>();
-    tenMap.put("cluster1", tenStatusClient);
-    tenMap.put("cluster2", tenStatusClient);
-    tenMap.put("cluster3", failClient);
-    Map<String, Long> tenProgress = VeniceParentHelixAdmin.getOfflineJobProgress("cluster", "topic", tenMap);
-    Assert.assertEquals(tenProgress.values().size(), 4); // nothing from fail client
-    Assert.assertEquals((long) tenProgress.get("cluster1_task1"), 10L);
-    Assert.assertEquals((long) tenProgress.get("cluster2_task2"), 10L);
-  }
-
-  @Test
   public void testUpdateStore() {
     String storeName = Utils.getUniqueString("testUpdateStore");
     Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
@@ -2248,6 +2217,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
       Version newVersion = new VersionImpl(storeName, 2, newPushJobId);
 
       doReturn(24).when(store).getBootstrapToOnlineTimeoutInHours();
+      doReturn(-1).when(store).getRmdVersion();
       doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
       doReturn(Optional.of(version)).when(store).getVersion(1);
       doReturn(new Pair<>(store, version)).when(internalAdmin)

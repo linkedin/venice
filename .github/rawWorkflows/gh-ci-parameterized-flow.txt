@@ -6,6 +6,7 @@
         jdk: [11]
     runs-on: ${{ matrix.os }}
     needs: $Dependency
+    if: $Conditional
     timeout-minutes: $TimeOut
     steps:
       - uses: actions/checkout@v3

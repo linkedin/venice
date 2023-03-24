@@ -9,6 +9,7 @@ import com.linkedin.alpini.base.monitoring.CallTrackerImpl;
 import com.linkedin.alpini.base.monitoring.NullCallTracker;
 import com.linkedin.alpini.consts.QOS;
 import com.linkedin.alpini.netty4.misc.NettyUtils;
+import com.linkedin.venice.utils.TestUtils;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandler;
@@ -28,6 +29,7 @@ import io.netty.util.concurrent.ImmediateEventExecutor;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import org.mockito.Mockito;
 import org.testng.Assert;
@@ -108,28 +110,35 @@ public class TestChannelPoolManagerImplHttp2Ping {
     ;
 
     if (enableHttp2Ping) {
-      Assert.assertTrue(manager.enablePeriodicPing());
-      Assert.assertNotNull(manager.getPeriodicPingScheduledFuture());
-      Assert.assertEquals(manager.getPools().size(), 1);
-      Assert.assertTrue(poolStats.http2PingCallTracker() instanceof CallTrackerImpl);
-      Assert.assertEquals(poolStats.getAvgResponseTimeOfLatestPings(), 0D);
-      Mockito.verify(channelPoolFactory, useGlobalPool ? Mockito.times(1) : Mockito.times(numOfExecutors))
-          .construct(Mockito.any(), Mockito.any(), Mockito.any(), Mockito.any());
+      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
+        Assert.assertTrue(manager.enablePeriodicPing());
+        Assert.assertNotNull(manager.getPeriodicPingScheduledFuture());
+        Assert.assertEquals(manager.getPools().size(), 1);
+        Assert.assertTrue(poolStats.http2PingCallTracker() instanceof CallTrackerImpl);
+        Assert.assertEquals(poolStats.getAvgResponseTimeOfLatestPings(), 0D);
+        Mockito.verify(channelPoolFactory, useGlobalPool ? Mockito.times(1) : Mockito.times(numOfExecutors))
+            .construct(Mockito.any(), Mockito.any(), Mockito.any(), Mockito.any());
+      });
     } else {
-      Assert.assertFalse(manager.enablePeriodicPing());
-      Assert.assertNull(manager.getPeriodicPingScheduledFuture());
-      Assert.assertEquals(manager.getPools().size(), 1);
-      Assert.assertEquals(poolStats.http2PingCallTracker(), NullCallTracker.INSTANCE);
-      Assert.assertEquals(poolStats.getAvgResponseTimeOfLatestPings(), 0D);
-      Mockito.verify(channelPoolFactory, useGlobalPool ? Mockito.times(1) : Mockito.times(numOfExecutors))
-          .construct(Mockito.any(), Mockito.any(), Mockito.any(), Mockito.any());
+      TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
+        Assert.assertFalse(manager.enablePeriodicPing());
+        Assert.assertNull(manager.getPeriodicPingScheduledFuture());
+        Assert.assertEquals(manager.getPools().size(), 1);
+        Assert.assertEquals(poolStats.http2PingCallTracker(), NullCallTracker.INSTANCE);
+        Assert.assertEquals(poolStats.getAvgResponseTimeOfLatestPings(), 0D);
+        Mockito.verify(channelPoolFactory, useGlobalPool ? Mockito.times(1) : Mockito.times(numOfExecutors))
+            .construct(Mockito.any(), Mockito.any(), Mockito.any(), Mockito.any());
+      });
     }
 
     // If the http2 ping is not enabled or the pool is in the closing state, we do not acquire connections
     // to send http2 ping. In particular, for the local pool impl, it calls pool.acquire() 4 times
     // for pool initialization.
     if (!enableHttp2Ping || isPoolClosing) {
-      Mockito.verify(pool, useGlobalPool ? Mockito.never() : Mockito.times(numOfExecutors)).acquire();
+      TestUtils.waitForNonDeterministicAssertion(
+          1,
+          TimeUnit.SECONDS,
+          () -> Mockito.verify(pool, useGlobalPool ? Mockito.never() : Mockito.times(numOfExecutors)).acquire());
     }
 
     // reset

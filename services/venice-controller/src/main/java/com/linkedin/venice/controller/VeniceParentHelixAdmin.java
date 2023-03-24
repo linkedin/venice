@@ -56,6 +56,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.linkedin.venice.ConfigConstants;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.acl.DynamicAccessController;
@@ -114,6 +115,8 @@ import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSe
 import com.linkedin.venice.controller.lingeringjob.DefaultLingeringStoreVersionChecker;
 import com.linkedin.venice.controller.lingeringjob.LingeringStoreVersionChecker;
 import com.linkedin.venice.controller.migration.MigrationPushStrategyZKAccessor;
+import com.linkedin.venice.controller.supersetschema.DefaultSupersetSchemaGenerator;
+import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -172,6 +175,7 @@ import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
 import com.linkedin.venice.schema.AvroSchemaParseUtils;
+import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
@@ -188,7 +192,6 @@ import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.AvroSchemaUtils;
-import com.linkedin.venice.utils.AvroSupersetSchemaUtils;
 import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Pair;
@@ -293,7 +296,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   /**
    * Here is the way how Parent Controller is keeping errored topics when {@link #maxErroredTopicNumToKeep} > 0:
-   * 1. For errored topics, {@link #getOfflineJobProgress(String, String, Map)} won't truncate them;
+   * 1. For errored topics, {@link #getOffLineJobStatus(String, String, Map, Optional)} won't truncate them;
    * 2. For errored topics, {@link #killOfflinePush(String, String, boolean)} won't truncate them;
    * 3. {@link #getTopicForCurrentPushJob(String, String, boolean, boolean)} will truncate the errored topics based on
    * {@link #maxErroredTopicNumToKeep};
@@ -315,6 +318,10 @@ public class VeniceParentHelixAdmin implements Admin {
   private final ExecutorService systemStoreAclSynchronizationExecutor;
 
   private final LingeringStoreVersionChecker lingeringStoreVersionChecker;
+
+  private final Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator;
+
+  private final SupersetSchemaGenerator defaultSupersetSchemaGenerator = new DefaultSupersetSchemaGenerator();
 
   private final IdentityParser identityParser;
 
@@ -342,27 +349,9 @@ public class VeniceParentHelixAdmin implements Admin {
         sslConfig,
         Optional.empty(),
         authorizerService,
-        new DefaultLingeringStoreVersionChecker());
-  }
-
-  public VeniceParentHelixAdmin(
-      VeniceHelixAdmin veniceHelixAdmin,
-      VeniceControllerMultiClusterConfig multiClusterConfigs,
-      boolean sslEnabled,
-      Optional<SSLConfig> sslConfig,
-      Optional<DynamicAccessController> accessController,
-      Optional<AuthorizerService> authorizerService,
-      LingeringStoreVersionChecker lingeringStoreVersionChecker) {
-    this(
-        veniceHelixAdmin,
-        multiClusterConfigs,
-        sslEnabled,
-        sslConfig,
-        accessController,
-        authorizerService,
-        lingeringStoreVersionChecker,
-        WriteComputeSchemaConverter.getInstance() // TODO: make it an input param
-    );
+        new DefaultLingeringStoreVersionChecker(),
+        WriteComputeSchemaConverter.getInstance(), // TODO: make it an input param
+        Optional.empty());
   }
 
   public VeniceParentHelixAdmin(
@@ -373,7 +362,8 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<DynamicAccessController> accessController,
       Optional<AuthorizerService> authorizerService,
       LingeringStoreVersionChecker lingeringStoreVersionChecker,
-      WriteComputeSchemaConverter writeComputeSchemaConverter) {
+      WriteComputeSchemaConverter writeComputeSchemaConverter,
+      Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator) {
     Validate.notNull(lingeringStoreVersionChecker);
     Validate.notNull(writeComputeSchemaConverter);
     this.veniceHelixAdmin = veniceHelixAdmin;
@@ -388,6 +378,7 @@ public class VeniceParentHelixAdmin implements Admin {
     this.asyncSetupEnabledMap = new VeniceConcurrentHashMap<>();
     this.accessController = accessController;
     this.authorizerService = authorizerService;
+    this.externalSupersetSchemaGenerator = externalSupersetSchemaGenerator;
     this.systemStoreAclSynchronizationExecutor =
         authorizerService.map(service -> Executors.newSingleThreadExecutor()).orElse(null);
     if (sslEnabled) {
@@ -1104,22 +1095,22 @@ public class VeniceParentHelixAdmin implements Admin {
               + "Store name: {}, cluster: {}",
           storeName,
           clusterName);
-    } else if (store.getRmdVersionID().isPresent()) {
+    } else if (store.getRmdVersion() == ConfigConstants.UNSPECIFIED_REPLICATION_METADATA_VERSION) {
+      LOGGER.info("No store-level RMD version ID found for store {} in cluster {}", storeName, clusterName);
+    } else {
       LOGGER.info(
           "Found store-level RMD version ID {} for store {} in cluster {}",
-          store.getRmdVersionID().get(),
+          store.getRmdVersion(),
           storeName,
           clusterName);
-      return store.getRmdVersionID().get();
-    } else {
-      LOGGER.info("No store-level RMD version ID found for store {} in cluster {}", storeName, clusterName);
+      return store.getRmdVersion();
     }
 
     final VeniceControllerConfig controllerClusterConfig = getMultiClusterConfigs().getControllerConfig(clusterName);
     if (controllerClusterConfig == null) {
       throw new VeniceException("No controller cluster config found for cluster " + clusterName);
     }
-    final int rmdVersionID = controllerClusterConfig.getReplicationMetadataVersionId();
+    final int rmdVersionID = controllerClusterConfig.getReplicationMetadataVersion();
     LOGGER.info("Use RMD version ID {} for cluster {}", rmdVersionID, clusterName);
     return rmdVersionID;
   }
@@ -1716,8 +1707,7 @@ public class VeniceParentHelixAdmin implements Admin {
   public Version getIncrementalPushVersion(String clusterName, String storeName) {
     Version incrementalPushVersion = getVeniceHelixAdmin().getIncrementalPushVersion(clusterName, storeName);
     String incrementalPushTopic = incrementalPushVersion.kafkaTopicName();
-    ExecutionStatus status =
-        getOffLinePushStatus(clusterName, incrementalPushTopic, Optional.empty()).getExecutionStatus();
+    ExecutionStatus status = getOffLinePushStatus(clusterName, incrementalPushTopic).getExecutionStatus();
 
     return getIncrementalPushVersion(incrementalPushVersion, status);
   }
@@ -2422,7 +2412,7 @@ public class VeniceParentHelixAdmin implements Admin {
               .orElseGet(currStore::isWriteComputationEnabled);
       setStore.replicationMetadataVersionID = replicationMetadataVersionID
           .map(addToUpdatedConfigList(updatedConfigsList, REPLICATION_METADATA_PROTOCOL_VERSION_ID))
-          .orElse(currStore.getRmdVersionID().orElse(-1));
+          .orElse(currStore.getRmdVersion());
       setStore.readComputationEnabled =
           readComputationEnabled.map(addToUpdatedConfigList(updatedConfigsList, READ_COMPUTATION_ENABLED))
               .orElseGet(currStore::isReadComputationEnabled);
@@ -2581,10 +2571,18 @@ public class VeniceParentHelixAdmin implements Admin {
     }
   }
 
+  private SupersetSchemaGenerator getSupersetSchemaGenerator(String clusterName) {
+    if (externalSupersetSchemaGenerator.isPresent() && getMultiClusterConfigs().getControllerConfig(clusterName)
+        .isParentExternalSupersetSchemaGenerationEnabled()) {
+      return externalSupersetSchemaGenerator.get();
+    }
+    return defaultSupersetSchemaGenerator;
+  }
+
   private void addSupersetSchemaForStore(String clusterName, String storeName, boolean activeActiveReplicationEnabled) {
     // Generate a superset schema and add it.
-    SchemaEntry supersetSchemaEntry =
-        AvroSchemaUtils.generateSupersetSchemaFromAllValueSchemas(getValueSchemas(clusterName, storeName));
+    SchemaEntry supersetSchemaEntry = getSupersetSchemaGenerator(clusterName)
+        .generateSupersetSchemaFromSchemas(getValueSchemas(clusterName, storeName));
     final Schema supersetSchema = supersetSchemaEntry.getSchema();
     final int supersetSchemaID = supersetSchemaEntry.getId();
     addValueSchemaEntry(clusterName, storeName, supersetSchema.toString(), supersetSchemaID, true);
@@ -2698,7 +2696,7 @@ public class VeniceParentHelixAdmin implements Admin {
    * @see VeniceHelixAdmin#getDerivedSchemaId(String, String, String)
    */
   @Override
-  public Pair<Integer, Integer> getDerivedSchemaId(String clusterName, String storeName, String schemaStr) {
+  public GeneratedSchemaID getDerivedSchemaId(String clusterName, String storeName, String schemaStr) {
     return getVeniceHelixAdmin().getDerivedSchemaId(clusterName, storeName, schemaStr);
   }
 
@@ -2747,13 +2745,14 @@ public class VeniceParentHelixAdmin implements Admin {
 
       final boolean doUpdateSupersetSchemaID;
       if (existingValueSchema != null && (store.isReadComputationEnabled() || store.isWriteComputationEnabled())) {
-        Schema newSuperSetSchema = AvroSupersetSchemaUtils.generateSuperSetSchema(existingValueSchema, newValueSchema);
+        SupersetSchemaGenerator supersetSchemaGenerator = getSupersetSchemaGenerator(clusterName);
+        Schema newSuperSetSchema = supersetSchemaGenerator.generateSupersetSchema(existingValueSchema, newValueSchema);
         String newSuperSetSchemaStr = newSuperSetSchema.toString();
 
-        if (AvroSchemaUtils.compareSchemaIgnoreFieldOrder(newSuperSetSchema, newValueSchema)) {
+        if (supersetSchemaGenerator.compareSchema(newSuperSetSchema, newValueSchema)) {
           doUpdateSupersetSchemaID = true;
 
-        } else if (AvroSchemaUtils.compareSchemaIgnoreFieldOrder(newSuperSetSchema, existingValueSchema)) {
+        } else if (supersetSchemaGenerator.compareSchema(newSuperSetSchema, existingValueSchema)) {
           doUpdateSupersetSchemaID = false;
 
         } else if (store.isSystemStore()) {
@@ -2777,8 +2776,11 @@ public class VeniceParentHelixAdmin implements Admin {
               expectedCompatibilityType);
           // Check if the superset schema already exists or not. If exists use the same ID, else bump the value ID by
           // one.
-          int supersetSchemaId =
-              getVeniceHelixAdmin().getValueSchemaIdIgnoreFieldOrder(clusterName, storeName, newSuperSetSchemaStr);
+          int supersetSchemaId = getVeniceHelixAdmin().getValueSchemaIdIgnoreFieldOrder(
+              clusterName,
+              storeName,
+              newSuperSetSchemaStr,
+              (s1, s2) -> supersetSchemaGenerator.compareSchema(s1, s2) ? 0 : 1);
           if (supersetSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID) {
             supersetSchemaId = newValueSchemaId + 1;
           }
@@ -2988,7 +2990,8 @@ public class VeniceParentHelixAdmin implements Admin {
       if (newDerivedSchemaId == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
         return new DerivedSchemaEntry(
             valueSchemaId,
-            getVeniceHelixAdmin().getDerivedSchemaId(clusterName, storeName, derivedSchemaStr).getSecond(),
+            getVeniceHelixAdmin().getDerivedSchemaId(clusterName, storeName, derivedSchemaStr)
+                .getGeneratedSchemaVersion(),
             derivedSchemaStr);
       }
 
@@ -3015,19 +3018,6 @@ public class VeniceParentHelixAdmin implements Admin {
       message.payloadUnion = derivedSchemaCreation;
 
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
-
-      // defensive code checking
-      Pair<Integer, Integer> actualValueSchemaIdPair = getDerivedSchemaId(clusterName, storeName, derivedSchemaStr);
-      if (actualValueSchemaIdPair.getFirst() != valueSchemaId
-          || actualValueSchemaIdPair.getSecond() != newDerivedSchemaId) {
-        throw new VeniceException(
-            String.format(
-                "Something bad happened, the expected new value schema id pair is:" + "%d_%d, but got: %d_%d",
-                valueSchemaId,
-                newDerivedSchemaId,
-                actualValueSchemaIdPair.getFirst(),
-                actualValueSchemaIdPair.getSecond()));
-      }
 
       return new DerivedSchemaEntry(valueSchemaId, newDerivedSchemaId, derivedSchemaStr);
     } finally {
@@ -3282,8 +3272,24 @@ public class VeniceParentHelixAdmin implements Admin {
   public OfflinePushStatusInfo getOffLinePushStatus(
       String clusterName,
       String kafkaTopic,
-      Optional<String> incrementalPushVersion) {
+      Optional<String> incrementalPushVersion,
+      String region) {
     Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
+    if (region != null) {
+      if (!controllerClients.containsKey(region)) {
+        throw new VeniceException("Region " + region + " does not exist in " + controllerClients.keySet());
+      }
+      JobStatusQueryResponse response = controllerClients.get(region).queryDetailedJobStatus(kafkaTopic, region);
+      if (response.isError()) {
+        throw new VeniceException(
+            "Couldn't query " + region + " for job " + kafkaTopic + " status: " + response.getError());
+      }
+      ExecutionStatus status = ExecutionStatus.valueOf(response.getStatus());
+      String statusDetails = response.getOptionalStatusDetails().orElse(null);
+      OfflinePushStatusInfo offlinePushStatusInfo = new OfflinePushStatusInfo(status, statusDetails);
+      offlinePushStatusInfo.setUncompletedPartitions(response.getUncompletedPartitions());
+      return offlinePushStatusInfo;
+    }
     return getOffLineJobStatus(clusterName, kafkaTopic, controllerClients, incrementalPushVersion);
   }
 
@@ -3301,7 +3307,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<String> incrementalPushVersion) {
     Set<String> childClusters = controllerClients.keySet();
     ExecutionStatus currentReturnStatus = ExecutionStatus.NEW;
-    Optional<String> currentReturnStatusDetails = Optional.empty();
+    String currentReturnStatusDetails = null;
     List<ExecutionStatus> statuses = new ArrayList<>();
     Map<String, String> extraInfo = new HashMap<>();
     Map<String, String> extraDetails = new HashMap<>();
@@ -3309,14 +3315,14 @@ public class VeniceParentHelixAdmin implements Admin {
     for (Map.Entry<String, ControllerClient> entry: controllerClients.entrySet()) {
       String region = entry.getKey();
       ControllerClient controllerClient = entry.getValue();
-      String leaderControllerUrl = "Unspecified leader controller url";
+      String leaderControllerUrl;
       try {
         leaderControllerUrl = controllerClient.getLeaderControllerUrl();
-      } catch (VeniceException getMasterException) {
-        LOGGER.warn("Couldn't query {} for job status of {}", region, kafkaTopic, getMasterException);
+      } catch (VeniceException exception) {
+        LOGGER.warn("Couldn't query {} for job status of {}", region, kafkaTopic, exception);
         statuses.add(ExecutionStatus.UNKNOWN);
         extraInfo.put(region, ExecutionStatus.UNKNOWN.toString());
-        extraDetails.put(region, "Failed to get leader controller url " + getMasterException.getMessage());
+        extraDetails.put(region, "Failed to get leader controller url " + exception.getMessage());
         continue;
       }
       JobStatusQueryResponse response = controllerClient.queryJobStatus(kafkaTopic, incrementalPushVersion);
@@ -3328,13 +3334,10 @@ public class VeniceParentHelixAdmin implements Admin {
         extraDetails.put(region, leaderControllerUrl + " " + response.getError());
       } else {
         ExecutionStatus status = ExecutionStatus.valueOf(response.getStatus());
-
         statuses.add(status);
         extraInfo.put(region, response.getStatus());
         Optional<String> statusDetails = response.getOptionalStatusDetails();
-        if (statusDetails.isPresent()) {
-          extraDetails.put(region, leaderControllerUrl + " " + statusDetails.get());
-        }
+        statusDetails.ifPresent(s -> extraDetails.put(region, leaderControllerUrl + " " + s));
       }
     }
     // Sort the per-datacenter status in this order, and return the first one in the list
@@ -3347,19 +3350,18 @@ public class VeniceParentHelixAdmin implements Admin {
     }
 
     int successCount = childClusters.size() - failCount;
-    if (!(successCount >= (childClusters.size() / 2) + 1)) { // Strict majority must be reachable, otherwise keep
-                                                             // polling
+    if (!(successCount >= (childClusters.size() / 2) + 1)) {
+      // Strict majority must be reachable, otherwise keep polling
       currentReturnStatus = ExecutionStatus.PROGRESS;
     }
 
     if (currentReturnStatus.isTerminal()) {
       // If there is a temporary datacenter connection failure, we want VPJ to report failure while allowing the push
-      // to succeed in remaining datacenters. If we want to allow the push to succeed in asyc in the remaining
-      // datacenter
-      // then put the topic delete into an else block under `if (failcount > 0)`
+      // to succeed in remaining datacenters. If we want to allow the push to succeed in async in the remaining
+      // datacenter, then put the topic delete into an else block under `if (failCount > 0)`
       if (failCount > 0) {
         currentReturnStatus = ExecutionStatus.ERROR;
-        currentReturnStatusDetails = Optional.of(failCount + "/" + childClusters.size() + " DCs unreachable. ");
+        currentReturnStatusDetails = failCount + "/" + childClusters.size() + " DCs unreachable. ";
       }
 
       // TODO: Set parent controller's version status based on currentReturnStatus
@@ -3368,7 +3370,7 @@ public class VeniceParentHelixAdmin implements Admin {
       // TODO: remove this if statement since it was only for debugging purpose
       if (maxErroredTopicNumToKeep > 0 && currentReturnStatus.equals(ExecutionStatus.ERROR)) {
         currentReturnStatusDetails =
-            Optional.of(currentReturnStatusDetails.orElse("") + "Parent Kafka topic won't be truncated");
+            Optional.ofNullable(currentReturnStatusDetails).orElse("") + "Parent Kafka topic won't be truncated";
         LOGGER.info(
             "The errored kafka topic {} won't be truncated since it will be used to investigate some Kafka related issue",
             kafkaTopic);
@@ -3381,12 +3383,12 @@ public class VeniceParentHelixAdmin implements Admin {
          */
         Store store = getVeniceHelixAdmin().getStore(clusterName, Version.parseStoreFromKafkaTopicName(kafkaTopic));
         boolean failedBatchPush = !incrementalPushVersion.isPresent() && currentReturnStatus == ExecutionStatus.ERROR;
-        boolean incPushEnabledBatchpushSuccess =
+        boolean incPushEnabledBatchPushSuccess =
             !incrementalPushVersion.isPresent() && store.isIncrementalPushEnabled();
-        boolean nonIncPushBatchSucess =
+        boolean nonIncPushBatchSuccess =
             !store.isIncrementalPushEnabled() && currentReturnStatus != ExecutionStatus.ERROR;
 
-        if ((failedBatchPush || nonIncPushBatchSucess || incPushEnabledBatchpushSuccess)
+        if ((failedBatchPush || nonIncPushBatchSuccess || incPushEnabledBatchPushSuccess)
             && !getMultiClusterConfigs().getCommonConfig().disableParentTopicTruncationUponCompletion()) {
           LOGGER.info("Truncating kafka topic: {} with job status: {}", kafkaTopic, currentReturnStatus);
           truncateKafkaTopic(kafkaTopic);
@@ -3395,47 +3397,12 @@ public class VeniceParentHelixAdmin implements Admin {
             truncateKafkaTopic(Version.composeStreamReprocessingTopic(store.getName(), version.get().getNumber()));
           }
           currentReturnStatusDetails =
-              Optional.of(currentReturnStatusDetails.orElse("") + "Parent Kafka topic truncated");
+              Optional.ofNullable(currentReturnStatusDetails).orElse("") + "Parent Kafka topic truncated";
         }
       }
     }
 
     return new OfflinePushStatusInfo(currentReturnStatus, extraInfo, currentReturnStatusDetails, extraDetails);
-  }
-
-  /**
-   * Queries child clusters for job progress.  Prepends the cluster name to the task ID and provides an aggregate
-   * Map of progress for all tasks.
-   */
-  @Override
-  public Map<String, Long> getOfflinePushProgress(String clusterName, String kafkaTopic) {
-    Map<String, ControllerClient> controllerClients = getVeniceHelixAdmin().getControllerClientMap(clusterName);
-    return getOfflineJobProgress(clusterName, kafkaTopic, controllerClients);
-  }
-
-  static Map<String, Long> getOfflineJobProgress(
-      String clusterName,
-      String kafkaTopic,
-      Map<String, ControllerClient> controllerClients) {
-    Map<String, Long> aggregateProgress = new HashMap<>();
-    for (Map.Entry<String, ControllerClient> clientEntry: controllerClients.entrySet()) {
-      String childCluster = clientEntry.getKey();
-      ControllerClient client = clientEntry.getValue();
-      JobStatusQueryResponse statusResponse = client.queryJobStatus(kafkaTopic);
-      if (statusResponse.isError()) {
-        LOGGER.warn(
-            "Failed to query {} for job progress on topic {}. Error: {}",
-            childCluster,
-            kafkaTopic,
-            statusResponse.getError());
-      } else {
-        Map<String, Long> clusterProgress = statusResponse.getPerTaskProgress();
-        for (Map.Entry<String, Long> entry: clusterProgress.entrySet()) {
-          aggregateProgress.put(childCluster + "_" + entry.getKey(), entry.getValue());
-        }
-      }
-    }
-    return aggregateProgress;
   }
 
   /**

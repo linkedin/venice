@@ -22,11 +22,13 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataAudit;
 import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.UncompletedPartition;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreRecordDeleter;
+import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
@@ -56,8 +58,9 @@ public interface Admin extends AutoCloseable, Closeable {
   class OfflinePushStatusInfo {
     private ExecutionStatus executionStatus;
     private Map<String, String> extraInfo;
-    private Optional<String> statusDetails;
+    private String statusDetails;
     private Map<String, String> extraDetails;
+    private List<UncompletedPartition> uncompletedPartitions;
 
     /** N.B.: Test-only constructor ): */
     public OfflinePushStatusInfo(ExecutionStatus executionStatus) {
@@ -66,11 +69,11 @@ public interface Admin extends AutoCloseable, Closeable {
 
     /** N.B.: Test-only constructor ): */
     public OfflinePushStatusInfo(ExecutionStatus executionStatus, Map<String, String> extraInfo) {
-      this(executionStatus, extraInfo, Optional.empty(), new HashMap<>());
+      this(executionStatus, extraInfo, null, new HashMap<>());
     }
 
     /** Used by single datacenter (child) controllers, hence, no extra info nor extra details */
-    public OfflinePushStatusInfo(ExecutionStatus executionStatus, Optional<String> statusDetails) {
+    public OfflinePushStatusInfo(ExecutionStatus executionStatus, String statusDetails) {
       this(executionStatus, new HashMap<>(), statusDetails, new HashMap<>());
     }
 
@@ -78,7 +81,7 @@ public interface Admin extends AutoCloseable, Closeable {
     public OfflinePushStatusInfo(
         ExecutionStatus executionStatus,
         Map<String, String> extraInfo,
-        Optional<String> statusDetails,
+        String statusDetails,
         Map<String, String> extraDetails) {
       this.executionStatus = executionStatus;
       this.extraInfo = extraInfo;
@@ -94,12 +97,20 @@ public interface Admin extends AutoCloseable, Closeable {
       return extraInfo;
     }
 
-    public Optional<String> getStatusDetails() {
+    public String getStatusDetails() {
       return statusDetails;
     }
 
     public Map<String, String> getExtraDetails() {
       return extraDetails;
+    }
+
+    public List<UncompletedPartition> getUncompletedPartitions() {
+      return uncompletedPartitions;
+    }
+
+    public void setUncompletedPartitions(List<UncompletedPartition> uncompletedPartitions) {
+      this.uncompletedPartitions = uncompletedPartitions;
     }
   }
 
@@ -282,7 +293,7 @@ public interface Admin extends AutoCloseable, Closeable {
 
   int getValueSchemaId(String clusterName, String storeName, String valueSchemaStr);
 
-  Pair<Integer, Integer> getDerivedSchemaId(String clusterName, String storeName, String schemaStr);
+  GeneratedSchemaID getDerivedSchemaId(String clusterName, String storeName, String schemaStr);
 
   SchemaEntry getValueSchema(String clusterName, String storeName, int id);
 
@@ -402,9 +413,8 @@ public interface Admin extends AutoCloseable, Closeable {
   OfflinePushStatusInfo getOffLinePushStatus(
       String clusterName,
       String kafkaTopic,
-      Optional<String> incrementalPushVersion);
-
-  Map<String, Long> getOfflinePushProgress(String clusterName, String kafkaTopic);
+      Optional<String> incrementalPushVersion,
+      String region);
 
   /**
    * Return the ssl or non-ssl bootstrap servers based on the given flag.
