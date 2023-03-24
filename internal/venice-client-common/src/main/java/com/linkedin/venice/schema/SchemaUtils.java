@@ -252,4 +252,30 @@ public class SchemaUtils {
       annotateStringArraySchema(schema);
     }
   }
+
+  public static boolean isMapField(GenericRecord currRecord, String fieldName) {
+    Schema fieldSchema = currRecord.getSchema().getField(fieldName).schema();
+    return isSimpleMapSchema(fieldSchema) || isNullableMapSchema(fieldSchema);
+  }
+
+  public static boolean isArrayField(GenericRecord currRecord, String fieldName) {
+    Schema fieldSchema = currRecord.getSchema().getField(fieldName).schema();
+    return isSimpleArraySchema(fieldSchema) || isNullableArraySchema(fieldSchema);
+  }
+
+  private static boolean isSimpleMapSchema(Schema schema) {
+    return schema.getType().equals(MAP);
+  }
+
+  private static boolean isSimpleArraySchema(Schema schema) {
+    return schema.getType().equals(ARRAY);
+  }
+
+  private static boolean isNullableMapSchema(Schema schema) {
+    return schema.isNullable() && isSimpleMapSchema(schema.getTypes().get(1));
+  }
+
+  private static boolean isNullableArraySchema(Schema schema) {
+    return schema.isNullable() && isSimpleArraySchema(schema.getTypes().get(1));
+  }
 }

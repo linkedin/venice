@@ -31,7 +31,9 @@ public class TestMergePut extends TestMergeBase {
     GenericRecord oldValueRecord = createValueRecord(r -> {
       r.put(REGULAR_FIELD_NAME, "defaultVenice");
       r.put(STRING_ARRAY_FIELD_NAME, Collections.emptyList());
+      r.put(NULLABLE_STRING_ARRAY_FIELD_NAME, Collections.emptyList());
       r.put(INT_MAP_FIELD_NAME, Collections.emptyMap());
+      r.put(NULLABLE_INT_MAP_FIELD_NAME, Collections.emptyMap());
     });
     GenericRecord oldRmdRecord = initiateFieldLevelRmdRecord(oldValueRecord, 0);
 
@@ -39,6 +41,8 @@ public class TestMergePut extends TestMergeBase {
       r.put(REGULAR_FIELD_NAME, "newString");
       r.put(STRING_ARRAY_FIELD_NAME, Collections.singletonList("item1"));
       r.put(INT_MAP_FIELD_NAME, Collections.singletonMap("key1", 1));
+      r.put(NULLABLE_STRING_ARRAY_FIELD_NAME, null);
+      r.put(NULLABLE_INT_MAP_FIELD_NAME, null);
     });
 
     MergeConflictResult result = mergeConflictResolver.put(
@@ -56,6 +60,8 @@ public class TestMergePut extends TestMergeBase {
     Assert.assertEquals(updatedValueRecord.get(REGULAR_FIELD_NAME).toString(), "newString");
     Assert.assertEquals(updatedValueRecord.get(INT_MAP_FIELD_NAME), Collections.singletonMap(new Utf8("key1"), 1));
     Assert.assertEquals(updatedValueRecord.get(STRING_ARRAY_FIELD_NAME), Collections.singletonList(new Utf8("item1")));
+    Assert.assertNull(updatedValueRecord.get(NULLABLE_STRING_ARRAY_FIELD_NAME));
+    Assert.assertNull(updatedValueRecord.get(NULLABLE_INT_MAP_FIELD_NAME));
     GenericRecord rmdTimestampRecord = (GenericRecord) result.getRmdRecord().get(RmdConstants.TIMESTAMP_FIELD_NAME);
     Assert.assertEquals(rmdTimestampRecord.get(REGULAR_FIELD_NAME), 1L);
     Assert.assertEquals(((GenericRecord) rmdTimestampRecord.get(INT_MAP_FIELD_NAME)).get(TOP_LEVEL_TS_FIELD_NAME), 1L);
