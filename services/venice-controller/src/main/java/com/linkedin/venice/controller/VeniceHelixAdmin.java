@@ -3780,6 +3780,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     });
   }
 
+  private void setLatestSupersetSchemaId(String clusterName, String storeName, int latestSupersetSchemaId) {
+    storeMetadataUpdate(clusterName, storeName, store -> {
+      store.setLatestSuperSetValueSchemaId(latestSupersetSchemaId);
+      return store;
+    });
+  }
+
   /**
    * TODO: some logics are in parent controller {@link VeniceParentHelixAdmin} #updateStore and
    *       some are in the child controller here. Need to unify them in the future.
@@ -3903,6 +3910,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Boolean> activeActiveReplicationEnabled = params.getActiveActiveReplicationEnabled();
     Optional<String> personaName = params.getStoragePersona();
     Optional<Map<String, String>> storeViews = params.getStoreViews();
+    Optional<Integer> latestSupersetSchemaId = params.getLatestSupersetSchemaId();
 
     final Optional<HybridStoreConfig> newHybridStoreConfig;
     if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent() || hybridTimeLagThreshold.isPresent()
@@ -4156,6 +4164,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       if (storeViews.isPresent()) {
         addStoreViews(clusterName, storeName, storeViews.get());
+      }
+
+      if (latestSupersetSchemaId.isPresent()) {
+        setLatestSupersetSchemaId(clusterName, storeName, latestSupersetSchemaId.get());
       }
 
       LOGGER.info("Finished updating store: {} in cluster: {}", storeName, clusterName);
