@@ -4,8 +4,8 @@ import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import java.io.File;
 
 
-public abstract class PubSubBackendWrapper extends ProcessWrapper {
-  PubSubBackendWrapper(String serviceName, File dataDirectory) {
+public abstract class PubSubBrokerWrapper extends ProcessWrapper {
+  PubSubBrokerWrapper(String serviceName, File dataDirectory) {
     super(serviceName, dataDirectory);
   }
 
@@ -17,7 +17,7 @@ public abstract class PubSubBackendWrapper extends ProcessWrapper {
 
   @Override
   public String toString() {
-    return "PubSubService[" + getServiceName() + "@" + getHost() + ":" + getPort() + "/" + getSslPort() + "]";
+    return "PubSubService[" + getServiceName() + "@" + getHost() + ":" + getPort() + "/(ssl)" + getSslPort() + "]";
   }
 
   public abstract PubSubClientsFactory getPubSubClientsFactory();

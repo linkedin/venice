@@ -13,7 +13,7 @@ import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.davinci.kafka.consumer.StorePartitionDataReceiver;
 import com.linkedin.davinci.kafka.consumer.TopicExistenceChecker;
-import com.linkedin.venice.integration.utils.PubSubBackendWrapper;
+import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerFactoryImpl;
@@ -55,7 +55,6 @@ import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -76,8 +75,8 @@ public class KafkaConsumptionTest {
 
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
-  private PubSubBackendWrapper localKafka;
-  private PubSubBackendWrapper remoteKafka;
+  private PubSubBrokerWrapper localKafka;
+  private PubSubBrokerWrapper remoteKafka;
   private TopicManager topicManager;
   private TopicManager remoteTopicManager;
   private TestMockTime mockTime;
@@ -111,7 +110,7 @@ public class KafkaConsumptionTest {
   public void setUp() {
     mockTime = new TestMockTime();
     localZkServer = ServiceFactory.getZkServer();
-    localKafka = ServiceFactory.getKafkaBroker(localZkServer, Optional.of(mockTime));
+    localKafka = ServiceFactory.getKafkaBroker(localZkServer, mockTime);
     localKafkaClientFactory = IntegrationTestPushUtils.getVeniceConsumerFactory(localKafka);
     topicManager =
         new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, MIN_COMPACTION_LAG, localKafkaClientFactory);
@@ -121,7 +120,7 @@ public class KafkaConsumptionTest {
 
     remoteZkServer = ServiceFactory.getZkServer();
     remoteMockTime = new TestMockTime();
-    remoteKafka = ServiceFactory.getKafkaBroker(remoteZkServer, Optional.of(remoteMockTime));
+    remoteKafka = ServiceFactory.getKafkaBroker(remoteZkServer, remoteMockTime);
     remoteKafkaClientFactory = IntegrationTestPushUtils.getVeniceConsumerFactory(remoteKafka);
     remoteTopicManager =
         new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, MIN_COMPACTION_LAG, remoteKafkaClientFactory);

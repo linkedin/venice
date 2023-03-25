@@ -1,6 +1,6 @@
 package com.linkedin.venice.kafka.partitionoffset;
 
-import com.linkedin.venice.integration.utils.PubSubBackendWrapper;
+import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.KafkaClientFactory;
@@ -17,7 +17,7 @@ import org.testng.annotations.Test;
 
 
 public class PartitionOffsetFetcherTest {
-  private PubSubBackendWrapper kafka;
+  private PubSubBrokerWrapper kafka;
   private ZkServerWrapper zkServer;
 
   @BeforeClass

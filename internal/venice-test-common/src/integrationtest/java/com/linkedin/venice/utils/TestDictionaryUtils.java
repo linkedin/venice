@@ -4,7 +4,7 @@ import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIM
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.venice.integration.utils.PubSubBackendWrapper;
+import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.TopicManager;
@@ -32,7 +32,7 @@ public class TestDictionaryUtils {
   /** Wait time for {@link #manager} operations, in seconds */
   private static final int WAIT_TIME = 10;
   private static final int PARTITION_COUNT = 1;
-  private PubSubBackendWrapper kafka;
+  private PubSubBrokerWrapper kafka;
   private ZkServerWrapper zkServer;
   private TopicManager manager;
   private TestMockTime mockTime;
@@ -61,7 +61,7 @@ public class TestDictionaryUtils {
   public void setUp() {
     zkServer = ServiceFactory.getZkServer();
     mockTime = new TestMockTime();
-    kafka = ServiceFactory.getKafkaBroker(zkServer, Optional.of(mockTime));
+    kafka = ServiceFactory.getKafkaBroker(zkServer, mockTime);
     manager = new TopicManager(
         DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
         100,

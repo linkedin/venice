@@ -23,7 +23,7 @@ import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
 import com.linkedin.venice.integration.utils.D2TestUtils;
-import com.linkedin.venice.integration.utils.PubSubBackendWrapper;
+import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.Store;
@@ -71,7 +71,7 @@ class AbstractTestVeniceHelixAdmin {
   String zkAddress;
   ZkServerWrapper zkServerWrapper;
   private ZkServerWrapper kafkaZkServer;
-  PubSubBackendWrapper pubSubBackendWrapper;
+  PubSubBrokerWrapper pubSubBrokerWrapper;
   SafeHelixManager helixManager;
   Map<String, SafeHelixManager> helixManagerByNodeID = new ConcurrentHashMap<>();
 
@@ -93,7 +93,7 @@ class AbstractTestVeniceHelixAdmin {
     zkServerWrapper = ServiceFactory.getZkServer();
     zkAddress = zkServerWrapper.getAddress();
     kafkaZkServer = ServiceFactory.getZkServer();
-    pubSubBackendWrapper = ServiceFactory.getKafkaBroker(kafkaZkServer);
+    pubSubBrokerWrapper = ServiceFactory.getKafkaBroker(kafkaZkServer);
     clusterName = Utils.getUniqueString("test-cluster");
     Properties properties = getControllerProperties(clusterName);
     if (!createParticipantStore) {
@@ -131,7 +131,7 @@ class AbstractTestVeniceHelixAdmin {
       LOGGER.warn(e);
     }
     zkServerWrapper.close();
-    pubSubBackendWrapper.close();
+    pubSubBrokerWrapper.close();
     kafkaZkServer.close();
   }
 
@@ -196,7 +196,7 @@ class AbstractTestVeniceHelixAdmin {
     properties.put(KAFKA_REPLICATION_FACTOR, 1);
     properties.put(ZOOKEEPER_ADDRESS, zkAddress);
     properties.put(CLUSTER_NAME, clusterName);
-    properties.put(KAFKA_BOOTSTRAP_SERVERS, pubSubBackendWrapper.getAddress());
+    properties.put(KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
     properties.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, MAX_NUMBER_OF_PARTITION);
     properties.put(DEFAULT_PARTITION_SIZE, 10);
     properties.put(CLUSTER_TO_D2, TestUtils.getClusterToD2String(Collections.singletonMap(clusterName, "dummy_d2")));

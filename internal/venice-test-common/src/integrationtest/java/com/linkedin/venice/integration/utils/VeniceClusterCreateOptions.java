@@ -37,7 +37,12 @@ public class VeniceClusterCreateOptions {
   private final Properties extraProperties;
   private final Map<String, Map<String, String>> kafkaClusterMap;
   private final ZkServerWrapper zkServerWrapper;
+<<<<<<< HEAD
   private final PubSubBackendWrapper pubSubBackendWrapper;
+=======
+  private final PubSubBrokerWrapper pubSubBrokerWrapper;
+  private final String serverD2ServiceName;
+>>>>>>> e459aeaae (Fix kafka broker factory)
 
   private VeniceClusterCreateOptions(Builder builder) {
     this.clusterName = builder.clusterName;
@@ -61,7 +66,12 @@ public class VeniceClusterCreateOptions {
     this.extraProperties = builder.extraProperties;
     this.kafkaClusterMap = builder.kafkaClusterMap;
     this.zkServerWrapper = builder.zkServerWrapper;
+<<<<<<< HEAD
     this.pubSubBackendWrapper = builder.pubSubBackendWrapper;
+=======
+    this.pubSubBrokerWrapper = builder.pubSubBrokerWrapper;
+    this.serverD2ServiceName = builder.serverD2ServiceName;
+>>>>>>> e459aeaae (Fix kafka broker factory)
   }
 
   public String getClusterName() {
@@ -148,8 +158,8 @@ public class VeniceClusterCreateOptions {
     return zkServerWrapper;
   }
 
-  public PubSubBackendWrapper getKafkaBrokerWrapper() {
-    return pubSubBackendWrapper;
+  public PubSubBrokerWrapper getKafkaBrokerWrapper() {
+    return pubSubBrokerWrapper;
   }
 
   @Override
@@ -216,7 +226,7 @@ public class VeniceClusterCreateOptions {
         .append(zkServerWrapper == null ? "null" : zkServerWrapper.getAddress())
         .append(", ")
         .append("kafka:")
-        .append(pubSubBackendWrapper == null ? "null" : pubSubBackendWrapper.getAddress())
+        .append(pubSubBrokerWrapper == null ? "null" : pubSubBrokerWrapper.getAddress())
         .append(", ")
         .append("kafkaClusterMap:")
         .append(kafkaClusterMap)
@@ -246,7 +256,12 @@ public class VeniceClusterCreateOptions {
     private Properties extraProperties;
     private Map<String, Map<String, String>> kafkaClusterMap;
     private ZkServerWrapper zkServerWrapper;
+<<<<<<< HEAD
     private PubSubBackendWrapper pubSubBackendWrapper;
+=======
+    private PubSubBrokerWrapper pubSubBrokerWrapper;
+    private String serverD2ServiceName;
+>>>>>>> e459aeaae (Fix kafka broker factory)
 
     public Builder clusterName(String clusterName) {
       this.clusterName = clusterName;
@@ -354,8 +369,8 @@ public class VeniceClusterCreateOptions {
       return this;
     }
 
-    public Builder kafkaBrokerWrapper(PubSubBackendWrapper pubSubBackendWrapper) {
-      this.pubSubBackendWrapper = pubSubBackendWrapper;
+    public Builder kafkaBrokerWrapper(PubSubBrokerWrapper pubSubBrokerWrapper) {
+      this.pubSubBrokerWrapper = pubSubBrokerWrapper;
       return this;
     }
 

@@ -32,7 +32,7 @@ public class VeniceMultiClusterCreateOptions {
   private final boolean forkServer;
   private final Map<String, Map<String, String>> kafkaClusterMap;
   private final ZkServerWrapper zkServerWrapper;
-  private final PubSubBackendWrapper pubSubBackendWrapper;
+  private final PubSubBrokerWrapper pubSubBrokerWrapper;
   private final Properties childControllerProperties;
   private final VeniceProperties veniceProperties;
 
@@ -104,8 +104,8 @@ public class VeniceMultiClusterCreateOptions {
     return zkServerWrapper;
   }
 
-  public PubSubBackendWrapper getKafkaBrokerWrapper() {
-    return pubSubBackendWrapper;
+  public PubSubBrokerWrapper getKafkaBrokerWrapper() {
+    return pubSubBrokerWrapper;
   }
 
   public Properties getChildControllerProperties() {
@@ -175,7 +175,7 @@ public class VeniceMultiClusterCreateOptions {
         .append(zkServerWrapper == null ? "null" : zkServerWrapper.getAddress())
         .append(", ")
         .append("kafka:")
-        .append(pubSubBackendWrapper == null ? "null" : pubSubBackendWrapper.getAddress())
+        .append(pubSubBrokerWrapper == null ? "null" : pubSubBrokerWrapper.getAddress())
         .append(", ")
         .append("kafkaClusterMap:")
         .append(kafkaClusterMap)
@@ -198,7 +198,7 @@ public class VeniceMultiClusterCreateOptions {
     randomizeClusterName = builder.randomizeClusterName;
     multiRegionSetup = builder.multiRegionSetup;
     zkServerWrapper = builder.zkServerWrapper;
-    pubSubBackendWrapper = builder.pubSubBackendWrapper;
+    pubSubBrokerWrapper = builder.pubSubBrokerWrapper;
     childControllerProperties = builder.childControllerProperties;
     veniceProperties = builder.veniceProperties;
     forkServer = builder.forkServer;
@@ -224,7 +224,7 @@ public class VeniceMultiClusterCreateOptions {
     private boolean isMinActiveReplicaSet = false;
     private Map<String, Map<String, String>> kafkaClusterMap;
     private ZkServerWrapper zkServerWrapper;
-    private PubSubBackendWrapper pubSubBackendWrapper;
+    private PubSubBrokerWrapper pubSubBrokerWrapper;
     private Properties childControllerProperties;
     private VeniceProperties veniceProperties;
 
@@ -313,8 +313,8 @@ public class VeniceMultiClusterCreateOptions {
       return this;
     }
 
-    public Builder kafkaBrokerWrapper(PubSubBackendWrapper pubSubBackendWrapper) {
-      this.pubSubBackendWrapper = pubSubBackendWrapper;
+    public Builder kafkaBrokerWrapper(PubSubBrokerWrapper pubSubBrokerWrapper) {
+      this.pubSubBrokerWrapper = pubSubBrokerWrapper;
       return this;
     }
 

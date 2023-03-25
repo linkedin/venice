@@ -12,7 +12,7 @@ import static org.mockito.Mockito.times;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.integration.utils.PubSubBackendWrapper;
+import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
@@ -52,7 +52,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -79,7 +78,7 @@ public class TopicManagerTest {
   private static final int WAIT_TIME_IN_SECONDS = 10;
   private static final long MIN_COMPACTION_LAG = 24 * Time.MS_PER_HOUR;
 
-  private PubSubBackendWrapper kafka;
+  private PubSubBrokerWrapper kafka;
   private TopicManager topicManager;
   private TestMockTime mockTime;
   private ZkServerWrapper zkServer;
@@ -101,7 +100,7 @@ public class TopicManagerTest {
   public void setUp() {
     zkServer = ServiceFactory.getZkServer();
     mockTime = new TestMockTime();
-    kafka = ServiceFactory.getKafkaBroker(zkServer, Optional.of(mockTime));
+    kafka = ServiceFactory.getKafkaBroker(zkServer, mockTime);
     topicManager = new TopicManager(
         DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
         100,

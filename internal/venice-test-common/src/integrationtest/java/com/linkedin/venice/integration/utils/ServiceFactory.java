@@ -35,7 +35,6 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
@@ -53,8 +52,10 @@ public class ServiceFactory {
   private static final Logger LOGGER = LogManager.getLogger(ServiceFactory.class);
   private static final String ULIMIT;
   private static final String VM_ARGS;
-  // private static final String PUBSUB_BACKEND_CLASS_FQDN = "pubsub.backend.class.fqdn";
-  private static final String PUBSUB_BACKEND_CLASS_FQDN = "pubsubBackend";
+  // System property key for the fully qualified class name of the PubSubBrokerFactory implementation
+  private static final String PUBSUB_BROKER_FACTORY_FQCN = "pubsubBrokerFactory";
+  // PubSubBrokerFactory implementation to use for tests
+  private static final PubSubBrokerFactory PUBSUB_BROKER_FACTORY;
 
   /**
    * Calling {@link System#exit(int)} System.exit in tests is unacceptable. The Spark server lib, in particular, calls it.
@@ -87,17 +88,16 @@ public class ServiceFactory {
     List<String> args = runtimeMxBean.getInputArguments();
     VM_ARGS = args.stream().collect(Collectors.joining(", "));
 
-    String className = Objects.requireNonNull(System.getProperty(PUBSUB_BACKEND_CLASS_FQDN));
-    // if (System.getProperties().containsKey(PUBSUB_BACKEND_CLASS_FQDN)) {
-    // className = System.getProperty(PUBSUB_BACKEND_CLASS_FQDN);
-    // }
+    // Initialize the PubSubBrokerFactory to use for tests based on the system property value.
+    // If the system property is not set, use the default KafkaBrokerFactory.
+    String className =
+        System.getProperty(PUBSUB_BROKER_FACTORY_FQCN, "com.linkedin.venice.integration.utils.KafkaBrokerFactory");
     try {
-      LOGGER.info("Will be using: {} to create pub-sub backend", className);
+      LOGGER.info("Will be using: {} to create pub-sub broker factory", className);
       Class<?> clazz = Class.forName(className);
-      ServiceFactoryTest serviceFactoryTest = (ServiceFactoryTest) clazz.newInstance();
-      serviceFactoryTest.sayHello();
+      PUBSUB_BROKER_FACTORY = (PubSubBrokerFactory) clazz.newInstance();
     } catch (ClassNotFoundException | IllegalAccessException | InstantiationException e) {
-      LOGGER.error("Failed to create an instance of pub-sub backend: {}", className, e);
+      LOGGER.error("Failed to create an instance of pub-sub broker factory: {}", className, e);
       throw new RuntimeException(e);
     }
   }
@@ -113,10 +113,6 @@ public class ServiceFactory {
     }
   }
 
-  public static String testGame() {
-    return "Ok";
-  }
-
   /**
    * @return an instance of {@link ZkServerWrapper}
    */
@@ -124,14 +120,20 @@ public class ServiceFactory {
     return getStatefulService(ZkServerWrapper.SERVICE_NAME, ZkServerWrapper.generateService());
   }
 
-  public static PubSubBackendWrapper getKafkaBroker(ZkServerWrapper zkServerWrapper) {
-    return getKafkaBroker(zkServerWrapper, Optional.empty());
+  public static PubSubBrokerWrapper getKafkaBroker(ZkServerWrapper zkServerWrapper) {
+    PubSubBrokerConfigs pubSubBrokerConfigs =
+        new PubSubBrokerConfigs.Builder().setZkAddress(zkServerWrapper.getAddress()).build();
+    return getKafkaBroker(pubSubBrokerConfigs);
   }
 
-  public static PubSubBackendWrapper getKafkaBroker(ZkServerWrapper zkServerWrapper, Optional<TestMockTime> mockTime) {
-    return getStatefulService(
-        KafkaBrokerWrapper.SERVICE_NAME,
-        KafkaBrokerWrapper.generateService(zkServerWrapper, mockTime));
+  public static PubSubBrokerWrapper getKafkaBroker(ZkServerWrapper zkServerWrapper, TestMockTime mockTime) {
+    PubSubBrokerConfigs pubSubBrokerConfigs =
+        new PubSubBrokerConfigs.Builder().setZkAddress(zkServerWrapper.getAddress()).setMockTime(mockTime).build();
+    return getKafkaBroker(pubSubBrokerConfigs);
+  }
+
+  public static PubSubBrokerWrapper getKafkaBroker(PubSubBrokerConfigs configs) {
+    return getStatefulService(PUBSUB_BROKER_FACTORY.getServiceName(), PUBSUB_BROKER_FACTORY.generateService(configs));
   }
 
   // to get parent controller, add child controllers to controllerCreateOptions
@@ -172,7 +174,7 @@ public class ServiceFactory {
   public static VeniceServerWrapper getVeniceServer(
       String regionName,
       String clusterName,
-      PubSubBackendWrapper pubSubBackendWrapper,
+      PubSubBrokerWrapper pubSubBrokerWrapper,
       String zkAddress,
       Properties featureProperties,
       Properties configProperties,
@@ -180,7 +182,7 @@ public class ServiceFactory {
     return getVeniceServer(
         regionName,
         clusterName,
-        pubSubBackendWrapper,
+        pubSubBrokerWrapper,
         zkAddress,
         featureProperties,
         configProperties,
@@ -193,7 +195,7 @@ public class ServiceFactory {
   public static VeniceServerWrapper getVeniceServer(
       String regionName,
       String clusterName,
-      PubSubBackendWrapper pubSubBackendWrapper,
+      PubSubBrokerWrapper pubSubBrokerWrapper,
       String zkAddress,
       Properties featureProperties,
       Properties configProperties,
@@ -209,7 +211,7 @@ public class ServiceFactory {
             regionName,
             clusterName,
             zkAddress,
-            pubSubBackendWrapper,
+            pubSubBrokerWrapper,
             featureProperties,
             configProperties,
             forkServer,
@@ -222,7 +224,7 @@ public class ServiceFactory {
       String regionName,
       String clusterName,
       ZkServerWrapper zkServerWrapper,
-      PubSubBackendWrapper pubSubBackendWrapper,
+      PubSubBrokerWrapper pubSubBrokerWrapper,
       boolean sslToStorageNodes,
       Map<String, String> clusterToD2,
       Map<String, String> clusterToServerD2,
@@ -233,7 +235,7 @@ public class ServiceFactory {
             regionName,
             clusterName,
             zkServerWrapper,
-            pubSubBackendWrapper,
+            pubSubBrokerWrapper,
             sslToStorageNodes,
             clusterToD2,
             clusterToServerD2,
