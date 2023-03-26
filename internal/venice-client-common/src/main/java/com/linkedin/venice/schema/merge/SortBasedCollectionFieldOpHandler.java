@@ -1002,15 +1002,15 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
   }
 
   private Schema getArraySchema(GenericRecord currValueRecord, String arrayFieldName) {
-    Schema mapFieldSchema = currValueRecord.getSchema().getField(arrayFieldName).schema();
-    switch (mapFieldSchema.getType()) {
+    Schema arrayFieldSchema = currValueRecord.getSchema().getField(arrayFieldName).schema();
+    switch (arrayFieldSchema.getType()) {
       case ARRAY:
-        return mapFieldSchema;
+        return arrayFieldSchema;
       case UNION:
-        return getSchemaFromNullableCollectionSchema(mapFieldSchema, Schema.Type.ARRAY);
+        return getSchemaFromNullableCollectionSchema(arrayFieldSchema, Schema.Type.ARRAY);
 
       default:
-        throw new IllegalStateException("Expect a map or a union schema. Got: " + mapFieldSchema);
+        throw new IllegalStateException("Expect an array or a union schema. Got: " + arrayFieldSchema);
     }
   }
 
