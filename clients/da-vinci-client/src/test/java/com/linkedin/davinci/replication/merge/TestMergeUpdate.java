@@ -13,9 +13,12 @@ import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IndexedHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.util.Utf8;
 import org.testng.Assert;
@@ -587,5 +590,191 @@ public class TestMergeUpdate extends TestMergeBase {
     Assert.assertEquals(updatedNullableListTsRecord.get(TOP_LEVEL_TS_FIELD_NAME), 2L);
     Assert.assertEquals(updatedNullableListTsRecord.get(DELETED_ELEM_FIELD_NAME), Collections.singletonList("key1"));
     Assert.assertEquals(updatedNullableListTsRecord.get(DELETED_ELEM_TS_FIELD_NAME), Collections.singletonList(3L));
+  }
+
+  /**
+   * This unit test chains up different partial update operations on nullable collection field to make sure all operations
+   * are executed correctly and successfully.
+   */
+  @Test
+  public void testNullableCollectionFieldUpdateOperations() {
+    MergeConflictResult result = null;
+    IndexedHashMap<Utf8, Integer> expectedMapValue = new IndexedHashMap<>();
+    List<Utf8> expectedListValue = new ArrayList<>();
+    long operationTs = 1L;
+
+    // Operation 1: Set field to empty collection.
+    result = updateNullableCollection(
+        null,
+        operationTs,
+        UpdateOperationType.SET_FIELD,
+        Collections.emptyMap(),
+        Collections.emptyList());
+    validateNullableCollectionUpdateResult(result, expectedMapValue, expectedListValue);
+
+    // Operation 2: Set field to null collection.
+    operationTs++;
+    result = updateNullableCollection(result, operationTs, UpdateOperationType.SET_FIELD, null, null);
+    validateNullableCollectionUpdateResult(result, null, null);
+
+    // Operation 3: Add entries to collection starting from null.
+    for (int i = 0; i < 3; i++) {
+      String itemKey = "key_" + i;
+      expectedMapValue.put(new Utf8(itemKey), 1);
+      expectedListValue.add(new Utf8(itemKey));
+      operationTs++;
+      result = updateNullableCollection(
+          result,
+          operationTs,
+          UpdateOperationType.ADD_ENTRY,
+          Collections.singletonMap(itemKey, 1),
+          Collections.singletonList(itemKey));
+      validateNullableCollectionUpdateResult(result, expectedMapValue, expectedListValue);
+    }
+
+    // Operation 4: Remove entries to collection
+    for (int i = 0; i < 3; i++) {
+      String itemKey = "key_" + i;
+      expectedMapValue.remove(new Utf8(itemKey));
+      expectedListValue.remove(0);
+      operationTs++;
+      result = updateNullableCollection(
+          result,
+          operationTs,
+          UpdateOperationType.REMOVE_ENTRY,
+          Collections.singletonList(itemKey),
+          Collections.singletonList(itemKey));
+      validateNullableCollectionUpdateResult(result, expectedMapValue, expectedListValue);
+    }
+
+    // Operation 5: Set collection to null
+    operationTs++;
+    result = updateNullableCollection(result, operationTs, UpdateOperationType.SET_FIELD, null, null);
+    validateNullableCollectionUpdateResult(result, null, null);
+
+    // Operation 6: Remove entries from null results in empty collection.
+    operationTs++;
+    result = updateNullableCollection(
+        result,
+        operationTs,
+        UpdateOperationType.REMOVE_ENTRY,
+        Collections.singletonList("dummyKey"),
+        Collections.singletonList("dummyKey"));
+    validateNullableCollectionUpdateResult(result, Collections.emptyMap(), Collections.emptyList());
+
+    // Operation 7: Add entries to collection starting from empty collection.
+    for (int i = 0; i < 3; i++) {
+      String itemKey = "key_" + i;
+      expectedMapValue.put(new Utf8(itemKey), 1);
+      expectedListValue.add(new Utf8(itemKey));
+      operationTs++;
+      result = updateNullableCollection(
+          result,
+          operationTs,
+          UpdateOperationType.ADD_ENTRY,
+          Collections.singletonMap(itemKey, 1),
+          Collections.singletonList(itemKey));
+      validateNullableCollectionUpdateResult(result, expectedMapValue, expectedListValue);
+    }
+
+    // Operation 8: Add entries to collection starting from empty collection.
+    expectedMapValue = new IndexedHashMap<>();
+    expectedListValue = new ArrayList<>();
+    expectedMapValue.put(new Utf8("putOnly"), 1);
+    expectedListValue.add(new Utf8("putOnly"));
+    operationTs++;
+    result = updateNullableCollection(
+        result,
+        operationTs,
+        UpdateOperationType.SET_FIELD,
+        Collections.singletonMap("putOnly", 1),
+        Collections.singletonList("putOnly"));
+    validateNullableCollectionUpdateResult(result, expectedMapValue, expectedListValue);
+
+    // Operation 9: Add entries to collection starting from null.
+    for (int i = 0; i < 3; i++) {
+      String itemKey = "key_" + i;
+      expectedMapValue.put(new Utf8(itemKey), 1);
+      expectedListValue.add(new Utf8(itemKey));
+      operationTs++;
+      result = updateNullableCollection(
+          result,
+          operationTs,
+          UpdateOperationType.ADD_ENTRY,
+          Collections.singletonMap(itemKey, 1),
+          Collections.singletonList(itemKey));
+      validateNullableCollectionUpdateResult(result, expectedMapValue, expectedListValue);
+    }
+
+    // Operation 10: Remove entries to collection
+    for (int i = 0; i < 3; i++) {
+      String itemKey = "key_" + i;
+      expectedMapValue.remove(new Utf8(itemKey));
+      expectedListValue.remove(1);
+      operationTs++;
+      result = updateNullableCollection(
+          result,
+          operationTs,
+          UpdateOperationType.REMOVE_ENTRY,
+          Collections.singletonList(itemKey),
+          Collections.singletonList(itemKey));
+      validateNullableCollectionUpdateResult(result, expectedMapValue, expectedListValue);
+    }
+  }
+
+  private MergeConflictResult updateNullableCollection(
+      MergeConflictResult result,
+      long timestamp,
+      UpdateOperationType operationType,
+      Object mapFieldValue,
+      Object listFieldValue) {
+    GenericRecord oldRmdRecord = result == null ? null : result.getRmdRecord();
+    ByteBuffer oldValueByteBuffer = result == null ? null : result.getNewValue();
+    GenericRecord partialUpdateRecord;
+    if (operationType.equals(UpdateOperationType.ADD_ENTRY)) {
+      partialUpdateRecord = new UpdateBuilderImpl(schemaSet.getUpdateSchema())
+          .setElementsToAddToListField(NULLABLE_STRING_ARRAY_FIELD_NAME, (List<?>) listFieldValue)
+          .setEntriesToAddToMapField(NULLABLE_INT_MAP_FIELD_NAME, (Map<String, ?>) mapFieldValue)
+          .build();
+    } else if (operationType.equals(UpdateOperationType.REMOVE_ENTRY)) {
+      partialUpdateRecord = new UpdateBuilderImpl(schemaSet.getUpdateSchema())
+          .setElementsToRemoveFromListField(NULLABLE_STRING_ARRAY_FIELD_NAME, (List<?>) listFieldValue)
+          .setKeysToRemoveFromMapField(NULLABLE_INT_MAP_FIELD_NAME, (List<String>) mapFieldValue)
+          .build();
+    } else {
+      partialUpdateRecord = new UpdateBuilderImpl(schemaSet.getUpdateSchema())
+          .setNewFieldValue(NULLABLE_STRING_ARRAY_FIELD_NAME, listFieldValue)
+          .setNewFieldValue(NULLABLE_INT_MAP_FIELD_NAME, mapFieldValue)
+          .build();
+    }
+
+    return mergeConflictResolver.update(
+        Lazy.of(() -> oldValueByteBuffer),
+        oldRmdRecord == null
+            ? null
+            : new RmdWithValueSchemaId(
+                schemaSet.getValueSchemaId(),
+                schemaSet.getRmdSchemaProtocolVersion(),
+                oldRmdRecord),
+        serializeUpdateRecord(partialUpdateRecord),
+        schemaSet.getValueSchemaId(),
+        schemaSet.getUpdateSchemaProtocolVersion(),
+        timestamp,
+        1L,
+        0,
+        0);
+  }
+
+  private void validateNullableCollectionUpdateResult(
+      MergeConflictResult result,
+      Map expectedMapValue,
+      List expectedStringValue) {
+    GenericRecord valueRecord = deserializeValueRecord(result.getNewValue());
+    Assert.assertEquals(valueRecord.get(NULLABLE_STRING_ARRAY_FIELD_NAME), expectedStringValue);
+    Assert.assertEquals(valueRecord.get(NULLABLE_INT_MAP_FIELD_NAME), expectedMapValue);
+  }
+
+  enum UpdateOperationType {
+    SET_FIELD, ADD_ENTRY, REMOVE_ENTRY
   }
 }
