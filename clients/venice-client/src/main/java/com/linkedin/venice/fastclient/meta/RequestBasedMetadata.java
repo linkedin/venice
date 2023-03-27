@@ -169,7 +169,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       int newSuperSetValueSchemaId = metadataResponse.getLatestSuperSetValueSchemaId();
       Map<CharSequence, CharSequence> keySchema = metadataResponse.getKeySchema();
       Map<CharSequence, CharSequence> valueSchemas = metadataResponse.getValueSchemas();
-      // Map<CharSequence, Integer> helixGroupInfo = metadataResponse.getHelixGroupInfo();
+      Map<CharSequence, Integer> helixGroupInfo = metadataResponse.getHelixGroupInfo();
       Map<Integer, List<String>> routingInfo = metadataResponse.getRoutingInfo()
           .entrySet()
           .stream()
@@ -211,6 +211,9 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
               new SchemaEntry(Integer.parseInt(entry.getKey().toString()), entry.getValue().toString()));
         }
         schemas.set(schemaData);
+
+        // Update helix group info for our routing strategy
+        routingStrategy = new HelixScatterGatherRoutingStrategy(helixGroupInfo);
 
         // Wait for dictionary fetch to finish if there is one
         try {

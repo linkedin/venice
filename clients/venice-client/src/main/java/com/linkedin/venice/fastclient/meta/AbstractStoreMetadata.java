@@ -18,7 +18,7 @@ import java.util.concurrent.CompletableFuture;
 
 public abstract class AbstractStoreMetadata implements StoreMetadata {
   private final InstanceHealthMonitor instanceHealthMonitor;
-  private final ClientRoutingStrategy routingStrategy;
+  protected ClientRoutingStrategy routingStrategy;
   protected final String storeName;
 
   public AbstractStoreMetadata(ClientConfig clientConfig) {
