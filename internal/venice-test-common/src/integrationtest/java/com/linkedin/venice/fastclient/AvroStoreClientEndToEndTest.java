@@ -37,14 +37,14 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
       ClientConfig.ClientConfigBuilder clientConfigBuilder,
       boolean batchGet,
       int batchGetKeySize,
-      boolean useRouterBasedMetadata) throws Exception {
+      boolean useRequestBasedMetadata) throws Exception {
     runTest(
         clientConfigBuilder,
         batchGet,
         batchGetKeySize,
         (metricsRepository) -> {},
         Optional.empty(),
-        useRouterBasedMetadata);
+        useRequestBasedMetadata);
   }
 
   /**
@@ -61,10 +61,10 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
       int batchGetKeySize,
       Consumer<MetricsRepository> statsValidation,
       Optional<AvroGenericStoreClient> vsonThinClient,
-      boolean useRouterBasedMetadata) throws Exception {
+      boolean useRequestBasedMetadata) throws Exception {
     MetricsRepository metricsRepositoryForGenericClient = new MetricsRepository();
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
-        getGenericFastClient(clientConfigBuilder, metricsRepositoryForGenericClient, useRouterBasedMetadata);
+        getGenericFastClient(clientConfigBuilder, metricsRepositoryForGenericClient, useRequestBasedMetadata);
 
     AvroGenericStoreClient<String, Object> genericFastVsonClient = null;
     // Construct a Vson store client
@@ -72,7 +72,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
         clientConfigBuilder.clone(),
         new MetricsRepository(),
         vsonThinClient,
-        useRouterBasedMetadata);
+        useRequestBasedMetadata);
     try {
       if (batchGet) {
         // test batch get of size 2 (current default max)
@@ -167,7 +167,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
         specificClientConfigBuilder,
         metricsRepositoryForSpecificClient,
         TestValueSchema.class,
-        useRouterBasedMetadata);
+        useRequestBasedMetadata);
     try {
       if (batchGet) {
         // test batch get of size 2 (default)
@@ -220,7 +220,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
       boolean multiGet,
       boolean dualRead,
       boolean speculativeQueryEnabled,
-      boolean useRouterBasedMetadata,
+      boolean useRequestBasedMetadata,
       int batchGetKeySize) throws Exception {
     if (multiGet == false && batchGetKeySize != (int) BATCH_GET_KEY_SIZE[0]) {
       // redundant case as batchGetKeySize doesn't apply for single gets, so run only once
@@ -254,9 +254,9 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
             batchGetKeySize,
             m -> {},
             Optional.of(genericVsonThinClient),
-            useRouterBasedMetadata);
+            useRequestBasedMetadata);
       } else {
-        runTest(clientConfigBuilder, multiGet, batchGetKeySize, m -> {}, Optional.empty(), useRouterBasedMetadata);
+        runTest(clientConfigBuilder, multiGet, batchGetKeySize, m -> {}, Optional.empty(), useRequestBasedMetadata);
       }
     } finally {
       if (genericThinClient != null) {
@@ -274,7 +274,7 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
   @Test(dataProvider = "fastClientHTTPVariantsAndBoolean", dataProviderClass = ClientTestUtils.class, timeOut = TIME_OUT)
   public void testFastClientGetWithDifferentHTTPVariants(
       ClientTestUtils.FastClientHTTPVariant fastClientHTTPVariant,
-      boolean useRouterBasedMetadata) throws Exception {
+      boolean useRequestBasedMetadata) throws Exception {
     Client r2Client = ClientTestUtils.getR2Client(fastClientHTTPVariant);
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
@@ -282,14 +282,14 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
             .setDualReadEnabled(false);
 
     // test both single and multiGet
-    runTest(clientConfigBuilder, false, 2, useRouterBasedMetadata);
-    runTest(clientConfigBuilder, true, 2, useRouterBasedMetadata);
+    runTest(clientConfigBuilder, false, 2, useRequestBasedMetadata);
+    runTest(clientConfigBuilder, true, 2, useRequestBasedMetadata);
   }
 
   // TODO This test fails for the first time and then succeeds when the entire fastclient
   // testsuite is run, but runs successfully when this test is run alone. Need to debug.
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testFastClientSingleGetLongTailRetry(boolean useRouterBasedMetadata) throws Exception {
+  public void testFastClientSingleGetLongTailRetry(boolean useRequestBasedMetadata) throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
@@ -305,6 +305,6 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
           assertTrue(metric.value() > 0, "Long tail retry for single-get should be triggered");
         }
       });
-    }, Optional.empty(), useRouterBasedMetadata);
+    }, Optional.empty(), useRequestBasedMetadata);
   }
 }

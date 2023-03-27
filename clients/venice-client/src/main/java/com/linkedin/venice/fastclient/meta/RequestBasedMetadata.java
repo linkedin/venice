@@ -149,7 +149,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
    * @param onDemandRefresh
    */
   private synchronized void updateCache(boolean onDemandRefresh) throws InterruptedException {
-    boolean updateComplete = false;
+    boolean updateComplete = true;
     long currentTimeMs = System.currentTimeMillis();
     // call the METADATA endpoint
     try {
@@ -220,13 +220,13 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
           currentVersion.set(fetchedVersion);
           clusterStats.updateCurrentVersion(getCurrentStoreVersion());
           latestSuperSetValueSchemaId.set(newSuperSetValueSchemaId);
-          updateComplete = true;
         } catch (ExecutionException | TimeoutException e) {
           LOGGER.warn(
               "Dictionary fetch operation could not complete in time for some of the versions. "
                   + "Will be retried on next refresh",
               e);
           clusterStats.recordVersionUpdateFailure();
+          updateComplete = false;
         }
 
         // Evict entries from inactive versions

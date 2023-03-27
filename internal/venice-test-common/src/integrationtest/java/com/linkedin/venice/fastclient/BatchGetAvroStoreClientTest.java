@@ -113,7 +113,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
    * Creates a batchget request which uses scatter gather to fetch all keys from different replicas.
    */
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testBatchGetGenericClient(boolean useRouterBasedMetadata) throws Exception {
+  public void testBatchGetGenericClient(boolean useRequestBasedMetadata) throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
@@ -124,7 +124,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
             .setRoutingPendingRequestCounterInstanceBlockThreshold(recordCnt + 1);
 
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
-        getGenericFastClient(clientConfigBuilder, new MetricsRepository(), useRouterBasedMetadata);
+        getGenericFastClient(clientConfigBuilder, new MetricsRepository(), useRequestBasedMetadata);
 
     Set<String> keys = new HashSet<>();
     for (int i = 0; i < recordCnt; ++i) {
@@ -144,7 +144,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testBatchGetSpecificClient(boolean useRouterBasedMetadata) throws Exception {
+  public void testBatchGetSpecificClient(boolean useRequestBasedMetadata) throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
@@ -158,7 +158,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
         clientConfigBuilder,
         new MetricsRepository(),
         TestValueSchema.class,
-        useRouterBasedMetadata);
+        useRequestBasedMetadata);
 
     Set<String> keys = new HashSet<>();
     for (int i = 0; i < recordCnt; ++i) {
@@ -176,7 +176,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testStreamingBatchGetGenericClient(boolean useRouterBasedMetadata) throws Exception {
+  public void testStreamingBatchGetGenericClient(boolean useRequestBasedMetadata) throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
@@ -185,7 +185,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
             .setMaxAllowedKeyCntInBatchGetReq(2);
 
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
-        getGenericFastClient(clientConfigBuilder, new MetricsRepository(), useRouterBasedMetadata);
+        getGenericFastClient(clientConfigBuilder, new MetricsRepository(), useRequestBasedMetadata);
 
     Set<String> keys = new HashSet<>();
     for (int i = 0; i < recordCnt; ++i) {
@@ -223,7 +223,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testStreamingBatchGetWithCallbackGenericClient(boolean useRouterBasedMetadata) throws Exception {
+  public void testStreamingBatchGetWithCallbackGenericClient(boolean useRequestBasedMetadata) throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
@@ -232,7 +232,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
             .setMaxAllowedKeyCntInBatchGetReq(2);
 
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
-        getGenericFastClient(clientConfigBuilder, new MetricsRepository(), useRouterBasedMetadata);
+        getGenericFastClient(clientConfigBuilder, new MetricsRepository(), useRequestBasedMetadata);
     Set<String> keys = new HashSet<>();
     for (int i = 0; i < recordCnt; ++i) {
       keys.add(keyPrefix + i);

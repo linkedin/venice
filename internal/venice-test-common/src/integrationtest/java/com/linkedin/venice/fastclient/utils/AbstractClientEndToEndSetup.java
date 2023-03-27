@@ -203,9 +203,9 @@ public abstract class AbstractClientEndToEndSetup {
       ClientConfig.ClientConfigBuilder clientConfigBuilder,
       MetricsRepository metricsRepository,
       Optional<AvroGenericStoreClient> vsonThinClient,
-      boolean useRouterBasedMetadata) throws IOException {
+      boolean useRequestBasedMetadata) throws IOException {
     clientConfigBuilder.setVsonStore(true);
-    setupStoreMetadata(clientConfigBuilder, useRouterBasedMetadata);
+    setupStoreMetadata(clientConfigBuilder, useRequestBasedMetadata);
 
     // clientConfigBuilder will be used for building multiple clients over this test flow,
     // so, always specify a new MetricsRepository to avoid conflicts.
@@ -224,8 +224,8 @@ public abstract class AbstractClientEndToEndSetup {
   protected AvroGenericStoreClient<String, GenericRecord> getGenericFastClient(
       ClientConfig.ClientConfigBuilder clientConfigBuilder,
       MetricsRepository metricsRepository,
-      boolean useRouterBasedMetadata) throws IOException {
-    setupStoreMetadata(clientConfigBuilder, useRouterBasedMetadata);
+      boolean useRequestBasedMetadata) throws IOException {
+    setupStoreMetadata(clientConfigBuilder, useRequestBasedMetadata);
 
     // clientConfigBuilder will be used for building multiple clients over this test flow,
     // so, always specify a new MetricsRepository to avoid conflicts.
@@ -240,8 +240,8 @@ public abstract class AbstractClientEndToEndSetup {
       ClientConfig.ClientConfigBuilder clientConfigBuilder,
       MetricsRepository metricsRepository,
       Class specificValueClass,
-      boolean useRouterBasedMetadata) throws IOException {
-    setupStoreMetadata(clientConfigBuilder, useRouterBasedMetadata);
+      boolean useRequestBasedMetadata) throws IOException {
+    setupStoreMetadata(clientConfigBuilder, useRequestBasedMetadata);
 
     // clientConfigBuilder will be used for building multiple clients over this test flow,
     // so, always specify a new MetricsRepository to avoid conflicts.
@@ -255,8 +255,8 @@ public abstract class AbstractClientEndToEndSetup {
 
   protected void setupStoreMetadata(
       ClientConfig.ClientConfigBuilder clientConfigBuilder,
-      boolean useRouterBasedMetadata) throws IOException {
-    if (useRouterBasedMetadata) {
+      boolean useRequestBasedMetadata) throws IOException {
+    if (useRequestBasedMetadata) {
       clientConfigBuilder.setRequestBasedMetadata(true);
       clientConfigBuilder.setD2Client(d2Client);
       clientConfigBuilder.setClusterDiscoveryD2Service(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME);
