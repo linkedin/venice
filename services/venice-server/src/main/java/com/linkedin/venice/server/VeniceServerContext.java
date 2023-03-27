@@ -81,12 +81,14 @@ public class VeniceServerContext {
   public static class Builder {
     private VeniceConfigLoader veniceConfigLoader;
     private MetricsRepository metricsRepository;
+    private boolean isMetricsRepositorySet;
     private SSLFactory sslFactory;
     private StaticAccessController routerAccessController;
     private DynamicAccessController storeAccessController;
     private ClientConfig clientConfigForConsumer;
     private ICProvider icProvider;
     private List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers;
+    private boolean isServiceDiscoveryAnnouncerSet;
     private PubSubClientsFactory pubSubClientsFactory;
 
     public Builder setVeniceConfigLoader(VeniceConfigLoader veniceConfigLoader) {
@@ -95,6 +97,7 @@ public class VeniceServerContext {
     }
 
     public Builder setMetricsRepository(MetricsRepository metricsRepository) {
+      this.isMetricsRepositorySet = true;
       this.metricsRepository = metricsRepository;
       return this;
     }
@@ -125,6 +128,7 @@ public class VeniceServerContext {
     }
 
     public Builder setServiceDiscoveryAnnouncers(List<ServiceDiscoveryAnnouncer> serviceDiscoveryAnnouncers) {
+      this.isServiceDiscoveryAnnouncerSet = true;
       this.serviceDiscoveryAnnouncers = serviceDiscoveryAnnouncers;
       return this;
     }
@@ -135,10 +139,10 @@ public class VeniceServerContext {
     }
 
     private void addDefaultValues() {
-      if (metricsRepository == null) {
+      if (metricsRepository == null && !isMetricsRepositorySet) {
         metricsRepository = TehutiUtils.getMetricsRepository(SERVER_SERVICE_NAME);
       }
-      if (serviceDiscoveryAnnouncers == null) {
+      if (serviceDiscoveryAnnouncers == null && !isServiceDiscoveryAnnouncerSet) {
         serviceDiscoveryAnnouncers = Collections.emptyList();
       }
     }
