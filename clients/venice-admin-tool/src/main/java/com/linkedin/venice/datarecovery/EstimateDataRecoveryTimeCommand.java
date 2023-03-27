@@ -6,14 +6,14 @@ import java.util.Optional;
 
 
 /**
- * EstimateRecoveryTimeCommand contains the details of a request for estimating the recovery time of a store.
+ * EstimateRecoveryTimeCommand contains the details of a request for estimating the recovery time of a store or set of stores.
  * We expect the command to comply with the following contract:
  *
  * Input:
- *    admin-tool.sh --list-store-push-info --url <url>--store <store_name> --cluster <source_fabric>
+ *    admin-tool.sh --list-store-push-info --url <url> --stores <store_names> --fabric <source_fabric>
  * Output:
- *    success: link_to_running_task
- *    failure: failure_reason
+ *    success: {store, estimated_recovery_time}
+ *    failure: {store, error}
  */
 
 public class EstimateDataRecoveryTimeCommand {
