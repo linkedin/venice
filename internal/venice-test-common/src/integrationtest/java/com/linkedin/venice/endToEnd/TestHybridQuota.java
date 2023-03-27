@@ -9,7 +9,7 @@ import static com.linkedin.venice.ConfigKeys.SSL_TO_KAFKA;
 import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
-import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.getNearlineProducer;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.runVPJ;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendCustomSizeStreamingRecord;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
@@ -30,6 +30,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.producer.NearlineProducer;
 import com.linkedin.venice.pushmonitor.HybridStoreQuotaStatus;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.Time;
@@ -44,7 +45,6 @@ import org.apache.helix.InstanceType;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -105,7 +105,7 @@ public class TestHybridQuota {
   @Test(dataProvider = "testHybridQuotaPermutations", timeOut = 180 * Time.MS_PER_SECOND)
   public void testHybridStoreQuota(boolean chunkingEnabled, boolean isStreamReprocessing, boolean recoverFromViolation)
       throws Exception {
-    SystemProducer veniceProducer = null;
+    NearlineProducer veniceProducer = null;
 
     long streamingRewindSeconds = 10L;
     long streamingMessageLag = 2L;
@@ -204,13 +204,13 @@ public class TestHybridQuota {
               .setHybridStoreDiskQuotaEnabled(true)
               .setStorageQuotaInByte(storageQuotaInByte));
       if (isStreamReprocessing) {
-        veniceProducer = getSamzaProducer(sharedVenice, storeName, Version.PushType.STREAM_REPROCESSING); // new
-                                                                                                          // producer,
-                                                                                                          // new DIV
-                                                                                                          // segment.
+        veniceProducer = getNearlineProducer(sharedVenice, storeName, Version.PushType.STREAM_REPROCESSING); // new
+        // producer,
+        // new DIV
+        // segment.
       } else {
-        veniceProducer = getSamzaProducer(sharedVenice, storeName, Version.PushType.STREAM); // new producer, new DIV
-                                                                                             // segment.
+        veniceProducer = getNearlineProducer(sharedVenice, storeName, Version.PushType.STREAM); // new producer, new DIV
+        // segment.
       }
       for (int i = 1; i <= 20; i++) {
         try {
@@ -252,13 +252,14 @@ public class TestHybridQuota {
           veniceProducer.stop();
         }
         if (isStreamReprocessing) {
-          veniceProducer = getSamzaProducer(sharedVenice, storeName, Version.PushType.STREAM_REPROCESSING); // new
-                                                                                                            // producer,
-                                                                                                            // new DIV
-                                                                                                            // segment.
+          veniceProducer = getNearlineProducer(sharedVenice, storeName, Version.PushType.STREAM_REPROCESSING); // new
+          // producer,
+          // new DIV
+          // segment.
         } else {
-          veniceProducer = getSamzaProducer(sharedVenice, storeName, Version.PushType.STREAM); // new producer, new DIV
-                                                                                               // segment.
+          veniceProducer = getNearlineProducer(sharedVenice, storeName, Version.PushType.STREAM); // new producer, new
+                                                                                                  // DIV
+          // segment.
         }
 
         sendStreamingRecord(veniceProducer, storeName, 21);

@@ -61,6 +61,7 @@ import com.linkedin.venice.meta.IngestionMetadataUpdateType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.ConstantVenicePartitioner;
+import com.linkedin.venice.producer.NearlineProducer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
@@ -100,7 +101,6 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -946,7 +946,7 @@ public class DaVinciClientTest {
       TestUtils.createMetaSystemStore(client, storeName, Optional.of(LOGGER));
       client.updateStore(storeName, params);
       cluster.createVersion(storeName, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA, Stream.of());
-      SystemProducer producer = IntegrationTestPushUtils.getSamzaProducer(
+      NearlineProducer producer = IntegrationTestPushUtils.getNearlineProducer(
           cluster,
           storeName,
           Version.PushType.STREAM,
@@ -962,7 +962,7 @@ public class DaVinciClientTest {
   }
 
   private void generateHybridData(String storeName, List<Pair<Object, Object>> dataToWrite) {
-    SystemProducer producer = IntegrationTestPushUtils.getSamzaProducer(
+    NearlineProducer producer = IntegrationTestPushUtils.getNearlineProducer(
         cluster,
         storeName,
         Version.PushType.STREAM,

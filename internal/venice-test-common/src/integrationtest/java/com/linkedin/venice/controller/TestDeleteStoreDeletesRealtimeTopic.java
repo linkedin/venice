@@ -1,7 +1,7 @@
 package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
-import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.getNearlineProducer;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.makeStoreHybrid;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static org.testng.Assert.assertEquals;
@@ -19,6 +19,7 @@ import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.producer.NearlineProducer;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -29,7 +30,6 @@ import java.util.concurrent.TimeUnit;
 import org.apache.avro.util.Utf8;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -82,9 +82,9 @@ public class TestDeleteStoreDeletesRealtimeTopic {
     TestUtils.assertCommand(controllerClient.emptyPush(storeName, Utils.getUniqueString("push-id"), 1L));
 
     // write streaming records
-    SystemProducer veniceProducer = null;
+    NearlineProducer veniceProducer = null;
     try {
-      veniceProducer = getSamzaProducer(venice, storeName, Version.PushType.STREAM);
+      veniceProducer = getNearlineProducer(venice, storeName, Version.PushType.STREAM);
       for (int i = 1; i <= 10; i++) {
         sendStreamingRecord(veniceProducer, storeName, i);
       }

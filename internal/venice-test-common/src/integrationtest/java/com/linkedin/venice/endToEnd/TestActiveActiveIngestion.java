@@ -13,9 +13,7 @@ import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_KAFKA;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.PARENT_D2_SERVICE_NAME;
-import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
-import static com.linkedin.venice.samza.VeniceSystemFactory.DOT;
-import static com.linkedin.venice.samza.VeniceSystemFactory.SYSTEMS_PREFIX;
+import static com.linkedin.venice.producer.NearlineProducerFactory.JOB_ID;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_AGGREGATE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_CONTROLLER_D2_SERVICE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_D2_ZK_HOSTS;
@@ -55,6 +53,7 @@ import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClust
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.producer.NearlineProducer;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.samza.VeniceSystemFactory;
@@ -299,8 +298,7 @@ public class TestActiveActiveIngestion {
     // Use a unique key for DELETE with RMD validation
     int deleteWithRmdKeyIndex = 1000;
 
-    try (
-        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
+    try (NearlineProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
       veniceProducer.start();
       // Run Samza job to send PUT and DELETE requests.
       runSamzaStreamJob(veniceProducer, storeName, null, 10, 10, 0);
@@ -900,7 +898,7 @@ public class TestActiveActiveIngestion {
   }
 
   private void runSamzaStreamJob(
-      VeniceSystemProducer veniceProducer,
+      NearlineProducer veniceProducer,
       String storeName,
       Time mockedTime,
       int numPuts,
@@ -926,7 +924,7 @@ public class TestActiveActiveIngestion {
   }
 
   private void produceRecordWithLogicalTimestamp(
-      VeniceSystemProducer veniceProducer,
+      NearlineProducer veniceProducer,
       String storeName,
       int index,
       long logicalTimestamp,
@@ -940,15 +938,14 @@ public class TestActiveActiveIngestion {
 
   private Map<String, String> getSamzaConfig(String storeName) {
     Map<String, String> samzaConfig = new HashMap<>();
-    String configPrefix = SYSTEMS_PREFIX + "venice" + DOT;
-    samzaConfig.put(configPrefix + VENICE_PUSH_TYPE, Version.PushType.STREAM.toString());
-    samzaConfig.put(configPrefix + VENICE_STORE, storeName);
-    samzaConfig.put(configPrefix + VENICE_AGGREGATE, "false");
+    samzaConfig.put(VENICE_PUSH_TYPE, Version.PushType.STREAM.toString());
+    samzaConfig.put(VENICE_STORE, storeName);
+    samzaConfig.put(VENICE_AGGREGATE, "false");
     samzaConfig.put(VENICE_CHILD_D2_ZK_HOSTS, childDatacenters.get(0).getZkServerWrapper().getAddress());
     samzaConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, D2_SERVICE_NAME);
     samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, "dfd"); // parentController.getKafkaZkAddress());
     samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
-    samzaConfig.put(DEPLOYMENT_ID, Utils.getUniqueString("venice-push-id"));
+    samzaConfig.put(JOB_ID, Utils.getUniqueString("venice-push-id"));
     samzaConfig.put(SSL_ENABLED, "false");
     return samzaConfig;
   }

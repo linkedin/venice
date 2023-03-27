@@ -1,34 +1,22 @@
 package com.linkedin.venice.samza;
 
-import static com.linkedin.venice.CommonConfigKeys.SSL_ENABLED;
-import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_LOCATION;
-import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_PASSWORD;
 import static com.linkedin.venice.CommonConfigKeys.SSL_KEYSTORE_TYPE;
 import static com.linkedin.venice.CommonConfigKeys.SSL_KEY_PASSWORD;
 import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_LOCATION;
 import static com.linkedin.venice.CommonConfigKeys.SSL_TRUSTSTORE_PASSWORD;
 import static com.linkedin.venice.ConfigKeys.VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION;
-import static com.linkedin.venice.ConfigKeys.VENICE_PARTITIONERS;
-import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
-import static com.linkedin.venice.VeniceConstants.NATIVE_REPLICATION_DEFAULT_SOURCE_FABRIC;
-import static com.linkedin.venice.VeniceConstants.SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION;
 
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.producer.NearlineProducerFactory;
 import com.linkedin.venice.security.SSLFactory;
-import com.linkedin.venice.utils.Pair;
-import com.linkedin.venice.utils.SslUtils;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.io.Serializable;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.samza.SamzaException;
@@ -59,65 +47,9 @@ public class VeniceSystemFactory extends NearlineProducerFactory implements Syst
   private static final long serialVersionUID = 1L;
   private static final Logger LOGGER = LogManager.getLogger(VeniceSystemFactory.class);
 
-  public static final String LEGACY_CHILD_D2_ZK_HOSTS_PROPERTY = "__r2d2DefaultClient__.r2d2Client.zkHosts";
-
   public static final String SYSTEMS_PREFIX = "systems.";
   public static final String DOT = ".";
   public static final String DEPLOYMENT_ID = "deployment.id";
-
-  public static final String VENICE_PUSH_TYPE = "push.type";
-
-  /**
-   * Venice store name Samza application is going to produce to.
-   */
-  public static final String VENICE_STORE = "store";
-
-  /**
-   * Whether to leverage Venice aggregation.
-   * By default, it is 'false'.
-   *
-   * When the Samza application decides to leverage Venice aggregation, all the messages
-   * will be produced to Venice Parent cluster, otherwise, all the messages will be produced
-   * to local cluster.
-   */
-  public static final String VENICE_AGGREGATE = "aggregate";
-
-  /**
-   * D2 ZK hosts for Venice Child Cluster.
-   */
-  public static final String VENICE_CHILD_D2_ZK_HOSTS = "venice.child.d2.zk.hosts";
-
-  /**
-   * D2 ZK hosts for Venice Parent Cluster.
-   */
-  public static final String VENICE_PARENT_D2_ZK_HOSTS = "venice.parent.d2.zk.hosts";
-
-  // D2 service name for local cluster
-  public static final String VENICE_CHILD_CONTROLLER_D2_SERVICE = "venice.child.controller.d2.service";
-  // D2 service name for parent cluster
-  public static final String VENICE_PARENT_CONTROLLER_D2_SERVICE = "venice.parent.controller.d2.service";
-
-  // Legacy D2 service name for local cluster
-  public static final String LEGACY_VENICE_CHILD_CONTROLLER_D2_SERVICE = "VeniceController";
-  // Legacy D2 service name for parent cluster
-  public static final String LEGACY_VENICE_PARENT_CONTROLLER_D2_SERVICE = "VeniceParentController";
-
-  /**
-   * A global static counter to track how many factory one process would create.
-   * In general, one factory is enough for one application; otherwise, if there are
-   * multiple factory built in the same process, log this information for debugging purpose.
-   */
-  private static final AtomicInteger FACTORY_INSTANCE_NUMBER = new AtomicInteger(0);
-
-  /**
-   * Key: VeniceSystemProducer instance;
-   * Value: a pair of boolean: <isActive, isStreamReprocessingJobSucceeded>
-   *
-   * For each SystemProducer created through this factory, keep track of its status in
-   * the below Map. {@link com.linkedin.venice.pushmonitor.RouterBasedPushMonitor} will update
-   * the status of the SystemProducer.
-   */
-  private final Map<SystemProducer, Pair<Boolean, Boolean>> systemProducerStatues;
 
   /**
    * All the required configs to build a SSL Factory
@@ -128,14 +60,6 @@ public class VeniceSystemFactory extends NearlineProducerFactory implements Syst
       SSL_KEY_PASSWORD,
       SSL_TRUSTSTORE_LOCATION,
       SSL_TRUSTSTORE_PASSWORD);
-
-  public VeniceSystemFactory() {
-    systemProducerStatues = new VeniceConcurrentHashMap<>();
-    int totalNumberOfFactory = FACTORY_INSTANCE_NUMBER.incrementAndGet();
-    if (totalNumberOfFactory > 1) {
-      LOGGER.warn("There are {} VeniceSystemProducer factory instances in one process.", totalNumberOfFactory);
-    }
-  }
 
   @Override
   public SystemAdmin getAdmin(String systemName, Config config) {
@@ -294,116 +218,28 @@ public class VeniceSystemFactory extends NearlineProducerFactory implements Syst
       boolean veniceAggregate,
       String pushTypeString,
       Config config) {
-    if (isEmpty(storeName)) {
-      throw new SamzaException(VENICE_STORE + " should not be null for system " + systemName);
-    }
-
     String samzaJobId = config.get(DEPLOYMENT_ID);
     String prefix = SYSTEMS_PREFIX + systemName + DOT;
-    Version.PushType venicePushType;
-    try {
-      venicePushType = Version.PushType.valueOf(pushTypeString);
-    } catch (Exception e) {
-      throw new SamzaException(
-          "Cannot parse venice push type: " + pushTypeString + ".  Must be one of: "
-              + Arrays.stream(Version.PushType.values()).map(Enum::toString).collect(Collectors.joining(",")));
-    }
 
-    String veniceParentZKHosts = config.get(VENICE_PARENT_D2_ZK_HOSTS);
-    if (isEmpty(veniceParentZKHosts)) {
-      throw new SamzaException(
-          VENICE_PARENT_D2_ZK_HOSTS + " should not be null, please put this property in your app-def.xml");
-    }
+    Properties props = new Properties();
+    props.putAll(config);
 
-    String localVeniceZKHosts = config.get(VENICE_CHILD_D2_ZK_HOSTS);
-    String legacyLocalVeniceZKHosts = config.get(LEGACY_CHILD_D2_ZK_HOSTS_PROPERTY);
-    if (isEmpty(localVeniceZKHosts)) {
-      if (isEmpty(legacyLocalVeniceZKHosts)) {
-        throw new SamzaException(
-            "Either " + VENICE_CHILD_D2_ZK_HOSTS + " or " + LEGACY_CHILD_D2_ZK_HOSTS_PROPERTY + " should be defined");
-      }
-      localVeniceZKHosts = legacyLocalVeniceZKHosts;
-    }
-
-    String localControllerD2Service = config.get(VENICE_CHILD_CONTROLLER_D2_SERVICE);
-    if (isEmpty(localControllerD2Service)) {
-      LOGGER.info(
-          VENICE_CHILD_CONTROLLER_D2_SERVICE + " is not defined. Using " + LEGACY_VENICE_CHILD_CONTROLLER_D2_SERVICE);
-      localControllerD2Service = LEGACY_VENICE_CHILD_CONTROLLER_D2_SERVICE;
-    }
-
-    String parentControllerD2Service = config.get(VENICE_PARENT_CONTROLLER_D2_SERVICE);
-    if (isEmpty(parentControllerD2Service)) {
-      LOGGER.info(
-          VENICE_PARENT_CONTROLLER_D2_SERVICE + " is not defined. Using " + LEGACY_VENICE_PARENT_CONTROLLER_D2_SERVICE);
-      parentControllerD2Service = LEGACY_VENICE_PARENT_CONTROLLER_D2_SERVICE;
-    }
-
-    // Build Ssl Factory if Controller SSL is enabled
-    Optional<SSLFactory> sslFactory = Optional.empty();
-    boolean controllerSslEnabled = config.getBoolean(SSL_ENABLED, true);
-    if (controllerSslEnabled) {
-      LOGGER.info("Controller ACL is enabled.");
-      String sslFactoryClassName = config.get(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
-      Properties sslProps = getSslProperties(config);
-      sslFactory = Optional.of(SslUtils.getSSLFactory(sslProps, sslFactoryClassName));
-    }
-
-    Optional<String> partitioners = Optional.ofNullable(config.get(VENICE_PARTITIONERS));
-
-    LOGGER.info("Configs for {} producer: ", systemName);
-    LOGGER.info("{}{}: {}", prefix, VENICE_STORE, storeName);
-    LOGGER.info("{}{}: {}", prefix, VENICE_AGGREGATE, veniceAggregate);
-    LOGGER.info("{}{}: {}", prefix, VENICE_PUSH_TYPE, venicePushType);
-    LOGGER.info("{}: {}", VENICE_PARENT_D2_ZK_HOSTS, veniceParentZKHosts);
-    LOGGER.info("{}: {}", VENICE_CHILD_D2_ZK_HOSTS, localVeniceZKHosts);
-    LOGGER.info("{}: {}", VENICE_PARENT_CONTROLLER_D2_SERVICE, parentControllerD2Service);
-    LOGGER.info("{}: {}", VENICE_CHILD_CONTROLLER_D2_SERVICE, localControllerD2Service);
-
-    String runningFabric = config.get(SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION);
-    LOGGER.info("Running Fabric from config: {}", runningFabric);
-    if (runningFabric == null) {
-      runningFabric = System.getProperty(SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION);
-      LOGGER.info("Running Fabric from environment: {}", runningFabric);
-      if (runningFabric != null) {
-        runningFabric = runningFabric.toLowerCase();
+    for (Map.Entry<String, String> entry: config.entrySet()) {
+      String key = entry.getKey();
+      if (key.startsWith(prefix)) {
+        String extractedKey = key.substring(prefix.length());
+        props.put(extractedKey, entry.getValue());
+      } else {
+        props.put(key, entry.getValue());
       }
     }
-    if (runningFabric != null && runningFabric.contains("corp")) {
-      runningFabric = NATIVE_REPLICATION_DEFAULT_SOURCE_FABRIC;
-    }
-    LOGGER.info("Final Running Fabric: {}", runningFabric);
 
-    String primaryControllerColoD2ZKHost;
-    String primaryControllerD2Service;
-    if (veniceAggregate) {
-      primaryControllerColoD2ZKHost = veniceParentZKHosts;
-      primaryControllerD2Service = parentControllerD2Service;
-    } else {
-      primaryControllerColoD2ZKHost = localVeniceZKHosts;
-      primaryControllerD2Service = localControllerD2Service;
-    }
-    LOGGER.info(
-        "Will use the following primary controller D2 ZK hosts: {} and D2 Service: {}",
-        primaryControllerColoD2ZKHost,
-        primaryControllerD2Service);
+    props.put(JOB_ID, samzaJobId);
+    props.remove(DEPLOYMENT_ID);
 
-    boolean verifyLatestProtocolPresent = config.getBoolean(VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION, true);
-    SystemProducer systemProducer = createSystemProducer(
-        localVeniceZKHosts,
-        primaryControllerColoD2ZKHost,
-        primaryControllerD2Service,
-        storeName,
-        venicePushType,
-        samzaJobId,
-        runningFabric,
-        verifyLatestProtocolPresent,
-        config, // Although we don't use this config in our default implementation, overridden implementations might
-                // need this
-        sslFactory,
-        partitioners);
-    this.systemProducerStatues.computeIfAbsent(systemProducer, k -> Pair.create(true, false));
-    return systemProducer;
+    VeniceProperties veniceProperties = new VeniceProperties(props);
+
+    return new VeniceSystemProducer(super.getProducer(storeName, veniceAggregate, pushTypeString, veniceProperties));
   }
 
   /**
@@ -430,73 +266,5 @@ public class VeniceSystemFactory extends NearlineProducerFactory implements Syst
    */
   public VeniceSystemProducer getClosableProducer(String systemName, Config config, MetricsRegistry registry) {
     return (VeniceSystemProducer) getProducer(systemName, config, registry);
-  }
-
-  /**
-   * Get the total number of active SystemProducer.
-   *
-   * The SystemProducer for push type: STREAM and BATCH will always be at active state; so if there is any
-   * real-time SystemProducer in the Samza task, the task will not be stopped even though all the stream reprocessing
-   * jobs have completed. Besides, a Samza task can not have a mix of BATCH push type and STREAM_REPROCESSING push type;
-   * otherwise, the Samza task can not be automatically stopped.
-   */
-  public int getNumberOfActiveSystemProducers() {
-    int count = 0;
-    for (Map.Entry<SystemProducer, Pair<Boolean, Boolean>> entry: systemProducerStatues.entrySet()) {
-      boolean isActive = entry.getValue().getFirst();
-      count += isActive ? 1 : 0;
-    }
-    return count;
-  }
-
-  /**
-   * Check whether all the stream reprocessing jobs have succeeded; return false if any of them fail.
-   */
-  public boolean getOverallExecutionStatus() {
-    for (Map.Entry<SystemProducer, Pair<Boolean, Boolean>> entry: systemProducerStatues.entrySet()) {
-      boolean jobSucceed = entry.getValue().getSecond();
-      if (!jobSucceed) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  /**
-   * {@link com.linkedin.venice.pushmonitor.RouterBasedPushMonitor} will update the status of a SystemProducer with
-   * push type STREAM_REPROCESSING:
-   * END_OF_PUSH_RECEIVED: isActive -> false; isStreamReprocessingJobSucceeded -> true
-   * COMPLETED: isActive -> false; isStreamReprocessingJobSucceeded -> true
-   * ERROR: isActive -> false; isStreamReprocessingJobSucceeded -> false
-   *
-   * For all the other push job status, SystemProducer status will not be updated.
-   */
-  public void endStreamReprocessingSystemProducer(SystemProducer systemProducer, boolean jobSucceed) {
-    systemProducerStatues.put(systemProducer, Pair.create(false, jobSucceed));
-  }
-
-  /**
-   * Build SSL properties based on the Samza job config
-   */
-  private Properties getSslProperties(Config samzaConfig) {
-    // Make sure all mandatory configs exist
-    SSL_MANDATORY_CONFIGS.forEach(requiredConfig -> {
-      if (!samzaConfig.containsKey(requiredConfig)) {
-        throw new VeniceException("Missing a mandatory SSL config: " + requiredConfig);
-      }
-    });
-
-    Properties sslProperties = new Properties();
-    sslProperties.setProperty(SSL_ENABLED, "true");
-    sslProperties.setProperty(SSL_KEYSTORE_TYPE, samzaConfig.get(SSL_KEYSTORE_TYPE));
-    sslProperties.setProperty(SSL_KEYSTORE_LOCATION, samzaConfig.get(SSL_KEYSTORE_LOCATION));
-    sslProperties.setProperty(SSL_KEYSTORE_PASSWORD, samzaConfig.get(SSL_KEY_PASSWORD));
-    sslProperties.setProperty(SSL_TRUSTSTORE_LOCATION, samzaConfig.get(SSL_TRUSTSTORE_LOCATION));
-    sslProperties.setProperty(SSL_TRUSTSTORE_PASSWORD, samzaConfig.get(SSL_TRUSTSTORE_PASSWORD));
-    return sslProperties;
-  }
-
-  private static boolean isEmpty(String input) {
-    return (input == null) || input.isEmpty() || input.equals("null");
   }
 }

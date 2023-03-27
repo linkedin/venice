@@ -13,7 +13,7 @@ import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_GRID_FABRIC;
 import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_DISCOVER_URL_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.VENICE_STORE_NAME_PROP;
-import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
+import static com.linkedin.venice.producer.NearlineProducerFactory.JOB_ID;
 import static com.linkedin.venice.samza.VeniceSystemFactory.DOT;
 import static com.linkedin.venice.samza.VeniceSystemFactory.SYSTEMS_PREFIX;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_CONTROLLER_D2_SERVICE;
@@ -43,8 +43,10 @@ import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFac
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
+import com.linkedin.venice.producer.NearlineProducer;
+import com.linkedin.venice.producer.NearlineProducerFactory;
+import com.linkedin.venice.producer.ProducerMessageEnvelope;
 import com.linkedin.venice.producer.VeniceObjectWithTimestamp;
-import com.linkedin.venice.samza.VeniceSystemFactory;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -56,10 +58,7 @@ import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.samza.config.MapConfig;
-import org.apache.samza.system.OutgoingMessageEnvelope;
 import org.apache.samza.system.SystemProducer;
-import org.apache.samza.system.SystemStream;
 import org.testng.Assert;
 
 
@@ -180,7 +179,7 @@ public class IntegrationTestPushUtils {
     }
   }
 
-  public static Map<String, String> getSamzaProducerConfig(
+  public static Map<String, String> getNearlineProducerConfig(
       VeniceClusterWrapper venice,
       String storeName,
       Version.PushType type) {
@@ -192,23 +191,25 @@ public class IntegrationTestPushUtils {
     samzaConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, VeniceControllerWrapper.D2_SERVICE_NAME);
     samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, "invalid_parent_zk_address");
     samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, "invalid_parent_d2_service");
-    samzaConfig.put(DEPLOYMENT_ID, Utils.getUniqueString("venice-push-id"));
+    samzaConfig.put(JOB_ID, Utils.getUniqueString("venice-push-id"));
     samzaConfig.put(SSL_ENABLED, "false");
     return samzaConfig;
   }
 
   @SafeVarargs
-  public static SystemProducer getSamzaProducer(
+  public static NearlineProducer getNearlineProducer(
       VeniceClusterWrapper venice,
       String storeName,
       Version.PushType type,
       Pair<String, String>... optionalConfigs) {
-    Map<String, String> samzaConfig = getSamzaProducerConfig(venice, storeName, type);
+    Map<String, String> samzaConfig = getNearlineProducerConfig(venice, storeName, type);
     for (Pair<String, String> config: optionalConfigs) {
       samzaConfig.put(config.getFirst(), config.getSecond());
     }
-    VeniceSystemFactory factory = new VeniceSystemFactory();
-    SystemProducer veniceProducer = factory.getProducer("venice", new MapConfig(samzaConfig), null);
+    NearlineProducerFactory factory = new NearlineProducerFactory();
+    Properties samzaProps = new Properties();
+    samzaProps.putAll(samzaConfig);
+    NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(samzaProps), null);
     veniceProducer.start();
     return veniceProducer;
   }
@@ -307,51 +308,48 @@ public class IntegrationTestPushUtils {
    * key and value schema of the store must both be "string", the record produced is
    * based on the provided recordId
    */
-  public static void sendStreamingRecord(SystemProducer producer, String storeName, int recordId) {
+  public static void sendStreamingRecord(NearlineProducer producer, String storeName, int recordId) {
     sendStreamingRecord(producer, storeName, Integer.toString(recordId), "stream_" + recordId);
   }
 
   public static void sendStreamingRecordWithKeyPrefix(
-      SystemProducer producer,
+      NearlineProducer producer,
       String storeName,
       String keyPrefix,
       int recordId) {
     sendStreamingRecord(producer, storeName, keyPrefix + recordId, "stream_" + recordId);
   }
 
-  public static void sendStreamingDeleteRecord(SystemProducer producer, String storeName, String key) {
+  public static void sendStreamingDeleteRecord(NearlineProducer producer, String storeName, String key) {
     sendStreamingRecord(producer, storeName, key, null, null);
   }
 
   public static void sendStreamingDeleteRecord(
-      SystemProducer producer,
+      NearlineProducer producer,
       String storeName,
       String key,
       Long logicalTimeStamp) {
     sendStreamingRecord(producer, storeName, key, null, logicalTimeStamp);
   }
 
-  public static void sendStreamingRecord(SystemProducer producer, String storeName, Object key, Object message) {
+  public static void sendStreamingRecord(NearlineProducer producer, String storeName, Object key, Object message) {
     sendStreamingRecord(producer, storeName, key, message, null);
   }
 
   public static void sendStreamingRecord(
-      SystemProducer producer,
+      NearlineProducer producer,
       String storeName,
       Object key,
       Object message,
       Long logicalTimeStamp) {
-    OutgoingMessageEnvelope envelope;
+    ProducerMessageEnvelope envelope;
     if (logicalTimeStamp == null) {
-      envelope = new OutgoingMessageEnvelope(new SystemStream("venice", storeName), key, message);
+      envelope = new ProducerMessageEnvelope(storeName, key, message);
     } else {
-      envelope = new OutgoingMessageEnvelope(
-          new SystemStream("venice", storeName),
-          key,
-          new VeniceObjectWithTimestamp(message, logicalTimeStamp));
+      envelope = new ProducerMessageEnvelope(storeName, key, new VeniceObjectWithTimestamp(message, logicalTimeStamp));
     }
-    producer.send(storeName, envelope);
-    producer.flush(storeName);
+    producer.send(envelope);
+    producer.flush();
   }
 
   /**
@@ -361,7 +359,7 @@ public class IntegrationTestPushUtils {
    * @see #sendStreamingRecord(SystemProducer, String, int)
    */
   public static void sendCustomSizeStreamingRecord(
-      SystemProducer producer,
+      NearlineProducer producer,
       String storeName,
       int recordId,
       int valueSizeInBytes) {

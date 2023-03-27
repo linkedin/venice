@@ -83,7 +83,7 @@ import org.apache.logging.log4j.Logger;
  *     a. The Venice system is deployed in a single-colo mode; or
  *     b. The {@link Version.PushType} is {@link PushType.STREAM} and the job is configured to write data in NON_AGGREGATE mode
  */
-public class NearlineProducer implements AutoCloseable {
+public class NearlineProducer implements AutoCloseable, Closeable {
   private static final Logger LOGGER = LogManager.getLogger(NearlineProducer.class);
 
   private static final Schema STRING_SCHEMA = Schema.create(Schema.Type.STRING);

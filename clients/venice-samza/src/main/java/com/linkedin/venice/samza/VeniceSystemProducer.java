@@ -2,6 +2,7 @@ package com.linkedin.venice.samza;
 
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.producer.NearlineProducer;
+import com.linkedin.venice.producer.NearlineProducerExitMode;
 import com.linkedin.venice.producer.ProducerMessageEnvelope;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.SystemTime;
@@ -29,8 +30,10 @@ import org.apache.samza.system.SystemProducer;
  *     a. The Venice system is deployed in a single-colo mode; or
  *     b. The {@link Version.PushType} is {@link PushType.STREAM} and the job is configured to write data in NON_AGGREGATE mode
  */
-public class VeniceSystemProducer extends NearlineProducer implements SystemProducer, Closeable {
+public class VeniceSystemProducer implements SystemProducer, Closeable {
   private static final Logger LOGGER = LogManager.getLogger(VeniceSystemProducer.class);
+
+  final NearlineProducer delegate;
 
   @Deprecated
   public VeniceSystemProducer(
@@ -144,7 +147,7 @@ public class VeniceSystemProducer extends NearlineProducer implements SystemProd
       Optional<SSLFactory> sslFactory,
       Optional<String> partitioners,
       Time time) {
-    super(
+    delegate = new NearlineProducer(
         veniceChildD2ZkHost,
         primaryControllerColoD2ZKHost,
         primaryControllerD2ServiceName,
@@ -159,9 +162,13 @@ public class VeniceSystemProducer extends NearlineProducer implements SystemProd
         time);
   }
 
+  public VeniceSystemProducer(NearlineProducer producer) {
+    delegate = producer;
+  }
+
   @Override
   public synchronized void start() {
-    super.start();
+    delegate.start();
   }
 
   @Override
@@ -171,7 +178,7 @@ public class VeniceSystemProducer extends NearlineProducer implements SystemProd
 
   @Override
   public synchronized void stop() {
-    super.stop();
+    delegate.stop();
   }
 
   @Override
@@ -185,7 +192,7 @@ public class VeniceSystemProducer extends NearlineProducer implements SystemProd
         outgoingMessageEnvelope.getSystemStream().getStream(),
         outgoingMessageEnvelope.getKey(),
         outgoingMessageEnvelope.getMessage());
-    send(source, producerMessageEnvelope);
+    delegate.send(producerMessageEnvelope);
   }
 
   /**
@@ -195,6 +202,21 @@ public class VeniceSystemProducer extends NearlineProducer implements SystemProd
    */
   @Override
   public void flush(String s) {
-    super.flush();
+    delegate.flush();
+  }
+
+  /**
+   * Test methods
+   */
+  public String getKafkaBootstrapServers() {
+    return delegate.getKafkaBootstrapServers();
+  }
+
+  public String getRunningFabric() {
+    return delegate.getRunningFabric();
+  }
+
+  public void setExitMode(NearlineProducerExitMode exitMode) {
+    delegate.setExitMode(exitMode);
   }
 }

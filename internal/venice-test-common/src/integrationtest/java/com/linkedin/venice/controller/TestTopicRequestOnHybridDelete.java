@@ -2,7 +2,7 @@ package com.linkedin.venice.controller;
 
 import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
 import static com.linkedin.venice.meta.Version.composeRealTimeTopic;
-import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.getNearlineProducer;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.makeStoreHybrid;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static org.testng.Assert.assertEquals;
@@ -23,6 +23,7 @@ import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.producer.NearlineProducer;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -35,7 +36,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.util.Utf8;
 import org.apache.commons.io.IOUtils;
-import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -61,7 +61,7 @@ public class TestTopicRequestOnHybridDelete {
   public void serverRestartOnHybridStoreKeepsVersionOnline() {
     AvroGenericStoreClient client = null;
     ControllerClient controllerClient = null;
-    SystemProducer veniceProducer = null;
+    NearlineProducer veniceProducer = null;
     try {
       controllerClient = new ControllerClient(venice.getClusterName(), venice.getRandomRouterURL());
       final ControllerClient finalControllerClient = controllerClient;
@@ -72,7 +72,7 @@ public class TestTopicRequestOnHybridDelete {
       controllerClient.emptyPush(storeName, Utils.getUniqueString("push-id"), 1L);
 
       // write streaming records
-      veniceProducer = getSamzaProducer(venice, storeName, Version.PushType.STREAM);
+      veniceProducer = getNearlineProducer(venice, storeName, Version.PushType.STREAM);
       for (int i = 1; i <= 10; i++) {
         sendStreamingRecord(veniceProducer, storeName, i);
       }
@@ -141,7 +141,7 @@ public class TestTopicRequestOnHybridDelete {
       });
 
       // write more streaming records
-      veniceProducer = getSamzaProducer(venice, storeName, Version.PushType.STREAM);
+      veniceProducer = getNearlineProducer(venice, storeName, Version.PushType.STREAM);
       for (int i = 11; i <= 20; i++) {
         sendStreamingRecord(veniceProducer, storeName, i);
       }

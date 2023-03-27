@@ -20,8 +20,8 @@ import static com.linkedin.venice.meta.BufferReplayPolicy.REWIND_FROM_SOP;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_STORAGE;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.createStoreForJob;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
-import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
-import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducerConfig;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.getNearlineProducer;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.getNearlineProducerConfig;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.runVPJ;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendCustomSizeStreamingRecord;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
@@ -79,14 +79,14 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreStatus;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ZKStore;
+import com.linkedin.venice.producer.NearlineProducer;
+import com.linkedin.venice.producer.NearlineProducerExitMode;
+import com.linkedin.venice.producer.NearlineProducerFactory;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.pushmonitor.PartitionStatus;
 import com.linkedin.venice.pushmonitor.ReplicaStatus;
-import com.linkedin.venice.producer.NearlineProducerExitMode;
-import com.linkedin.venice.samza.VeniceSystemFactory;
-import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
@@ -99,6 +99,7 @@ import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.CompletableFutureCallback;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
@@ -130,7 +131,6 @@ import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.impl.nio.client.HttpAsyncClients;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.SystemProducer;
 import org.mockito.Mockito;
 import org.testng.Assert;
@@ -301,7 +301,7 @@ public class TestHybrid {
           Integer.toString(maxMessageSizeInServer));
     }
 
-    SystemProducer veniceProducer = null;
+    NearlineProducer veniceProducer = null;
 
     // N.B.: RF 2 with 2 servers is important, in order to test both the leader and follower code paths
     VeniceClusterWrapper venice = sharedVenice;
@@ -372,7 +372,7 @@ public class TestHybrid {
         });
 
         // write streaming records
-        veniceProducer = getSamzaProducer(venice, storeName, Version.PushType.STREAM);
+        veniceProducer = getNearlineProducer(venice, storeName, Version.PushType.STREAM);
         for (int i = 1; i <= 10; i++) {
           // The batch values are small, but the streaming records are "big" (i.e.: not that big, but bigger than
           // the server's max configured chunk size). In the scenario where chunking is disabled, the server's
@@ -414,8 +414,8 @@ public class TestHybrid {
 
         // Write more streaming records
         if (multiDivStream) {
-          veniceProducer = getSamzaProducer(venice, storeName, Version.PushType.STREAM); // new producer, new DIV
-                                                                                         // segment.
+          veniceProducer = getNearlineProducer(venice, storeName, Version.PushType.STREAM); // new producer, new DIV
+          // segment.
         }
         for (int i = 10; i <= 20; i++) {
           sendCustomSizeStreamingRecord(veniceProducer, storeName, i, STREAMING_RECORD_SIZE);
@@ -565,7 +565,7 @@ public class TestHybrid {
     extraProperties.setProperty(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, "false");
     extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
 
-    SystemProducer veniceBatchProducer = null;
+    NearlineProducer veniceBatchProducer = null;
     try (VeniceClusterWrapper veniceClusterWrapper =
         ServiceFactory.getVeniceCluster(1, 3, 1, 2, 1000000, false, false, extraProperties)) {
       try {
@@ -591,14 +591,16 @@ public class TestHybrid {
         });
 
         // Batch load from Samza
-        VeniceSystemFactory factory = new VeniceSystemFactory();
+        NearlineProducerFactory factory = new NearlineProducerFactory();
         Version.PushType pushType = Version.PushType.STREAM_REPROCESSING;
-        Map<String, String> samzaConfig = getSamzaProducerConfig(veniceClusterWrapper, storeName, pushType);
-        veniceBatchProducer = factory.getProducer("venice", new MapConfig(samzaConfig), null);
+        Map<String, String> samzaConfig = getNearlineProducerConfig(veniceClusterWrapper, storeName, pushType);
+        Properties samzaProps = new Properties();
+        samzaProps.putAll(samzaConfig);
+        veniceBatchProducer = factory.getProducer(new VeniceProperties(samzaProps), null);
         veniceBatchProducer.start();
-        if (veniceBatchProducer instanceof VeniceSystemProducer) {
+        if (veniceBatchProducer instanceof NearlineProducer) {
           // The default behavior would exit the process
-          ((VeniceSystemProducer) veniceBatchProducer).setExitMode(NearlineProducerExitMode.NO_OP);
+          ((NearlineProducer) veniceBatchProducer).setExitMode(NearlineProducerExitMode.NO_OP);
         }
 
         // Purposefully out of order, because Samza batch jobs should be allowed to write out of order
@@ -645,22 +647,22 @@ public class TestHybrid {
         }
 
         // Before EOP, the Samza batch producer should still be in active state
-        Assert.assertEquals(factory.getNumberOfActiveSystemProducers(), 1);
+        Assert.assertEquals(factory.getNumberOfActiveNearlineProducers(), 1);
 
         /**
          * Use the same VeniceWriter to write END_OF_PUSH message, which will guarantee the message order in topic
          */
-        ((VeniceSystemProducer) veniceBatchProducer).getInternalProducer().broadcastEndOfPush(new HashMap<>());
+        veniceBatchProducer.getInternalProducer().broadcastEndOfPush(new HashMap<>());
 
         TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
           Assert.assertTrue(admin.getStore(clusterName, storeName).containsVersion(1));
           Assert.assertEquals(admin.getStore(clusterName, storeName).getCurrentVersion(), 1);
           // After EOP, the push monitor inside the system producer would mark the producer as inactive in the factory
-          Assert.assertEquals(factory.getNumberOfActiveSystemProducers(), 0);
+          Assert.assertEquals(factory.getNumberOfActiveNearlineProducers(), 0);
         });
 
-        SystemProducer veniceStreamProducer =
-            getSamzaProducer(veniceClusterWrapper, storeName, Version.PushType.STREAM);
+        NearlineProducer veniceStreamProducer =
+            getNearlineProducer(veniceClusterWrapper, storeName, Version.PushType.STREAM);
         try (AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName)
                 .setVeniceURL(veniceClusterWrapper.getRandomRouterURL()))) {
@@ -730,7 +732,7 @@ public class TestHybrid {
 
   @Test(timeOut = 180 * Time.MS_PER_SECOND, enabled = false)
   public void testMultiStreamReprocessingSystemProducers() {
-    SystemProducer veniceBatchProducer1 = null, veniceBatchProducer2 = null;
+    NearlineProducer veniceBatchProducer1 = null, veniceBatchProducer2 = null;
     try {
       VeniceClusterWrapper veniceClusterWrapper = sharedVenice;
       Admin admin = veniceClusterWrapper.getLeaderVeniceController().getVeniceAdmin();
@@ -755,23 +757,25 @@ public class TestHybrid {
       Assert.assertEquals(admin.getStore(clusterName, storeName2).getCurrentVersion(), 0);
 
       // Batch load from Samza to both stores
-      VeniceSystemFactory factory = new VeniceSystemFactory();
+      NearlineProducerFactory factory = new NearlineProducerFactory();
       Map<String, String> samzaConfig1 =
-          getSamzaProducerConfig(veniceClusterWrapper, storeName1, Version.PushType.STREAM_REPROCESSING);
-      veniceBatchProducer1 = factory.getProducer("venice", new MapConfig(samzaConfig1), null);
+          getNearlineProducerConfig(veniceClusterWrapper, storeName1, Version.PushType.STREAM_REPROCESSING);
+      Properties samzaProps1 = new Properties();
+      samzaProps1.putAll(samzaConfig1);
+      veniceBatchProducer1 = factory.getProducer(new VeniceProperties(samzaProps1), null);
+
       veniceBatchProducer1.start();
       Map<String, String> samzaConfig2 =
-          getSamzaProducerConfig(veniceClusterWrapper, storeName2, Version.PushType.STREAM_REPROCESSING);
-      veniceBatchProducer2 = factory.getProducer("venice", new MapConfig(samzaConfig2), null);
+          getNearlineProducerConfig(veniceClusterWrapper, storeName2, Version.PushType.STREAM_REPROCESSING);
+      Properties samzaProps2 = new Properties();
+      samzaProps2.putAll(samzaConfig2);
+      veniceBatchProducer2 = factory.getProducer(new VeniceProperties(samzaProps2), null);
       veniceBatchProducer2.start();
-      if (veniceBatchProducer1 instanceof VeniceSystemProducer) {
-        // The default behavior would exit the process
-        ((VeniceSystemProducer) veniceBatchProducer1).setExitMode(NearlineProducerExitMode.NO_OP);
-      }
-      if (veniceBatchProducer2 instanceof VeniceSystemProducer) {
-        // The default behavior would exit the process
-        ((VeniceSystemProducer) veniceBatchProducer2).setExitMode(NearlineProducerExitMode.NO_OP);
-      }
+
+      // The default behavior would exit the process
+      veniceBatchProducer1.setExitMode(NearlineProducerExitMode.NO_OP);
+      // The default behavior would exit the process
+      veniceBatchProducer2.setExitMode(NearlineProducerExitMode.NO_OP);
 
       for (int i = 10; i >= 1; i--) {
         sendStreamingRecord(veniceBatchProducer1, storeName1, i);
@@ -779,7 +783,7 @@ public class TestHybrid {
       }
 
       // Before EOP, there should be 2 active producers
-      Assert.assertEquals(factory.getNumberOfActiveSystemProducers(), 2);
+      Assert.assertEquals(factory.getNumberOfActiveNearlineProducers(), 2);
       /**
        * Send EOP to the first store, eventually the first SystemProducer will be marked as inactive
        * after push monitor poll the latest push job status from router.
@@ -791,7 +795,7 @@ public class TestHybrid {
           Assert.assertTrue(admin.getStore(clusterName, storeName1).containsVersion(1));
           Assert.assertEquals(admin.getStore(clusterName, storeName1).getCurrentVersion(), 1);
           // The second SystemProducer should still be active
-          Assert.assertEquals(factory.getNumberOfActiveSystemProducers(), 1);
+          Assert.assertEquals(factory.getNumberOfActiveNearlineProducers(), 1);
         });
 
         c.writeEndOfPush(storeName2, 1);
@@ -799,7 +803,7 @@ public class TestHybrid {
           Assert.assertTrue(admin.getStore(clusterName, storeName2).containsVersion(1));
           Assert.assertEquals(admin.getStore(clusterName, storeName2).getCurrentVersion(), 1);
           // There should be no active SystemProducer any more.
-          Assert.assertEquals(factory.getNumberOfActiveSystemProducers(), 0);
+          Assert.assertEquals(factory.getNumberOfActiveNearlineProducers(), 0);
         });
       });
     } finally {
@@ -945,7 +949,7 @@ public class TestHybrid {
     String clusterName = veniceClusterWrapper.getClusterName();
     String storeName = Utils.getUniqueString("test-store");
 
-    SystemProducer producer = null;
+    NearlineProducer producer = null;
     try (ControllerClient controllerClient =
         new ControllerClient(clusterName, veniceClusterWrapper.getAllControllersURLs())) {
       controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);
@@ -959,7 +963,7 @@ public class TestHybrid {
       controllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L);
 
       // write a few of messages from the Samza
-      producer = IntegrationTestPushUtils.getSamzaProducer(veniceClusterWrapper, storeName, Version.PushType.STREAM);
+      producer = IntegrationTestPushUtils.getNearlineProducer(veniceClusterWrapper, storeName, Version.PushType.STREAM);
       for (int i = 0; i < 10; i++) {
         sendStreamingRecord(producer, storeName, i);
       }
@@ -1059,7 +1063,8 @@ public class TestHybrid {
           assertEquals(client.get(i).get(), i);
         }
       });
-      SystemProducer producer = IntegrationTestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.STREAM);
+      NearlineProducer producer =
+          IntegrationTestPushUtils.getNearlineProducer(cluster, storeName, Version.PushType.STREAM);
       for (int i = 0; i < keyCount; i++) {
         IntegrationTestPushUtils.sendStreamingRecord(producer, storeName, i, i + 1);
       }
@@ -1105,7 +1110,7 @@ public class TestHybrid {
   @Test(timeOut = 180
       * Time.MS_PER_SECOND, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testHybridStoreTimeLagThresholdWithEmptyRT(boolean isRealTimeTopicEmpty) throws Exception {
-    SystemProducer veniceProducer = null;
+    NearlineProducer veniceProducer = null;
 
     VeniceClusterWrapper venice = sharedVenice;
     try {
@@ -1161,7 +1166,7 @@ public class TestHybrid {
 
         if (!isRealTimeTopicEmpty) {
           // write streaming records
-          veniceProducer = getSamzaProducer(venice, storeName, Version.PushType.STREAM);
+          veniceProducer = getNearlineProducer(venice, storeName, Version.PushType.STREAM);
           for (int i = 1; i <= 10; i++) {
             // The batch values are small, but the streaming records are "big" (i.e.: not that big, but bigger than
             // the server's max configured chunk size). In the scenario where chunking is disabled, the server's
@@ -1719,8 +1724,8 @@ public class TestHybrid {
           }
         });
 
-        SystemProducer producer =
-            IntegrationTestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.STREAM);
+        NearlineProducer producer =
+            IntegrationTestPushUtils.getNearlineProducer(cluster, storeName, Version.PushType.STREAM);
         for (int i = 0; i < keyCount; i++) {
           IntegrationTestPushUtils.sendCustomSizeStreamingRecord(producer, storeName, i, STREAMING_RECORD_SIZE);
         }
@@ -1784,8 +1789,8 @@ public class TestHybrid {
             assertEquals(client.get(i).get(), i);
           }
         });
-        SystemProducer producer =
-            IntegrationTestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.STREAM);
+        NearlineProducer producer =
+            IntegrationTestPushUtils.getNearlineProducer(cluster, storeName, Version.PushType.STREAM);
         for (int i = 0; i < keyCount; i++) {
           IntegrationTestPushUtils.sendStreamingRecord(producer, storeName, i, i);
         }
@@ -1802,7 +1807,7 @@ public class TestHybrid {
             DEFAULT_KEY_SCHEMA,
             DEFAULT_VALUE_SCHEMA,
             IntStream.range(keyCount, keyCount * 2).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, i)));
-        producer = IntegrationTestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.STREAM);
+        producer = IntegrationTestPushUtils.getNearlineProducer(cluster, storeName, Version.PushType.STREAM);
         for (int i = keyCount; i < keyCount * 2; i++) {
           IntegrationTestPushUtils.sendStreamingRecord(producer, storeName, i, i);
         }
@@ -1819,7 +1824,7 @@ public class TestHybrid {
             DEFAULT_KEY_SCHEMA,
             DEFAULT_VALUE_SCHEMA,
             IntStream.range(keyCount * 2, keyCount * 3).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, i)));
-        producer = IntegrationTestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.STREAM);
+        producer = IntegrationTestPushUtils.getNearlineProducer(cluster, storeName, Version.PushType.STREAM);
         for (int i = keyCount * 2; i < keyCount * 3; i++) {
           IntegrationTestPushUtils.sendStreamingRecord(producer, storeName, i, i);
         }

@@ -7,13 +7,13 @@ import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_MAX_RECORDS_P
 import static com.linkedin.venice.hadoop.VenicePushJob.REWIND_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_KAFKA;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.PARENT_D2_SERVICE_NAME;
-import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_AGGREGATE;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_CONTROLLER_D2_SERVICE;
-import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_PARENT_D2_ZK_HOSTS;
+import static com.linkedin.venice.producer.NearlineProducerFactory.JOB_ID;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_AGGREGATE;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_PARENT_CONTROLLER_D2_SERVICE;
+import static com.linkedin.venice.producer.NearlineProducerFactory.VENICE_PARENT_D2_ZK_HOSTS;
 import static com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp.TOP_LEVEL_TS_FIELD_NAME;
-import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducer;
-import static com.linkedin.venice.utils.IntegrationTestPushUtils.getSamzaProducerConfig;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.getNearlineProducer;
+import static com.linkedin.venice.utils.IntegrationTestPushUtils.getNearlineProducerConfig;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingDeleteRecord;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.sendStreamingRecord;
 import static com.linkedin.venice.utils.TestUtils.assertCommand;
@@ -59,7 +59,8 @@ import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClust
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.samza.VeniceSystemFactory;
+import com.linkedin.venice.producer.NearlineProducer;
+import com.linkedin.venice.producer.NearlineProducerFactory;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdConstants;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
@@ -96,8 +97,6 @@ import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.DatumWriter;
 import org.apache.avro.util.Utf8;
 import org.apache.logging.log4j.LogManager;
-import org.apache.samza.config.MapConfig;
-import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -395,7 +394,7 @@ public class PartialUpdateTest {
     }
 
     VeniceClusterWrapper veniceCluster = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
-    SystemProducer veniceProducer = getSamzaProducer(veniceCluster, storeName, Version.PushType.STREAM);
+    NearlineProducer veniceProducer = getNearlineProducer(veniceCluster, storeName, Version.PushType.STREAM);
 
     String key = "key1";
     String primitiveFieldName = "name";
@@ -598,14 +597,14 @@ public class PartialUpdateTest {
       assertCommand(parentControllerClient.addValueSchema(storeName, valueSchemaV2.toString()));
     }
 
-    SystemProducer veniceProducer = null;
+    NearlineProducer veniceProducer = null;
     VeniceClusterWrapper veniceCluster = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
 
     try (AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()))) {
 
       // Step 1. Put a value record.
-      veniceProducer = getSamzaProducer(veniceCluster, storeName, Version.PushType.STREAM);
+      veniceProducer = getNearlineProducer(veniceCluster, storeName, Version.PushType.STREAM);
       String key = "key1";
       GenericRecord value = new GenericData.Record(valueSchemaV1);
       value.put(valueFieldName, "Lebron");
@@ -666,7 +665,7 @@ public class PartialUpdateTest {
       boolean writeComputeFromCache,
       CompressionStrategy compressionStrategy) throws Exception {
 
-    SystemProducer veniceProducer = null;
+    NearlineProducer veniceProducer = null;
 
     try {
       long streamingRewindSeconds = 10L;
@@ -748,7 +747,7 @@ public class PartialUpdateTest {
         }
 
         // Do not send large record to RT; RT doesn't support chunking
-        veniceProducer = getSamzaProducer(veniceClusterWrapper, storeName, Version.PushType.STREAM);
+        veniceProducer = getNearlineProducer(veniceClusterWrapper, storeName, Version.PushType.STREAM);
         String key = String.valueOf(101);
         Schema valueSchema = AvroCompatibilityHelper.parse(NESTED_SCHEMA_STRING);
         GenericRecord value = new GenericData.Record(valueSchema);
@@ -885,7 +884,7 @@ public class PartialUpdateTest {
   @Test(timeOut = 120 * Time.MS_PER_SECOND)
   public void testWriteComputeWithSamzaBatchJob() throws Exception {
 
-    SystemProducer veniceProducer = null;
+    NearlineProducer veniceProducer = null;
     long streamingRewindSeconds = 10L;
     long streamingMessageLag = 2L;
 
@@ -931,15 +930,17 @@ public class PartialUpdateTest {
       // Run empty push to create a version and get everything created
       controllerClient.sendEmptyPushAndWait(storeName, "foopush", 10000, 60 * Time.MS_PER_SECOND);
 
-      VeniceSystemFactory factory = new VeniceSystemFactory();
+      NearlineProducerFactory factory = new NearlineProducerFactory();
       Version.PushType pushType = Version.PushType.BATCH;
-      Map<String, String> samzaConfig = getSamzaProducerConfig(veniceClusterWrapper, storeName, pushType);
+      Map<String, String> samzaConfig = getNearlineProducerConfig(veniceClusterWrapper, storeName, pushType);
       // final boolean veniceAggregate = config.getBoolean(prefix + VENICE_AGGREGATE, false);
       samzaConfig.put("systems.venice." + VENICE_AGGREGATE, "true");
       samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, multiRegionMultiClusterWrapper.getZkServerWrapper().getAddress());
       samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
-      samzaConfig.put(DEPLOYMENT_ID, Utils.getUniqueString("venice-push-id"));
-      veniceProducer = factory.getProducer("venice", new MapConfig(samzaConfig), null);
+      samzaConfig.put(JOB_ID, Utils.getUniqueString("venice-push-id"));
+      Properties samzaProps = new Properties();
+      samzaProps.putAll(samzaConfig);
+      veniceProducer = factory.getProducer(new VeniceProperties(samzaProps), null);
       veniceProducer.start();
 
       // build partial update

@@ -15,9 +15,7 @@ import static com.linkedin.venice.ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEE
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.D2_SERVICE_NAME;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.DEFAULT_PARENT_DATA_CENTER_REGION_NAME;
 import static com.linkedin.venice.integration.utils.VeniceControllerWrapper.PARENT_D2_SERVICE_NAME;
-import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
-import static com.linkedin.venice.samza.VeniceSystemFactory.DOT;
-import static com.linkedin.venice.samza.VeniceSystemFactory.SYSTEMS_PREFIX;
+import static com.linkedin.venice.producer.NearlineProducerFactory.JOB_ID;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_AGGREGATE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_CONTROLLER_D2_SERVICE;
 import static com.linkedin.venice.samza.VeniceSystemFactory.VENICE_CHILD_D2_ZK_HOSTS;
@@ -44,7 +42,8 @@ import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClust
 import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.samza.VeniceSystemFactory;
+import com.linkedin.venice.producer.NearlineProducer;
+import com.linkedin.venice.producer.NearlineProducerFactory;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -57,8 +56,6 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
-import org.apache.samza.config.MapConfig;
-import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -272,18 +269,19 @@ public class DataRecoveryTest {
       TestUtils.waitForNonDeterministicPushCompletion(versionTopic, parentControllerClient, 60, TimeUnit.SECONDS);
 
       Map<String, String> samzaConfig = new HashMap<>();
-      String configPrefix = SYSTEMS_PREFIX + "venice" + DOT;
-      samzaConfig.put(configPrefix + VENICE_PUSH_TYPE, Version.PushType.STREAM.toString());
-      samzaConfig.put(configPrefix + VENICE_STORE, storeName);
-      samzaConfig.put(configPrefix + VENICE_AGGREGATE, "false");
+      samzaConfig.put(VENICE_PUSH_TYPE, Version.PushType.STREAM.toString());
+      samzaConfig.put(VENICE_STORE, storeName);
+      samzaConfig.put(VENICE_AGGREGATE, "false");
       samzaConfig.put(VENICE_CHILD_D2_ZK_HOSTS, childDatacenters.get(0).getZkServerWrapper().getAddress());
       samzaConfig.put(VENICE_CHILD_CONTROLLER_D2_SERVICE, D2_SERVICE_NAME);
       samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, parentControllers.get(0).getZkAddress());
       samzaConfig.put(VENICE_PARENT_CONTROLLER_D2_SERVICE, PARENT_D2_SERVICE_NAME);
-      samzaConfig.put(DEPLOYMENT_ID, Utils.getUniqueString("venice-push-id"));
+      samzaConfig.put(JOB_ID, Utils.getUniqueString("venice-push-id"));
       samzaConfig.put(SSL_ENABLED, "false");
-      VeniceSystemFactory factory = new VeniceSystemFactory();
-      SystemProducer veniceProducer = factory.getProducer("venice", new MapConfig(samzaConfig), null);
+      NearlineProducerFactory factory = new NearlineProducerFactory();
+      Properties samzaProps = new Properties();
+      samzaProps.putAll(samzaConfig);
+      NearlineProducer veniceProducer = factory.getProducer(new VeniceProperties(samzaProps), null);
       veniceProducer.start();
 
       for (int i = 0; i < 10; i++) {

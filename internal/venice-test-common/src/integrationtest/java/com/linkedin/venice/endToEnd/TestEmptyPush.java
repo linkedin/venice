@@ -27,6 +27,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.producer.NearlineProducer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -38,7 +39,6 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
-import org.apache.samza.system.SystemProducer;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -110,8 +110,8 @@ public class TestEmptyPush {
       assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(storeRealTimeTopic));
 
       // Start writing some real-time records
-      SystemProducer veniceProducer =
-          IntegrationTestPushUtils.getSamzaProducer(venice, storeName, Version.PushType.STREAM);
+      NearlineProducer veniceProducer =
+          IntegrationTestPushUtils.getNearlineProducer(venice, storeName, Version.PushType.STREAM);
 
       String keyPrefix = "test_key_";
       String valuePrefix = "test_value_";
