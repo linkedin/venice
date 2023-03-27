@@ -26,9 +26,9 @@ public class TestMergeBase {
   protected static final int RMD_SCHEMA_PROTOCOL_VERSION = RmdSchemaGenerator.getLatestVersion();
   protected static final String REGULAR_FIELD_NAME = "regularField";
   protected static final String STRING_ARRAY_FIELD_NAME = "stringArrayField";
-  protected static final String INT_MAP_FIELD_NAME = "intMapField";
+  protected static final String STRING_MAP_FIELD_NAME = "stringMapField";
   protected static final String NULLABLE_STRING_ARRAY_FIELD_NAME = "nullableStringArrayField";
-  protected static final String NULLABLE_INT_MAP_FIELD_NAME = "nullableIntMapField";
+  protected static final String NULLABLE_STRING_MAP_FIELD_NAME = "nullableStringMapField";
 
   protected static final String storeName = "testStore";
   protected ValueAndDerivedSchemas schemaSet;
@@ -99,9 +99,9 @@ public class TestMergeBase {
     return createValueRecord(r -> {
       r.put(REGULAR_FIELD_NAME, "defaultVenice");
       r.put(STRING_ARRAY_FIELD_NAME, Collections.emptyList());
-      r.put(INT_MAP_FIELD_NAME, new IndexedHashMap<>());
+      r.put(STRING_MAP_FIELD_NAME, new IndexedHashMap<>());
       r.put(NULLABLE_STRING_ARRAY_FIELD_NAME, null);
-      r.put(NULLABLE_INT_MAP_FIELD_NAME, null);
+      r.put(NULLABLE_STRING_MAP_FIELD_NAME, null);
     });
   }
 
