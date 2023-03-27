@@ -5,6 +5,9 @@ import org.apache.logging.log4j.Logger;
 import org.testng.annotations.Test;
 
 
+/**
+ * TODO: Delete once experiments are done
+ */
 public class ServiceFactoryTest {
   private static final Logger LOGGER = LogManager.getLogger(ServiceFactoryTest.class);
 
