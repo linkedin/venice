@@ -31,6 +31,7 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.integration.utils.PubSubBrokerConfigs;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -408,7 +409,8 @@ public class VeniceParentHelixAdminTest {
         .put(VeniceControllerWrapper.SUPERSET_SCHEMA_GENERATOR, new SupersetSchemaGeneratorWithCustomProp(CUSTOM_PROP));
 
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
-        PubSubBrokerWrapper pubSubBrokerWrapper = ServiceFactory.getKafkaBroker(zkServer);
+        PubSubBrokerWrapper pubSubBrokerWrapper =
+            ServiceFactory.getPubSubBroker(new PubSubBrokerConfigs.Builder().setZkWrapper(zkServer).build());
         VeniceControllerWrapper childControllerWrapper = ServiceFactory.getVeniceController(
             new VeniceControllerCreateOptions.Builder(clusterName, zkServer, pubSubBrokerWrapper).build());
         ZkServerWrapper parentZk = ServiceFactory.getZkServer();
@@ -557,7 +559,8 @@ public class VeniceParentHelixAdminTest {
     }
 
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
-        PubSubBrokerWrapper pubSubBrokerWrapper = ServiceFactory.getKafkaBroker(zkServer);
+        PubSubBrokerWrapper pubSubBrokerWrapper =
+            ServiceFactory.getPubSubBroker(new PubSubBrokerConfigs.Builder().setZkWrapper(zkServer).build());
         VeniceControllerWrapper childControllerWrapper = ServiceFactory.getVeniceController(
             new VeniceControllerCreateOptions.Builder(clusterName, zkServer, pubSubBrokerWrapper)
                 .sslToKafka(isControllerSslEnabled)

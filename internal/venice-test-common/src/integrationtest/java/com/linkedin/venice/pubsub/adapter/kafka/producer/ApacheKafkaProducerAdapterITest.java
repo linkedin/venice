@@ -15,7 +15,6 @@ import static org.testng.Assert.fail;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
@@ -67,7 +66,6 @@ import org.testng.annotations.Test;
 public class ApacheKafkaProducerAdapterITest {
   private static final Logger LOGGER = LogManager.getLogger(ApacheKafkaProducerAdapterITest.class);
 
-  private ZkServerWrapper zkServerWrapper;
   private PubSubBrokerWrapper pubSubBrokerWrapper;
   // todo: The following AdminClient should be replaced with KafkaAdminClientAdapter when it is available
   private AdminClient kafkaAdminClient;
@@ -76,8 +74,7 @@ public class ApacheKafkaProducerAdapterITest {
 
   @BeforeClass(alwaysRun = true)
   public void setupKafka() {
-    zkServerWrapper = ServiceFactory.getZkServer();
-    pubSubBrokerWrapper = ServiceFactory.getKafkaBroker(zkServerWrapper);
+    pubSubBrokerWrapper = ServiceFactory.getPubSubBroker();
     Properties kafkaAdminProperties = new Properties();
     kafkaAdminProperties.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, pubSubBrokerWrapper.getAddress());
     kafkaAdminClient = KafkaAdminClient.create(kafkaAdminProperties);
@@ -87,7 +84,6 @@ public class ApacheKafkaProducerAdapterITest {
   public void tearDown() {
     kafkaAdminClient.close(Duration.ZERO);
     pubSubBrokerWrapper.close();
-    zkServerWrapper.close();
   }
 
   @BeforeMethod(alwaysRun = true)

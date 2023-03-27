@@ -7,7 +7,6 @@ import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIM
 
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -36,12 +35,10 @@ public class TestKafkaInputFormat {
 
   private PubSubBrokerWrapper kafka;
   private TopicManager manager;
-  private ZkServerWrapper zkServer;
 
   @BeforeClass
   public void setUp() {
-    zkServer = ServiceFactory.getZkServer();
-    kafka = ServiceFactory.getKafkaBroker(zkServer);
+    kafka = ServiceFactory.getPubSubBroker();
     manager = new TopicManager(
         DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
         100,
@@ -53,7 +50,6 @@ public class TestKafkaInputFormat {
   public void cleanUp() throws IOException {
     manager.close();
     kafka.close();
-    zkServer.close();
   }
 
   public String getTopic(int numRecord, int numPartition) {

@@ -43,8 +43,17 @@ class KafkaBrokerFactory implements PubSubBrokerFactory {
       int sslPort = Utils.getFreePort();
       Map<String, Object> configMap = new HashMap<>();
 
+      boolean shouldCloseZkServer = false;
+      ZkServerWrapper zkServerWrapper = configs.getZkWrapper();
+      // If zkServerWrapper is not provided, create a new one.
+      if (zkServerWrapper == null) {
+        LOGGER.info("Starting Zookeeper for Kafka...");
+        shouldCloseZkServer = true;
+        zkServerWrapper = ServiceFactory.getZkServer();
+      }
+
       // Essential configs
-      configMap.put(KafkaConfig.ZkConnectProp(), configs.getZkAddress());
+      configMap.put(KafkaConfig.ZkConnectProp(), zkServerWrapper.getAddress());
       configMap.put(KafkaConfig.PortProp(), port);
       configMap.put(KafkaConfig.HostNameProp(), DEFAULT_HOST_NAME);
       configMap.put(KafkaConfig.LogDirProp(), dir.getAbsolutePath());
@@ -64,7 +73,14 @@ class KafkaBrokerFactory implements PubSubBrokerFactory {
       KafkaConfig kafkaConfig = new KafkaConfig(configMap, true);
       KafkaServer kafkaServer = KafkaBrokerWrapper.instantiateNewKafkaServer(kafkaConfig, configs.getMockTime());
       LOGGER.info("KafkaBroker URL: {}:{}", kafkaServer.config().hostName(), kafkaServer.config().port());
-      return new KafkaBrokerWrapper(kafkaConfig, kafkaServer, dir, configs.getMockTime(), sslPort);
+      return new KafkaBrokerWrapper(
+          kafkaConfig,
+          kafkaServer,
+          dir,
+          zkServerWrapper,
+          shouldCloseZkServer,
+          configs.getMockTime(),
+          sslPort);
     };
   }
 
@@ -84,6 +100,8 @@ class KafkaBrokerFactory implements PubSubBrokerFactory {
     private KafkaServer kafkaServer;
     private final KafkaConfig kafkaConfig;
     private final TestMockTime mockTime;
+    private final ZkServerWrapper zkServerWrapper;
+    private final boolean shouldCloseZkServer;
     private final PubSubClientsFactory pubSubClientsFactory;
 
     /**
@@ -97,6 +115,8 @@ class KafkaBrokerFactory implements PubSubBrokerFactory {
         KafkaConfig kafkaConfig,
         KafkaServer kafkaServer,
         File dataDirectory,
+        ZkServerWrapper zkServerWrapper,
+        boolean shouldCloseZkServer,
         TestMockTime mockTime,
         int sslPort) {
       super(SERVICE_NAME, dataDirectory);
@@ -104,6 +124,8 @@ class KafkaBrokerFactory implements PubSubBrokerFactory {
       this.kafkaServer = kafkaServer;
       this.mockTime = mockTime;
       this.sslPort = sslPort;
+      this.zkServerWrapper = zkServerWrapper;
+      this.shouldCloseZkServer = shouldCloseZkServer;
       pubSubClientsFactory = new PubSubClientsFactory(new ApacheKafkaProducerAdapterFactory(), null);
     }
 
@@ -142,6 +164,11 @@ class KafkaBrokerFactory implements PubSubBrokerFactory {
     protected void internalStop() {
       kafkaServer.shutdown();
       kafkaServer.awaitShutdown();
+
+      // Close the internally created ZkServerWrapper
+      if (shouldCloseZkServer) {
+        Utils.closeQuietlyWithErrorLogged(zkServerWrapper);
+      }
     }
 
     @Override

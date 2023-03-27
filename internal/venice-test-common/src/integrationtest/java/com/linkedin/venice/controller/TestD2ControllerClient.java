@@ -6,6 +6,7 @@ import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.integration.utils.D2TestUtils;
+import com.linkedin.venice.integration.utils.PubSubBrokerConfigs;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
@@ -26,7 +27,8 @@ public class TestD2ControllerClient {
     D2Client d2Client = null;
     String clusterD2Service = "d2_service";
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
-        PubSubBrokerWrapper pubSubBrokerWrapper = ServiceFactory.getKafkaBroker(zkServer);
+        PubSubBrokerWrapper pubSubBrokerWrapper =
+            ServiceFactory.getPubSubBroker(new PubSubBrokerConfigs.Builder().setZkWrapper(zkServer).build());
         VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceController(
             new VeniceControllerCreateOptions.Builder(CLUSTER_NAME, zkServer, pubSubBrokerWrapper).replicationFactor(1)
                 .partitionSize(10)

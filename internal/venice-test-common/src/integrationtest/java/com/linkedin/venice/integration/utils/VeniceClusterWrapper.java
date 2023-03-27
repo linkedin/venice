@@ -80,7 +80,7 @@ import org.testng.Assert;
 /**
  * This is the whole enchilada:
  * - {@link ZkServerWrapper}
- * - {@link KafkaBrokerWrapper}
+ * - {@link PubSubBrokerWrapper}
  * - {@link VeniceControllerWrapper}
  * - {@link VeniceServerWrapper}
  */
@@ -195,7 +195,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         zkServerWrapper = ServiceFactory.getZkServer();
       }
       if (pubSubBrokerWrapper == null) {
-        pubSubBrokerWrapper = ServiceFactory.getKafkaBroker(zkServerWrapper);
+        pubSubBrokerWrapper =
+            ServiceFactory.getPubSubBroker(new PubSubBrokerConfigs.Builder().setZkWrapper(zkServerWrapper).build());
       }
 
       // Setup D2 for controller

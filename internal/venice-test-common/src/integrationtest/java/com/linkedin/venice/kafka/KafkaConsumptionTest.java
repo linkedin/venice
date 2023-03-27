@@ -13,9 +13,9 @@ import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
 import com.linkedin.davinci.kafka.consumer.StorePartitionDataReceiver;
 import com.linkedin.davinci.kafka.consumer.TopicExistenceChecker;
+import com.linkedin.venice.integration.utils.PubSubBrokerConfigs;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerFactoryImpl;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.EndOfPush;
@@ -81,8 +81,6 @@ public class KafkaConsumptionTest {
   private TopicManager remoteTopicManager;
   private TestMockTime mockTime;
   private TestMockTime remoteMockTime;
-  private ZkServerWrapper localZkServer;
-  private ZkServerWrapper remoteZkServer;
   private String versionTopicName;
   private PubSubTopic versionTopic;
   private KafkaClientFactory localKafkaClientFactory;
@@ -109,8 +107,7 @@ public class KafkaConsumptionTest {
   @BeforeClass
   public void setUp() {
     mockTime = new TestMockTime();
-    localZkServer = ServiceFactory.getZkServer();
-    localKafka = ServiceFactory.getKafkaBroker(localZkServer, mockTime);
+    localKafka = ServiceFactory.getPubSubBroker(new PubSubBrokerConfigs.Builder().setMockTime(mockTime).build());
     localKafkaClientFactory = IntegrationTestPushUtils.getVeniceConsumerFactory(localKafka);
     topicManager =
         new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, MIN_COMPACTION_LAG, localKafkaClientFactory);
@@ -118,9 +115,8 @@ public class KafkaConsumptionTest {
     Mockito.when(cacheNothingCache.getIfPresent(Mockito.any())).thenReturn(null);
     topicManager.setTopicConfigCache(cacheNothingCache);
 
-    remoteZkServer = ServiceFactory.getZkServer();
     remoteMockTime = new TestMockTime();
-    remoteKafka = ServiceFactory.getKafkaBroker(remoteZkServer, remoteMockTime);
+    remoteKafka = ServiceFactory.getPubSubBroker(new PubSubBrokerConfigs.Builder().setMockTime(remoteMockTime).build());
     remoteKafkaClientFactory = IntegrationTestPushUtils.getVeniceConsumerFactory(remoteKafka);
     remoteTopicManager =
         new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, MIN_COMPACTION_LAG, remoteKafkaClientFactory);
@@ -133,11 +129,9 @@ public class KafkaConsumptionTest {
   public void cleanUp() {
     topicManager.close();
     localKafka.close();
-    localZkServer.close();
 
     remoteTopicManager.close();
     remoteKafka.close();
-    remoteZkServer.close();
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)

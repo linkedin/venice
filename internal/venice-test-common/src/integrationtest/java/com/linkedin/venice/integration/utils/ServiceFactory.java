@@ -19,7 +19,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReflectUtils;
-import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -56,6 +55,7 @@ public class ServiceFactory {
   private static final String PUBSUB_BROKER_FACTORY_FQCN = "pubsubBrokerFactory";
   // PubSubBrokerFactory implementation to use for tests
   private static final PubSubBrokerFactory PUBSUB_BROKER_FACTORY;
+  private static final PubSubBrokerConfigs PUBSUB_BROKER_EMPTY_CONFIGS = new PubSubBrokerConfigs.Builder().build();
 
   /**
    * Calling {@link System#exit(int)} System.exit in tests is unacceptable. The Spark server lib, in particular, calls it.
@@ -120,19 +120,11 @@ public class ServiceFactory {
     return getStatefulService(ZkServerWrapper.SERVICE_NAME, ZkServerWrapper.generateService());
   }
 
-  public static PubSubBrokerWrapper getKafkaBroker(ZkServerWrapper zkServerWrapper) {
-    PubSubBrokerConfigs pubSubBrokerConfigs =
-        new PubSubBrokerConfigs.Builder().setZkAddress(zkServerWrapper.getAddress()).build();
-    return getKafkaBroker(pubSubBrokerConfigs);
+  public static PubSubBrokerWrapper getPubSubBroker() {
+    return getPubSubBroker(PUBSUB_BROKER_EMPTY_CONFIGS);
   }
 
-  public static PubSubBrokerWrapper getKafkaBroker(ZkServerWrapper zkServerWrapper, TestMockTime mockTime) {
-    PubSubBrokerConfigs pubSubBrokerConfigs =
-        new PubSubBrokerConfigs.Builder().setZkAddress(zkServerWrapper.getAddress()).setMockTime(mockTime).build();
-    return getKafkaBroker(pubSubBrokerConfigs);
-  }
-
-  public static PubSubBrokerWrapper getKafkaBroker(PubSubBrokerConfigs configs) {
+  public static PubSubBrokerWrapper getPubSubBroker(PubSubBrokerConfigs configs) {
     return getStatefulService(PUBSUB_BROKER_FACTORY.getServiceName(), PUBSUB_BROKER_FACTORY.generateService(configs));
   }
 

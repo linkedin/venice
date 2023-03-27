@@ -70,7 +70,6 @@ class AbstractTestVeniceHelixAdmin {
   VeniceControllerConfig controllerConfig;
   String zkAddress;
   ZkServerWrapper zkServerWrapper;
-  private ZkServerWrapper kafkaZkServer;
   PubSubBrokerWrapper pubSubBrokerWrapper;
   SafeHelixManager helixManager;
   Map<String, SafeHelixManager> helixManagerByNodeID = new ConcurrentHashMap<>();
@@ -92,8 +91,7 @@ class AbstractTestVeniceHelixAdmin {
     Utils.thisIsLocalhost();
     zkServerWrapper = ServiceFactory.getZkServer();
     zkAddress = zkServerWrapper.getAddress();
-    kafkaZkServer = ServiceFactory.getZkServer();
-    pubSubBrokerWrapper = ServiceFactory.getKafkaBroker(kafkaZkServer);
+    pubSubBrokerWrapper = ServiceFactory.getPubSubBroker();
     clusterName = Utils.getUniqueString("test-cluster");
     Properties properties = getControllerProperties(clusterName);
     if (!createParticipantStore) {
@@ -132,7 +130,6 @@ class AbstractTestVeniceHelixAdmin {
     }
     zkServerWrapper.close();
     pubSubBrokerWrapper.close();
-    kafkaZkServer.close();
   }
 
   void startParticipant() throws Exception {

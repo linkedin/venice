@@ -60,7 +60,8 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
         zkServerWrapper = ServiceFactory.getZkServer();
       }
       if (pubSubBrokerWrapper == null) {
-        pubSubBrokerWrapper = ServiceFactory.getKafkaBroker(zkServerWrapper);
+        pubSubBrokerWrapper =
+            ServiceFactory.getPubSubBroker(new PubSubBrokerConfigs.Builder().setZkWrapper(zkServerWrapper).build());
       }
       String[] clusterNames = new String[options.getNumberOfClusters()];
       Map<String, String> clusterToD2 = new HashMap<>();

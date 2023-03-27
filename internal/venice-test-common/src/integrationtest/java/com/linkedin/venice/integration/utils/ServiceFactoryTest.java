@@ -15,12 +15,12 @@ public class ServiceFactoryTest {
 
   @Test
   public void simpleLoadingTest() {
-    System.out.println(ServiceFactory.testGame());
+    // System.out.println(ServiceFactory.testGame());
     // pubsub.backend.class.fqdn
   }
 
   public static void main(String[] args) throws InterruptedException {
-    System.out.println(ServiceFactory.testGame());
+    // System.out.println(ServiceFactory.testGame());
     // ZkServerWrapper zkServerWrapper0 = ServiceFactory.getZkServer();
     // LOGGER.info("##ZK1: {}", zkServerWrapper0);
     // ZkServerWrapper zkServerWrapper1 = ServiceFactory.getZkServer();

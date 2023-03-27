@@ -12,9 +12,9 @@ import static org.mockito.Mockito.times;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.integration.utils.PubSubBrokerConfigs;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
 import com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcherImpl;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
@@ -81,7 +81,6 @@ public class TopicManagerTest {
   private PubSubBrokerWrapper kafka;
   private TopicManager topicManager;
   private TestMockTime mockTime;
-  private ZkServerWrapper zkServer;
 
   private String getTopic() {
     String callingFunction = Thread.currentThread().getStackTrace()[2].getMethodName();
@@ -98,9 +97,8 @@ public class TopicManagerTest {
 
   @BeforeClass
   public void setUp() {
-    zkServer = ServiceFactory.getZkServer();
     mockTime = new TestMockTime();
-    kafka = ServiceFactory.getKafkaBroker(zkServer, mockTime);
+    kafka = ServiceFactory.getPubSubBroker(new PubSubBrokerConfigs.Builder().setMockTime(mockTime).build());
     topicManager = new TopicManager(
         DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
         100,
@@ -115,7 +113,6 @@ public class TopicManagerTest {
   public void cleanUp() throws IOException {
     topicManager.close();
     kafka.close();
-    zkServer.close();
   }
 
   @Test

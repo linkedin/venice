@@ -13,7 +13,6 @@ import static org.mockito.Mockito.when;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.protocol.Delete;
@@ -63,22 +62,20 @@ import org.testng.annotations.Test;
 
 @Test
 public class VeniceWriterTest {
-  private PubSubBrokerWrapper kafka;
+  private PubSubBrokerWrapper pubSubBrokerWrapper;
   private TopicManager topicManager;
   private KafkaClientFactory kafkaClientFactory;
-  private ZkServerWrapper zkServer;
 
   @BeforeClass
   public void setUp() {
-    zkServer = ServiceFactory.getZkServer();
-    kafka = ServiceFactory.getKafkaBroker(zkServer);
-    kafkaClientFactory = IntegrationTestPushUtils.getVeniceConsumerFactory(kafka);
+    pubSubBrokerWrapper = ServiceFactory.getPubSubBroker();
+    kafkaClientFactory = IntegrationTestPushUtils.getVeniceConsumerFactory(pubSubBrokerWrapper);
     topicManager = new TopicManager(kafkaClientFactory);
   }
 
   @AfterClass
   public void cleanUp() throws IOException {
-    Utils.closeQuietlyWithErrorLogged(topicManager, kafka, zkServer);
+    Utils.closeQuietlyWithErrorLogged(topicManager, pubSubBrokerWrapper);
   }
 
   private void testThreadSafety(
@@ -89,7 +86,7 @@ public class VeniceWriterTest {
     int partitionCount = 1;
     topicManager.createTopic(topicName, partitionCount, 1, true);
     Properties properties = new Properties();
-    properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafka.getAddress());
+    properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
     properties.put(ConfigKeys.PARTITIONER_CLASS, DefaultVenicePartitioner.class.getName());
 
     ExecutorService executorService = null;

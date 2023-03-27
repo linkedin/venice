@@ -4,16 +4,16 @@ import com.linkedin.venice.utils.TestMockTime;
 
 
 public class PubSubBrokerConfigs {
-  private String zkAddress;
+  private ZkServerWrapper zkServerWrapper;
   private TestMockTime mockTime;
 
-  private PubSubBrokerConfigs(String zkAddress, TestMockTime mockTime) {
-    this.zkAddress = zkAddress;
+  private PubSubBrokerConfigs(ZkServerWrapper zkServerWrapper, TestMockTime mockTime) {
+    this.zkServerWrapper = zkServerWrapper;
     this.mockTime = mockTime;
   }
 
-  public String getZkAddress() {
-    return zkAddress;
+  public ZkServerWrapper getZkWrapper() {
+    return zkServerWrapper;
   }
 
   public TestMockTime getMockTime() {
@@ -21,11 +21,11 @@ public class PubSubBrokerConfigs {
   }
 
   public static class Builder {
-    private String zkAddress;
+    private ZkServerWrapper zkServerWrapper;
     private TestMockTime mockTime;
 
-    public Builder setZkAddress(String zkAddress) {
-      this.zkAddress = zkAddress;
+    public Builder setZkWrapper(ZkServerWrapper zkServerWrapper) {
+      this.zkServerWrapper = zkServerWrapper;
       return this;
     }
 
@@ -35,7 +35,7 @@ public class PubSubBrokerConfigs {
     }
 
     public PubSubBrokerConfigs build() {
-      return new PubSubBrokerConfigs(zkAddress, mockTime);
+      return new PubSubBrokerConfigs(zkServerWrapper, mockTime);
     }
   }
 }
