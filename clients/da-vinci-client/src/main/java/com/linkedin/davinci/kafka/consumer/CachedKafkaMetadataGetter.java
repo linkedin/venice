@@ -55,6 +55,21 @@ class CachedKafkaMetadataGetter {
     }
   }
 
+  long getEarliestOffset(TopicManager topicManager, String topicName, int partitionId) {
+    final String sourceKafkaServer = topicManager.getKafkaBootstrapServers();
+    try {
+      return fetchMetadata(
+          new KafkaMetadataCacheKey(sourceKafkaServer, topicName, partitionId),
+          offsetCache,
+          () -> topicManager.getPartitionEarliestOffsetAndRetry(topicName, partitionId, DEFAULT_MAX_RETRY));
+    } catch (TopicDoesNotExistException e) {
+      // It's observed in production that with java based admin client the topic may not be found temporarily, return
+      // error code
+      LOGGER.error("Failed to get offset for {} partition {}", topicName, partitionId, e);
+      return StatsErrorCode.LAG_MEASUREMENT_FAILURE.code;
+    }
+  }
+
   long getProducerTimestampOfLastDataMessage(TopicManager topicManager, String topicName, int partitionId) {
     try {
       return fetchMetadata(
