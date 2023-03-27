@@ -63,13 +63,13 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private final Map<Integer, VenicePartitioner> versionPartitionerMap = new VeniceConcurrentHashMap<>();
   private final Map<Integer, Integer> versionPartitionCountMap = new VeniceConcurrentHashMap<>();
   private final Map<Integer, ByteBuffer> versionZstdDictionaryMap = new VeniceConcurrentHashMap<>();
+  private final Map<CharSequence, Integer> helixGroupInfo = new VeniceConcurrentHashMap<>();
   private final CompressorFactory compressorFactory;
   private final D2TransportClient transportClient;
   private D2ServiceDiscovery d2ServiceDiscovery;
   private final String clusterDiscoveryD2ServiceName;
   private final ClusterStats clusterStats;
   private final FastClientStats clientStats;
-  private Map<CharSequence, Integer> helixGroupInfo;
   private volatile boolean isServiceDiscovered;
 
   public RequestBasedMetadata(ClientConfig clientConfig, D2TransportClient transportClient) {
@@ -148,9 +148,11 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
    * Update is only performed if the version from the fetched metadata is different from the local version. We evict
    * old values as we perform updates, while making sure we keep all currently active versions.
    * @param onDemandRefresh
+   * @returns if the fetched metadata was from an updated version
    */
-  private synchronized void updateCache(boolean onDemandRefresh) throws InterruptedException {
+  private synchronized boolean updateCache(boolean onDemandRefresh) throws InterruptedException {
     boolean updateComplete = true;
+    boolean newVersion = false;
     long currentTimeMs = System.currentTimeMillis();
     // call the METADATA endpoint
     try {
@@ -177,9 +179,9 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
               Collectors.toMap(
                   e -> Integer.valueOf(e.getKey().toString()),
                   e -> e.getValue().stream().map(CharSequence::toString).collect(Collectors.toList())));
-      helixGroupInfo = metadataResponse.getHelixGroupInfo();
 
       if (fetchedVersion != getCurrentStoreVersion()) {
+        newVersion = true;
         // call the DICTIONARY endpoint if needed
         CompletableFuture<TransportClientResponse> dictionaryFetchFuture = null;
         if (!versionZstdDictionaryMap.containsKey(fetchedVersion)
@@ -212,6 +214,10 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
               new SchemaEntry(Integer.parseInt(entry.getKey().toString()), entry.getValue().toString()));
         }
         schemas.set(schemaData);
+
+        // Update helix group info
+        helixGroupInfo.clear();
+        helixGroupInfo.putAll(metadataResponse.getHelixGroupInfo());
 
         // Wait for dictionary fetch to finish if there is one
         try {
@@ -254,13 +260,16 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
         throw new VeniceClientException("Metadata fetch retry has failed", e.getCause());
       }
     }
+
+    return newVersion;
   }
 
   private void refresh() {
     try {
-      updateCache(false);
-      // Update helix group info for our routing strategy
-      routingStrategy = new HelixScatterGatherRoutingStrategy(helixGroupInfo);
+      if (updateCache(false)) {
+        // Update helix group info for our routing strategy
+        routingStrategy = new HelixScatterGatherRoutingStrategy(helixGroupInfo);
+      }
     } catch (Exception e) {
       // Catch all errors so periodic refresh doesn't break on transient errors.
       LOGGER.error("Encountered unexpected error during periodic refresh", e);
