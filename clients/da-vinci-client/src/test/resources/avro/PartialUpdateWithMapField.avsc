@@ -1,7 +1,7 @@
 {
   "type": "record",
-  "name": "PartialUpdateWithMapField",
   "namespace": "com.linkedin.avro",
+  "name": "TestRecord",
   "fields": [
     {
       "name": "regularField",
@@ -17,12 +17,34 @@
       "default": []
     },
     {
+      "name": "nullableStringArrayField",
+      "type": [
+        "null",
+        {
+          "type": "array",
+          "items": "string"
+        }
+      ],
+      "default": null
+    },
+    {
       "name": "intMapField",
       "type": {
         "type": "map",
         "values": "int"
       },
       "default": {}
+    },
+    {
+      "name": "nullableIntMapField",
+      "type": [
+        "null",
+        {
+          "type": "map",
+          "values": "int"
+        }
+      ],
+      "default": null
     }
   ]
 }

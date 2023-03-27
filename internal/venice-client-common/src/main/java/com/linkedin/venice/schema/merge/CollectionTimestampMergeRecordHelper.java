@@ -1,13 +1,11 @@
 package com.linkedin.venice.schema.merge;
 
-import static org.apache.avro.Schema.Type.ARRAY;
-import static org.apache.avro.Schema.Type.MAP;
+import static com.linkedin.venice.schema.SchemaUtils.isArrayField;
+import static com.linkedin.venice.schema.SchemaUtils.isMapField;
 
 import com.linkedin.venice.schema.rmd.v1.CollectionRmdTimestamp;
 import com.linkedin.venice.utils.IndexedHashMap;
 import java.util.List;
-import java.util.Map;
-import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 
 
@@ -115,7 +113,9 @@ public class CollectionTimestampMergeRecordHelper extends PerFieldTimestampMerge
       final String fieldName,
       final long deleteTimestamp,
       final int coloID) {
-    if (isMapField(currValueRecord, fieldName) || isArrayField(currValueRecord, fieldName)) {
+    boolean isMapField = isMapField(currValueRecord, fieldName);
+    boolean isArrayField = isArrayField(currValueRecord, fieldName);
+    if (isMapField || isArrayField) {
       Object timestamp = currTimestampRecord.get(fieldName);
       if (timestamp instanceof Long) {
         throw new IllegalStateException(
@@ -124,17 +124,7 @@ public class CollectionTimestampMergeRecordHelper extends PerFieldTimestampMerge
                 fieldName,
                 timestamp));
       }
-      Object currFieldValue = currValueRecord.get(fieldName);
-
-      if (currFieldValue instanceof List<?>) {
-        return collectionFieldOperationHandler.handleDeleteList(
-            deleteTimestamp,
-            coloID,
-            new CollectionRmdTimestamp((GenericRecord) timestamp),
-            currValueRecord,
-            fieldName);
-
-      } else if (currFieldValue instanceof Map) {
+      if (isMapField) {
         return collectionFieldOperationHandler.handleDeleteMap(
             deleteTimestamp,
             coloID,
@@ -143,39 +133,15 @@ public class CollectionTimestampMergeRecordHelper extends PerFieldTimestampMerge
             fieldName);
 
       } else {
-        throw new IllegalStateException(
-            "Expect a field that is of a collection type (Map or List). Got: " + currFieldValue + " for field "
-                + fieldName);
+        return collectionFieldOperationHandler.handleDeleteList(
+            deleteTimestamp,
+            coloID,
+            new CollectionRmdTimestamp((GenericRecord) timestamp),
+            currValueRecord,
+            fieldName);
       }
-
     } else {
       return super.deleteRecordField(currValueRecord, currTimestampRecord, fieldName, deleteTimestamp, coloID);
     }
-  }
-
-  private boolean isMapField(GenericRecord currRecord, String fieldName) {
-    Schema fieldSchema = currRecord.getSchema().getField(fieldName).schema();
-    return isSimpleMapSchema(fieldSchema) || isNullableMapSchema(fieldSchema);
-  }
-
-  private boolean isArrayField(GenericRecord currRecord, String fieldName) {
-    Schema fieldSchema = currRecord.getSchema().getField(fieldName).schema();
-    return isSimpleArraySchema(fieldSchema) || isNullableArraySchema(fieldSchema);
-  }
-
-  private boolean isSimpleMapSchema(Schema schema) {
-    return schema.getType().equals(MAP);
-  }
-
-  private boolean isSimpleArraySchema(Schema schema) {
-    return schema.getType().equals(ARRAY);
-  }
-
-  private boolean isNullableMapSchema(Schema schema) {
-    return schema.isNullable() && isSimpleMapSchema(schema.getTypes().get(1));
-  }
-
-  private boolean isNullableArraySchema(Schema schema) {
-    return schema.isNullable() && isSimpleArraySchema(schema.getTypes().get(1));
   }
 }

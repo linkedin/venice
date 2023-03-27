@@ -137,7 +137,9 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       newDeletedTimestamps.add(deletedTimestamp);
     });
     collectionFieldRmd.setDeletedElementsAndTimestamps(newDeletedElements, newDeletedTimestamps);
-
+    if (collectionFieldRmd.isInPutOnlyState() && newFieldValue == null) {
+      currValueRecord.put(fieldName, null);
+    }
     return collectionFieldRmd.isInPutOnlyState()
         ? UpdateResultStatus.COMPLETELY_UPDATED
         : UpdateResultStatus.PARTIALLY_UPDATED;
@@ -287,7 +289,9 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     });
 
     collectionFieldRmd.setDeletedElementsAndTimestamps(newDeletedKeys, newDeletedTimestamps);
-
+    if (collectionFieldRmd.isInPutOnlyState() && newFieldValue == null) {
+      currValueRecord.put(fieldName, null);
+    }
     return collectionFieldRmd.isInPutOnlyState()
         ? UpdateResultStatus.COMPLETELY_UPDATED
         : UpdateResultStatus.PARTIALLY_UPDATED;
