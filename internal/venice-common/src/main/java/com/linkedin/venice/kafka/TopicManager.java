@@ -761,6 +761,10 @@ public class TopicManager implements Closeable {
     return partitionOffsetFetcher.getProducerTimestampOfLastDataRecord(topic, partition, retries);
   }
 
+  public long getPartitionEarliestOffsetAndRetry(String topic, int partition, int retries) {
+    return partitionOffsetFetcher.getPartitionEarliestOffsetAndRetry(topic, partition, retries);
+  }
+
   /**
    * Get offsets for only one partition with a specific timestamp.
    */

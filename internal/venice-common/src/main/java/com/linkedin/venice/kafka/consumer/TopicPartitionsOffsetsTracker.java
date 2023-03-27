@@ -59,12 +59,13 @@ class TopicPartitionsOffsetsTracker {
   }
 
   /**
-   * Update the end offsets of consumed partitions based on consumer metrics and given consumed records.
-   * For each topic partition, end offset == consumed current offset + offset lag
+   * Update the end and current offsets of consumed partitions based on consumer metrics and given consumed records.
+   * For each topic partition, end offset == consumed current offset + offset lag and current offset is determined
+   * to be the largest offset amongst the records passed in.
    *
    * @param records consumed records
    */
-  void updateEndOffsets(ConsumerRecords<byte[], byte[]> records, Map<MetricName, ? extends Metric> metrics) {
+  void updateEndAndCurrentOffsets(ConsumerRecords<byte[], byte[]> records, Map<MetricName, ? extends Metric> metrics) {
     if (lastMetricsCollectedTime != null && LatencyUtils
         .getElapsedTimeInMs(lastMetricsCollectedTime.toEpochMilli()) < offsetsUpdateInterval.toMillis()) {
       return; // Not yet

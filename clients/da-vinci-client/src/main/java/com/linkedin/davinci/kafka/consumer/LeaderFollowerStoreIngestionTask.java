@@ -1525,8 +1525,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       return Long.MAX_VALUE;
     }
 
-    // Since DaVinci clients run in follower only mode, use local VT to compute hybrid lag.
-    if (isDaVinciClient) {
+    // Followers and Davinci clients, use local VT to compute hybrid lag.
+    if (isDaVinciClient || partitionConsumptionState.getLeaderFollowerState().equals(STANDBY)) {
       return cachedKafkaMetadataGetter.getOffset(getTopicManager(localKafkaServer), kafkaVersionTopic, partition)
           - partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset();
     }
@@ -2325,7 +2325,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           }
 
           final String kafkaSourceAddress = getSourceKafkaUrlForOffsetLagMeasurement(pcs);
-          // Consumer might not existed after the consumption state is created, but before attaching the corresponding
+          // Consumer might not exist after the consumption state is created, but before attaching the corresponding
           // consumer.
           long offsetLagOptional = getPartitionOffsetLag(kafkaSourceAddress, currentLeaderTopic, pcs.getPartition());
           if (offsetLagOptional >= 0) {
@@ -3032,6 +3032,24 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       latestLeaderOffset = 0;
     }
     long lag = lastOffsetInRealTimeTopic - latestLeaderOffset;
+
+    // Here we handle the case where the topic is actually empty,
+    // if consumerLag is a positive number then that means there is an existing offset that we've consumed to and a
+    // bigger offset out there somewhere. Meaning that there are at least two messages in the topic and it's not empty
+    long consumerLag = getPartitionOffsetLag(sourceRealTimeTopicKafkaURL, leaderTopic, partitionToGetLatestOffsetFor);
+    if (consumerLag <= 0) {
+      // We don't have a positive consumer lag, but this could be because we haven't polled.
+      // So as a final check to determine if the topic is empty, we check
+      // if the end offset is the same as the beginning
+      long earliestOffset = cachedKafkaMetadataGetter.getEarliestOffset(
+          getTopicManager(sourceRealTimeTopicKafkaURL),
+          leaderTopic.getName(),
+          partitionToGetLatestOffsetFor);
+      if (earliestOffset == lastOffsetInRealTimeTopic - 1) {
+        lag = 0;
+      }
+    }
+
     if (shouldLog) {
       LOGGER.info(
           "{} partition {} RT lag offset for {} is: Latest RT offset [{}] - persisted offset [{}] = Lag [{}]",
