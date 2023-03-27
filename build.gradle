@@ -336,8 +336,7 @@ subprojects {
     minHeapSize = System.getProperty('minHeapSize', '1g')
     maxHeapSize = System.getProperty('maxHeapSize', '4g')
 
-    systemProperty 'pubsubBackend', System.getProperty('pubsubBackend')
-//    systemProperty 'pubsubBackend', System.getProperty('pubsubBackend', 'com.linkedin.venice.integration.utils.ServiceFactoryTest')
+    systemProperty 'pubsubBrokerFactory', System.getProperty('pubsubBrokerFactory', "com.linkedin.venice.integration.utils.KafkaBrokerFactory")
 
     System.getProperty('jvmArgs')?.eachMatch(/(?:[^\s'"]+|'[^']*'|"[^"]*")+/) { jvmArgs it }
 
