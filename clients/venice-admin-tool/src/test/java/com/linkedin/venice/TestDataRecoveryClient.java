@@ -25,7 +25,7 @@ import org.testng.annotations.Test;
 
 public class TestDataRecoveryClient {
   private DataRecoveryExecutor executor;
-  private Estimator _estimator;
+  private Estimator estimator;
   private ControllerClient controllerClient;
 
   @Test
@@ -43,12 +43,12 @@ public class TestDataRecoveryClient {
   }
 
   private void verifyEstimationResults() {
-    Integer expectedAverage = 7200;
-    Integer result = 0;
-    for (PlanningTask t: _estimator.getTasks()) {
-      result += t.getEstimatedTimeResult();
+    Long expectedRecoveryTime = 7200L;
+    Long result = 0L;
+    for (PlanningTask t: estimator.getTasks()) {
+      result += t.getResult().getEstimatedRecoveryTimeInSeconds();
     }
-    Assert.assertEquals(result, expectedAverage);
+    Assert.assertEquals(result, expectedRecoveryTime);
   }
 
   private void verifyRecoveryResults(boolean isSuccess) {
@@ -74,7 +74,7 @@ public class TestDataRecoveryClient {
   }
 
   private void estimateRecovery() {
-    _estimator = spy(Estimator.class);
+    estimator = spy(Estimator.class);
     controllerClient = mock(ControllerClient.class);
 
     Set<String> storeNames = new HashSet<>(Arrays.asList("store1", "store2"));
@@ -84,9 +84,9 @@ public class TestDataRecoveryClient {
     cmdParams.setPCtrlCliWithoutCluster(controllerClient);
     List<PlanningTask> tasks = buildPlanningTasks(storeNames, cmdParams);
 
-    doReturn(tasks).when(_estimator).buildTasks(any(), any());
+    doReturn(tasks).when(estimator).buildTasks(any(), any());
     DataRecoveryClient dataRecoveryClient = mock(DataRecoveryClient.class);
-    doReturn(_estimator).when(dataRecoveryClient).getEstimator();
+    doReturn(estimator).when(dataRecoveryClient).getEstimator();
     doCallRealMethod().when(dataRecoveryClient).estimateRecoveryTime(any(), any());
 
     StoreHealthAuditResponse mockResponse = new StoreHealthAuditResponse();

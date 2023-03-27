@@ -640,11 +640,11 @@ public class AdminTool {
     cmdParams.setTargetRegion(destFabric);
     cmdParams.setParentUrl(parentUrl);
     cmdParams.setSslFactory(sslFactory);
-    Integer total = 0;
+    Long total = 0L;
 
     try (ControllerClient cli = new ControllerClient("*", parentUrl, sslFactory)) {
       cmdParams.setPCtrlCliWithoutCluster(cli);
-      total = dataRecoveryClient.estimateRecoveryTime(params, cmdParams);
+      total += dataRecoveryClient.estimateRecoveryTime(params, cmdParams);
     }
     printObject("total recovery time: " + (total / 360) + ":" + ((total / 60) % 60) + ":" + (total % 10));
   }

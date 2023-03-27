@@ -76,28 +76,44 @@ public class EstimateDataRecoveryTimeCommand {
   }
 
   public static class Result {
-    private Integer estimatedRecoveryTimeInSeconds;
-    private String error;
+    private Long estimatedRecoveryTimeInSeconds;
+    private boolean error;
     private String message;
 
-    public Integer getEstimatedRecoveryTimeInSeconds() {
-      return estimatedRecoveryTimeInSeconds;
+    public Result() {
+      this.estimatedRecoveryTimeInSeconds = 0L;
+      this.error = false;
+      this.message = "task in progress";
     }
 
-    public void setEstimatedRecoveryTimeInSeconds(Integer estimatedRecoveryTimeInSeconds) {
-      this.estimatedRecoveryTimeInSeconds = estimatedRecoveryTimeInSeconds;
+    public Result(Long timeInSeconds) {
+      this.estimatedRecoveryTimeInSeconds = timeInSeconds;
+      this.error = false;
+      this.message = "EstimateDataRecoveryTimeCommand.Result: " + (timeInSeconds / 3600) + ":" + (timeInSeconds % 60)
+          + ":" + (timeInSeconds % 10);
+    }
+
+    public Result(String errorMessage) {
+      this.estimatedRecoveryTimeInSeconds = -1L;
+      this.error = true;
+      this.message = errorMessage;
+    }
+
+    @Override
+    public String toString() {
+      return this.message;
     }
 
     public boolean isError() {
-      return error != null;
+      return this.error;
     }
 
-    public void setError(String error) {
-      this.error = error;
+    public Long getEstimatedRecoveryTimeInSeconds() {
+      return estimatedRecoveryTimeInSeconds;
     }
 
-    public String getError() {
-      return error;
+    public void setEstimatedRecoveryTimeInSeconds(Long estimatedRecoveryTimeInSeconds) {
+      this.estimatedRecoveryTimeInSeconds = estimatedRecoveryTimeInSeconds;
     }
 
     public String getMessage() {

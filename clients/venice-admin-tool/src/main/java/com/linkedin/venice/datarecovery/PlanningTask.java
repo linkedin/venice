@@ -3,7 +3,7 @@ package com.linkedin.venice.datarecovery;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreHealthAuditResponse;
 import com.linkedin.venice.meta.RegionPushDetails;
-import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
 
@@ -12,44 +12,43 @@ import java.util.Map;
  * A Task is wrapper class that designed to execute multiple commands in sequence.
  */
 public class PlanningTask implements Runnable {
-  private final TaskParams _params;
-  private Integer estimatedTimeResult = -2;
+  private final TaskParams params;
+  private EstimateDataRecoveryTimeCommand.Result result;
   private ControllerClient controllerClient;
 
   public PlanningTask(TaskParams params) {
-    this._params = params;
+    this.params = params;
     this.controllerClient = params.getCmdParams().getPCtrlCliWithoutCluster();
+    this.result = null;
   }
 
   @Override
   public void run() {
-    estimatedTimeResult = 0;
-
     // get store's push + partition info
-    StoreHealthAuditResponse storeHealthInfo = controllerClient.listStorePushInfo(_params.getStoreName(), true);
+    StoreHealthAuditResponse storeHealthInfo = controllerClient.listStorePushInfo(params.getStoreName(), true);
     Map<String, RegionPushDetails> pushDetails = storeHealthInfo.getRegionPushDetails();
 
     if (pushDetails.containsKey(getParams().getCmdParams().getTargetRegion())) {
-      Instant startTime =
-          Instant.parse(pushDetails.get(getParams().getCmdParams().getTargetRegion()).getPushStartTimestamp() + "Z");
-      Instant endTime =
-          Instant.parse(pushDetails.get(getParams().getCmdParams().getTargetRegion()).getPushEndTimestamp() + "Z");
-      estimatedTimeResult = (int) startTime.until(endTime, ChronoUnit.SECONDS);
+      LocalDateTime startTime =
+          LocalDateTime.parse(pushDetails.get(getParams().getCmdParams().getTargetRegion()).getPushStartTimestamp());
+      LocalDateTime endTime =
+          LocalDateTime.parse(pushDetails.get(getParams().getCmdParams().getTargetRegion()).getPushEndTimestamp());
+      this.setResult(new EstimateDataRecoveryTimeCommand.Result(startTime.until(endTime, ChronoUnit.SECONDS)));
     } else {
-      estimatedTimeResult = -1;
+      this.setResult(new EstimateDataRecoveryTimeCommand.Result("target region not found"));
     }
   }
 
   public TaskParams getParams() {
-    return _params;
+    return params;
   }
 
-  public Integer getEstimatedTimeResult() {
-    return estimatedTimeResult;
+  public EstimateDataRecoveryTimeCommand.Result getResult() {
+    return result;
   }
 
-  public void setEstimatedTimeResult(Integer estimatedTimeResult) {
-    this.estimatedTimeResult = estimatedTimeResult;
+  public void setResult(EstimateDataRecoveryTimeCommand.Result estimatedTimeResult) {
+    this.result = estimatedTimeResult;
   }
 
   public static class TaskParams {

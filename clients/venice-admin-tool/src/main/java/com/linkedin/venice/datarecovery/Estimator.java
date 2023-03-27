@@ -68,15 +68,7 @@ public class Estimator {
 
   private void displayTaskResult() {
     for (PlanningTask task: tasks) {
-      Integer estimatedRecoveryTime = task.getEstimatedTimeResult();
-      String storeStatus = "started";
-      if (estimatedRecoveryTime == -1)
-        storeStatus = "failed";
-      else if (estimatedRecoveryTime == -2)
-        storeStatus = "not started";
-      else if (estimatedRecoveryTime > 0)
-        storeStatus = "Estimated recovery time: " + estimatedRecoveryTime;
-      LOGGER.info("[store: {}, status: {}]", task.getParams().getStoreName(), storeStatus);
+      LOGGER.info("[store: {}, result: {}]", task.getParams().getStoreName(), task.getResult());
     }
   }
 

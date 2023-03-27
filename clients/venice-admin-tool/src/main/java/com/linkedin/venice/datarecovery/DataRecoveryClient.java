@@ -15,7 +15,7 @@ import org.apache.logging.log4j.Logger;
 public class DataRecoveryClient {
   private static final Logger LOGGER = LogManager.getLogger(DataRecoveryClient.class);
   private final DataRecoveryExecutor executor;
-  private final Estimator _estimator;
+  private final Estimator estimator;
 
   public DataRecoveryClient() {
     this(new DataRecoveryExecutor());
@@ -23,7 +23,7 @@ public class DataRecoveryClient {
 
   public DataRecoveryClient(DataRecoveryExecutor module) {
     this.executor = module;
-    this._estimator = new Estimator();
+    this.estimator = new Estimator();
   }
 
   public DataRecoveryExecutor getExecutor() {
@@ -31,7 +31,7 @@ public class DataRecoveryClient {
   }
 
   public Estimator getEstimator() {
-    return _estimator;
+    return estimator;
   }
 
   public void execute(DataRecoveryParams drParams, StoreRepushCommand.Params cmdParams) {
@@ -48,17 +48,17 @@ public class DataRecoveryClient {
     getExecutor().shutdownAndAwaitTermination();
   }
 
-  public Integer estimateRecoveryTime(DataRecoveryParams drParams, EstimateDataRecoveryTimeCommand.Params cmdParams) {
+  public Long estimateRecoveryTime(DataRecoveryParams drParams, EstimateDataRecoveryTimeCommand.Params cmdParams) {
     Set<String> storeNames = drParams.getRecoveryStores();
     if (storeNames == null || storeNames.isEmpty()) {
       LOGGER.warn("store list is empty, exit.");
-      return -1;
+      return 0L;
     }
 
     getEstimator().perform(storeNames, cmdParams);
-    Integer totalRecoveryTime = 0;
+    Long totalRecoveryTime = 0L;
     for (PlanningTask t: getEstimator().getTasks()) {
-      totalRecoveryTime += t.getEstimatedTimeResult();
+      totalRecoveryTime += t.getResult().getEstimatedRecoveryTimeInSeconds();
     }
     return totalRecoveryTime;
   }
