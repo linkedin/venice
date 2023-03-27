@@ -112,6 +112,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     doReturn(0.9d).when(mockVeniceServerConfig).getDiskFullThreshold();
     doReturn(Int2ObjectMaps.emptyMap()).when(mockVeniceServerConfig).getKafkaClusterIdToAliasMap();
     doReturn(Object2IntMaps.emptyMap()).when(mockVeniceServerConfig).getKafkaClusterUrlToIdMap();
+    doReturn(10l).when(mockVeniceServerConfig).getDatabaseSizeMeasurementInterval();
 
     // Consumer related configs for preparing kafka consumer service.
     doReturn(dummyKafkaUrl).when(mockVeniceServerConfig).getKafkaBootstrapServers();

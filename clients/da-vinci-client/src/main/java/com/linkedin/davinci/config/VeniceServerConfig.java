@@ -29,6 +29,8 @@ import static com.linkedin.venice.ConfigKeys.SERVER_CONSUMER_POOL_SIZE_PER_KAFKA
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_CHECKSUM_VERIFICATION_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_LOOKUP_QUEUE_CAPACITY;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_MEMORY_STATS_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SIZE_LIMIT;
+import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SIZE_MEASURE_INTERVAL;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE;
 import static com.linkedin.venice.ConfigKeys.SERVER_DB_READ_ONLY_FOR_BATCH_ONLY_STORE_ENABLED;
@@ -244,6 +246,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final double diskFullThreshold;
 
+  private final long databaseSizeLimit;
+
+  private final long databaseSizeMeasurementInterval;
+
   private final int partitionGracefulDropDelaySeconds;
 
   private final long leakedResourceCleanUpIntervalInMS;
@@ -436,6 +442,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     databaseSyncBytesIntervalForDeferredWriteMode =
         serverProperties.getSizeInBytes(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, 60 * 1024 * 1024);
     diskFullThreshold = serverProperties.getDouble(SERVER_DISK_FULL_THRESHOLD, 0.95);
+    databaseSizeLimit = serverProperties.getSizeInBytes(SERVER_DATABASE_SIZE_LIMIT, -1); // -1 means no limit
+    databaseSizeMeasurementInterval =
+        serverProperties.getSizeInBytes(SERVER_DATABASE_SIZE_MEASURE_INTERVAL, 256 * 1024 * 1024); // Default: 256MB
     partitionGracefulDropDelaySeconds = serverProperties.getInt(SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS, 30);
     leakedResourceCleanUpIntervalInMS =
         TimeUnit.MINUTES.toMillis(serverProperties.getLong(SERVER_LEAKED_RESOURCE_CLEAN_UP_INTERVAL_IN_MINUTES, 10));
@@ -697,6 +706,14 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public double getDiskFullThreshold() {
     return diskFullThreshold;
+  }
+
+  public long getDatabaseSizeLimit() {
+    return databaseSizeLimit;
+  }
+
+  public long getDatabaseSizeMeasurementInterval() {
+    return databaseSizeMeasurementInterval;
   }
 
   public int getPartitionGracefulDropDelaySeconds() {

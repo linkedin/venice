@@ -1239,6 +1239,17 @@ public class ConfigKeys {
   public static final String SERVER_DISK_FULL_THRESHOLD = "disk.full.threshold";
 
   /**
+   * Ingestion will be paused or fail when the disk usage hits either {@link #SERVER_DISK_FULL_THRESHOLD} or {@link #SERVER_DATABASE_SIZE_LIMIT}
+   */
+  public static final String SERVER_DATABASE_SIZE_LIMIT = "database.size.limit";
+
+  /**
+   * Database size measurement is an expensive operation, and we would like to make the measurement interval
+   * configurable to tune the performance.
+   */
+  public static final String SERVER_DATABASE_SIZE_MEASURE_INTERVAL = "database.size.measure.interval";
+
+  /**
    * If a request is slower than this, it will be reported as tardy in the router metrics
    */
   public static final String ROUTER_SINGLEGET_TARDY_LATENCY_MS = "router.singleget.tardy.latency.ms";
