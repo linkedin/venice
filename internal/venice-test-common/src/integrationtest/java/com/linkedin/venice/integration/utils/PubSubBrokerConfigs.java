@@ -4,12 +4,12 @@ import com.linkedin.venice.utils.TestMockTime;
 
 
 public class PubSubBrokerConfigs {
-  private ZkServerWrapper zkServerWrapper;
-  private TestMockTime mockTime;
+  private final ZkServerWrapper zkServerWrapper;
+  private final TestMockTime mockTime;
 
-  private PubSubBrokerConfigs(ZkServerWrapper zkServerWrapper, TestMockTime mockTime) {
-    this.zkServerWrapper = zkServerWrapper;
-    this.mockTime = mockTime;
+  private PubSubBrokerConfigs(Builder builder) {
+    this.zkServerWrapper = builder.zkServerWrapper;
+    this.mockTime = builder.mockTime;
   }
 
   public ZkServerWrapper getZkWrapper() {
@@ -35,7 +35,7 @@ public class PubSubBrokerConfigs {
     }
 
     public PubSubBrokerConfigs build() {
-      return new PubSubBrokerConfigs(zkServerWrapper, mockTime);
+      return new PubSubBrokerConfigs(this);
     }
   }
 }

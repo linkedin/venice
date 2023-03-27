@@ -28,6 +28,6 @@ public class PubSubClientsFactory {
   }
 
   KafkaClientFactory getKafkaClientFactory() {
-    return kafkaClientFactory;
+    throw new UnsupportedOperationException("KafkaClientFactory is not supported yet");
   }
 }

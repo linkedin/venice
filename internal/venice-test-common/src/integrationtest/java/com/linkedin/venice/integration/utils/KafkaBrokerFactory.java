@@ -32,6 +32,9 @@ class KafkaBrokerFactory implements PubSubBrokerFactory {
   private static final int OFFSET_TOPIC_PARTITIONS = 1;
   private static final short OFFSET_TOPIC_REPLICATION_FACTOR = 1;
   private static final boolean LOG_CLEANER_ENABLE = false;
+  // anchor for creating clients for this broker
+  private static final PubSubClientsFactory KAFKA_CLIENTS_FACTORY =
+      new PubSubClientsFactory(new ApacheKafkaProducerAdapterFactory(), null);
 
   /**
    * @return a function which yields a {@link KafkaBrokerWrapper} instance
@@ -87,6 +90,11 @@ class KafkaBrokerFactory implements PubSubBrokerFactory {
   @Override
   public String getServiceName() {
     return SERVICE_NAME;
+  }
+
+  @Override
+  public PubSubClientsFactory getClientsFactory() {
+    return KAFKA_CLIENTS_FACTORY;
   }
 
   /**

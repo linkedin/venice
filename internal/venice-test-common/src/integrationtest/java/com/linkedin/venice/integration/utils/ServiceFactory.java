@@ -16,6 +16,7 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReflectUtils;
@@ -115,6 +116,13 @@ public class ServiceFactory {
 
   public static void testRuntimeFactoryLoading() {
     System.out.println("########## HELLO! ##########");
+  }
+
+  /**
+   * @return an instance of {@link PubSubClientsFactory}
+   */
+  static PubSubClientsFactory getPubSubClientsFactory() {
+    return PUBSUB_BROKER_FACTORY.getClientsFactory();
   }
 
   /**
