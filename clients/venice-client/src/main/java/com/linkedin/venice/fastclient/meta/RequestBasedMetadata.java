@@ -69,6 +69,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private final String clusterDiscoveryD2ServiceName;
   private final ClusterStats clusterStats;
   private final FastClientStats clientStats;
+  private Map<CharSequence, Integer> helixGroupInfo;
   private volatile boolean isServiceDiscovered;
 
   public RequestBasedMetadata(ClientConfig clientConfig, D2TransportClient transportClient) {
@@ -169,7 +170,6 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       int newSuperSetValueSchemaId = metadataResponse.getLatestSuperSetValueSchemaId();
       Map<CharSequence, CharSequence> keySchema = metadataResponse.getKeySchema();
       Map<CharSequence, CharSequence> valueSchemas = metadataResponse.getValueSchemas();
-      Map<CharSequence, Integer> helixGroupInfo = metadataResponse.getHelixGroupInfo();
       Map<Integer, List<String>> routingInfo = metadataResponse.getRoutingInfo()
           .entrySet()
           .stream()
@@ -177,6 +177,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
               Collectors.toMap(
                   e -> Integer.valueOf(e.getKey().toString()),
                   e -> e.getValue().stream().map(CharSequence::toString).collect(Collectors.toList())));
+      helixGroupInfo = metadataResponse.getHelixGroupInfo();
 
       if (fetchedVersion != getCurrentStoreVersion()) {
         // call the DICTIONARY endpoint if needed
@@ -211,9 +212,6 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
               new SchemaEntry(Integer.parseInt(entry.getKey().toString()), entry.getValue().toString()));
         }
         schemas.set(schemaData);
-
-        // Update helix group info for our routing strategy
-        routingStrategy = new HelixScatterGatherRoutingStrategy(helixGroupInfo);
 
         // Wait for dictionary fetch to finish if there is one
         try {
@@ -261,6 +259,8 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private void refresh() {
     try {
       updateCache(false);
+      // Update helix group info for our routing strategy
+      routingStrategy = new HelixScatterGatherRoutingStrategy(helixGroupInfo);
     } catch (Exception e) {
       // Catch all errors so periodic refresh doesn't break on transient errors.
       LOGGER.error("Encountered unexpected error during periodic refresh", e);

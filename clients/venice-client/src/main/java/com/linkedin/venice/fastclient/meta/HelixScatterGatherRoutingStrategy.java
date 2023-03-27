@@ -33,11 +33,10 @@ public class HelixScatterGatherRoutingStrategy implements ClientRoutingStrategy 
 
     // select replicas from the selected group, going down the ordering if needed
     List<String> selectedReplicas = new ArrayList<>();
-    int selectedIdx = -1;
-    while (selectedReplicas.size() < requiredReplicaCount && ++selectedIdx < shuffledGroupIds.size()) {
-      for (String replica: groupToFilteredReplicas.get(shuffledGroupIds.get(selectedIdx))) {
+    for (int groupId: shuffledGroupIds) {
+      for (String replica: groupToFilteredReplicas.get(groupId)) {
         if (selectedReplicas.size() == requiredReplicaCount) {
-          break;
+          return selectedReplicas;
         }
         selectedReplicas.add(replica);
       }
