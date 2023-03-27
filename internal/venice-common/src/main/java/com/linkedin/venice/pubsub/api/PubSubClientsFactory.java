@@ -1,8 +1,5 @@
 package com.linkedin.venice.pubsub.api;
 
-import com.linkedin.venice.kafka.KafkaClientFactory;
-
-
 /**
  * A wrapper around pub-sub producer, consumer, and admin adapter factories
  *
@@ -13,21 +10,13 @@ import com.linkedin.venice.kafka.KafkaClientFactory;
  */
 public class PubSubClientsFactory {
   private final PubSubProducerAdapterFactory producerAdapterFactory;
-  // todo: replace KafkaClientFactory with consumer and admin factory once it is available
-  private final KafkaClientFactory kafkaClientFactory;
+  // todo: Add PubSubAdminAdapterFactory and PubSubConsumerAdapterFactory once it is available
 
-  public PubSubClientsFactory(
-      PubSubProducerAdapterFactory producerAdapterFactory,
-      KafkaClientFactory kafkaClientFactory) {
+  public PubSubClientsFactory(PubSubProducerAdapterFactory producerAdapterFactory) {
     this.producerAdapterFactory = producerAdapterFactory;
-    this.kafkaClientFactory = kafkaClientFactory;
   }
 
-  PubSubProducerAdapterFactory<PubSubProducerAdapter> getProducerAdapterFactory() {
+  public PubSubProducerAdapterFactory getProducerAdapterFactory() {
     return producerAdapterFactory;
-  }
-
-  KafkaClientFactory getKafkaClientFactory() {
-    throw new UnsupportedOperationException("KafkaClientFactory is not supported yet");
   }
 }

@@ -67,6 +67,7 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -150,7 +151,7 @@ public class VeniceServer {
             .setClientConfigForConsumer(clientConfigForConsumer.orElse(null))
             .setIcProvider(icProvider)
             .setServiceDiscoveryAnnouncers(serviceDiscoveryAnnouncers)
-            .setPubSubClientsFactory(new PubSubClientsFactory(new ApacheKafkaProducerAdapterFactory(), null))
+            .setPubSubClientsFactory(new PubSubClientsFactory(new ApacheKafkaProducerAdapterFactory()))
             .build());
   }
 
@@ -172,6 +173,9 @@ public class VeniceServer {
     this.services = Lazy.of(() -> createServices());
     this.veniceConfigLoader = ctx.getVeniceConfigLoader();
     this.metricsRepository = ctx.getMetricsRepository();
+    this.icProvider = ctx.getIcProvider();
+    this.serviceDiscoveryAnnouncers = ctx.getServiceDiscoveryAnnouncers();
+    this.pubSubClientsFactory = Objects.requireNonNull(ctx.getPubSubClientsFactory(), "PubSubClientsFactory is null");
     this.sslFactory = ctx.getSslFactory() != null ? Optional.of(ctx.getSslFactory()) : Optional.empty();
     this.routerAccessController =
         ctx.getRouterAccessController() != null ? Optional.of(ctx.getRouterAccessController()) : Optional.empty();
@@ -179,9 +183,6 @@ public class VeniceServer {
         ctx.getStoreAccessController() != null ? Optional.of(ctx.getStoreAccessController()) : Optional.empty();
     this.clientConfigForConsumer =
         ctx.getClientConfigForConsumer() != null ? Optional.of(ctx.getClientConfigForConsumer()) : Optional.empty();
-    this.icProvider = ctx.getIcProvider();
-    this.serviceDiscoveryAnnouncers = ctx.getServiceDiscoveryAnnouncers();
-    this.pubSubClientsFactory = ctx.getPubSubClientsFactory();
   }
 
   /**
@@ -376,7 +377,8 @@ public class VeniceServer {
         compressorFactory,
         Optional.empty(),
         false,
-        remoteIngestionRepairService);
+        remoteIngestionRepairService,
+        pubSubClientsFactory);
     this.kafkaStoreIngestionService.addMetaSystemStoreReplicaStatusNotifier();
 
     this.diskHealthCheckService = new DiskHealthCheckService(
@@ -704,7 +706,7 @@ public class VeniceServer {
     }
 
     VeniceServerContext serverContext = new VeniceServerContext.Builder().setVeniceConfigLoader(veniceConfigService)
-        .setPubSubClientsFactory(new PubSubClientsFactory(new ApacheKafkaProducerAdapterFactory(), null))
+        .setPubSubClientsFactory(new PubSubClientsFactory(new ApacheKafkaProducerAdapterFactory()))
         .build();
     final VeniceServer server = new VeniceServer(serverContext);
     if (!server.isStarted()) {

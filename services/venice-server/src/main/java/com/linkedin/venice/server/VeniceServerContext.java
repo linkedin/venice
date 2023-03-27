@@ -144,7 +144,7 @@ public class VeniceServerContext {
     }
 
     public VeniceServerContext build() {
-
+      addDefaultValues();
       return new VeniceServerContext(this);
     }
   }

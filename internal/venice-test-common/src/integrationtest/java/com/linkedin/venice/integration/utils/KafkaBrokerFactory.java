@@ -34,7 +34,7 @@ class KafkaBrokerFactory implements PubSubBrokerFactory {
   private static final boolean LOG_CLEANER_ENABLE = false;
   // anchor for creating clients for this broker
   private static final PubSubClientsFactory KAFKA_CLIENTS_FACTORY =
-      new PubSubClientsFactory(new ApacheKafkaProducerAdapterFactory(), null);
+      new PubSubClientsFactory(new ApacheKafkaProducerAdapterFactory());
 
   /**
    * @return a function which yields a {@link KafkaBrokerWrapper} instance
@@ -134,7 +134,7 @@ class KafkaBrokerFactory implements PubSubBrokerFactory {
       this.sslPort = sslPort;
       this.zkServerWrapper = zkServerWrapper;
       this.shouldCloseZkServer = shouldCloseZkServer;
-      pubSubClientsFactory = new PubSubClientsFactory(new ApacheKafkaProducerAdapterFactory(), null);
+      pubSubClientsFactory = new PubSubClientsFactory(new ApacheKafkaProducerAdapterFactory());
     }
 
     @Override
