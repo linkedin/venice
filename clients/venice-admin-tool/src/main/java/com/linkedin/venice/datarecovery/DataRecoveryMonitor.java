@@ -7,14 +7,15 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-/**
- * DataRecoveryExecutor is the engine to run tasks in data recovery.
- */
-public class DataRecoveryExecutor extends DataRecoveryWorker {
-  private final Logger LOGGER = LogManager.getLogger(DataRecoveryExecutor.class);
+public class DataRecoveryMonitor extends DataRecoveryWorker {
+  private final Logger LOGGER = LogManager.getLogger(DataRecoveryMonitor.class);
 
-  public DataRecoveryExecutor() {
+  public DataRecoveryMonitor() {
     super();
+  }
+
+  public void setInterval(int interval) {
+    this.interval = interval;
   }
 
   @Override
@@ -22,10 +23,8 @@ public class DataRecoveryExecutor extends DataRecoveryWorker {
     List<DataRecoveryTask> tasks = new ArrayList<>();
     for (String name: storeNames) {
       DataRecoveryTask.TaskParams taskParams = new DataRecoveryTask.TaskParams(name, params);
-      tasks.add(
-          new DataRecoveryTask(
-              new StoreRepushCommand((StoreRepushCommand.Params) taskParams.getCmdParams()),
-              taskParams));
+      tasks
+          .add(new DataRecoveryTask(new MonitorCommand((MonitorCommand.Params) taskParams.getCmdParams()), taskParams));
     }
     return tasks;
   }
@@ -33,9 +32,9 @@ public class DataRecoveryExecutor extends DataRecoveryWorker {
   @Override
   public void displayTaskResult(DataRecoveryTask task) {
     LOGGER.info(
-        "[store: {}, status: {}, message: {}]",
+        "[store: {}, {}: {}]",
         task.getTaskParams().getStore(),
-        task.getTaskResult().isError() ? "failed" : "started",
+        task.getTaskResult().isError() ? "err" : "msg",
         task.getTaskResult().isError() ? task.getTaskResult().getError() : task.getTaskResult().getMessage());
   }
 }

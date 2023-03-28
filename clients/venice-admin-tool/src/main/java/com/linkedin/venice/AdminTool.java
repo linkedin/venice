@@ -2,7 +2,6 @@ package com.linkedin.venice;
 
 import static com.linkedin.venice.CommonConfigKeys.SSL_FACTORY_CLASS_NAME;
 import static com.linkedin.venice.VeniceConstants.DEFAULT_SSL_FACTORY_CLASS_NAME;
-import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 import static org.apache.kafka.clients.consumer.ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG;
 import static org.apache.kafka.clients.consumer.ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG;
 import static org.apache.kafka.clients.consumer.ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG;
@@ -58,6 +57,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
 import com.linkedin.venice.datarecovery.DataRecoveryClient;
+import com.linkedin.venice.datarecovery.MonitorCommand;
 import com.linkedin.venice.datarecovery.StoreRepushCommand;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
@@ -493,6 +493,9 @@ public class AdminTool {
         case EXECUTE_DATA_RECOVERY:
           executeDataRecovery(cmd);
           break;
+        case MONITOR_DATA_RECOVERY:
+          monitorDataRecovery(cmd);
+          break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
           for (Command c: Command.values()) {
@@ -619,8 +622,33 @@ public class AdminTool {
     cmdParams.setDebug(isDebuggingEnabled);
 
     DataRecoveryClient dataRecoveryClient = new DataRecoveryClient();
-    DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(stores, isNonInteractive);
+    DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(stores);
+    params.setNonInteractive(isNonInteractive);
     dataRecoveryClient.execute(params, cmdParams);
+  }
+
+  private static void monitorDataRecovery(CommandLine cmd) {
+    String parentUrl = getRequiredArgument(cmd, Arg.URL);
+    String destFabric = getRequiredArgument(cmd, Arg.DEST_FABRIC);
+    String stores = getRequiredArgument(cmd, Arg.STORES);
+
+    String intervalStr = getOptionalArgument(cmd, Arg.INTERVAL);
+
+    MonitorCommand.Params monitorParams = new MonitorCommand.Params();
+    monitorParams.setTargetRegion(destFabric);
+    monitorParams.setParentUrl(parentUrl);
+    monitorParams.setSslFactory(sslFactory);
+
+    DataRecoveryClient dataRecoveryClient = new DataRecoveryClient();
+    DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(stores);
+    if (intervalStr != null) {
+      params.setInterval(Integer.parseInt(intervalStr));
+    }
+
+    try (ControllerClient parentCtrlCli = new ControllerClient("*", parentUrl, sslFactory)) {
+      monitorParams.setPCtrlCliWithoutCluster(parentCtrlCli);
+      dataRecoveryClient.monitor(params, monitorParams);
+    }
   }
 
   private static void createNewStore(CommandLine cmd) throws Exception {
