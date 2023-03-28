@@ -140,7 +140,7 @@ public enum ControllerRoute {
   LIST_CHILD_CLUSTERS("/list_child_clusters", HttpMethod.GET, Collections.emptyList()),
   LIST_NODES("/list_instances", HttpMethod.GET, Collections.emptyList()),
   CLUSTER_HEALTH_STORES("/cluster_health_stores", HttpMethod.GET, Collections.emptyList()),
-  ClUSTER_HEALTH_INSTANCES("/cluster_health_instances", HttpMethod.GET, Collections.emptyList()),
+  ClUSTER_HEALTH_INSTANCES("/cluster_health_instances", HttpMethod.GET, Collections.emptyList(), "fd"),
   LIST_REPLICAS("/list_replicas", HttpMethod.GET, Arrays.asList(NAME, VERSION)),
   NODE_REPLICAS("/storage_node_replicas", HttpMethod.GET, Collections.singletonList(STORAGE_NODE_ID)),
   NODE_REMOVABLE(

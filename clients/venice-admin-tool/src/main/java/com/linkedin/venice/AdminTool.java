@@ -106,6 +106,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
@@ -306,7 +307,7 @@ public class AdminTool {
           printStorageNodeList();
           break;
         case CLUSTER_HEALTH_INSTANCES:
-          printInstancesStatuses();
+          printInstancesStatuses(cmd);
           break;
         case CLUSTER_HEALTH_STORES:
           printStoresStatuses();
@@ -1175,8 +1176,10 @@ public class AdminTool {
     printObject(nodeResponse);
   }
 
-  private static void printInstancesStatuses() {
-    MultiNodesStatusResponse nodeResponse = controllerClient.listInstancesStatuses();
+  private static void printInstancesStatuses(CommandLine cmd) {
+    String enableReplicas = getOptionalArgument(cmd, Arg.ENABLE_DISABLED_REPLICA);
+    MultiNodesStatusResponse nodeResponse =
+        controllerClient.listInstancesStatuses(Objects.equals(enableReplicas, "true"));
     printObject(nodeResponse);
   }
 

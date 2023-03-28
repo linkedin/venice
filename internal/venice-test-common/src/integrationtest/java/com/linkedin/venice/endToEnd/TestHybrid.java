@@ -438,7 +438,7 @@ public class TestHybrid {
           assertTrue(versions.contains(3));
         });
 
-        controllerClient.listInstancesStatuses()
+        controllerClient.listInstancesStatuses(false)
             .getInstancesStatusMap()
             .keySet()
             .forEach(
@@ -459,7 +459,7 @@ public class TestHybrid {
               storeStatus.get(storeName),
               "Should be UNDER_REPLICATED");
 
-          Map<String, String> instanceStatus = controllerClient.listInstancesStatuses().getInstancesStatusMap();
+          Map<String, String> instanceStatus = controllerClient.listInstancesStatuses(false).getInstancesStatusMap();
           Assert.assertTrue(
               instanceStatus.entrySet()
                   .stream()
