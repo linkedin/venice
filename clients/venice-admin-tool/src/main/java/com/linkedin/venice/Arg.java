@@ -227,7 +227,10 @@ public enum Arg {
   EXTRA_COMMAND_ARGS("extra-command-args", "eca", true, "extra command arguments"),
   ENABLE_DISABLED_REPLICA("enable-disabled-replicas", "edr", true, "Reenable disabled replicas"),
   NON_INTERACTIVE("non-interactive", "nita", false, "non-interactive mode"),
-  DEBUG("debug", "d", false, "Print debugging messages for execute-data-recovery");
+  INTERVAL(
+      "interval", "itv", true,
+      "monitor data recovery progress at seconds close to the number specified by the interval parameter until tasks are finished"
+  ), DEBUG("debug", "d", false, "Print debugging messages for execute-data-recovery");
 
   private final String argName;
   private final String first;
