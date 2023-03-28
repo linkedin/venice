@@ -143,7 +143,7 @@ public class TestDataRecoveryClient {
     doReturn(storeResponse).when(mockedCli).getStore(anyString());
     doReturn(discoveryResponse).when(mockedCli).discoverCluster(anyString());
     doReturn(statusResponse).when(mockedCli).getFutureVersions(anyString(), anyString());
-    doReturn(queryResponse).when(mockedCli).queryJobStatus(anyString());
+    doReturn(queryResponse).when(mockedCli).queryDetailedJobStatus(anyString(), anyString());
 
     DataRecoveryClient dataRecoveryClient = mock(DataRecoveryClient.class);
     doReturn(monitor).when(dataRecoveryClient).getMonitor();
