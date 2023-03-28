@@ -2755,6 +2755,8 @@ public abstract class StoreIngestionTaskTest {
     doReturn(0).when(mockPcsBufferReplayStartedLagCaughtUp).getPartition();
     doReturn(0).when(mockPcsBufferReplayStartedLagCaughtUp).getUserPartition();
     storeIngestionTaskUnderTest.setPartitionConsumptionState(0, mockPcsBufferReplayStartedLagCaughtUp);
+    // partitionConsumptionState.getLeaderFollowerState().equals(STANDBY)
+    doReturn(LEADER).when(mockPcsBufferReplayStartedLagCaughtUp).getLeaderFollowerState();
     Assert.assertTrue(storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedLagCaughtUp));
 
     // Remote replication lag has not caught up but host has caught up to lag in local VT, so DaVinci replica will be

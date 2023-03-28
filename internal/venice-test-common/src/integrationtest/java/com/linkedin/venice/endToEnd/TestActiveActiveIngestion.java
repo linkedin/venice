@@ -508,6 +508,92 @@ public class TestActiveActiveIngestion {
     return polledMessagesNum;
   }
 
+  @Test(timeOut = TEST_TIMEOUT, dataProviderClass = DataProviderUtils.class)
+  public void testLeaderLagWithIgnoredData() throws Exception {
+    // We want to verify in this test if pushes will go through if the tail end of the RT is full of data which we drop
+    String parentControllerURLs =
+        parentControllers.stream().map(VeniceControllerWrapper::getControllerUrl).collect(Collectors.joining(","));
+    ControllerClient controllerClient =
+        new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
+    ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerURLs);
+    TestUtils.assertCommand(
+        parentControllerClient.configureActiveActiveReplicationForCluster(
+            true,
+            VeniceUserStoreType.BATCH_ONLY.toString(),
+            Optional.empty()));
+    // create a active-active enabled store and run batch push job
+    // batch job contains 100 records
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
+    String inputDirPath = "file:" + inputDir.getAbsolutePath();
+    String storeName = Utils.getUniqueString("store");
+    Properties props =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
+    UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
+        .setHybridRewindSeconds(360)
+        .setHybridOffsetLagThreshold(8)
+        .setChunkingEnabled(true)
+        .setNativeReplicationEnabled(true)
+        .setPartitionCount(1);
+    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
+    TestWriteUtils.runPushJob("Run push job", props);
+
+    Map<String, String> samzaConfig = getSamzaConfig(storeName);
+    VeniceSystemFactory factory = new VeniceSystemFactory();
+    // set up mocked time for Samza records so some records can be stale intentionally.
+    List<Long> mockTimestampInMs = new LinkedList<>();
+    List<Long> mockTimestampInMsInThePast = new LinkedList<>();
+    Instant now = Instant.now();
+    // always-valid record
+    mockTimestampInMs.add(now.toEpochMilli());
+    mockTimestampInMsInThePast.add(now.toEpochMilli() - 10000L);
+    // always-stale records since ttl time is 360 sec
+    Instant past = now.minus(1, ChronoUnit.HOURS);
+    mockTimestampInMs.add(past.toEpochMilli());
+    mockTimestampInMsInThePast.add(past.toEpochMilli() - 10000L);
+    Time mockTime = new MockCircularTime(mockTimestampInMs);
+    Time mockPastime = new MockCircularTime(mockTimestampInMsInThePast);
+
+    try (
+        VeniceSystemProducer veniceProducer = factory.getClosableProducer("venice", new MapConfig(samzaConfig), null)) {
+      veniceProducer.start();
+      // Run Samza job to send PUT and DELETE requests with a mix of records that will land and some which won't.
+      runSamzaStreamJob(veniceProducer, storeName, mockTime, 10, 0, 20);
+
+      // Run it again but only add records to the end of the RT which will fail DCR. These records will try to delete
+      // everything we just wrote
+      runSamzaStreamJob(veniceProducer, storeName, mockPastime, 0, 10, 20);
+
+    }
+
+    // Now see if a push will succeed. There are 20 events at the front of the queue which are valid and another 20
+    // which are ignored.
+    // our rewind is set to 8 messages as acceptable lag. If the push succeeds, it means we used the drop messages as
+    // part of our calculation
+    parentControllerClient.sendEmptyPushAndWait(storeName, "Run empty push job", 1000, 30 * Time.MS_PER_SECOND);
+    TestUtils.waitForNonDeterministicAssertion(
+        5,
+        TimeUnit.SECONDS,
+        () -> Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(), 2));
+
+    try (AvroGenericStoreClient<String, Utf8> client = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(clusterWrapper.getRandomRouterURL()))) {
+      // We sent a bunch of deletes to the keys we wrote previously that should have been dropped by DCR. Validate
+      // they're still there.
+      int validGet = 0;
+      for (int i = 20; i < 30; i++) {
+        Object result = client.get(Integer.toString(i)).get();
+        if (result != null) {
+          validGet++;
+        }
+      }
+      // Half records are valid, another half is not
+      Assert.assertEquals(validGet, 10);
+    }
+  }
+
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testKIFRepushActiveActiveStore(boolean isChunkingEnabled) throws Exception {
     String parentControllerURLs =

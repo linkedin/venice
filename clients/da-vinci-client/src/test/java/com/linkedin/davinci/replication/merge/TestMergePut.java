@@ -32,17 +32,17 @@ public class TestMergePut extends TestMergeBase {
       r.put(REGULAR_FIELD_NAME, "defaultVenice");
       r.put(STRING_ARRAY_FIELD_NAME, Collections.emptyList());
       r.put(NULLABLE_STRING_ARRAY_FIELD_NAME, Collections.emptyList());
-      r.put(INT_MAP_FIELD_NAME, Collections.emptyMap());
-      r.put(NULLABLE_INT_MAP_FIELD_NAME, Collections.emptyMap());
+      r.put(STRING_MAP_FIELD_NAME, Collections.emptyMap());
+      r.put(NULLABLE_STRING_MAP_FIELD_NAME, Collections.emptyMap());
     });
     GenericRecord oldRmdRecord = initiateFieldLevelRmdRecord(oldValueRecord, 0);
 
     GenericRecord newValueRecord = createValueRecord(r -> {
       r.put(REGULAR_FIELD_NAME, "newString");
       r.put(STRING_ARRAY_FIELD_NAME, Collections.singletonList("item1"));
-      r.put(INT_MAP_FIELD_NAME, Collections.singletonMap("key1", 1));
+      r.put(STRING_MAP_FIELD_NAME, Collections.singletonMap("key1", "1"));
       r.put(NULLABLE_STRING_ARRAY_FIELD_NAME, null);
-      r.put(NULLABLE_INT_MAP_FIELD_NAME, null);
+      r.put(NULLABLE_STRING_MAP_FIELD_NAME, null);
     });
 
     MergeConflictResult result = mergeConflictResolver.put(
@@ -58,15 +58,18 @@ public class TestMergePut extends TestMergeBase {
     Assert.assertFalse(result.isUpdateIgnored());
     GenericRecord updatedValueRecord = deserializeValueRecord(result.getNewValue());
     Assert.assertEquals(updatedValueRecord.get(REGULAR_FIELD_NAME).toString(), "newString");
-    Assert.assertEquals(updatedValueRecord.get(INT_MAP_FIELD_NAME), Collections.singletonMap(new Utf8("key1"), 1));
+    Assert.assertEquals(
+        updatedValueRecord.get(STRING_MAP_FIELD_NAME),
+        Collections.singletonMap(new Utf8("key1"), new Utf8("1")));
     Assert.assertEquals(updatedValueRecord.get(STRING_ARRAY_FIELD_NAME), Collections.singletonList(new Utf8("item1")));
     Assert.assertNull(updatedValueRecord.get(NULLABLE_STRING_ARRAY_FIELD_NAME));
-    Assert.assertNull(updatedValueRecord.get(NULLABLE_INT_MAP_FIELD_NAME));
+    Assert.assertNull(updatedValueRecord.get(NULLABLE_STRING_MAP_FIELD_NAME));
     GenericRecord rmdTimestampRecord = (GenericRecord) result.getRmdRecord().get(RmdConstants.TIMESTAMP_FIELD_NAME);
     Assert.assertEquals(rmdTimestampRecord.get(REGULAR_FIELD_NAME), 1L);
-    Assert.assertEquals(((GenericRecord) rmdTimestampRecord.get(INT_MAP_FIELD_NAME)).get(TOP_LEVEL_TS_FIELD_NAME), 1L);
+    Assert
+        .assertEquals(((GenericRecord) rmdTimestampRecord.get(STRING_MAP_FIELD_NAME)).get(TOP_LEVEL_TS_FIELD_NAME), 1L);
     Assert.assertEquals(
-        ((GenericRecord) rmdTimestampRecord.get(INT_MAP_FIELD_NAME)).get(TOP_LEVEL_COLO_ID_FIELD_NAME),
+        ((GenericRecord) rmdTimestampRecord.get(STRING_MAP_FIELD_NAME)).get(TOP_LEVEL_COLO_ID_FIELD_NAME),
         0);
     Assert.assertEquals(
         ((GenericRecord) rmdTimestampRecord.get(STRING_ARRAY_FIELD_NAME)).get(TOP_LEVEL_TS_FIELD_NAME),
@@ -87,16 +90,16 @@ public class TestMergePut extends TestMergeBase {
     GenericRecord oldValueRecord = createValueRecord(r -> {
       r.put(REGULAR_FIELD_NAME, "defaultVenice");
       r.put(STRING_ARRAY_FIELD_NAME, Collections.emptyList());
-      r.put(INT_MAP_FIELD_NAME, new IndexedHashMap<>());
+      r.put(STRING_MAP_FIELD_NAME, new IndexedHashMap<>());
     });
     GenericRecord oldRmdRecord = initiateFieldLevelRmdRecord(oldValueRecord, 2);
 
     GenericRecord newValueRecord = createValueRecord(r -> {
       r.put(REGULAR_FIELD_NAME, "defaultVenice");
       r.put(STRING_ARRAY_FIELD_NAME, Collections.singletonList("item1"));
-      IndexedHashMap<String, Integer> hashMap = new IndexedHashMap<>();
-      hashMap.put("key1", 1);
-      r.put(INT_MAP_FIELD_NAME, hashMap);
+      IndexedHashMap<String, String> hashMap = new IndexedHashMap<>();
+      hashMap.put("key1", "1");
+      r.put(STRING_MAP_FIELD_NAME, hashMap);
     });
 
     MergeConflictResult result = mergeConflictResolver.put(
@@ -134,9 +137,9 @@ public class TestMergePut extends TestMergeBase {
     GenericRecord oldValueRecord = createValueRecord(r -> {
       r.put(REGULAR_FIELD_NAME, "defaultVenice");
       r.put(STRING_ARRAY_FIELD_NAME, Collections.singletonList("item1"));
-      IndexedHashMap<String, Integer> hashMap = new IndexedHashMap<>();
-      hashMap.put("key1", 1);
-      r.put(INT_MAP_FIELD_NAME, hashMap);
+      IndexedHashMap<String, String> hashMap = new IndexedHashMap<>();
+      hashMap.put("key1", "1");
+      r.put(STRING_MAP_FIELD_NAME, hashMap);
     });
     GenericRecord oldRmdRecord = initiateFieldLevelRmdRecord(oldValueRecord, 2);
     setRegularFieldTimestamp(oldRmdRecord, 1);
@@ -144,9 +147,9 @@ public class TestMergePut extends TestMergeBase {
     GenericRecord newValueRecord = createValueRecord(r -> {
       r.put(REGULAR_FIELD_NAME, "newString");
       r.put(STRING_ARRAY_FIELD_NAME, Collections.singletonList("item2"));
-      IndexedHashMap<String, Integer> hashMap = new IndexedHashMap<>();
-      hashMap.put("key1", 2);
-      r.put(INT_MAP_FIELD_NAME, hashMap);
+      IndexedHashMap<String, String> hashMap = new IndexedHashMap<>();
+      hashMap.put("key1", "2");
+      r.put(STRING_MAP_FIELD_NAME, hashMap);
     });
 
     MergeConflictResult result = mergeConflictResolver.put(
@@ -162,7 +165,9 @@ public class TestMergePut extends TestMergeBase {
     Assert.assertFalse(result.isUpdateIgnored());
     GenericRecord updatedValueRecord = deserializeValueRecord(result.getNewValue());
     Assert.assertEquals(updatedValueRecord.get(REGULAR_FIELD_NAME).toString(), "newString");
-    Assert.assertEquals(updatedValueRecord.get(INT_MAP_FIELD_NAME), Collections.singletonMap(new Utf8("key1"), 1));
+    Assert.assertEquals(
+        updatedValueRecord.get(STRING_MAP_FIELD_NAME),
+        Collections.singletonMap(new Utf8("key1"), new Utf8("1")));
     Assert.assertEquals(updatedValueRecord.get(STRING_ARRAY_FIELD_NAME), Collections.singletonList(new Utf8("item1")));
 
     GenericRecord updatedRmdTsRecord = (GenericRecord) result.getRmdRecord().get(RmdConstants.TIMESTAMP_FIELD_NAME);
@@ -170,14 +175,15 @@ public class TestMergePut extends TestMergeBase {
     Assert.assertEquals(
         ((GenericRecord) updatedRmdTsRecord.get(STRING_ARRAY_FIELD_NAME)).get(TOP_LEVEL_TS_FIELD_NAME),
         2L);
-    Assert.assertEquals(((GenericRecord) updatedRmdTsRecord.get(INT_MAP_FIELD_NAME)).get(TOP_LEVEL_TS_FIELD_NAME), 2L);
+    Assert
+        .assertEquals(((GenericRecord) updatedRmdTsRecord.get(STRING_MAP_FIELD_NAME)).get(TOP_LEVEL_TS_FIELD_NAME), 2L);
 
     // Case 2: Regular field is updated, but collection field is not due to same top level TS but smaller top level colo
     // ID.
     newValueRecord = createValueRecord(r -> {
       r.put(REGULAR_FIELD_NAME, "newString2");
       r.put(STRING_ARRAY_FIELD_NAME, Collections.singletonList("item2"));
-      r.put(INT_MAP_FIELD_NAME, Collections.singletonMap("key1", 2));
+      r.put(STRING_MAP_FIELD_NAME, Collections.singletonMap("key1", "2"));
     });
 
     result = mergeConflictResolver.put(
@@ -192,7 +198,9 @@ public class TestMergePut extends TestMergeBase {
     Assert.assertFalse(result.isUpdateIgnored());
     updatedValueRecord = deserializeValueRecord(result.getNewValue());
     Assert.assertEquals(updatedValueRecord.get(REGULAR_FIELD_NAME).toString(), "newString2");
-    Assert.assertEquals(updatedValueRecord.get(INT_MAP_FIELD_NAME), Collections.singletonMap(new Utf8("key1"), 1));
+    Assert.assertEquals(
+        updatedValueRecord.get(STRING_MAP_FIELD_NAME),
+        Collections.singletonMap(new Utf8("key1"), new Utf8("1")));
     Assert.assertEquals(updatedValueRecord.get(STRING_ARRAY_FIELD_NAME), Collections.singletonList(new Utf8("item1")));
 
     updatedRmdTsRecord = (GenericRecord) result.getRmdRecord().get(RmdConstants.TIMESTAMP_FIELD_NAME);
@@ -200,7 +208,8 @@ public class TestMergePut extends TestMergeBase {
     Assert.assertEquals(
         ((GenericRecord) updatedRmdTsRecord.get(STRING_ARRAY_FIELD_NAME)).get(TOP_LEVEL_TS_FIELD_NAME),
         2L);
-    Assert.assertEquals(((GenericRecord) updatedRmdTsRecord.get(INT_MAP_FIELD_NAME)).get(TOP_LEVEL_TS_FIELD_NAME), 2L);
+    Assert
+        .assertEquals(((GenericRecord) updatedRmdTsRecord.get(STRING_MAP_FIELD_NAME)).get(TOP_LEVEL_TS_FIELD_NAME), 2L);
   }
 
   /**
@@ -212,14 +221,14 @@ public class TestMergePut extends TestMergeBase {
     GenericRecord oldValueRecord = createValueRecord(r -> {
       r.put(REGULAR_FIELD_NAME, "defaultVenice");
       r.put(STRING_ARRAY_FIELD_NAME, Collections.singletonList("item1"));
-      IndexedHashMap<String, Integer> map = new IndexedHashMap<>();
-      map.put("key1", 3);
-      map.put("key2", 3);
-      r.put(INT_MAP_FIELD_NAME, map);
+      IndexedHashMap<String, String> map = new IndexedHashMap<>();
+      map.put("key1", "3");
+      map.put("key2", "3");
+      r.put(STRING_MAP_FIELD_NAME, map);
     });
     GenericRecord oldRmdRecord = initiateFieldLevelRmdRecord(oldValueRecord, 2);
     GenericRecord timestampRecord = (GenericRecord) oldRmdRecord.get(RmdConstants.TIMESTAMP_FIELD_NAME);
-    GenericRecord fieldTsRecord = (GenericRecord) timestampRecord.get(INT_MAP_FIELD_NAME);
+    GenericRecord fieldTsRecord = (GenericRecord) timestampRecord.get(STRING_MAP_FIELD_NAME);
     fieldTsRecord.put(TOP_LEVEL_TS_FIELD_NAME, 1L);
     fieldTsRecord.put(PUT_ONLY_PART_LENGTH_FIELD_NAME, 1);
     fieldTsRecord.put(ACTIVE_ELEM_TS_FIELD_NAME, Collections.singletonList(3L));
@@ -227,10 +236,10 @@ public class TestMergePut extends TestMergeBase {
     GenericRecord newValueRecord = createValueRecord(r -> {
       r.put(REGULAR_FIELD_NAME, "defaultVenice");
       r.put(STRING_ARRAY_FIELD_NAME, Collections.singletonList("item1"));
-      IndexedHashMap<String, Integer> map = new IndexedHashMap<>();
-      map.put("key1", 2);
-      map.put("key2", 2);
-      r.put(INT_MAP_FIELD_NAME, map);
+      IndexedHashMap<String, String> map = new IndexedHashMap<>();
+      map.put("key1", "2");
+      map.put("key2", "2");
+      r.put(STRING_MAP_FIELD_NAME, map);
     });
 
     MergeConflictResult result = mergeConflictResolver.put(
@@ -244,24 +253,25 @@ public class TestMergePut extends TestMergeBase {
         -2);
     Assert.assertFalse(result.isUpdateIgnored());
     GenericRecord updatedValueRecord = deserializeValueRecord(result.getNewValue());
-    IndexedHashMap<Utf8, Integer> expectedMap = new IndexedHashMap<>();
-    expectedMap.put(new Utf8("key1"), 2);
-    expectedMap.put(new Utf8("key2"), 3);
-    Assert.assertEquals(updatedValueRecord.get(INT_MAP_FIELD_NAME), expectedMap);
+    IndexedHashMap<Utf8, Utf8> expectedMap = new IndexedHashMap<>();
+    expectedMap.put(new Utf8("key1"), new Utf8("2"));
+    expectedMap.put(new Utf8("key2"), new Utf8("3"));
+    Assert.assertEquals(updatedValueRecord.get(STRING_MAP_FIELD_NAME), expectedMap);
 
     GenericRecord updatedRmdTsRecord = (GenericRecord) result.getRmdRecord().get(RmdConstants.TIMESTAMP_FIELD_NAME);
-    Assert.assertEquals(((GenericRecord) updatedRmdTsRecord.get(INT_MAP_FIELD_NAME)).get(TOP_LEVEL_TS_FIELD_NAME), 2L);
+    Assert
+        .assertEquals(((GenericRecord) updatedRmdTsRecord.get(STRING_MAP_FIELD_NAME)).get(TOP_LEVEL_TS_FIELD_NAME), 2L);
     Assert.assertEquals(
-        ((GenericRecord) updatedRmdTsRecord.get(INT_MAP_FIELD_NAME)).get(ACTIVE_ELEM_TS_FIELD_NAME),
+        ((GenericRecord) updatedRmdTsRecord.get(STRING_MAP_FIELD_NAME)).get(ACTIVE_ELEM_TS_FIELD_NAME),
         Collections.singletonList(3L));
 
     newValueRecord = createValueRecord(r -> {
       r.put(REGULAR_FIELD_NAME, "defaultVenice");
       r.put(STRING_ARRAY_FIELD_NAME, Collections.singletonList("item1"));
-      IndexedHashMap<String, Integer> map = new IndexedHashMap<>();
-      map.put("key1", 1);
-      map.put("key2", 1);
-      r.put(INT_MAP_FIELD_NAME, map);
+      IndexedHashMap<String, String> map = new IndexedHashMap<>();
+      map.put("key1", "1");
+      map.put("key2", "1");
+      r.put(STRING_MAP_FIELD_NAME, map);
     });
     setRegularFieldTimestamp(oldRmdRecord, 10L);
 
@@ -277,14 +287,15 @@ public class TestMergePut extends TestMergeBase {
     Assert.assertFalse(result.isUpdateIgnored());
     updatedValueRecord = deserializeValueRecord(result.getNewValue());
     expectedMap = new IndexedHashMap<>();
-    expectedMap.put(new Utf8("key1"), 1);
-    expectedMap.put(new Utf8("key2"), 1);
-    Assert.assertEquals(updatedValueRecord.get(INT_MAP_FIELD_NAME), expectedMap);
+    expectedMap.put(new Utf8("key1"), new Utf8("1"));
+    expectedMap.put(new Utf8("key2"), new Utf8("1"));
+    Assert.assertEquals(updatedValueRecord.get(STRING_MAP_FIELD_NAME), expectedMap);
 
     updatedRmdTsRecord = (GenericRecord) result.getRmdRecord().get(RmdConstants.TIMESTAMP_FIELD_NAME);
-    Assert.assertEquals(((GenericRecord) updatedRmdTsRecord.get(INT_MAP_FIELD_NAME)).get(TOP_LEVEL_TS_FIELD_NAME), 3L);
+    Assert
+        .assertEquals(((GenericRecord) updatedRmdTsRecord.get(STRING_MAP_FIELD_NAME)).get(TOP_LEVEL_TS_FIELD_NAME), 3L);
     Assert.assertEquals(
-        ((GenericRecord) updatedRmdTsRecord.get(INT_MAP_FIELD_NAME)).get(ACTIVE_ELEM_TS_FIELD_NAME),
+        ((GenericRecord) updatedRmdTsRecord.get(STRING_MAP_FIELD_NAME)).get(ACTIVE_ELEM_TS_FIELD_NAME),
         Collections.emptyList());
   }
 }

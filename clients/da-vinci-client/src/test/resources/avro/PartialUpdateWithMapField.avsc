@@ -28,20 +28,20 @@
       "default": null
     },
     {
-      "name": "intMapField",
+      "name": "stringMapField",
       "type": {
         "type": "map",
-        "values": "int"
+        "values": "string"
       },
       "default": {}
     },
     {
-      "name": "nullableIntMapField",
+      "name": "nullableStringMapField",
       "type": [
         "null",
         {
           "type": "map",
-          "values": "int"
+          "values": "string"
         }
       ],
       "default": null

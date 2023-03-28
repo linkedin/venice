@@ -792,7 +792,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           }
           if (offsetThreshold >= 0) {
             /**
-             * If both threshold configs are on, both both offset lag and time lag must be within thresholds before online.
+             * If both threshold configs are on, both offset lag and time lag must be within thresholds before online.
              */
             isLagAcceptable &= timestampLagIsAcceptable;
           } else {
@@ -903,6 +903,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record: records) {
       long beforeProcessingRecordTimestamp = System.nanoTime();
       if (!shouldProcessRecord(record, subPartition)) {
+        PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(subPartition);
+        if (partitionConsumptionState != null) {
+          partitionConsumptionState.updateLatestIgnoredUpstreamRTOffset(kafkaUrl, record.getOffset());
+        }
         continue;
       }
 
