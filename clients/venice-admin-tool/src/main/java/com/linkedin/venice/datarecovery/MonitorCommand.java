@@ -77,7 +77,8 @@ public class MonitorCommand extends Command {
       result.setKafKaTopic(kafkaTopic);
 
       // Query job status.
-      JobStatusQueryResponse jobStatusQueryResponse = parentCtrlCli.queryJobStatus(kafkaTopic);
+      JobStatusQueryResponse jobStatusQueryResponse =
+          parentCtrlCli.queryDetailedJobStatus(kafkaTopic, params.targetRegion);
 
       if (jobStatusQueryResponse.isError()
           || jobStatusQueryResponse.getStatus().equalsIgnoreCase(ExecutionStatus.ERROR.toString())) {

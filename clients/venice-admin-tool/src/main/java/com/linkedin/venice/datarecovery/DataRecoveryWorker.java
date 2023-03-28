@@ -1,6 +1,6 @@
 package com.linkedin.venice.datarecovery;
 
-import static java.lang.Thread.*;
+import static java.lang.Thread.currentThread;
 
 import com.linkedin.venice.utils.Timer;
 import com.linkedin.venice.utils.Utils;
