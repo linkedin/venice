@@ -13,9 +13,12 @@ import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IndexedHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.writer.update.UpdateBuilderImpl;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.util.Utf8;
 import org.testng.Assert;
@@ -68,20 +71,20 @@ public class TestMergeUpdate extends TestMergeBase {
       boolean isUpdateTsSmallerThanRmdTs) {
     long baselineRmdTs = 2L;
     int baselineColoID = -1;
-    IndexedHashMap<String, Integer> updateMapValue = new IndexedHashMap<>();
-    updateMapValue.put("key1", 2);
-    updateMapValue.put("key2", 2);
+    IndexedHashMap<String, String> updateMapValue = new IndexedHashMap<>();
+    updateMapValue.put("key1", "2");
+    updateMapValue.put("key2", "2");
     List<String> updateListValue = Arrays.asList("item1", "item2");
     GenericRecord partialUpdateRecord =
-        new UpdateBuilderImpl(schemaSet.getUpdateSchema()).setNewFieldValue(INT_MAP_FIELD_NAME, updateMapValue)
+        new UpdateBuilderImpl(schemaSet.getUpdateSchema()).setNewFieldValue(STRING_MAP_FIELD_NAME, updateMapValue)
             .setNewFieldValue(STRING_ARRAY_FIELD_NAME, updateListValue)
             .build();
 
     GenericRecord oldValueRecord = createDefaultValueRecord();
-    IndexedHashMap<String, Integer> initialMapValue = new IndexedHashMap<>();
-    initialMapValue.put("key1", 1);
-    initialMapValue.put("key2", 1);
-    oldValueRecord.put(INT_MAP_FIELD_NAME, initialMapValue);
+    IndexedHashMap<String, String> initialMapValue = new IndexedHashMap<>();
+    initialMapValue.put("key1", "1");
+    initialMapValue.put("key2", "1");
+    oldValueRecord.put(STRING_MAP_FIELD_NAME, initialMapValue);
     oldValueRecord.put(STRING_ARRAY_FIELD_NAME, Arrays.asList("item0", "item1"));
 
     GenericRecord oldRmdRecord = rmdStartsWithFieldLevelTs
@@ -112,31 +115,31 @@ public class TestMergeUpdate extends TestMergeBase {
       boolean updateOnActiveElement,
       boolean isUpdateTsSmallerThanElementTs) {
     long baselineRmdTs = 2L;
-    IndexedHashMap<String, Integer> addToMapValue = new IndexedHashMap<>();
+    IndexedHashMap<String, String> addToMapValue = new IndexedHashMap<>();
     List<String> addToListValue;
     if (updateOnActiveElement) {
-      addToMapValue.put("key2", 0);
+      addToMapValue.put("key2", "0");
       addToListValue = Collections.singletonList("item2");
     } else {
-      addToMapValue.put("key1", 0);
+      addToMapValue.put("key1", "0");
       addToListValue = Collections.singletonList("item1");
     }
 
     GenericRecord partialUpdateRecord = new UpdateBuilderImpl(schemaSet.getUpdateSchema())
         .setElementsToAddToListField(STRING_ARRAY_FIELD_NAME, addToListValue)
-        .setEntriesToAddToMapField(INT_MAP_FIELD_NAME, addToMapValue)
+        .setEntriesToAddToMapField(STRING_MAP_FIELD_NAME, addToMapValue)
         .build();
 
     GenericRecord oldValueRecord = createDefaultValueRecord();
-    IndexedHashMap<String, Integer> initialMapValue = new IndexedHashMap<>();
-    initialMapValue.put("key1", 1);
-    initialMapValue.put("key2", 1);
-    oldValueRecord.put(INT_MAP_FIELD_NAME, initialMapValue);
+    IndexedHashMap<String, String> initialMapValue = new IndexedHashMap<>();
+    initialMapValue.put("key1", "1");
+    initialMapValue.put("key2", "1");
+    oldValueRecord.put(STRING_MAP_FIELD_NAME, initialMapValue);
     oldValueRecord.put(STRING_ARRAY_FIELD_NAME, Arrays.asList("item1", "item2"));
     GenericRecord oldRmdRecord = initiateFieldLevelRmdRecord(oldValueRecord, baselineRmdTs);
 
     GenericRecord timestampRecord = (GenericRecord) oldRmdRecord.get(RmdConstants.TIMESTAMP_FIELD_NAME);
-    GenericRecord mapTsRecord = (GenericRecord) timestampRecord.get(INT_MAP_FIELD_NAME);
+    GenericRecord mapTsRecord = (GenericRecord) timestampRecord.get(STRING_MAP_FIELD_NAME);
     mapTsRecord.put(TOP_LEVEL_TS_FIELD_NAME, baselineRmdTs);
     mapTsRecord.put(PUT_ONLY_PART_LENGTH_FIELD_NAME, 1);
     mapTsRecord.put(ACTIVE_ELEM_TS_FIELD_NAME, Collections.singletonList(baselineRmdTs + 1));
@@ -181,19 +184,19 @@ public class TestMergeUpdate extends TestMergeBase {
 
     GenericRecord partialUpdateRecord = new UpdateBuilderImpl(schemaSet.getUpdateSchema())
         .setElementsToRemoveFromListField(STRING_ARRAY_FIELD_NAME, removeFromListValue)
-        .setKeysToRemoveFromMapField(INT_MAP_FIELD_NAME, removeFromMapValue)
+        .setKeysToRemoveFromMapField(STRING_MAP_FIELD_NAME, removeFromMapValue)
         .build();
 
     GenericRecord oldValueRecord = createDefaultValueRecord();
-    IndexedHashMap<String, Integer> initialMapValue = new IndexedHashMap<>();
-    initialMapValue.put("key1", 1);
-    initialMapValue.put("key2", 1);
-    oldValueRecord.put(INT_MAP_FIELD_NAME, initialMapValue);
+    IndexedHashMap<String, String> initialMapValue = new IndexedHashMap<>();
+    initialMapValue.put("key1", "1");
+    initialMapValue.put("key2", "1");
+    oldValueRecord.put(STRING_MAP_FIELD_NAME, initialMapValue);
     oldValueRecord.put(STRING_ARRAY_FIELD_NAME, Arrays.asList("item1", "item2"));
     GenericRecord oldRmdRecord = initiateFieldLevelRmdRecord(oldValueRecord, baselineRmdTs);
 
     GenericRecord timestampRecord = (GenericRecord) oldRmdRecord.get(RmdConstants.TIMESTAMP_FIELD_NAME);
-    GenericRecord mapTsRecord = (GenericRecord) timestampRecord.get(INT_MAP_FIELD_NAME);
+    GenericRecord mapTsRecord = (GenericRecord) timestampRecord.get(STRING_MAP_FIELD_NAME);
     mapTsRecord.put(TOP_LEVEL_TS_FIELD_NAME, baselineRmdTs);
     mapTsRecord.put(PUT_ONLY_PART_LENGTH_FIELD_NAME, 1);
     mapTsRecord.put(ACTIVE_ELEM_TS_FIELD_NAME, Collections.singletonList(baselineRmdTs + 1));
@@ -229,20 +232,20 @@ public class TestMergeUpdate extends TestMergeBase {
   public void testMapFieldAddEntriesUpdateIgnoredOnValueLevelTs(boolean updateTsSmallerThanRmdTs) {
     long baselineRmdTs = 2L;
 
-    IndexedHashMap<String, Integer> addToMapValue = new IndexedHashMap<>();
-    addToMapValue.put("key1", 2);
-    addToMapValue.put("key2", 2);
+    IndexedHashMap<String, String> addToMapValue = new IndexedHashMap<>();
+    addToMapValue.put("key1", "2");
+    addToMapValue.put("key2", "2");
     List<String> addToListValue = Collections.singletonList("item1");
     GenericRecord partialUpdateRecord = new UpdateBuilderImpl(schemaSet.getUpdateSchema())
         .setElementsToAddToListField(STRING_ARRAY_FIELD_NAME, addToListValue)
-        .setEntriesToAddToMapField(INT_MAP_FIELD_NAME, addToMapValue)
+        .setEntriesToAddToMapField(STRING_MAP_FIELD_NAME, addToMapValue)
         .build();
 
     GenericRecord oldValueRecord = createDefaultValueRecord();
-    IndexedHashMap<String, Integer> initialMapValue = new IndexedHashMap<>();
-    initialMapValue.put("key1", 1);
-    initialMapValue.put("key2", 1);
-    oldValueRecord.put(INT_MAP_FIELD_NAME, initialMapValue);
+    IndexedHashMap<String, String> initialMapValue = new IndexedHashMap<>();
+    initialMapValue.put("key1", "1");
+    initialMapValue.put("key2", "1");
+    oldValueRecord.put(STRING_MAP_FIELD_NAME, initialMapValue);
     oldValueRecord.put(STRING_ARRAY_FIELD_NAME, Collections.singletonList("item2"));
     GenericRecord oldRmdRecord = initiateValueLevelRmdRecord(baselineRmdTs);
     long updateTs = updateTsSmallerThanRmdTs ? baselineRmdTs - 1 : baselineRmdTs;
@@ -261,17 +264,17 @@ public class TestMergeUpdate extends TestMergeBase {
 
   @Test
   public void testSetCollectionFieldOnFieldValueTs() {
-    IndexedHashMap<String, Integer> updateMapValue = new IndexedHashMap<>();
-    updateMapValue.put("key1", 2);
-    updateMapValue.put("key2", 2);
-    updateMapValue.put("key3", 2);
-    updateMapValue.put("key4", 2);
-    updateMapValue.put("key5", 2);
-    updateMapValue.put("key6", 2);
+    IndexedHashMap<String, String> updateMapValue = new IndexedHashMap<>();
+    updateMapValue.put("key1", "2");
+    updateMapValue.put("key2", "2");
+    updateMapValue.put("key3", "2");
+    updateMapValue.put("key4", "2");
+    updateMapValue.put("key5", "2");
+    updateMapValue.put("key6", "2");
     GenericRecord partialUpdateRecord =
-        new UpdateBuilderImpl(schemaSet.getUpdateSchema()).setNewFieldValue(INT_MAP_FIELD_NAME, updateMapValue)
+        new UpdateBuilderImpl(schemaSet.getUpdateSchema()).setNewFieldValue(STRING_MAP_FIELD_NAME, updateMapValue)
             .setNewFieldValue(STRING_ARRAY_FIELD_NAME, Arrays.asList("key1", "key2", "key3", "key4", "key5", "key6"))
-            .setNewFieldValue(NULLABLE_INT_MAP_FIELD_NAME, null)
+            .setNewFieldValue(NULLABLE_STRING_MAP_FIELD_NAME, null)
             .setNewFieldValue(NULLABLE_STRING_ARRAY_FIELD_NAME, null)
             .build();
 
@@ -279,13 +282,13 @@ public class TestMergeUpdate extends TestMergeBase {
     List<String> listValue = Arrays.asList("key1", "key2", "key3");
     oldValueRecord.put(STRING_ARRAY_FIELD_NAME, listValue);
     oldValueRecord.put(NULLABLE_STRING_ARRAY_FIELD_NAME, listValue);
-    IndexedHashMap<String, Integer> mapValue = new IndexedHashMap<>();
-    mapValue.put("key1", 1); // Put Only Part
-    mapValue.put("key2", 1); // Same TS, value is smaller than incoming update.
-    mapValue.put("key3", 4); // Same TS, value is bigger than incoming update.
-    mapValue.put("key4", 1); // Higher TS
-    oldValueRecord.put(INT_MAP_FIELD_NAME, mapValue);
-    oldValueRecord.put(NULLABLE_INT_MAP_FIELD_NAME, mapValue);
+    IndexedHashMap<String, String> mapValue = new IndexedHashMap<>();
+    mapValue.put("key1", "1"); // Put Only Part
+    mapValue.put("key2", "1"); // Same TS, value is smaller than incoming update.
+    mapValue.put("key3", "4"); // Same TS, value is bigger than incoming update.
+    mapValue.put("key4", "1"); // Higher TS
+    oldValueRecord.put(STRING_MAP_FIELD_NAME, mapValue);
+    oldValueRecord.put(NULLABLE_STRING_MAP_FIELD_NAME, mapValue);
 
     GenericRecord oldRmdRecord = initiateFieldLevelRmdRecord(oldValueRecord, 2);
     GenericRecord timestampRecord = (GenericRecord) oldRmdRecord.get(RmdConstants.TIMESTAMP_FIELD_NAME);
@@ -303,14 +306,14 @@ public class TestMergeUpdate extends TestMergeBase {
     nullableListTsRecord.put(DELETED_ELEM_FIELD_NAME, Arrays.asList("key4", "key5"));
     nullableListTsRecord.put(DELETED_ELEM_TS_FIELD_NAME, Arrays.asList(2L, 3L));
 
-    GenericRecord mapTsRecord = (GenericRecord) timestampRecord.get(INT_MAP_FIELD_NAME);
+    GenericRecord mapTsRecord = (GenericRecord) timestampRecord.get(STRING_MAP_FIELD_NAME);
     mapTsRecord.put(TOP_LEVEL_TS_FIELD_NAME, 1L);
     mapTsRecord.put(PUT_ONLY_PART_LENGTH_FIELD_NAME, 1);
     mapTsRecord.put(ACTIVE_ELEM_TS_FIELD_NAME, Arrays.asList(2L, 2L, 3L));
     mapTsRecord.put(DELETED_ELEM_FIELD_NAME, Arrays.asList("key5", "key6"));
     mapTsRecord.put(DELETED_ELEM_TS_FIELD_NAME, Arrays.asList(2L, 3L));
 
-    GenericRecord nullableMapTsRecord = (GenericRecord) timestampRecord.get(NULLABLE_INT_MAP_FIELD_NAME);
+    GenericRecord nullableMapTsRecord = (GenericRecord) timestampRecord.get(NULLABLE_STRING_MAP_FIELD_NAME);
     nullableMapTsRecord.put(TOP_LEVEL_TS_FIELD_NAME, 1L);
     nullableMapTsRecord.put(PUT_ONLY_PART_LENGTH_FIELD_NAME, 1);
     nullableMapTsRecord.put(ACTIVE_ELEM_TS_FIELD_NAME, Arrays.asList(2L, 2L, 3L));
@@ -332,20 +335,20 @@ public class TestMergeUpdate extends TestMergeBase {
     Assert.assertEquals(
         updatedValueRecord.get(NULLABLE_STRING_ARRAY_FIELD_NAME),
         Collections.singletonList(new Utf8("key3")));
-    IndexedHashMap<Utf8, Integer> expectedNullableMap = new IndexedHashMap<>();
-    expectedNullableMap.put(new Utf8("key4"), 1);
-    Assert.assertEquals(updatedValueRecord.get(NULLABLE_INT_MAP_FIELD_NAME), expectedNullableMap);
+    IndexedHashMap<Utf8, Utf8> expectedNullableMap = new IndexedHashMap<>();
+    expectedNullableMap.put(new Utf8("key4"), new Utf8("1"));
+    Assert.assertEquals(updatedValueRecord.get(NULLABLE_STRING_MAP_FIELD_NAME), expectedNullableMap);
     Assert.assertEquals(
         updatedValueRecord.get(STRING_ARRAY_FIELD_NAME),
         Arrays.asList(new Utf8("key1"), new Utf8("key2"), new Utf8("key6"), new Utf8("key3")));
 
-    IndexedHashMap<Utf8, Integer> expectedMap = new IndexedHashMap<>();
-    expectedMap.put(new Utf8("key1"), 2);
-    expectedMap.put(new Utf8("key2"), 2);
-    expectedMap.put(new Utf8("key3"), 2);
-    expectedMap.put(new Utf8("key4"), 1);
+    IndexedHashMap<Utf8, Utf8> expectedMap = new IndexedHashMap<>();
+    expectedMap.put(new Utf8("key1"), new Utf8("2"));
+    expectedMap.put(new Utf8("key2"), new Utf8("2"));
+    expectedMap.put(new Utf8("key3"), new Utf8("2"));
+    expectedMap.put(new Utf8("key4"), new Utf8("1"));
 
-    Assert.assertEquals(updatedValueRecord.get(INT_MAP_FIELD_NAME), expectedMap);
+    Assert.assertEquals(updatedValueRecord.get(STRING_MAP_FIELD_NAME), expectedMap);
 
     GenericRecord updateRmdRecord = result.getRmdRecord();
     GenericRecord updatedRmdTsRecord = (GenericRecord) updateRmdRecord.get(RmdConstants.TIMESTAMP_FIELD_NAME);
@@ -356,7 +359,7 @@ public class TestMergeUpdate extends TestMergeBase {
     Assert.assertEquals(updatedListTsRecord.get(DELETED_ELEM_FIELD_NAME), Arrays.asList("key4", "key5"));
     Assert.assertEquals(updatedListTsRecord.get(DELETED_ELEM_TS_FIELD_NAME), Arrays.asList(2L, 3L));
 
-    GenericRecord updatedMapTsRecord = (GenericRecord) updatedRmdTsRecord.get(INT_MAP_FIELD_NAME);
+    GenericRecord updatedMapTsRecord = (GenericRecord) updatedRmdTsRecord.get(STRING_MAP_FIELD_NAME);
     Assert.assertEquals(updatedMapTsRecord.get(TOP_LEVEL_TS_FIELD_NAME), 2L);
     Assert.assertEquals(updatedMapTsRecord.get(PUT_ONLY_PART_LENGTH_FIELD_NAME), 3);
     Assert.assertEquals(updatedMapTsRecord.get(ACTIVE_ELEM_TS_FIELD_NAME), Collections.singletonList(3L));
@@ -371,7 +374,7 @@ public class TestMergeUpdate extends TestMergeBase {
     Assert.assertEquals(updatedNullableListTsRecord.get(DELETED_ELEM_FIELD_NAME), Arrays.asList("key4", "key5"));
     Assert.assertEquals(updatedNullableListTsRecord.get(DELETED_ELEM_TS_FIELD_NAME), Arrays.asList(2L, 3L));
 
-    GenericRecord updatedNullableMapTsRecord = (GenericRecord) updatedRmdTsRecord.get(NULLABLE_INT_MAP_FIELD_NAME);
+    GenericRecord updatedNullableMapTsRecord = (GenericRecord) updatedRmdTsRecord.get(NULLABLE_STRING_MAP_FIELD_NAME);
     Assert.assertEquals(updatedNullableMapTsRecord.get(TOP_LEVEL_TS_FIELD_NAME), 2L);
     Assert.assertEquals(updatedNullableMapTsRecord.get(PUT_ONLY_PART_LENGTH_FIELD_NAME), 0);
     Assert.assertEquals(updatedNullableMapTsRecord.get(ACTIVE_ELEM_TS_FIELD_NAME), Collections.singletonList(3L));
@@ -380,7 +383,7 @@ public class TestMergeUpdate extends TestMergeBase {
 
     // Set nullable collection field to NULL value by updating it in a large enough TS.
     partialUpdateRecord =
-        new UpdateBuilderImpl(schemaSet.getUpdateSchema()).setNewFieldValue(NULLABLE_INT_MAP_FIELD_NAME, null)
+        new UpdateBuilderImpl(schemaSet.getUpdateSchema()).setNewFieldValue(NULLABLE_STRING_MAP_FIELD_NAME, null)
             .setNewFieldValue(NULLABLE_STRING_ARRAY_FIELD_NAME, null)
             .build();
     result = mergeConflictResolver.update(
@@ -396,7 +399,7 @@ public class TestMergeUpdate extends TestMergeBase {
 
     GenericRecord newUpdatedValueRecord = deserializeValueRecord(result.getNewValue());
     Assert.assertNull(newUpdatedValueRecord.get(NULLABLE_STRING_ARRAY_FIELD_NAME));
-    Assert.assertNull(newUpdatedValueRecord.get(NULLABLE_INT_MAP_FIELD_NAME));
+    Assert.assertNull(newUpdatedValueRecord.get(NULLABLE_STRING_MAP_FIELD_NAME));
     GenericRecord newUpdatedRmdRecord = result.getRmdRecord();
     GenericRecord newUpdatedRmdTsRecord = (GenericRecord) newUpdatedRmdRecord.get(RmdConstants.TIMESTAMP_FIELD_NAME);
 
@@ -407,7 +410,7 @@ public class TestMergeUpdate extends TestMergeBase {
     Assert.assertEquals(updatedNullableListTsRecord.get(DELETED_ELEM_FIELD_NAME), Collections.emptyList());
     Assert.assertEquals(updatedNullableListTsRecord.get(DELETED_ELEM_TS_FIELD_NAME), Collections.emptyList());
 
-    updatedNullableMapTsRecord = (GenericRecord) newUpdatedRmdTsRecord.get(NULLABLE_INT_MAP_FIELD_NAME);
+    updatedNullableMapTsRecord = (GenericRecord) newUpdatedRmdTsRecord.get(NULLABLE_STRING_MAP_FIELD_NAME);
     Assert.assertEquals(updatedNullableMapTsRecord.get(TOP_LEVEL_TS_FIELD_NAME), 10L);
     Assert.assertEquals(updatedNullableMapTsRecord.get(PUT_ONLY_PART_LENGTH_FIELD_NAME), 0);
     Assert.assertEquals(updatedNullableMapTsRecord.get(ACTIVE_ELEM_TS_FIELD_NAME), Collections.emptyList());
@@ -417,29 +420,29 @@ public class TestMergeUpdate extends TestMergeBase {
 
   @Test
   public void testAddToCollectionFieldOnFieldValueTs() {
-    IndexedHashMap<String, Integer> addToMapValue = new IndexedHashMap<>();
-    addToMapValue.put("key1", 2);
-    addToMapValue.put("key2", 2);
-    addToMapValue.put("key3", 2);
-    addToMapValue.put("key4", 2);
-    addToMapValue.put("key5", 2);
-    GenericRecord partialUpdateRecord =
-        new UpdateBuilderImpl(schemaSet.getUpdateSchema()).setEntriesToAddToMapField(INT_MAP_FIELD_NAME, addToMapValue)
-            .setElementsToAddToListField(
-                STRING_ARRAY_FIELD_NAME,
-                Arrays.asList("key1", "key2", "key3", "key4", "key5", "key6"))
-            .setElementsToAddToListField(NULLABLE_STRING_ARRAY_FIELD_NAME, Collections.singletonList("key1"))
-            .setEntriesToAddToMapField(NULLABLE_INT_MAP_FIELD_NAME, Collections.singletonMap("key1", 1))
-            .build();
+    IndexedHashMap<String, String> addToMapValue = new IndexedHashMap<>();
+    addToMapValue.put("key1", "2");
+    addToMapValue.put("key2", "2");
+    addToMapValue.put("key3", "2");
+    addToMapValue.put("key4", "2");
+    addToMapValue.put("key5", "2");
+    GenericRecord partialUpdateRecord = new UpdateBuilderImpl(schemaSet.getUpdateSchema())
+        .setEntriesToAddToMapField(STRING_MAP_FIELD_NAME, addToMapValue)
+        .setElementsToAddToListField(
+            STRING_ARRAY_FIELD_NAME,
+            Arrays.asList("key1", "key2", "key3", "key4", "key5", "key6"))
+        .setElementsToAddToListField(NULLABLE_STRING_ARRAY_FIELD_NAME, Collections.singletonList("key1"))
+        .setEntriesToAddToMapField(NULLABLE_STRING_MAP_FIELD_NAME, Collections.singletonMap("key1", "1"))
+        .build();
 
     GenericRecord oldValueRecord = createDefaultValueRecord();
     oldValueRecord.put(STRING_ARRAY_FIELD_NAME, Arrays.asList("key1", "key2", "key3"));
-    IndexedHashMap<String, Integer> mapValue = new IndexedHashMap<>();
-    mapValue.put("key1", 1);
-    mapValue.put("key2", 1); // Value is smaller than incoming update.
-    mapValue.put("key3", 4); // Value is bigger than incoming update.
-    mapValue.put("key4", 1);
-    oldValueRecord.put(INT_MAP_FIELD_NAME, mapValue);
+    IndexedHashMap<String, String> mapValue = new IndexedHashMap<>();
+    mapValue.put("key1", "1");
+    mapValue.put("key2", "1"); // Value is smaller than incoming update.
+    mapValue.put("key3", "4"); // Value is bigger than incoming update.
+    mapValue.put("key4", "1");
+    oldValueRecord.put(STRING_MAP_FIELD_NAME, mapValue);
 
     GenericRecord oldRmdRecord = initiateFieldLevelRmdRecord(oldValueRecord, 2);
     GenericRecord timestampRecord = (GenericRecord) oldRmdRecord.get(RmdConstants.TIMESTAMP_FIELD_NAME);
@@ -447,7 +450,7 @@ public class TestMergeUpdate extends TestMergeBase {
     GenericRecord nullableListTsRecord = (GenericRecord) timestampRecord.get(NULLABLE_STRING_ARRAY_FIELD_NAME);
     nullableListTsRecord.put(TOP_LEVEL_TS_FIELD_NAME, 1L);
 
-    GenericRecord nullableMapTsRecord = (GenericRecord) timestampRecord.get(NULLABLE_INT_MAP_FIELD_NAME);
+    GenericRecord nullableMapTsRecord = (GenericRecord) timestampRecord.get(NULLABLE_STRING_MAP_FIELD_NAME);
     nullableMapTsRecord.put(TOP_LEVEL_TS_FIELD_NAME, 1L);
 
     GenericRecord listTsRecord = (GenericRecord) timestampRecord.get(STRING_ARRAY_FIELD_NAME);
@@ -457,7 +460,7 @@ public class TestMergeUpdate extends TestMergeBase {
     listTsRecord.put(DELETED_ELEM_FIELD_NAME, Arrays.asList("key4", "key5", "key6"));
     listTsRecord.put(DELETED_ELEM_TS_FIELD_NAME, Arrays.asList(1L, 2L, 3L));
 
-    GenericRecord mapTsRecord = (GenericRecord) timestampRecord.get(INT_MAP_FIELD_NAME);
+    GenericRecord mapTsRecord = (GenericRecord) timestampRecord.get(STRING_MAP_FIELD_NAME);
     mapTsRecord.put(TOP_LEVEL_TS_FIELD_NAME, 1L);
     mapTsRecord.put(PUT_ONLY_PART_LENGTH_FIELD_NAME, 1);
     mapTsRecord.put(ACTIVE_ELEM_TS_FIELD_NAME, Arrays.asList(2L, 2L, 3L));
@@ -477,21 +480,21 @@ public class TestMergeUpdate extends TestMergeBase {
     Assert.assertEquals(
         updatedValueRecord.get(NULLABLE_STRING_ARRAY_FIELD_NAME),
         Collections.singletonList(new Utf8("key1")));
-    IndexedHashMap<Utf8, Integer> expectedNullableMap = new IndexedHashMap<>();
-    expectedNullableMap.put(new Utf8("key1"), 1);
-    Assert.assertEquals(updatedValueRecord.get(NULLABLE_INT_MAP_FIELD_NAME), expectedNullableMap);
+    IndexedHashMap<Utf8, Utf8> expectedNullableMap = new IndexedHashMap<>();
+    expectedNullableMap.put(new Utf8("key1"), new Utf8("1"));
+    Assert.assertEquals(updatedValueRecord.get(NULLABLE_STRING_MAP_FIELD_NAME), expectedNullableMap);
 
     Assert.assertEquals(
         updatedValueRecord.get(STRING_ARRAY_FIELD_NAME),
         Arrays.asList(new Utf8("key1"), new Utf8("key2"), new Utf8("key3"), new Utf8("key4")));
 
-    IndexedHashMap<Utf8, Integer> expectedMap = new IndexedHashMap<>();
-    expectedMap.put(new Utf8("key1"), 2);
-    expectedMap.put(new Utf8("key2"), 2);
-    expectedMap.put(new Utf8("key3"), 4);
-    expectedMap.put(new Utf8("key4"), 1);
-    expectedMap.put(new Utf8("key5"), 2);
-    Assert.assertEquals(updatedValueRecord.get(INT_MAP_FIELD_NAME), expectedMap);
+    IndexedHashMap<Utf8, Utf8> expectedMap = new IndexedHashMap<>();
+    expectedMap.put(new Utf8("key1"), new Utf8("2"));
+    expectedMap.put(new Utf8("key2"), new Utf8("2"));
+    expectedMap.put(new Utf8("key3"), new Utf8("4"));
+    expectedMap.put(new Utf8("key4"), new Utf8("1"));
+    expectedMap.put(new Utf8("key5"), new Utf8("2"));
+    Assert.assertEquals(updatedValueRecord.get(STRING_MAP_FIELD_NAME), expectedMap);
 
     GenericRecord updatedRmdTsRecord = (GenericRecord) result.getRmdRecord().get(RmdConstants.TIMESTAMP_FIELD_NAME);
     GenericRecord updatedListTsRecord = (GenericRecord) updatedRmdTsRecord.get(STRING_ARRAY_FIELD_NAME);
@@ -501,7 +504,7 @@ public class TestMergeUpdate extends TestMergeBase {
     Assert.assertEquals(updatedListTsRecord.get(DELETED_ELEM_FIELD_NAME), Arrays.asList("key5", "key6"));
     Assert.assertEquals(updatedListTsRecord.get(DELETED_ELEM_TS_FIELD_NAME), Arrays.asList(2L, 3L));
 
-    GenericRecord updatedMapTsRecord = (GenericRecord) updatedRmdTsRecord.get(INT_MAP_FIELD_NAME);
+    GenericRecord updatedMapTsRecord = (GenericRecord) updatedRmdTsRecord.get(STRING_MAP_FIELD_NAME);
     Assert.assertEquals(updatedMapTsRecord.get(TOP_LEVEL_TS_FIELD_NAME), 1L);
     Assert.assertEquals(updatedMapTsRecord.get(ACTIVE_ELEM_TS_FIELD_NAME), Arrays.asList(2L, 2L, 2L, 2L, 3L));
     Assert.assertEquals(updatedMapTsRecord.get(PUT_ONLY_PART_LENGTH_FIELD_NAME), 0);
@@ -510,25 +513,25 @@ public class TestMergeUpdate extends TestMergeBase {
   @Test
   public void testRemoveFromCollectionFieldOnFieldLevelTs() {
     GenericRecord partialUpdateRecord = new UpdateBuilderImpl(schemaSet.getUpdateSchema())
-        .setKeysToRemoveFromMapField(INT_MAP_FIELD_NAME, Arrays.asList("key1", "key2", "key3", "key4"))
+        .setKeysToRemoveFromMapField(STRING_MAP_FIELD_NAME, Arrays.asList("key1", "key2", "key3", "key4"))
         .setElementsToRemoveFromListField(
             STRING_ARRAY_FIELD_NAME,
             Arrays.asList("key1", "key2", "key3", "key4", "key5", "key6"))
-        .setKeysToRemoveFromMapField(NULLABLE_INT_MAP_FIELD_NAME, Collections.singletonList("key1"))
+        .setKeysToRemoveFromMapField(NULLABLE_STRING_MAP_FIELD_NAME, Collections.singletonList("key1"))
         .setElementsToRemoveFromListField(NULLABLE_STRING_ARRAY_FIELD_NAME, Collections.singletonList("key1"))
         .build();
 
     GenericRecord oldValueRecord = createDefaultValueRecord();
-    IndexedHashMap<String, Integer> mapValue = new IndexedHashMap<>();
-    mapValue.put("key1", 1);
-    mapValue.put("key2", 1);
-    mapValue.put("key3", 1);
-    oldValueRecord.put(INT_MAP_FIELD_NAME, mapValue);
+    IndexedHashMap<String, String> mapValue = new IndexedHashMap<>();
+    mapValue.put("key1", "1");
+    mapValue.put("key2", "1");
+    mapValue.put("key3", "1");
+    oldValueRecord.put(STRING_MAP_FIELD_NAME, mapValue);
     oldValueRecord.put(STRING_ARRAY_FIELD_NAME, Arrays.asList("key1", "key2", "key3"));
 
     GenericRecord oldRmdRecord = initiateFieldLevelRmdRecord(oldValueRecord, 2);
     GenericRecord timestampRecord = (GenericRecord) oldRmdRecord.get(RmdConstants.TIMESTAMP_FIELD_NAME);
-    GenericRecord mapTsRecord = (GenericRecord) timestampRecord.get(INT_MAP_FIELD_NAME);
+    GenericRecord mapTsRecord = (GenericRecord) timestampRecord.get(STRING_MAP_FIELD_NAME);
     mapTsRecord.put(TOP_LEVEL_TS_FIELD_NAME, 1L);
     mapTsRecord.put(PUT_ONLY_PART_LENGTH_FIELD_NAME, 1);
     mapTsRecord.put(ACTIVE_ELEM_TS_FIELD_NAME, Arrays.asList(3L, 4L));
@@ -552,23 +555,23 @@ public class TestMergeUpdate extends TestMergeBase {
         0);
     GenericRecord updatedValueRecord = deserializeValueRecord(result.getNewValue());
     Assert.assertEquals(updatedValueRecord.get(NULLABLE_STRING_ARRAY_FIELD_NAME), Collections.emptyList());
-    IndexedHashMap<Utf8, Integer> expectedNullableMap = new IndexedHashMap<>();
-    Assert.assertEquals(updatedValueRecord.get(NULLABLE_INT_MAP_FIELD_NAME), expectedNullableMap);
+    IndexedHashMap<Utf8, Utf8> expectedNullableMap = new IndexedHashMap<>();
+    Assert.assertEquals(updatedValueRecord.get(NULLABLE_STRING_MAP_FIELD_NAME), expectedNullableMap);
 
-    IndexedHashMap<Utf8, Integer> expectedMap = new IndexedHashMap<>();
-    expectedMap.put(new Utf8("key3"), 1);
-    Assert.assertEquals(updatedValueRecord.get(INT_MAP_FIELD_NAME), expectedMap);
+    IndexedHashMap<Utf8, Utf8> expectedMap = new IndexedHashMap<>();
+    expectedMap.put(new Utf8("key3"), new Utf8("1"));
+    Assert.assertEquals(updatedValueRecord.get(STRING_MAP_FIELD_NAME), expectedMap);
     Assert.assertEquals(updatedValueRecord.get(STRING_ARRAY_FIELD_NAME), Collections.singletonList(new Utf8("key3")));
 
     GenericRecord updatedRmdTsRecord = (GenericRecord) result.getRmdRecord().get(RmdConstants.TIMESTAMP_FIELD_NAME);
-    GenericRecord updatedMapTsRecord = (GenericRecord) updatedRmdTsRecord.get(INT_MAP_FIELD_NAME);
+    GenericRecord updatedMapTsRecord = (GenericRecord) updatedRmdTsRecord.get(STRING_MAP_FIELD_NAME);
     Assert.assertEquals(updatedMapTsRecord.get(TOP_LEVEL_TS_FIELD_NAME), 1L);
     Assert.assertEquals(updatedMapTsRecord.get(ACTIVE_ELEM_TS_FIELD_NAME), Collections.singletonList(4L));
     Assert.assertEquals(updatedMapTsRecord.get(PUT_ONLY_PART_LENGTH_FIELD_NAME), 0);
     Assert.assertEquals(updatedMapTsRecord.get(DELETED_ELEM_FIELD_NAME), Arrays.asList("key1", "key2", "key4"));
     Assert.assertEquals(updatedMapTsRecord.get(DELETED_ELEM_TS_FIELD_NAME), Arrays.asList(3L, 3L, 3L));
 
-    GenericRecord updatedNullableMapTsRecord = (GenericRecord) updatedRmdTsRecord.get(NULLABLE_INT_MAP_FIELD_NAME);
+    GenericRecord updatedNullableMapTsRecord = (GenericRecord) updatedRmdTsRecord.get(NULLABLE_STRING_MAP_FIELD_NAME);
     Assert.assertEquals(updatedNullableMapTsRecord.get(TOP_LEVEL_TS_FIELD_NAME), 2L);
     Assert.assertEquals(updatedNullableMapTsRecord.get(DELETED_ELEM_FIELD_NAME), Collections.singletonList("key1"));
     Assert.assertEquals(updatedNullableMapTsRecord.get(DELETED_ELEM_TS_FIELD_NAME), Collections.singletonList(3L));
@@ -587,5 +590,191 @@ public class TestMergeUpdate extends TestMergeBase {
     Assert.assertEquals(updatedNullableListTsRecord.get(TOP_LEVEL_TS_FIELD_NAME), 2L);
     Assert.assertEquals(updatedNullableListTsRecord.get(DELETED_ELEM_FIELD_NAME), Collections.singletonList("key1"));
     Assert.assertEquals(updatedNullableListTsRecord.get(DELETED_ELEM_TS_FIELD_NAME), Collections.singletonList(3L));
+  }
+
+  /**
+   * This unit test chains up different partial update operations on nullable collection field to make sure all operations
+   * are executed correctly and successfully.
+   */
+  @Test
+  public void testNullableCollectionFieldUpdateOperations() {
+    MergeConflictResult result;
+    IndexedHashMap<Utf8, Utf8> expectedMapValue = new IndexedHashMap<>();
+    List<Utf8> expectedListValue = new ArrayList<>();
+    long operationTs = 1L;
+
+    // Operation 1: Set field to empty collection.
+    result = updateNullableCollection(
+        null,
+        operationTs,
+        UpdateOperationType.SET_FIELD,
+        Collections.emptyMap(),
+        Collections.emptyList());
+    validateNullableCollectionUpdateResult(result, expectedMapValue, expectedListValue);
+
+    // Operation 2: Set field to null collection.
+    operationTs++;
+    result = updateNullableCollection(result, operationTs, UpdateOperationType.SET_FIELD, null, null);
+    validateNullableCollectionUpdateResult(result, null, null);
+
+    // Operation 3: Add entries to collection starting from null.
+    for (int i = 0; i < 3; i++) {
+      String itemKey = "key_" + i;
+      expectedMapValue.put(new Utf8(itemKey), new Utf8("1"));
+      expectedListValue.add(new Utf8(itemKey));
+      operationTs++;
+      result = updateNullableCollection(
+          result,
+          operationTs,
+          UpdateOperationType.ADD_ENTRY,
+          Collections.singletonMap(itemKey, "1"),
+          Collections.singletonList(itemKey));
+      validateNullableCollectionUpdateResult(result, expectedMapValue, expectedListValue);
+    }
+
+    // Operation 4: Remove entries to collection
+    for (int i = 0; i < 3; i++) {
+      String itemKey = "key_" + i;
+      expectedMapValue.remove(new Utf8(itemKey));
+      expectedListValue.remove(0);
+      operationTs++;
+      result = updateNullableCollection(
+          result,
+          operationTs,
+          UpdateOperationType.REMOVE_ENTRY,
+          Collections.singletonList(itemKey),
+          Collections.singletonList(itemKey));
+      validateNullableCollectionUpdateResult(result, expectedMapValue, expectedListValue);
+    }
+
+    // Operation 5: Set collection to null
+    operationTs++;
+    result = updateNullableCollection(result, operationTs, UpdateOperationType.SET_FIELD, null, null);
+    validateNullableCollectionUpdateResult(result, null, null);
+
+    // Operation 6: Remove entries from null results in empty collection.
+    operationTs++;
+    result = updateNullableCollection(
+        result,
+        operationTs,
+        UpdateOperationType.REMOVE_ENTRY,
+        Collections.singletonList("dummyKey"),
+        Collections.singletonList("dummyKey"));
+    validateNullableCollectionUpdateResult(result, Collections.emptyMap(), Collections.emptyList());
+
+    // Operation 7: Add entries to collection starting from empty collection.
+    for (int i = 0; i < 3; i++) {
+      String itemKey = "key_" + i;
+      expectedMapValue.put(new Utf8(itemKey), new Utf8("1"));
+      expectedListValue.add(new Utf8(itemKey));
+      operationTs++;
+      result = updateNullableCollection(
+          result,
+          operationTs,
+          UpdateOperationType.ADD_ENTRY,
+          Collections.singletonMap(itemKey, "1"),
+          Collections.singletonList(itemKey));
+      validateNullableCollectionUpdateResult(result, expectedMapValue, expectedListValue);
+    }
+
+    // Operation 8: Add entries to collection starting from empty collection.
+    expectedMapValue = new IndexedHashMap<>();
+    expectedListValue = new ArrayList<>();
+    expectedMapValue.put(new Utf8("putOnly"), new Utf8("1"));
+    expectedListValue.add(new Utf8("putOnly"));
+    operationTs++;
+    result = updateNullableCollection(
+        result,
+        operationTs,
+        UpdateOperationType.SET_FIELD,
+        Collections.singletonMap("putOnly", "1"),
+        Collections.singletonList("putOnly"));
+    validateNullableCollectionUpdateResult(result, expectedMapValue, expectedListValue);
+
+    // Operation 9: Add entries to collection starting from null.
+    for (int i = 0; i < 3; i++) {
+      String itemKey = "key_" + i;
+      expectedMapValue.put(new Utf8(itemKey), new Utf8("1"));
+      expectedListValue.add(new Utf8(itemKey));
+      operationTs++;
+      result = updateNullableCollection(
+          result,
+          operationTs,
+          UpdateOperationType.ADD_ENTRY,
+          Collections.singletonMap(itemKey, "1"),
+          Collections.singletonList(itemKey));
+      validateNullableCollectionUpdateResult(result, expectedMapValue, expectedListValue);
+    }
+
+    // Operation 10: Remove entries to collection
+    for (int i = 0; i < 3; i++) {
+      String itemKey = "key_" + i;
+      expectedMapValue.remove(new Utf8(itemKey));
+      expectedListValue.remove(1);
+      operationTs++;
+      result = updateNullableCollection(
+          result,
+          operationTs,
+          UpdateOperationType.REMOVE_ENTRY,
+          Collections.singletonList(itemKey),
+          Collections.singletonList(itemKey));
+      validateNullableCollectionUpdateResult(result, expectedMapValue, expectedListValue);
+    }
+  }
+
+  private MergeConflictResult updateNullableCollection(
+      MergeConflictResult result,
+      long timestamp,
+      UpdateOperationType operationType,
+      Object mapFieldValue,
+      Object listFieldValue) {
+    GenericRecord oldRmdRecord = result == null ? null : result.getRmdRecord();
+    ByteBuffer oldValueByteBuffer = result == null ? null : result.getNewValue();
+    GenericRecord partialUpdateRecord;
+    if (operationType.equals(UpdateOperationType.ADD_ENTRY)) {
+      partialUpdateRecord = new UpdateBuilderImpl(schemaSet.getUpdateSchema())
+          .setElementsToAddToListField(NULLABLE_STRING_ARRAY_FIELD_NAME, (List<?>) listFieldValue)
+          .setEntriesToAddToMapField(NULLABLE_STRING_MAP_FIELD_NAME, (Map<String, ?>) mapFieldValue)
+          .build();
+    } else if (operationType.equals(UpdateOperationType.REMOVE_ENTRY)) {
+      partialUpdateRecord = new UpdateBuilderImpl(schemaSet.getUpdateSchema())
+          .setElementsToRemoveFromListField(NULLABLE_STRING_ARRAY_FIELD_NAME, (List<?>) listFieldValue)
+          .setKeysToRemoveFromMapField(NULLABLE_STRING_MAP_FIELD_NAME, (List<String>) mapFieldValue)
+          .build();
+    } else {
+      partialUpdateRecord = new UpdateBuilderImpl(schemaSet.getUpdateSchema())
+          .setNewFieldValue(NULLABLE_STRING_ARRAY_FIELD_NAME, listFieldValue)
+          .setNewFieldValue(NULLABLE_STRING_MAP_FIELD_NAME, mapFieldValue)
+          .build();
+    }
+
+    return mergeConflictResolver.update(
+        Lazy.of(() -> oldValueByteBuffer),
+        oldRmdRecord == null
+            ? null
+            : new RmdWithValueSchemaId(
+                schemaSet.getValueSchemaId(),
+                schemaSet.getRmdSchemaProtocolVersion(),
+                oldRmdRecord),
+        serializeUpdateRecord(partialUpdateRecord),
+        schemaSet.getValueSchemaId(),
+        schemaSet.getUpdateSchemaProtocolVersion(),
+        timestamp,
+        1L,
+        0,
+        0);
+  }
+
+  private void validateNullableCollectionUpdateResult(
+      MergeConflictResult result,
+      Map expectedMapValue,
+      List expectedStringValue) {
+    GenericRecord valueRecord = deserializeValueRecord(result.getNewValue());
+    Assert.assertEquals(valueRecord.get(NULLABLE_STRING_ARRAY_FIELD_NAME), expectedStringValue);
+    Assert.assertEquals(valueRecord.get(NULLABLE_STRING_MAP_FIELD_NAME), expectedMapValue);
+  }
+
+  enum UpdateOperationType {
+    SET_FIELD, ADD_ENTRY, REMOVE_ENTRY
   }
 }

@@ -94,7 +94,7 @@ public class TopicPartitionsOffsetsTrackerTest {
     when(metricValue.metricValue()).thenReturn((double) secondPartitionLag);
     mockMetrics.put(metricName, metricValue);
 
-    topicPartitionsOffsetsTracker.updateEndOffsets(mockRecords, mockMetrics);
+    topicPartitionsOffsetsTracker.updateEndAndCurrentOffsets(mockRecords, mockMetrics);
 
     Assert.assertEquals(topicPartitionsOffsetsTracker.getOffsetLag(TOPIC_1, PARTITION_ID), firstPartitionLag);
     Assert.assertEquals(topicPartitionsOffsetsTracker.getResultsStats().size(), 1);

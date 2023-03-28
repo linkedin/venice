@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 import javax.annotation.Nonnull;
 import org.apache.commons.io.IOUtils;
@@ -52,6 +53,10 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
   private final Lazy<Consumer<KafkaKey, KafkaMessageEnvelope>> kafkaRecordConsumer;
   private final Lazy<KafkaAdminWrapper> kafkaAdminWrapper;
   private final Duration kafkaOperationTimeout;
+
+  private enum TopicEndType {
+    BEGINNING, END
+  }
 
   public PartitionOffsetFetcherImpl(
       @Nonnull Lazy<Consumer<byte[], byte[]>> kafkaRawBytesConsumer,
@@ -130,6 +135,19 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
 
   @Override
   public long getPartitionLatestOffsetAndRetry(String topic, int partition, int retries) {
+    return getEndOffset(topic, partition, retries, this::getLatestOffset);
+  }
+
+  @Override
+  public long getPartitionEarliestOffsetAndRetry(String topic, int partition, int retries) {
+    return getEndOffset(topic, partition, retries, this::getEarliestOffset);
+  }
+
+  private long getEndOffset(
+      String topic,
+      int partition,
+      int retries,
+      BiFunction<String, Integer, Long> offsetSupplier) {
     if (retries < 1) {
       throw new IllegalArgumentException("Invalid retries. Got: " + retries);
     }
@@ -138,9 +156,9 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
         new VeniceOperationAgainstKafkaTimedOut("This exception should not be thrown");
     while (attempt < retries) {
       try {
-        return getLatestOffset(topic, partition);
+        return offsetSupplier.apply(topic, partition);
       } catch (VeniceOperationAgainstKafkaTimedOut e) { // topic and partition is listed in the exception object
-        logger.warn("Failed to get latest offset. Retries remaining: {}", retries - attempt, e);
+        logger.warn("Failed to get offset. Retries remaining: {}", retries - attempt, e);
         lastException = e;
         attempt++;
       }
