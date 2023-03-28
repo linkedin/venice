@@ -14,15 +14,15 @@ import java.util.Set;
  * found for a given partition, the instance with the next group in the assigned ordering will be used
  */
 public class HelixScatterGatherRoutingStrategy implements ClientRoutingStrategy {
-  private final Map<CharSequence, Integer> helixGroupInfo;
+  private Map<String, Integer> helixGroupInfo;
 
-  public HelixScatterGatherRoutingStrategy(Map<CharSequence, Integer> helixGroupInfo) {
+  public HelixScatterGatherRoutingStrategy(Map<String, Integer> helixGroupInfo) {
     this.helixGroupInfo = helixGroupInfo;
   }
 
   @Override
   public List<String> getReplicas(long requestId, List<String> replicas, int requiredReplicaCount) {
-    if (replicas.isEmpty()) {
+    if (replicas.isEmpty() || helixGroupInfo.isEmpty()) {
       return Collections.emptyList();
     }
     Map<Integer, List<String>> groupToFilteredReplicas = new HashMap<>();
@@ -43,6 +43,10 @@ public class HelixScatterGatherRoutingStrategy implements ClientRoutingStrategy 
     }
 
     return selectedReplicas;
+  }
+
+  public void setHelixGroupInfo(Map<String, Integer> helixGroupInfo) {
+    this.helixGroupInfo = helixGroupInfo;
   }
 
   /**

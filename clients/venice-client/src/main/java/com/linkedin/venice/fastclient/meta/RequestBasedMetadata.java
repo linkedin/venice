@@ -63,7 +63,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private final Map<Integer, VenicePartitioner> versionPartitionerMap = new VeniceConcurrentHashMap<>();
   private final Map<Integer, Integer> versionPartitionCountMap = new VeniceConcurrentHashMap<>();
   private final Map<Integer, ByteBuffer> versionZstdDictionaryMap = new VeniceConcurrentHashMap<>();
-  private final Map<CharSequence, Integer> helixGroupInfo = new VeniceConcurrentHashMap<>();
+  private final Map<String, Integer> helixGroupInfo = new VeniceConcurrentHashMap<>();
   private final CompressorFactory compressorFactory;
   private final D2TransportClient transportClient;
   private D2ServiceDiscovery d2ServiceDiscovery;
@@ -148,7 +148,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
    * Update is only performed if the version from the fetched metadata is different from the local version. We evict
    * old values as we perform updates, while making sure we keep all currently active versions.
    * @param onDemandRefresh
-   * @returns if the fetched metadata was from an updated version
+   * @return if the fetched metadata was an updated version
    */
   private synchronized boolean updateCache(boolean onDemandRefresh) throws InterruptedException {
     boolean updateComplete = true;
@@ -217,7 +217,9 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
 
         // Update helix group info
         helixGroupInfo.clear();
-        helixGroupInfo.putAll(metadataResponse.getHelixGroupInfo());
+        for (Map.Entry<CharSequence, Integer> entry: metadataResponse.getHelixGroupInfo().entrySet()) {
+          helixGroupInfo.put(entry.getKey().toString(), entry.getValue());
+        }
 
         // Wait for dictionary fetch to finish if there is one
         try {
@@ -267,8 +269,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private void refresh() {
     try {
       if (updateCache(false)) {
-        // Update helix group info for our routing strategy
-        routingStrategy = new HelixScatterGatherRoutingStrategy(helixGroupInfo);
+        ((HelixScatterGatherRoutingStrategy) routingStrategy).setHelixGroupInfo(helixGroupInfo);
       }
     } catch (Exception e) {
       // Catch all errors so periodic refresh doesn't break on transient errors.

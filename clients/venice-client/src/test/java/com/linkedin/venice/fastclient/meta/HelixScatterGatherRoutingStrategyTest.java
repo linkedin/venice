@@ -19,8 +19,8 @@ public class HelixScatterGatherRoutingStrategyTest {
   private final static String instance5 = "https://instance5:1234";
   private final static String instance6 = "https://instance6:1234";
 
-  private Map<CharSequence, Integer> getHelixGroupInfo() {
-    Map<CharSequence, Integer> helixGroupInfo = new HashMap<>();
+  private Map<String, Integer> getHelixGroupInfo() {
+    Map<String, Integer> helixGroupInfo = new HashMap<>();
     helixGroupInfo.put(instance1, 0);
     helixGroupInfo.put(instance2, 0);
     helixGroupInfo.put(instance3, 0);
