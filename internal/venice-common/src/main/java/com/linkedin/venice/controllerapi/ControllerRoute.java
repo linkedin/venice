@@ -19,6 +19,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.DERIVED_S
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DEST_FABRIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DISABLE_DAVINCI_PUSH_STATUS_STORE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DISABLE_META_STORE;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_DISABLED_REPLICAS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_READS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_WRITES;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.ETLED_PROXY_USER_ACCOUNT;
@@ -140,8 +141,9 @@ public enum ControllerRoute {
   LIST_CHILD_CLUSTERS("/list_child_clusters", HttpMethod.GET, Collections.emptyList()),
   LIST_NODES("/list_instances", HttpMethod.GET, Collections.emptyList()),
   CLUSTER_HEALTH_STORES("/cluster_health_stores", HttpMethod.GET, Collections.emptyList()),
-  ClUSTER_HEALTH_INSTANCES("/cluster_health_instances", HttpMethod.GET, Collections.emptyList(), "fd"),
-  LIST_REPLICAS("/list_replicas", HttpMethod.GET, Arrays.asList(NAME, VERSION)),
+  ClUSTER_HEALTH_INSTANCES(
+      "/cluster_health_instances", HttpMethod.GET, Collections.emptyList(), ENABLE_DISABLED_REPLICAS
+  ), LIST_REPLICAS("/list_replicas", HttpMethod.GET, Arrays.asList(NAME, VERSION)),
   NODE_REPLICAS("/storage_node_replicas", HttpMethod.GET, Collections.singletonList(STORAGE_NODE_ID)),
   NODE_REMOVABLE(
       "/node_removable", HttpMethod.GET, Collections.singletonList(STORAGE_NODE_ID), INSTANCE_VIEW,
