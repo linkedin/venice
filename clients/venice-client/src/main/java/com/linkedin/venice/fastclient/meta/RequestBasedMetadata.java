@@ -163,41 +163,36 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       VersionProperties versionMetadata = metadataResponse.getVersionMetadata();
 
       int fetchedVersion = versionMetadata.getCurrentVersion();
-      int compressionStrategy = versionMetadata.getCompressionStrategy();
-      int partitionCount = versionMetadata.getPartitionCount();
-      String partitionerClass = versionMetadata.getPartitionerClass().toString();
-      Map<CharSequence, CharSequence> partitionerParams = versionMetadata.getPartitionerParams();
-      int amplificationFactor = versionMetadata.getAmplificationFactor();
-      Set<Integer> activeVersions = new HashSet<>(metadataResponse.getVersions());
-      int newSuperSetValueSchemaId = metadataResponse.getLatestSuperSetValueSchemaId();
-      Map<CharSequence, CharSequence> keySchema = metadataResponse.getKeySchema();
-      Map<CharSequence, CharSequence> valueSchemas = metadataResponse.getValueSchemas();
-      Map<Integer, List<String>> routingInfo = metadataResponse.getRoutingInfo()
-          .entrySet()
-          .stream()
-          .collect(
-              Collectors.toMap(
-                  e -> Integer.valueOf(e.getKey().toString()),
-                  e -> e.getValue().stream().map(CharSequence::toString).collect(Collectors.toList())));
 
       if (fetchedVersion != getCurrentStoreVersion()) {
         newVersion = true;
         // call the DICTIONARY endpoint if needed
         CompletableFuture<TransportClientResponse> dictionaryFetchFuture = null;
         if (!versionZstdDictionaryMap.containsKey(fetchedVersion)
-            && compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT.getValue()) {
+            && versionMetadata.getCompressionStrategy() == CompressionStrategy.ZSTD_WITH_DICT.getValue()) {
           dictionaryFetchFuture = fetchCompressionDictionary(fetchedVersion);
         }
 
         // Update partitioner pair map (versionPartitionerMap)
+        int partitionCount = versionMetadata.getPartitionCount();
         Properties params = new Properties();
-        params.putAll(partitionerParams);
-        VenicePartitioner partitioner =
-            PartitionUtils.getVenicePartitioner(partitionerClass, amplificationFactor, new VeniceProperties(params));
+        params.putAll(versionMetadata.getPartitionerParams());
+        VenicePartitioner partitioner = PartitionUtils.getVenicePartitioner(
+            versionMetadata.getPartitionerClass().toString(),
+            versionMetadata.getAmplificationFactor(),
+            new VeniceProperties(params));
         versionPartitionerMap.put(fetchedVersion, partitioner);
         versionPartitionCountMap.put(fetchedVersion, partitionCount);
 
         // Update readyToServeInstanceMap
+        Map<Integer, List<String>> routingInfo = metadataResponse.getRoutingInfo()
+            .entrySet()
+            .stream()
+            .collect(
+                Collectors.toMap(
+                    e -> Integer.valueOf(e.getKey().toString()),
+                    e -> e.getValue().stream().map(CharSequence::toString).collect(Collectors.toList())));
+
         for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
           String key = getVersionPartitionMapKey(fetchedVersion, partitionId);
           readyToServeInstancesMap.put(key, routingInfo.get(partitionId));
@@ -205,11 +200,11 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
 
         // Update schemas
         SchemaData schemaData = new SchemaData(storeName);
-        for (Map.Entry<CharSequence, CharSequence> entry: keySchema.entrySet()) {
+        for (Map.Entry<CharSequence, CharSequence> entry: metadataResponse.getKeySchema().entrySet()) {
           schemaData
               .setKeySchema(new SchemaEntry(Integer.parseInt(entry.getKey().toString()), entry.getValue().toString()));
         }
-        for (Map.Entry<CharSequence, CharSequence> entry: valueSchemas.entrySet()) {
+        for (Map.Entry<CharSequence, CharSequence> entry: metadataResponse.getValueSchemas().entrySet()) {
           schemaData.addValueSchema(
               new SchemaEntry(Integer.parseInt(entry.getKey().toString()), entry.getValue().toString()));
         }
@@ -228,7 +223,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
           }
           currentVersion.set(fetchedVersion);
           clusterStats.updateCurrentVersion(getCurrentStoreVersion());
-          latestSuperSetValueSchemaId.set(newSuperSetValueSchemaId);
+          latestSuperSetValueSchemaId.set(metadataResponse.getLatestSuperSetValueSchemaId());
         } catch (ExecutionException | TimeoutException e) {
           LOGGER.warn(
               "Dictionary fetch operation could not complete in time for some of the versions. "
@@ -239,6 +234,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
         }
 
         // Evict entries from inactive versions
+        Set<Integer> activeVersions = new HashSet<>(metadataResponse.getVersions());
         readyToServeInstancesMap.entrySet()
             .removeIf(entry -> !activeVersions.contains(getVersionFromKey(entry.getKey())));
         versionPartitionerMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
@@ -269,7 +265,11 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private void refresh() {
     try {
       if (updateCache(false)) {
-        ((HelixScatterGatherRoutingStrategy) routingStrategy).setHelixGroupInfo(helixGroupInfo);
+        if (routingStrategy instanceof HelixScatterGatherRoutingStrategy) {
+          ((HelixScatterGatherRoutingStrategy) routingStrategy).setHelixGroupInfo(helixGroupInfo);
+        } else {
+          routingStrategy = new HelixScatterGatherRoutingStrategy(helixGroupInfo);
+        }
       }
     } catch (Exception e) {
       // Catch all errors so periodic refresh doesn't break on transient errors.

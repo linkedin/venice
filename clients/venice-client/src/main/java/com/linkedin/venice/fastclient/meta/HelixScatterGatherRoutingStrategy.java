@@ -22,7 +22,7 @@ public class HelixScatterGatherRoutingStrategy implements ClientRoutingStrategy 
 
   @Override
   public List<String> getReplicas(long requestId, List<String> replicas, int requiredReplicaCount) {
-    if (replicas.isEmpty() || helixGroupInfo.isEmpty()) {
+    if (replicas.isEmpty()) {
       return Collections.emptyList();
     }
     Map<Integer, List<String>> groupToFilteredReplicas = new HashMap<>();

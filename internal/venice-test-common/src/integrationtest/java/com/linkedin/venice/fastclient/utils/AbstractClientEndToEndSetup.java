@@ -18,7 +18,6 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.fastclient.ClientConfig;
 import com.linkedin.venice.fastclient.factory.ClientFactory;
-import com.linkedin.venice.fastclient.meta.HelixScatterGatherRoutingStrategy;
 import com.linkedin.venice.fastclient.schema.TestValueSchema;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.D2TestUtils;
@@ -40,7 +39,6 @@ import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Optional;
 import java.util.Properties;
@@ -263,7 +261,6 @@ public abstract class AbstractClientEndToEndSetup {
       clientConfigBuilder.setD2Client(d2Client);
       clientConfigBuilder.setClusterDiscoveryD2Service(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME);
       clientConfigBuilder.setMetadataRefreshIntervalInSeconds(1);
-      clientConfigBuilder.setClientRoutingStrategy(new HelixScatterGatherRoutingStrategy(Collections.EMPTY_MAP));
     } else {
       setupThinClientBasedStoreMetadata();
       clientConfigBuilder.setThinClientForMetaStore(thinClientForMetaStore);
