@@ -1,34 +1,6 @@
 package com.linkedin.davinci.stats;
 
-import static com.linkedin.davinci.stats.IngestionStats.BATCH_FOLLOWER_OFFSET_LAG;
-import static com.linkedin.davinci.stats.IngestionStats.BATCH_LEADER_OFFSET_LAG;
-import static com.linkedin.davinci.stats.IngestionStats.BATCH_REPLICATION_LAG;
-import static com.linkedin.davinci.stats.IngestionStats.BYTES_CONSUMED_METRIC_NAME;
-import static com.linkedin.davinci.stats.IngestionStats.CONSUMED_RECORD_END_TO_END_PROCESSING_LATENCY;
-import static com.linkedin.davinci.stats.IngestionStats.FOLLOWER_BYTES_CONSUMED_METRIC_NAME;
-import static com.linkedin.davinci.stats.IngestionStats.FOLLOWER_OFFSET_LAG;
-import static com.linkedin.davinci.stats.IngestionStats.FOLLOWER_RECORDS_CONSUMED_METRIC_NAME;
-import static com.linkedin.davinci.stats.IngestionStats.HYBRID_FOLLOWER_OFFSET_LAG;
-import static com.linkedin.davinci.stats.IngestionStats.HYBRID_LEADER_OFFSET_LAG;
-import static com.linkedin.davinci.stats.IngestionStats.INGESTION_TASK_ERROR_GAUGE;
-import static com.linkedin.davinci.stats.IngestionStats.INGESTION_TASK_PUSH_TIMEOUT_GAUGE;
-import static com.linkedin.davinci.stats.IngestionStats.LEADER_BYTES_CONSUMED_METRIC_NAME;
-import static com.linkedin.davinci.stats.IngestionStats.LEADER_BYTES_PRODUCED_METRIC_NAME;
-import static com.linkedin.davinci.stats.IngestionStats.LEADER_OFFSET_LAG;
-import static com.linkedin.davinci.stats.IngestionStats.LEADER_RECORDS_CONSUMED_METRIC_NAME;
-import static com.linkedin.davinci.stats.IngestionStats.LEADER_RECORDS_PRODUCED_METRIC_NAME;
-import static com.linkedin.davinci.stats.IngestionStats.LEADER_STALLED_HYBRID_INGESTION_METRIC_NAME;
-import static com.linkedin.davinci.stats.IngestionStats.OFFSET_REGRESSION_DCR_ERROR;
-import static com.linkedin.davinci.stats.IngestionStats.READY_TO_SERVE_WITH_RT_LAG_METRIC_NAME;
-import static com.linkedin.davinci.stats.IngestionStats.RECORDS_CONSUMED_METRIC_NAME;
-import static com.linkedin.davinci.stats.IngestionStats.STALE_PARTITIONS_WITHOUT_INGESTION_TASK_METRIC_NAME;
-import static com.linkedin.davinci.stats.IngestionStats.SUBSCRIBE_ACTION_PREP_LATENCY;
-import static com.linkedin.davinci.stats.IngestionStats.TIMESTAMP_REGRESSION_DCR_ERROR;
-import static com.linkedin.davinci.stats.IngestionStats.TOMBSTONE_CREATION_DCR;
-import static com.linkedin.davinci.stats.IngestionStats.TOTAL_DCR;
-import static com.linkedin.davinci.stats.IngestionStats.UPDATE_IGNORED_DCR;
-import static com.linkedin.davinci.stats.IngestionStats.VERSION_TOPIC_END_OFFSET_REWIND_COUNT;
-import static com.linkedin.davinci.stats.IngestionStats.WRITE_COMPUTE_OPERATION_FAILURE;
+import static com.linkedin.davinci.stats.IngestionStats.*;
 import static com.linkedin.venice.stats.StatsErrorCode.NULL_INGESTION_STATS;
 
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
@@ -141,6 +113,10 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
     registerSensor(
         READY_TO_SERVE_WITH_RT_LAG_METRIC_NAME,
         new IngestionStatsGauge(this, () -> getStats().getReadyToServeWithRTLag(), 0));
+
+    registerSensor(
+        HYBRID_PRODUCER_TO_READY_TO_SERVE_LATENCY + "_max",
+        new IngestionStatsGauge(this, () -> getStats().getHybridProducerToReadyToServeLatency(), 0));
 
     // Do not need to check store name here as per user system store is not in active/active mode.
     if (getStats().getIngestionTask().isActiveActiveReplicationEnabled()) {

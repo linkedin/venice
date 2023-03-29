@@ -47,6 +47,7 @@ public class IngestionStats {
   protected static final String SUBSCRIBE_ACTION_PREP_LATENCY = "subscribe_action_prep_latency";
   protected static final String CONSUMED_RECORD_END_TO_END_PROCESSING_LATENCY =
       "consumed_record_end_to_end_processing_latency";
+  protected static final String HYBRID_PRODUCER_TO_READY_TO_SERVE_LATENCY = "producer_to_ready_to_serve_latency";
   protected static final String UPDATE_IGNORED_DCR = "update_ignored_dcr";
   protected static final String TOTAL_DCR = "total_dcr";
   protected static final String TIMESTAMP_REGRESSION_DCR_ERROR = "timestamp_regression_dcr_error";
@@ -74,6 +75,7 @@ public class IngestionStats {
   private final Int2ObjectMap<Sensor> regionIdToHybridRecordsConsumedSensorMap;
   private final Int2ObjectMap<Sensor> regionIdToHybridAvgConsumedOffsetSensorMap;
   private final Sensor stalePartitionsWithoutIngestionTaskSensor;
+  private final WritePathLatencySensor hybridProducerToReadyToServeLatencySensor;
   private final WritePathLatencySensor subscribePrepLatencySensor;
   private final WritePathLatencySensor consumedRecordEndToEndProcessingLatencySensor;
   // Measure the count of ignored updates due to conflict resolution
@@ -156,6 +158,8 @@ public class IngestionStats {
         new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, SUBSCRIBE_ACTION_PREP_LATENCY);
     consumedRecordEndToEndProcessingLatencySensor =
         new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, CONSUMED_RECORD_END_TO_END_PROCESSING_LATENCY);
+    hybridProducerToReadyToServeLatencySensor =
+        new WritePathLatencySensor(localMetricRepository, METRIC_CONFIG, HYBRID_PRODUCER_TO_READY_TO_SERVE_LATENCY);
 
     registerSensor(localMetricRepository, UPDATE_IGNORED_DCR, conflictResolutionUpdateIgnoredSensor);
     registerSensor(localMetricRepository, TOTAL_DCR, totalConflictResolutionCountSensor);
@@ -327,6 +331,10 @@ public class IngestionStats {
     consumedRecordEndToEndProcessingLatencySensor.record(value);
   }
 
+  public double getHybridProducerToReadyToServeLatency() {
+    return hybridProducerToReadyToServeLatencySensor.getMax();
+  }
+
   public double getRecordsConsumed() {
     return recordsConsumedSensor.getRate();
   }
@@ -473,5 +481,9 @@ public class IngestionStats {
 
   public int getIngestionTaskPushTimeoutGauge() {
     return ingestionTaskPushTimeoutGauge;
+  }
+
+  public void recordHybridProducerToReadyToServeLatency(double value) {
+    hybridProducerToReadyToServeLatencySensor.record(value);
   }
 }

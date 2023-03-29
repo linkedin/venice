@@ -2424,6 +2424,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       } else {
         sizeOfPersistedData =
             processKafkaDataMessage(consumerRecord, partitionConsumptionState, leaderProducedRecordContext);
+        if (isHybridMode() && isCurrentVersion.getAsBoolean()) {
+          versionedIngestionStats.recordHybridProducerToReadyToServeLatency(
+              storeName,
+              versionNumber,
+              LatencyUtils.getLatencyInMS(beforeProcessingRecordTimestamp));
+        }
       }
       versionedIngestionStats.recordConsumedRecordEndToEndProcessingLatency(
           storeName,
