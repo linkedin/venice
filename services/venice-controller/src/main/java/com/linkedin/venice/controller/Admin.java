@@ -571,6 +571,11 @@ public interface Admin extends AutoCloseable, Closeable {
   Pair<String, String> discoverCluster(String storeName);
 
   /**
+   * Find the server d2 service associated with a given cluster name.
+   */
+  String getServerD2Service(String clusterName);
+
+  /**
    * Find the store versions which have at least one bootstrap replica.
    */
   Map<String, String> findAllBootstrappingVersions(String clusterName);

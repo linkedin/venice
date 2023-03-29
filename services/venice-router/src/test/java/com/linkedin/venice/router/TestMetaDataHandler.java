@@ -95,6 +95,7 @@ public class TestMetaDataHandler {
         schemaRepo,
         Mockito.mock(HelixReadOnlyStoreConfigRepository.class),
         Collections.emptyMap(),
+        Collections.emptyMap(),
         null);
   }
 
@@ -103,7 +104,8 @@ public class TestMetaDataHandler {
       RoutingDataRepository routingDataRepository,
       ReadOnlySchemaRepository schemaRepo,
       HelixReadOnlyStoreConfigRepository storeConfigRepository,
-      Map<String, String> clusterToD2ServiceMap) throws IOException {
+      Map<String, String> clusterToD2ServiceMap,
+      Map<String, String> clusterToServerD2ServiceMap) throws IOException {
     Store store = TestUtils.createTestStore("testStore", "test", System.currentTimeMillis());
     store.setCurrentVersion(1);
     HelixReadOnlyStoreRepository helixReadOnlyStoreRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
@@ -114,6 +116,7 @@ public class TestMetaDataHandler {
         schemaRepo,
         storeConfigRepository,
         clusterToD2ServiceMap,
+        clusterToServerD2ServiceMap,
         helixReadOnlyStoreRepository);
   }
 
@@ -123,6 +126,7 @@ public class TestMetaDataHandler {
       ReadOnlySchemaRepository schemaRepo,
       HelixReadOnlyStoreConfigRepository storeConfigRepository,
       Map<String, String> clusterToD2ServiceMap,
+      Map<String, String> clusterToServerD2ServiceMap,
       HelixReadOnlyStoreRepository helixReadOnlyStoreRepository) throws IOException {
     ChannelHandlerContext ctx = Mockito.mock(ChannelHandlerContext.class);
     FullHttpRequest httpRequest = Mockito.mock(FullHttpRequest.class);
@@ -144,6 +148,7 @@ public class TestMetaDataHandler {
         schemaRepoToUse,
         storeConfigRepository,
         clusterToD2ServiceMap,
+        clusterToServerD2ServiceMap,
         helixReadOnlyStoreRepository,
         Optional.of(hybridStoreQuotaRepository),
         "test-cluster",
@@ -300,6 +305,7 @@ public class TestMetaDataHandler {
         null,
         schemaRepo,
         Mockito.mock(HelixReadOnlyStoreConfigRepository.class),
+        Collections.emptyMap(),
         Collections.emptyMap());
 
     Assert.assertEquals(response.status().code(), 200);
@@ -328,6 +334,7 @@ public class TestMetaDataHandler {
         null,
         null,
         Mockito.mock(HelixReadOnlyStoreConfigRepository.class),
+        Collections.emptyMap(),
         Collections.emptyMap());
 
     Assert.assertEquals(response.status().code(), 200);
@@ -385,19 +392,22 @@ public class TestMetaDataHandler {
     String storeName = "test-store";
     String clusterName = "test-cluster";
     String d2Service = "test-d2-service";
+    String serverD2Service = "test-server-d2-service";
     HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
     StoreConfig storeConfig = new StoreConfig(storeName);
     storeConfig.setCluster(clusterName);
     Mockito.doReturn(Optional.of(storeConfig)).when(storeConfigRepository).getStoreConfig(storeName);
     Map<String, String> clusterToD2Map = new HashMap<>();
     clusterToD2Map.put(clusterName, d2Service);
+    Map<String, String> clusterToServerD2Map = new HashMap<>();
+    clusterToServerD2Map.put(clusterName, serverD2Service);
     FullHttpResponse response = passRequestToMetadataHandler(
         "http://myRouterHost:4567/discover_cluster/" + storeName,
         null,
         null,
         storeConfigRepository,
         clusterToD2Map,
-        null);
+        clusterToServerD2Map);
 
     Assert.assertEquals(response.status().code(), 200);
     Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");
@@ -420,7 +430,7 @@ public class TestMetaDataHandler {
         null,
         storeConfigRepository,
         Collections.emptyMap(),
-        null);
+        Collections.emptyMap());
 
     Assert.assertEquals(response.status().code(), 404);
   }
@@ -445,6 +455,7 @@ public class TestMetaDataHandler {
         routingDataRepository,
         null,
         storeConfigRepository,
+        Collections.emptyMap(),
         Collections.emptyMap());
     Assert.assertEquals(response.status().code(), 200);
     ResourceStateResponse resourceStateResponse =
@@ -460,6 +471,7 @@ public class TestMetaDataHandler {
         routingDataRepository,
         null,
         storeConfigRepository,
+        Collections.emptyMap(),
         Collections.emptyMap());
     Assert.assertEquals(response.status().code(), 200);
     resourceStateResponse = OBJECT_MAPPER.readValue(response.content().array(), ResourceStateResponse.class);
@@ -474,6 +486,7 @@ public class TestMetaDataHandler {
         routingDataRepository,
         null,
         storeConfigRepository,
+        Collections.emptyMap(),
         Collections.emptyMap());
     Assert.assertEquals(response.status().code(), 200);
     resourceStateResponse = OBJECT_MAPPER.readValue(response.content().array(), ResourceStateResponse.class);
@@ -501,6 +514,7 @@ public class TestMetaDataHandler {
           routingDataRepository,
           null,
           storeConfigRepository,
+          Collections.emptyMap(),
           Collections.emptyMap());
       Assert.assertEquals(response.status().code(), 200);
       ResourceStateResponse resourceStateResponse =
@@ -529,6 +543,7 @@ public class TestMetaDataHandler {
         null,
         storeConfigRepository,
         Collections.emptyMap(),
+        Collections.emptyMap(),
         helixReadOnlyStoreRepository);
     Assert.assertEquals(response.status().code(), 404);
     Mockito.doReturn(Optional.of(new StoreConfig(Version.parseStoreFromKafkaTopicName(resourceName))))
@@ -544,6 +559,7 @@ public class TestMetaDataHandler {
         routingDataRepository,
         null,
         storeConfigRepository,
+        Collections.emptyMap(),
         Collections.emptyMap());
     Assert.assertEquals(response.status().code(), 200);
     ResourceStateResponse resourceStateResponse =
@@ -570,6 +586,7 @@ public class TestMetaDataHandler {
         routingDataRepository,
         null,
         storeConfigRepository,
+        Collections.emptyMap(),
         Collections.emptyMap());
     Assert.assertEquals(response.status().code(), 200);
     HybridStoreQuotaStatusResponse pushStatusResponse =
@@ -585,6 +602,7 @@ public class TestMetaDataHandler {
         routingDataRepository,
         null,
         storeConfigRepository,
+        Collections.emptyMap(),
         Collections.emptyMap());
     Assert.assertEquals(response.status().code(), 200);
     pushStatusResponse = OBJECT_MAPPER.readValue(response.content().array(), HybridStoreQuotaStatusResponse.class);
@@ -609,6 +627,7 @@ public class TestMetaDataHandler {
         routingDataRepository,
         null,
         storeConfigRepository,
+        Collections.emptyMap(),
         Collections.emptyMap());
     System.out.println(response);
     Assert.assertEquals(response.status().code(), 200);
@@ -625,6 +644,7 @@ public class TestMetaDataHandler {
         routingDataRepository,
         null,
         storeConfigRepository,
+        Collections.emptyMap(),
         Collections.emptyMap());
     Assert.assertEquals(response.status().code(), 200);
     pushStatusResponse = OBJECT_MAPPER.readValue(response.content().array(), HybridStoreQuotaStatusResponse.class);
@@ -648,6 +668,7 @@ public class TestMetaDataHandler {
         null,
         null,
         null,
+        Collections.emptyMap(),
         Collections.emptyMap(),
         helixReadOnlyStoreRepository,
         Optional.of(hybridStoreQuotaRepository),
@@ -696,6 +717,7 @@ public class TestMetaDataHandler {
         null,
         null,
         Collections.emptyMap(),
+        Collections.emptyMap(),
         mockStoreRepository);
     Assert.assertEquals(response.status().code(), 200);
     StoreJSONSerializer storeSerializer = new StoreJSONSerializer();
@@ -708,6 +730,7 @@ public class TestMetaDataHandler {
         null,
         null,
         null,
+        Collections.emptyMap(),
         Collections.emptyMap(),
         mockStoreRepository);
     Assert.assertEquals(response.status().code(), 200);
@@ -728,6 +751,7 @@ public class TestMetaDataHandler {
         null,
         null,
         Collections.emptyMap(),
+        Collections.emptyMap(),
         mockStoreRepository);
     Assert.assertEquals(notFoundResponse.status().code(), 404);
   }
@@ -746,6 +770,7 @@ public class TestMetaDataHandler {
         null,
         null,
         storeConfigRepository,
+        Collections.emptyMap(),
         Collections.emptyMap(),
         storeRepository);
     Assert.assertEquals(response.status().code(), 400);
@@ -780,6 +805,7 @@ public class TestMetaDataHandler {
         null,
         storeConfigRepository,
         Collections.emptyMap(),
+        Collections.emptyMap(),
         storeRepository);
     Assert.assertEquals(response.status().code(), 400);
     Assert.assertEquals(
@@ -813,6 +839,7 @@ public class TestMetaDataHandler {
         null,
         null,
         storeConfigRepository,
+        Collections.emptyMap(),
         Collections.emptyMap(),
         storeRepository);
     Assert.assertEquals(response.status().code(), 500);
@@ -853,6 +880,7 @@ public class TestMetaDataHandler {
         null,
         storeConfigRepository,
         Collections.emptyMap(),
+        Collections.emptyMap(),
         storeRepository);
     Assert.assertEquals(response.status().code(), 400);
     Assert.assertEquals(
@@ -890,6 +918,7 @@ public class TestMetaDataHandler {
         null,
         null,
         storeConfigRepository,
+        Collections.emptyMap(),
         Collections.emptyMap(),
         storeRepository);
     Assert.assertEquals(response.status().code(), 400);
@@ -935,6 +964,7 @@ public class TestMetaDataHandler {
         null,
         null,
         storeConfigRepository,
+        Collections.emptyMap(),
         Collections.emptyMap(),
         storeRepository);
     Assert.assertEquals(response.status().code(), 200);
@@ -986,6 +1016,7 @@ public class TestMetaDataHandler {
         null,
         null,
         storeConfigRepository,
+        Collections.emptyMap(),
         Collections.emptyMap(),
         storeRepository);
     Assert.assertEquals(response.status().code(), 200);
@@ -1042,6 +1073,7 @@ public class TestMetaDataHandler {
         null,
         storeConfigRepository,
         Collections.emptyMap(),
+        Collections.emptyMap(),
         storeRepository);
     Assert.assertEquals(response.status().code(), 200);
     VersionCreationResponse versionCreationResponse =
@@ -1093,6 +1125,7 @@ public class TestMetaDataHandler {
         null,
         null,
         storeConfigRepository,
+        Collections.emptyMap(),
         Collections.emptyMap(),
         storeRepository);
     Assert.assertEquals(response.status().code(), 400);

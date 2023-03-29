@@ -23,6 +23,7 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
@@ -94,9 +95,10 @@ public abstract class AbstractClientEndToEndSetup {
     */
   public final Object[] BATCH_GET_KEY_SIZE = { 2, /*recordCnt*/ };
 
-  @DataProvider(name = "FastClient-Three-Boolean-And-A-Number")
-  public Object[][] threeBooleanAndANumber() {
+  @DataProvider(name = "FastClient-Four-Boolean-And-A-Number")
+  public Object[][] fourBooleanAndANumber() {
     return DataProviderUtils.allPermutationGenerator(
+        DataProviderUtils.BOOLEAN,
         DataProviderUtils.BOOLEAN,
         DataProviderUtils.BOOLEAN,
         DataProviderUtils.BOOLEAN,
@@ -112,7 +114,7 @@ public abstract class AbstractClientEndToEndSetup {
 
     r2Client = ClientTestUtils.getR2Client(ClientTestUtils.FastClientHTTPVariant.HTTP_2_BASED_HTTPCLIENT5);
 
-    d2Client = D2TestUtils.getAndStartD2Client(veniceCluster.getZk().getAddress());
+    d2Client = D2TestUtils.getAndStartHttpsD2Client(veniceCluster.getZk().getAddress());
 
     prepareData();
     prepareMetaSystemStore();
@@ -200,9 +202,10 @@ public abstract class AbstractClientEndToEndSetup {
   protected AvroGenericStoreClient<String, Object> getGenericFastVsonClient(
       ClientConfig.ClientConfigBuilder clientConfigBuilder,
       MetricsRepository metricsRepository,
-      Optional<AvroGenericStoreClient> vsonThinClient) throws IOException {
+      Optional<AvroGenericStoreClient> vsonThinClient,
+      boolean useRequestBasedMetadata) throws IOException {
     clientConfigBuilder.setVsonStore(true);
-    setupStoreMetadata(clientConfigBuilder);
+    setupStoreMetadata(clientConfigBuilder, useRequestBasedMetadata);
 
     // clientConfigBuilder will be used for building multiple clients over this test flow,
     // so, always specify a new MetricsRepository to avoid conflicts.
@@ -220,8 +223,9 @@ public abstract class AbstractClientEndToEndSetup {
 
   protected AvroGenericStoreClient<String, GenericRecord> getGenericFastClient(
       ClientConfig.ClientConfigBuilder clientConfigBuilder,
-      MetricsRepository metricsRepository) throws IOException {
-    setupStoreMetadata(clientConfigBuilder);
+      MetricsRepository metricsRepository,
+      boolean useRequestBasedMetadata) throws IOException {
+    setupStoreMetadata(clientConfigBuilder, useRequestBasedMetadata);
 
     // clientConfigBuilder will be used for building multiple clients over this test flow,
     // so, always specify a new MetricsRepository to avoid conflicts.
@@ -235,8 +239,9 @@ public abstract class AbstractClientEndToEndSetup {
   protected AvroSpecificStoreClient<String, TestValueSchema> getSpecificFastClient(
       ClientConfig.ClientConfigBuilder clientConfigBuilder,
       MetricsRepository metricsRepository,
-      Class specificValueClass) throws IOException {
-    setupStoreMetadata(clientConfigBuilder);
+      Class specificValueClass,
+      boolean useRequestBasedMetadata) throws IOException {
+    setupStoreMetadata(clientConfigBuilder, useRequestBasedMetadata);
 
     // clientConfigBuilder will be used for building multiple clients over this test flow,
     // so, always specify a new MetricsRepository to avoid conflicts.
@@ -248,9 +253,18 @@ public abstract class AbstractClientEndToEndSetup {
     return ClientFactory.getAndStartSpecificStoreClient(clientConfig);
   }
 
-  protected void setupStoreMetadata(ClientConfig.ClientConfigBuilder clientConfigBuilder) throws IOException {
-    setupThinClientBasedStoreMetadata();
-    clientConfigBuilder.setThinClientForMetaStore(thinClientForMetaStore);
+  protected void setupStoreMetadata(
+      ClientConfig.ClientConfigBuilder clientConfigBuilder,
+      boolean useRequestBasedMetadata) throws IOException {
+    if (useRequestBasedMetadata) {
+      clientConfigBuilder.setRequestBasedMetadata(true);
+      clientConfigBuilder.setD2Client(d2Client);
+      clientConfigBuilder.setClusterDiscoveryD2Service(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME);
+      clientConfigBuilder.setMetadataRefreshIntervalInSeconds(1);
+    } else {
+      setupThinClientBasedStoreMetadata();
+      clientConfigBuilder.setThinClientForMetaStore(thinClientForMetaStore);
+    }
   }
 
   private void setupThinClientBasedStoreMetadata() {

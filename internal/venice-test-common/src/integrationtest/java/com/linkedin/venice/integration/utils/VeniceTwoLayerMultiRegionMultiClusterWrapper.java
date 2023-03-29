@@ -136,14 +136,14 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
       parentControllerProps.setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
       parentControllerPropertiesOverride = Optional.of(new VeniceProperties(parentControllerProps));
 
-      Map<String, String> clusterToRouterD2 = new HashMap<>();
+      Map<String, String> clusterToD2 = new HashMap<>();
       Map<String, String> clusterToServerD2 = new HashMap<>();
       String[] clusterNames = new String[numberOfClustersInEachRegion];
       for (int i = 0; i < numberOfClustersInEachRegion; i++) {
         String clusterName = "venice-cluster" + i;
         clusterNames[i] = clusterName;
         String routerD2ServiceName = "venice-" + i;
-        clusterToRouterD2.put(clusterName, routerD2ServiceName);
+        clusterToD2.put(clusterName, routerD2ServiceName);
         String serverD2ServiceName = Utils.getUniqueString(clusterName + "_d2");
         clusterToServerD2.put(clusterName, serverD2ServiceName);
       }
@@ -224,8 +224,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
               .childControllerProperties(finalChildControllerProperties)
               .veniceProperties(serverProperties.orElse(null))
               .forkServer(forkServer)
-              .kafkaClusterMap(kafkaClusterMap)
-              .clusterToServerD2(clusterToServerD2);
+              .kafkaClusterMap(kafkaClusterMap);
       // Create multi-clusters
       for (int i = 0; i < numberOfRegions; i++) {
         String regionName = childRegionName.get(i);
@@ -251,7 +250,8 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
               .replicationFactor(replicationFactor)
               .childControllers(childControllers)
               .extraProperties(finalParentControllerProperties)
-              .clusterToD2(clusterToRouterD2)
+              .clusterToD2(clusterToD2)
+              .clusterToServerD2(clusterToServerD2)
               .build();
       // Create parentControllers for multi-cluster
       for (int i = 0; i < numberOfParentControllers; i++) {

@@ -3,29 +3,15 @@ package com.linkedin.venice.fastclient;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
-import com.linkedin.venice.utils.DataProviderUtils;
 import java.util.AbstractMap;
 import java.util.Map;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
-import org.testng.annotations.DataProvider;
 
 
 public class AvroStoreClientGzipEndToEndTest extends AvroStoreClientEndToEndTest {
-
-  // useDaVinciClientBasedMetadata is always true as router based metadata store is considered legacy
-  @Override
-  @DataProvider(name = "FastClient-Three-Boolean-And-A-Number")
-  public Object[][] threeBooleanAndANumber() {
-    return DataProviderUtils.allPermutationGenerator(
-        DataProviderUtils.BOOLEAN,
-        DataProviderUtils.BOOLEAN,
-        DataProviderUtils.BOOLEAN,
-        BATCH_GET_KEY_SIZE);
-  }
-
   @Override
   protected void prepareData() throws Exception {
     keySerializer = new VeniceAvroKafkaSerializer(KEY_SCHEMA_STR);

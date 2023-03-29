@@ -203,6 +203,7 @@ public class ServiceFactory {
       KafkaBrokerWrapper kafkaBrokerWrapper,
       boolean sslToStorageNodes,
       Map<String, String> clusterToD2,
+      Map<String, String> clusterToServerD2,
       Properties extraProperties) {
     return getService(
         VeniceRouterWrapper.SERVICE_NAME,
@@ -213,6 +214,7 @@ public class ServiceFactory {
             kafkaBrokerWrapper,
             sslToStorageNodes,
             clusterToD2,
+            clusterToServerD2,
             extraProperties));
   }
 

@@ -3836,6 +3836,14 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
+   * @see Admin#getServerD2Service(String)
+   */
+  @Override
+  public String getServerD2Service(String clusterName) {
+    return getVeniceHelixAdmin().getServerD2Service(clusterName);
+  }
+
+  /**
    * Unsupported operation in the parent controller.
    */
   @Override

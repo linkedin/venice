@@ -108,6 +108,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private final ReadOnlySchemaRepository schemaRepo;
   private final ReadOnlyStoreConfigRepository storeConfigRepo;
   private final Map<String, String> clusterToD2Map;
+  private final Map<String, String> clusterToServerD2Map;
   private final Optional<HelixHybridStoreQuotaRepository> hybridStoreQuotaRepository;
   private final ReadOnlyStoreRepository storeRepository;
   private final String clusterName;
@@ -132,6 +133,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       ReadOnlySchemaRepository schemaRepo,
       ReadOnlyStoreConfigRepository storeConfigRepo,
       Map<String, String> clusterToD2Map,
+      Map<String, String> clusterToServerD2Map,
       ReadOnlyStoreRepository storeRepository,
       Optional<HelixHybridStoreQuotaRepository> hybridStoreQuotaRepository,
       String clusterName,
@@ -142,6 +144,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     this.schemaRepo = schemaRepo;
     this.storeConfigRepo = storeConfigRepo;
     this.clusterToD2Map = clusterToD2Map;
+    this.clusterToServerD2Map = clusterToServerD2Map;
     this.hybridStoreQuotaRepository = hybridStoreQuotaRepository;
     this.storeRepository = storeRepository;
     this.clusterName = clusterName;
@@ -179,7 +182,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
         break;
       case TYPE_CLUSTER_DISCOVERY:
         // URI: /discover_cluster/${storeName}
-        hanldeD2ServiceLookup(ctx, helper, req.headers());
+        handleD2ServiceLookup(ctx, helper, req.headers());
         break;
       case TYPE_RESOURCE_STATE:
         // URI: /resource_state
@@ -314,7 +317,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     }
   }
 
-  private void hanldeD2ServiceLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper, HttpHeaders headers)
+  private void handleD2ServiceLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper, HttpHeaders headers)
       throws IOException {
     String storeName = helper.getResourceName();
     checkResourceName(storeName, "/" + TYPE_CLUSTER_DISCOVERY + "/${storeName}");
@@ -331,11 +334,18 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       setupErrorD2DiscoveryResponseAndFlush(NOT_FOUND, errorMsg, headers, ctx);
       return;
     }
+    String serverD2Service = getServerD2ServiceByClusterName(clusterName);
+    if (StringUtils.isEmpty(serverD2Service)) {
+      String errorMsg = "Server D2 service for store: " + storeName + " doesn't exist";
+      setupErrorD2DiscoveryResponseAndFlush(NOT_FOUND, errorMsg, headers, ctx);
+      return;
+    }
     if (headers.contains(D2_SERVICE_DISCOVERY_RESPONSE_V2_ENABLED)) {
       D2ServiceDiscoveryResponseV2 responseObject = new D2ServiceDiscoveryResponseV2();
       responseObject.setCluster(config.get().getCluster());
       responseObject.setName(config.get().getStoreName());
       responseObject.setD2Service(d2Service);
+      responseObject.setServerD2Service(serverD2Service);
       responseObject.setZkAddress(zkAddress);
       responseObject.setKafkaBootstrapServers(kafkaBootstrapServers);
       setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(responseObject), true, ctx);
@@ -344,6 +354,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       responseObject.setCluster(config.get().getCluster());
       responseObject.setName(config.get().getStoreName());
       responseObject.setD2Service(d2Service);
+      responseObject.setServerD2Service(serverD2Service);
       setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(responseObject), true, ctx);
     }
   }
@@ -596,6 +607,10 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
 
   private String getD2ServiceByClusterName(String clusterName) {
     return clusterToD2Map.get(clusterName);
+  }
+
+  private String getServerD2ServiceByClusterName(String clusterName) {
+    return clusterToServerD2Map.get(clusterName);
   }
 
   private void checkResourceName(String resourceName, String path) {

@@ -93,6 +93,10 @@ public class D2TransportClient extends TransportClient {
     D2ClientUtils.startClient(d2Client);
   }
 
+  public String getServiceName() {
+    return d2ServiceName;
+  }
+
   public void setServiceName(String serviceName) {
     this.d2ServiceName = serviceName;
   }
