@@ -16,7 +16,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.apache.hc.client5.http.async.methods.SimpleHttpResponse;
 import org.apache.hc.client5.http.async.methods.SimpleRequestBuilder;
-import org.apache.hc.client5.http.config.RequestConfig;
 import org.apache.hc.client5.http.impl.async.CloseableHttpAsyncClient;
 import org.apache.hc.client5.http.impl.async.HttpAsyncClients;
 import org.apache.hc.client5.http.impl.async.MinimalHttpAsyncClient;
@@ -151,24 +150,17 @@ public class HttpClient5Test {
   @Test
   public void testWithH2SpecificAPI() throws Exception {
     SSLFactory sslFactory = SslUtils.getVeniceLocalSslFactory();
-    CloseableHttpAsyncClient httpClient = HttpAsyncClients.customHttp2()
-        .setTlsStrategy(
-            VeniceClientTlsStrategyBuilder.create()
-                .setSslContext(sslFactory.getSSLContext())
-                .setTlsVersions(TLS.V_1_3, TLS.V_1_2)
-                .build())
-        .setIOReactorConfig(IOReactorConfig.custom().setSoTimeout(Timeout.ofSeconds(1)).build())
-        .setDefaultRequestConfig(
-            RequestConfig.custom()
-                .setConnectTimeout(Timeout.ofSeconds(1))
-                .setResponseTimeout(Timeout.ofSeconds(1))
-                .build())
-        .build();
+    CloseableHttpAsyncClient httpClient = null;
     try {
-      httpClient.start();
+      httpClient = new HttpClient5Utils.HttpClient5Builder().setSslContext(sslFactory.getSSLContext())
+          .setIoThreadCount(2)
+          .setSkipCipherCheck(true)
+          .buildAndStart();
       testPeerCrashAndRecovery(httpClient);
     } finally {
-      httpClient.close(CloseMode.GRACEFUL);
+      if (httpClient != null) {
+        httpClient.close(CloseMode.GRACEFUL);
+      }
     }
   }
 
