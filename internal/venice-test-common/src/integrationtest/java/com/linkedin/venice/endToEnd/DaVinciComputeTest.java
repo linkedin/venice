@@ -41,6 +41,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import io.tehuti.metrics.MetricsRepository;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -204,8 +205,10 @@ public class DaVinciComputeTest {
             new DaVinciConfig(),
             TestUtils.getIngestionIsolationPropertyMap());
     try (
-        VeniceWriter<Object, Object, byte[]> veniceWriter =
-            vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
+        VeniceWriter<Object, Object, byte[]> veniceWriter = vwFactory.createVeniceWriter(
+            new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer)
+                .setValueSerializer(valueSerializer)
+                .build());
         CachingDaVinciClientFactory ignored = daVinciTestContext.getDaVinciClientFactory();
         DaVinciClient<Integer, Integer> client = daVinciTestContext.getDaVinciClient()) {
 
@@ -309,8 +312,10 @@ public class DaVinciComputeTest {
             new DaVinciConfig(),
             TestUtils.getIngestionIsolationPropertyMap());
     try (
-        VeniceWriter<Object, Object, byte[]> writer =
-            vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
+        VeniceWriter<Object, Object, byte[]> writer = vwFactory.createVeniceWriter(
+            new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer)
+                .setValueSerializer(valueSerializer)
+                .build());
         CachingDaVinciClientFactory ignored = daVinciTestContext.getDaVinciClientFactory();
         DaVinciClient<Integer, Integer> client = daVinciTestContext.getDaVinciClient()) {
 
@@ -366,8 +371,10 @@ public class DaVinciComputeTest {
             TestUtils.getIngestionIsolationPropertyMap());
 
     try (
-        VeniceWriter<Object, Object, byte[]> writerForMissingField =
-            vwFactory.createVeniceWriter(topicForMissingField, keySerializer, valueSerializerMissingField, false);
+        VeniceWriter<Object, Object, byte[]> writerForMissingField = vwFactory.createVeniceWriter(
+            new VeniceWriterOptions.Builder(topicForMissingField).setKeySerializer(keySerializer)
+                .setValueSerializer(valueSerializerMissingField)
+                .build());
         CachingDaVinciClientFactory factoryForMissingFieldClient = daVinciTestContext2.getDaVinciClientFactory();
         DaVinciClient<Integer, Integer> clientForMissingField = daVinciTestContext2.getDaVinciClient()) {
 
@@ -437,8 +444,10 @@ public class DaVinciComputeTest {
             new DaVinciConfig(),
             TestUtils.getIngestionIsolationPropertyMap());
     try (
-        VeniceWriter<Object, Object, byte[]> writer =
-            vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
+        VeniceWriter<Object, Object, byte[]> writer = vwFactory.createVeniceWriter(
+            new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer)
+                .setValueSerializer(valueSerializer)
+                .build());
         CachingDaVinciClientFactory factory = daVinciTestContext.getDaVinciClientFactory();
         DaVinciClient<Integer, Integer> client = daVinciTestContext.getDaVinciClient()) {
 
@@ -482,8 +491,10 @@ public class DaVinciComputeTest {
             new DaVinciConfig(),
             TestUtils.getIngestionIsolationPropertyMap());
     try (
-        VeniceWriter<Object, Object, byte[]> writer2 =
-            vwFactory.createVeniceWriter(topicForMissingField, keySerializer, valueSerializerSwapped, false);
+        VeniceWriter<Object, Object, byte[]> writer2 = vwFactory.createVeniceWriter(
+            new VeniceWriterOptions.Builder(topicForMissingField).setKeySerializer(keySerializer)
+                .setValueSerializer(valueSerializerSwapped)
+                .build());
         CachingDaVinciClientFactory factory2 = daVinciTestContext2.getDaVinciClientFactory();
         DaVinciClient<Integer, Integer> client2 = daVinciTestContext2.getDaVinciClient()) {
 
@@ -551,9 +562,10 @@ public class DaVinciComputeTest {
             storeName,
             config,
             TestUtils.getIngestionIsolationPropertyMap());
-    try (
-        VeniceWriter<Object, Object, byte[]> writer =
-            vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
+    try (VeniceWriter<Object, Object, byte[]> writer = vwFactory.createVeniceWriter(
+        new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer)
+            .setValueSerializer(valueSerializer)
+            .build());
         DaVinciClient<String, Integer> client = daVinciTestContext.getDaVinciClient()) {
 
       // push data to store and subscribe client
@@ -636,8 +648,10 @@ public class DaVinciComputeTest {
     int numRecords = 100;
 
     try (
-        VeniceWriter<GenericRecord, GenericRecord, byte[]> writer =
-            vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
+        VeniceWriter<GenericRecord, GenericRecord, byte[]> writer = vwFactory.createVeniceWriter(
+            new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer)
+                .setValueSerializer(valueSerializer)
+                .build());
         CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
             d2Client,
             VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,
@@ -735,8 +749,10 @@ public class DaVinciComputeTest {
     int numRecords = 100;
 
     try (
-        VeniceWriter<GenericRecord, GenericRecord, byte[]> writer =
-            vwFactory.createVeniceWriter(topic, keySerializer, valueSerializer, false);
+        VeniceWriter<GenericRecord, GenericRecord, byte[]> writer = vwFactory.createVeniceWriter(
+            new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer)
+                .setValueSerializer(valueSerializer)
+                .build());
         CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(
             d2Client,
             VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME,

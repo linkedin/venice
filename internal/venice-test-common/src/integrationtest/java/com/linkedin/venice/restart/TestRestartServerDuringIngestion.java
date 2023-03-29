@@ -27,6 +27,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Map;
@@ -115,7 +116,8 @@ public abstract class TestRestartServerDuringIngestion {
     String topic = versionCreationResponse.getKafkaTopic();
     String kafkaUrl = versionCreationResponse.getKafkaBootstrapServers();
     VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(kafkaUrl);
-    try (VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterFactory.createBasicVeniceWriter(topic)) {
+    try (VeniceWriter<byte[], byte[], byte[]> veniceWriter =
+        veniceWriterFactory.createVeniceWriter(new VeniceWriterOptions.Builder(topic).build())) {
       veniceWriter.broadcastStartOfPush(true, Collections.emptyMap());
 
       /**
@@ -183,8 +185,8 @@ public abstract class TestRestartServerDuringIngestion {
         restartPointSetForUnsortedInput.add(831);
         cur = 0;
 
-        try (VeniceWriter<byte[], byte[], byte[]> streamingWriter =
-            veniceWriterFactory.createBasicVeniceWriter(Version.composeRealTimeTopic(storeName))) {
+        try (VeniceWriter<byte[], byte[], byte[]> streamingWriter = veniceWriterFactory
+            .createVeniceWriter(new VeniceWriterOptions.Builder(Version.composeRealTimeTopic(storeName)).build())) {
           for (Map.Entry<byte[], byte[]> entry: unsortedInputRecords.entrySet()) {
             if (restartPointSetForUnsortedInput.contains(++cur)) {
               // Restart server
@@ -262,7 +264,8 @@ public abstract class TestRestartServerDuringIngestion {
     String kafkaUrl = versionCreationResponse.getKafkaBootstrapServers();
     VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(kafkaUrl);
 
-    try (VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterFactory.createBasicVeniceWriter(topic)) {
+    try (VeniceWriter<byte[], byte[], byte[]> veniceWriter =
+        veniceWriterFactory.createVeniceWriter(new VeniceWriterOptions.Builder(topic).build())) {
       veniceWriter.broadcastStartOfPush(false, Collections.emptyMap());
 
       Map<byte[], byte[]> sortedInputRecords = generateInput(1000, false, 0, serializer);
