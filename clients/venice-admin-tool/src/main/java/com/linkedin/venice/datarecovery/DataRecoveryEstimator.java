@@ -33,11 +33,11 @@ public class DataRecoveryEstimator extends DataRecoveryWorker {
   @Override
   public List<DataRecoveryTask> buildTasks(Set<String> storeNames, Command.Params params) {
     List<DataRecoveryTask> tasks = new ArrayList<>();
-    EstimateDataRecoveryTimeCommand.Params cmdParams = (EstimateDataRecoveryTimeCommand.Params) params;
     for (String storeName: storeNames) {
-      DataRecoveryTask.TaskParams taskParams = new DataRecoveryTask.TaskParams(storeName, cmdParams);
-      EstimateDataRecoveryTimeCommand cmd = new EstimateDataRecoveryTimeCommand(storeName, cmdParams);
-      tasks.add(new DataRecoveryTask(cmd, taskParams));
+      DataRecoveryTask.TaskParams taskParams = new DataRecoveryTask.TaskParams(storeName, params);
+      EstimateDataRecoveryTimeCommand.Params p =
+          new EstimateDataRecoveryTimeCommand.Params((EstimateDataRecoveryTimeCommand.Params) params);
+      tasks.add(new DataRecoveryTask(new EstimateDataRecoveryTimeCommand(p), taskParams));
     }
     return tasks;
   }

@@ -8,23 +8,19 @@ import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
 import java.util.Optional;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 
 public class EstimateDataRecoveryTimeCommand extends Command {
-  private final Logger LOGGER = LogManager.getLogger(EstimateDataRecoveryTimeCommand.class);
-  private String storeName;
-  private Params params = new Params();
+  private Params params;
   private EstimateDataRecoveryTimeCommand.Result result = new EstimateDataRecoveryTimeCommand.Result();
 
-  public EstimateDataRecoveryTimeCommand(String storeName, Params params) {
+  public EstimateDataRecoveryTimeCommand(Params params) {
     this.params = params;
-    this.storeName = storeName;
   }
 
   // for mockito
   public EstimateDataRecoveryTimeCommand() {
+    this.params = null;
   }
 
   public Params getParams() {
@@ -33,14 +29,6 @@ public class EstimateDataRecoveryTimeCommand extends Command {
 
   public void setParams(Params params) {
     this.params = params;
-  }
-
-  public String getStoreName() {
-    return storeName;
-  }
-
-  public void setStoreName(String storeName) {
-    this.storeName = storeName;
   }
 
   @Override
@@ -95,6 +83,17 @@ public class EstimateDataRecoveryTimeCommand extends Command {
     private ControllerClient pCtrlCliWithoutCluster;
     private String parentUrl;
     private Optional<SSLFactory> sslFactory;
+
+    public Params(Params p) {
+      setStore(p.getStore());
+      setPCtrlCliWithoutCluster(p.getPCtrlCliWithoutCluster());
+      setTargetRegion(p.getTargetRegion());
+      setSslFactory(p.getSslFactory());
+      setParentUrl((p.getParentUrl()));
+    }
+
+    public Params() {
+    }
 
     public String getTargetRegion() {
       return targetRegion;
