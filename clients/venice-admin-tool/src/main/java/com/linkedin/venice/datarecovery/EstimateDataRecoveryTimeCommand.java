@@ -15,6 +15,15 @@ public class EstimateDataRecoveryTimeCommand extends Command {
   private Params params = new Params();
   private EstimateDataRecoveryTimeCommand.Result result = new EstimateDataRecoveryTimeCommand.Result();
 
+  public EstimateDataRecoveryTimeCommand(String storeName, Params params) {
+    this.params = params;
+    this.storeName = storeName;
+  }
+
+  // for mockito
+  public EstimateDataRecoveryTimeCommand() {
+  }
+
   public Params getParams() {
     return params;
   }
@@ -49,7 +58,7 @@ public class EstimateDataRecoveryTimeCommand extends Command {
   public void execute() {
     // get store's push + partition info
     StoreHealthAuditResponse storeHealthInfo =
-        params.getPCtrlCliWithoutCluster().listStorePushInfo(params.getStore(), true);
+        getParams().getPCtrlCliWithoutCluster().listStorePushInfo(getParams().getStore(), true);
     Map<String, RegionPushDetails> pushDetails = storeHealthInfo.getRegionPushDetails();
 
     if (pushDetails.containsKey(getParams().getTargetRegion())) {
