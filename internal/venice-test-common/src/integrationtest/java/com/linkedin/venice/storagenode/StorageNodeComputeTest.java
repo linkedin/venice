@@ -200,8 +200,11 @@ public class StorageNodeComputeTest {
     String valuePrefix = "value_";
 
     VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress());
-    try (VeniceWriter<Object, byte[], byte[]> veniceWriter =
-        vwFactory.createVeniceWriter(topic, keySerializer, new DefaultSerializer(), valueLargerThan1MB.config)) {
+    try (VeniceWriter<Object, byte[], byte[]> veniceWriter = vwFactory.createVeniceWriter(
+        new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer)
+            .setValueSerializer(new DefaultSerializer())
+            .setChunkingEnabled(valueLargerThan1MB.config)
+            .build())) {
       pushSyntheticDataForCompute(
           topic,
           keyPrefix,

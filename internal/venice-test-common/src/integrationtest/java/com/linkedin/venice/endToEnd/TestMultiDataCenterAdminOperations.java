@@ -23,6 +23,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -145,8 +146,8 @@ public class TestMultiDataCenterAdminOperations {
         multiRegionMultiClusterWrapper.getLeaderParentControllerWithRetries(clusterName);
     Admin admin = parentController.getVeniceAdmin();
     VeniceWriterFactory veniceWriterFactory = admin.getVeniceWriterFactory();
-    VeniceWriter<byte[], byte[], byte[]> veniceWriter =
-        veniceWriterFactory.createBasicVeniceWriter(AdminTopicUtils.getTopicNameFromClusterName(clusterName));
+    VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterFactory.createVeniceWriter(
+        new VeniceWriterOptions.Builder(AdminTopicUtils.getTopicNameFromClusterName(clusterName)).build());
     AdminOperationSerializer adminOperationSerializer = new AdminOperationSerializer();
     long executionId = parentController.getVeniceAdmin().getLastSucceedExecutionId(clusterName) + 1;
     // send a bad admin message
