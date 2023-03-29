@@ -644,11 +644,11 @@ public class AdminTool {
     cmdParams.setTargetRegion(destFabric);
     cmdParams.setParentUrl(parentUrl);
     cmdParams.setSslFactory(sslFactory);
-    Long total = 0L;
+    Long total;
 
     try (ControllerClient cli = new ControllerClient("*", parentUrl, sslFactory)) {
       cmdParams.setPCtrlCliWithoutCluster(cli);
-      total += dataRecoveryClient.estimateRecoveryTime(params, cmdParams);
+      total = dataRecoveryClient.estimateRecoveryTime(params, cmdParams);
     }
 
     if (total <= 0) {
