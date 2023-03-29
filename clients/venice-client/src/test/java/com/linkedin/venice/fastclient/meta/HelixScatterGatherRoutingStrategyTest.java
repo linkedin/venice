@@ -1,7 +1,5 @@
 package com.linkedin.venice.fastclient.meta;
 
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
 import static org.testng.Assert.*;
 
 import java.util.Arrays;
@@ -31,43 +29,35 @@ public class HelixScatterGatherRoutingStrategyTest {
     return helixGroupInfo;
   }
 
-  public void runTest(
-      List<String> replicas,
-      long requestId,
-      int requiredReplicaCount,
-      List<Integer> shuffledGroupIds,
-      List<String> expectedReplicas) {
+  public void runTest(List<String> replicas, long requestId, int requiredReplicaCount, List<String> expectedReplicas) {
     HelixScatterGatherRoutingStrategy strategy = new HelixScatterGatherRoutingStrategy(getHelixGroupInfo());
-    HelixScatterGatherRoutingStrategy spy = spy(strategy);
-    doReturn(shuffledGroupIds).when(spy).shuffleGroupIds(anySet());
-
-    List<String> selectedReplicas = spy.getReplicas(requestId, replicas, requiredReplicaCount);
+    List<String> selectedReplicas = strategy.getReplicas(requestId, replicas, requiredReplicaCount);
     assertEquals(selectedReplicas, expectedReplicas);
   }
 
   @Test
   public void testGetReplicasWithAdequateReplicas() {
     List<String> replicas = Arrays.asList(instance1, instance2, instance3);
-    runTest(replicas, 0, 2, Arrays.asList(0), Arrays.asList(instance1, instance2));
-    runTest(replicas, 0, 3, Arrays.asList(0), Arrays.asList(instance1, instance2, instance3));
+    runTest(replicas, 0, 2, Arrays.asList(instance1, instance2));
+    runTest(replicas, 1, 3, Arrays.asList(instance1, instance2, instance3));
   }
 
   @Test
-  public void testGetReplicasUsingNearestNeighbors() {
+  public void testGetReplicasUsingNeighbors() {
     List<String> replicas = Arrays.asList(instance1, instance4, instance5, instance6);
-    runTest(replicas, 0, 2, Arrays.asList(0, 1), Arrays.asList(instance1, instance4));
-    runTest(replicas, 0, 4, Arrays.asList(1, 0), Arrays.asList(instance4, instance5, instance6, instance1));
+    runTest(replicas, 0, 2, Arrays.asList(instance1, instance4));
+    runTest(replicas, 1, 4, Arrays.asList(instance4, instance5, instance6, instance1));
   }
 
   @Test
   public void testGetReplicasWithoutReachingRequiredCount() {
     List<String> replicas = Arrays.asList(instance1);
-    runTest(replicas, 0, 2, Arrays.asList(0), Arrays.asList(instance1));
+    runTest(replicas, 0, 2, Arrays.asList(instance1));
   }
 
   @Test
   public void testGetReplicasWithoutAnyFilteredReplicas() {
     List<String> replicas = Arrays.asList();
-    runTest(replicas, 0, 2, Arrays.asList(0), Arrays.asList());
+    runTest(replicas, 0, 2, Arrays.asList());
   }
 }

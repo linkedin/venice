@@ -5,7 +5,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 
 /**
@@ -29,11 +28,14 @@ public class HelixScatterGatherRoutingStrategy implements ClientRoutingStrategy 
     for (String replica: replicas) {
       groupToFilteredReplicas.computeIfAbsent(helixGroupInfo.get(replica), k -> new ArrayList<>()).add(replica);
     }
-    List<Integer> shuffledGroupIds = shuffleGroupIds(groupToFilteredReplicas.keySet());
+    List<Integer> groupIds = new ArrayList<>(groupToFilteredReplicas.keySet());
 
-    // select replicas from the selected group, going down the ordering if needed
+    // select replicas from the selected group, going down the groups if more replicas are needed
+    int groupCnt = groupIds.size();
+    int startPos = (int) requestId % groupCnt;
     List<String> selectedReplicas = new ArrayList<>();
-    for (int groupId: shuffledGroupIds) {
+    for (int i = 0; i < groupCnt; i++) {
+      int groupId = groupIds.get((i + startPos) % groupCnt);
       for (String replica: groupToFilteredReplicas.get(groupId)) {
         if (selectedReplicas.size() == requiredReplicaCount) {
           return selectedReplicas;
@@ -47,17 +49,5 @@ public class HelixScatterGatherRoutingStrategy implements ClientRoutingStrategy 
 
   public void setHelixGroupInfo(Map<String, Integer> helixGroupInfo) {
     this.helixGroupInfo = helixGroupInfo;
-  }
-
-  /**
-   * Select a group ordering of the group IDs by round-robin
-   * @param groupIds
-   * @return list of groups in random permutation
-   */
-  public List<Integer> shuffleGroupIds(Set<Integer> groupIds) {
-    List<Integer> shuffledGroupIds = new ArrayList<>(groupIds);
-    Collections.shuffle(shuffledGroupIds);
-
-    return shuffledGroupIds;
   }
 }
