@@ -21,6 +21,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.IOException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -60,8 +61,8 @@ public class AdminConsumptionTaskIntegrationTest {
       try (
           VeniceControllerWrapper controller = ServiceFactory
               .getVeniceController(new VeniceControllerCreateOptions.Builder(clusterName, zkServer, kafka).build());
-          VeniceWriter<byte[], byte[], byte[]> writer =
-              TestUtils.getVeniceWriterFactory(kafka.getAddress()).createBasicVeniceWriter(adminTopic)) {
+          VeniceWriter<byte[], byte[], byte[]> writer = TestUtils.getVeniceWriterFactory(kafka.getAddress())
+              .createVeniceWriter(new VeniceWriterOptions.Builder(adminTopic).build())) {
         byte[] message = getStoreCreationMessage(clusterName, storeName, owner, "invalid_key_schema", valueSchema, 1);
         long badOffset = writer.put(new byte[0], message, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION)
             .get()

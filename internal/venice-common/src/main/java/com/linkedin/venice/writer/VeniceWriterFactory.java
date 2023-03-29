@@ -44,12 +44,6 @@ public class VeniceWriterFactory {
         producerAdapterFactory.create(props, options.getTopicName(), options.getBrokerAddress()));
   }
 
-  /** test-only */
-  @Deprecated
-  public VeniceWriter<byte[], byte[], byte[]> createBasicVeniceWriter(String topicName) {
-    return createVeniceWriter(new VeniceWriterOptions.Builder(topicName).build());
-  }
-
   /**
    * test-only
    *
