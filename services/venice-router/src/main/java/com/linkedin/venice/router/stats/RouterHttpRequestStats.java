@@ -1,6 +1,7 @@
 package com.linkedin.venice.router.stats;
 
 import com.linkedin.alpini.router.monitoring.ScatterGatherStats;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AbstractVeniceHttpStats;
 import com.linkedin.venice.stats.LambdaStat;
@@ -148,7 +149,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     inFlightRequestSensor = registerSensor("in_flight_request_count", new Min(), new Max(0), new Avg());
 
     String responseSizeSensorName = "response_size";
-    if (isKeyValueProfilingEnabled) {
+    if (isKeyValueProfilingEnabled && !VeniceSystemStoreUtils.isSystemStore(storeName)) {
       String keySizeSensorName = "key_size_in_byte";
       keySizeSensor = registerSensor(
           keySizeSensorName,

@@ -3,6 +3,7 @@ package com.linkedin.davinci.stats;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.Gauge;
 import com.linkedin.venice.stats.TehutiUtils;
@@ -41,7 +42,7 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
    * Bytes read from Kafka by store ingestion task as a total. This metric includes bytes read for all store versions
    * allocated in a storage node reported with its uncompressed data size.
    */
-  private final Sensor totalBytesReadFromKafkaAsUncompressedSizeSensor;
+  private Sensor totalBytesReadFromKafkaAsUncompressedSizeSensor = null;
   private final Sensor storageQuotaUsedSensor;
   // disk quota allowed for a store without replication. It should be as a straight line unless we bumps the disk quota
   // allowed.
@@ -50,7 +51,7 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
   private final Sensor pollResultNumSensor;
   /** To measure 'put' latency of consumer records blocking queue */
   private final Sensor consumerRecordsQueuePutLatencySensor;
-  private final Sensor keySizeSensor;
+  private Sensor keySizeSensor = null;
   private final Sensor valueSizeSensor;
   private final Sensor unexpectedMessageSensor;
   private final Sensor inconsistentStoreMetadataSensor;
@@ -163,18 +164,13 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
       HostLevelIngestionStats totalStats,
       Map<String, StoreIngestionTask> ingestionTaskMap) {
     super(metricsRepository, storeName);
+
+    boolean isSystemStore = VeniceSystemStoreUtils.isSystemStore(storeName);
     // Stats which are total only:
 
     registerOnlyTotal("bytes_consumed", totalStats, totalBytesConsumedSensor);
 
     registerOnlyTotal("records_consumed", totalStats, totalRecordsConsumedSensor);
-
-    this.totalBytesReadFromKafkaAsUncompressedSizeSensor = registerOnlyTotal(
-        "bytes_read_from_kafka_as_uncompressed_size",
-        totalStats,
-        () -> totalStats.totalBytesReadFromKafkaAsUncompressedSizeSensor,
-        new Rate(),
-        new Total());
 
     registerOnlyTotal("leader_bytes_consumed", totalStats, totalLeaderBytesConsumedSensor);
 
@@ -250,14 +246,21 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
     this.diskQuotaSensor =
         registerSensor("global_store_disk_quota_allowed", new Gauge(() -> diskQuotaAllowedGauge), new Max());
 
-    String keySizeSensorName = "record_key_size_in_bytes";
-    this.keySizeSensor = registerSensor(
-        keySizeSensorName,
-        new Avg(),
-        new Min(),
-        new Max(),
-        TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + keySizeSensorName));
-
+    if (!isSystemStore) {
+      this.totalBytesReadFromKafkaAsUncompressedSizeSensor = registerOnlyTotal(
+          "bytes_read_from_kafka_as_uncompressed_size",
+          totalStats,
+          () -> totalStats.totalBytesReadFromKafkaAsUncompressedSizeSensor,
+          new Rate(),
+          new Total());
+      String keySizeSensorName = "record_key_size_in_bytes";
+      this.keySizeSensor = registerSensor(
+          keySizeSensorName,
+          new Avg(),
+          new Min(),
+          new Max(),
+          TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + keySizeSensorName));
+    }
     String valueSizeSensorName = "record_value_size_in_bytes";
     this.valueSizeSensor = registerSensor(
         valueSizeSensorName,
@@ -386,7 +389,9 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
   }
 
   public void recordTotalBytesReadFromKafkaAsUncompressedSize(long bytes) {
-    totalBytesReadFromKafkaAsUncompressedSizeSensor.record(bytes);
+    if (totalBytesReadFromKafkaAsUncompressedSizeSensor != null) {
+      totalBytesReadFromKafkaAsUncompressedSizeSensor.record(bytes);
+    }
   }
 
   public void recordStorageQuotaUsed(double quotaUsed) {
@@ -416,7 +421,9 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
   }
 
   public void recordKeySize(long bytes) {
-    keySizeSensor.record(bytes);
+    if (keySizeSensor != null) {
+      keySizeSensor.record(bytes);
+    }
   }
 
   public void recordValueSize(long bytes) {
