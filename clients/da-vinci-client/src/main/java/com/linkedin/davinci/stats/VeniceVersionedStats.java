@@ -19,7 +19,6 @@ public class VeniceVersionedStats<STATS, STATS_REPORTER extends AbstractVeniceSt
   private final VeniceVersionedStatsReporter<STATS, STATS_REPORTER> reporters;
 
   private final Supplier<STATS> statsInitiator;
-  private final STATS totalStats;
 
   public VeniceVersionedStats(
       MetricsRepository metricsRepository,
@@ -30,13 +29,6 @@ public class VeniceVersionedStats<STATS, STATS_REPORTER extends AbstractVeniceSt
     this.versionedStats = new Int2ObjectOpenHashMap<>();
     this.reporters = new VeniceVersionedStatsReporter<>(metricsRepository, storeName, reporterSupplier);
     this.statsInitiator = statsInitiator;
-
-    this.totalStats = statsInitiator.get();
-    reporters.setTotalStats(totalStats);
-  }
-
-  protected STATS getTotalStats() {
-    return totalStats;
   }
 
   public void registerConditionalStats() {

@@ -59,12 +59,7 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
 
   protected void recordVersionedAndTotalStat(String storeName, int version, Consumer<STATS> function) {
     VeniceVersionedStats<STATS, STATS_REPORTER> stats = getVersionedStats(storeName);
-    Utils.computeIfNotNull(stats.getTotalStats(), function);
     Utils.computeIfNotNull(stats.getStats(version), function);
-  }
-
-  protected STATS getTotalStats(String storeName) {
-    return getVersionedStats(storeName).getTotalStats();
   }
 
   protected STATS getStats(String storeName, int version) {
@@ -196,7 +191,7 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
    */
 
   /**
-   * Some versioned stats might always increasing; in this case, the value in the total stats should be updated with
+   * Some versioned stats might be always increasing; in this case, the value in the total stats should be updated with
    * the aggregated values across the new version list.
    */
   protected void updateTotalStats(String storeName) {

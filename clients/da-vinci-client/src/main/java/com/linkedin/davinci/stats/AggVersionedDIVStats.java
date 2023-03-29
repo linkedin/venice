@@ -177,6 +177,5 @@ public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVSta
     IntConsumer versionConsumer = v -> Utils
         .computeIfNotNull(getStats(storeName, v), stat -> totalStatCount.addAndGet(statValueSupplier.apply(stat)));
     existingVersions.forEach(versionConsumer);
-    Utils.computeIfNotNull(getTotalStats(storeName), stat -> statsUpdater.accept(stat, totalStatCount.get()));
   }
 }

@@ -20,7 +20,6 @@ public class VeniceVersionedStatsReporter<STATS, STATS_REPORTER extends Abstract
 
   private final STATS_REPORTER currentStatsReporter;
   private final STATS_REPORTER futureStatsReporter;
-  private final STATS_REPORTER totalStatsReporter;
   private final boolean isSystemStore;
 
   public VeniceVersionedStatsReporter(
@@ -50,10 +49,8 @@ public class VeniceVersionedStatsReporter<STATS, STATS_REPORTER extends Abstract
     this.currentStatsReporter = statsSupplier.get(metricsRepository, storeName + "_current");
     if (!isSystemStore) {
       this.futureStatsReporter = statsSupplier.get(metricsRepository, storeName + "_future");
-      this.totalStatsReporter = statsSupplier.get(metricsRepository, storeName + "_total");
     } else {
       this.futureStatsReporter = null;
-      this.totalStatsReporter = null;
     }
   }
 
@@ -61,7 +58,6 @@ public class VeniceVersionedStatsReporter<STATS, STATS_REPORTER extends Abstract
     this.currentStatsReporter.registerConditionalStats();
     if (!isSystemStore) {
       this.futureStatsReporter.registerConditionalStats();
-      this.totalStatsReporter.registerConditionalStats();
     }
   }
 
@@ -69,7 +65,6 @@ public class VeniceVersionedStatsReporter<STATS, STATS_REPORTER extends Abstract
     this.currentStatsReporter.unregisterStats();
     if (!isSystemStore) {
       this.futureStatsReporter.unregisterStats();
-      this.totalStatsReporter.unregisterStats();
     }
     super.unregisterAllSensors();
   }
@@ -90,10 +85,6 @@ public class VeniceVersionedStatsReporter<STATS, STATS_REPORTER extends Abstract
   public void setFutureStats(int version, STATS stats) {
     futureVersion = version;
     linkStatsWithReporter(futureStatsReporter, stats);
-  }
-
-  public void setTotalStats(STATS totalStats) {
-    linkStatsWithReporter(totalStatsReporter, totalStats);
   }
 
   private void linkStatsWithReporter(STATS_REPORTER reporter, STATS stats) {

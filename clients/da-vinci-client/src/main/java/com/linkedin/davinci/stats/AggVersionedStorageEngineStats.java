@@ -1,6 +1,7 @@
 package com.linkedin.davinci.stats;
 
 import com.linkedin.davinci.store.AbstractStorageEngine;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.stats.Gauge;
@@ -30,6 +31,9 @@ public class AggVersionedStorageEngineStats extends
   public void setStorageEngine(String topicName, AbstractStorageEngine storageEngine) {
     if (!Version.isVersionTopicOrStreamReprocessingTopic(topicName)) {
       LOGGER.warn("Invalid topic name: {}", topicName);
+      return;
+    }
+    if (VeniceSystemStoreUtils.isSystemStore(topicName)) {
       return;
     }
     String storeName = Version.parseStoreFromKafkaTopicName(topicName);
