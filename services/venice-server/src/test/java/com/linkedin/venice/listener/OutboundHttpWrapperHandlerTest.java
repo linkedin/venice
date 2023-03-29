@@ -14,6 +14,7 @@ import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.nio.charset.StandardCharsets;
+import java.util.Collections;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -22,6 +23,7 @@ public class OutboundHttpWrapperHandlerTest {
   @Test
   public void testWriteMetadataResponse() {
     MetadataResponse msg = new MetadataResponse();
+    msg.setVersions(Collections.emptyList());
     StatsHandler statsHandler = mock(StatsHandler.class);
     ChannelHandlerContext mockCtx = mock(ChannelHandlerContext.class);
 

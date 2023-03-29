@@ -5,6 +5,7 @@ import static com.linkedin.venice.ConfigKeys.ADMIN_TOPIC_SOURCE_REGION;
 import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_ALLOWLIST;
 import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_D2;
+import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_SERVER_D2;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_FABRIC_WHITELIST;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -42,6 +43,9 @@ public class TestAdminConsumerService {
 
     VeniceProperties props = new PropertyBuilder().put(TestUtils.getPropertiesForControllerConfig())
         .put(CLUSTER_TO_D2, TestUtils.getClusterToD2String(Collections.singletonMap(someClusterName, "dummy_d2")))
+        .put(
+            CLUSTER_TO_SERVER_D2,
+            TestUtils.getClusterToD2String(Collections.singletonMap(someClusterName, "dummy_server_d2")))
         .put(ADMIN_TOPIC_REMOTE_CONSUMPTION_ENABLED, true)
         .put(ADMIN_TOPIC_SOURCE_REGION, adminTopicSourceRegion)
         .put(NATIVE_REPLICATION_FABRIC_WHITELIST, adminTopicSourceRegion)

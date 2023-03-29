@@ -55,6 +55,14 @@
       "default": null
     },
     {
+      "name": "versions",
+      "doc": "List of all version numbers",
+      "type": {
+        "type": "array",
+        "items": "int"
+      }
+    },
+    {
       "name": "keySchema",
       "doc": "Key schema",
       "type": [

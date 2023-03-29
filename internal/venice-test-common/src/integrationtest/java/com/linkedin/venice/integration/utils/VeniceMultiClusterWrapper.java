@@ -64,12 +64,15 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       }
       String[] clusterNames = new String[options.getNumberOfClusters()];
       Map<String, String> clusterToD2 = new HashMap<>();
+      Map<String, String> clusterToServerD2 = new HashMap<>();
       for (int i = 0; i < options.getNumberOfClusters(); i++) {
         String clusterName =
             options.isRandomizeClusterName() ? Utils.getUniqueString("venice-cluster" + i) : "venice-cluster" + i;
         clusterNames[i] = clusterName;
         String d2ServiceName = "venice-" + i;
         clusterToD2.put(clusterName, d2ServiceName);
+        String serverD2ServiceName = Utils.getUniqueString(clusterName + "_d2");
+        clusterToServerD2.put(clusterName, serverD2ServiceName);
       }
 
       // Create controllers for multi-cluster
@@ -104,6 +107,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
               .rebalanceDelayMs(options.getRebalanceDelayMs())
               .minActiveReplica(options.getMinActiveReplica())
               .clusterToD2(clusterToD2)
+              .clusterToServerD2(clusterToServerD2)
               .sslToKafka(false)
               .d2Enabled(true)
               .extraProperties(controllerProperties)
@@ -122,6 +126,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
               .zkServerWrapper(zkServerWrapper)
               .kafkaBrokerWrapper(kafkaBrokerWrapper)
               .clusterToD2(clusterToD2)
+              .clusterToServerD2(clusterToServerD2)
               .numberOfControllers(0)
               .numberOfServers(options.getNumberOfServers())
               .numberOfRouters(options.getNumberOfRouters())
@@ -136,11 +141,9 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
               .forkServer(options.isForkServer())
               .kafkaClusterMap(options.getKafkaClusterMap());
 
-      Map<String, String> clusterToServerD2 = options.getClusterToServerD2();
       for (int i = 0; i < options.getNumberOfClusters(); i++) {
         // Create a wrapper for cluster without controller.
-        vccBuilder.clusterName(clusterNames[i])
-            .serverD2ServiceName(clusterToServerD2.getOrDefault(clusterNames[i], null));
+        vccBuilder.clusterName(clusterNames[i]);
         VeniceClusterWrapper clusterWrapper = ServiceFactory.getVeniceCluster(vccBuilder.build());
         controllerMap.values().forEach(clusterWrapper::addVeniceControllerWrapper);
         clusterWrapperMap.put(clusterWrapper.getClusterName(), clusterWrapper);

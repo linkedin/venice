@@ -268,7 +268,8 @@ public class VeniceServerTest {
   public void testVeniceServerWithD2(boolean https) throws Exception {
     try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 1, 0)) {
       String storeName = cluster.createStore(1);
-      String d2ServiceName = cluster.getServerD2ServiceName();
+      Map<String, String> clusterToServerD2 = cluster.getClusterToServerD2();
+      String d2ServiceName = clusterToServerD2.get(cluster.getClusterName());
 
       D2Client d2Client;
       if (https) {

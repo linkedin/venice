@@ -112,7 +112,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   private final boolean sslToStorageNodes;
   private final boolean sslToKafka;
   private final Map<String, String> clusterToD2;
-  private final String serverD2ServiceName;
+  private final Map<String, String> clusterToServerD2;
 
   private static Process veniceClusterProcess;
   // Controller discovery URLs are controllers that's created outside of this cluster wrapper but are overseeing the
@@ -147,7 +147,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       boolean sslToStorageNodes,
       boolean sslToKafka,
       Map<String, String> clusterToD2,
-      String serverD2ServiceName) {
+      Map<String, String> clusterToServerD2) {
 
     super(SERVICE_NAME, null);
     this.regionName = regionName;
@@ -165,7 +165,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     this.sslToStorageNodes = sslToStorageNodes;
     this.sslToKafka = sslToKafka;
     this.clusterToD2 = clusterToD2;
-    this.serverD2ServiceName = serverD2ServiceName;
+    this.clusterToServerD2 = clusterToServerD2;
   }
 
   static ServiceProvider<VeniceClusterWrapper> generateService(VeniceClusterCreateOptions options) {
@@ -178,6 +178,14 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       clusterToD2 = Collections.singletonMap(options.getClusterName(), Utils.getUniqueString("router_d2_service"));
     } else {
       clusterToD2 = options.getClusterToD2();
+    }
+
+    Map<String, String> clusterToServerD2;
+    if (options.getClusterToServerD2() == null || options.getClusterToServerD2().isEmpty()) {
+      clusterToServerD2 =
+          Collections.singletonMap(options.getClusterName(), Utils.getUniqueString("server_d2_service"));
+    } else {
+      clusterToServerD2 = options.getClusterToServerD2();
     }
 
     ZkServerWrapper zkServerWrapper = options.getZkServerWrapper();
@@ -213,6 +221,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
                 .rebalanceDelayMs(options.getRebalanceDelayMs())
                 .minActiveReplica(options.getMinActiveReplica())
                 .clusterToD2(clusterToD2)
+                .clusterToServerD2(clusterToServerD2)
                 .sslToKafka(options.isSslToKafka())
                 .d2Enabled(true)
                 .regionName(options.getRegionName())
@@ -234,6 +243,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
             kafkaBrokerWrapper,
             options.isSslToStorageNodes(),
             clusterToD2,
+            clusterToServerD2,
             options.getExtraProperties());
         LOGGER.info(
             "[{}][{}] Created router on port {}",
@@ -275,7 +285,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
             options.isForkServer(),
             serverName,
             options.getKafkaClusterMap(),
-            options.getServerD2ServiceName());
+            clusterToServerD2.get(options.getClusterName()));
         LOGGER.info(
             "[{}][{}] Created server on port {}",
             options.getRegionName(),
@@ -310,7 +320,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
               options.isSslToStorageNodes(),
               options.isSslToKafka(),
               clusterToD2,
-              options.getServerD2ServiceName());
+              clusterToServerD2);
           // Wait for all the asynchronous ClusterLeaderInitializationRoutine to complete before returning the
           // VeniceClusterWrapper to tests.
           if (!veniceClusterWrapper.getVeniceControllers().isEmpty()) {
@@ -531,6 +541,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
             .minActiveReplica(defaultMinActiveReplica)
             .sslToKafka(sslToKafka)
             .clusterToD2(clusterToD2)
+            .clusterToServerD2(clusterToServerD2)
             .extraProperties(properties)
             .build());
     synchronized (this) {
@@ -555,6 +566,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         kafkaBrokerWrapper,
         sslToStorageNodes,
         clusterToD2,
+        clusterToServerD2,
         properties);
     synchronized (this) {
       veniceRouterWrappers.put(veniceRouterWrapper.getPort(), veniceRouterWrapper);
@@ -580,7 +592,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         zkServerWrapper.getAddress(),
         featureProperties,
         new Properties(),
-        serverD2ServiceName);
+        clusterToServerD2.get(clusterName));
     synchronized (this) {
       veniceServerWrappers.put(veniceServerWrapper.getPort(), veniceServerWrapper);
     }
@@ -601,7 +613,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         zkServerWrapper.getAddress(),
         new Properties(),
         properties,
-        serverD2ServiceName);
+        clusterToServerD2.get(clusterName));
     synchronized (this) {
       veniceServerWrappers.put(veniceServerWrapper.getPort(), veniceServerWrapper);
     }
@@ -616,7 +628,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         zkServerWrapper.getAddress(),
         featureProperties,
         configProperties,
-        serverD2ServiceName);
+        clusterToServerD2.get(clusterName));
     synchronized (this) {
       veniceServerWrappers.put(veniceServerWrapper.getPort(), veniceServerWrapper);
     }
@@ -1068,7 +1080,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     return regionName;
   }
 
-  public String getServerD2ServiceName() {
-    return serverD2ServiceName;
+  public Map<String, String> getClusterToServerD2() {
+    return clusterToServerD2;
   }
 }

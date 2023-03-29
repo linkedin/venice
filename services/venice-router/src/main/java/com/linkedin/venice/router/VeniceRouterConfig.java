@@ -2,6 +2,7 @@ package com.linkedin.venice.router;
 
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_D2;
+import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_SERVER_D2;
 import static com.linkedin.venice.ConfigKeys.ENFORCE_SECURE_ROUTER;
 import static com.linkedin.venice.ConfigKeys.HEARTBEAT_CYCLE;
 import static com.linkedin.venice.ConfigKeys.HEARTBEAT_TIMEOUT;
@@ -136,6 +137,7 @@ public class VeniceRouterConfig {
   private int maxOutgoingConnPerRoute;
   private int maxOutgoingConn;
   private Map<String, String> clusterToD2Map;
+  private Map<String, String> clusterToServerD2Map;
   private double perStorageNodeReadQuotaBuffer;
   private int refreshAttemptsForZkReconnect;
   private long refreshIntervalForZkReconnectInMs;
@@ -244,6 +246,7 @@ public class VeniceRouterConfig {
     maxOutgoingConnPerRoute = props.getInt(ROUTER_MAX_OUTGOING_CONNECTION_PER_ROUTE, 120);
     maxOutgoingConn = props.getInt(ROUTER_MAX_OUTGOING_CONNECTION, 1200);
     clusterToD2Map = props.getMap(CLUSTER_TO_D2);
+    clusterToServerD2Map = props.getMap(CLUSTER_TO_SERVER_D2);
     perStorageNodeReadQuotaBuffer = props.getDouble(ROUTER_PER_STORAGE_NODE_READ_QUOTA_BUFFER, 1.0);
     refreshAttemptsForZkReconnect = props.getInt(REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, 3);
     refreshIntervalForZkReconnectInMs =
@@ -433,6 +436,10 @@ public class VeniceRouterConfig {
 
   public Map<String, String> getClusterToD2Map() {
     return clusterToD2Map;
+  }
+
+  public Map<String, String> getClusterToServerD2Map() {
+    return clusterToServerD2Map;
   }
 
   public int getConnectionLimit() {

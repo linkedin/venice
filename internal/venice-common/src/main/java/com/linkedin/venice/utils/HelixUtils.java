@@ -354,4 +354,13 @@ public class HelixUtils {
     CustomizedStateConfig customizedStateConfig = customizedStateConfigBuilder.build();
     admin.addCustomizedStateConfig(clusterName, customizedStateConfig);
   }
+
+  /**
+   * Convert a replica's instance ID to its URL. An example is "localhost_port" to "https://localhost:port".
+   * @param instanceId
+   * @return replica URL
+   */
+  public static String instanceIdToUrl(String instanceId) {
+    return "https://" + instanceId.replace("_", ":");
+  }
 }
