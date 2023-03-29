@@ -17,19 +17,28 @@ import org.apache.logging.log4j.Logger;
 public class DataRecoveryClient {
   private static final Logger LOGGER = LogManager.getLogger(DataRecoveryClient.class);
   private final DataRecoveryExecutor executor;
+  private final DataRecoveryEstimator estimator;
   private final DataRecoveryMonitor monitor;
 
   public DataRecoveryClient() {
-    this(new DataRecoveryExecutor(), new DataRecoveryMonitor());
+    this(new DataRecoveryExecutor(), new DataRecoveryMonitor(), new DataRecoveryEstimator());
   }
 
-  public DataRecoveryClient(DataRecoveryExecutor executor, DataRecoveryMonitor monitor) {
+  public DataRecoveryClient(
+      DataRecoveryExecutor executor,
+      DataRecoveryMonitor monitor,
+      DataRecoveryEstimator estimator) {
     this.executor = executor;
     this.monitor = monitor;
+    this.estimator = estimator;
   }
 
   public DataRecoveryExecutor getExecutor() {
     return executor;
+  }
+
+  public DataRecoveryEstimator getEstimator() {
+    return estimator;
   }
 
   public DataRecoveryMonitor getMonitor() {
@@ -48,6 +57,22 @@ public class DataRecoveryClient {
 
     getExecutor().perform(storeNames, cmdParams);
     getExecutor().shutdownAndAwaitTermination();
+  }
+
+  public Long estimateRecoveryTime(DataRecoveryParams drParams, EstimateDataRecoveryTimeCommand.Params cmdParams) {
+    Set<String> storeNames = drParams.getRecoveryStores();
+    if (storeNames == null || storeNames.isEmpty()) {
+      LOGGER.warn("store list is empty, exit.");
+      return 0L;
+    }
+
+    getEstimator().perform(storeNames, cmdParams);
+    Long totalRecoveryTime = 0L;
+    for (DataRecoveryTask t: getEstimator().getTasks()) {
+      totalRecoveryTime += ((EstimateDataRecoveryTimeCommand.Result) t.getTaskResult().getCmdResult())
+          .getEstimatedRecoveryTimeInSeconds();
+    }
+    return totalRecoveryTime;
   }
 
   public void monitor(DataRecoveryParams drParams, MonitorCommand.Params monitorParams) {
