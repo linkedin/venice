@@ -637,7 +637,7 @@ public class AdminTool {
 
     DataRecoveryClient dataRecoveryClient = new DataRecoveryClient();
 
-    DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(stores, true);
+    DataRecoveryClient.DataRecoveryParams params = new DataRecoveryClient.DataRecoveryParams(stores);
 
     EstimateDataRecoveryTimeCommand.Params cmdParams = new EstimateDataRecoveryTimeCommand.Params();
     cmdParams.setTargetRegion(destFabric);
@@ -651,7 +651,7 @@ public class AdminTool {
     }
     printObject("total recovery time: " + (total / 360) + ":" + ((total / 60) % 60) + ":" + (total % 10));
   }
-  
+
   private static void monitorDataRecovery(CommandLine cmd) {
     String parentUrl = getRequiredArgument(cmd, Arg.URL);
     String destFabric = getRequiredArgument(cmd, Arg.DEST_FABRIC);

@@ -17,27 +17,30 @@ import org.apache.logging.log4j.Logger;
 public class DataRecoveryClient {
   private static final Logger LOGGER = LogManager.getLogger(DataRecoveryClient.class);
   private final DataRecoveryExecutor executor;
-  private final Estimator estimator;
+  private final DataRecoveryEstimator estimator;
   private final DataRecoveryMonitor monitor;
 
   public DataRecoveryClient() {
-    this(new DataRecoveryExecutor(), new DataRecoveryMonitor());
+    this(new DataRecoveryExecutor(), new DataRecoveryMonitor(), new DataRecoveryEstimator());
   }
 
-  public DataRecoveryClient(DataRecoveryExecutor executor, DataRecoveryMonitor monitor) {
+  public DataRecoveryClient(
+      DataRecoveryExecutor executor,
+      DataRecoveryMonitor monitor,
+      DataRecoveryEstimator estimator) {
     this.executor = executor;
     this.monitor = monitor;
-    this.estimator = new Estimator();
+    this.estimator = estimator;
   }
 
   public DataRecoveryExecutor getExecutor() {
     return executor;
   }
 
-  public Estimator getEstimator() {
+  public DataRecoveryEstimator getEstimator() {
     return estimator;
   }
-  
+
   public DataRecoveryMonitor getMonitor() {
     return monitor;
   }
@@ -65,12 +68,13 @@ public class DataRecoveryClient {
 
     getEstimator().perform(storeNames, cmdParams);
     Long totalRecoveryTime = 0L;
-    for (PlanningTask t: getEstimator().getTasks()) {
-      totalRecoveryTime += t.getResult().getEstimatedRecoveryTimeInSeconds();
+    for (DataRecoveryTask t: getEstimator().getTasks()) {
+      totalRecoveryTime += ((EstimateDataRecoveryTimeCommand.Result) t.getTaskResult().getCmdResult())
+          .getEstimatedRecoveryTimeInSeconds();
     }
     return totalRecoveryTime;
   }
-  
+
   public void monitor(DataRecoveryParams drParams, MonitorCommand.Params monitorParams) {
     Set<String> storeNames = drParams.getRecoveryStores();
     if (storeNames == null || storeNames.isEmpty()) {

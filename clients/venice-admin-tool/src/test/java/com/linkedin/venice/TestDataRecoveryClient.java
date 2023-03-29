@@ -1,10 +1,6 @@
 package com.linkedin.venice;
 
 import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
-
-import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.controllerapi.StoreHealthAuditResponse;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doCallRealMethod;
@@ -16,28 +12,25 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
+import com.linkedin.venice.controllerapi.StoreHealthAuditResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.datarecovery.Command;
 import com.linkedin.venice.datarecovery.DataRecoveryClient;
+import com.linkedin.venice.datarecovery.DataRecoveryEstimator;
 import com.linkedin.venice.datarecovery.DataRecoveryExecutor;
 import com.linkedin.venice.datarecovery.DataRecoveryMonitor;
 import com.linkedin.venice.datarecovery.DataRecoveryTask;
 import com.linkedin.venice.datarecovery.EstimateDataRecoveryTimeCommand;
-import com.linkedin.venice.datarecovery.Estimator;
-import com.linkedin.venice.datarecovery.PlanningTask;
-import com.linkedin.venice.datarecovery.StoreRepushCommand;
-import com.linkedin.venice.meta.RegionPushDetails;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
 import com.linkedin.venice.datarecovery.MonitorCommand;
 import com.linkedin.venice.datarecovery.StoreRepushCommand;
+import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.UncompletedPartition;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -47,7 +40,7 @@ import org.testng.annotations.Test;
 
 public class TestDataRecoveryClient {
   private DataRecoveryExecutor executor;
-  private Estimator estimator;
+  private DataRecoveryEstimator estimator;
   private ControllerClient controllerClient;
   private DataRecoveryMonitor monitor;
 
@@ -68,8 +61,9 @@ public class TestDataRecoveryClient {
   private void verifyEstimationResults() {
     Long expectedRecoveryTime = 7200L;
     Long result = 0L;
-    for (PlanningTask t: estimator.getTasks()) {
-      result += t.getResult().getEstimatedRecoveryTimeInSeconds();
+    for (DataRecoveryTask t: estimator.getTasks()) {
+      result += ((EstimateDataRecoveryTimeCommand.Result) t.getTaskResult().getCmdResult())
+          .getEstimatedRecoveryTimeInSeconds();
     }
     Assert.assertEquals(result, expectedRecoveryTime);
   }
@@ -97,7 +91,7 @@ public class TestDataRecoveryClient {
   }
 
   private void estimateRecovery() {
-    estimator = spy(Estimator.class);
+    estimator = spy(DataRecoveryEstimator.class);
     controllerClient = mock(ControllerClient.class);
 
     Set<String> storeNames = new HashSet<>(Arrays.asList("store1", "store2"));
@@ -105,7 +99,9 @@ public class TestDataRecoveryClient {
     cmdParams.setTargetRegion("region1");
     cmdParams.setParentUrl("https://localhost:7036");
     cmdParams.setPCtrlCliWithoutCluster(controllerClient);
-    List<PlanningTask> tasks = buildPlanningTasks(storeNames, cmdParams);
+    EstimateDataRecoveryTimeCommand mockCmd = spy(EstimateDataRecoveryTimeCommand.class);
+    List<DataRecoveryTask> tasks = buildTasks(storeNames, mockCmd, cmdParams);
+    doReturn(cmdParams).when(mockCmd).getParams();
 
     doReturn(tasks).when(estimator).buildTasks(any(), any());
     DataRecoveryClient dataRecoveryClient = mock(DataRecoveryClient.class);
@@ -131,8 +127,7 @@ public class TestDataRecoveryClient {
     doReturn(mockResponse).when(controllerClient).listStorePushInfo(anyString(), anyBoolean());
     doReturn("testcluster").when(controllerClient).getClusterName();
 
-    dataRecoveryClient
-        .estimateRecoveryTime(new DataRecoveryClient.DataRecoveryParams("store1,store2", true), cmdParams);
+    dataRecoveryClient.estimateRecoveryTime(new DataRecoveryClient.DataRecoveryParams("store1,store2"), cmdParams);
   }
 
   private void executeRecovery(boolean isSuccess) {
@@ -182,15 +177,6 @@ public class TestDataRecoveryClient {
     return tasks;
   }
 
-  private List<PlanningTask> buildPlanningTasks(Set<String> storeNames, EstimateDataRecoveryTimeCommand.Params params) {
-    List<PlanningTask> tasks = new ArrayList<>();
-    for (String name: storeNames) {
-      PlanningTask.TaskParams taskParams = new PlanningTask.TaskParams(name, params);
-      tasks.add(new PlanningTask(taskParams));
-    }
-    return tasks;
-  }
-  
   @Test
   public void testMonitor() {
     for (ExecutionStatus status: new ExecutionStatus[] { ExecutionStatus.STARTED, ExecutionStatus.COMPLETED,

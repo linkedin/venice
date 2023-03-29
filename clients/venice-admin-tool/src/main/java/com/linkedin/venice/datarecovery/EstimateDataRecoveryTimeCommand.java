@@ -1,24 +1,19 @@
 package com.linkedin.venice.datarecovery;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.StoreHealthAuditResponse;
+import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.security.SSLFactory;
+import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
+import java.util.Map;
 import java.util.Optional;
 
 
-/**
- * EstimateRecoveryTimeCommand contains the details of a request for estimating the recovery time of a store or set of stores.
- * We expect the command to comply with the following contract:
- *
- * Input:
- *    admin-tool.sh --list-store-push-info --url <url> --stores <store_names> --fabric <source_fabric>
- * Output:
- *    success: {store, estimated_recovery_time}
- *    failure: {store, error}
- */
-
-public class EstimateDataRecoveryTimeCommand {
+public class EstimateDataRecoveryTimeCommand extends Command {
   private String storeName;
-  private Params params;
+  private Params params = new Params();
+  private EstimateDataRecoveryTimeCommand.Result result = new EstimateDataRecoveryTimeCommand.Result();
 
   public Params getParams() {
     return params;
@@ -36,7 +31,38 @@ public class EstimateDataRecoveryTimeCommand {
     this.storeName = storeName;
   }
 
-  public static class Params {
+  @Override
+  public EstimateDataRecoveryTimeCommand.Result getResult() {
+    return result;
+  }
+
+  @Override
+  public boolean needWaitForFirstTaskToComplete() {
+    return false;
+  }
+
+  public void setResult(Result result) {
+    this.result = result;
+  }
+
+  @Override
+  public void execute() {
+    // get store's push + partition info
+    StoreHealthAuditResponse storeHealthInfo =
+        params.getPCtrlCliWithoutCluster().listStorePushInfo(params.getStore(), true);
+    Map<String, RegionPushDetails> pushDetails = storeHealthInfo.getRegionPushDetails();
+
+    if (pushDetails.containsKey(getParams().getTargetRegion())) {
+      LocalDateTime startTime =
+          LocalDateTime.parse(pushDetails.get(getParams().getTargetRegion()).getPushStartTimestamp());
+      LocalDateTime endTime = LocalDateTime.parse(pushDetails.get(getParams().getTargetRegion()).getPushEndTimestamp());
+      this.setResult(new EstimateDataRecoveryTimeCommand.Result(startTime.until(endTime, ChronoUnit.SECONDS)));
+    } else {
+      this.setResult(new EstimateDataRecoveryTimeCommand.Result("target region not found"));
+    }
+  }
+
+  public static class Params extends Command.Params {
     private String targetRegion;
     private ControllerClient pCtrlCliWithoutCluster;
     private String parentUrl;
@@ -75,7 +101,7 @@ public class EstimateDataRecoveryTimeCommand {
     }
   }
 
-  public static class Result {
+  public static class Result extends Command.Result {
     private Long estimatedRecoveryTimeInSeconds;
     private boolean error;
     private String message;
