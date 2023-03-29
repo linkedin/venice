@@ -124,8 +124,8 @@ public class EstimateDataRecoveryTimeCommand extends Command {
     public Result(Long timeInSeconds) {
       this.estimatedRecoveryTimeInSeconds = timeInSeconds;
       this.error = false;
-      this.message = "EstimateDataRecoveryTimeCommand.Result: " + (timeInSeconds / 3600) + ":" + (timeInSeconds % 60)
-          + ":" + (timeInSeconds % 10);
+      this.message = "EstimateDataRecoveryTimeCommand.Result: " + (timeInSeconds / 3600) + ":"
+          + ((timeInSeconds / 60) % 60) + ":" + (timeInSeconds % 10);
     }
 
     public Result(String errorMessage) {

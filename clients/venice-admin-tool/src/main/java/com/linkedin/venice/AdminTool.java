@@ -496,6 +496,7 @@ public class AdminTool {
           break;
         case ESTIMATE_DATA_RECOVERY_TIME:
           estimateDataRecoveryTime(cmd);
+          break;
         case MONITOR_DATA_RECOVERY:
           monitorDataRecovery(cmd);
           break;
