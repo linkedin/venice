@@ -8,12 +8,12 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertEquals;
 
+import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.read.RequestType;
@@ -38,7 +38,7 @@ public class ReadQuotaEnforcementHandlerTest {
   Clock clock;
   long currentTime;
   ReadOnlyStoreRepository storeRepository;
-  RoutingDataRepository routingRepository;
+  HelixCustomizedViewOfflinePushRepository customizedViewRepository;
   ReadQuotaEnforcementHandler quotaEnforcer;
   AggServerQuotaUsageStats stats;
 
@@ -50,12 +50,12 @@ public class ReadQuotaEnforcementHandlerTest {
     currentTime = 0;
     doReturn(currentTime).when(clock).millis();
     storeRepository = mock(ReadOnlyStoreRepository.class);
-    routingRepository = mock(RoutingDataRepository.class);
+    customizedViewRepository = mock(HelixCustomizedViewOfflinePushRepository.class);
     stats = mock(AggServerQuotaUsageStats.class);
     quotaEnforcer = new ReadQuotaEnforcementHandler(
         nodeCapacity,
         storeRepository,
-        CompletableFuture.completedFuture(routingRepository),
+        CompletableFuture.completedFuture(customizedViewRepository),
         thisNodeId,
         stats,
         clock);

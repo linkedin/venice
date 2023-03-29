@@ -8,6 +8,7 @@ import static org.mockito.Mockito.mock;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
+import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Partition;
@@ -15,7 +16,6 @@ import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.ReadStrategy;
-import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
@@ -44,7 +44,8 @@ public class ReadQuotaEnforcementHandlerListenerTest {
   @Test
   public void quotaEnforcementHandlerRegistersAsStoreChangeListener() {
     long storageNodeRcuCapacity = 100; // RCU per second
-    RoutingDataRepository routingRepository = mock(RoutingDataRepository.class);
+    HelixCustomizedViewOfflinePushRepository customizedViewRepository =
+        mock(HelixCustomizedViewOfflinePushRepository.class);
     ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
     AggServerQuotaUsageStats stats = mock(AggServerQuotaUsageStats.class);
 
@@ -58,7 +59,7 @@ public class ReadQuotaEnforcementHandlerListenerTest {
     ReadQuotaEnforcementHandler quotaEnforcer = new ReadQuotaEnforcementHandler(
         storageNodeRcuCapacity,
         storeRepository,
-        CompletableFuture.completedFuture(routingRepository),
+        CompletableFuture.completedFuture(customizedViewRepository),
         nodeId,
         stats);
 
@@ -76,24 +77,25 @@ public class ReadQuotaEnforcementHandlerListenerTest {
       return getDummyStore(storeName, Collections.EMPTY_LIST, 10); // only used for RCU call
     }).when(storeRepository).getStore(anyString());
 
-    RoutingDataRepository routingRepository = mock(RoutingDataRepository.class);
+    HelixCustomizedViewOfflinePushRepository customizedViewRepository =
+        mock(HelixCustomizedViewOfflinePushRepository.class);
 
     doAnswer((invocation) -> {
       String topic = invocation.getArgument(0);
       registeredTopics.add(topic);
       return null;
-    }).when(routingRepository).subscribeRoutingDataChange(anyString(), any());
+    }).when(customizedViewRepository).subscribeRoutingDataChange(anyString(), any());
 
     doAnswer((invocation) -> {
       String topic = invocation.getArgument(0);
       registeredTopics.remove(topic);
       return null;
-    }).when(routingRepository).unSubscribeRoutingDataChange(anyString(), any());
+    }).when(customizedViewRepository).unSubscribeRoutingDataChange(anyString(), any());
 
     doAnswer((invocation) -> {
       String topic = invocation.getArgument(0);
       return getDummyPartitionAssignment(topic, nodeId);
-    }).when(routingRepository).getPartitionAssignments(anyString());
+    }).when(customizedViewRepository).getPartitionAssignments(anyString());
 
     AggServerQuotaUsageStats stats = mock(AggServerQuotaUsageStats.class);
 
@@ -101,7 +103,7 @@ public class ReadQuotaEnforcementHandlerListenerTest {
     ReadQuotaEnforcementHandler quotaEnforcer = new ReadQuotaEnforcementHandler(
         storageNodeRcuCapacity,
         storeRepository,
-        CompletableFuture.completedFuture(routingRepository),
+        CompletableFuture.completedFuture(customizedViewRepository),
         nodeId,
         stats);
 
