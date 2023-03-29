@@ -41,7 +41,6 @@ import org.testng.annotations.Test;
 public class TestDataRecoveryClient {
   private DataRecoveryExecutor executor;
   private DataRecoveryEstimator estimator;
-  private ControllerClient controllerClient;
   private DataRecoveryMonitor monitor;
 
   @Test
@@ -92,7 +91,7 @@ public class TestDataRecoveryClient {
 
   private void estimateRecovery() {
     estimator = spy(DataRecoveryEstimator.class);
-    controllerClient = mock(ControllerClient.class);
+    ControllerClient controllerClient = mock(ControllerClient.class);
 
     Set<String> storeNames = new HashSet<>(Arrays.asList("store1", "store2"));
     EstimateDataRecoveryTimeCommand.Params cmdParams = new EstimateDataRecoveryTimeCommand.Params();
@@ -102,6 +101,10 @@ public class TestDataRecoveryClient {
     EstimateDataRecoveryTimeCommand mockCmd = spy(EstimateDataRecoveryTimeCommand.class);
     List<DataRecoveryTask> tasks = buildTasks(storeNames, mockCmd, cmdParams);
     doReturn(cmdParams).when(mockCmd).getParams();
+    D2ServiceDiscoveryResponse r = new D2ServiceDiscoveryResponse();
+    r.setCluster("test");
+    doReturn(r).when(controllerClient).discoverCluster(anyString());
+    doReturn(controllerClient).when(mockCmd).buildControllerClient(any(), any(), any());
 
     doReturn(tasks).when(estimator).buildTasks(any(), any());
     DataRecoveryClient dataRecoveryClient = mock(DataRecoveryClient.class);
@@ -125,7 +128,7 @@ public class TestDataRecoveryClient {
     });
 
     doReturn(mockResponse).when(controllerClient).listStorePushInfo(anyString(), anyBoolean());
-    doReturn("testcluster").when(controllerClient).getClusterName();
+    doReturn("test").when(controllerClient).getClusterName();
 
     dataRecoveryClient.estimateRecoveryTime(new DataRecoveryClient.DataRecoveryParams("store1,store2"), cmdParams);
   }

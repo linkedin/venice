@@ -44,6 +44,12 @@ public class DataRecoveryEstimator extends DataRecoveryWorker {
 
   @Override
   public void displayTaskResult(DataRecoveryTask task) {
-    LOGGER.info("[store: {}, result: {}]", task.getTaskParams().getStore(), task.getTaskResult());
+    EstimateDataRecoveryTimeCommand.Result result =
+        (EstimateDataRecoveryTimeCommand.Result) task.getTaskResult().getCmdResult();
+    if (result.isError()) {
+      LOGGER.info("[store: {}, error: {}]", task.getTaskParams().getStore(), result.getError());
+    } else {
+      LOGGER.info("[store: {}, recovery time estimate: {}]", task.getTaskParams().getStore(), result.getTimestamp());
+    }
   }
 }

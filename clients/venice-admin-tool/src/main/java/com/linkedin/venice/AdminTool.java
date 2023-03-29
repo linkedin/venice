@@ -650,7 +650,16 @@ public class AdminTool {
       cmdParams.setPCtrlCliWithoutCluster(cli);
       total += dataRecoveryClient.estimateRecoveryTime(params, cmdParams);
     }
-    printObject("total recovery time: " + (total / 360) + ":" + ((total / 60) % 60) + ":" + (total % 10));
+
+    if (total <= 0) {
+      printObject("00:00:00");
+    } else {
+      int hours = (int) (total / 3600);
+      int minutes = (int) ((total % 3600) / 60);
+      int seconds = (int) (total % 60);
+
+      printObject(String.format("TOTAL RECOVERY TIME FOR ALL STORES = %02d:%02d:%02d", hours, minutes, seconds));
+    }
   }
 
   private static void monitorDataRecovery(CommandLine cmd) {

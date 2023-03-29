@@ -8,9 +8,12 @@ import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
 import java.util.Optional;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 
 public class EstimateDataRecoveryTimeCommand extends Command {
+  private final Logger LOGGER = LogManager.getLogger(EstimateDataRecoveryTimeCommand.class);
   private String storeName;
   private Params params = new Params();
   private EstimateDataRecoveryTimeCommand.Result result = new EstimateDataRecoveryTimeCommand.Result();
@@ -54,21 +57,37 @@ public class EstimateDataRecoveryTimeCommand extends Command {
     this.result = result;
   }
 
+  public ControllerClient buildControllerClient(
+      String clusterName,
+      String discoveryUrls,
+      Optional<SSLFactory> sslFactory) {
+    return new ControllerClient(clusterName, discoveryUrls, sslFactory);
+  }
+
   @Override
   public void execute() {
     // get store's push + partition info
-    StoreHealthAuditResponse storeHealthInfo =
-        getParams().getPCtrlCliWithoutCluster().listStorePushInfo(getParams().getStore(), true);
-    Map<String, RegionPushDetails> pushDetails = storeHealthInfo.getRegionPushDetails();
+    String storeName = getParams().getStore();
+    String clusterName = getParams().getPCtrlCliWithoutCluster().discoverCluster(storeName).getCluster();
 
-    if (pushDetails.containsKey(getParams().getTargetRegion())) {
-      LocalDateTime startTime =
-          LocalDateTime.parse(pushDetails.get(getParams().getTargetRegion()).getPushStartTimestamp());
-      LocalDateTime endTime = LocalDateTime.parse(pushDetails.get(getParams().getTargetRegion()).getPushEndTimestamp());
-      this.setResult(new EstimateDataRecoveryTimeCommand.Result(startTime.until(endTime, ChronoUnit.SECONDS)));
-    } else {
-      this.setResult(new EstimateDataRecoveryTimeCommand.Result("target region not found"));
+    try (ControllerClient parentCtrlCli =
+        buildControllerClient(clusterName, getParams().getParentUrl(), getParams().getSslFactory())) {
+      StoreHealthAuditResponse storeHealthInfo = parentCtrlCli.listStorePushInfo(getParams().getStore(), true);
+      Map<String, RegionPushDetails> pushDetails = storeHealthInfo.getRegionPushDetails();
+
+      if (pushDetails.containsKey(getParams().getTargetRegion())) {
+        LocalDateTime startTime =
+            LocalDateTime.parse(pushDetails.get(getParams().getTargetRegion()).getPushStartTimestamp());
+        LocalDateTime endTime =
+            LocalDateTime.parse(pushDetails.get(getParams().getTargetRegion()).getPushEndTimestamp());
+        this.setResult(new EstimateDataRecoveryTimeCommand.Result(startTime.until(endTime, ChronoUnit.SECONDS)));
+      } else {
+        this.setResult(new EstimateDataRecoveryTimeCommand.Result("target region not found"));
+      }
+    } catch (Error e) {
+      this.setResult(new EstimateDataRecoveryTimeCommand.Result("unable to create controller client: " + e));
     }
+    this.getResult().setCoreWorkDone(true);
   }
 
   public static class Params extends Command.Params {
@@ -112,35 +131,34 @@ public class EstimateDataRecoveryTimeCommand extends Command {
 
   public static class Result extends Command.Result {
     private Long estimatedRecoveryTimeInSeconds;
-    private boolean error;
     private String message;
 
     public Result() {
       this.estimatedRecoveryTimeInSeconds = 0L;
-      this.error = false;
       this.message = "task in progress";
     }
 
     public Result(Long timeInSeconds) {
       this.estimatedRecoveryTimeInSeconds = timeInSeconds;
-      this.error = false;
-      this.message = "EstimateDataRecoveryTimeCommand.Result: " + (timeInSeconds / 3600) + ":"
-          + ((timeInSeconds / 60) % 60) + ":" + (timeInSeconds % 10);
+      this.message = "EstimateDataRecoveryTimeCommand.Result: " + timeInSeconds;
     }
 
     public Result(String errorMessage) {
       this.estimatedRecoveryTimeInSeconds = -1L;
-      this.error = true;
+      this.setError(errorMessage);
       this.message = errorMessage;
     }
 
-    @Override
-    public String toString() {
-      return this.message;
-    }
+    public String getTimestamp() {
+      if (this.estimatedRecoveryTimeInSeconds <= 0) {
+        return "00:00:00";
+      } else {
+        int hours = (int) (this.estimatedRecoveryTimeInSeconds / 3600);
+        int minutes = (int) ((this.estimatedRecoveryTimeInSeconds % 3600) / 60);
+        int seconds = (int) (this.estimatedRecoveryTimeInSeconds % 60);
 
-    public boolean isError() {
-      return this.error;
+        return (String.format("%02d:%02d:%02d", hours, minutes, seconds));
+      }
     }
 
     public Long getEstimatedRecoveryTimeInSeconds() {
