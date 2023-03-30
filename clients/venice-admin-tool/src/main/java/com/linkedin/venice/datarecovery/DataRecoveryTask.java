@@ -38,6 +38,10 @@ public class DataRecoveryTask implements Runnable {
   public static class TaskResult {
     private final Command.Result cmdResult;
 
+    public Command.Result getCmdResult() {
+      return cmdResult;
+    }
+
     public TaskResult(Command.Result cmdResult) {
       this.cmdResult = cmdResult;
     }
