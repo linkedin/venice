@@ -118,6 +118,7 @@ public abstract class AbstractClientEndToEndSetup {
 
     prepareData();
     prepareMetaSystemStore();
+    waitForRouterD2();
   }
 
   protected void prepareData() throws Exception {
@@ -197,6 +198,22 @@ public abstract class AbstractClientEndToEndSetup {
           true,
           () -> assertNotNull(metaClient.get(replicaStatusKey).get()));
     }
+  }
+
+  private void waitForRouterD2() {
+    AvroGenericStoreClient<String, GenericRecord> thinClient =
+        com.linkedin.venice.client.store.ClientFactory.getAndStartGenericAvroClient(
+            com.linkedin.venice.client.store.ClientConfig.defaultGenericClientConfig(storeName)
+                .setVeniceURL(veniceCluster.getRandomRouterSslURL())
+                .setSslFactory(SslUtils.getVeniceLocalSslFactory())
+                .setD2Client(d2Client)
+                .setD2ServiceName(VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME));
+
+    TestUtils.waitForNonDeterministicAssertion(
+        30,
+        TimeUnit.SECONDS,
+        true,
+        () -> assertNotNull(thinClient.get(keyPrefix + "0")));
   }
 
   protected AvroGenericStoreClient<String, Object> getGenericFastVsonClient(
