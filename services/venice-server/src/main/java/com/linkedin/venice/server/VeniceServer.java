@@ -30,7 +30,6 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.AllowlistAccessor;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
-import com.linkedin.venice.helix.HelixExternalViewRepository;
 import com.linkedin.venice.helix.HelixInstanceConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyZKSharedSchemaRepository;
 import com.linkedin.venice.helix.SafeHelixManager;
@@ -44,7 +43,6 @@ import com.linkedin.venice.meta.IngestionMode;
 import com.linkedin.venice.meta.ReadOnlyLiveClusterConfigRepository;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.StaticClusterInfoProvider;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
@@ -333,11 +331,6 @@ public class VeniceServer {
     // needs a routing data repository that relies on a connected helix manager. So we pass the listener service a
     // future that will be completed with a routing data repository once the manager connects.
     CompletableFuture<SafeHelixManager> managerFuture = new CompletableFuture<>();
-    CompletableFuture<RoutingDataRepository> routingRepositoryFuture = managerFuture.thenApply(manager -> {
-      RoutingDataRepository routingData = new HelixExternalViewRepository(manager);
-      routingData.refresh();
-      return routingData;
-    });
 
     CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewFuture =
         managerFuture.thenApply(manager -> {

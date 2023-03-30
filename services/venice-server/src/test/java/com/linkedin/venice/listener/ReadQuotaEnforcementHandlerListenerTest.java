@@ -5,6 +5,7 @@ import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
@@ -22,6 +23,8 @@ import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ZKStore;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.stats.AggServerQuotaUsageStats;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -94,7 +97,7 @@ public class ReadQuotaEnforcementHandlerListenerTest {
 
     doAnswer((invocation) -> {
       String topic = invocation.getArgument(0);
-      return getDummyPartitionAssignment(topic, nodeId);
+      return getDummyPartitionAssignment(topic, nodeId, customizedViewRepository);
     }).when(customizedViewRepository).getPartitionAssignments(anyString());
 
     AggServerQuotaUsageStats stats = mock(AggServerQuotaUsageStats.class);
@@ -187,14 +190,24 @@ public class ReadQuotaEnforcementHandlerListenerTest {
     return store;
   }
 
-  public static PartitionAssignment getDummyPartitionAssignment(String topic, String thisNodeId) {
+  public static PartitionAssignment getDummyPartitionAssignment(
+      String topic,
+      String thisNodeId,
+      HelixCustomizedViewOfflinePushRepository customizedViewRepository) {
     PartitionAssignment partitionAssignment = mock(PartitionAssignment.class);
     doReturn(topic).when(partitionAssignment).getTopic();
     Instance thisInstance = new Instance(thisNodeId, "dummyHost", 1234);
     Partition partition = mock(Partition.class);
-    doReturn(Collections.singletonList(thisInstance)).when(partition).getWorkingInstances();
-    doReturn(Collections.singletonList(thisInstance)).when(partition).getReadyToServeInstances();
+    doReturn(0).when(partition).getId();
     doReturn(Collections.singletonList(partition)).when(partitionAssignment).getAllPartitions();
+
+    List<ReplicaState> replicaStates = new ArrayList<>();
+    ReplicaState thisReplicaState = mock(ReplicaState.class);
+    doReturn(thisInstance.getNodeId()).when(thisReplicaState).getParticipantId();
+    doReturn(ExecutionStatus.COMPLETED.name()).when(thisReplicaState).getVenicePushStatus();
+    replicaStates.add(thisReplicaState);
+    when(customizedViewRepository.getReplicaStates(topic, partition.getId())).thenReturn(replicaStates);
+
     return partitionAssignment;
   }
 }
