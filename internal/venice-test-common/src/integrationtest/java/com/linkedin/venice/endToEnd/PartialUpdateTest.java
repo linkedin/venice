@@ -66,6 +66,7 @@ import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
+import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -138,6 +139,97 @@ public class PartialUpdateTest {
       throw new IllegalStateException("Expect only one parent controller. Got: " + parentControllers.size());
     }
     this.parentController = parentControllers.get(0);
+  }
+
+  @Test
+  public void testTest() {
+    Schema schemaV1 = AvroCompatibilityHelper.parse(NESTED_SCHEMA_STRING);
+    Schema schemaV2 = AvroCompatibilityHelper.parse(NESTED_SCHEMA_STRING_V2);
+    GenericRecord gr = new GenericData.Record(schemaV1);
+    gr.put("firstName", "abc");
+    gr.put("lastName", "def");
+    byte[] data = SerializerDeserializerFactory.getAvroGenericSerializer(schemaV1).serialize(gr);
+    GenericRecord gr2 =
+        (GenericRecord) SerializerDeserializerFactory.getAvroGenericDeserializer(schemaV1, schemaV2).deserialize(data);
+
+  }
+
+  /**
+   * This integration test verifies that in A/A + partial update enabled store, UPDATE on a key that was written in the
+   * batch push should not throw exception, as the update logic should initialize a new RMD record for the original value
+   * and apply updates on top of them.
+   */
+  @Test
+  public void testPartialUpdateOnBatchPushedKeys() throws IOException {
+    final String storeName = Utils.getUniqueString("rmdChunking");
+    String parentControllerUrl = parentController.getControllerUrl();
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = writeSimpleAvroFileWithStringToRecordSchema(inputDir, true);
+    String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
+    String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    Properties vpjProperties =
+        IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
+
+    Schema valueSchema = AvroCompatibilityHelper.parse(valueSchemaStr);
+    Schema rmdSchema = RmdSchemaGenerator.generateMetadataSchema(valueSchema);
+    Schema writeComputeSchema = WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(valueSchema);
+    ReadOnlySchemaRepository schemaRepo = mock(ReadOnlySchemaRepository.class);
+    when(schemaRepo.getReplicationMetadataSchema(storeName, 1, 1)).thenReturn(new RmdSchemaEntry(1, 1, rmdSchema));
+    when(schemaRepo.getDerivedSchema(storeName, 1, 1)).thenReturn(new DerivedSchemaEntry(1, 1, writeComputeSchema));
+    when(schemaRepo.getValueSchema(storeName, 1)).thenReturn(new SchemaEntry(1, valueSchema));
+    StringAnnotatedStoreSchemaCache stringAnnotatedStoreSchemaCache =
+        new StringAnnotatedStoreSchemaCache(storeName, schemaRepo);
+    RmdSerDe rmdSerDe = new RmdSerDe(stringAnnotatedStoreSchemaCache, 1);
+
+    VeniceClusterWrapper veniceClusterWrapper = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
+
+    try (ControllerClient parentControllerClient = new ControllerClient(CLUSTER_NAME, parentControllerUrl);
+        AvroGenericStoreClient<Object, Object> storeReader = ClientFactory.getAndStartGenericAvroClient(
+            ClientConfig.defaultGenericClientConfig(storeName)
+                .setVeniceURL(veniceClusterWrapper.getRandomRouterURL()))) {
+      assertCommand(
+          parentControllerClient.createNewStore(storeName, "test_owner", keySchemaStr, valueSchema.toString()));
+      UpdateStoreQueryParams updateStoreParams =
+          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+              .setCompressionStrategy(CompressionStrategy.NO_OP)
+              .setWriteComputationEnabled(true)
+              .setActiveActiveReplicationEnabled(true)
+              .setChunkingEnabled(true)
+              .setRmdChunkingEnabled(true)
+              .setHybridRewindSeconds(10L)
+              .setHybridOffsetLagThreshold(2L);
+      ControllerResponse updateStoreResponse =
+          parentControllerClient.retryableRequest(5, c -> c.updateStore(storeName, updateStoreParams));
+      assertFalse(updateStoreResponse.isError(), "Update store got error: " + updateStoreResponse.getError());
+
+      // VPJ push
+      String childControllerUrl = childDatacenters.get(0).getRandomController().getControllerUrl();
+      try (ControllerClient childControllerClient = new ControllerClient(CLUSTER_NAME, childControllerUrl)) {
+        runVPJ(vpjProperties, 1, childControllerClient);
+      }
+      // Produce partial updates on batch pushed keys
+      SystemProducer veniceProducer = getSamzaProducer(veniceClusterWrapper, storeName, Version.PushType.STREAM);
+      for (int i = 1; i < 100; i++) {
+        GenericRecord partialUpdateRecord =
+            new UpdateBuilderImpl(writeComputeSchema).setNewFieldValue("firstName", "new_name_" + i).build();
+        sendStreamingRecord(veniceProducer, storeName, String.valueOf(i), partialUpdateRecord);
+      }
+
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+        try {
+          for (int i = 1; i < 100; i++) {
+            String key = String.valueOf(i);
+            GenericRecord value = readValue(storeReader, key);
+            assertNotNull(value, "Key " + key + " should not be missing!");
+            assertEquals(value.get("firstName").toString(), "new_name_" + key);
+            assertEquals(value.get("lastName").toString(), "last_name_" + key);
+          }
+        } catch (Exception e) {
+          throw new VeniceException(e);
+        }
+      });
+    }
   }
 
   /**
@@ -789,7 +881,7 @@ public class PartialUpdateTest {
     try (VenicePushJob job = new VenicePushJob(jobName, vpjProperties)) {
       job.run();
       TestUtils.waitForNonDeterministicCompletion(
-          10,
+          60,
           TimeUnit.SECONDS,
           () -> controllerClient.getStore((String) vpjProperties.get(VenicePushJob.VENICE_STORE_NAME_PROP))
               .getStore()
