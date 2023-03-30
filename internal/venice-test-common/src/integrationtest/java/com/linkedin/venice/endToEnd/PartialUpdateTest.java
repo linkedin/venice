@@ -66,7 +66,6 @@ import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaGenerator;
 import com.linkedin.venice.schema.writecompute.DerivedSchemaEntry;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
-import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -139,19 +138,6 @@ public class PartialUpdateTest {
       throw new IllegalStateException("Expect only one parent controller. Got: " + parentControllers.size());
     }
     this.parentController = parentControllers.get(0);
-  }
-
-  @Test
-  public void testTest() {
-    Schema schemaV1 = AvroCompatibilityHelper.parse(NESTED_SCHEMA_STRING);
-    Schema schemaV2 = AvroCompatibilityHelper.parse(NESTED_SCHEMA_STRING_V2);
-    GenericRecord gr = new GenericData.Record(schemaV1);
-    gr.put("firstName", "abc");
-    gr.put("lastName", "def");
-    byte[] data = SerializerDeserializerFactory.getAvroGenericSerializer(schemaV1).serialize(gr);
-    GenericRecord gr2 =
-        (GenericRecord) SerializerDeserializerFactory.getAvroGenericDeserializer(schemaV1, schemaV2).deserialize(data);
-
   }
 
   /**
