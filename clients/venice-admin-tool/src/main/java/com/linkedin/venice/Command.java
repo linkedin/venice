@@ -440,6 +440,10 @@ public enum Command {
       "execute-data-recovery", "Execute data recovery for a group of stores",
       new Arg[] { RECOVERY_COMMAND, STORES, SOURCE_FABRIC }, new Arg[] { EXTRA_COMMAND_ARGS, DEBUG, NON_INTERACTIVE }
   ),
+  ESTIMATE_DATA_RECOVERY_TIME(
+      "estimate-data-recovery-time", "Estimates the time it would take to execute data recovery for a group of stores.",
+      new Arg[] { URL, STORES, DEST_FABRIC }
+  ),
   MONITOR_DATA_RECOVERY(
       "monitor-data-recovery", "Monitor data recovery progress for a group of stores",
       new Arg[] { URL, STORES, DEST_FABRIC }, new Arg[] { INTERVAL }

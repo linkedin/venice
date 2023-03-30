@@ -85,9 +85,14 @@ public abstract class DataRecoveryWorker {
             .map(dataRecoveryTask -> CompletableFuture.runAsync(dataRecoveryTask, pool))
             .collect(Collectors.toList());
         taskFutures.stream().map(CompletableFuture::join).collect(Collectors.toList());
+
+        processData();
         displayAllTasksResult();
       }
     } while (requireSleep = continuePollingState());
+  }
+
+  public void processData() {
   }
 
   private void displayAllTasksResult() {
