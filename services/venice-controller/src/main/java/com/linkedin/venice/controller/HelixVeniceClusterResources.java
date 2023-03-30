@@ -170,8 +170,10 @@ public class HelixVeniceClusterResources implements VeniceResource {
         clusterName,
         offlinePushMonitorAccessor,
         storeMetadataRepository,
+        admin,
         new AggPushStatusCleanUpStats(clusterName, metricsRepository, storeMetadataRepository, unregisterMetricEnabled),
-        this.config.getLeakedPushStatusCleanUpServiceSleepIntervalInMs());
+        this.config.getLeakedPushStatusCleanUpServiceSleepIntervalInMs(),
+        this.config.getLeakedResourceAllowedLingerTimeInMs());
     // On controller side, router cluster manager is used as an accessor without maintaining any cache, so do not need
     // to refresh once zk reconnected.
     this.routersClusterManager = new ZkRoutersClusterManager(

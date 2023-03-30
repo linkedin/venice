@@ -4451,7 +4451,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             + strategy.toString() + ", replicationFactor=" + replicationFactor + ", reason=" + notReadyReason.get());
   }
 
-  void deleteHelixResource(String clusterName, String kafkaTopic) {
+  @Override
+  public boolean containsHelixResource(String clusterName, String kafkaTopic) {
+    checkControllerLeadershipFor(clusterName);
+    return helixAdminClient.containsResource(clusterName, kafkaTopic);
+  }
+
+  @Override
+  public void deleteHelixResource(String clusterName, String kafkaTopic) {
     checkControllerLeadershipFor(clusterName);
     helixAdminClient.dropResource(clusterName, kafkaTopic);
     LOGGER.info("Successfully dropped the resource: {} for cluster: {}", kafkaTopic, clusterName);

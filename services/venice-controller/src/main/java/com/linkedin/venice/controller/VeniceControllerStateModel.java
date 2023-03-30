@@ -298,9 +298,13 @@ public class VeniceControllerStateModel extends StateModel {
   /** synchronized because concurrent calls could cause a NPE */
   private synchronized void clearResources() {
     if (clusterResources != null) {
+      /**
+       * Leaked push status clean up service depends on VeniceHelixAdmin, so VeniceHelixAdmin should be stopped after
+       * its dependent service.
+       */
+      clusterResources.stopLeakedPushStatusCleanUpService();
       clusterResources.clear();
       clusterResources.stopErrorPartitionResetTask();
-      clusterResources.stopLeakedPushStatusCleanUpService();
       clusterResources = null;
     }
   }

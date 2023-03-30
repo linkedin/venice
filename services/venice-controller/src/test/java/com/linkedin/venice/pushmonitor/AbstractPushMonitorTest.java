@@ -794,6 +794,22 @@ public abstract class AbstractPushMonitorTest {
     public void topicCleanupWhenPushComplete(String clusterName, String storeName, int versionNumber) {
       // no-op
     }
+
+    @Override
+    public boolean containsHelixResource(String clusterName, String resourceName) {
+      return true;
+    }
+
+    @Override
+    public void deleteHelixResource(String clusterName, String resourceName) {
+      try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(storeName)) {
+        try {
+          Thread.sleep(1000);
+        } catch (InterruptedException e) {
+          e.printStackTrace();
+        }
+      }
+    }
   }
 
   @Test(timeOut = 30 * Time.MS_PER_SECOND)
