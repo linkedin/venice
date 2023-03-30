@@ -33,6 +33,7 @@ import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.ZKStore;
+import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapter;
@@ -66,7 +67,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import kafka.log.LogConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.config.TopicConfig;
@@ -357,11 +357,9 @@ public class TopicManagerTest {
   public void testGetTopicConfig() {
     PubSubTopic topic = pubSubTopicRepository.getTopic(Utils.getUniqueTopicString("topic"));
     topicManager.createTopic(topic, 1, 1, true);
-    Properties topicProperties = topicManager.getTopicConfig(topic);
-    Assert.assertTrue(topicProperties.containsKey(LogConfig.RetentionMsProp()));
-    Assert.assertTrue(
-        Long.parseLong(topicProperties.getProperty(LogConfig.RetentionMsProp())) > 0,
-        "retention.ms should be positive");
+    PubSubTopicConfiguration topicProperties = topicManager.getTopicConfig(topic);
+    Assert.assertTrue(topicProperties.retentionInMs().isPresent());
+    Assert.assertTrue(topicProperties.retentionInMs().get() > 0, "retention.ms should be positive");
   }
 
   @Test(expectedExceptions = TopicDoesNotExistException.class)
@@ -375,8 +373,9 @@ public class TopicManagerTest {
     PubSubTopic topic = pubSubTopicRepository.getTopic(Utils.getUniqueTopicString("topic"));
     topicManager.createTopic(topic, 1, 1, true);
     topicManager.updateTopicRetention(topic, 0);
-    Properties topicProperties = topicManager.getTopicConfig(topic);
-    Assert.assertEquals(topicProperties.getProperty(LogConfig.RetentionMsProp()), "0");
+    PubSubTopicConfiguration topicProperties = topicManager.getTopicConfig(topic);
+    Assert.assertTrue(topicProperties.retentionInMs().isPresent());
+    Assert.assertTrue(topicProperties.retentionInMs().get() == 0);
   }
 
   @Test

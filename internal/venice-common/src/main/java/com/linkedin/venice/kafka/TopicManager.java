@@ -9,6 +9,7 @@ import com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcher;
 import com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcherFactory;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapterFactory;
@@ -34,7 +35,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import org.apache.kafka.common.config.TopicConfig;
 import org.apache.kafka.common.errors.InvalidReplicationFactorException;
 import org.apache.kafka.common.errors.TopicExistsException;
 import org.apache.kafka.common.errors.UnknownTopicOrPartitionException;
@@ -95,7 +95,8 @@ public class TopicManager implements Closeable {
 
   // It's expensive to grab the topic config over and over again, and it changes infrequently. So we temporarily cache
   // queried configs.
-  Cache<PubSubTopic, Properties> topicConfigCache = Caffeine.newBuilder().expireAfterWrite(5, TimeUnit.MINUTES).build();
+  Cache<PubSubTopic, PubSubTopicConfiguration> topicConfigCache =
+      Caffeine.newBuilder().expireAfterWrite(5, TimeUnit.MINUTES).build();
 
   public TopicManager(TopicManagerRepository.Builder builder, String pubSubBootstrapServers) {
     this.logger = LogManager.getLogger(this.getClass().getSimpleName() + " [" + pubSubBootstrapServers + "]");
@@ -259,27 +260,18 @@ public class TopicManager implements Closeable {
     long startTime = System.currentTimeMillis();
     long deadlineMs =
         startTime + (useFastKafkaOperationTimeout ? FAST_KAFKA_OPERATION_TIMEOUT_MS : kafkaOperationTimeoutMs);
-
-    logger.info("Creating topic: {} partitions: {} replication: {}", topicName, numPartitions, replication);
-    Properties topicProperties = new Properties();
-    // TODO: move these Kafka related configs out of this class.
-    topicProperties.put(TopicConfig.RETENTION_MS_CONFIG, Long.toString(retentionTimeMs));
-    if (logCompaction) {
-      topicProperties.put(TopicConfig.CLEANUP_POLICY_CONFIG, TopicConfig.CLEANUP_POLICY_COMPACT);
-      topicProperties.put(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG, Long.toString(topicMinLogCompactionLagMs));
-    } else {
-      topicProperties.put(TopicConfig.CLEANUP_POLICY_CONFIG, TopicConfig.CLEANUP_POLICY_DELETE);
-    }
-
-    // If not set, Kafka cluster defaults will apply
-    minIsr.ifPresent(minIsrConfig -> topicProperties.put(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG, minIsrConfig));
-
-    // Just in case the Kafka cluster isn't configured as expected.
-    topicProperties.put(TopicConfig.MESSAGE_TIMESTAMP_TYPE_CONFIG, "LogAppendTime");
+    PubSubTopicConfiguration pubSubTopicConfiguration =
+        new PubSubTopicConfiguration(Optional.of(retentionTimeMs), logCompaction, minIsr, topicMinLogCompactionLagMs);
+    logger.info(
+        "Creating topic: {} partitions: {} replication: {}, configuration: {}",
+        topicName,
+        numPartitions,
+        replication,
+        pubSubTopicConfiguration);
 
     try {
       RetryUtils.executeWithMaxAttemptAndExponentialBackoff(
-          () -> kafkaWriteOnlyAdmin.get().createTopic(topicName, numPartitions, replication, topicProperties),
+          () -> kafkaWriteOnlyAdmin.get().createTopic(topicName, numPartitions, replication, pubSubTopicConfiguration),
           10,
           Duration.ofMillis(200),
           Duration.ofSeconds(1),
@@ -339,28 +331,36 @@ public class TopicManager implements Closeable {
    * @return true if the retention time config of the input topic gets updated; return false if nothing gets updated
    */
   public boolean updateTopicRetention(PubSubTopic topicName, long retentionInMS) throws TopicDoesNotExistException {
-    Properties topicProperties = getTopicConfig(topicName);
-    return updateTopicRetention(topicName, retentionInMS, topicProperties);
+    PubSubTopicConfiguration pubSubTopicConfiguration = getTopicConfig(topicName);
+    return updateTopicRetention(topicName, retentionInMS, pubSubTopicConfiguration);
   }
 
   /**
    * Update retention for the given topic given a {@link Properties}.
    * @param topicName
-   * @param retentionInMS
-   * @param topicProperties
+   * @param expectedRetentionInMs
+   * @param pubSubTopicConfiguration
    * @return true if the retention time gets updated; false if no update is needed.
    */
-  public boolean updateTopicRetention(PubSubTopic topicName, long retentionInMS, Properties topicProperties)
-      throws TopicDoesNotExistException {
-    String retentionInMSStr = Long.toString(retentionInMS);
+  public boolean updateTopicRetention(
+      PubSubTopic topicName,
+      long expectedRetentionInMs,
+      PubSubTopicConfiguration pubSubTopicConfiguration) throws TopicDoesNotExistException {
+    /*
+        String retentionInMSStr = Long.toString(retentionInMS);
     if (!topicProperties.containsKey(TopicConfig.RETENTION_MS_CONFIG) || // config doesn't exist
         !topicProperties.getProperty(TopicConfig.RETENTION_MS_CONFIG).equals(retentionInMSStr)) { // config is different
       topicProperties.put(TopicConfig.RETENTION_MS_CONFIG, Long.toString(retentionInMS));
-      kafkaWriteOnlyAdmin.get().setTopicConfig(topicName, topicProperties);
+    
+     */
+    Optional<Long> retentionTimeMs = pubSubTopicConfiguration.retentionInMs();
+    if (!retentionTimeMs.isPresent() || expectedRetentionInMs != retentionTimeMs.get()) {
+      pubSubTopicConfiguration.setRetentionInMs(Optional.of(expectedRetentionInMs));
+      kafkaWriteOnlyAdmin.get().setTopicConfig(topicName, pubSubTopicConfiguration);
       logger.info(
           "Updated topic: {} with retention.ms: {} in cluster [{}]",
           topicName,
-          retentionInMS,
+          expectedRetentionInMs,
           this.pubSubBootstrapServers);
       return true;
     }
@@ -372,52 +372,34 @@ public class TopicManager implements Closeable {
    * Update topic compaction policy.
    * @throws TopicDoesNotExistException, if the topic doesn't exist
    */
-  public synchronized void updateTopicCompactionPolicy(PubSubTopic topicName, boolean logCompaction)
+  public synchronized void updateTopicCompactionPolicy(PubSubTopic topic, boolean expectedLogCompacted)
       throws TopicDoesNotExistException {
-    Properties topicProperties = getTopicConfig(topicName);
-    // If the compaction policy doesn't exist, by default it is disabled.
-    String currentCompactionPolicy = topicProperties.containsKey(TopicConfig.CLEANUP_POLICY_CONFIG)
-        ? (String) topicProperties.get(TopicConfig.CLEANUP_POLICY_CONFIG)
-        : TopicConfig.CLEANUP_POLICY_DELETE;
-    String expectedCompactionPolicy =
-        logCompaction ? TopicConfig.CLEANUP_POLICY_COMPACT : TopicConfig.CLEANUP_POLICY_DELETE;
-    long currentMinLogCompactionLagMs = topicProperties.containsKey(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG)
-        ? Long.parseLong((String) topicProperties.get(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG))
-        : 0L;
-    long expectedMinLogCompactionLagMs = logCompaction ? topicMinLogCompactionLagMs : 0L;
-    boolean needToUpdateTopicConfig = false;
-    if (!expectedCompactionPolicy.equals(currentCompactionPolicy)) {
-      // Different, then update
-      needToUpdateTopicConfig = true;
-      topicProperties.put(TopicConfig.CLEANUP_POLICY_CONFIG, expectedCompactionPolicy);
-    }
-    if (currentMinLogCompactionLagMs != expectedMinLogCompactionLagMs) {
-      needToUpdateTopicConfig = true;
-      topicProperties.put(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG, Long.toString(expectedMinLogCompactionLagMs));
-    }
-    if (needToUpdateTopicConfig) {
-      kafkaWriteOnlyAdmin.get().setTopicConfig(topicName, topicProperties);
+    PubSubTopicConfiguration pubSubTopicConfiguration = getTopicConfig(topic);
+    boolean currentLogCompacted = pubSubTopicConfiguration.isLogCompacted();
+    if (expectedLogCompacted != currentLogCompacted) {
+      pubSubTopicConfiguration.setLogCompacted(expectedLogCompacted);
+      Long currentMinLogCompactionLagMs = pubSubTopicConfiguration.minLogCompactionLagMs();
+      Long expectedMinLogCompactionLagMs = expectedLogCompacted ? topicMinLogCompactionLagMs : 0;
+      pubSubTopicConfiguration.setMinLogCompactionLagMs(expectedMinLogCompactionLagMs);
+      kafkaWriteOnlyAdmin.get().setTopicConfig(topic, pubSubTopicConfiguration);
       logger.info(
           "Kafka compaction policy for topic: {} has been updated from {} to {}, min compaction lag updated from {} to {}",
-          topicName,
-          currentCompactionPolicy,
-          expectedCompactionPolicy,
+          topic,
+          currentLogCompacted,
+          expectedLogCompacted,
           currentMinLogCompactionLagMs,
-          expectedCompactionPolicy);
+          expectedMinLogCompactionLagMs);
     }
   }
 
   public boolean isTopicCompactionEnabled(PubSubTopic topicName) {
-    Properties topicProperties = getCachedTopicConfig(topicName);
-    return topicProperties.containsKey(TopicConfig.CLEANUP_POLICY_CONFIG)
-        && topicProperties.get(TopicConfig.CLEANUP_POLICY_CONFIG).equals(TopicConfig.CLEANUP_POLICY_COMPACT);
+    PubSubTopicConfiguration topicProperties = getCachedTopicConfig(topicName);
+    return topicProperties.isLogCompacted();
   }
 
   public long getTopicMinLogCompactionLagMs(PubSubTopic topicName) {
-    Properties topicProperties = getCachedTopicConfig(topicName);
-    return topicProperties.containsKey(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG)
-        ? Long.parseLong((String) topicProperties.get(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG))
-        : 0L;
+    PubSubTopicConfiguration topicProperties = getCachedTopicConfig(topicName);
+    return topicProperties.minLogCompactionLagMs();
   }
 
   public Map<PubSubTopic, Long> getAllTopicRetentions() {
@@ -428,16 +410,13 @@ public class TopicManager implements Closeable {
    * Return topic retention time in MS.
    */
   public long getTopicRetention(PubSubTopic topicName) throws TopicDoesNotExistException {
-    Properties topicProperties = getTopicConfig(topicName);
-    if (topicProperties.containsKey(TopicConfig.RETENTION_MS_CONFIG)) {
-      return Long.parseLong(topicProperties.getProperty(TopicConfig.RETENTION_MS_CONFIG));
-    }
-    return UNKNOWN_TOPIC_RETENTION;
+    PubSubTopicConfiguration pubSubTopicConfiguration = getTopicConfig(topicName);
+    return getTopicRetention(pubSubTopicConfiguration);
   }
 
-  public long getTopicRetention(Properties topicProperties) throws TopicDoesNotExistException {
-    if (topicProperties.containsKey(TopicConfig.RETENTION_MS_CONFIG)) {
-      return Long.parseLong(topicProperties.getProperty(TopicConfig.RETENTION_MS_CONFIG));
+  public long getTopicRetention(PubSubTopicConfiguration pubSubTopicConfiguration) {
+    if (pubSubTopicConfiguration.retentionInMs().isPresent()) {
+      return pubSubTopicConfiguration.retentionInMs().get();
     }
     return UNKNOWN_TOPIC_RETENTION;
   }
@@ -464,33 +443,35 @@ public class TopicManager implements Closeable {
   /**
    * This operation is a little heavy, since it will pull the configs for all the topics.
    */
-  public Properties getTopicConfig(PubSubTopic topicName) throws TopicDoesNotExistException {
-    final Properties properties = kafkaReadOnlyAdmin.get().getTopicConfig(topicName);
-    topicConfigCache.put(topicName, properties);
-    return properties;
+  public PubSubTopicConfiguration getTopicConfig(PubSubTopic topicName) throws TopicDoesNotExistException {
+    final PubSubTopicConfiguration pubSubTopicConfiguration = kafkaReadOnlyAdmin.get().getTopicConfig(topicName);
+    topicConfigCache.put(topicName, pubSubTopicConfiguration);
+    return pubSubTopicConfiguration;
   }
 
-  public Properties getTopicConfigWithRetry(PubSubTopic topicName) {
-    final Properties properties = kafkaReadOnlyAdmin.get().getTopicConfigWithRetry(topicName);
-    topicConfigCache.put(topicName, properties);
-    return properties;
+  public PubSubTopicConfiguration getTopicConfigWithRetry(PubSubTopic topicName) {
+    final PubSubTopicConfiguration pubSubTopicConfiguration =
+        kafkaReadOnlyAdmin.get().getTopicConfigWithRetry(topicName);
+    topicConfigCache.put(topicName, pubSubTopicConfiguration);
+    return pubSubTopicConfiguration;
   }
 
   /**
    * Still heavy, but can be called repeatedly to amortize that cost.
    */
-  public Properties getCachedTopicConfig(PubSubTopic topicName) {
+  public PubSubTopicConfiguration getCachedTopicConfig(PubSubTopic topicName) {
     // query the cache first, if it doesn't have it, query it from kafka and store it.
-    Properties properties = topicConfigCache.getIfPresent(topicName);
-    if (properties == null) {
-      properties = getTopicConfigWithRetry(topicName);
+    PubSubTopicConfiguration pubSubTopicConfiguration = topicConfigCache.getIfPresent(topicName);
+    if (pubSubTopicConfiguration == null) {
+      pubSubTopicConfiguration = getTopicConfigWithRetry(topicName);
     }
-    return properties;
+    return pubSubTopicConfiguration;
   }
 
-  public Map<PubSubTopic, Properties> getSomeTopicConfigs(Set<PubSubTopic> topicNames) {
-    final Map<PubSubTopic, Properties> topicConfigs = kafkaReadOnlyAdmin.get().getSomeTopicConfigs(topicNames);
-    for (Map.Entry<PubSubTopic, Properties> topicConfig: topicConfigs.entrySet()) {
+  public Map<PubSubTopic, PubSubTopicConfiguration> getSomeTopicConfigs(Set<PubSubTopic> topicNames) {
+    final Map<PubSubTopic, PubSubTopicConfiguration> topicConfigs =
+        kafkaReadOnlyAdmin.get().getSomeTopicConfigs(topicNames);
+    for (Map.Entry<PubSubTopic, PubSubTopicConfiguration> topicConfig: topicConfigs.entrySet()) {
       topicConfigCache.put(topicConfig.getKey(), topicConfig.getValue());
     }
     return topicConfigs;
@@ -716,7 +697,7 @@ public class TopicManager implements Closeable {
   /**
    * Generate a map from partition number to the last offset available for that partition
    * @param topic
-   * @return a Map of partition to latest offset, or an empty map if there's any problem
+   * @return a Map of partition to the latest offset, or an empty map if there's any problem
    */
   public Int2LongMap getTopicLatestOffsets(PubSubTopic topic) {
     return partitionOffsetFetcher.getTopicLatestOffsets(topic);
@@ -762,7 +743,7 @@ public class TopicManager implements Closeable {
   }
 
   // For testing only
-  public void setTopicConfigCache(Cache<PubSubTopic, Properties> topicConfigCache) {
+  public void setTopicConfigCache(Cache<PubSubTopic, PubSubTopicConfiguration> topicConfigCache) {
     this.topicConfigCache = topicConfigCache;
   }
 

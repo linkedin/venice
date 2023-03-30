@@ -3,6 +3,7 @@ package com.linkedin.venice.kafka.admin;
 import static com.linkedin.venice.stats.KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.*;
 
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
+import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -58,9 +59,13 @@ public class InstrumentedKafkaAdmin implements KafkaAdminWrapper {
   }
 
   @Override
-  public void createTopic(PubSubTopic topicName, int numPartitions, int replication, Properties topicProperties) {
+  public void createTopic(
+      PubSubTopic topicName,
+      int numPartitions,
+      int replication,
+      PubSubTopicConfiguration pubSubTopicConfiguration) {
     instrument(CREATE_TOPIC, () -> {
-      kafkaAdmin.createTopic(topicName, numPartitions, replication, topicProperties);
+      kafkaAdmin.createTopic(topicName, numPartitions, replication, pubSubTopicConfiguration);
       return null;
     });
   }
@@ -80,9 +85,9 @@ public class InstrumentedKafkaAdmin implements KafkaAdminWrapper {
   }
 
   @Override
-  public void setTopicConfig(PubSubTopic topicName, Properties topicProperties) {
+  public void setTopicConfig(PubSubTopic topicName, PubSubTopicConfiguration pubSubTopicConfiguration) {
     instrument(SET_TOPIC_CONFIG, () -> {
-      kafkaAdmin.setTopicConfig(topicName, topicProperties);
+      kafkaAdmin.setTopicConfig(topicName, pubSubTopicConfiguration);
       return null;
     });
   }
@@ -93,12 +98,12 @@ public class InstrumentedKafkaAdmin implements KafkaAdminWrapper {
   }
 
   @Override
-  public Properties getTopicConfig(PubSubTopic topicName) throws TopicDoesNotExistException {
+  public PubSubTopicConfiguration getTopicConfig(PubSubTopic topicName) throws TopicDoesNotExistException {
     return instrument(GET_TOPIC_CONFIG, () -> kafkaAdmin.getTopicConfig(topicName));
   }
 
   @Override
-  public Properties getTopicConfigWithRetry(PubSubTopic topicName) {
+  public PubSubTopicConfiguration getTopicConfigWithRetry(PubSubTopic topicName) {
     return instrument(GET_TOPIC_CONFIG_WITH_RETRY, () -> kafkaAdmin.getTopicConfigWithRetry(topicName));
   }
 
@@ -125,7 +130,7 @@ public class InstrumentedKafkaAdmin implements KafkaAdminWrapper {
   }
 
   @Override
-  public Map<PubSubTopic, Properties> getSomeTopicConfigs(Set<PubSubTopic> topicNames) {
+  public Map<PubSubTopic, PubSubTopicConfiguration> getSomeTopicConfigs(Set<PubSubTopic> topicNames) {
     return instrument(GET_SOME_TOPIC_CONFIGS, () -> kafkaAdmin.getSomeTopicConfigs(topicNames));
   }
 

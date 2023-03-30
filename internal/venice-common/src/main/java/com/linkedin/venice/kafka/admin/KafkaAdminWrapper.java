@@ -2,6 +2,7 @@ package com.linkedin.venice.kafka.admin;
 
 import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
+import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -23,19 +24,24 @@ import java.util.concurrent.Future;
 public interface KafkaAdminWrapper extends Closeable {
   void initialize(Properties properties, PubSubTopicRepository pubSubTopicRepository);
 
-  void createTopic(PubSubTopic topicName, int numPartitions, int replication, Properties topicProperties);
+  void createTopic(
+      PubSubTopic topicName,
+      int numPartitions,
+      int replication,
+      PubSubTopicConfiguration pubSubTopicConfiguration);
 
   Future<Void> deleteTopic(PubSubTopic topicName);
 
   Set<PubSubTopic> listAllTopics();
 
-  void setTopicConfig(PubSubTopic topicName, Properties topicProperties) throws TopicDoesNotExistException;
+  void setTopicConfig(PubSubTopic topicName, PubSubTopicConfiguration pubSubTopicConfiguration)
+      throws TopicDoesNotExistException;
 
   Map<PubSubTopic, Long> getAllTopicRetentions();
 
-  Properties getTopicConfig(PubSubTopic topicName) throws TopicDoesNotExistException;
+  PubSubTopicConfiguration getTopicConfig(PubSubTopic topicName) throws TopicDoesNotExistException;
 
-  Properties getTopicConfigWithRetry(PubSubTopic topicName);
+  PubSubTopicConfiguration getTopicConfigWithRetry(PubSubTopic topicName);
 
   boolean containsTopic(PubSubTopic topic);
 
@@ -139,7 +145,7 @@ public interface KafkaAdminWrapper extends Closeable {
     }
   }
 
-  Map<PubSubTopic, Properties> getSomeTopicConfigs(Set<PubSubTopic> topicNames);
+  Map<PubSubTopic, PubSubTopicConfiguration> getSomeTopicConfigs(Set<PubSubTopic> topicNames);
 
   boolean isTopicDeletionUnderway();
 

@@ -147,6 +147,7 @@ import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
 import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.participant.protocol.enums.ParticipantMessageType;
 import com.linkedin.venice.persona.StoragePersona;
+import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -2374,12 +2375,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     false);
               } else {
                 // If real-time topic already exists, check whether its retention time is correct.
-                Properties topicProperties = getTopicManager().getCachedTopicConfig(realTimeTopic);
-                long topicRetentionTimeInMs = getTopicManager().getTopicRetention(topicProperties);
+                PubSubTopicConfiguration pubSubTopicConfiguration =
+                    getTopicManager().getCachedTopicConfig(realTimeTopic);
+                long topicRetentionTimeInMs = getTopicManager().getTopicRetention(pubSubTopicConfiguration);
                 long expectedRetentionTimeMs =
                     TopicManager.getExpectedRetentionTimeInMs(store, store.getHybridStoreConfig());
                 if (topicRetentionTimeInMs != expectedRetentionTimeMs) {
-                  getTopicManager().updateTopicRetention(realTimeTopic, expectedRetentionTimeMs, topicProperties);
+                  getTopicManager()
+                      .updateTopicRetention(realTimeTopic, expectedRetentionTimeMs, pubSubTopicConfiguration);
                 }
               }
             }
@@ -3213,7 +3216,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  private boolean truncateKafkaTopic(String kafkaTopicName, Map<String, Properties> topicConfigs) {
+  private boolean truncateKafkaTopic(String kafkaTopicName, Map<String, PubSubTopicConfiguration> topicConfigs) {
     if (multiClusterConfigs.isParent()) {
       /**
        * topicConfigs is ignored on purpose, since we couldn't guarantee configs are in sync in
@@ -3257,7 +3260,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   private boolean truncateKafkaTopic(
       TopicManager topicManager,
       String kafkaTopicName,
-      Map<String, Properties> topicConfigs) {
+      Map<String, PubSubTopicConfiguration> topicConfigs) {
     if (topicConfigs.containsKey(kafkaTopicName)) {
       if (topicManager.updateTopicRetention(
           pubSubTopicRepository.getTopic(kafkaTopicName),
@@ -3336,9 +3339,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     } else {
       LOGGER.info("Detected the following old topics to truncate: {}", oldTopicsToTruncate);
       int numberOfNewTopicsMarkedForDelete = 0;
-      Map<PubSubTopic, Properties> pubSubTopicConfigs = getTopicManager().getSomeTopicConfigs(oldTopicsToTruncate);
-      Map<String, Properties> topicConfigs = new HashMap<>();
-      for (Map.Entry<PubSubTopic, Properties> entry: pubSubTopicConfigs.entrySet()) {
+      Map<PubSubTopic, PubSubTopicConfiguration> pubSubTopicConfigs =
+          getTopicManager().getSomeTopicConfigs(oldTopicsToTruncate);
+      Map<String, PubSubTopicConfiguration> topicConfigs = new HashMap<>();
+      for (Map.Entry<PubSubTopic, PubSubTopicConfiguration> entry: pubSubTopicConfigs.entrySet()) {
         topicConfigs.put(entry.getKey().getName(), entry.getValue());
       }
       for (PubSubTopic t: oldTopicsToTruncate) {

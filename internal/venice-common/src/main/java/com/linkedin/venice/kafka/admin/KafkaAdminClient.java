@@ -9,6 +9,7 @@ import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -61,6 +62,7 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
   private KafkaConsumer<KafkaKey, KafkaMessageEnvelope> kafkaConsumer;
   private Long maxRetryInMs;
   private PubSubTopicRepository pubSubTopicRepository;
+  private Long topicMinLogCompactionLagMs;
 
   public KafkaAdminClient() {
   }
@@ -77,18 +79,25 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
     properties.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
     this.kafkaConsumer = new KafkaConsumer<>(properties);
     this.maxRetryInMs = (Long) properties.get(KAFKA_ADMIN_GET_TOPIC_CONFIG_MAX_RETRY_TIME_SEC) * MS_PER_SECOND;
+    this.topicMinLogCompactionLagMs = 1000L; // TODO: to get this value from configs.
     this.pubSubTopicRepository = pubSubTopicRepository;
   }
 
   @Override
-  public void createTopic(PubSubTopic topicName, int numPartitions, int replication, Properties topicProperties) {
+  public void createTopic(
+      PubSubTopic topic,
+      int numPartitions,
+      int replication,
+      PubSubTopicConfiguration pubSubTopicConfiguration) {
     if (replication > Short.MAX_VALUE) {
       throw new IllegalArgumentException("Replication factor cannot be > " + Short.MAX_VALUE);
     }
+    // Convert topic configuration into properties
+    Properties topicProperties = unmarshallProperties(pubSubTopicConfiguration);
     Map<String, String> topicPropertiesMap = new HashMap<>();
     topicProperties.stringPropertyNames().forEach(key -> topicPropertiesMap.put(key, topicProperties.getProperty(key)));
     Collection<NewTopic> newTopics = Collections
-        .singleton(new NewTopic(topicName.getName(), numPartitions, (short) replication).configs(topicPropertiesMap));
+        .singleton(new NewTopic(topic.getName(), numPartitions, (short) replication).configs(topicPropertiesMap));
     try {
       getKafkaAdminClient().createTopics(newTopics).all().get();
     } catch (ExecutionException e) {
@@ -97,10 +106,10 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
       } else if (e.getCause() instanceof TopicExistsException) {
         throw (TopicExistsException) e.getCause();
       } else {
-        throw new VeniceException("Failed to create topic: " + topicName + " due to ExecutionException", e);
+        throw new VeniceException("Failed to create topic: " + topic + " due to ExecutionException", e);
       }
     } catch (Exception e) {
-      throw new VeniceException("Failed to create topic: " + topicName + "due to Exception", e);
+      throw new VeniceException("Failed to create topic: " + topic + "due to Exception", e);
     }
   }
 
@@ -121,25 +130,25 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
   // TODO: If we decide that topic deletion is always going to be blocking then we might want to get the future here and
   // catch/extract any expected exceptions such as UnknownTopicOrPartitionException.
   @Override
-  public KafkaFuture<Void> deleteTopic(PubSubTopic topicName) {
-    return getKafkaAdminClient().deleteTopics(Collections.singleton(topicName.getName()))
-        .values()
-        .get(topicName.getName());
+  public KafkaFuture<Void> deleteTopic(PubSubTopic topic) {
+    return getKafkaAdminClient().deleteTopics(Collections.singleton(topic.getName())).values().get(topic.getName());
   }
 
   @Override
-  public void setTopicConfig(PubSubTopic topicName, Properties topicProperties) throws TopicDoesNotExistException {
+  public void setTopicConfig(PubSubTopic topic, PubSubTopicConfiguration pubSubTopicConfiguration)
+      throws TopicDoesNotExistException {
+    Properties topicProperties = unmarshallProperties(pubSubTopicConfiguration);
     Collection<ConfigEntry> entries = new ArrayList<>(topicProperties.stringPropertyNames().size());
     topicProperties.stringPropertyNames()
         .forEach(key -> entries.add(new ConfigEntry(key, topicProperties.getProperty(key))));
-    Map<ConfigResource, Config> configs = Collections
-        .singletonMap(new ConfigResource(ConfigResource.Type.TOPIC, topicName.getName()), new Config(entries));
+    Map<ConfigResource, Config> configs =
+        Collections.singletonMap(new ConfigResource(ConfigResource.Type.TOPIC, topic.getName()), new Config(entries));
     try {
       getKafkaAdminClient().alterConfigs(configs).all().get();
     } catch (ExecutionException | InterruptedException e) {
-      if (!containsTopicWithExpectationAndRetry(topicName, 3, true)) {
+      if (!containsTopicWithExpectationAndRetry(topic, 3, true)) {
         // We assume the exception was caused by a non-existent topic.
-        throw new TopicDoesNotExistException("Topic " + topicName + " does not exist");
+        throw new TopicDoesNotExistException("Topic " + topic + " does not exist");
       }
       // Topic exists. So not sure what caused the exception.
       throw new VeniceException(e);
@@ -158,25 +167,23 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
   }
 
   @Override
-  public Properties getTopicConfig(PubSubTopic topicName) throws TopicDoesNotExistException {
-    ConfigResource resource = new ConfigResource(ConfigResource.Type.TOPIC, topicName.getName());
+  public PubSubTopicConfiguration getTopicConfig(PubSubTopic topic) throws TopicDoesNotExistException {
+    ConfigResource resource = new ConfigResource(ConfigResource.Type.TOPIC, topic.getName());
     Collection<ConfigResource> configResources = Collections.singleton(resource);
     DescribeConfigsResult result = getKafkaAdminClient().describeConfigs(configResources);
     try {
       Config config = result.all().get().get(resource);
-      Properties properties = new Properties();
-      config.entries().forEach(configEntry -> properties.setProperty(configEntry.name(), configEntry.value()));
-      return properties;
+      return marshallProperties(config);
     } catch (Exception e) {
       if (e.getCause() instanceof UnknownTopicOrPartitionException) {
-        throw new TopicDoesNotExistException("Topic: " + topicName + " doesn't exist");
+        throw new TopicDoesNotExistException("Topic: " + topic + " doesn't exist");
       }
-      throw new VeniceException("Failed to get topic configs for: " + topicName, e);
+      throw new VeniceException("Failed to get topic configs for: " + topic, e);
     }
   }
 
   @Override
-  public Properties getTopicConfigWithRetry(PubSubTopic topic) {
+  public PubSubTopicConfiguration getTopicConfigWithRetry(PubSubTopic topic) {
     long accumWaitTime = 0;
     long sleepIntervalInMs = 100;
     VeniceException veniceException = null;
@@ -265,7 +272,7 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
   }
 
   @Override
-  public Map<PubSubTopic, Properties> getSomeTopicConfigs(Set<PubSubTopic> pubSubTopics) {
+  public Map<PubSubTopic, PubSubTopicConfiguration> getSomeTopicConfigs(Set<PubSubTopic> pubSubTopics) {
     return getSomethingForSomeTopics(pubSubTopics, config -> marshallProperties(config), "configs");
   }
 
@@ -384,11 +391,42 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
     }
   }
 
-  private Properties marshallProperties(Config config) {
+  private PubSubTopicConfiguration marshallProperties(Config config) {
     Properties properties = new Properties();
     /** marshall the configs from {@link ConfigEntry} to {@link Properties} */
     config.entries().forEach(configEntry -> properties.setProperty(configEntry.name(), configEntry.value()));
-    return properties;
+    Optional<Long> retentionMs =
+        Optional.ofNullable(properties.getProperty(TopicConfig.RETENTION_MS_CONFIG)).map(Long::parseLong);
+    Optional<Integer> minInSyncReplicas =
+        Optional.ofNullable(properties.getProperty(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG)).map(Integer::parseInt);
+    Boolean isLogCompacted =
+        TopicConfig.CLEANUP_POLICY_COMPACT.equals(properties.getProperty(TopicConfig.CLEANUP_POLICY_CONFIG));
+    Long minLogCompactionLagMs = properties.containsKey(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG)
+        ? Long.parseLong((String) properties.get(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG))
+        : 0L;
+    return new PubSubTopicConfiguration(retentionMs, isLogCompacted, minInSyncReplicas, minLogCompactionLagMs);
+  }
+
+  private Properties unmarshallProperties(PubSubTopicConfiguration pubSubTopicConfiguration) {
+    Properties topicProperties = new Properties();
+    Optional<Long> retentionMs = pubSubTopicConfiguration.retentionInMs();
+    if (retentionMs.isPresent()) {
+      topicProperties.put(TopicConfig.RETENTION_MS_CONFIG, Long.toString(retentionMs.get()));
+    }
+    if (pubSubTopicConfiguration.isLogCompacted()) {
+      topicProperties.put(TopicConfig.CLEANUP_POLICY_CONFIG, TopicConfig.CLEANUP_POLICY_COMPACT);
+      topicProperties.put(
+          TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG,
+          Long.toString(pubSubTopicConfiguration.minLogCompactionLagMs()));
+    } else {
+      topicProperties.put(TopicConfig.CLEANUP_POLICY_CONFIG, TopicConfig.CLEANUP_POLICY_DELETE);
+    }
+    // If not set, Kafka cluster defaults will apply
+    pubSubTopicConfiguration.minInSyncReplicas()
+        .ifPresent(minIsrConfig -> topicProperties.put(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG, minIsrConfig));
+    // Just in case the Kafka cluster isn't configured as expected.
+    topicProperties.put(TopicConfig.MESSAGE_TIMESTAMP_TYPE_CONFIG, "LogAppendTime");
+    return topicProperties;
   }
 
   private AdminClient getKafkaAdminClient() {
