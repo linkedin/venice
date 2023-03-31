@@ -5621,7 +5621,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         store.getPartitionCount(),
         config.getPartitionSize(),
         config.getNumberOfPartition(),
-        config.getMaxNumberOfPartition());
+        config.getMaxNumberOfPartition(),
+        config.isPartitionCountRoundUpEnabled(),
+        config.getPartitionCountRoundUpSize());
   }
 
   /**

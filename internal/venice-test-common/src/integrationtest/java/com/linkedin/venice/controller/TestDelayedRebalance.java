@@ -219,7 +219,9 @@ public class TestDelayedRebalance {
     int partitionCount = 1;
 
     cluster.getNewStore(storeName);
-    cluster.updateStore(storeName, new UpdateStoreQueryParams().setStorageQuotaInByte(partitionCount * partitionSize));
+    cluster.updateStore(
+        storeName,
+        new UpdateStoreQueryParams().setStorageQuotaInByte((long) partitionCount * partitionSize));
     VersionCreationResponse response = cluster.getNewVersion(storeName);
     Assert.assertFalse(response.isError());
     String topicName = response.getKafkaTopic();

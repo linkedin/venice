@@ -34,13 +34,19 @@ public class PartitionUtils {
       int storePartitionCount,
       long partitionSize,
       int minPartitionCount,
-      int maxPartitionCount) {
+      int maxPartitionCount,
+      boolean isRoundUpEnabled,
+      int roundUpSize) {
     if (storageQuota <= 0 && storageQuota != Store.UNLIMITED_STORAGE_QUOTA) {
       throw new VeniceException("Storage quota: " + storageQuota + " is invalid.");
     }
     if (storePartitionCount == 0) {
       // Store level partition count is not configured, calculate partition count
       long partitionCount = storageQuota / partitionSize;
+      if (isRoundUpEnabled) {
+        // Round upwards to the next multiple of roundUpSize
+        partitionCount = (partitionCount + roundUpSize - 1) / roundUpSize * roundUpSize;
+      }
       if (partitionCount > maxPartitionCount) {
         partitionCount = maxPartitionCount;
       } else if (partitionCount < minPartitionCount) {

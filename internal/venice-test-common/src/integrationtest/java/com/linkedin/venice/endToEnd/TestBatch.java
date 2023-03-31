@@ -385,7 +385,7 @@ public abstract class TestBatch {
         },
         validator,
         storeName,
-        new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
+        new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT).setPartitionCount(3));
     // Collect the dict of the current version.
     String sourceTopic = Version.composeKafkaTopic(storeName, 2);
     Properties props = new Properties();
