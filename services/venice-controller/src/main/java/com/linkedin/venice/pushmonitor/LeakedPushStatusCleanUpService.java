@@ -183,7 +183,7 @@ public class LeakedPushStatusCleanUpService extends AbstractVeniceService {
                   offlinePushAccessor.deleteOfflinePushStatusAndItsPartitionStatuses(kafkaTopic);
                 }
               });
-              leakedPushStatuses.stream().forEach(offlinePushAccessor::deleteOfflinePushStatusAndItsPartitionStatuses);
+              aggPushStatusCleanUpStats.recordLeakedPushStatusCount(storeName, leakedPushStatusCounter);
               aggPushStatusCleanUpStats
                   .recordSuccessfulLeakedPushStatusCleanUpCount(storeName, leakedPushStatuses.size());
             } catch (Throwable e) {
