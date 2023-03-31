@@ -119,13 +119,8 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
        */
       consumerProperties.setProperty(ConsumerConfig.CLIENT_ID_CONFIG, getUniqueClientId(kafkaUrl, i));
       SharedKafkaConsumer pubSubConsumer = new SharedKafkaConsumer(
-          pubSubConsumerAdapterFactory.create(new VeniceProperties(consumerProperties), true, pubSubDeserializer, null), // TODO:
-                                                                                                                         // change
-                                                                                                                         // this
-                                                                                                                         // boolean
-                                                                                                                         // from
-                                                                                                                         // server
-                                                                                                                         // config.
+          // TODO: change this boolean from server config.
+          pubSubConsumerAdapterFactory.create(new VeniceProperties(consumerProperties), true, pubSubDeserializer, null),
           stats,
           this::recordPartitionsPerConsumerSensor,
           this::handleUnsubscription);

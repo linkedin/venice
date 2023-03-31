@@ -5,6 +5,7 @@ import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -13,6 +14,8 @@ import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.time.Duration;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -297,5 +300,35 @@ class SharedKafkaConsumer implements PubSubConsumer {
   @Override
   public long getLatestOffset(PubSubTopicPartition pubSubTopicPartition) {
     return delegate.getLatestOffset(pubSubTopicPartition);
+  }
+
+  @Override
+  public Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp, Duration timeout) {
+    return null;
+  }
+
+  @Override
+  public Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp) {
+    return null;
+  }
+
+  @Override
+  public Long beginningOffset(PubSubTopicPartition partition, Duration timeout) {
+    return null;
+  }
+
+  @Override
+  public Map<PubSubTopicPartition, Long> endOffsets(Collection<PubSubTopicPartition> partitions, Duration timeout) {
+    return null;
+  }
+
+  @Override
+  public Long endOffset(PubSubTopicPartition pubSubTopicPartition) {
+    return null;
+  }
+
+  @Override
+  public List<PubSubTopicPartitionInfo> partitionsFor(PubSubTopic topic) {
+    return null;
   }
 }

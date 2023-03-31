@@ -2,6 +2,8 @@ package com.linkedin.venice.kafka;
 
 import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
 import static com.linkedin.venice.kafka.TopicManager.MAX_TOPIC_DELETE_RETRIES;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.doReturn;
@@ -43,6 +45,7 @@ import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
+import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
@@ -509,12 +512,14 @@ public class TopicManagerTest {
     KafkaAdminWrapper mockKafkaAdminWrapper = mock(KafkaAdminWrapper.class);
     doReturn(true).when(mockKafkaAdminWrapper)
         .containsTopicWithPartitionCheckExpectationAndRetry(eq(pubSubTopicPartition), anyInt(), eq(true));
-    doThrow(new TimeoutException()).when(mockKafkaAdminWrapper).endOffsets(any(), any());
+    PubSubConsumer mockPubSubConsumer = mock(PubSubConsumer.class);
+    doThrow(new TimeoutException()).when(mockPubSubConsumer).endOffsets(any(), any());
     // Throw Kafka TimeoutException when trying to get max offset
     String localPubSubBrokerAddress = "localhost:1234";
 
     PubSubAdminAdapterFactory adminAdapterFactory = mock(PubSubAdminAdapterFactory.class);
     PubSubConsumerAdapterFactory consumerAdapterFactory = mock(PubSubConsumerAdapterFactory.class);
+    doReturn(mockPubSubConsumer).when(consumerAdapterFactory).create(any(), anyBoolean(), any(), anyString());
     doReturn(mockKafkaAdminWrapper).when(adminAdapterFactory).create(any(), eq(pubSubTopicRepository));
     try (TopicManager topicManagerForThisTest = TopicManagerRepository.builder()
         .setPubSubProperties(k -> new VeniceProperties())

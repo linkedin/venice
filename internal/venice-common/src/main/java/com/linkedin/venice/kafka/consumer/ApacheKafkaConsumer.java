@@ -6,7 +6,9 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
@@ -25,6 +27,8 @@ import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
+import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.RetriableException;
 import org.apache.logging.log4j.LogManager;
@@ -289,4 +293,94 @@ public class ApacheKafkaConsumer implements PubSubConsumer {
     int partition = pubSubTopicPartition.getPartitionNumber();
     return topicPartitionsOffsetsTracker != null ? topicPartitionsOffsetsTracker.getEndOffset(topic, partition) : -1;
   }
+
+  @Override
+  public Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp, Duration timeout) {
+    TopicPartition topicPartition =
+        new TopicPartition(pubSubTopicPartition.getPubSubTopic().getName(), pubSubTopicPartition.getPartitionNumber());
+    Map<TopicPartition, OffsetAndTimestamp> topicPartitionOffsetMap =
+        this.kafkaConsumer.offsetsForTimes(Collections.singletonMap(topicPartition, timestamp), timeout);
+    if (topicPartitionOffsetMap.isEmpty()) {
+      return -1L;
+    }
+    OffsetAndTimestamp offsetAndTimestamp = topicPartitionOffsetMap.get(topicPartition);
+    if (offsetAndTimestamp == null) {
+      return null;
+    }
+    return offsetAndTimestamp.offset();
+  }
+
+  @Override
+  public Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp) {
+    TopicPartition topicPartition =
+        new TopicPartition(pubSubTopicPartition.getPubSubTopic().getName(), pubSubTopicPartition.getPartitionNumber());
+    Map<TopicPartition, OffsetAndTimestamp> topicPartitionOffsetMap =
+        this.kafkaConsumer.offsetsForTimes(Collections.singletonMap(topicPartition, timestamp));
+    if (topicPartitionOffsetMap.isEmpty()) {
+      return -1L;
+    }
+    OffsetAndTimestamp offsetAndTimestamp = topicPartitionOffsetMap.get(topicPartition);
+    if (offsetAndTimestamp == null) {
+      return null;
+    }
+    return offsetAndTimestamp.offset();
+  }
+
+  @Override
+  public Long beginningOffset(PubSubTopicPartition pubSubTopicPartition, Duration timeout) {
+    TopicPartition topicPartition =
+        new TopicPartition(pubSubTopicPartition.getPubSubTopic().getName(), pubSubTopicPartition.getPartitionNumber());
+    Map<TopicPartition, Long> topicPartitionOffset =
+        this.kafkaConsumer.beginningOffsets(Collections.singleton(topicPartition), timeout);
+    return topicPartitionOffset.get(topicPartition);
+  }
+
+  @Override
+  public Map<PubSubTopicPartition, Long> endOffsets(Collection<PubSubTopicPartition> partitions, Duration timeout) {
+    Map<TopicPartition, PubSubTopicPartition> pubSubTopicPartitionMapping = new HashMap<>(partitions.size());
+    for (PubSubTopicPartition pubSubTopicPartition: partitions) {
+      pubSubTopicPartitionMapping.put(
+          new TopicPartition(
+              pubSubTopicPartition.getPubSubTopic().getName(),
+              pubSubTopicPartition.getPartitionNumber()),
+          pubSubTopicPartition);
+    }
+    Map<PubSubTopicPartition, Long> pubSubTopicPartitionOffsetMap = new HashMap<>(partitions.size());
+    Map<TopicPartition, Long> topicPartitionOffsetMap =
+        this.kafkaConsumer.endOffsets(pubSubTopicPartitionMapping.keySet(), timeout);
+    for (Map.Entry<TopicPartition, Long> entry: topicPartitionOffsetMap.entrySet()) {
+      pubSubTopicPartitionOffsetMap.put(pubSubTopicPartitionMapping.get(entry.getKey()), entry.getValue());
+    }
+    return pubSubTopicPartitionOffsetMap;
+  }
+
+  @Override
+  public Long endOffset(PubSubTopicPartition pubSubTopicPartition) {
+    TopicPartition topicPartition =
+        new TopicPartition(pubSubTopicPartition.getPubSubTopic().getName(), pubSubTopicPartition.getPartitionNumber());
+    Map<TopicPartition, Long> topicPartitionOffsetMap =
+        this.kafkaConsumer.endOffsets(Collections.singleton(topicPartition));
+    return topicPartitionOffsetMap.get(topicPartition);
+  }
+
+  @Override
+  public List<PubSubTopicPartitionInfo> partitionsFor(PubSubTopic topic) {
+    List<PartitionInfo> partitionInfos = this.kafkaConsumer.partitionsFor(topic.getName());
+    if (partitionInfos == null) {
+      return null;
+    }
+    List<PubSubTopicPartitionInfo> pubSubTopicPartitionInfos = new ArrayList<>(partitionInfos.size());
+    for (PartitionInfo partitionInfo: partitionInfos) {
+      if (partitionInfo.topic().equals(topic.getName())) {
+        pubSubTopicPartitionInfos.add(
+            new PubSubTopicPartitionInfo(
+                topic,
+                partitionInfo.partition(),
+                partitionInfo.replicas().length,
+                partitionInfo.inSyncReplicas().length > 0));
+      }
+    }
+    return pubSubTopicPartitionInfos;
+  }
+
 }

@@ -3,9 +3,13 @@ package com.linkedin.venice.pubsub.consumer;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import java.io.Closeable;
+import java.time.Duration;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -52,4 +56,16 @@ public interface PubSubConsumer extends AutoCloseable, Closeable {
   default long getLatestOffset(PubSubTopicPartition pubSubTopicPartition) {
     return -1;
   }
+
+  Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp, Duration timeout);
+
+  Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp);
+
+  Long beginningOffset(PubSubTopicPartition partition, Duration timeout);
+
+  Map<PubSubTopicPartition, Long> endOffsets(Collection<PubSubTopicPartition> partitions, Duration timeout);
+
+  Long endOffset(PubSubTopicPartition pubSubTopicPartition);
+
+  List<PubSubTopicPartitionInfo> partitionsFor(PubSubTopic topic);
 }

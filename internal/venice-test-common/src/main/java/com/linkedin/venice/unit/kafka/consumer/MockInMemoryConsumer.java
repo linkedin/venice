@@ -4,11 +4,15 @@ import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
 import com.linkedin.venice.unit.kafka.consumer.poll.PollStrategy;
+import java.time.Duration;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -148,5 +152,35 @@ public class MockInMemoryConsumer implements PubSubConsumer {
   @Override
   public Set<PubSubTopicPartition> getAssignment() {
     return offsets.keySet();
+  }
+
+  @Override
+  public Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp, Duration timeout) {
+    return null;
+  }
+
+  @Override
+  public Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp) {
+    return null;
+  }
+
+  @Override
+  public Long beginningOffset(PubSubTopicPartition partition, Duration timeout) {
+    return null;
+  }
+
+  @Override
+  public Map<PubSubTopicPartition, Long> endOffsets(Collection<PubSubTopicPartition> partitions, Duration timeout) {
+    return null;
+  }
+
+  @Override
+  public Long endOffset(PubSubTopicPartition pubSubTopicPartition) {
+    return null;
+  }
+
+  @Override
+  public List<PubSubTopicPartitionInfo> partitionsFor(PubSubTopic topic) {
+    return null;
   }
 }

@@ -3,14 +3,12 @@ package com.linkedin.venice.kafka.admin;
 import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
-import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.RetryUtils;
 import java.io.Closeable;
 import java.time.Duration;
-import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -145,21 +143,10 @@ public interface KafkaAdminWrapper extends Closeable {
     }
   }
 
-  Map<PubSubTopic, PubSubTopicConfiguration> getSomeTopicConfigs(Set<PubSubTopic> topicNames);
-
   boolean isTopicDeletionUnderway();
 
   String getClassName();
 
-  Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp, Duration timeout);
+  Map<PubSubTopic, PubSubTopicConfiguration> getSomeTopicConfigs(Set<PubSubTopic> topicNames);
 
-  Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp);
-
-  Long beginningOffset(PubSubTopicPartition partition, Duration timeout);
-
-  Map<PubSubTopicPartition, Long> endOffsets(Collection<PubSubTopicPartition> partitions, Duration timeout);
-
-  Long endOffset(PubSubTopicPartition pubSubTopicPartition);
-
-  List<PubSubTopicPartitionInfo> partitionsFor(PubSubTopic topic);
 }
