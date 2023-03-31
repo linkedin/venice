@@ -81,7 +81,7 @@ import com.linkedin.venice.pushmonitor.PushMonitorType;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -342,7 +342,7 @@ public class VeniceControllerClusterConfig {
     controllerSchemaValidationEnabled = props.getBoolean(CONTROLLER_SCHEMA_VALIDATION_ENABLED, true);
 
     clusterToD2Map = props.getMap(CLUSTER_TO_D2);
-    clusterToServerD2Map = props.getMap(CLUSTER_TO_SERVER_D2, new HashMap<>(0));
+    clusterToServerD2Map = props.getMap(CLUSTER_TO_SERVER_D2, Collections.emptyMap());
     this.sslToKafka = props.getBoolean(SSL_TO_KAFKA, false);
     // Enable ssl to kafka
     if (sslToKafka) {
