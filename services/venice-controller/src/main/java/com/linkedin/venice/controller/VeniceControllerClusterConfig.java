@@ -398,9 +398,9 @@ public class VeniceControllerClusterConfig {
     }
     this.leakedPushStatusCleanUpServiceSleepIntervalInMs =
         props.getLong(LEAKED_PUSH_STATUS_CLEAN_UP_SERVICE_SLEEP_INTERVAL_MS, TimeUnit.MINUTES.toMillis(15));
-    // 2 days should be enough for detecting and troubleshooting a leaked push status.
+    // 7 days should be enough for detecting and troubleshooting a leaked push status.
     this.leakedResourceAllowedLingerTimeInMs =
-        props.getLong(LEAKED_RESOURCE_ALLOWED_LINGER_TIME_MS, TimeUnit.DAYS.toMillis(2));
+        props.getLong(LEAKED_RESOURCE_ALLOWED_LINGER_TIME_MS, TimeUnit.DAYS.toMillis(7));
     this.jettyConfigOverrides = props.clipAndFilterNamespace(CONTROLLER_JETTY_CONFIG_OVERRIDE_PREFIX);
     this.disableParentRequestTopicForStreamPushes =
         props.getBoolean(CONTROLLER_DISABLE_PARENT_REQUEST_TOPIC_FOR_STREAM_PUSHES, false);
