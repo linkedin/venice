@@ -114,10 +114,6 @@ public class ServiceFactory {
     }
   }
 
-  public static void testRuntimeFactoryLoading() {
-    System.out.println("########## HELLO! ##########");
-  }
-
   /**
    * @return an instance of {@link PubSubClientsFactory}
    */
