@@ -25,6 +25,15 @@ public interface StoreSchemaFetcher extends Closeable {
   Schema getLatestValueSchema();
 
   /**
+   * Get the superset value schema for a given store. Each store has at most one active superset schema. Specifically a
+   * store must have some features enabled (e.g. read compute, write compute) to have a superset value schema which
+   * evolves as new value schemas are added.
+   *
+   * @return Superset value schema or {@code null} if store {@param storeName} does not have any superset value schema.
+   */
+  Schema getSupersetSchema();
+
+  /**
    * Returns the Update (Write Compute) schema of the provided Value schema. The returned schema is used to construct
    * a {@link GenericRecord} that partially updates a record value that is associated with this value schema.
    * This method is expected to throw {@link InvalidVeniceSchemaException} when the provided value schema could not be

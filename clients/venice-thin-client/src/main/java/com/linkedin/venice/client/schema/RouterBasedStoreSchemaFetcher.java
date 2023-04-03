@@ -75,6 +75,33 @@ public class RouterBasedStoreSchemaFetcher implements StoreSchemaFetcher {
   }
 
   @Override
+  public Schema getSupersetSchema() {
+    String valueSchemaRequestPath = TYPE_VALUE_SCHEMA + "/" + storeClient.getStoreName();
+    MultiSchemaResponse multiSchemaResponse = fetchAllValueSchemas(valueSchemaRequestPath);
+    int supersetSchemaId = multiSchemaResponse.getSuperSetSchemaId();
+    if (supersetSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID) {
+      return null;
+    }
+    String schemaStr = null;
+    for (MultiSchemaResponse.Schema schema: multiSchemaResponse.getSchemas()) {
+      if (supersetSchemaId == schema.getId()) {
+        schemaStr = schema.getSchemaStr();
+      }
+    }
+
+    if (schemaStr == null) {
+      throw new VeniceException(
+          "Could not find the value schema with id: " + supersetSchemaId + ". This is unexpected.");
+    }
+
+    try {
+      return parseSchemaFromJSONLooseValidation(schemaStr);
+    } catch (Exception e) {
+      throw new VeniceException("Got exception while parsing superset schema", e);
+    }
+  }
+
+  @Override
   public Schema getUpdateSchema(Schema valueSchema) throws VeniceException {
     int valueSchemaId = getValueSchemaId(valueSchema);
     // Fetch the latest update schema for the specified value schema.
