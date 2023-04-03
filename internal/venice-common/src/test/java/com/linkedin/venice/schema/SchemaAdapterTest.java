@@ -1,7 +1,6 @@
-package com.linkedin.venice.utils;
+package com.linkedin.venice.schema;
 
 import com.linkedin.alpini.io.IOUtils;
-import com.linkedin.venice.schema.AvroSchemaParseUtils;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -17,8 +16,8 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
-public class AvroRecordUtilsTest {
-  private static final Logger LOGGER = LogManager.getLogger(AvroRecordUtilsTest.class);
+public class SchemaAdapterTest {
+  private static final Logger LOGGER = LogManager.getLogger(SchemaAdapterTest.class);
   private static final Schema SIMPLE_RECORD_SCHEMA = AvroSchemaParseUtils
       .parseSchemaFromJSONStrictValidation(loadFileAsString("AvroRecordUtilsTest/SimpleRecordSchema.avsc"));
   private static final Schema OLD_RECORD_SCHEMA = AvroSchemaParseUtils
@@ -42,7 +41,7 @@ public class AvroRecordUtilsTest {
     GenericRecord record = new GenericData.Record(SIMPLE_RECORD_SCHEMA);
     record.put("field", 1);
 
-    Object adaptedRecord = AvroRecordUtils.adaptToSchema(SIMPLE_RECORD_SCHEMA, record);
+    Object adaptedRecord = SchemaAdapter.adaptToSchema(SIMPLE_RECORD_SCHEMA, record);
     Assert.assertSame(adaptedRecord, record);
   }
 
@@ -53,7 +52,7 @@ public class AvroRecordUtilsTest {
     inputSubRecord.put("field1_1", 1);
     inputRecord.put("field1", inputSubRecord);
 
-    Object adaptedRecord = AvroRecordUtils.adaptToSchema(EVOLVED_RECORD_SCHEMA, inputRecord);
+    Object adaptedRecord = SchemaAdapter.adaptToSchema(EVOLVED_RECORD_SCHEMA, inputRecord);
     Assert.assertTrue(adaptedRecord instanceof GenericRecord);
     GenericRecord adaptedGenericRecord = (GenericRecord) adaptedRecord;
     Assert.assertEquals(adaptedGenericRecord.getSchema(), EVOLVED_RECORD_SCHEMA);
@@ -72,7 +71,7 @@ public class AvroRecordUtilsTest {
     inputRecord.put("field1", inputSubRecord);
     inputRecord.put("field2", 3);
 
-    Object adaptedRecord = AvroRecordUtils.adaptToSchema(OLD_RECORD_SCHEMA, inputRecord);
+    Object adaptedRecord = SchemaAdapter.adaptToSchema(OLD_RECORD_SCHEMA, inputRecord);
     Assert.assertTrue(adaptedRecord instanceof GenericRecord);
     GenericRecord adaptedGenericRecord = (GenericRecord) adaptedRecord;
     Assert.assertEquals(adaptedGenericRecord.getSchema(), OLD_RECORD_SCHEMA);
@@ -98,7 +97,7 @@ public class AvroRecordUtilsTest {
     inputRecord2.put("field1", inputSubRecord2);
     inputRecord2.put("field2", 10);
 
-    Object adaptedList = AvroRecordUtils.adaptToSchema(arraySchema, Arrays.asList(inputRecord, inputRecord2));
+    Object adaptedList = SchemaAdapter.adaptToSchema(arraySchema, Arrays.asList(inputRecord, inputRecord2));
     Assert.assertTrue(adaptedList instanceof List);
 
     Object adaptedRecord = ((List<?>) adaptedList).get(0);
@@ -136,7 +135,7 @@ public class AvroRecordUtilsTest {
     recordMap.put("testEvolveSchema", inputRecord);
     recordMap.put("testSameSchema", inputRecord2);
 
-    Object adaptedMap = AvroRecordUtils.adaptToSchema(mapSchema, recordMap);
+    Object adaptedMap = SchemaAdapter.adaptToSchema(mapSchema, recordMap);
     Assert.assertTrue(adaptedMap instanceof Map);
 
     Assert.assertEquals(((Map<String, ?>) adaptedMap).size(), 2);
@@ -172,7 +171,7 @@ public class AvroRecordUtilsTest {
     inputRecord2.put("field1", inputSubRecord2);
     inputRecord2.put("field2", 10);
 
-    Object adaptedRecord = AvroRecordUtils.adaptToSchema(unionSchema, inputRecord);
+    Object adaptedRecord = SchemaAdapter.adaptToSchema(unionSchema, inputRecord);
     Assert.assertTrue(adaptedRecord instanceof GenericRecord);
     GenericRecord adaptedGenericRecord = (GenericRecord) adaptedRecord;
     Assert.assertEquals(adaptedGenericRecord.getSchema(), EVOLVED_RECORD_SCHEMA);
@@ -182,7 +181,7 @@ public class AvroRecordUtilsTest {
     Assert.assertEquals(adaptedGenericRecord.get("field2"), -10);
 
     // If a record follows the same schema as the required schema, don't evolve it
-    Object adaptedRecord2 = AvroRecordUtils.adaptToSchema(unionSchema, inputRecord2);
+    Object adaptedRecord2 = SchemaAdapter.adaptToSchema(unionSchema, inputRecord2);
     Assert.assertTrue(adaptedRecord2 instanceof GenericRecord);
     Assert.assertSame(adaptedRecord2, inputRecord2);
   }

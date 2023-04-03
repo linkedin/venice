@@ -3,10 +3,10 @@ package com.linkedin.venice.writer.update;
 import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.annotation.NotThreadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.schema.SchemaAdapter;
 import com.linkedin.venice.schema.writecompute.WriteComputeConstants;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
-import com.linkedin.venice.utils.AvroRecordUtils;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -49,7 +49,7 @@ public class UpdateBuilderImpl implements UpdateBuilder {
     validateNoCollectionMergeOnField(fieldName);
     updateRecord.put(
         fieldName,
-        AvroRecordUtils.adaptToSchema(updateRecord.getSchema().getField(fieldName).schema(), newFieldValue));
+        SchemaAdapter.adaptToSchema(updateRecord.getSchema().getField(fieldName).schema(), newFieldValue));
     updateFieldNameSet.add(fieldName);
     return this;
   }
@@ -61,7 +61,7 @@ public class UpdateBuilderImpl implements UpdateBuilder {
     if (!elementsToAdd.isEmpty()) {
       getOrCreateListMergeRecord(listFieldName).put(
           WriteComputeConstants.SET_UNION,
-          AvroRecordUtils.adaptToSchema(getCorrespondingValueFieldSchema(listFieldName), elementsToAdd));
+          SchemaAdapter.adaptToSchema(getCorrespondingValueFieldSchema(listFieldName), elementsToAdd));
       collectionMergeFieldNameSet.add(listFieldName);
     }
     return this;
@@ -85,7 +85,7 @@ public class UpdateBuilderImpl implements UpdateBuilder {
     if (!entriesToAdd.isEmpty()) {
       getOrCreateMapMergeRecord(mapFieldName).put(
           WriteComputeConstants.MAP_UNION,
-          AvroRecordUtils.adaptToSchema(getCorrespondingValueFieldSchema(mapFieldName), entriesToAdd));
+          SchemaAdapter.adaptToSchema(getCorrespondingValueFieldSchema(mapFieldName), entriesToAdd));
       collectionMergeFieldNameSet.add(mapFieldName);
     }
     return this;
@@ -143,10 +143,7 @@ public class UpdateBuilderImpl implements UpdateBuilder {
    * @return Schema of its corresponding value field.
    */
   private Schema getCorrespondingValueFieldSchema(String updateFieldName) {
-    // Each field in partial update schema is a union of multiple schemas.
-    List<Schema> updateFieldSchemas = updateRecord.getSchema().getField(updateFieldName).schema().getTypes();
-    // The last schema in the union is the schema of the field in the corresponding value schema.
-    return updateFieldSchemas.get(updateFieldSchemas.size() - 1);
+    return getCorrespondingValueFieldSchema(updateRecord.getSchema().getField(updateFieldName));
   }
 
   /**
