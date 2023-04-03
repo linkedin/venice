@@ -335,11 +335,6 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       return;
     }
     String serverD2Service = getServerD2ServiceByClusterName(clusterName);
-    if (StringUtils.isEmpty(serverD2Service)) {
-      String errorMsg = "Server D2 service for store: " + storeName + " doesn't exist";
-      setupErrorD2DiscoveryResponseAndFlush(NOT_FOUND, errorMsg, headers, ctx);
-      return;
-    }
     if (headers.contains(D2_SERVICE_DISCOVERY_RESPONSE_V2_ENABLED)) {
       D2ServiceDiscoveryResponseV2 responseObject = new D2ServiceDiscoveryResponseV2();
       responseObject.setCluster(config.get().getCluster());
