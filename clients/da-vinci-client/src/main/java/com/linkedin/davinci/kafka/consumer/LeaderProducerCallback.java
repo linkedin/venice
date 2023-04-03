@@ -15,6 +15,7 @@ import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.writer.ChunkAwareCallback;
 import java.nio.ByteBuffer;
 import org.apache.logging.log4j.LogManager;
@@ -116,11 +117,14 @@ class LeaderProducerCallback implements ChunkAwareCallback {
       // queuing to drainer.
       // this indicates how much time kafka took to deliver the message to broker.
       if (!ingestionTask.isUserSystemStore()) {
+        long currentTimeNano = System.nanoTime();
+        long currentTimeMillis = currentTimeNano / Time.NS_PER_MS;
         ingestionTask.getVersionedDIVStats()
             .recordLeaderProducerCompletionTime(
                 ingestionTask.getStoreName(),
                 ingestionTask.versionNumber,
-                LatencyUtils.getLatencyInMS(produceTimeNs));
+                LatencyUtils.convertLatencyFromNSToMS(currentTimeNano - produceTimeNs),
+                currentTimeMillis);
       }
 
       int producedRecordNum = 0;

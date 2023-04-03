@@ -128,8 +128,6 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
    */
   private final LongAdderRateGauge totalTombstoneCreationDCRSensor = new LongAdderRateGauge();
 
-  private final Sensor totalLeaderDelegateRealTimeRecordLatencySensor;
-
   private Sensor registerPerStoreAndTotal(
       String sensorName,
       HostLevelIngestionStats totalStats,
@@ -195,12 +193,6 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
     registerOnlyTotal("timestamp_regression_dcr_error", totalStats, totalTimestampRegressionDCRErrorRate);
 
     registerOnlyTotal("offset_regression_dcr_error", totalStats, totalOffsetRegressionDCRErrorRate);
-
-    this.totalLeaderDelegateRealTimeRecordLatencySensor = registerOnlyTotal(
-        "leader_delegate_real_time_record_latency",
-        totalStats,
-        () -> totalStats.totalLeaderDelegateRealTimeRecordLatencySensor,
-        avgAndMax());
 
     Int2ObjectMap<String> kafkaClusterIdToAliasMap = serverConfig.getKafkaClusterIdToAliasMap();
     int listSize = kafkaClusterIdToAliasMap.isEmpty() ? 0 : Collections.max(kafkaClusterIdToAliasMap.keySet()) + 1;
@@ -495,15 +487,15 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
     totalFollowerRecordsConsumedSensor.record();
   }
 
-  public void recordTotalRegionHybridBytesConsumed(int regionId, long bytes) {
+  public void recordTotalRegionHybridBytesConsumed(int regionId, long bytes, long currentTimeMs) {
     Sensor sensor = totalHybridBytesConsumedByRegionId.get(regionId);
     if (sensor != null) {
-      sensor.record(bytes);
+      sensor.record(bytes, currentTimeMs);
     }
 
     sensor = totalHybridRecordsConsumedByRegionId.get(regionId);
     if (sensor != null) {
-      sensor.record(1);
+      sensor.record(1, currentTimeMs);
     }
   }
 
@@ -525,9 +517,5 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
   public void recordOffsetRegressionDCRError() {
     totalOffsetRegressionDCRErrorRate.record();
-  }
-
-  public void recordLeaderDelegateRealTimeRecordLatency(double latency) {
-    totalLeaderDelegateRealTimeRecordLatencySensor.record(latency);
   }
 }

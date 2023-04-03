@@ -2,6 +2,7 @@ package com.linkedin.davinci.stats;
 
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.concurrent.atomic.LongAdder;
 
 
 /**
@@ -11,10 +12,6 @@ import io.tehuti.metrics.MetricsRepository;
  */
 public class DIVStats {
   private final MetricConfig metricConfig = new MetricConfig();
-  /**
-   * Creating this separate local metric repository only to utilize the sensor library and not for reporting.
-   */
-  private final MetricsRepository localRepository = new MetricsRepository(metricConfig);
   private final WritePathLatencySensor producerBrokerLatencySensor;
   private final WritePathLatencySensor brokerConsumerLatencySensor;
   private final WritePathLatencySensor producerConsumerLatencySensor;
@@ -25,31 +22,37 @@ public class DIVStats {
   private final WritePathLatencySensor localBrokerFollowerConsumerLatencySensor;
   private final WritePathLatencySensor producerFollowerConsumerLatencySensor;
   private final WritePathLatencySensor leaderProducerCompletionLatencySensor;
+  private final LongAdder duplicateMsg = new LongAdder();
+  private final LongAdder successMsg = new LongAdder();
 
   private long benignLeaderOffsetRewindCount = 0;
   private long potentiallyLossyLeaderOffsetRewindCount = 0;
   private long leaderProducerFailureCount = 0;
   private long benignLeaderProducerFailureCount = 0;
-  private long duplicateMsg = 0;
   private long missingMsg = 0;
   private long corruptedMsg = 0;
-  private long successMsg = 0;
-  private long currentIdleTime = 0;
-  private long overallIdleTime = 0;
 
   public DIVStats() {
     /**
-     * For now, latency sensors will still be created as store name is not passed down to this class, and we cannot
+     * For currentTimeMs, latency sensors will still be created as store name is not passed down to this class, and we cannot
      * determine whether latency sensors are needed.
      * {@link DIVStatsReporter} already blocks latency metrics for system stores from being reported to external
      * metric collecting system.
      */
+    /**
+     * Creating this separate local metric repository only to utilize the sensor library and not for reporting.
+     */
+    MetricsRepository localRepository = new MetricsRepository(metricConfig);
+
+    // TODO Remove the three metrics below when NR is fully rolled out, since these metrics only apply to non-NR.
     producerBrokerLatencySensor =
         new WritePathLatencySensor(localRepository, metricConfig, "producer_to_broker_latency");
     brokerConsumerLatencySensor =
         new WritePathLatencySensor(localRepository, metricConfig, "broker_to_consumer_latency");
     producerConsumerLatencySensor =
         new WritePathLatencySensor(localRepository, metricConfig, "producer_to_consumer_latency");
+
+    // NR metrics below:
     producerSourceBrokerLatencySensor =
         new WritePathLatencySensor(localRepository, metricConfig, "producer_to_source_broker_latency");
     sourceBrokerLeaderConsumerLatencySensor =
@@ -67,71 +70,57 @@ public class DIVStats {
   }
 
   public long getDuplicateMsg() {
-    return duplicateMsg;
+    return this.duplicateMsg.sum();
   }
 
   public void recordDuplicateMsg() {
-    duplicateMsg += 1;
+    this.duplicateMsg.increment();
   }
 
   public void setDuplicateMsg(long count) {
-    this.duplicateMsg = count;
+    this.duplicateMsg.reset();
+    this.duplicateMsg.add(count);
   }
 
-  public long getMissingMsg() {
+  public synchronized long getMissingMsg() {
     return missingMsg;
   }
 
-  public void recordMissingMsg() {
+  public synchronized void recordMissingMsg() {
     missingMsg += 1;
   }
 
-  public void setMissingMsg(long count) {
+  public synchronized void setMissingMsg(long count) {
     this.missingMsg = count;
   }
 
-  public long getCorruptedMsg() {
+  public synchronized long getCorruptedMsg() {
     return corruptedMsg;
   }
 
-  public void recordCorruptedMsg() {
+  public synchronized void recordCorruptedMsg() {
     corruptedMsg += 1;
   }
 
-  public void setCorruptedMsg(long count) {
+  public synchronized void setCorruptedMsg(long count) {
     this.corruptedMsg = count;
   }
 
-  public long getSuccessMsg() {
-    return successMsg;
+  public synchronized long getSuccessMsg() {
+    return successMsg.sum();
   }
 
   public void recordSuccessMsg() {
-    successMsg += 1;
+    this.successMsg.increment();
   }
 
-  public long getCurrentIdleTime() {
-    return currentIdleTime;
+  public void setSuccessMsg(long count) {
+    this.successMsg.reset();
+    this.successMsg.add(count);
   }
 
-  public void recordCurrentIdleTime() {
-    currentIdleTime += 1;
-  }
-
-  public void resetCurrentIdleTime() {
-    currentIdleTime = 0;
-  }
-
-  public long getOverallIdleTime() {
-    return overallIdleTime;
-  }
-
-  public void recordOverallIdleTime() {
-    overallIdleTime += 1;
-  }
-
-  public void recordProducerBrokerLatencyMs(double value) {
-    producerBrokerLatencySensor.record(value);
+  public void recordProducerBrokerLatencyMs(double value, long currentTimeMs) {
+    producerBrokerLatencySensor.record(value, currentTimeMs);
   }
 
   public WritePathLatencySensor getProducerBrokerLatencySensor() {
@@ -142,119 +131,119 @@ public class DIVStats {
     return producerSourceBrokerLatencySensor;
   }
 
-  public void recordBrokerConsumerLatencyMs(double value) {
-    brokerConsumerLatencySensor.record(value);
+  public void recordBrokerConsumerLatencyMs(double value, long currentTimeMs) {
+    brokerConsumerLatencySensor.record(value, currentTimeMs);
   }
 
   public WritePathLatencySensor getBrokerConsumerLatencySensor() {
     return brokerConsumerLatencySensor;
   }
 
-  public void recordProducerConsumerLatencyMs(double value) {
-    producerConsumerLatencySensor.record(value);
+  public void recordProducerConsumerLatencyMs(double value, long currentTimeMs) {
+    producerConsumerLatencySensor.record(value, currentTimeMs);
   }
 
   public WritePathLatencySensor getProducerConsumerLatencySensor() {
     return producerConsumerLatencySensor;
   }
 
-  public void recordProducerSourceBrokerLatencyMs(double value) {
-    producerSourceBrokerLatencySensor.record(value);
+  public void recordProducerSourceBrokerLatencyMs(double value, long currentTimeMs) {
+    producerSourceBrokerLatencySensor.record(value, currentTimeMs);
   }
 
-  public void recordSourceBrokerLeaderConsumerLatencyMs(double value) {
-    sourceBrokerLeaderConsumerLatencySensor.record(value);
+  public void recordSourceBrokerLeaderConsumerLatencyMs(double value, long currentTimeMs) {
+    sourceBrokerLeaderConsumerLatencySensor.record(value, currentTimeMs);
   }
 
   public WritePathLatencySensor getSourceBrokerLeaderConsumerLatencySensor() {
     return sourceBrokerLeaderConsumerLatencySensor;
   }
 
-  public void recordProducerLeaderConsumerLatencyMs(double value) {
-    producerLeaderConsumerLatencySensor.record(value);
+  public void recordProducerLeaderConsumerLatencyMs(double value, long currentTimeMs) {
+    producerLeaderConsumerLatencySensor.record(value, currentTimeMs);
   }
 
   public WritePathLatencySensor getProducerLeaderConsumerLatencySensor() {
     return producerLeaderConsumerLatencySensor;
   }
 
-  public void recordProducerLocalBrokerLatencyMs(double value) {
-    producerLocalBrokerLatencySensor.record(value);
+  public void recordProducerLocalBrokerLatencyMs(double value, long currentTimeMs) {
+    producerLocalBrokerLatencySensor.record(value, currentTimeMs);
   }
 
   public WritePathLatencySensor getProducerLocalBrokerLatencySensor() {
     return producerLocalBrokerLatencySensor;
   }
 
-  public void recordLocalBrokerFollowerConsumerLatencyMs(double value) {
-    localBrokerFollowerConsumerLatencySensor.record(value);
+  public void recordLocalBrokerFollowerConsumerLatencyMs(double value, long currentTimeMs) {
+    localBrokerFollowerConsumerLatencySensor.record(value, currentTimeMs);
   }
 
   public WritePathLatencySensor getLocalBrokerFollowerConsumerLatencySensor() {
     return localBrokerFollowerConsumerLatencySensor;
   }
 
-  public void recordProducerFollowerConsumerLatencyMs(double value) {
-    producerFollowerConsumerLatencySensor.record(value);
+  public void recordProducerFollowerConsumerLatencyMs(double value, long currentTimeMs) {
+    producerFollowerConsumerLatencySensor.record(value, currentTimeMs);
   }
 
   public WritePathLatencySensor getProducerFollowerConsumerLatencySensor() {
     return producerFollowerConsumerLatencySensor;
   }
 
-  public void recordLeaderProducerCompletionLatencyMs(double value) {
-    leaderProducerCompletionLatencySensor.record(value);
+  public void recordLeaderProducerCompletionLatencyMs(double value, long currentTimeMs) {
+    leaderProducerCompletionLatencySensor.record(value, currentTimeMs);
   }
 
   public WritePathLatencySensor getLeaderProducerCompletionLatencySensor() {
     return leaderProducerCompletionLatencySensor;
   }
 
-  public void recordBenignLeaderOffsetRewind() {
+  public synchronized void recordBenignLeaderOffsetRewind() {
     benignLeaderOffsetRewindCount += 1;
   }
 
-  public long getBenignLeaderOffsetRewindCount() {
+  public synchronized long getBenignLeaderOffsetRewindCount() {
     return benignLeaderOffsetRewindCount;
   }
 
-  public void setBenignLeaderOffsetRewindCount(long count) {
+  public synchronized void setBenignLeaderOffsetRewindCount(long count) {
     this.benignLeaderOffsetRewindCount = count;
   }
 
-  public void recordPotentiallyLossyLeaderOffsetRewind() {
+  public synchronized void recordPotentiallyLossyLeaderOffsetRewind() {
     potentiallyLossyLeaderOffsetRewindCount += 1;
   }
 
-  public long getPotentiallyLossyLeaderOffsetRewindCount() {
+  public synchronized long getPotentiallyLossyLeaderOffsetRewindCount() {
     return potentiallyLossyLeaderOffsetRewindCount;
   }
 
-  public void setPotentiallyLossyLeaderOffsetRewindCount(long count) {
+  public synchronized void setPotentiallyLossyLeaderOffsetRewindCount(long count) {
     this.potentiallyLossyLeaderOffsetRewindCount = count;
   }
 
-  public void recordLeaderProducerFailure() {
+  public synchronized void recordLeaderProducerFailure() {
     leaderProducerFailureCount += 1;
   }
 
-  public long getLeaderProducerFailure() {
+  public synchronized long getLeaderProducerFailure() {
     return leaderProducerFailureCount;
   }
 
-  public void setLeaderProducerFailure(long count) {
+  public synchronized void setLeaderProducerFailure(long count) {
     this.leaderProducerFailureCount = count;
   }
 
-  public void recordBenignLeaderProducerFailure() {
+  public synchronized void recordBenignLeaderProducerFailure() {
     benignLeaderProducerFailureCount += 1;
   }
 
-  public long getBenignLeaderProducerFailure() {
+  public synchronized long getBenignLeaderProducerFailure() {
     return benignLeaderProducerFailureCount;
   }
 
-  public void setBenignLeaderProducerFailure(long count) {
+  public synchronized void setBenignLeaderProducerFailure(long count) {
     this.benignLeaderProducerFailureCount = count;
   }
 }

@@ -1107,7 +1107,7 @@ public abstract class StoreIngestionTaskTest {
           .put(topic, PARTITION_FOO, expectedOffsetRecordForDeleteMessage);
 
       verify(mockVersionedStorageIngestionStats, timeout(TEST_TIMEOUT_MS).atLeast(3))
-          .recordConsumedRecordEndToEndProcessingLatency(any(), eq(1), anyDouble());
+          .recordConsumedRecordEndToEndProcessingLatency(any(), eq(1), anyDouble(), anyLong());
     }, isActiveActiveReplicationEnabled);
 
     // verify the shared consumer should be detached when the ingestion task is closed.
@@ -3215,6 +3215,50 @@ public abstract class StoreIngestionTaskTest {
       doReturn(100_000L).when(configOverride).getDatabaseSyncBytesIntervalForTransactionalMode();
     });
     Assert.assertEquals(mockNotifierError.size(), 0);
+  }
+
+  @Test
+  public void testProduceToStoreBufferService() throws Exception {
+    KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, new byte[1]);
+    KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
+    kafkaMessageEnvelope.messageType = MessageType.PUT.getValue();
+    Put put = new Put();
+    put.putValue = ByteBuffer.allocate(1);
+    kafkaMessageEnvelope.payloadUnion = put;
+    PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage = new ImmutablePubSubMessage(
+        kafkaKey,
+        kafkaMessageEnvelope,
+        new PubSubTopicPartitionImpl(pubSubTopic, 1),
+        0,
+        0,
+        0);
+
+    HostLevelIngestionStats stats = mock(HostLevelIngestionStats.class);
+    when(mockAggStoreIngestionStats.getStoreStats(anyString())).thenReturn(stats);
+
+    runTest(Collections.singleton(PARTITION_FOO), () -> {
+      Runnable produce = () -> {
+        try {
+          storeIngestionTaskUnderTest.produceToStoreBufferService(
+              pubSubMessage,
+              mock(LeaderProducedRecordContext.class),
+              0,
+              localKafkaConsumerService.kafkaUrl,
+              0);
+        } catch (InterruptedException e) {
+          throw new VeniceException(e);
+        }
+      };
+      verify(stats, times(0)).recordConsumerRecordsQueuePutLatency(anyDouble());
+      produce.run();
+      verify(stats, times(1)).recordConsumerRecordsQueuePutLatency(anyDouble());
+      storeIngestionTaskUnderTest.disableMetricsEmission();
+      produce.run();
+      verify(stats, times(1)).recordConsumerRecordsQueuePutLatency(anyDouble());
+      storeIngestionTaskUnderTest.enableMetricsEmission();
+      produce.run();
+      verify(stats, times(2)).recordConsumerRecordsQueuePutLatency(anyDouble());
+    }, false);
   }
 
   @Test

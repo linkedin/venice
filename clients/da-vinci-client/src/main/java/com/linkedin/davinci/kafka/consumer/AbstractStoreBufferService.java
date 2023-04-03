@@ -17,7 +17,7 @@ public abstract class AbstractStoreBufferService extends AbstractVeniceService {
       LeaderProducedRecordContext leaderProducedRecordContext,
       int subPartition,
       String kafkaUrl,
-      long beforeProcessingRecordTimestamp) throws InterruptedException;
+      long beforeProcessingRecordTimestampNs) throws InterruptedException;
 
   /**
    * This method will wait for all the messages to be processed (persisted to disk) that are already

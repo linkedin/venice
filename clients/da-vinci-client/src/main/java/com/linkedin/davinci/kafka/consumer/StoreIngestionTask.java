@@ -90,6 +90,7 @@ import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.SparseConcurrentList;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Timer;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -869,7 +870,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int subPartition,
       String kafkaUrl,
       long beforeProcessingRecordTimestamp) throws InterruptedException {
-    long queuePutStartTimeInNS = System.nanoTime();
+    boolean measureTime = emitMetrics.get();
+    long queuePutStartTimeInNS = measureTime ? System.nanoTime() : 0;
     storeBufferService.putConsumerRecord(
         consumedRecord,
         this,
@@ -878,7 +880,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         kafkaUrl,
         beforeProcessingRecordTimestamp); // blocking call
 
-    if (emitMetrics.get()) {
+    if (measureTime) {
       hostLevelIngestionStats.recordConsumerRecordsQueuePutLatency(LatencyUtils.getLatencyInMS(queuePutStartTimeInNS));
     }
   }
@@ -901,7 +903,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     double elapsedTimeForPuttingIntoQueue = 0;
     int subPartition = PartitionUtils.getSubPartition(topicPartition, amplificationFactor);
     for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record: records) {
-      long beforeProcessingRecordTimestamp = System.nanoTime();
+      long beforeProcessingRecordTimestampNs = System.nanoTime();
       if (!shouldProcessRecord(record, subPartition)) {
         PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(subPartition);
         if (partitionConsumptionState != null) {
@@ -934,13 +936,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // This function may modify the original record in KME and it is unsafe to use the payload from KME directly after
       // this call.
       DelegateConsumerRecordResult delegateConsumerRecordResult =
-          delegateConsumerRecord(record, subPartition, kafkaUrl, kafkaClusterId, beforeProcessingRecordTimestamp);
+          delegateConsumerRecord(record, subPartition, kafkaUrl, kafkaClusterId, beforeProcessingRecordTimestampNs);
       switch (delegateConsumerRecordResult) {
         case QUEUED_TO_DRAINER:
           long queuePutStartTimeInNS = System.nanoTime();
           storeBufferService
-              .putConsumerRecord(record, this, null, subPartition, kafkaUrl, beforeProcessingRecordTimestamp); // blocking
-                                                                                                               // call
+              .putConsumerRecord(record, this, null, subPartition, kafkaUrl, beforeProcessingRecordTimestampNs); // blocking
+          // call
           elapsedTimeForPuttingIntoQueue += LatencyUtils.getLatencyInMS(queuePutStartTimeInNS);
           break;
         case PRODUCED_TO_KAFKA:
@@ -1843,7 +1845,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       LeaderProducedRecordContext leaderProducedRecordContext,
       int subPartition,
       String kafkaUrl,
-      long beforeProcessingRecordTimestamp) throws InterruptedException {
+      long beforeProcessingRecordTimestampNs) throws InterruptedException {
     // The partitionConsumptionStateMap can be modified by other threads during consumption (for example when
     // unsubscribing)
     // in order to maintain thread safety, we hold onto the reference to the partitionConsumptionState and pass that
@@ -1861,7 +1863,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           partitionConsumptionState,
           leaderProducedRecordContext,
           kafkaUrl,
-          beforeProcessingRecordTimestamp);
+          beforeProcessingRecordTimestampNs);
     } catch (FatalDataValidationException e) {
       int faultyPartition = record.getTopicPartition().getPartitionNumber();
       String errorMessage;
@@ -2362,7 +2364,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PartitionConsumptionState partitionConsumptionState,
       LeaderProducedRecordContext leaderProducedRecordContext,
       String kafkaUrl,
-      long beforeProcessingRecordTimestamp) {
+      long beforeProcessingRecordTimestampNs) {
     // De-serialize payload into Venice Message format
     KafkaKey kafkaKey = consumerRecord.getKey();
     KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
@@ -2375,6 +2377,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       long brokerConsumerLatencyMs = Math.max(consumerTimestampMs - consumerRecord.getPubSubMessageTime(), 0);
       long producerConsumerLatencyMs = Math.max(consumerTimestampMs - kafkaValue.producerMetadata.messageTimestamp, 0);
       recordWriterStats(
+          consumerTimestampMs,
           producerBrokerLatencyMs,
           brokerConsumerLatencyMs,
           producerConsumerLatencyMs,
@@ -2429,10 +2432,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         sizeOfPersistedData =
             processKafkaDataMessage(consumerRecord, partitionConsumptionState, leaderProducedRecordContext);
       }
+      long processingFinishedTimeNs = System.nanoTime();
       versionedIngestionStats.recordConsumedRecordEndToEndProcessingLatency(
           storeName,
           versionNumber,
-          LatencyUtils.getLatencyInMS(beforeProcessingRecordTimestamp));
+          LatencyUtils.convertLatencyFromNSToMS(processingFinishedTimeNs - beforeProcessingRecordTimestampNs),
+          processingFinishedTimeNs / Time.NS_PER_MS);
     } catch (DuplicateDataException e) {
       divErrorMetricCallback.execute(e);
       if (LOGGER.isDebugEnabled()) {
@@ -2482,6 +2487,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected void recordWriterStats(
+      long consumerTimestampMs,
       long producerBrokerLatencyMs,
       long brokerConsumerLatencyMs,
       long producerConsumerLatencyMs,
@@ -2490,6 +2496,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       versionedDIVStats.recordLatencies(
           storeName,
           versionNumber,
+          consumerTimestampMs,
           producerBrokerLatencyMs,
           brokerConsumerLatencyMs,
           producerConsumerLatencyMs);

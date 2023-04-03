@@ -144,7 +144,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       int subPartition,
       String kafkaUrl,
       int kafkaClusterId,
-      long beforeProcessingRecordTimestamp) {
+      long beforeProcessingRecordTimestampNs) {
     if (!consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()) {
       /**
        * We don't need to lock the partition here because during VT consumption there is only one consumption source.
@@ -154,7 +154,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           subPartition,
           kafkaUrl,
           kafkaClusterId,
-          beforeProcessingRecordTimestamp);
+          beforeProcessingRecordTimestampNs);
     } else {
       /**
        * The below flow must be executed in a critical session for the same key:
@@ -167,7 +167,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
        * -> [fabric B thread]update transient record cache -> [fabric B thread]produce to VT -> [fabric A thread]update transient record cache
        * -> [fabric A thread]produce to VT
        */
-      final long delegateRealTimeTopicRecordStartTimeInNs = System.nanoTime();
       final ByteArrayKey byteArrayKey = ByteArrayKey.wrap(consumerRecord.getKey().getKey());
       ReentrantLock keyLevelLock = this.keyLevelLocksManager.get().acquireLockByKey(byteArrayKey);
       keyLevelLock.lock();
@@ -177,12 +176,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             subPartition,
             kafkaUrl,
             kafkaClusterId,
-            beforeProcessingRecordTimestamp);
+            beforeProcessingRecordTimestampNs);
       } finally {
         keyLevelLock.unlock();
         this.keyLevelLocksManager.get().releaseLock(byteArrayKey);
-        hostLevelIngestionStats.recordLeaderDelegateRealTimeRecordLatency(
-            LatencyUtils.getLatencyInMS(delegateRealTimeTopicRecordStartTimeInNs));
       }
     }
   }
@@ -435,14 +432,16 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             consumerTaskId + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
     }
 
+    long currentTimeNs = System.nanoTime();
+    long currentTimeMs = currentTimeNs / Time.NS_PER_MS;
+    aggVersionedIngestionStats.recordConsumedRecordEndToEndProcessingLatency(
+        storeName,
+        versionNumber,
+        LatencyUtils.convertLatencyFromNSToMS(currentTimeNs - beforeProcessingRecordTimestamp),
+        currentTimeMs);
+
     if (mergeConflictResult.isUpdateIgnored()) {
       hostLevelIngestionStats.recordUpdateIgnoredDCR();
-      aggVersionedIngestionStats.recordUpdateIgnoredDCR(storeName, versionNumber);
-      aggVersionedIngestionStats.recordConsumedRecordEndToEndProcessingLatency(
-          storeName,
-          versionNumber,
-          LatencyUtils.getLatencyInMS(beforeProcessingRecordTimestamp));
-
       // Record the last ignored offset
       partitionConsumptionState
           .updateLatestIgnoredUpstreamRTOffset(kafkaClusterIdToUrlMap.get(kafkaClusterId), sourceOffset);
