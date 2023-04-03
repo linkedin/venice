@@ -43,7 +43,16 @@ public class D2ClientFactory {
           .setSSLParameters(sslFactoryOptional.map(SSLFactory::getSSLParameters).orElse(null))
           .build();
       if (!unitTestMode) {
-        D2ClientUtils.startClient(d2Client);
+        try {
+          // We saw a case when rolling this feature out that D2 client startup failed to start up. In this instance,
+          // it didn't clean up the partial resources it had acquired. Some threads inside the D2Client held up the
+          // shutdown of the application. To force release of resources, we explicitly shut down the client if it fails
+          // during start up.
+          D2ClientUtils.startClient(d2Client);
+        } catch (Throwable t) {
+          D2ClientUtils.shutdownClient(d2Client);
+          throw t;
+        }
       }
       return d2Client;
     }, d2Client -> {
