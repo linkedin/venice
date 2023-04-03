@@ -852,16 +852,16 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         controllerClient.get().createNewStore(storeName, getClass().getName(), keySchema, valueSchema));
   }
 
-  public VersionCreationResponse getNewVersion(String storeName, int dataSize) {
-    return getNewVersion(storeName, dataSize, true);
+  public VersionCreationResponse getNewVersion(String storeName) {
+    return getNewVersion(storeName, true);
   }
 
-  public VersionCreationResponse getNewVersion(String storeName, int dataSize, boolean sendStartOfPush) {
+  public VersionCreationResponse getNewVersion(String storeName, boolean sendStartOfPush) {
     return assertCommand(
         controllerClient.get()
             .requestTopicForWrites(
                 storeName,
-                dataSize,
+                1024, // TODO: Store size is not used anymore. Remove it after the next round of controller deployment.
                 Version.PushType.BATCH,
                 Version.guidBasedDummyPushId(),
                 sendStartOfPush,

@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessResponse;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.ResourceAssignment;
@@ -106,17 +107,18 @@ public class TestHolisticSeverHealthCheck {
   @Test(timeOut = 120 * Time.MS_PER_SECOND)
   public void testHealthServiceAfterServerRestart() throws Exception {
     String storeName = Utils.getUniqueString("testHealthServiceAfterServerRestart");
-    int dataSize = 2000;
+    long storageQuota = 2000;
 
     // Assert both servers are in the ready state before the push.
     verifyNodesAreReady();
 
     cluster.getNewStore(storeName);
-    VersionCreationResponse response = cluster.getNewVersion(storeName, dataSize);
+    cluster.updateStore(storeName, new UpdateStoreQueryParams().setStorageQuotaInByte(storageQuota));
+    VersionCreationResponse response = cluster.getNewVersion(storeName);
 
     String topicName = response.getKafkaTopic();
     Assert.assertEquals(response.getReplicas(), replicaFactor);
-    Assert.assertEquals(response.getPartitions(), dataSize / partitionSize);
+    Assert.assertEquals(response.getPartitions(), storageQuota / partitionSize);
 
     try (VeniceWriter<String, String, byte[]> veniceWriter = cluster.getVeniceWriter(topicName)) {
       veniceWriter.broadcastStartOfPush(new HashMap<>());

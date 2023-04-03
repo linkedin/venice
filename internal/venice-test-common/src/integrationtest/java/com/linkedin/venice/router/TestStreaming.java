@@ -120,7 +120,7 @@ public class TestStreaming {
 
     storeName = Utils.getUniqueString("venice-store");
     veniceCluster.getNewStore(storeName, KEY_SCHEMA, VALUE_SCHEMA);
-    VersionCreationResponse creationResponse = veniceCluster.getNewVersion(storeName, 1024, false);
+    VersionCreationResponse creationResponse = veniceCluster.getNewVersion(storeName, false);
 
     storeVersionName = creationResponse.getKafkaTopic();
     // enable compute

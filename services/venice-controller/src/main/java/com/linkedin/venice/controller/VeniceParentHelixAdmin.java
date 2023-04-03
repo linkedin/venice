@@ -3490,11 +3490,11 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * @see VeniceHelixAdmin#calculateNumberOfPartitions(String, String, long)
+   * @see Admin#calculateNumberOfPartitions(String, String)
    */
   @Override
-  public int calculateNumberOfPartitions(String clusterName, String storeName, long storeSize) {
-    return getVeniceHelixAdmin().calculateNumberOfPartitions(clusterName, storeName, storeSize);
+  public int calculateNumberOfPartitions(String clusterName, String storeName) {
+    return getVeniceHelixAdmin().calculateNumberOfPartitions(clusterName, storeName);
   }
 
   /**

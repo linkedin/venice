@@ -3,6 +3,7 @@ package com.linkedin.venice.benchmark;
 import static com.linkedin.venice.ConfigKeys.SERVER_DEDICATED_DRAINER_FOR_SORTED_INPUT_ENABLED;
 
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -83,9 +84,10 @@ public class MixedIngestionBenchmark {
   @Benchmark
   public void ingestionBenchMark() throws Exception {
     String storeName = Utils.getUniqueString("new_store");
-    int dataSize = 1000000;
+    long storageQuota = 1000000;
     cluster.getNewStore(storeName);
-    VersionCreationResponse response = cluster.getNewVersion(storeName, dataSize);
+    cluster.updateStore(storeName, new UpdateStoreQueryParams().setStorageQuotaInByte(storageQuota));
+    VersionCreationResponse response = cluster.getNewVersion(storeName);
 
     String topicName = response.getKafkaTopic();
     Assert.assertEquals(response.getReplicas(), replicaFactor);

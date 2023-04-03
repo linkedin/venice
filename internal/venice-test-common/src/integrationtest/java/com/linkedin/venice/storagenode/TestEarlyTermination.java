@@ -75,7 +75,7 @@ public class TestEarlyTermination {
     veniceCluster.addVeniceServer(serverFeaturePropertiesWithEarlyTermination, serverPropertiesWithEarlyTermination);
 
     // Create new version
-    VersionCreationResponse creationResponse = veniceCluster.getNewVersion(storeName, 100000000);
+    VersionCreationResponse creationResponse = veniceCluster.getNewVersion(storeName);
 
     storeVersionName = creationResponse.getKafkaTopic();
     valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;

@@ -4,7 +4,6 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_DERIVED_SCHEMA_ID;
 import static com.linkedin.venice.controller.UserSystemStoreLifeCycleHelper.AUTO_META_SYSTEM_STORE_PUSH_ID_PREFIX;
-import static com.linkedin.venice.controller.UserSystemStoreLifeCycleHelper.DEFAULT_META_SYSTEM_STORE_SIZE;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REWIND_TIME_IN_SECONDS;
@@ -4944,7 +4943,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             clusterName,
             systemStoreName,
             pushJobId,
-            calculateNumberOfPartitions(clusterName, systemStoreName, DEFAULT_META_SYSTEM_STORE_SIZE),
+            calculateNumberOfPartitions(clusterName, systemStoreName),
             getReplicationFactor(clusterName, systemStoreName));
         int versionNumber = version.getNumber();
         writeEndOfPush(clusterName, systemStoreName, versionNumber, true);
@@ -5608,21 +5607,23 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * Calculate number of partition for given store by give size.
+   * Calculate number of partition for given store.
    */
   @Override
-  public int calculateNumberOfPartitions(String clusterName, String storeName, long storeSize) {
+  public int calculateNumberOfPartitions(String clusterName, String storeName) {
     checkControllerLeadershipFor(clusterName);
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
     Store store = resources.getStoreMetadataRepository().getStoreOrThrow(storeName);
     VeniceControllerClusterConfig config = resources.getConfig();
     return PartitionUtils.calculatePartitionCount(
         storeName,
-        storeSize,
+        store.getStorageQuotaInByte(),
         store.getPartitionCount(),
         config.getPartitionSize(),
         config.getNumberOfPartition(),
-        config.getMaxNumberOfPartition());
+        config.getMaxNumberOfPartition(),
+        config.isPartitionCountRoundUpEnabled(),
+        config.getPartitionCountRoundUpSize());
   }
 
   /**

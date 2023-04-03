@@ -286,6 +286,7 @@ public class ControllerClient implements Closeable {
       long rewindTimeInSecondsOverride,
       boolean deferVersionSwap) {
     QueryParams params = newParams().add(NAME, storeName)
+        // TODO: Store size is not used anymore. Remove it after the next round of controller deployment.
         .add(STORE_SIZE, Long.toString(storeSize))
         .add(PUSH_JOB_ID, pushJobId)
         .add(PUSH_TYPE, pushType.toString())
@@ -434,6 +435,7 @@ public class ControllerClient implements Closeable {
   }
 
   public VersionCreationResponse emptyPush(String storeName, String pushJobId, long storeSize) {
+    // TODO: Store size is not used anymore. Remove it after the next round of controller deployment.
     QueryParams params =
         newParams().add(NAME, storeName).add(PUSH_JOB_ID, pushJobId).add(STORE_SIZE, Long.toString(storeSize));
     return request(ControllerRoute.EMPTY_PUSH, params, VersionCreationResponse.class);
