@@ -1,10 +1,9 @@
 package com.linkedin.venice.kafka.consumer;
 
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.mock;
 
-import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
+import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
@@ -26,15 +25,13 @@ import org.testng.annotations.Test;
 
 public class ApacheKafkaConsumerTest {
   ApacheKafkaConsumer consumer;
-  KafkaBrokerWrapper kafkaBroker;
-  private ZkServerWrapper zkServer;
+  PubSubBrokerWrapper kafkaBroker;
 
-  private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @BeforeMethod
   public void setUp() {
-    zkServer = ServiceFactory.getZkServer();
-    kafkaBroker = ServiceFactory.getKafkaBroker(zkServer);
+    kafkaBroker = ServiceFactory.getPubSubBroker();
     Properties properties = new Properties();
     properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
@@ -45,7 +42,6 @@ public class ApacheKafkaConsumerTest {
   @AfterMethod
   public void cleanUp() {
     Utils.closeQuietlyWithErrorLogged(kafkaBroker);
-    Utils.closeQuietlyWithErrorLogged(zkServer);
     Utils.closeQuietlyWithErrorLogged(consumer);
   }
 

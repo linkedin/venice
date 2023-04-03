@@ -335,6 +335,9 @@ subprojects {
     maxParallelForks = Integer.valueOf(System.getProperty('maxParallelForks', '4'))
     minHeapSize = System.getProperty('minHeapSize', '1g')
     maxHeapSize = System.getProperty('maxHeapSize', '4g')
+
+    systemProperty 'pubSubBrokerFactory', System.getProperty('pubSubBrokerFactory', "com.linkedin.venice.integration.utils.KafkaBrokerFactory")
+
     System.getProperty('jvmArgs')?.eachMatch(/(?:[^\s'"]+|'[^']*'|"[^"]*")+/) { jvmArgs it }
 
     doFirst {

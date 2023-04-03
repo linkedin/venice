@@ -42,6 +42,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.meta.ZKStore;
+import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.DataProviderUtils;
@@ -77,6 +78,7 @@ public abstract class KafkaStoreIngestionServiceTest {
   private HelixCustomizedViewOfflinePushRepository mockCustomizedViewRepository;
   private HelixInstanceConfigRepository mockHelixInstanceConfigRepository;
   private ReadOnlyLiveClusterConfigRepository mockLiveClusterConfigRepo;
+  private PubSubClientsFactory mockPubSubClientsFactory;
   private StorageEngineBackedCompressorFactory compressorFactory;
 
   private KafkaStoreIngestionService kafkaStoreIngestionService;
@@ -92,6 +94,7 @@ public abstract class KafkaStoreIngestionServiceTest {
     mockCustomizedViewRepository = mock(HelixCustomizedViewOfflinePushRepository.class);
     mockHelixInstanceConfigRepository = mock(HelixInstanceConfigRepository.class);
     mockLiveClusterConfigRepo = mock(ReadOnlyLiveClusterConfigRepository.class);
+    mockPubSubClientsFactory = mock(PubSubClientsFactory.class);
     compressorFactory = new StorageEngineBackedCompressorFactory(storageMetadataService);
 
     setupMockConfig();
@@ -155,7 +158,8 @@ public abstract class KafkaStoreIngestionServiceTest {
         compressorFactory,
         Optional.empty(),
         false,
-        null);
+        null,
+        mockPubSubClientsFactory);
 
     String mockStoreName = "test";
     String mockSimilarStoreName = "testTest";
@@ -237,7 +241,8 @@ public abstract class KafkaStoreIngestionServiceTest {
         compressorFactory,
         Optional.empty(),
         false,
-        null);
+        null,
+        mockPubSubClientsFactory);
     String topic1 = "test-store_v1";
     String topic2 = "test-store_v2";
     String invalidTopic = "invalid-store_v1";
@@ -323,7 +328,8 @@ public abstract class KafkaStoreIngestionServiceTest {
         compressorFactory,
         Optional.empty(),
         false,
-        null);
+        null,
+        mockPubSubClientsFactory);
     String topicName = "test-store_v1";
     String storeName = Version.parseStoreFromKafkaTopicName(topicName);
     Store mockStore = new ZKStore(
@@ -386,7 +392,8 @@ public abstract class KafkaStoreIngestionServiceTest {
         compressorFactory,
         Optional.empty(),
         false,
-        null);
+        null,
+        mockPubSubClientsFactory);
     String topicName = "test-store_v1";
     String storeName = Version.parseStoreFromKafkaTopicName(topicName);
     Store mockStore = new ZKStore(
@@ -446,7 +453,8 @@ public abstract class KafkaStoreIngestionServiceTest {
         compressorFactory,
         Optional.empty(),
         false,
-        null);
+        null,
+        mockPubSubClientsFactory);
     String topicName = "test-store_v" + (isCurrentVersion ? "0" : "1");
     String storeName = Version.parseStoreFromKafkaTopicName(topicName);
     Store mockStore = new ZKStore(

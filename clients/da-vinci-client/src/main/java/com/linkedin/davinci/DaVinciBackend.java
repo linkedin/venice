@@ -40,6 +40,8 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushstatushelper.PushStatusStoreWriter;
 import com.linkedin.venice.schema.SchemaReader;
@@ -218,7 +220,8 @@ public class DaVinciBackend implements Closeable {
           cacheBackend,
           true,
           // TODO: consider how/if a repair task would be valid for Davinci users?
-          null);
+          null,
+          new PubSubClientsFactory(new ApacheKafkaProducerAdapterFactory()));
 
       ingestionService.start();
       ingestionService.addIngestionNotifier(ingestionListener);
