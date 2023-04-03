@@ -6,9 +6,8 @@ import static org.mockito.Mockito.mock;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
+import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -43,22 +42,20 @@ import org.testng.annotations.Test;
 public class PubSubSharedProducerAdapterFactoryTest {
   private static final Logger LOGGER = LogManager.getLogger(PubSubSharedProducerAdapterFactoryTest.class);
 
-  private KafkaBrokerWrapper kafka;
+  private PubSubBrokerWrapper pubSubBrokerWrapper;
   private TopicManager topicManager;
   private KafkaClientFactory kafkaClientFactory;
-  private ZkServerWrapper zkServer;
 
   @BeforeClass
   public void setUp() {
-    zkServer = ServiceFactory.getZkServer();
-    kafka = ServiceFactory.getKafkaBroker(zkServer);
-    kafkaClientFactory = IntegrationTestPushUtils.getVeniceConsumerFactory(kafka);
+    pubSubBrokerWrapper = ServiceFactory.getPubSubBroker();
+    kafkaClientFactory = IntegrationTestPushUtils.getVeniceConsumerFactory(pubSubBrokerWrapper);
     topicManager = new TopicManager(kafkaClientFactory);
   }
 
   @AfterClass
   public void cleanUp() {
-    Utils.closeQuietlyWithErrorLogged(kafka, topicManager, zkServer);
+    Utils.closeQuietlyWithErrorLogged(topicManager, pubSubBrokerWrapper);
   }
 
   /**
@@ -74,8 +71,8 @@ public class PubSubSharedProducerAdapterFactoryTest {
     SharedKafkaProducerAdapterFactory sharedKafkaProducerAdapterFactory = null;
     try {
       Properties properties = new Properties();
-      properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafka.getAddress());
-      properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafka.getAddress());
+      properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
+      properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, pubSubBrokerWrapper.getAddress());
       properties.put(ConfigKeys.PARTITIONER_CLASS, DefaultVenicePartitioner.class.getName());
       properties.put(KAFKA_BUFFER_MEMORY, "16384");
       sharedKafkaProducerAdapterFactory = TestUtils.getSharedKafkaProducerService(properties);

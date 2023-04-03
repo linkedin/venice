@@ -59,6 +59,7 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.SharedKafkaProducerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -212,7 +213,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       StorageEngineBackedCompressorFactory compressorFactory,
       Optional<ObjectCacheBackend> cacheBackend,
       boolean isDaVinciClient,
-      RemoteIngestionRepairService remoteIngestionRepairService) {
+      RemoteIngestionRepairService remoteIngestionRepairService,
+      PubSubClientsFactory pubSubClientsFactory) {
     this.cacheBackend = cacheBackend;
     this.storageMetadataService = storageMetadataService;
     this.metadataRepo = metadataRepo;
@@ -262,8 +264,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       veniceWriterProperties.put(KAFKA_LINGER_MS, DEFAULT_KAFKA_LINGER_MS);
     }
 
-    // TODO: Once we start testing with other PubSub systems, we'll inject corresponding systems
-    // PubSubProducerAdapterFactory
+    // TODO: Move shared producer factory construction to upper layer and pass it in here.
     LOGGER.info(
         "Shared kafka producer service is {}",
         serverConfig.isSharedKafkaProducerEnabled() ? "enabled" : "disabled");
@@ -275,7 +276,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           metricsRepository,
           serverConfig.getKafkaProducerMetrics());
     } else {
-      producerAdapterFactory = new ApacheKafkaProducerAdapterFactory();
+      producerAdapterFactory = pubSubClientsFactory.getProducerAdapterFactory();
     }
 
     VeniceWriterFactory veniceWriterFactory =
