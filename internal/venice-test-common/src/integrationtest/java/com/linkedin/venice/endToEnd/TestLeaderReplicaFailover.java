@@ -109,7 +109,12 @@ public class TestLeaderReplicaFailover {
         DEFAULT_OFFLINE_PUSH_STRATEGY,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION.toString());
     String keySchemaStr = recordSchema.getField(VenicePushJob.DEFAULT_KEY_FIELD_PROP).schema().toString();
-    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, new UpdateStoreQueryParams()).close();
+    createStoreForJob(
+        clusterName,
+        keySchemaStr,
+        valueSchemaStr,
+        props,
+        new UpdateStoreQueryParams().setPartitionCount(3)).close();
     // Create a new version
     VersionCreationResponse versionCreationResponse = TestUtils.assertCommand(
         parentControllerClient.requestTopicForWrites(

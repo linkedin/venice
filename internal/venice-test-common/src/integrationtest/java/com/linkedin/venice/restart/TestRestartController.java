@@ -46,10 +46,9 @@ public class TestRestartController {
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testLeaderControllerFailover() {
     String storeName = Utils.getUniqueString("testLeaderControllerFailover");
-    int dataSize = 1000;
     cluster.getNewStore(storeName);
 
-    VersionCreationResponse response = cluster.getNewVersion(storeName, dataSize);
+    VersionCreationResponse response = cluster.getNewVersion(storeName);
     Assert.assertFalse(response.isError());
     String topicName = response.getKafkaTopic();
     int versionNum = response.getVersion();
@@ -76,7 +75,7 @@ public class TestRestartController {
         controllerClient,
         OPERATION_TIMEOUT_MS,
         TimeUnit.MILLISECONDS);
-    VersionCreationResponse responseV2 = createNewVersionWithRetry(storeName, dataSize);
+    VersionCreationResponse responseV2 = createNewVersionWithRetry(storeName);
     Assert.assertFalse(responseV2.isError());
     Assert.assertEquals(responseV2.getVersion(), versionNum + 1);
 
@@ -112,7 +111,7 @@ public class TestRestartController {
         TimeUnit.MILLISECONDS);
 
     // Check it one more time for good measure with a third and final push
-    VersionCreationResponse responseV3 = createNewVersionWithRetry(storeName, dataSize);
+    VersionCreationResponse responseV3 = createNewVersionWithRetry(storeName);
     Assert.assertFalse(responseV3.isError());
     Assert.assertEquals(responseV3.getVersion(), versionNum + 2);
 
@@ -138,9 +137,8 @@ public class TestRestartController {
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testControllerRestartFetchesLastSuccessfulPushDuration() {
     String storeName = Utils.getUniqueString("testControllerRestartFetchesLastSuccessfulPushDuration");
-    int dataSize = 1000;
     cluster.getNewStore(storeName);
-    VersionCreationResponse response = cluster.getNewVersion(storeName, dataSize);
+    VersionCreationResponse response = cluster.getNewVersion(storeName);
     Assert.assertFalse(response.isError());
     String topicName = response.getKafkaTopic();
 
@@ -192,15 +190,15 @@ public class TestRestartController {
 
   }
 
-  private VersionCreationResponse createNewVersionWithRetry(String storeName, int dataSize) {
+  private VersionCreationResponse createNewVersionWithRetry(String storeName) {
     // After restart, regardless who is leader, there should be only one leader and could handle request correctly.
     VersionCreationResponse response = null;
     try {
-      response = cluster.getNewVersion(storeName, dataSize);
+      response = cluster.getNewVersion(storeName);
     } catch (VeniceException e) {
       // Some times, the leader controller would be changed after getting it from cluster. Just retry on the new leader.
       cluster.getLeaderVeniceController();
-      response = cluster.getNewVersion(storeName, dataSize);
+      response = cluster.getNewVersion(storeName);
     }
     return response;
   }

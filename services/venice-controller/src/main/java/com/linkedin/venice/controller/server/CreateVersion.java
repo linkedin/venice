@@ -16,7 +16,6 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.REPLICATI
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.REWIND_TIME_IN_SECONDS_OVERRIDE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SEND_START_OF_PUSH;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.SOURCE_GRID_FABRIC;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_SIZE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ADD_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.EMPTY_PUSH;
@@ -165,9 +164,8 @@ public class CreateVersion extends AbstractRoute {
           sendStartOfPush = Utils.parseBooleanFromString(request.queryParams(SEND_START_OF_PUSH), SEND_START_OF_PUSH);
         }
 
-        long storeSize = Utils.parseLongFromString(request.queryParams(STORE_SIZE), STORE_SIZE);
         int replicationFactor = admin.getReplicationFactor(clusterName, storeName);
-        int partitionCount = admin.calculateNumberOfPartitions(clusterName, storeName, storeSize);
+        int partitionCount = admin.calculateNumberOfPartitions(clusterName, storeName);
         responseObject.setReplicas(replicationFactor);
         responseObject.setPartitions(partitionCount);
 
@@ -645,9 +643,8 @@ public class CreateVersion extends AbstractRoute {
         }
 
         clusterName = request.queryParams(CLUSTER);
-        long storeSize = Utils.parseLongFromString(request.queryParams(STORE_SIZE), STORE_SIZE);
         String pushJobId = request.queryParams(PUSH_JOB_ID);
-        int partitionNum = admin.calculateNumberOfPartitions(clusterName, storeName, storeSize);
+        int partitionNum = admin.calculateNumberOfPartitions(clusterName, storeName);
         int replicationFactor = admin.getReplicationFactor(clusterName, storeName);
         version = admin.incrementVersionIdempotent(clusterName, storeName, pushJobId, partitionNum, replicationFactor);
         int versionNumber = version.getNumber();

@@ -68,7 +68,7 @@ public class TestProduceWithSSL {
   public void testVeniceWriterSupportSSL() throws ExecutionException, InterruptedException {
     String storeName = Utils.getUniqueString("testVeniceWriterSupportSSL");
     cluster.getNewStore(storeName);
-    VersionCreationResponse response = cluster.getNewVersion(storeName, 1000);
+    VersionCreationResponse response = cluster.getNewVersion(storeName);
     Assert.assertFalse(response.isError());
     int version = response.getVersion();
     String topic = response.getKafkaTopic();

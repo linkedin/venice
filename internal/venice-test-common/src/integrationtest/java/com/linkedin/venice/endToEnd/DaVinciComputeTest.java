@@ -178,7 +178,7 @@ public class DaVinciComputeTest {
       TestUtils.createMetaSystemStore(client, storeName, Optional.of(LOGGER));
     });
 
-    VersionCreationResponse newVersion = cluster.getNewVersion(storeName, 1024);
+    VersionCreationResponse newVersion = cluster.getNewVersion(storeName);
     String topic = newVersion.getKafkaTopic();
     VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(cluster.getKafka().getAddress());
 
@@ -284,7 +284,7 @@ public class DaVinciComputeTest {
       TestUtils.createMetaSystemStore(client, storeName, Optional.of(LOGGER));
     });
 
-    VersionCreationResponse newVersion = cluster.getNewVersion(storeName, 1024);
+    VersionCreationResponse newVersion = cluster.getNewVersion(storeName);
     String topic = newVersion.getKafkaTopic();
     VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(cluster.getKafka().getAddress());
 
@@ -357,7 +357,7 @@ public class DaVinciComputeTest {
         clientMissingField -> TestUtils
             .assertCommand(clientMissingField.addValueSchema(storeName, VALUE_SCHEMA_FOR_COMPUTE_MISSING_FIELD)));
 
-    VersionCreationResponse newVersionMissingField = cluster.getNewVersion(storeName, 1024);
+    VersionCreationResponse newVersionMissingField = cluster.getNewVersion(storeName);
     String topicForMissingField = newVersionMissingField.getKafkaTopic();
 
     DaVinciTestContext<Integer, Integer> daVinciTestContext2 =
@@ -417,7 +417,7 @@ public class DaVinciComputeTest {
       TestUtils.createMetaSystemStore(client, storeName, Optional.of(LOGGER));
     });
 
-    VersionCreationResponse newVersion = cluster.getNewVersion(storeName, 1024);
+    VersionCreationResponse newVersion = cluster.getNewVersion(storeName);
     String topic = newVersion.getKafkaTopic();
     VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(cluster.getKafka().getAddress());
 
@@ -478,7 +478,7 @@ public class DaVinciComputeTest {
         clientMissingField -> TestUtils
             .assertCommand(clientMissingField.addValueSchema(storeName, VALUE_SCHEMA_FOR_COMPUTE_MISSING_FIELD)));
 
-    VersionCreationResponse newVersionMissingField = cluster.getNewVersion(storeName, 1024);
+    VersionCreationResponse newVersionMissingField = cluster.getNewVersion(storeName);
     String topicForMissingField = newVersionMissingField.getKafkaTopic();
 
     DaVinciTestContext<Integer, Integer> daVinciTestContext2 =
@@ -530,7 +530,7 @@ public class DaVinciComputeTest {
       TestUtils.createMetaSystemStore(client, storeName, Optional.of(LOGGER));
     });
 
-    VersionCreationResponse newVersion = cluster.getNewVersion(storeName, 1024);
+    VersionCreationResponse newVersion = cluster.getNewVersion(storeName);
     String topic = newVersion.getKafkaTopic();
     VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(cluster.getKafka().getAddress());
 
@@ -629,7 +629,7 @@ public class DaVinciComputeTest {
       TestUtils.createMetaSystemStore(client, storeName, Optional.of(LOGGER));
     });
 
-    VersionCreationResponse newVersion = cluster.getNewVersion(storeName, 1024);
+    VersionCreationResponse newVersion = cluster.getNewVersion(storeName);
     String topic = newVersion.getKafkaTopic();
     VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(cluster.getKafka().getAddress());
 
@@ -730,7 +730,7 @@ public class DaVinciComputeTest {
       TestUtils.createMetaSystemStore(client, storeName, Optional.of(LOGGER));
     });
 
-    VersionCreationResponse newVersion = cluster.getNewVersion(storeName, 1024);
+    VersionCreationResponse newVersion = cluster.getNewVersion(storeName);
     String topic = newVersion.getKafkaTopic();
     VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(cluster.getKafka().getAddress());
 

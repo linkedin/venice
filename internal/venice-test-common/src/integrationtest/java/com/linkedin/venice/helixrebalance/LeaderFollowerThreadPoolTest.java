@@ -2,6 +2,7 @@ package com.linkedin.venice.helixrebalance;
 
 import com.linkedin.davinci.helix.LeaderFollowerPartitionStateModelFactory;
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -38,7 +39,6 @@ public class LeaderFollowerThreadPoolTest {
   private Condition condition = lock.newCondition();
   private boolean isBlockingTaskStarted = false;
   private String storeName;
-  int dataSize;
 
   @BeforeMethod
   public void setUp() {
@@ -74,7 +74,7 @@ public class LeaderFollowerThreadPoolTest {
     commonTestProcedures(true);
 
     // Start a new version push.
-    String topicNameV2 = createVersionAndPushData(storeName, dataSize);
+    String topicNameV2 = createVersionAndPushData(storeName);
 
     // New version can complete successfully (it will not complete without having a separate thread pool for future
     // version)
@@ -106,7 +106,7 @@ public class LeaderFollowerThreadPoolTest {
 
     // Start a new version push and expect it to fail with exception.
     try {
-      createVersionAndPushData(storeName, dataSize);
+      createVersionAndPushData(storeName);
       Assert.fail("new version creation should have failed.");
     } catch (AssertionError e) {
       Assert.assertTrue(e.getMessage().contains("does not have enough replicas"));
@@ -118,12 +118,13 @@ public class LeaderFollowerThreadPoolTest {
 
     storeName =
         Utils.getUniqueString("testLeaderFollowerThreadPools_" + (isDualPoolEnabled ? "DualPool" : "SinglePool"));
-    dataSize = partitionNum * partitionSize;
+    long storageQuota = (long) partitionNum * partitionSize;
 
     cluster.getNewStore(storeName);
+    cluster.updateStore(storeName, new UpdateStoreQueryParams().setStorageQuotaInByte(storageQuota));
 
     // Create a version.
-    String topicNameV1 = createVersionAndPushData(storeName, dataSize);
+    String topicNameV1 = createVersionAndPushData(storeName);
 
     // Wait until push is completed successfully.
     TestUtils.waitForNonDeterministicAssertion(
@@ -174,8 +175,8 @@ public class LeaderFollowerThreadPoolTest {
     }
   }
 
-  private String createVersionAndPushData(String storeName, int dataSize) {
-    VersionCreationResponse response = cluster.getNewVersion(storeName, dataSize);
+  private String createVersionAndPushData(String storeName) {
+    VersionCreationResponse response = cluster.getNewVersion(storeName);
 
     String topicName = response.getKafkaTopic();
     Assert.assertEquals(response.getReplicas(), replicaFactor);
