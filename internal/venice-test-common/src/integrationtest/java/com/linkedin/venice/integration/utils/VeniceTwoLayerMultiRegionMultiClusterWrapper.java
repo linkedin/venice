@@ -53,19 +53,19 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
   private final List<VeniceControllerWrapper> parentControllers;
   private final String[] clusterNames;
   private final ZkServerWrapper zkServerWrapper;
-  private final KafkaBrokerWrapper parentKafkaBrokerWrapper;
+  private final PubSubBrokerWrapper parentPubSubBrokerWrapper;
 
   VeniceTwoLayerMultiRegionMultiClusterWrapper(
       File dataDirectory,
       ZkServerWrapper zkServerWrapper,
-      KafkaBrokerWrapper parentKafkaBrokerWrapper,
+      PubSubBrokerWrapper parentPubSubBrokerWrapper,
       List<VeniceMultiClusterWrapper> childRegions,
       List<VeniceControllerWrapper> parentControllers,
       String parentRegionName,
       List<String> childRegionNames) {
     super(SERVICE_NAME, dataDirectory);
     this.zkServerWrapper = zkServerWrapper;
-    this.parentKafkaBrokerWrapper = parentKafkaBrokerWrapper;
+    this.parentPubSubBrokerWrapper = parentPubSubBrokerWrapper;
     this.parentControllers = parentControllers;
     this.childRegions = childRegions;
     this.parentRegionName = parentRegionName;
@@ -121,12 +121,12 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
     defaultParentControllerProps.setProperty(ADMIN_TOPIC_REMOTE_CONSUMPTION_ENABLED, "false");
 
     ZkServerWrapper zkServer = null;
-    KafkaBrokerWrapper parentKafka = null;
-    List<KafkaBrokerWrapper> allKafkaBrokers = new ArrayList<>();
+    PubSubBrokerWrapper parentKafka = null;
+    List<PubSubBrokerWrapper> allKafkaBrokers = new ArrayList<>();
 
     try {
       zkServer = ServiceFactory.getZkServer();
-      parentKafka = ServiceFactory.getKafkaBroker(zkServer);
+      parentKafka = ServiceFactory.getPubSubBroker(new PubSubBrokerConfigs.Builder().setZkWrapper(zkServer).build());
       allKafkaBrokers.add(parentKafka);
 
       Properties parentControllerProps = parentControllerPropertiesOverride.isPresent()
@@ -136,14 +136,14 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
       parentControllerProps.setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
       parentControllerPropertiesOverride = Optional.of(new VeniceProperties(parentControllerProps));
 
-      Map<String, String> clusterToRouterD2 = new HashMap<>();
+      Map<String, String> clusterToD2 = new HashMap<>();
       Map<String, String> clusterToServerD2 = new HashMap<>();
       String[] clusterNames = new String[numberOfClustersInEachRegion];
       for (int i = 0; i < numberOfClustersInEachRegion; i++) {
         String clusterName = "venice-cluster" + i;
         clusterNames[i] = clusterName;
         String routerD2ServiceName = "venice-" + i;
-        clusterToRouterD2.put(clusterName, routerD2ServiceName);
+        clusterToD2.put(clusterName, routerD2ServiceName);
         String serverD2ServiceName = Utils.getUniqueString(clusterName + "_d2");
         clusterToServerD2.put(clusterName, serverD2ServiceName);
       }
@@ -161,7 +161,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
        * and or Zookeeper servers.
        */
       Map<String, ZkServerWrapper> zkServerByRegionName = new HashMap<>(childRegionName.size());
-      Map<String, KafkaBrokerWrapper> kafkaBrokerByRegionName = new HashMap<>(childRegionName.size());
+      Map<String, PubSubBrokerWrapper> kafkaBrokerByRegionName = new HashMap<>(childRegionName.size());
 
       defaultParentControllerProps.put(ENABLE_NATIVE_REPLICATION_FOR_BATCH_ONLY, true);
       defaultParentControllerProps.put(ENABLE_NATIVE_REPLICATION_AS_DEFAULT_FOR_BATCH_ONLY, true);
@@ -189,12 +189,13 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
           .put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + parentRegionName, parentKafka.getAddress());
       for (String regionName: childRegionName) {
         ZkServerWrapper zkServerWrapper = ServiceFactory.getZkServer();
-        KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServerWrapper);
-        allKafkaBrokers.add(kafkaBrokerWrapper);
+        PubSubBrokerWrapper pubSubBrokerWrapper =
+            ServiceFactory.getPubSubBroker(new PubSubBrokerConfigs.Builder().setZkWrapper(zkServerWrapper).build());
+        allKafkaBrokers.add(pubSubBrokerWrapper);
         zkServerByRegionName.put(regionName, zkServerWrapper);
-        kafkaBrokerByRegionName.put(regionName, kafkaBrokerWrapper);
+        kafkaBrokerByRegionName.put(regionName, pubSubBrokerWrapper);
         nativeReplicationRequiredChildControllerProps
-            .put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + regionName, kafkaBrokerWrapper.getAddress());
+            .put(CHILD_DATA_CENTER_KAFKA_URL_PREFIX + "." + regionName, pubSubBrokerWrapper.getAddress());
       }
       Properties activeActiveRequiredChildControllerProps = new Properties();
       activeActiveRequiredChildControllerProps.put(ACTIVE_ACTIVE_REAL_TIME_SOURCE_FABRIC_LIST, childRegionList);
@@ -224,8 +225,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
               .childControllerProperties(finalChildControllerProperties)
               .veniceProperties(serverProperties.orElse(null))
               .forkServer(forkServer)
-              .kafkaClusterMap(kafkaClusterMap)
-              .clusterToServerD2(clusterToServerD2);
+              .kafkaClusterMap(kafkaClusterMap);
       // Create multi-clusters
       for (int i = 0; i < numberOfRegions; i++) {
         String regionName = childRegionName.get(i);
@@ -251,7 +251,8 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
               .replicationFactor(replicationFactor)
               .childControllers(childControllers)
               .extraProperties(finalParentControllerProperties)
-              .clusterToD2(clusterToRouterD2)
+              .clusterToD2(clusterToD2)
+              .clusterToServerD2(clusterToServerD2)
               .build();
       // Create parentControllers for multi-cluster
       for (int i = 0; i < numberOfParentControllers; i++) {
@@ -261,7 +262,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
       }
 
       final ZkServerWrapper finalZkServer = zkServer;
-      final KafkaBrokerWrapper finalParentKafka = parentKafka;
+      final PubSubBrokerWrapper finalParentKafka = parentKafka;
 
       return (serviceName) -> new VeniceTwoLayerMultiRegionMultiClusterWrapper(
           null,
@@ -283,7 +284,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
   private static Map<String, Map<String, String>> addKafkaClusterIDMappingToServerConfigs(
       Optional<VeniceProperties> serverProperties,
       List<String> regionNames,
-      List<KafkaBrokerWrapper> kafkaBrokers) {
+      List<PubSubBrokerWrapper> kafkaBrokers) {
     if (serverProperties.isPresent()) {
       SecurityProtocol baseSecurityProtocol = SecurityProtocol
           .valueOf(serverProperties.get().getString(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.PLAINTEXT.name));
@@ -303,20 +304,20 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
 
         // N.B. the first Kafka broker in the list is the parent, which we're excluding from the mapping, so this
         // is why the index here is offset by 1 compared to the cluster ID.
-        KafkaBrokerWrapper kafkaBrokerWrapper = kafkaBrokers.get(i);
+        PubSubBrokerWrapper pubSubBrokerWrapper = kafkaBrokers.get(i);
         String kafkaAddress = securityProtocol == SecurityProtocol.SSL
-            ? kafkaBrokerWrapper.getSSLAddress()
-            : kafkaBrokerWrapper.getAddress();
+            ? pubSubBrokerWrapper.getSSLAddress()
+            : pubSubBrokerWrapper.getAddress();
         mapping.put(KAFKA_CLUSTER_MAP_KEY_URL, kafkaAddress);
         String otherKafkaAddress = securityProtocol == SecurityProtocol.PLAINTEXT
-            ? kafkaBrokerWrapper.getSSLAddress()
-            : kafkaBrokerWrapper.getAddress();
+            ? pubSubBrokerWrapper.getSSLAddress()
+            : pubSubBrokerWrapper.getAddress();
         mapping.put(KAFKA_CLUSTER_MAP_KEY_OTHER_URLS, otherKafkaAddress);
         kafkaClusterMap.put(String.valueOf(clusterId), mapping);
       }
       LOGGER.info(
           "addKafkaClusterIDMappingToServerConfigs \n\treceived broker list: \n\t\t{} \n\tand generated cluster map: \n\t\t{}",
-          kafkaBrokers.stream().map(KafkaBrokerWrapper::toString).collect(Collectors.joining("\n\t\t")),
+          kafkaBrokers.stream().map(PubSubBrokerWrapper::toString).collect(Collectors.joining("\n\t\t")),
           kafkaClusterMap.entrySet().stream().map(Objects::toString).collect(Collectors.joining("\n\t\t")));
       return kafkaClusterMap;
     } else {
@@ -348,7 +349,7 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
   protected void internalStop() throws Exception {
     parentControllers.forEach(IOUtils::closeQuietly);
     childRegions.forEach(IOUtils::closeQuietly);
-    IOUtils.closeQuietly(parentKafkaBrokerWrapper);
+    IOUtils.closeQuietly(parentPubSubBrokerWrapper);
     IOUtils.closeQuietly(zkServerWrapper);
   }
 
@@ -369,8 +370,8 @@ public class VeniceTwoLayerMultiRegionMultiClusterWrapper extends ProcessWrapper
     return zkServerWrapper;
   }
 
-  public KafkaBrokerWrapper getParentKafkaBrokerWrapper() {
-    return parentKafkaBrokerWrapper;
+  public PubSubBrokerWrapper getParentKafkaBrokerWrapper() {
+    return parentPubSubBrokerWrapper;
   }
 
   public VeniceControllerWrapper getLeaderParentControllerWithRetries(String clusterName) {

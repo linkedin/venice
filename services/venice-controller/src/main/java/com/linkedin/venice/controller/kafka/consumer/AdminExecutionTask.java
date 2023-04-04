@@ -477,7 +477,8 @@ public class AdminExecutionTask implements Callable<Void> {
         .setAutoSchemaPushJobEnabled(message.schemaAutoRegisterFromPushJobEnabled)
         .setHybridStoreDiskQuotaEnabled(message.hybridStoreDiskQuotaEnabled)
         .setReplicationFactor(message.replicationFactor)
-        .setMigrationDuplicateStore(message.migrationDuplicateStore);
+        .setMigrationDuplicateStore(message.migrationDuplicateStore)
+        .setLatestSupersetSchemaId(message.latestSuperSetValueSchemaId);
 
     if (message.ETLStoreConfig != null) {
       params.setRegularVersionETLEnabled(message.ETLStoreConfig.regularVersionETLEnabled)
@@ -545,7 +546,6 @@ public class AdminExecutionTask implements Callable<Void> {
         message.migrationDuplicateStore)) {
       admin.replicateUpdateStore(clusterName, storeName, finalParams);
     }
-
     admin.updateStore(clusterName, storeName, finalParams);
 
     LOGGER.info("Set store: {} in cluster: {}", storeName, clusterName);

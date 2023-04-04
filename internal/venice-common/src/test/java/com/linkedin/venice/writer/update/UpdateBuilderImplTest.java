@@ -5,7 +5,9 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,8 +25,12 @@ public class UpdateBuilderImplTest {
   private static final Logger LOGGER = LogManager.getLogger(UpdateBuilderImplTest.class);
   private static final Schema VALUE_SCHEMA =
       AvroCompatibilityHelper.parse(loadFileAsString("TestWriteComputeBuilder.avsc"));
+  private static final Schema EVOLVED_VALUE_SCHEMA =
+      AvroCompatibilityHelper.parse(loadFileAsString("TestEvolvedWriteComputeBuilder.avsc"));
   private static final Schema UPDATE_SCHEMA =
       WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(VALUE_SCHEMA);
+  private static final Schema EVOLVED_UPDATE_SCHEMA =
+      WriteComputeSchemaConverter.getInstance().convertFromValueRecordSchema(EVOLVED_VALUE_SCHEMA);
 
   @Test
   public void testUpdateWholeField() {
@@ -53,6 +59,116 @@ public class UpdateBuilderImplTest {
     Assert.assertEquals(updateRecord.get("address"), expectedAddress);
     Assert.assertEquals(updateRecord.get("recordMap"), createFieldNoOpRecord("recordMap"));
     Assert.assertEquals(updateRecord.get("recordArray"), createFieldNoOpRecord("recordArray"));
+  }
+
+  @Test
+  public void testUpdateEvolvedSubfieldRemoveFieldsNotInUpdateSchema() {
+    UpdateBuilder builder = new UpdateBuilderImpl(UPDATE_SCHEMA);
+    String expectedName = "Lebron James";
+    GenericRecord writeAddress = createEvolvedAddressRecord("222 2nd street", "San Francisco", "CA");
+    GenericRecord expectedAddress = createAddressRecord("222 2nd street", "San Francisco");
+    int expectedAge = 36;
+    List<Integer> expectedIntArray = Arrays.asList(1, 3, 5, 7);
+
+    List<GenericRecord> writeRecordArray = new ArrayList<>();
+    writeRecordArray.add(createEvolvedRecordForListField(1, "testName"));
+
+    List<GenericRecord> expectedRecordArray = new ArrayList<>();
+    expectedRecordArray.add(createRecordForListField(1));
+
+    Map<String, String> expectedStringMap = new LinkedHashMap<>();
+    expectedStringMap.put("1", "one");
+    expectedStringMap.put("2", "two");
+    expectedStringMap.put("3", "three");
+
+    Map<String, GenericRecord> writeRecordMapToAdd = new LinkedHashMap<>();
+    writeRecordMapToAdd.put("1", createEvolvedMapEntry(1, "firstName"));
+    writeRecordMapToAdd.put("2", createEvolvedMapEntry(2, "secondName"));
+
+    Map<String, GenericRecord> expectedRecordMapToAdd = new LinkedHashMap<>();
+    expectedRecordMapToAdd.put("1", createMapEntry(1));
+    expectedRecordMapToAdd.put("2", createMapEntry(2));
+
+    builder.setNewFieldValue("name", expectedName);
+    builder.setNewFieldValue("age", expectedAge);
+    builder.setNewFieldValue("intArray", expectedIntArray);
+    builder.setElementsToAddToListField("recordArray", writeRecordArray);
+    builder.setNewFieldValue("stringMap", expectedStringMap);
+    builder.setNewFieldValue("address", writeAddress);
+    builder.setEntriesToAddToMapField("recordMap", writeRecordMapToAdd);
+
+    GenericRecord updateRecord = builder.build();
+
+    Assert.assertEquals(updateRecord.get("name"), expectedName);
+    Assert.assertEquals(updateRecord.get("age"), expectedAge);
+    Assert.assertEquals(updateRecord.get("intArray"), expectedIntArray);
+    Assert.assertEquals(updateRecord.get("stringMap"), expectedStringMap);
+    Assert.assertEquals(updateRecord.get("address"), expectedAddress);
+
+    Assert.assertTrue(updateRecord.get("recordArray") instanceof GenericRecord);
+    GenericRecord listMergeRecord = (GenericRecord) updateRecord.get("recordArray");
+    Assert.assertEquals(listMergeRecord.get("setUnion"), expectedRecordArray);
+    Assert.assertEquals(listMergeRecord.get("setDiff"), Collections.emptyList());
+
+    Assert.assertTrue(updateRecord.get("recordMap") instanceof GenericRecord);
+    GenericRecord recordMapMergeRecord = (GenericRecord) updateRecord.get("recordMap");
+    Assert.assertEquals(recordMapMergeRecord.get("mapUnion"), expectedRecordMapToAdd);
+    Assert.assertEquals(recordMapMergeRecord.get("mapDiff"), Collections.emptyList());
+  }
+
+  @Test
+  public void testUpdateEvolvedSubfieldFillDefaultsForUnspecifiedFields() {
+    UpdateBuilder builder = new UpdateBuilderImpl(EVOLVED_UPDATE_SCHEMA);
+    String expectedName = "Lebron James";
+    GenericRecord writeAddress = createAddressRecord("222 2nd street", "San Francisco");
+    GenericRecord expectedAddress = createEvolvedAddressRecord("222 2nd street", "San Francisco", "California");
+    int expectedAge = 36;
+    List<Integer> expectedIntArray = Arrays.asList(1, 3, 5, 7);
+
+    List<GenericRecord> writeRecordArray = new ArrayList<>();
+    writeRecordArray.add(createRecordForListField(1));
+
+    List<GenericRecord> expectedRecordArray = new ArrayList<>();
+    expectedRecordArray.add(createEvolvedRecordForListField(1, "venice"));
+
+    Map<String, String> expectedStringMap = new LinkedHashMap<>();
+    expectedStringMap.put("1", "one");
+    expectedStringMap.put("2", "two");
+    expectedStringMap.put("3", "three");
+
+    Map<String, GenericRecord> writeRecordMapToAdd = new LinkedHashMap<>();
+    writeRecordMapToAdd.put("1", createMapEntry(1));
+    writeRecordMapToAdd.put("2", createMapEntry(2));
+
+    Map<String, GenericRecord> expectedRecordMapToAdd = new LinkedHashMap<>();
+    expectedRecordMapToAdd.put("1", createEvolvedMapEntry(1, "venice"));
+    expectedRecordMapToAdd.put("2", createEvolvedMapEntry(2, "venice"));
+
+    builder.setNewFieldValue("name", expectedName);
+    builder.setNewFieldValue("age", expectedAge);
+    builder.setNewFieldValue("intArray", expectedIntArray);
+    builder.setElementsToAddToListField("recordArray", writeRecordArray);
+    builder.setNewFieldValue("stringMap", expectedStringMap);
+    builder.setNewFieldValue("address", writeAddress);
+    builder.setEntriesToAddToMapField("recordMap", writeRecordMapToAdd);
+
+    GenericRecord updateRecord = builder.build();
+
+    Assert.assertEquals(updateRecord.get("name"), expectedName);
+    Assert.assertEquals(updateRecord.get("age"), expectedAge);
+    Assert.assertEquals(updateRecord.get("intArray"), expectedIntArray);
+    Assert.assertEquals(updateRecord.get("stringMap"), expectedStringMap);
+    Assert.assertEquals(updateRecord.get("address"), expectedAddress);
+
+    Assert.assertTrue(updateRecord.get("recordArray") instanceof GenericRecord);
+    GenericRecord listMergeRecord = (GenericRecord) updateRecord.get("recordArray");
+    Assert.assertEquals(listMergeRecord.get("setUnion"), expectedRecordArray);
+    Assert.assertEquals(listMergeRecord.get("setDiff"), Collections.emptyList());
+
+    Assert.assertTrue(updateRecord.get("recordMap") instanceof GenericRecord);
+    GenericRecord recordMapMergeRecord = (GenericRecord) updateRecord.get("recordMap");
+    Assert.assertEquals(recordMapMergeRecord.get("mapUnion"), expectedRecordMapToAdd);
+    Assert.assertEquals(recordMapMergeRecord.get("mapDiff"), Collections.emptyList());
   }
 
   @Test
@@ -107,10 +223,18 @@ public class UpdateBuilderImplTest {
     expectedStringMapToAdd.put("3", "three");
     List<String> expectedStringMapKeysToRemove = Arrays.asList("4", "5", "6");
 
+    Map<String, GenericRecord> expectedRecordMapToAdd = new LinkedHashMap<>();
+    expectedRecordMapToAdd.put("1", createMapEntry(1));
+    expectedRecordMapToAdd.put("2", createMapEntry(2));
+
+    List<String> expectedRecordMapKeysToRemove = Arrays.asList("4", "5", "6");
+
     builder.setElementsToAddToListField("intArray", expectedIntArrayToAdd);
     builder.setElementsToRemoveFromListField("intArray", expectedIntArrayToRemove);
     builder.setEntriesToAddToMapField("stringMap", expectedStringMapToAdd);
     builder.setKeysToRemoveFromMapField("stringMap", expectedStringMapKeysToRemove);
+    builder.setEntriesToAddToMapField("recordMap", expectedRecordMapToAdd);
+    builder.setKeysToRemoveFromMapField("recordMap", expectedRecordMapKeysToRemove);
 
     GenericRecord updateRecord = builder.build();
     System.out.println(updateRecord);
@@ -119,7 +243,6 @@ public class UpdateBuilderImplTest {
     Assert.assertEquals(updateRecord.get("name"), createFieldNoOpRecord("name"));
     Assert.assertEquals(updateRecord.get("age"), createFieldNoOpRecord("age"));
     Assert.assertEquals(updateRecord.get("address"), createFieldNoOpRecord("address"));
-    Assert.assertEquals(updateRecord.get("recordMap"), createFieldNoOpRecord("recordMap"));
     Assert.assertEquals(updateRecord.get("recordArray"), createFieldNoOpRecord("recordArray"));
 
     // Fields where collection merge happens.
@@ -132,6 +255,11 @@ public class UpdateBuilderImplTest {
     GenericRecord mapMergeRecord = (GenericRecord) updateRecord.get("stringMap");
     Assert.assertEquals(mapMergeRecord.get("mapUnion"), expectedStringMapToAdd);
     Assert.assertEquals(mapMergeRecord.get("mapDiff"), expectedStringMapKeysToRemove);
+
+    Assert.assertTrue(updateRecord.get("recordMap") instanceof GenericRecord);
+    GenericRecord recordMapMergeRecord = (GenericRecord) updateRecord.get("recordMap");
+    Assert.assertEquals(recordMapMergeRecord.get("mapUnion"), expectedRecordMapToAdd);
+    Assert.assertEquals(recordMapMergeRecord.get("mapDiff"), expectedRecordMapKeysToRemove);
   }
 
   @Test
@@ -213,10 +341,25 @@ public class UpdateBuilderImplTest {
     builder.setNewFieldValue("address", null);
     GenericRecord partialUpdateRecord = builder.build();
     Assert.assertNull(partialUpdateRecord.get("address"));
+
     // It should throw exception when non-nullable field is set to null.
-    builder = new UpdateBuilderImpl(UPDATE_SCHEMA);
-    builder.setNewFieldValue("name", null);
-    Assert.assertThrows(VeniceException.class, builder::build);
+    UpdateBuilder builder2 = new UpdateBuilderImpl(UPDATE_SCHEMA);
+    Assert.assertThrows(VeniceException.class, () -> builder2.setNewFieldValue("name", null));
+  }
+
+  private GenericRecord createRecordForListField(int number) {
+    Schema recordSchema = VALUE_SCHEMA.getField("recordArray").schema().getElementType();
+    GenericRecord record = new GenericData.Record(recordSchema);
+    record.put("number", number);
+    return record;
+  }
+
+  private GenericRecord createEvolvedRecordForListField(int number, String name) {
+    Schema recordSchema = EVOLVED_VALUE_SCHEMA.getField("recordArray").schema().getElementType();
+    GenericRecord record = new GenericData.Record(recordSchema);
+    record.put("number", number);
+    record.put("name", name);
+    return record;
   }
 
   private GenericRecord createAddressRecord(String street, String city) {
@@ -225,6 +368,30 @@ public class UpdateBuilderImplTest {
     addressRecord.put("streetaddress", street);
     addressRecord.put("city", city);
     return addressRecord;
+  }
+
+  private GenericRecord createEvolvedAddressRecord(String street, String city, String state) {
+    Schema addressRecordSchema = EVOLVED_VALUE_SCHEMA.getField("address").schema().getTypes().get(1);
+    GenericRecord addressRecord = new GenericData.Record(addressRecordSchema);
+    addressRecord.put("streetaddress", street);
+    addressRecord.put("city", city);
+    addressRecord.put("state", state);
+    return addressRecord;
+  }
+
+  private GenericRecord createMapEntry(int number) {
+    Schema recordSchema = VALUE_SCHEMA.getField("recordMap").schema().getValueType();
+    GenericRecord record = new GenericData.Record(recordSchema);
+    record.put("number", number);
+    return record;
+  }
+
+  private GenericRecord createEvolvedMapEntry(int number, String name) {
+    Schema recordSchema = EVOLVED_VALUE_SCHEMA.getField("recordMap").schema().getValueType();
+    GenericRecord record = new GenericData.Record(recordSchema);
+    record.put("number", number);
+    record.put("name", name);
+    return record;
   }
 
   private GenericRecord createFieldNoOpRecord(String fieldName) {

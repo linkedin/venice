@@ -23,6 +23,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.FUTURE_VE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_DISK_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.LATEST_SUPERSET_SCHEMA_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MIGRATION_DUPLICATE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_SOURCE_FABRIC;
@@ -115,6 +116,8 @@ import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSe
 import com.linkedin.venice.controller.lingeringjob.DefaultLingeringStoreVersionChecker;
 import com.linkedin.venice.controller.lingeringjob.LingeringStoreVersionChecker;
 import com.linkedin.venice.controller.migration.MigrationPushStrategyZKAccessor;
+import com.linkedin.venice.controller.supersetschema.DefaultSupersetSchemaGenerator;
+import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -190,7 +193,6 @@ import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.AvroSchemaUtils;
-import com.linkedin.venice.utils.AvroSupersetSchemaUtils;
 import com.linkedin.venice.utils.CollectionUtils;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Pair;
@@ -318,6 +320,10 @@ public class VeniceParentHelixAdmin implements Admin {
 
   private final LingeringStoreVersionChecker lingeringStoreVersionChecker;
 
+  private final Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator;
+
+  private final SupersetSchemaGenerator defaultSupersetSchemaGenerator = new DefaultSupersetSchemaGenerator();
+
   private final IdentityParser identityParser;
 
   // New fabric controller client map per cluster per fabric
@@ -344,27 +350,9 @@ public class VeniceParentHelixAdmin implements Admin {
         sslConfig,
         Optional.empty(),
         authorizerService,
-        new DefaultLingeringStoreVersionChecker());
-  }
-
-  public VeniceParentHelixAdmin(
-      VeniceHelixAdmin veniceHelixAdmin,
-      VeniceControllerMultiClusterConfig multiClusterConfigs,
-      boolean sslEnabled,
-      Optional<SSLConfig> sslConfig,
-      Optional<DynamicAccessController> accessController,
-      Optional<AuthorizerService> authorizerService,
-      LingeringStoreVersionChecker lingeringStoreVersionChecker) {
-    this(
-        veniceHelixAdmin,
-        multiClusterConfigs,
-        sslEnabled,
-        sslConfig,
-        accessController,
-        authorizerService,
-        lingeringStoreVersionChecker,
-        WriteComputeSchemaConverter.getInstance() // TODO: make it an input param
-    );
+        new DefaultLingeringStoreVersionChecker(),
+        WriteComputeSchemaConverter.getInstance(), // TODO: make it an input param
+        Optional.empty());
   }
 
   public VeniceParentHelixAdmin(
@@ -375,7 +363,8 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<DynamicAccessController> accessController,
       Optional<AuthorizerService> authorizerService,
       LingeringStoreVersionChecker lingeringStoreVersionChecker,
-      WriteComputeSchemaConverter writeComputeSchemaConverter) {
+      WriteComputeSchemaConverter writeComputeSchemaConverter,
+      Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator) {
     Validate.notNull(lingeringStoreVersionChecker);
     Validate.notNull(writeComputeSchemaConverter);
     this.veniceHelixAdmin = veniceHelixAdmin;
@@ -390,6 +379,7 @@ public class VeniceParentHelixAdmin implements Admin {
     this.asyncSetupEnabledMap = new VeniceConcurrentHashMap<>();
     this.accessController = accessController;
     this.authorizerService = authorizerService;
+    this.externalSupersetSchemaGenerator = externalSupersetSchemaGenerator;
     this.systemStoreAclSynchronizationExecutor =
         authorizerService.map(service -> Executors.newSingleThreadExecutor()).orElse(null);
     if (sslEnabled) {
@@ -2217,6 +2207,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<String> regionsFilter = params.getRegionsFilter();
       Optional<String> personaName = params.getStoragePersona();
       Optional<Map<String, String>> storeViewConfig = params.getStoreViews();
+      Optional<Integer> latestSupersetSchemaId = params.getLatestSupersetSchemaId();
 
       /**
        * Check whether parent controllers will only propagate the update configs to child controller, or all unchanged
@@ -2476,6 +2467,19 @@ public class VeniceParentHelixAdmin implements Admin {
 
       setStore.storagePersona = personaName.map(addToUpdatedConfigList(updatedConfigsList, PERSONA_NAME)).orElse(null);
 
+      // Check whether the passed param is valid or not
+      if (latestSupersetSchemaId.isPresent()) {
+        if (latestSupersetSchemaId.get() != SchemaData.INVALID_VALUE_SCHEMA_ID) {
+          if (veniceHelixAdmin.getValueSchema(clusterName, storeName, latestSupersetSchemaId.get()) == null) {
+            throw new VeniceException(
+                "Unknown value schema id: " + latestSupersetSchemaId.get() + " in store: " + storeName);
+          }
+        }
+      }
+      setStore.latestSuperSetValueSchemaId =
+          latestSupersetSchemaId.map(addToUpdatedConfigList(updatedConfigsList, LATEST_SUPERSET_SCHEMA_ID))
+              .orElseGet(currStore::getLatestSuperSetValueSchemaId);
+
       StoragePersonaRepository repository =
           getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getStoragePersonaRepository();
       StoragePersona personaToValidate = null;
@@ -2582,10 +2586,18 @@ public class VeniceParentHelixAdmin implements Admin {
     }
   }
 
+  private SupersetSchemaGenerator getSupersetSchemaGenerator(String clusterName) {
+    if (externalSupersetSchemaGenerator.isPresent() && getMultiClusterConfigs().getControllerConfig(clusterName)
+        .isParentExternalSupersetSchemaGenerationEnabled()) {
+      return externalSupersetSchemaGenerator.get();
+    }
+    return defaultSupersetSchemaGenerator;
+  }
+
   private void addSupersetSchemaForStore(String clusterName, String storeName, boolean activeActiveReplicationEnabled) {
     // Generate a superset schema and add it.
-    SchemaEntry supersetSchemaEntry =
-        AvroSchemaUtils.generateSupersetSchemaFromAllValueSchemas(getValueSchemas(clusterName, storeName));
+    SchemaEntry supersetSchemaEntry = getSupersetSchemaGenerator(clusterName)
+        .generateSupersetSchemaFromSchemas(getValueSchemas(clusterName, storeName));
     final Schema supersetSchema = supersetSchemaEntry.getSchema();
     final int supersetSchemaID = supersetSchemaEntry.getId();
     addValueSchemaEntry(clusterName, storeName, supersetSchema.toString(), supersetSchemaID, true);
@@ -2748,13 +2760,14 @@ public class VeniceParentHelixAdmin implements Admin {
 
       final boolean doUpdateSupersetSchemaID;
       if (existingValueSchema != null && (store.isReadComputationEnabled() || store.isWriteComputationEnabled())) {
-        Schema newSuperSetSchema = AvroSupersetSchemaUtils.generateSuperSetSchema(existingValueSchema, newValueSchema);
+        SupersetSchemaGenerator supersetSchemaGenerator = getSupersetSchemaGenerator(clusterName);
+        Schema newSuperSetSchema = supersetSchemaGenerator.generateSupersetSchema(existingValueSchema, newValueSchema);
         String newSuperSetSchemaStr = newSuperSetSchema.toString();
 
-        if (AvroSchemaUtils.compareSchemaIgnoreFieldOrder(newSuperSetSchema, newValueSchema)) {
+        if (supersetSchemaGenerator.compareSchema(newSuperSetSchema, newValueSchema)) {
           doUpdateSupersetSchemaID = true;
 
-        } else if (AvroSchemaUtils.compareSchemaIgnoreFieldOrder(newSuperSetSchema, existingValueSchema)) {
+        } else if (supersetSchemaGenerator.compareSchema(newSuperSetSchema, existingValueSchema)) {
           doUpdateSupersetSchemaID = false;
 
         } else if (store.isSystemStore()) {
@@ -2778,8 +2791,11 @@ public class VeniceParentHelixAdmin implements Admin {
               expectedCompatibilityType);
           // Check if the superset schema already exists or not. If exists use the same ID, else bump the value ID by
           // one.
-          int supersetSchemaId =
-              getVeniceHelixAdmin().getValueSchemaIdIgnoreFieldOrder(clusterName, storeName, newSuperSetSchemaStr);
+          int supersetSchemaId = getVeniceHelixAdmin().getValueSchemaIdIgnoreFieldOrder(
+              clusterName,
+              storeName,
+              newSuperSetSchemaStr,
+              (s1, s2) -> supersetSchemaGenerator.compareSchema(s1, s2) ? 0 : 1);
           if (supersetSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID) {
             supersetSchemaId = newValueSchemaId + 1;
           }
@@ -3017,19 +3033,6 @@ public class VeniceParentHelixAdmin implements Admin {
       message.payloadUnion = derivedSchemaCreation;
 
       sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
-
-      // defensive code checking
-      GeneratedSchemaID actualValueSchemaIdPair = getDerivedSchemaId(clusterName, storeName, derivedSchemaStr);
-      if (actualValueSchemaIdPair.getValueSchemaID() != valueSchemaId
-          || actualValueSchemaIdPair.getGeneratedSchemaVersion() != newDerivedSchemaId) {
-        throw new VeniceException(
-            String.format(
-                "Something bad happened, the expected new value schema id pair is:" + "%d_%d, but got: %d_%d",
-                valueSchemaId,
-                newDerivedSchemaId,
-                actualValueSchemaIdPair.getValueSchemaID(),
-                actualValueSchemaIdPair.getGeneratedSchemaVersion()));
-      }
 
       return new DerivedSchemaEntry(valueSchemaId, newDerivedSchemaId, derivedSchemaStr);
     } finally {
@@ -3487,11 +3490,11 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * @see VeniceHelixAdmin#calculateNumberOfPartitions(String, String, long)
+   * @see Admin#calculateNumberOfPartitions(String, String)
    */
   @Override
-  public int calculateNumberOfPartitions(String clusterName, String storeName, long storeSize) {
-    return getVeniceHelixAdmin().calculateNumberOfPartitions(clusterName, storeName, storeSize);
+  public int calculateNumberOfPartitions(String clusterName, String storeName) {
+    return getVeniceHelixAdmin().calculateNumberOfPartitions(clusterName, storeName);
   }
 
   /**
@@ -3830,6 +3833,14 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public Pair<String, String> discoverCluster(String storeName) {
     return getVeniceHelixAdmin().discoverCluster(storeName);
+  }
+
+  /**
+   * @see Admin#getServerD2Service(String)
+   */
+  @Override
+  public String getServerD2Service(String clusterName) {
+    return getVeniceHelixAdmin().getServerD2Service(clusterName);
   }
 
   /**

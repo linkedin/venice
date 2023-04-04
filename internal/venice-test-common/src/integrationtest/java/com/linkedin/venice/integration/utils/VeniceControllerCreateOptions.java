@@ -26,9 +26,10 @@ public class VeniceControllerCreateOptions {
   private final long rebalanceDelayMs;
   private final String[] clusterNames;
   private final Map<String, String> clusterToD2;
+  private final Map<String, String> clusterToServerD2;
   private final VeniceControllerWrapper[] childControllers;
   private final ZkServerWrapper zkServer;
-  private final KafkaBrokerWrapper kafkaBroker;
+  private final PubSubBrokerWrapper kafkaBroker;
   private final Properties extraProperties;
   private final AuthorizerService authorizerService;
   private final String regionName;
@@ -42,6 +43,7 @@ public class VeniceControllerCreateOptions {
     rebalanceDelayMs = builder.rebalanceDelayMs;
     clusterNames = builder.clusterNames;
     clusterToD2 = builder.clusterToD2;
+    clusterToServerD2 = builder.clusterToServerD2;
     childControllers = builder.childControllers;
     zkServer = builder.zkServer;
     kafkaBroker = builder.kafkaBroker;
@@ -88,6 +90,9 @@ public class VeniceControllerCreateOptions {
         .append(", ")
         .append("clusterToD2:")
         .append(clusterToD2)
+        .append(",")
+        .append("clusterToServerD2:")
+        .append(clusterToServerD2)
         .append(", ")
         .append("extraProperties:")
         .append(extraProperties)
@@ -147,11 +152,15 @@ public class VeniceControllerCreateOptions {
     return clusterToD2;
   }
 
+  public Map<String, String> getClusterToServerD2() {
+    return clusterToServerD2;
+  }
+
   public VeniceControllerWrapper[] getChildControllers() {
     return childControllers;
   }
 
-  public KafkaBrokerWrapper getKafkaBroker() {
+  public PubSubBrokerWrapper getKafkaBroker() {
     return kafkaBroker;
   }
 
@@ -170,7 +179,7 @@ public class VeniceControllerCreateOptions {
   public static class Builder {
     private final String[] clusterNames;
     private final ZkServerWrapper zkServer;
-    private final KafkaBrokerWrapper kafkaBroker;
+    private final PubSubBrokerWrapper kafkaBroker;
     private boolean sslToKafka = false;
     private boolean d2Enabled = false;
     private boolean isMinActiveReplicaSet = false;
@@ -179,19 +188,20 @@ public class VeniceControllerCreateOptions {
     private int minActiveReplica;
     private long rebalanceDelayMs = DEFAULT_DELAYED_TO_REBALANCE_MS;
     private Map<String, String> clusterToD2 = null;
+    private Map<String, String> clusterToServerD2 = null;
     private VeniceControllerWrapper[] childControllers = null;
     private Properties extraProperties = new Properties();
     private AuthorizerService authorizerService;
     private String regionName = "";
 
-    public Builder(String[] clusterNames, ZkServerWrapper zkServer, KafkaBrokerWrapper kafkaBroker) {
+    public Builder(String[] clusterNames, ZkServerWrapper zkServer, PubSubBrokerWrapper kafkaBroker) {
       this.clusterNames = Objects.requireNonNull(clusterNames, "clusterNames cannot be null when creating controller");
       this.zkServer = Objects.requireNonNull(zkServer, "ZkServerWrapper cannot be null when creating controller");
       this.kafkaBroker =
           Objects.requireNonNull(kafkaBroker, "KafkaBrokerWrapper cannot be null when creating controller");
     }
 
-    public Builder(String clusterName, ZkServerWrapper zkServer, KafkaBrokerWrapper kafkaBroker) {
+    public Builder(String clusterName, ZkServerWrapper zkServer, PubSubBrokerWrapper kafkaBroker) {
       this(new String[] { clusterName }, zkServer, kafkaBroker);
     }
 
@@ -228,6 +238,11 @@ public class VeniceControllerCreateOptions {
 
     public Builder clusterToD2(Map<String, String> clusterToD2) {
       this.clusterToD2 = clusterToD2;
+      return this;
+    }
+
+    public Builder clusterToServerD2(Map<String, String> clusterToServerD2) {
+      this.clusterToServerD2 = clusterToServerD2;
       return this;
     }
 

@@ -16,13 +16,13 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
-import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.Closeable;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -195,8 +195,8 @@ public class VeniceClusterInitializer implements Closeable {
     }
 
     VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress());
-    try (VeniceWriter<Object, byte[], byte[]> veniceWriter =
-        vwFactory.createVeniceWriter(pushVersionTopic, keySerializer, new DefaultSerializer(), false)) {
+    try (VeniceWriter<Object, byte[], byte[]> veniceWriter = vwFactory.createVeniceWriter(
+        new VeniceWriterOptions.Builder(pushVersionTopic).setKeySerializer(keySerializer).build())) {
       veniceWriter.broadcastStartOfPush(Collections.emptyMap());
       Future[] writerFutures = new Future[ENTRY_COUNT];
       for (int i = 0; i < ENTRY_COUNT; i++) {

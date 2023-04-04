@@ -19,6 +19,7 @@ public class VeniceClusterCreateOptions {
   private final String clusterName;
   private final String regionName;
   private final Map<String, String> clusterToD2;
+  private final Map<String, String> clusterToServerD2;
   private final int numberOfControllers;
   private final int numberOfServers;
   private final int numberOfRouters;
@@ -36,13 +37,13 @@ public class VeniceClusterCreateOptions {
   private final Properties extraProperties;
   private final Map<String, Map<String, String>> kafkaClusterMap;
   private final ZkServerWrapper zkServerWrapper;
-  private final KafkaBrokerWrapper kafkaBrokerWrapper;
-  private final String serverD2ServiceName;
+  private final PubSubBrokerWrapper pubSubBrokerWrapper;
 
   private VeniceClusterCreateOptions(Builder builder) {
     this.clusterName = builder.clusterName;
     this.regionName = builder.regionName;
     this.clusterToD2 = builder.clusterToD2;
+    this.clusterToServerD2 = builder.clusterToServerD2;
     this.numberOfControllers = builder.numberOfControllers;
     this.numberOfServers = builder.numberOfServers;
     this.numberOfRouters = builder.numberOfRouters;
@@ -60,8 +61,7 @@ public class VeniceClusterCreateOptions {
     this.extraProperties = builder.extraProperties;
     this.kafkaClusterMap = builder.kafkaClusterMap;
     this.zkServerWrapper = builder.zkServerWrapper;
-    this.kafkaBrokerWrapper = builder.kafkaBrokerWrapper;
-    this.serverD2ServiceName = builder.serverD2ServiceName;
+    this.pubSubBrokerWrapper = builder.pubSubBrokerWrapper;
   }
 
   public String getClusterName() {
@@ -74,6 +74,10 @@ public class VeniceClusterCreateOptions {
 
   public Map<String, String> getClusterToD2() {
     return clusterToD2;
+  }
+
+  public Map<String, String> getClusterToServerD2() {
+    return clusterToServerD2;
   }
 
   public int getNumberOfControllers() {
@@ -144,12 +148,8 @@ public class VeniceClusterCreateOptions {
     return zkServerWrapper;
   }
 
-  public KafkaBrokerWrapper getKafkaBrokerWrapper() {
-    return kafkaBrokerWrapper;
-  }
-
-  public String getServerD2ServiceName() {
-    return serverD2ServiceName;
+  public PubSubBrokerWrapper getKafkaBrokerWrapper() {
+    return pubSubBrokerWrapper;
   }
 
   @Override
@@ -208,17 +208,18 @@ public class VeniceClusterCreateOptions {
         .append(", ")
         .append("clusterToD2:")
         .append(clusterToD2)
+        .append(",")
+        .append("clusterToServerD2:")
+        .append(clusterToServerD2)
         .append(", ")
         .append("zk:")
         .append(zkServerWrapper == null ? "null" : zkServerWrapper.getAddress())
         .append(", ")
         .append("kafka:")
-        .append(kafkaBrokerWrapper == null ? "null" : kafkaBrokerWrapper.getAddress())
+        .append(pubSubBrokerWrapper == null ? "null" : pubSubBrokerWrapper.getAddress())
         .append(", ")
         .append("kafkaClusterMap:")
         .append(kafkaClusterMap)
-        .append("serverD2ServiceName")
-        .append(serverD2ServiceName == null ? "null" : serverD2ServiceName)
         .toString();
   }
 
@@ -226,6 +227,7 @@ public class VeniceClusterCreateOptions {
     private String clusterName;
     private String regionName = "";
     private Map<String, String> clusterToD2 = null;
+    private Map<String, String> clusterToServerD2 = null;
     private int numberOfControllers = DEFAULT_NUMBER_OF_CONTROLLERS;
     private int numberOfServers = DEFAULT_NUMBER_OF_SERVERS;
     private int numberOfRouters = DEFAULT_NUMBER_OF_ROUTERS;
@@ -244,8 +246,7 @@ public class VeniceClusterCreateOptions {
     private Properties extraProperties;
     private Map<String, Map<String, String>> kafkaClusterMap;
     private ZkServerWrapper zkServerWrapper;
-    private KafkaBrokerWrapper kafkaBrokerWrapper;
-    private String serverD2ServiceName;
+    private PubSubBrokerWrapper pubSubBrokerWrapper;
 
     public Builder clusterName(String clusterName) {
       this.clusterName = clusterName;
@@ -259,6 +260,11 @@ public class VeniceClusterCreateOptions {
 
     public Builder clusterToD2(Map<String, String> clusterToD2) {
       this.clusterToD2 = clusterToD2;
+      return this;
+    }
+
+    public Builder clusterToServerD2(Map<String, String> clusterToServerD2) {
+      this.clusterToServerD2 = clusterToServerD2;
       return this;
     }
 
@@ -348,13 +354,8 @@ public class VeniceClusterCreateOptions {
       return this;
     }
 
-    public Builder kafkaBrokerWrapper(KafkaBrokerWrapper kafkaBrokerWrapper) {
-      this.kafkaBrokerWrapper = kafkaBrokerWrapper;
-      return this;
-    }
-
-    public Builder serverD2ServiceName(String serverD2ServiceName) {
-      this.serverD2ServiceName = serverD2ServiceName;
+    public Builder kafkaBrokerWrapper(PubSubBrokerWrapper pubSubBrokerWrapper) {
+      this.pubSubBrokerWrapper = pubSubBrokerWrapper;
       return this;
     }
 
@@ -373,9 +374,6 @@ public class VeniceClusterCreateOptions {
       }
       if (kafkaClusterMap == null) {
         kafkaClusterMap = Collections.emptyMap();
-      }
-      if (serverD2ServiceName == null) {
-        serverD2ServiceName = Utils.getUniqueString(clusterName + "_d2");
       }
     }
 

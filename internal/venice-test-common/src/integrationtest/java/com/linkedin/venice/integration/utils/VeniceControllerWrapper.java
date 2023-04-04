@@ -9,6 +9,7 @@ import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_WHITELIST;
 import static com.linkedin.venice.ConfigKeys.CHILD_DATA_CENTER_KAFKA_URL_PREFIX;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_DISCOVERY_D2_SERVICE;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_D2;
+import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_SERVER_D2;
 import static com.linkedin.venice.ConfigKeys.CONCURRENT_INIT_ROUTINES_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_NAME;
@@ -50,6 +51,7 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceController;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
+import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.d2.D2Server;
 import com.linkedin.venice.kafka.admin.KafkaAdminClient;
@@ -88,6 +90,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
   public static final String D2_SERVICE_NAME = "ChildController";
   public static final String PARENT_D2_CLUSTER_NAME = "ParentControllerD2Cluster";
   public static final String PARENT_D2_SERVICE_NAME = "ParentController";
+
+  public static final String SUPERSET_SCHEMA_GENERATOR = "SupersetSchemaGenerator";
 
   public static final double DEFAULT_STORAGE_ENGINE_OVERHEAD_RATIO = 0.85d;
   public static final String DEFAULT_PARENT_DATA_CENTER_REGION_NAME = "dc-parent-0";
@@ -143,6 +147,14 @@ public class VeniceControllerWrapper extends ProcessWrapper {
         clusterToD2 = options.getClusterToD2();
       }
 
+      Map<String, String> clusterToServerD2;
+      if (options.getClusterToServerD2() == null || options.getClusterToServerD2().isEmpty()) {
+        clusterToServerD2 = Arrays.stream(options.getClusterNames())
+            .collect(Collectors.toMap(c -> c, c -> Utils.getUniqueString("server_d2_service")));
+      } else {
+        clusterToServerD2 = options.getClusterToServerD2();
+      }
+
       for (String clusterName: options.getClusterNames()) {
         VeniceProperties clusterProps = IntegrationTestUtils
             .getClusterProps(clusterName, options.getZkAddress(), options.getKafkaBroker(), options.isSslToKafka());
@@ -170,6 +182,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(TOPIC_CREATION_THROTTLING_TIME_WINDOW_MS, 100)
             .put(STORAGE_ENGINE_OVERHEAD_RATIO, DEFAULT_STORAGE_ENGINE_OVERHEAD_RATIO)
             .put(CLUSTER_TO_D2, TestUtils.getClusterToD2String(clusterToD2))
+            .put(CLUSTER_TO_SERVER_D2, TestUtils.getClusterToD2String(clusterToServerD2))
             .put(SSL_TO_KAFKA, options.isSslToKafka())
             .put(SSL_KAFKA_BOOTSTRAP_SERVERS, options.getKafkaBroker().getSSLAddress())
             .put(ENABLE_OFFLINE_PUSH_SSL_WHITELIST, false)
@@ -298,6 +311,11 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       if (clientConfig != null && clientConfig instanceof ClientConfig) {
         consumerClientConfig = Optional.of((ClientConfig) clientConfig);
       }
+      Optional<SupersetSchemaGenerator> supersetSchemaGenerator = Optional.empty();
+      Object passedSupersetSchemaGenerator = options.getExtraProperties().get(SUPERSET_SCHEMA_GENERATOR);
+      if (passedSupersetSchemaGenerator != null && passedSupersetSchemaGenerator instanceof SupersetSchemaGenerator) {
+        supersetSchemaGenerator = Optional.of((SupersetSchemaGenerator) passedSupersetSchemaGenerator);
+      }
       VeniceController veniceController = new VeniceController(
           propertiesList,
           metricsRepository,
@@ -306,7 +324,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           Optional.ofNullable(options.getAuthorizerService()),
           d2Client,
           consumerClientConfig,
-          Optional.empty());
+          Optional.empty(),
+          supersetSchemaGenerator);
       return new VeniceControllerWrapper(
           options.getRegionName(),
           serviceName,

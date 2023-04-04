@@ -1,8 +1,7 @@
 package com.linkedin.venice.kafka.partitionoffset;
 
-import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
+import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -17,24 +16,21 @@ import org.testng.annotations.Test;
 
 
 public class PartitionOffsetFetcherTest {
-  private KafkaBrokerWrapper kafka;
-  private ZkServerWrapper zkServer;
+  private PubSubBrokerWrapper pubSubBrokerWrapper;
 
   @BeforeClass
   public void setUp() {
-    this.zkServer = ServiceFactory.getZkServer();
-    this.kafka = ServiceFactory.getKafkaBroker(zkServer);
+    this.pubSubBrokerWrapper = ServiceFactory.getPubSubBroker();
   }
 
   @AfterClass
   public void close() {
-    this.kafka.close();
-    this.zkServer.close();
+    this.pubSubBrokerWrapper.close();
   }
 
   @Test
   public void testGetPartitionLatestOffsetAndRetry() {
-    KafkaClientFactory kafkaClientFactory = IntegrationTestPushUtils.getVeniceConsumerFactory(kafka);
+    KafkaClientFactory kafkaClientFactory = IntegrationTestPushUtils.getVeniceConsumerFactory(pubSubBrokerWrapper);
     try (PartitionOffsetFetcher fetcher = PartitionOffsetFetcherFactory.createDefaultPartitionOffsetFetcher(
         kafkaClientFactory,
         Lazy.of(() -> kafkaClientFactory.getKafkaAdminClient(Optional.empty())),

@@ -4,6 +4,7 @@ import static com.linkedin.venice.ConfigKeys.ADMIN_HELIX_MESSAGING_CHANNEL_ENABL
 import static com.linkedin.venice.ConfigKeys.CHILD_CLUSTER_ALLOWLIST;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_D2;
+import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_SERVER_D2;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SSL_ENABLED;
 import static com.linkedin.venice.ConfigKeys.CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME;
@@ -22,7 +23,7 @@ import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
 import com.linkedin.venice.integration.utils.D2TestUtils;
-import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
+import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.Store;
@@ -69,8 +70,7 @@ class AbstractTestVeniceHelixAdmin {
   VeniceControllerConfig controllerConfig;
   String zkAddress;
   ZkServerWrapper zkServerWrapper;
-  private ZkServerWrapper kafkaZkServer;
-  KafkaBrokerWrapper kafkaBrokerWrapper;
+  PubSubBrokerWrapper pubSubBrokerWrapper;
   SafeHelixManager helixManager;
   Map<String, SafeHelixManager> helixManagerByNodeID = new ConcurrentHashMap<>();
 
@@ -91,8 +91,7 @@ class AbstractTestVeniceHelixAdmin {
     Utils.thisIsLocalhost();
     zkServerWrapper = ServiceFactory.getZkServer();
     zkAddress = zkServerWrapper.getAddress();
-    kafkaZkServer = ServiceFactory.getZkServer();
-    kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(kafkaZkServer);
+    pubSubBrokerWrapper = ServiceFactory.getPubSubBroker();
     clusterName = Utils.getUniqueString("test-cluster");
     Properties properties = getControllerProperties(clusterName);
     if (!createParticipantStore) {
@@ -130,8 +129,7 @@ class AbstractTestVeniceHelixAdmin {
       LOGGER.warn(e);
     }
     zkServerWrapper.close();
-    kafkaBrokerWrapper.close();
-    kafkaZkServer.close();
+    pubSubBrokerWrapper.close();
   }
 
   void startParticipant() throws Exception {
@@ -195,10 +193,13 @@ class AbstractTestVeniceHelixAdmin {
     properties.put(KAFKA_REPLICATION_FACTOR, 1);
     properties.put(ZOOKEEPER_ADDRESS, zkAddress);
     properties.put(CLUSTER_NAME, clusterName);
-    properties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getAddress());
+    properties.put(KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
     properties.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, MAX_NUMBER_OF_PARTITION);
     properties.put(DEFAULT_PARTITION_SIZE, 10);
     properties.put(CLUSTER_TO_D2, TestUtils.getClusterToD2String(Collections.singletonMap(clusterName, "dummy_d2")));
+    properties.put(
+        CLUSTER_TO_SERVER_D2,
+        TestUtils.getClusterToD2String(Collections.singletonMap(clusterName, "dummy_server_d2")));
     properties.put(CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL, true);
     properties.put(ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED, false);
     properties.put(PARTICIPANT_MESSAGE_STORE_ENABLED, true);

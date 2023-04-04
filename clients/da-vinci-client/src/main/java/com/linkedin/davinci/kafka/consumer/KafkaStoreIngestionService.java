@@ -59,10 +59,9 @@ import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.SharedKafkaProducerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
-import com.linkedin.venice.pushmonitor.ExecutionStatus;
-import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -75,6 +74,7 @@ import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ComplementSet;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DiskUsage;
+import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
@@ -213,7 +213,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       StorageEngineBackedCompressorFactory compressorFactory,
       Optional<ObjectCacheBackend> cacheBackend,
       boolean isDaVinciClient,
-      RemoteIngestionRepairService remoteIngestionRepairService) {
+      RemoteIngestionRepairService remoteIngestionRepairService,
+      PubSubClientsFactory pubSubClientsFactory) {
     this.cacheBackend = cacheBackend;
     this.storageMetadataService = storageMetadataService;
     this.metadataRepo = metadataRepo;
@@ -263,8 +264,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       veniceWriterProperties.put(KAFKA_LINGER_MS, DEFAULT_KAFKA_LINGER_MS);
     }
 
-    // TODO: Once we start testing with other PubSub systems, we'll inject corresponding systems
-    // PubSubProducerAdapterFactory
+    // TODO: Move shared producer factory construction to upper layer and pass it in here.
     LOGGER.info(
         "Shared kafka producer service is {}",
         serverConfig.isSharedKafkaProducerEnabled() ? "enabled" : "disabled");
@@ -276,7 +276,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           metricsRepository,
           serverConfig.getKafkaProducerMetrics());
     } else {
-      producerAdapterFactory = new ApacheKafkaProducerAdapterFactory();
+      producerAdapterFactory = pubSubClientsFactory.getProducerAdapterFactory();
     }
 
     VeniceWriterFactory veniceWriterFactory =
@@ -1098,6 +1098,11 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           partitionerParams,
           version.getPartitionerConfig().getAmplificationFactor());
 
+      List<Integer> versions = new ArrayList<>();
+      for (Version v: store.getVersions()) {
+        versions.add(v.getNumber());
+      }
+
       Map<CharSequence, CharSequence> keySchema = Collections.singletonMap(
           String.valueOf(schemaRepo.getKeySchema(storeName).getId()),
           schemaRepo.getKeySchema(storeName).getSchema().toString());
@@ -1114,20 +1119,21 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         if (resource.endsWith("v" + store.getCurrentVersion())) {
           for (Partition partition: customizedViewRepository.getPartitionAssignments(resource).getAllPartitions()) {
             List<CharSequence> instances = new ArrayList<>();
-            for (ReplicaState replicaState: customizedViewRepository.getReplicaStates(resource, partition.getId())) {
-              if (replicaState.getVenicePushStatus().equals(ExecutionStatus.COMPLETED.name())) {
-                instances.add(replicaState.getParticipantId());
-              }
+            for (Instance instance: customizedViewRepository.getReadyToServeInstances(resource, partition.getId())) {
+              instances.add(instance.getUrl(true));
             }
             routingInfo.put(String.valueOf(partition.getId()), instances);
           }
         }
       }
 
-      Map<CharSequence, Integer> helixGroupInfo =
-          new HashMap<>(helixInstanceConfigRepository.getInstanceGroupIdMapping());
+      Map<CharSequence, Integer> helixGroupInfo = new HashMap<>();
+      for (Map.Entry<String, Integer> entry: helixInstanceConfigRepository.getInstanceGroupIdMapping().entrySet()) {
+        helixGroupInfo.put(HelixUtils.instanceIdToUrl(entry.getKey()), entry.getValue());
+      }
 
       response.setVersionMetadata(versionProperties);
+      response.setVersions(versions);
       response.setKeySchema(keySchema);
       response.setValueSchemas(valueSchemas);
       response.setLatestSuperSetValueSchemaId(latestSuperSetValueSchemaId);

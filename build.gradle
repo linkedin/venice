@@ -335,6 +335,9 @@ subprojects {
     maxParallelForks = Integer.valueOf(System.getProperty('maxParallelForks', '4'))
     minHeapSize = System.getProperty('minHeapSize', '1g')
     maxHeapSize = System.getProperty('maxHeapSize', '4g')
+
+    systemProperty 'pubSubBrokerFactory', System.getProperty('pubSubBrokerFactory', "com.linkedin.venice.integration.utils.KafkaBrokerFactory")
+
     System.getProperty('jvmArgs')?.eachMatch(/(?:[^\s'"]+|'[^']*'|"[^"]*")+/) { jvmArgs it }
 
     doFirst {
@@ -593,6 +596,7 @@ ext.createDiffFile = { ->
         ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceParentHelixAdmin.java',
         ':!internal/venice-test-common/*',
         ':!services/venice-server/src/main/java/com/linkedin/venice/server/VeniceServer.java',
+        ':!internal/venice-common/src/main/java/com/linkedin/venice/controllerapi/ControllerClient.java',
 
         // Other files that have tests but are not executed in the regular unit test task
         ':!internal/alpini/*'

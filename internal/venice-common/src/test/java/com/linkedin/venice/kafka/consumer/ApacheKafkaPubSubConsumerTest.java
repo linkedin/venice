@@ -9,6 +9,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.time.Duration;
 import java.util.Collections;
@@ -26,7 +27,9 @@ import org.testng.annotations.Test;
 
 
 public class ApacheKafkaPubSubConsumerTest {
-  private ApacheKafkaConsumer apacheKafkaConsumer;
+  private ApacheKafkaConsumer apacheKafkaConsumerWithOffsetTrackingDisabled;
+  private ApacheKafkaConsumer apacheKafkaConsumerWithOffsetTrackingEnabled;
+
   private KafkaConsumer<byte[], byte[]> delegateKafkaConsumer;
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
@@ -38,50 +41,57 @@ public class ApacheKafkaPubSubConsumerTest {
     properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     properties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, "broker address");
     KafkaPubSubMessageDeserializer kafkaPubSubMessageDeserializer = mock(KafkaPubSubMessageDeserializer.class);
-    apacheKafkaConsumer = new ApacheKafkaConsumer(
+    apacheKafkaConsumerWithOffsetTrackingDisabled = new ApacheKafkaConsumer(
         delegateKafkaConsumer,
         new VeniceProperties(properties),
         false,
         kafkaPubSubMessageDeserializer);
+
+    apacheKafkaConsumerWithOffsetTrackingEnabled = new ApacheKafkaConsumer(
+        delegateKafkaConsumer,
+        new VeniceProperties(properties),
+        true,
+        kafkaPubSubMessageDeserializer);
   }
 
-  @Test
-  public void testApacheKafkaConsumer() {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testApacheKafkaConsumer(boolean enabledOffsetCollection) {
+    ApacheKafkaConsumer consumer = enabledOffsetCollection
+        ? apacheKafkaConsumerWithOffsetTrackingEnabled
+        : apacheKafkaConsumerWithOffsetTrackingDisabled;
     PubSubTopic testTopic = pubSubTopicRepository.getTopic("test_topic_v1");
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(testTopic, 1);
     TopicPartition topicPartition = new TopicPartition(testTopic.getName(), pubSubTopicPartition.getPartitionNumber());
-    Assert.assertThrows(
-        UnsubscribedTopicPartitionException.class,
-        () -> apacheKafkaConsumer.resetOffset(pubSubTopicPartition));
+    Assert.assertThrows(UnsubscribedTopicPartitionException.class, () -> consumer.resetOffset(pubSubTopicPartition));
 
     // Test subscribe
-    apacheKafkaConsumer.subscribe(pubSubTopicPartition, OffsetRecord.LOWEST_OFFSET);
+    consumer.subscribe(pubSubTopicPartition, OffsetRecord.LOWEST_OFFSET);
     verify(delegateKafkaConsumer).assign(Collections.singletonList(topicPartition));
     verify(delegateKafkaConsumer).seekToBeginning(Collections.singletonList(topicPartition));
 
     // Test assignment check.
     doReturn(Collections.singleton(topicPartition)).when(delegateKafkaConsumer).assignment();
-    Assert.assertTrue(apacheKafkaConsumer.hasAnySubscription());
+    Assert.assertTrue(consumer.hasAnySubscription());
 
     // Test pause and resume
-    apacheKafkaConsumer.pause(pubSubTopicPartition);
+    consumer.pause(pubSubTopicPartition);
     verify(delegateKafkaConsumer).pause(Collections.singletonList(topicPartition));
-    apacheKafkaConsumer.resume(pubSubTopicPartition);
+    consumer.resume(pubSubTopicPartition);
     verify(delegateKafkaConsumer).resume(Collections.singletonList(topicPartition));
 
     // Test reset offset
-    apacheKafkaConsumer.resetOffset(pubSubTopicPartition);
+    consumer.resetOffset(pubSubTopicPartition);
     verify(delegateKafkaConsumer, times(2)).seekToBeginning(Collections.singletonList(topicPartition));
 
     // Test unsubscribe
-    apacheKafkaConsumer.unSubscribe(pubSubTopicPartition);
+    consumer.unSubscribe(pubSubTopicPartition);
     verify(delegateKafkaConsumer).assign(Collections.EMPTY_LIST);
 
     // Test subscribe with not seek beginning.
     int lastReadOffset = 0;
     doReturn(Collections.EMPTY_SET).when(delegateKafkaConsumer).assignment();
-    Assert.assertFalse(apacheKafkaConsumer.hasAnySubscription());
-    apacheKafkaConsumer.subscribe(pubSubTopicPartition, lastReadOffset);
+    Assert.assertFalse(consumer.hasAnySubscription());
+    consumer.subscribe(pubSubTopicPartition, lastReadOffset);
     verify(delegateKafkaConsumer).seek(topicPartition, lastReadOffset + 1);
 
     // Test batch unsubscribe.
@@ -95,7 +105,7 @@ public class ApacheKafkaPubSubConsumerTest {
       pubSubTopicPartitionsToUnSub.add(pubSubTopicPartitionToSub);
       allTopicPartitions.add(new TopicPartition(testTopic.getName(), i));
       allPubSubTopicPartitions.add(pubSubTopicPartitionToSub);
-      apacheKafkaConsumer.subscribe(pubSubTopicPartitionToSub, -1);
+      consumer.subscribe(pubSubTopicPartitionToSub, -1);
     }
     for (int i = 0; i < 3; i++) {
       PubSubTopicPartition pubSubTopicPartitionToUnSub = new PubSubTopicPartitionImpl(testTopicV2, i);
@@ -103,16 +113,16 @@ public class ApacheKafkaPubSubConsumerTest {
       topicPartitionsLeft.add(topicPartitionLeft);
       allTopicPartitions.add(topicPartitionLeft);
       allPubSubTopicPartitions.add(pubSubTopicPartitionToUnSub);
-      apacheKafkaConsumer.subscribe(pubSubTopicPartitionToUnSub, -1);
+      consumer.subscribe(pubSubTopicPartitionToUnSub, -1);
     }
     doReturn(allTopicPartitions).when(delegateKafkaConsumer).assignment();
-    Assert.assertTrue(apacheKafkaConsumer.hasSubscription(pubSubTopicPartition));
-    Assert.assertEquals(apacheKafkaConsumer.getAssignment(), allPubSubTopicPartitions);
-    apacheKafkaConsumer.batchUnsubscribe(pubSubTopicPartitionsToUnSub);
+    Assert.assertTrue(consumer.hasSubscription(pubSubTopicPartition));
+    Assert.assertEquals(consumer.getAssignment(), allPubSubTopicPartitions);
+    consumer.batchUnsubscribe(pubSubTopicPartitionsToUnSub);
     verify(delegateKafkaConsumer).assign(topicPartitionsLeft);
 
     // Test close
-    apacheKafkaConsumer.close();
+    consumer.close();
     verify(delegateKafkaConsumer).close(eq(Duration.ZERO));
   }
 

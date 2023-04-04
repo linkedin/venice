@@ -32,6 +32,9 @@ import java.util.function.Supplier;
  * routine will happen at most once.
  */
 public interface Lazy<T> {
+  Lazy<Boolean> FALSE = Lazy.of(() -> false);
+  Lazy<Boolean> TRUE = Lazy.of(() -> true);
+
   /**
    * @param supplier to initialize the wrapped value
    * @return an instance of {@link Lazy} which will execute the {@param supplier} if needed

@@ -153,6 +153,10 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getClusterToD2Map();
   }
 
+  public Map<String, String> getClusterToServerD2Map() {
+    return getCommonConfig().getClusterToServerD2Map();
+  }
+
   public int getTopicManagerKafkaOperationTimeOutMs() {
     return getCommonConfig().getTopicManagerKafkaOperationTimeOutMs();
   }

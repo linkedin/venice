@@ -33,6 +33,7 @@ public class TestD2ControllerClient {
   private static final String TEST_ZK_ADDRESS = "localhost:2181";
   private static final String TEST_CONTROLLER_D2_SERVICE = "ChildController";
   private static final String TEST_ROUTER_D2_SERVICE = "VeniceRouter";
+  private static final String TEST_SERVER_D2_SERVICE = "VeniceServer";
 
   @BeforeClass(alwaysRun = true)
   public void setUp() {
@@ -57,6 +58,7 @@ public class TestD2ControllerClient {
     D2ServiceDiscoveryResponse serviceDiscoveryResponse = new D2ServiceDiscoveryResponse();
     serviceDiscoveryResponse.setCluster(TEST_CLUSTER);
     serviceDiscoveryResponse.setD2Service(TEST_ROUTER_D2_SERVICE);
+    serviceDiscoveryResponse.setServerD2Service(TEST_SERVER_D2_SERVICE);
     serviceDiscoveryResponse.setName(TEST_STORE);
 
     String discoverClusterResponse = ObjectMapperFactory.getInstance().writeValueAsString(serviceDiscoveryResponse);

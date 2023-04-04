@@ -1,5 +1,7 @@
 package com.linkedin.venice.schema.writecompute;
 
+import static com.linkedin.venice.schema.SchemaUtils.isArrayField;
+import static com.linkedin.venice.schema.SchemaUtils.isMapField;
 import static com.linkedin.venice.schema.rmd.RmdConstants.TIMESTAMP_FIELD_NAME;
 
 import com.linkedin.venice.schema.SchemaUtils;
@@ -122,9 +124,7 @@ public class WriteComputeHandlerV2 extends WriteComputeHandlerV1 {
       long modifyTimestamp,
       GenericRecord currValueRecord,
       String fieldName) {
-    Object fieldValue = currValueRecord.get(fieldName);
-    if (fieldValue instanceof List) {
-
+    if (isArrayField(currValueRecord, fieldName)) {
       return collectionFieldOperationHandler.handleModifyList(
           modifyTimestamp,
           new CollectionRmdTimestamp(fieldTimestampRecord),
@@ -133,8 +133,9 @@ public class WriteComputeHandlerV2 extends WriteComputeHandlerV1 {
           (List<Object>) fieldWriteComputeRecord.get(WriteComputeConstants.SET_UNION),
           (List<Object>) fieldWriteComputeRecord.get(WriteComputeConstants.SET_DIFF));
 
-    } else if (fieldValue instanceof Map) {
-      if (!(fieldValue instanceof IndexedHashMap)) {
+    } else if (isMapField(currValueRecord, fieldName)) {
+      Object fieldValue = currValueRecord.get(fieldName);
+      if (fieldValue != null && !(fieldValue instanceof IndexedHashMap)) {
         // if the current map field is not of IndexedHashMap type and is empty then replace this field with an empty
         // IndexedHashMap
         if (((Map) fieldValue).isEmpty()) {
@@ -151,7 +152,6 @@ public class WriteComputeHandlerV2 extends WriteComputeHandlerV1 {
           fieldName,
           (Map<String, Object>) fieldWriteComputeRecord.get(WriteComputeConstants.MAP_UNION),
           (List<String>) fieldWriteComputeRecord.get(WriteComputeConstants.MAP_DIFF));
-
     } else {
       throw new IllegalArgumentException(
           String.format(

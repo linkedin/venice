@@ -8,6 +8,7 @@ import com.linkedin.venice.fastclient.schema.TestValueSchema;
 import com.linkedin.venice.fastclient.stats.FastClientStats;
 import com.linkedin.venice.fastclient.utils.AbstractClientEndToEndSetup;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.utils.DataProviderUtils;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
@@ -111,8 +112,8 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
   /**
    * Creates a batchget request which uses scatter gather to fetch all keys from different replicas.
    */
-  @Test
-  public void testBatchGetGenericClient() throws Exception {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testBatchGetGenericClient(boolean useRequestBasedMetadata) throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
@@ -123,7 +124,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
             .setRoutingPendingRequestCounterInstanceBlockThreshold(recordCnt + 1);
 
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
-        getGenericFastClient(clientConfigBuilder, new MetricsRepository());
+        getGenericFastClient(clientConfigBuilder, new MetricsRepository(), useRequestBasedMetadata);
 
     Set<String> keys = new HashSet<>();
     for (int i = 0; i < recordCnt; ++i) {
@@ -142,8 +143,8 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
     printAllStats();
   }
 
-  @Test
-  public void testBatchGetSpecificClient() throws Exception {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testBatchGetSpecificClient(boolean useRequestBasedMetadata) throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
@@ -153,8 +154,11 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
             // TODO: this needs to be revisited to see how much this should be set. Current default is 50.
             .setRoutingPendingRequestCounterInstanceBlockThreshold(recordCnt);
 
-    AvroSpecificStoreClient<String, TestValueSchema> specificFastClient =
-        getSpecificFastClient(clientConfigBuilder, new MetricsRepository(), TestValueSchema.class);
+    AvroSpecificStoreClient<String, TestValueSchema> specificFastClient = getSpecificFastClient(
+        clientConfigBuilder,
+        new MetricsRepository(),
+        TestValueSchema.class,
+        useRequestBasedMetadata);
 
     Set<String> keys = new HashSet<>();
     for (int i = 0; i < recordCnt; ++i) {
@@ -171,8 +175,8 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
     printAllStats();
   }
 
-  @Test
-  public void testStreamingBatchGetGenericClient() throws Exception {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testStreamingBatchGetGenericClient(boolean useRequestBasedMetadata) throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
@@ -181,7 +185,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
             .setMaxAllowedKeyCntInBatchGetReq(2);
 
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
-        getGenericFastClient(clientConfigBuilder, new MetricsRepository());
+        getGenericFastClient(clientConfigBuilder, new MetricsRepository(), useRequestBasedMetadata);
 
     Set<String> keys = new HashSet<>();
     for (int i = 0; i < recordCnt; ++i) {
@@ -218,8 +222,8 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
         "Incorrect non existing key size . Expected  1 got " + veniceResponseMap.getNonExistingKeys().size());
   }
 
-  @Test
-  public void testStreamingBatchGetWithCallbackGenericClient() throws Exception {
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testStreamingBatchGetWithCallbackGenericClient(boolean useRequestBasedMetadata) throws Exception {
     ClientConfig.ClientConfigBuilder clientConfigBuilder =
         new ClientConfig.ClientConfigBuilder<>().setStoreName(storeName)
             .setR2Client(r2Client)
@@ -228,7 +232,7 @@ public class BatchGetAvroStoreClientTest extends AbstractClientEndToEndSetup {
             .setMaxAllowedKeyCntInBatchGetReq(2);
 
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
-        getGenericFastClient(clientConfigBuilder, new MetricsRepository());
+        getGenericFastClient(clientConfigBuilder, new MetricsRepository(), useRequestBasedMetadata);
     Set<String> keys = new HashSet<>();
     for (int i = 0; i < recordCnt; ++i) {
       keys.add(keyPrefix + i);

@@ -191,7 +191,7 @@ public class StorageNodeComputeTest {
     ControllerResponse controllerResponse = veniceCluster.updateStore(storeName, params);
     Assert.assertFalse(controllerResponse.isError(), "Error updating store settings: " + controllerResponse.getError());
 
-    VersionCreationResponse newVersion = veniceCluster.getNewVersion(storeName, 1024, false);
+    VersionCreationResponse newVersion = veniceCluster.getNewVersion(storeName, false);
     Assert.assertFalse(newVersion.isError(), "Error creation new version: " + newVersion.getError());
     final int pushVersion = newVersion.getVersion();
     String topic = newVersion.getKafkaTopic();
@@ -200,8 +200,11 @@ public class StorageNodeComputeTest {
     String valuePrefix = "value_";
 
     VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress());
-    try (VeniceWriter<Object, byte[], byte[]> veniceWriter =
-        vwFactory.createVeniceWriter(topic, keySerializer, new DefaultSerializer(), valueLargerThan1MB.config)) {
+    try (VeniceWriter<Object, byte[], byte[]> veniceWriter = vwFactory.createVeniceWriter(
+        new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer)
+            .setValueSerializer(new DefaultSerializer())
+            .setChunkingEnabled(valueLargerThan1MB.config)
+            .build())) {
       pushSyntheticDataForCompute(
           topic,
           keyPrefix,
@@ -304,7 +307,7 @@ public class StorageNodeComputeTest {
     params.setReadComputationEnabled(true);
     veniceCluster.updateStore(storeName, params);
 
-    VersionCreationResponse newVersion = veniceCluster.getNewVersion(storeName, 1024);
+    VersionCreationResponse newVersion = veniceCluster.getNewVersion(storeName);
     final int pushVersion = newVersion.getVersion();
 
     try (

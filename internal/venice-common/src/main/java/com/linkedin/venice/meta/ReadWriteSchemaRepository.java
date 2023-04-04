@@ -60,8 +60,6 @@ public interface ReadWriteSchemaRepository extends ReadOnlySchemaRepository {
       String valueSchemaStr,
       DirectionalSchemaCompatibilityType expectedCompatibilityType);
 
-  int getValueSchemaIdIgnoreFieldOrder(String storeName, SchemaEntry newSchemaEntry);
-
   int preCheckDerivedSchemaAndGetNextAvailableId(String storeName, int valueSchemaId, String derivedSchemaStr);
 
   RmdSchemaEntry addReplicationMetadataSchema(

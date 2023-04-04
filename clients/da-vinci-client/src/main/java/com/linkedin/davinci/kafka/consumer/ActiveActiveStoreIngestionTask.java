@@ -442,6 +442,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           storeName,
           versionNumber,
           LatencyUtils.getLatencyInMS(beforeProcessingRecordTimestamp));
+
+      // Record the last ignored offset
+      partitionConsumptionState
+          .updateLatestIgnoredUpstreamRTOffset(kafkaClusterIdToUrlMap.get(kafkaClusterId), sourceOffset);
     } else {
       validatePostOperationResultsAndRecord(mergeConflictResult, offsetSumPreOperation, recordTimestampsPreOperation);
 
@@ -669,6 +673,33 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           kafkaUrl,
           kafkaClusterId,
           beforeProcessingRecordTimestamp);
+    }
+  }
+
+  @Override
+  protected void produceToLocalKafka(
+      PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
+      PartitionConsumptionState partitionConsumptionState,
+      LeaderProducedRecordContext leaderProducedRecordContext,
+      BiConsumer<ChunkAwareCallback, LeaderMetadataWrapper> produceFunction,
+      int subPartition,
+      String kafkaUrl,
+      int kafkaClusterId,
+      long beforeProcessingRecordTimestamp) {
+    super.produceToLocalKafka(
+        consumerRecord,
+        partitionConsumptionState,
+        leaderProducedRecordContext,
+        produceFunction,
+        subPartition,
+        kafkaUrl,
+        kafkaClusterId,
+        beforeProcessingRecordTimestamp);
+    // Update the partition consumption state to say that we've transmitted the message to kafka (but haven't
+    // necessarily received an ack back yet).
+    if (partitionConsumptionState.getLeaderFollowerState() == LEADER && partitionConsumptionState.isHybrid()
+        && consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()) {
+      partitionConsumptionState.updateLatestRTOffsetTriedToProduceToVTMap(kafkaUrl, consumerRecord.getOffset());
     }
   }
 
@@ -1070,7 +1101,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   protected long getLatestPersistedUpstreamOffsetForHybridOffsetLagMeasurement(
       PartitionConsumptionState pcs,
       String upstreamKafkaUrl) {
-    return pcs.getLatestProcessedUpstreamRTOffset(upstreamKafkaUrl);
+    return pcs.getLatestProcessedUpstreamRTOffsetWithIgnoredMessages(upstreamKafkaUrl);
   }
 
   /**

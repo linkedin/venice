@@ -32,7 +32,6 @@ import org.apache.logging.log4j.Logger;
  */
 public class UserSystemStoreLifeCycleHelper {
   static final String AUTO_META_SYSTEM_STORE_PUSH_ID_PREFIX = "Auto_meta_system_store_empty_push_";
-  static final long DEFAULT_META_SYSTEM_STORE_SIZE = 1024 * 1024 * 1024;
   private static final VeniceSystemStoreType[] aclRequiredSystemStores =
       new VeniceSystemStoreType[] { VeniceSystemStoreType.META_STORE, VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE };
   private static final Set<VeniceSystemStoreType> aclRequiredSystemStoresSet =
@@ -80,8 +79,7 @@ public class UserSystemStoreLifeCycleHelper {
       final int systemStoreLargestUsedVersionNumber =
           parentAdmin.getLargestUsedVersionFromStoreGraveyard(clusterName, systemStoreName);
 
-      int partitionCount =
-          parentAdmin.calculateNumberOfPartitions(clusterName, systemStoreName, DEFAULT_META_SYSTEM_STORE_SIZE);
+      int partitionCount = parentAdmin.calculateNumberOfPartitions(clusterName, systemStoreName);
       int replicationFactor = parentAdmin.getReplicationFactor(clusterName, systemStoreName);
       Version version;
       if (systemStoreLargestUsedVersionNumber == Store.NON_EXISTING_VERSION) {

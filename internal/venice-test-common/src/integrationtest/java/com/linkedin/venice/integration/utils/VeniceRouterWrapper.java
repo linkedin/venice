@@ -2,6 +2,7 @@ package com.linkedin.venice.integration.utils;
 
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
 import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_D2;
+import static com.linkedin.venice.ConfigKeys.CLUSTER_TO_SERVER_D2;
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
 import static com.linkedin.venice.ConfigKeys.LISTENER_SSL_PORT;
@@ -81,9 +82,10 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
       String regionName,
       String clusterName,
       ZkServerWrapper zkServerWrapper,
-      KafkaBrokerWrapper kafkaBrokerWrapper,
+      PubSubBrokerWrapper pubSubBrokerWrapper,
       boolean sslToStorageNodes,
       Map<String, String> clusterToD2,
+      Map<String, String> clusterToServerD2,
       Properties properties) {
     String zkAddress = zkServerWrapper.getAddress();
 
@@ -97,6 +99,16 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
           String.format("clusterToD2 [%s] doesn't contain clusterName [%s]", clusterToD2, clusterName));
     }
 
+    Map<String, String> finalClusterToServerD2;
+    if (clusterToServerD2 == null || clusterToServerD2.isEmpty()) {
+      finalClusterToServerD2 = Collections.singletonMap(clusterName, Utils.getUniqueString("server_d2_service"));
+    } else if (clusterToServerD2.containsKey(clusterName)) {
+      finalClusterToServerD2 = clusterToServerD2;
+    } else {
+      throw new IllegalArgumentException(
+          String.format("clusterToServerD2 [%s] doesn't contain clusterName [%s]", clusterToServerD2, clusterName));
+    }
+
     return (serviceName, dataDirectory) -> {
       int port = Utils.getFreePort();
       int sslPort = Utils.getFreePort();
@@ -104,9 +116,10 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
           .put(LISTENER_PORT, port)
           .put(LISTENER_SSL_PORT, sslPort)
           .put(ZOOKEEPER_ADDRESS, zkAddress)
-          .put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getAddress())
+          .put(KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress())
           .put(SSL_TO_STORAGE_NODES, sslToStorageNodes)
           .put(CLUSTER_TO_D2, TestUtils.getClusterToD2String(finalClusterToD2))
+          .put(CLUSTER_TO_SERVER_D2, TestUtils.getClusterToD2String(finalClusterToServerD2))
           .put(ROUTER_THROTTLE_CLIENT_SSL_HANDSHAKES, true)
           // Below configs are to attempt to minimize resource utilization in tests
           .put(ROUTER_CONNECTION_LIMIT, 20)
