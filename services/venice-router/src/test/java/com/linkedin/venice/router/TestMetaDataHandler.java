@@ -355,60 +355,6 @@ public class TestMetaDataHandler {
   }
 
   @Test
-  public void testSupersetSchemaLookup() throws IOException {
-    String storeName = "test_store";
-    String valueSchemaStr = "\"string\"";
-    String clusterName = "test-cluster";
-    int valueSchemaId = 1;
-    // Mock ReadOnlySchemaRepository
-    ReadOnlySchemaRepository schemaRepo = Mockito.mock(ReadOnlySchemaRepository.class);
-    SchemaEntry supersetSchemaEntry = new SchemaEntry(valueSchemaId, valueSchemaStr);
-    Mockito.doReturn(supersetSchemaEntry).when(schemaRepo).getSupersetSchema(storeName);
-
-    FullHttpResponse response = passRequestToMetadataHandler(
-        "http://myRouterHost:4567/superset_schema/" + storeName,
-        null,
-        schemaRepo,
-        Mockito.mock(HelixReadOnlyStoreConfigRepository.class),
-        Collections.emptyMap(),
-        Collections.emptyMap());
-
-    Assert.assertEquals(response.status().code(), 200);
-    Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");
-    SchemaResponse schemaResponse = OBJECT_MAPPER.readValue(response.content().array(), SchemaResponse.class);
-
-    Assert.assertEquals(schemaResponse.getName(), storeName);
-    Assert.assertEquals(schemaResponse.getCluster(), clusterName);
-    Assert.assertFalse(schemaResponse.isError());
-    Assert.assertEquals(schemaResponse.getId(), valueSchemaId);
-    Assert.assertEquals(schemaResponse.getSchemaStr(), valueSchemaStr);
-  }
-
-  @Test
-  public void testSupersetSchemaLookupWithNoSupersetSchema() throws IOException {
-    String storeName = "test_store";
-
-    // Mock ReadOnlySchemaRepository
-    ReadOnlySchemaRepository schemaRepo = Mockito.mock(ReadOnlySchemaRepository.class);
-    Mockito.doReturn(null).when(schemaRepo).getSupersetSchema(storeName);
-
-    FullHttpResponse response = passRequestToMetadataHandler(
-        "http://myRouterHost:4567/superset_schema/" + storeName,
-        null,
-        schemaRepo,
-        Mockito.mock(HelixReadOnlyStoreConfigRepository.class),
-        Collections.emptyMap(),
-        Collections.emptyMap());
-
-    Assert.assertEquals(response.status().code(), 404);
-  }
-
-  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Resource name required.*")
-  public void testInvalidSupersetSchemaPath() throws IOException {
-    passRequestToMetadataHandler("http://myRouterHost:4567/superset_schema/", null, null);
-  }
-
-  @Test
   public void testUpdateSchemaLookup() throws IOException {
     String storeName = "test_store";
     String valueSchemaStr1 = "\"string\"";
