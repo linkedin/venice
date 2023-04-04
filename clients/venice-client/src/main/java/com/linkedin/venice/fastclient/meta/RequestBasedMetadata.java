@@ -163,7 +163,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       MetadataResponseRecord metadataResponse = metadataResponseDeserializer.deserialize(body);
       VersionProperties versionMetadata = metadataResponse.getVersionMetadata();
 
-      if (versionMetadata != null && versionMetadata.getCurrentVersion() != getCurrentStoreVersion()) {
+      if (versionMetadata != null) {
         int fetchedVersion = versionMetadata.getCurrentVersion();
         newVersion = true;
         // call the DICTIONARY endpoint if needed

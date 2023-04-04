@@ -133,8 +133,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private final ReadOnlyStoreRepository metadataRepo;
 
-  private final ReadOnlySchemaRepository schemaRepo;
-
   private HelixCustomizedViewOfflinePushRepository customizedViewRepository;
 
   private HelixInstanceConfigRepository helixInstanceConfigRepository;
@@ -193,6 +191,11 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
+  /**
+   * Cache of storeName to MetadataResponse that we maintain in a store change listener.
+   */
+  private final Map<String, MetadataResponse> metadataResponseMap;
+
   public KafkaStoreIngestionService(
       StorageEngineRepository storageEngineRepository,
       VeniceConfigLoader veniceConfigLoader,
@@ -218,7 +221,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     this.cacheBackend = cacheBackend;
     this.storageMetadataService = storageMetadataService;
     this.metadataRepo = metadataRepo;
-    this.schemaRepo = schemaRepo;
     this.topicNameToIngestionTaskMap = new ConcurrentSkipListMap<>();
     this.veniceConfigLoader = veniceConfigLoader;
     this.isIsolatedIngestion = isIsolatedIngestion;
@@ -334,6 +336,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     VeniceNotifier notifier = new LogNotifier();
     this.leaderFollowerNotifiers.add(notifier);
 
+    this.metadataResponseMap = new HashMap<>();
+
     /**
      * Only Venice SN will pass this param: {@param zkSharedSchemaRepository} since {@link metaStoreWriter} is
      * used to report the replica status from Venice SN.
@@ -350,6 +354,67 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           Instance.fromHostAndPort(Utils.getHostName(), serverConfig.getListenerPort()));
       LOGGER.info("MetaSystemStoreReplicaStatusNotifier was initialized");
       metadataRepo.registerStoreDataChangedListener(new StoreDataChangedListener() {
+        @Override
+        public void handleStoreChanged(Store store) {
+          Version version = store.getVersion(store.getCurrentVersion()).get();
+          Map<CharSequence, CharSequence> partitionerParams =
+              new HashMap<>(version.getPartitionerConfig().getPartitionerParams());
+          VersionProperties versionProperties = new VersionProperties(
+              store.getCurrentVersion(),
+              version.getCompressionStrategy().getValue(),
+              version.getPartitionCount(),
+              version.getPartitionerConfig().getPartitionerClass(),
+              partitionerParams,
+              version.getPartitionerConfig().getAmplificationFactor());
+
+          List<Integer> versions = new ArrayList<>();
+          for (Version v: store.getVersions()) {
+            versions.add(v.getNumber());
+          }
+
+          String storeName = store.getName();
+          Map<CharSequence, CharSequence> keySchema = Collections.singletonMap(
+              String.valueOf(schemaRepo.getKeySchema(storeName).getId()),
+              schemaRepo.getKeySchema(storeName).getSchema().toString());
+          Map<CharSequence, CharSequence> valueSchemas = new HashMap<>();
+          for (SchemaEntry schemaEntry: schemaRepo.getValueSchemas(storeName)) {
+            String valueSchemaStr = schemaEntry.getSchema().toString();
+            int valueSchemaId = schemaRepo.getValueSchemaId(storeName, valueSchemaStr);
+            valueSchemas.put(String.valueOf(valueSchemaId), valueSchemaStr);
+          }
+          int latestSuperSetValueSchemaId = store.getLatestSuperSetValueSchemaId();
+
+          Map<CharSequence, List<CharSequence>> routingInfo = new HashMap<>();
+          for (String resource: customizedViewRepository.getResourceAssignment().getAssignedResources()) {
+            if (resource.endsWith("v" + store.getCurrentVersion())) {
+              for (Partition partition: customizedViewRepository.getPartitionAssignments(resource).getAllPartitions()) {
+                List<CharSequence> instances = new ArrayList<>();
+                for (Instance instance: customizedViewRepository
+                    .getReadyToServeInstances(resource, partition.getId())) {
+                  instances.add(instance.getUrl(true));
+                }
+                routingInfo.put(String.valueOf(partition.getId()), instances);
+              }
+            }
+          }
+
+          Map<CharSequence, Integer> helixGroupInfo = new HashMap<>();
+          for (Map.Entry<String, Integer> entry: helixInstanceConfigRepository.getInstanceGroupIdMapping().entrySet()) {
+            helixGroupInfo.put(HelixUtils.instanceIdToUrl(entry.getKey()), entry.getValue());
+          }
+
+          MetadataResponse response = new MetadataResponse(
+              versionProperties,
+              versions,
+              keySchema,
+              valueSchemas,
+              latestSuperSetValueSchemaId,
+              routingInfo,
+              helixGroupInfo);
+
+          metadataResponseMap.put(storeName, response);
+        }
+
         @Override
         public void handleStoreDeleted(Store store) {
           String storeName = store.getName();
@@ -1075,80 +1140,25 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   /**
-   * Return the metadata information for the given store. The data is retrieved from its respective repositories which
-   * originate from the VeniceServer.
+   * Return the metadata information for the given store. The data is retrieved from the server cache.
    * @param storeName
    * @return {@link MetadataResponse} object that holds all the information required for answering a server metadata
    * fetch request.
    */
   @Override
   public MetadataResponse getMetadata(String storeName, int hash) {
-    MetadataResponse response = new MetadataResponse();
-    try {
-      Store store = metadataRepo.getStoreOrThrow(storeName);
+    MetadataResponse cachedMetadata = metadataResponseMap.get(storeName);
 
-      Version version = store.getVersion(store.getCurrentVersion()).get();
-      Map<CharSequence, CharSequence> partitionerParams =
-          new HashMap<>(version.getPartitionerConfig().getPartitionerParams());
-      VersionProperties versionProperties = new VersionProperties(
-          store.getCurrentVersion(),
-          version.getCompressionStrategy().getValue(),
-          version.getPartitionCount(),
-          version.getPartitionerConfig().getPartitionerClass(),
-          partitionerParams,
-          version.getPartitionerConfig().getAmplificationFactor());
-
-      List<Integer> versions = new ArrayList<>();
-      for (Version v: store.getVersions()) {
-        versions.add(v.getNumber());
+    if (cachedMetadata != null) {
+      if (cachedMetadata.getHash() != hash) {
+        return cachedMetadata;
       }
-
-      Map<CharSequence, CharSequence> keySchema = Collections.singletonMap(
-          String.valueOf(schemaRepo.getKeySchema(storeName).getId()),
-          schemaRepo.getKeySchema(storeName).getSchema().toString());
-      Map<CharSequence, CharSequence> valueSchemas = new HashMap<>();
-      for (SchemaEntry schemaEntry: schemaRepo.getValueSchemas(storeName)) {
-        String valueSchemaStr = schemaEntry.getSchema().toString();
-        int valueSchemaId = schemaRepo.getValueSchemaId(storeName, valueSchemaStr);
-        valueSchemas.put(String.valueOf(valueSchemaId), valueSchemaStr);
-      }
-      int latestSuperSetValueSchemaId = store.getLatestSuperSetValueSchemaId();
-
-      Map<CharSequence, List<CharSequence>> routingInfo = new HashMap<>();
-      for (String resource: customizedViewRepository.getResourceAssignment().getAssignedResources()) {
-        if (resource.endsWith("v" + store.getCurrentVersion())) {
-          for (Partition partition: customizedViewRepository.getPartitionAssignments(resource).getAllPartitions()) {
-            List<CharSequence> instances = new ArrayList<>();
-            for (Instance instance: customizedViewRepository.getReadyToServeInstances(resource, partition.getId())) {
-              instances.add(instance.getUrl(true));
-            }
-            routingInfo.put(String.valueOf(partition.getId()), instances);
-          }
-        }
-      }
-
-      Map<CharSequence, Integer> helixGroupInfo = new HashMap<>();
-      for (Map.Entry<String, Integer> entry: helixInstanceConfigRepository.getInstanceGroupIdMapping().entrySet()) {
-        helixGroupInfo.put(HelixUtils.instanceIdToUrl(entry.getKey()), entry.getValue());
-      }
-
-      response.setVersionMetadata(versionProperties);
-      response.setVersions(versions);
-      response.setKeySchema(keySchema);
-      response.setValueSchemas(valueSchemas);
-      response.setLatestSuperSetValueSchemaId(latestSuperSetValueSchemaId);
-      response.setRoutingInfo(routingInfo);
-      response.setHelixGroupInfo(helixGroupInfo);
-
-      // return response with all fields set to null if client has up-to-date metadata
-      if (response.hashCode() == hash) {
-        return new MetadataResponse();
-      }
-    } catch (VeniceNoStoreException e) {
-      LOGGER.warn("Store {} not found in metadataRepo.", storeName);
-      response.setMessage("Store \"" + storeName + "\" not found");
-      response.setError(true);
     }
+
+    LOGGER.warn("Store {} not found in metadataResponseMap.", storeName);
+    MetadataResponse response = new MetadataResponse();
+    response.setMessage("Store \"" + storeName + "\" not found");
+    response.setError(true);
 
     return response;
   }

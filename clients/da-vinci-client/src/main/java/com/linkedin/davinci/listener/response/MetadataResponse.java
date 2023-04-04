@@ -20,36 +20,32 @@ public class MetadataResponse {
   private String message;
   private final MetadataResponseRecord responseRecord;
 
+  private final int hash;
+
   public MetadataResponse() {
     this.responseRecord = new MetadataResponseRecord();
+    this.hash = hashCode(this.responseRecord); // 28629151
+    this.isError = false;
   }
 
-  public void setVersionMetadata(VersionProperties versionProperties) {
-    responseRecord.setVersionMetadata(versionProperties);
-  }
-
-  public void setVersions(List<Integer> versions) {
-    responseRecord.setVersions(versions);
-  }
-
-  public void setKeySchema(Map<CharSequence, CharSequence> keySchema) {
-    responseRecord.setKeySchema(keySchema);
-  }
-
-  public void setValueSchemas(Map<CharSequence, CharSequence> valueSchemas) {
-    responseRecord.setValueSchemas(valueSchemas);
-  }
-
-  public void setLatestSuperSetValueSchemaId(int latestSuperSetValueSchemaId) {
-    responseRecord.setLatestSuperSetValueSchemaId(latestSuperSetValueSchemaId);
-  }
-
-  public void setRoutingInfo(Map<CharSequence, List<CharSequence>> routingInfo) {
-    responseRecord.setRoutingInfo(routingInfo);
-  }
-
-  public void setHelixGroupInfo(Map<CharSequence, Integer> helixGroupInfo) {
-    responseRecord.setHelixGroupInfo(helixGroupInfo);
+  public MetadataResponse(
+      VersionProperties versionProperties,
+      List<Integer> versions,
+      Map<CharSequence, CharSequence> keySchema,
+      Map<CharSequence, CharSequence> valueSchemas,
+      int latestSuperSetValueSchemaId,
+      Map<CharSequence, List<CharSequence>> routingInfo,
+      Map<CharSequence, Integer> helixGroupInfo) {
+    this.responseRecord = new MetadataResponseRecord(
+        versionProperties,
+        versions,
+        keySchema,
+        valueSchemas,
+        latestSuperSetValueSchemaId,
+        routingInfo,
+        helixGroupInfo);
+    this.hash = hashCode(this.responseRecord);
+    this.isError = false;
   }
 
   public ByteBuf getResponseBody() {
@@ -83,8 +79,8 @@ public class MetadataResponse {
     return this.message;
   }
 
-  public MetadataResponseRecord getResponseRecord() {
-    return responseRecord;
+  public int getHash() {
+    return hash;
   }
 
   @Override

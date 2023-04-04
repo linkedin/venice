@@ -47,8 +47,8 @@ import io.netty.handler.codec.http.HttpVersion;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -372,9 +372,6 @@ public class StorageReadRequestsHandlerTest {
   public static void testMetadataFetchRequestsPassInStorageExecutionHandler() throws Exception {
     String storeName = "test_store_name";
     int hash = 12345;
-    Map<CharSequence, CharSequence> keySchema = Collections.singletonMap("test_key_schema_id", "test_key_schema");
-    Map<CharSequence, CharSequence> valueSchemas =
-        Collections.singletonMap("test_value_schema_id", "test_value_schemas");
     List<Object> outputArray = new ArrayList<Object>();
 
     // [0]""/[1]"action"/[2]"store"/[3]"hash"
@@ -383,7 +380,6 @@ public class StorageReadRequestsHandlerTest {
     MetadataFetchRequest testRequest = MetadataFetchRequest.parseGetHttpRequest(httpRequest);
 
     // Mock the MetadataResponse from ingestion task
-    MetadataResponse expectedMetadataResponse = new MetadataResponse();
     VersionProperties versionProperties = new VersionProperties(
         1,
         0,
@@ -391,10 +387,14 @@ public class StorageReadRequestsHandlerTest {
         "test_partitioner_class",
         Collections.singletonMap("test_partitioner_param", "test_param"),
         2);
-    expectedMetadataResponse.setVersions(Collections.singletonList(1));
-    expectedMetadataResponse.setVersionMetadata(versionProperties);
-    expectedMetadataResponse.setKeySchema(keySchema);
-    expectedMetadataResponse.setValueSchemas(valueSchemas);
+    MetadataResponse expectedMetadataResponse = new MetadataResponse(
+        versionProperties,
+        Collections.singletonList(1),
+        Collections.singletonMap("test_key_schema_id", "test_key_schema"),
+        Collections.singletonMap("test_value_schema_id", "test_value_schemas"),
+        0,
+        new HashMap<>(),
+        new HashMap<>());
 
     MetadataRetriever mockMetadataRetriever = mock(MetadataRetriever.class);
     doReturn(expectedMetadataResponse).when(mockMetadataRetriever).getMetadata(eq(storeName), eq(hash));
@@ -440,9 +440,7 @@ public class StorageReadRequestsHandlerTest {
       MetadataResponse obj = (MetadataResponse) outputArray.get(0);
 
       // Verification
-      Assert.assertEquals(obj.getResponseRecord().getVersionMetadata(), versionProperties);
-      Assert.assertEquals(obj.getResponseRecord().getKeySchema(), keySchema);
-      Assert.assertEquals(obj.getResponseRecord().getValueSchemas(), valueSchemas);
+      Assert.assertEquals(obj, expectedMetadataResponse);
     } finally {
       TestUtils.shutdownExecutor(threadPoolExecutor);
     }
