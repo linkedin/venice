@@ -48,9 +48,6 @@
           git remote set-head origin --auto
           git remote add upstream https://github.com/linkedin/venice
           git fetch upstream
-      - name: Validate Gradle wrapper
-        if: steps.check_alpini_files_changed.outputs.alpini == 'true'
-        uses: gradle/wrapper-validation-action@v1
       - name: Build with Gradle
         if: steps.check_alpini_files_changed.outputs.alpini == 'true'
         uses: gradle/gradle-build-action@v2
