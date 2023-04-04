@@ -30,6 +30,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import com.linkedin.venice.writer.VeniceWriterOptions;
 import java.io.File;
 import java.nio.ByteBuffer;
 import java.util.Collections;
@@ -108,7 +109,12 @@ public class TestLeaderReplicaFailover {
         DEFAULT_OFFLINE_PUSH_STRATEGY,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION.toString());
     String keySchemaStr = recordSchema.getField(VenicePushJob.DEFAULT_KEY_FIELD_PROP).schema().toString();
-    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, new UpdateStoreQueryParams()).close();
+    createStoreForJob(
+        clusterName,
+        keySchemaStr,
+        valueSchemaStr,
+        props,
+        new UpdateStoreQueryParams().setPartitionCount(3)).close();
     // Create a new version
     VersionCreationResponse versionCreationResponse = TestUtils.assertCommand(
         parentControllerClient.requestTopicForWrites(
@@ -153,7 +159,8 @@ public class TestLeaderReplicaFailover {
     }
     assertNotNull(leaderErrorNotifier);
 
-    try (VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterFactory.createBasicVeniceWriter(topic)) {
+    try (VeniceWriter<byte[], byte[], byte[]> veniceWriter =
+        veniceWriterFactory.createVeniceWriter(new VeniceWriterOptions.Builder(topic).build())) {
       veniceWriter.broadcastStartOfPush(true, Collections.emptyMap());
       Map<byte[], byte[]> sortedInputRecords = generateData(1000, true, 0, serializer);
       for (Map.Entry<byte[], byte[]> entry: sortedInputRecords.entrySet()) {

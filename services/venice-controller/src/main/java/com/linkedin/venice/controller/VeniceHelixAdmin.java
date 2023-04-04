@@ -4,7 +4,6 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.PUSH_STATUS_STORE_DERIVED_SCHEMA_ID;
 import static com.linkedin.venice.controller.UserSystemStoreLifeCycleHelper.AUTO_META_SYSTEM_STORE_PUSH_ID_PREFIX;
-import static com.linkedin.venice.controller.UserSystemStoreLifeCycleHelper.DEFAULT_META_SYSTEM_STORE_SIZE;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_OFFSET_LAG_THRESHOLD;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD;
 import static com.linkedin.venice.meta.HybridStoreConfigImpl.DEFAULT_REWIND_TIME_IN_SECONDS;
@@ -3780,6 +3779,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     });
   }
 
+  private void setLatestSupersetSchemaId(String clusterName, String storeName, int latestSupersetSchemaId) {
+    storeMetadataUpdate(clusterName, storeName, store -> {
+      store.setLatestSuperSetValueSchemaId(latestSupersetSchemaId);
+      return store;
+    });
+  }
+
   /**
    * TODO: some logics are in parent controller {@link VeniceParentHelixAdmin} #updateStore and
    *       some are in the child controller here. Need to unify them in the future.
@@ -3903,6 +3909,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     Optional<Boolean> activeActiveReplicationEnabled = params.getActiveActiveReplicationEnabled();
     Optional<String> personaName = params.getStoragePersona();
     Optional<Map<String, String>> storeViews = params.getStoreViews();
+    Optional<Integer> latestSupersetSchemaId = params.getLatestSupersetSchemaId();
 
     final Optional<HybridStoreConfig> newHybridStoreConfig;
     if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent() || hybridTimeLagThreshold.isPresent()
@@ -4156,6 +4163,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       if (storeViews.isPresent()) {
         addStoreViews(clusterName, storeName, storeViews.get());
+      }
+
+      if (latestSupersetSchemaId.isPresent()) {
+        setLatestSupersetSchemaId(clusterName, storeName, latestSupersetSchemaId.get());
       }
 
       LOGGER.info("Finished updating store: {} in cluster: {}", storeName, clusterName);
@@ -4937,7 +4948,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             clusterName,
             systemStoreName,
             pushJobId,
-            calculateNumberOfPartitions(clusterName, systemStoreName, DEFAULT_META_SYSTEM_STORE_SIZE),
+            calculateNumberOfPartitions(clusterName, systemStoreName),
             getReplicationFactor(clusterName, systemStoreName));
         int versionNumber = version.getNumber();
         writeEndOfPush(clusterName, systemStoreName, versionNumber, true);
@@ -5601,21 +5612,23 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
   }
 
   /**
-   * Calculate number of partition for given store by give size.
+   * Calculate number of partition for given store.
    */
   @Override
-  public int calculateNumberOfPartitions(String clusterName, String storeName, long storeSize) {
+  public int calculateNumberOfPartitions(String clusterName, String storeName) {
     checkControllerLeadershipFor(clusterName);
     HelixVeniceClusterResources resources = getHelixVeniceClusterResources(clusterName);
     Store store = resources.getStoreMetadataRepository().getStoreOrThrow(storeName);
     VeniceControllerClusterConfig config = resources.getConfig();
     return PartitionUtils.calculatePartitionCount(
         storeName,
-        storeSize,
+        store.getStorageQuotaInByte(),
         store.getPartitionCount(),
         config.getPartitionSize(),
         config.getNumberOfPartition(),
-        config.getMaxNumberOfPartition());
+        config.getMaxNumberOfPartition(),
+        config.isPartitionCountRoundUpEnabled(),
+        config.getPartitionCountRoundUpSize());
   }
 
   /**
@@ -6197,6 +6210,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       throw new VeniceException("Could not find d2 service by given cluster: " + clusterName);
     }
     return new Pair<>(clusterName, d2Service);
+  }
+
+  /**
+   * @see Admin#getServerD2Service(String)
+   */
+  @Override
+  public String getServerD2Service(String clusterName) {
+    return multiClusterConfigs.getClusterToServerD2Map().get(clusterName);
   }
 
   /**

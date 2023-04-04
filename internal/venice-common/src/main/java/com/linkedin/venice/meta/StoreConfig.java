@@ -2,6 +2,7 @@ package com.linkedin.venice.meta;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.systemstore.schemas.StoreClusterConfig;
+import com.linkedin.venice.utils.AvroRecordUtils;
 
 
 /**
@@ -11,7 +12,7 @@ public class StoreConfig implements DataModelBackedStructure<StoreClusterConfig>
   private final StoreClusterConfig storeClusterConfig;
 
   public StoreConfig(String storeName) {
-    storeClusterConfig = Store.prefillAvroRecordWithDefaultValue(new StoreClusterConfig());
+    storeClusterConfig = AvroRecordUtils.prefillAvroRecordWithDefaultValue(new StoreClusterConfig());
     storeClusterConfig.storeName = storeName;
   }
 

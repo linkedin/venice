@@ -48,6 +48,16 @@ public class InstrumentedPartitionOffsetFetcher implements PartitionOffsetFetche
   }
 
   @Override
+  public long getPartitionEarliestOffsetAndRetry(String topic, int partition, int retries) {
+    final long startTimeMs = time.getMilliseconds();
+    long res = partitionOffsetFetcher.getPartitionEarliestOffsetAndRetry(topic, partition, retries);
+    stats.recordLatency(
+        PartitionOffsetFetcherStats.OCCURRENCE_LATENCY_SENSOR_TYPE.GET_PARTITION_EARLIEST_OFFSET_WITH_RETRY,
+        Utils.calculateDurationMs(time, startTimeMs));
+    return res;
+  }
+
+  @Override
   public long getPartitionOffsetByTime(String topic, int partition, long timestamp) {
     final long startTimeMs = time.getMilliseconds();
     long res = partitionOffsetFetcher.getPartitionOffsetByTime(topic, partition, timestamp);

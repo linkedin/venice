@@ -5,10 +5,10 @@ package com.linkedin.venice.datarecovery;
  */
 public class DataRecoveryTask implements Runnable {
   private final TaskParams taskParams;
-  private final StoreRepushCommand command;
+  private final Command command;
   private TaskResult taskResult;
 
-  public DataRecoveryTask(StoreRepushCommand command, TaskParams params) {
+  public DataRecoveryTask(Command command, DataRecoveryTask.TaskParams params) {
     this.taskParams = params;
     this.command = command;
   }
@@ -16,7 +16,7 @@ public class DataRecoveryTask implements Runnable {
   @Override
   public void run() {
     command.execute();
-    taskResult = new TaskResult(command.getResult());
+    taskResult = new DataRecoveryTask.TaskResult(command.getResult());
   }
 
   /**
@@ -24,7 +24,7 @@ public class DataRecoveryTask implements Runnable {
    * Thus, this is a task specific flag to set based on the purpose of the task.
    */
   public boolean needWaitForFirstTaskToComplete() {
-    return true;
+    return command.needWaitForFirstTaskToComplete();
   }
 
   public TaskResult getTaskResult() {
@@ -36,9 +36,13 @@ public class DataRecoveryTask implements Runnable {
   }
 
   public static class TaskResult {
-    private final StoreRepushCommand.Result cmdResult;
+    private final Command.Result cmdResult;
 
-    public TaskResult(StoreRepushCommand.Result cmdResult) {
+    public Command.Result getCmdResult() {
+      return cmdResult;
+    }
+
+    public TaskResult(Command.Result cmdResult) {
       this.cmdResult = cmdResult;
     }
 
@@ -53,24 +57,29 @@ public class DataRecoveryTask implements Runnable {
     public String getMessage() {
       return cmdResult.getMessage();
     }
+
+    public boolean isCoreWorkDone() {
+      return cmdResult.isCoreWorkDone();
+    }
   }
 
   public static class TaskParams {
     // Store name.
     private final String store;
-    private final StoreRepushCommand.Params cmdParams;
+    private final Command.Params cmdParams;
 
-    public TaskParams(String storeName, StoreRepushCommand.Params cmdParams) {
+    public TaskParams(String storeName, Command.Params cmdParams) {
       this.store = storeName;
       this.cmdParams = cmdParams;
+      this.cmdParams.setStore(this.store);
     }
 
     public String getStore() {
       return store;
     }
 
-    public StoreRepushCommand.Params getCmdParams() {
-      return this.cmdParams;
+    public Command.Params getCmdParams() {
+      return cmdParams;
     }
   }
 }

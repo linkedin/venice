@@ -202,4 +202,7 @@ public class ControllerApiConstants {
   public static final String PERSONA_OWNERS = "persona_owners";
   public static final String PERSONA_STORES = "persona_stores";
   public static final String PERSONA_QUOTA = "persona_quota";
+  public static final String LATEST_SUPERSET_SCHEMA_ID = "latest_superset_schema_id";
+  public static final String ENABLE_DISABLED_REPLICAS = "enable_disabled_replicas";
+
 }

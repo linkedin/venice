@@ -23,6 +23,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_ST
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_OVERHEAD_BYPASS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.LATEST_SUPERSET_SCHEMA_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MIGRATION_DUPLICATE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_SOURCE_FABRIC;
@@ -588,6 +589,14 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<String> getStoragePersona() {
     return getString(PERSONA_NAME);
+  }
+
+  public UpdateStoreQueryParams setLatestSupersetSchemaId(int latestSupersetSchemaId) {
+    return putInteger(LATEST_SUPERSET_SCHEMA_ID, latestSupersetSchemaId);
+  }
+
+  public Optional<Integer> getLatestSupersetSchemaId() {
+    return getInteger(LATEST_SUPERSET_SCHEMA_ID);
   }
 
   // ***************** above this line are getters and setters *****************

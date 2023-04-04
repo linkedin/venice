@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller.server;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_DISABLED_REPLICAS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INSTANCE_VIEW;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LOCKED_NODE_ID_LIST_SEPARATOR;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LOCKED_STORAGE_NODE_IDS;
@@ -94,7 +95,7 @@ public class NodesAndReplicas extends AbstractRoute {
       try {
         AdminSparkServer.validateParams(request, ClUSTER_HEALTH_INSTANCES.getParams(), admin);
         responseObject.setCluster(request.queryParams(CLUSTER));
-        String value = AdminSparkServer.getOptionalParameterValue(request, "enable-disabled-replicas");
+        String value = AdminSparkServer.getOptionalParameterValue(request, ENABLE_DISABLED_REPLICAS);
         Map<String, String> nodesStatusesMap =
             admin.getStorageNodesStatus(responseObject.getCluster(), Objects.equals(value, "true"));
         responseObject.setInstancesStatusMap(nodesStatusesMap);

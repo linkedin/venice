@@ -22,8 +22,8 @@ The GitHub issue should contain the detailed problem statement.
 4. Run all tests as described in the project's [Workspace setup guide](../dev_guide/workspace_setup.md#run-the-test-suite).
 5. Open a pull request against the `main` branch of `linkedin/venice`. (Only in special cases would the PR be opened against other branches.)
 6. The PR title should usually be of the form `[component1]...[componentN]: Concise commit message`.
-   * Valid component tags are: `[da-vinci]`, `[server]`, `[controller]`,
-      `[router]`, `[samza]`, `[vpj]`, `[fast-client]`, `[thin-client]`, `[alpini]`,
+   * Valid tags are: `[da-vinci]` (or `[dvc]`), `[server]`, `[controller]`, `[router]`, `[samza]`,
+      `[vpj]`, `[fast-client]` (or `[fc]`), `[thin-client]` (or `[tc]`), `[changelog]` (or `[cc]`),
       `[admin-tool]`, `[test]`, `[build]`, `[doc]`, `[script]`, `[compat]`
    * `[compat]` tag means there are compatibility related changes in this PR, including upgrading protocol version, upgrading system store value schemas, etc. When there is a compatibility related change, it usually requires a specific deployment order, like upgrading controller before upgrading server. In this case, please explicitly call out the required deployment order in the commit message.
 7. If the pull request is still a work in progress, and so is not ready to be merged, but needs to be pushed to GitHub to facilitate review,

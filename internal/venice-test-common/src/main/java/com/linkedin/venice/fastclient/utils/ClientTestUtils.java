@@ -23,9 +23,9 @@ public class ClientTestUtils {
   public static final Object[] FASTCLIENT_HTTP_VARIANTS = { FastClientHTTPVariant.HTTP_1_1_BASED_R2_CLIENT,
       FastClientHTTPVariant.HTTP_2_BASED_R2_CLIENT, FastClientHTTPVariant.HTTP_2_BASED_HTTPCLIENT5 };
 
-  @DataProvider(name = "fastClientHTTPVariants")
-  public static Object[][] httpVersions() {
-    return DataProviderUtils.allPermutationGenerator(FASTCLIENT_HTTP_VARIANTS);
+  @DataProvider(name = "fastClientHTTPVariantsAndBoolean")
+  public static Object[][] httpVersionsAndBoolean() {
+    return DataProviderUtils.allPermutationGenerator(FASTCLIENT_HTTP_VARIANTS, DataProviderUtils.BOOLEAN);
   }
 
   private static Client setupTransportClientFactory(FastClientHTTPVariant fastClientHTTPVariant) {

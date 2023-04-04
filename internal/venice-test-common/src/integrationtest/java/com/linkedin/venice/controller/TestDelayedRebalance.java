@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
@@ -216,10 +217,12 @@ public class TestDelayedRebalance {
   private String createVersionAndPushData() {
     String storeName = Utils.getUniqueString("TestDelayedRebalance");
     int partitionCount = 1;
-    int dataSize = partitionCount * partitionSize;
 
     cluster.getNewStore(storeName);
-    VersionCreationResponse response = cluster.getNewVersion(storeName, dataSize);
+    cluster.updateStore(
+        storeName,
+        new UpdateStoreQueryParams().setStorageQuotaInByte((long) partitionCount * partitionSize));
+    VersionCreationResponse response = cluster.getNewVersion(storeName);
     Assert.assertFalse(response.isError());
     String topicName = response.getKafkaTopic();
 

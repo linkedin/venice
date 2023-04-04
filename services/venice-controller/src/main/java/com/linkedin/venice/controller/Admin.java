@@ -450,9 +450,9 @@ public interface Admin extends AutoCloseable, Closeable {
   boolean isLeaderControllerFor(String clusterName);
 
   /**
-  * Calculate how many partitions are needed for the given store and size.
+  * Calculate how many partitions are needed for the given store.
   */
-  int calculateNumberOfPartitions(String clusterName, String storeName, long storeSize);
+  int calculateNumberOfPartitions(String clusterName, String storeName);
 
   int getReplicationFactor(String clusterName, String storeName);
 
@@ -569,6 +569,11 @@ public interface Admin extends AutoCloseable, Closeable {
    * @throws com.linkedin.venice.exceptions.VeniceException if not cluster is found.
    */
   Pair<String, String> discoverCluster(String storeName);
+
+  /**
+   * Find the server d2 service associated with a given cluster name.
+   */
+  String getServerD2Service(String clusterName);
 
   /**
    * Find the store versions which have at least one bootstrap replica.

@@ -19,7 +19,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import org.apache.kafka.clients.consumer.Consumer;
@@ -49,7 +48,7 @@ public class ApacheKafkaConsumer implements PubSubConsumer {
   private final Consumer<byte[], byte[]> kafkaConsumer;
   private final int consumerPollRetryTimes;
   private final int consumerPollRetryBackoffMs;
-  private final Optional<TopicPartitionsOffsetsTracker> topicPartitionsOffsetsTracker;
+  private final TopicPartitionsOffsetsTracker topicPartitionsOffsetsTracker;
 
   private final Map<TopicPartition, PubSubTopicPartition> assignments;
 
@@ -80,7 +79,7 @@ public class ApacheKafkaConsumer implements PubSubConsumer {
     this.consumerPollRetryBackoffMs =
         props.getInt(CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG, CONSUMER_POLL_RETRY_BACKOFF_MS_DEFAULT);
     this.topicPartitionsOffsetsTracker =
-        isKafkaConsumerOffsetCollectionEnabled ? Optional.of(new TopicPartitionsOffsetsTracker()) : Optional.empty();
+        isKafkaConsumerOffsetCollectionEnabled ? new TopicPartitionsOffsetsTracker() : null;
     this.assignments = new HashMap<>();
     this.pubSubMessageDeserializer = pubSubMessageDeserializer;
     LOGGER.info("Consumer poll retry times: {}", this.consumerPollRetryTimes);
@@ -138,8 +137,9 @@ public class ApacheKafkaConsumer implements PubSubConsumer {
       }
       assignments.remove(topicPartition);
     }
-    topicPartitionsOffsetsTracker
-        .ifPresent(partitionsOffsetsTracker -> partitionsOffsetsTracker.removeTrackedOffsets(topicPartition));
+    if (topicPartitionsOffsetsTracker != null) {
+      topicPartitionsOffsetsTracker.removeTrackedOffsets(topicPartition);
+    }
   }
 
   @Override
@@ -212,8 +212,8 @@ public class ApacheKafkaConsumer implements PubSubConsumer {
       }
     }
 
-    if (topicPartitionsOffsetsTracker.isPresent()) {
-      topicPartitionsOffsetsTracker.get().updateEndOffsets(records, kafkaConsumer.metrics());
+    if (topicPartitionsOffsetsTracker != null) {
+      topicPartitionsOffsetsTracker.updateEndAndCurrentOffsets(records, kafkaConsumer.metrics());
     }
     return polledPubSubMessages;
   }
@@ -264,7 +264,9 @@ public class ApacheKafkaConsumer implements PubSubConsumer {
 
   @Override
   public void close() {
-    topicPartitionsOffsetsTracker.ifPresent(offsetsTracker -> offsetsTracker.clearAllOffsetState());
+    if (topicPartitionsOffsetsTracker != null) {
+      topicPartitionsOffsetsTracker.clearAllOffsetState();
+    }
     if (kafkaConsumer != null) {
       try {
         kafkaConsumer.close(Duration.ZERO);
@@ -278,17 +280,13 @@ public class ApacheKafkaConsumer implements PubSubConsumer {
   public long getOffsetLag(PubSubTopicPartition pubSubTopicPartition) {
     String topic = pubSubTopicPartition.getPubSubTopic().getName();
     int partition = pubSubTopicPartition.getPartitionNumber();
-    return topicPartitionsOffsetsTracker.isPresent()
-        ? topicPartitionsOffsetsTracker.get().getOffsetLag(topic, partition)
-        : -1;
+    return topicPartitionsOffsetsTracker != null ? topicPartitionsOffsetsTracker.getOffsetLag(topic, partition) : -1;
   }
 
   @Override
   public long getLatestOffset(PubSubTopicPartition pubSubTopicPartition) {
     String topic = pubSubTopicPartition.getPubSubTopic().getName();
     int partition = pubSubTopicPartition.getPartitionNumber();
-    return topicPartitionsOffsetsTracker.isPresent()
-        ? topicPartitionsOffsetsTracker.get().getEndOffset(topic, partition)
-        : -1;
+    return topicPartitionsOffsetsTracker != null ? topicPartitionsOffsetsTracker.getEndOffset(topic, partition) : -1;
   }
 }

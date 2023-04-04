@@ -137,7 +137,9 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       newDeletedTimestamps.add(deletedTimestamp);
     });
     collectionFieldRmd.setDeletedElementsAndTimestamps(newDeletedElements, newDeletedTimestamps);
-
+    if (collectionFieldRmd.isInPutOnlyState() && newFieldValue == null) {
+      currValueRecord.put(fieldName, null);
+    }
     return collectionFieldRmd.isInPutOnlyState()
         ? UpdateResultStatus.COMPLETELY_UPDATED
         : UpdateResultStatus.PARTIALLY_UPDATED;
@@ -287,7 +289,9 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
     });
 
     collectionFieldRmd.setDeletedElementsAndTimestamps(newDeletedKeys, newDeletedTimestamps);
-
+    if (collectionFieldRmd.isInPutOnlyState() && newFieldValue == null) {
+      currValueRecord.put(fieldName, null);
+    }
     return collectionFieldRmd.isInPutOnlyState()
         ? UpdateResultStatus.COMPLETELY_UPDATED
         : UpdateResultStatus.PARTIALLY_UPDATED;
@@ -521,8 +525,7 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
   }
 
   private Comparator<Object> getListElementComparator(GenericRecord currValueRecord, String fieldName) {
-    Supplier<Schema> elementSchemaSupplier =
-        () -> currValueRecord.getSchema().getField(fieldName).schema().getElementType();
+    Supplier<Schema> elementSchemaSupplier = () -> getArraySchema(currValueRecord, fieldName).getElementType();
     // TODO: handle the situation where two elements have different schemas (e.g. element schema evolution). Assume
     // element schemas are always the same for now.
     return (o1, o2) -> this.avroElementComparator.compare(o1, o2, elementSchemaSupplier.get());
@@ -991,14 +994,27 @@ public class SortBasedCollectionFieldOpHandler extends CollectionFieldOperationH
       case MAP:
         return mapFieldSchema;
       case UNION:
-        return getSchemaFromNullableSchema(mapFieldSchema, Schema.Type.MAP);
+        return getSchemaFromNullableCollectionSchema(mapFieldSchema, Schema.Type.MAP);
 
       default:
         throw new IllegalStateException("Expect a map or a union schema. Got: " + mapFieldSchema);
     }
   }
 
-  private Schema getSchemaFromNullableSchema(Schema nullableSchema, Schema.Type expectedNullableType) {
+  private Schema getArraySchema(GenericRecord currValueRecord, String arrayFieldName) {
+    Schema arrayFieldSchema = currValueRecord.getSchema().getField(arrayFieldName).schema();
+    switch (arrayFieldSchema.getType()) {
+      case ARRAY:
+        return arrayFieldSchema;
+      case UNION:
+        return getSchemaFromNullableCollectionSchema(arrayFieldSchema, Schema.Type.ARRAY);
+
+      default:
+        throw new IllegalStateException("Expect an array or a union schema. Got: " + arrayFieldSchema);
+    }
+  }
+
+  private Schema getSchemaFromNullableCollectionSchema(Schema nullableSchema, Schema.Type expectedNullableType) {
     if (nullableSchema.getType() != Schema.Type.UNION) {
       throw new IllegalStateException(
           "Expect nullable " + expectedNullableType + " schema. But got: " + nullableSchema);

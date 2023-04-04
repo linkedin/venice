@@ -2,6 +2,7 @@ package com.linkedin.venice.meta;
 
 import com.linkedin.venice.systemstore.schemas.SystemStoreProperties;
 import com.linkedin.venice.utils.AvroCompatibilityUtils;
+import com.linkedin.venice.utils.AvroRecordUtils;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -10,7 +11,7 @@ public class SystemStoreAttributesImpl implements SystemStoreAttributes {
   private final SystemStoreProperties dataModel;
 
   public SystemStoreAttributesImpl() {
-    this(Store.prefillAvroRecordWithDefaultValue(new SystemStoreProperties()));
+    this(AvroRecordUtils.prefillAvroRecordWithDefaultValue(new SystemStoreProperties()));
   }
 
   SystemStoreAttributesImpl(SystemStoreProperties dataModel) {

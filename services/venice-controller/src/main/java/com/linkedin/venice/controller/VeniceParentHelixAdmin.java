@@ -23,6 +23,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.FUTURE_VE
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.HYBRID_STORE_DISK_QUOTA_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LARGEST_USED_VERSION_NUMBER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.LATEST_SUPERSET_SCHEMA_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.MIGRATION_DUPLICATE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NATIVE_REPLICATION_SOURCE_FABRIC;
@@ -2208,6 +2209,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<String> regionsFilter = params.getRegionsFilter();
       Optional<String> personaName = params.getStoragePersona();
       Optional<Map<String, String>> storeViewConfig = params.getStoreViews();
+      Optional<Integer> latestSupersetSchemaId = params.getLatestSupersetSchemaId();
 
       /**
        * Check whether parent controllers will only propagate the update configs to child controller, or all unchanged
@@ -2468,6 +2470,19 @@ public class VeniceParentHelixAdmin implements Admin {
           .orElse(false);
 
       setStore.storagePersona = personaName.map(addToUpdatedConfigList(updatedConfigsList, PERSONA_NAME)).orElse(null);
+
+      // Check whether the passed param is valid or not
+      if (latestSupersetSchemaId.isPresent()) {
+        if (latestSupersetSchemaId.get() != SchemaData.INVALID_VALUE_SCHEMA_ID) {
+          if (veniceHelixAdmin.getValueSchema(clusterName, storeName, latestSupersetSchemaId.get()) == null) {
+            throw new VeniceException(
+                "Unknown value schema id: " + latestSupersetSchemaId.get() + " in store: " + storeName);
+          }
+        }
+      }
+      setStore.latestSuperSetValueSchemaId =
+          latestSupersetSchemaId.map(addToUpdatedConfigList(updatedConfigsList, LATEST_SUPERSET_SCHEMA_ID))
+              .orElseGet(currStore::getLatestSuperSetValueSchemaId);
 
       StoragePersonaRepository repository =
           getVeniceHelixAdmin().getHelixVeniceClusterResources(clusterName).getStoragePersonaRepository();
@@ -3492,11 +3507,11 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * @see VeniceHelixAdmin#calculateNumberOfPartitions(String, String, long)
+   * @see Admin#calculateNumberOfPartitions(String, String)
    */
   @Override
-  public int calculateNumberOfPartitions(String clusterName, String storeName, long storeSize) {
-    return getVeniceHelixAdmin().calculateNumberOfPartitions(clusterName, storeName, storeSize);
+  public int calculateNumberOfPartitions(String clusterName, String storeName) {
+    return getVeniceHelixAdmin().calculateNumberOfPartitions(clusterName, storeName);
   }
 
   /**
@@ -3835,6 +3850,14 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public Pair<String, String> discoverCluster(String storeName) {
     return getVeniceHelixAdmin().discoverCluster(storeName);
+  }
+
+  /**
+   * @see Admin#getServerD2Service(String)
+   */
+  @Override
+  public String getServerD2Service(String clusterName) {
+    return getVeniceHelixAdmin().getServerD2Service(clusterName);
   }
 
   /**

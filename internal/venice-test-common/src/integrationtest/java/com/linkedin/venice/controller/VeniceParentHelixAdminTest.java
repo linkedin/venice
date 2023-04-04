@@ -31,7 +31,8 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
-import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
+import com.linkedin.venice.integration.utils.PubSubBrokerConfigs;
+import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
@@ -50,7 +51,9 @@ import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
@@ -406,12 +409,13 @@ public class VeniceParentHelixAdminTest {
         .put(VeniceControllerWrapper.SUPERSET_SCHEMA_GENERATOR, new SupersetSchemaGeneratorWithCustomProp(CUSTOM_PROP));
 
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
-        KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServer);
+        PubSubBrokerWrapper pubSubBrokerWrapper =
+            ServiceFactory.getPubSubBroker(new PubSubBrokerConfigs.Builder().setZkWrapper(zkServer).build());
         VeniceControllerWrapper childControllerWrapper = ServiceFactory.getVeniceController(
-            new VeniceControllerCreateOptions.Builder(clusterName, zkServer, kafkaBrokerWrapper).build());
+            new VeniceControllerCreateOptions.Builder(clusterName, zkServer, pubSubBrokerWrapper).build());
         ZkServerWrapper parentZk = ServiceFactory.getZkServer();
         VeniceControllerWrapper parentControllerWrapper = ServiceFactory.getVeniceController(
-            new VeniceControllerCreateOptions.Builder(clusterName, parentZk, kafkaBrokerWrapper)
+            new VeniceControllerCreateOptions.Builder(clusterName, parentZk, pubSubBrokerWrapper)
                 .childControllers(new VeniceControllerWrapper[] { childControllerWrapper })
                 .extraProperties(properties)
                 .build())) {
@@ -555,14 +559,15 @@ public class VeniceParentHelixAdminTest {
     }
 
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
-        KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServer);
+        PubSubBrokerWrapper pubSubBrokerWrapper =
+            ServiceFactory.getPubSubBroker(new PubSubBrokerConfigs.Builder().setZkWrapper(zkServer).build());
         VeniceControllerWrapper childControllerWrapper = ServiceFactory.getVeniceController(
-            new VeniceControllerCreateOptions.Builder(clusterName, zkServer, kafkaBrokerWrapper)
+            new VeniceControllerCreateOptions.Builder(clusterName, zkServer, pubSubBrokerWrapper)
                 .sslToKafka(isControllerSslEnabled)
                 .build());
         ZkServerWrapper parentZk = ServiceFactory.getZkServer();
         VeniceControllerWrapper parentControllerWrapper = ServiceFactory.getVeniceController(
-            new VeniceControllerCreateOptions.Builder(clusterName, parentZk, kafkaBrokerWrapper)
+            new VeniceControllerCreateOptions.Builder(clusterName, parentZk, pubSubBrokerWrapper)
                 .childControllers(new VeniceControllerWrapper[] { childControllerWrapper })
                 .extraProperties(properties)
                 .sslToKafka(isControllerSslEnabled)
@@ -579,6 +584,7 @@ public class VeniceParentHelixAdminTest {
           ControllerClient childControllerClient = new ControllerClient(clusterName, childControllerUrl, sslFactory)) {
 
         testBackupVersionRetentionUpdate(parentControllerClient, childControllerClient);
+        testLatestSupersetSchemaIdUpdate(parentControllerClient, childControllerClient);
         testSuperSetSchemaGen(parentControllerClient);
         testSuperSetSchemaGenWithSameUpcomingSchema(parentControllerClient);
         testSupersetSchemaRegistration(parentControllerClient);
@@ -630,6 +636,55 @@ public class VeniceParentHelixAdminTest {
           backupVersionRetentionMs);
       Assert.assertEquals(storeResponseFromChildController.getStore().getReadQuotaInCU(), 10000);
     });
+  }
+
+  private void testLatestSupersetSchemaIdUpdate(
+      ControllerClient parentControllerClient,
+      ControllerClient childControllerClient) {
+    String storeName = Utils.getUniqueString("test_store_");
+    String owner = "test_owner";
+    String keySchemaStr = "\"long\"";
+    String valueSchemaStr = "\"string\"";
+    NewStoreResponse newStoreResponse =
+        parentControllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchemaStr);
+    Assert.assertNotNull(newStoreResponse);
+    Assert.assertFalse(newStoreResponse.isError(), "error in newStoreResponse: " + newStoreResponse.getError());
+    Map<Integer, Boolean> schemaIdToStatusMap = new HashMap<>();
+    schemaIdToStatusMap.put(1, true);
+    schemaIdToStatusMap.put(2, false);
+    schemaIdToStatusMap.put(-1, true);
+    for (Map.Entry<Integer, Boolean> entry: schemaIdToStatusMap.entrySet()) {
+      int schemaId = entry.getKey();
+      boolean result = entry.getValue();
+      System.out.println("updating schema id: " + schemaId);
+
+      ControllerResponse controllerResponse = parentControllerClient
+          .updateStore(storeName, new UpdateStoreQueryParams().setLatestSupersetSchemaId(schemaId));
+      Assert.assertNotNull(controllerResponse);
+      if (!result) {
+        Assert.assertTrue(controllerResponse.isError(), "There should be an error when setting up invalid schema id");
+      } else {
+        Assert.assertFalse(
+            controllerResponse.isError(),
+            "Error in store update response: " + controllerResponse.getError());
+
+        // Verify the update in Parent Controller
+        StoreResponse storeResponseFromParentController = parentControllerClient.getStore(storeName);
+        Assert.assertFalse(
+            storeResponseFromParentController.isError(),
+            "Error in store response from Parent Controller: " + storeResponseFromParentController.getError());
+        Assert.assertEquals(storeResponseFromParentController.getStore().getLatestSuperSetValueSchemaId(), schemaId);
+        // Verify the update in Child Controller
+        waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+          StoreResponse storeResponseFromChildController = childControllerClient.getStore(storeName);
+          Assert.assertFalse(
+              storeResponseFromChildController.isError(),
+              "Error in store response from Child Controller: " + storeResponseFromChildController.getError());
+          Assert.assertEquals(storeResponseFromChildController.getStore().getLatestSuperSetValueSchemaId(), schemaId);
+        });
+      }
+    }
+
   }
 
   private void testSuperSetSchemaGen(ControllerClient parentControllerClient) {

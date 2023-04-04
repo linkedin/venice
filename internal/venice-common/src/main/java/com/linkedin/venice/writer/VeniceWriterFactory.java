@@ -2,7 +2,6 @@ package com.linkedin.venice.writer;
 
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
-import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.stats.VeniceWriterStats;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
@@ -10,7 +9,7 @@ import java.util.Properties;
 
 
 /**
- * Factory used to create the venice writer.
+ * Factory used to create {@link VeniceWriter}.
  */
 public class VeniceWriterFactory {
   private final Properties properties;
@@ -42,29 +41,5 @@ public class VeniceWriterFactory {
         options,
         props,
         producerAdapterFactory.create(props, options.getTopicName(), options.getBrokerAddress()));
-  }
-
-  /** test-only */
-  @Deprecated
-  public VeniceWriter<byte[], byte[], byte[]> createBasicVeniceWriter(String topicName) {
-    return createVeniceWriter(new VeniceWriterOptions.Builder(topicName).build());
-  }
-
-  /**
-   * test-only
-   *
-   * @param chunkingEnabled override the factory's default chunking setting.
-   */
-  @Deprecated
-  public <K, V> VeniceWriter<K, V, byte[]> createVeniceWriter(
-      String topicName,
-      VeniceKafkaSerializer<K> keySerializer,
-      VeniceKafkaSerializer<V> valueSerializer,
-      boolean chunkingEnabled) {
-    VeniceWriterOptions options = new VeniceWriterOptions.Builder(topicName).setKeySerializer(keySerializer)
-        .setValueSerializer(valueSerializer)
-        .setChunkingEnabled(chunkingEnabled)
-        .build();
-    return createVeniceWriter(options);
   }
 }

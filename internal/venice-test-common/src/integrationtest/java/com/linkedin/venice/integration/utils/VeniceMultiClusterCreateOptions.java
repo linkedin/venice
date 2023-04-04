@@ -32,10 +32,9 @@ public class VeniceMultiClusterCreateOptions {
   private final boolean forkServer;
   private final Map<String, Map<String, String>> kafkaClusterMap;
   private final ZkServerWrapper zkServerWrapper;
-  private final KafkaBrokerWrapper kafkaBrokerWrapper;
+  private final PubSubBrokerWrapper pubSubBrokerWrapper;
   private final Properties childControllerProperties;
   private final VeniceProperties veniceProperties;
-  private final Map<String, String> clusterToServerD2;
 
   public String getRegionName() {
     return regionName;
@@ -105,8 +104,8 @@ public class VeniceMultiClusterCreateOptions {
     return zkServerWrapper;
   }
 
-  public KafkaBrokerWrapper getKafkaBrokerWrapper() {
-    return kafkaBrokerWrapper;
+  public PubSubBrokerWrapper getKafkaBrokerWrapper() {
+    return pubSubBrokerWrapper;
   }
 
   public Properties getChildControllerProperties() {
@@ -115,10 +114,6 @@ public class VeniceMultiClusterCreateOptions {
 
   public VeniceProperties getVeniceProperties() {
     return veniceProperties;
-  }
-
-  public Map<String, String> getClusterToServerD2() {
-    return clusterToServerD2;
   }
 
   @Override
@@ -180,12 +175,10 @@ public class VeniceMultiClusterCreateOptions {
         .append(zkServerWrapper == null ? "null" : zkServerWrapper.getAddress())
         .append(", ")
         .append("kafka:")
-        .append(kafkaBrokerWrapper == null ? "null" : kafkaBrokerWrapper.getAddress())
+        .append(pubSubBrokerWrapper == null ? "null" : pubSubBrokerWrapper.getAddress())
         .append(", ")
         .append("kafkaClusterMap:")
         .append(kafkaClusterMap)
-        .append("clusterToServerD2:")
-        .append(clusterToServerD2)
         .toString();
   }
 
@@ -205,12 +198,11 @@ public class VeniceMultiClusterCreateOptions {
     randomizeClusterName = builder.randomizeClusterName;
     multiRegionSetup = builder.multiRegionSetup;
     zkServerWrapper = builder.zkServerWrapper;
-    kafkaBrokerWrapper = builder.kafkaBrokerWrapper;
+    pubSubBrokerWrapper = builder.pubSubBrokerWrapper;
     childControllerProperties = builder.childControllerProperties;
     veniceProperties = builder.veniceProperties;
     forkServer = builder.forkServer;
     kafkaClusterMap = builder.kafkaClusterMap;
-    clusterToServerD2 = builder.clusterToServerD2;
   }
 
   public static class Builder {
@@ -231,9 +223,8 @@ public class VeniceMultiClusterCreateOptions {
     private boolean forkServer = false;
     private boolean isMinActiveReplicaSet = false;
     private Map<String, Map<String, String>> kafkaClusterMap;
-    private Map<String, String> clusterToServerD2;
     private ZkServerWrapper zkServerWrapper;
-    private KafkaBrokerWrapper kafkaBrokerWrapper;
+    private PubSubBrokerWrapper pubSubBrokerWrapper;
     private Properties childControllerProperties;
     private VeniceProperties veniceProperties;
 
@@ -317,18 +308,13 @@ public class VeniceMultiClusterCreateOptions {
       return this;
     }
 
-    public Builder clusterToServerD2(Map<String, String> clusterToServerD2) {
-      this.clusterToServerD2 = clusterToServerD2;
-      return this;
-    }
-
     public Builder zkServerWrapper(ZkServerWrapper zkServerWrapper) {
       this.zkServerWrapper = zkServerWrapper;
       return this;
     }
 
-    public Builder kafkaBrokerWrapper(KafkaBrokerWrapper kafkaBrokerWrapper) {
-      this.kafkaBrokerWrapper = kafkaBrokerWrapper;
+    public Builder kafkaBrokerWrapper(PubSubBrokerWrapper pubSubBrokerWrapper) {
+      this.pubSubBrokerWrapper = pubSubBrokerWrapper;
       return this;
     }
 
@@ -354,9 +340,6 @@ public class VeniceMultiClusterCreateOptions {
       }
       if (kafkaClusterMap == null) {
         kafkaClusterMap = Collections.emptyMap();
-      }
-      if (clusterToServerD2 == null) {
-        clusterToServerD2 = Collections.emptyMap();
       }
     }
 
