@@ -3,6 +3,7 @@ package com.linkedin.venice.stats;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Count;
+import io.tehuti.metrics.stats.Gauge;
 import io.tehuti.metrics.stats.Total;
 
 
@@ -22,7 +23,7 @@ public class ServerQuotaUsageStats extends AbstractVeniceStats {
     requestedKPS = registerSensor("quota_rcu_requested_key", new Total());
     rejectedQPS = registerSensor("quota_rcu_rejected", new Count());
     rejectedKPS = registerSensor("quota_rcu_rejected_key", new Total());
-    usageKPS = registerSensor("read_quota_usage_kps", new Total());
+    usageKPS = registerSensor("read_quota_usage_kps", new Gauge());
   }
 
   /**

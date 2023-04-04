@@ -92,13 +92,14 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
   }
 
   /**
-   * Initialize token buckets for all resources in the routingDataRepository
+   * Initialize token buckets for all resources in the customized view repository.
    */
   public final void init() {
     storeRepository.registerStoreDataChangedListener(this);
     ResourceAssignment resourceAssignment = customizedViewRepository.getResourceAssignment();
     if (resourceAssignment == null) {
-      LOGGER.error("Null resource assignment from RoutingDataRepository in ReadQuotaEnforcementHandler");
+      LOGGER.error(
+          "Null resource assignment from HelixCustomizedViewOfflinePushRepository in ReadQuotaEnforcementHandler");
     } else {
       for (String resource: customizedViewRepository.getResourceAssignment().getAssignedResources()) {
         this.onExternalViewChange(customizedViewRepository.getPartitionAssignments(resource));
@@ -178,7 +179,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     ReferenceCountUtil.retain(request);
     ctx.fireChannelRead(request);
     stats.recordAllowed(storeName, rcu);
-    stats.recordReadQuotaUsage(storeName, (double) rcu / storageNodeBucket.getStaleTokenCount());
+    stats.recordReadQuotaUsage(storeName, storageNodeBucket.getStaleUsageRatio());
   }
 
   /**
@@ -346,7 +347,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
          *
          * During a new push, a new version is added to the version list of the Store metadata before the push actually
          * starts, so this function (ReadQuotaEnforcementHandler#handleStoreChanged()) is invoked before the new
-         * resource assignment shows up in the external view, so calling routingRepository.getPartitionAssignments() for
+         * resource assignment shows up in the external view, so calling customizedViewRepository.getPartitionAssignments() for
          * a the future version will fail in most cases, because the new topic is not in the external view at all.
          *
          */
