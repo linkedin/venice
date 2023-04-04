@@ -39,6 +39,7 @@ import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
+import com.linkedin.venice.utils.AvroRecordUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
@@ -556,7 +557,7 @@ public class TopicManagerTest {
 
   @Test
   public void testMinimumExpectedRetentionTime() {
-    StoreProperties storeProperties = Store.prefillAvroRecordWithDefaultValue(new StoreProperties());
+    StoreProperties storeProperties = AvroRecordUtils.prefillAvroRecordWithDefaultValue(new StoreProperties());
     storeProperties.name = "storeName";
     storeProperties.owner = "owner";
     storeProperties.createdTime = System.currentTimeMillis();
@@ -577,7 +578,7 @@ public class TopicManagerTest {
 
   @Test
   public void testExpectedRetentionTime() {
-    StoreProperties storeProperties = Store.prefillAvroRecordWithDefaultValue(new StoreProperties());
+    StoreProperties storeProperties = AvroRecordUtils.prefillAvroRecordWithDefaultValue(new StoreProperties());
     storeProperties.name = "storeName";
     storeProperties.owner = "owner";
     storeProperties.createdTime = System.currentTimeMillis();

@@ -85,6 +85,7 @@ import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
+import com.linkedin.venice.utils.AvroRecordUtils;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
@@ -227,7 +228,7 @@ public class TestHybrid {
       // And real-time topic should exist now.
       assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(Version.composeRealTimeTopic(storeName)));
       // Creating a store object with default values since we're not updating bootstrap to online timeout
-      StoreProperties storeProperties = Store.prefillAvroRecordWithDefaultValue(new StoreProperties());
+      StoreProperties storeProperties = AvroRecordUtils.prefillAvroRecordWithDefaultValue(new StoreProperties());
       storeProperties.name = storeName;
       storeProperties.owner = "owner";
       storeProperties.createdTime = System.currentTimeMillis();
