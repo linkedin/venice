@@ -7,14 +7,10 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.kafka.TopicManager;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.serialization.KafkaKeySerializer;
-import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
 import java.time.Duration;
@@ -38,8 +34,6 @@ import org.apache.kafka.clients.admin.DescribeConfigsResult;
 import org.apache.kafka.clients.admin.ListTopicsResult;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.admin.TopicDescription;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.KafkaFuture;
 import org.apache.kafka.common.config.ConfigResource;
 import org.apache.kafka.common.config.TopicConfig;
@@ -55,10 +49,8 @@ import org.apache.logging.log4j.Logger;
 public class KafkaAdminClient implements KafkaAdminWrapper {
   private static final Logger LOGGER = LogManager.getLogger(KafkaAdminClient.class);
   private AdminClient kafkaAdminClient;
-  private KafkaConsumer<KafkaKey, KafkaMessageEnvelope> kafkaConsumer;
   private Long maxRetryInMs;
   private PubSubTopicRepository pubSubTopicRepository;
-  private Long topicMinLogCompactionLagMs;
 
   public KafkaAdminClient() {
   }
@@ -69,13 +61,7 @@ public class KafkaAdminClient implements KafkaAdminWrapper {
       throw new IllegalArgumentException("properties cannot be null!");
     }
     this.kafkaAdminClient = AdminClient.create(properties);
-    // TODO: remove these 3 configs.
-    properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class);
-    properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, OptimizedKafkaValueSerializer.class);
-    properties.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
-    this.kafkaConsumer = new KafkaConsumer<>(properties);
     this.maxRetryInMs = (Long) properties.get(KAFKA_ADMIN_GET_TOPIC_CONFIG_MAX_RETRY_TIME_SEC) * MS_PER_SECOND;
-    this.topicMinLogCompactionLagMs = 1000L; // TODO: to get this value from configs.
     this.pubSubTopicRepository = pubSubTopicRepository;
   }
 

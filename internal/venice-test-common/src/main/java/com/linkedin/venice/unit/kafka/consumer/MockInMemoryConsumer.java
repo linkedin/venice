@@ -10,6 +10,7 @@ import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
+import com.linkedin.venice.unit.kafka.MockInMemoryAdminAdapter;
 import com.linkedin.venice.unit.kafka.consumer.poll.PollStrategy;
 import java.time.Duration;
 import java.util.Collection;
@@ -39,6 +40,8 @@ public class MockInMemoryConsumer implements PubSubConsumer {
   private final PollStrategy pollStrategy;
   private final PubSubConsumer delegate;
   private final Set<PubSubTopicPartition> pausedTopicPartitions = new HashSet<>();
+
+  private MockInMemoryAdminAdapter adminAdapter;
 
   /**
    * @param delegate Can be used to pass a mock, in order to verify calls. Note: functions that return
@@ -166,21 +169,30 @@ public class MockInMemoryConsumer implements PubSubConsumer {
 
   @Override
   public Long beginningOffset(PubSubTopicPartition partition, Duration timeout) {
-    return null;
+    return 0L;
   }
 
   @Override
   public Map<PubSubTopicPartition, Long> endOffsets(Collection<PubSubTopicPartition> partitions, Duration timeout) {
-    return null;
+    Map<PubSubTopicPartition, Long> retOffsets = new HashMap<>();
+    for (PubSubTopicPartition pubSubTopicPartition: partitions) {
+      retOffsets.put(pubSubTopicPartition, endOffset(pubSubTopicPartition));
+    }
+    return retOffsets;
   }
 
   @Override
   public Long endOffset(PubSubTopicPartition pubSubTopicPartition) {
-    return null;
+    return broker
+        .endOffsets(pubSubTopicPartition.getPubSubTopic().getName(), pubSubTopicPartition.getPartitionNumber());
   }
 
   @Override
   public List<PubSubTopicPartitionInfo> partitionsFor(PubSubTopic topic) {
-    return null;
+    return adminAdapter.partitionsFor(topic);
+  }
+
+  public void setMockInMemoryAdminAdapter(MockInMemoryAdminAdapter adminAdapter) {
+    this.adminAdapter = adminAdapter;
   }
 }
