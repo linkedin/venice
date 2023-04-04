@@ -217,7 +217,7 @@ public class VeniceServerTest {
       for (int i = 0; i < servers; i++) {
         HttpGet httpsRequest = new HttpGet(
             "http://" + cluster.getVeniceServers().get(i).getAddress() + "/"
-                + QueryAction.METADATA.toString().toLowerCase() + "/" + storeName);
+                + QueryAction.METADATA.toString().toLowerCase() + "/" + storeName + "/1");
         HttpResponse httpsResponse = client.execute(httpsRequest, null).get();
         Assert.assertEquals(httpsResponse.getStatusLine().getStatusCode(), 200);
 
@@ -278,8 +278,8 @@ public class VeniceServerTest {
         d2Client = D2TestUtils.getAndStartD2Client(cluster.getZk().getAddress());
       }
 
-      URI requestUri =
-          URI.create("d2://" + d2ServiceName + "/" + QueryAction.METADATA.toString().toLowerCase() + "/" + storeName);
+      URI requestUri = URI.create(
+          "d2://" + d2ServiceName + "/" + QueryAction.METADATA.toString().toLowerCase() + "/" + storeName + "/1");
       RestRequest request = new RestRequestBuilder(requestUri).setMethod("GET").build();
       RestResponse response = d2Client.restRequest(request).get();
 

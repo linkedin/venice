@@ -88,6 +88,20 @@ public class MetadataResponse {
   }
 
   @Override
+  public boolean equals(Object obj) {
+    if (obj == null) {
+      return false;
+    }
+
+    if (obj.getClass() != this.getClass()) {
+      return false;
+    }
+
+    final MetadataResponse other = (MetadataResponse) obj;
+    return this.responseRecord.equals(other.responseRecord);
+  }
+
+  @Override
   public int hashCode() {
     return hashCode(responseRecord);
   }
