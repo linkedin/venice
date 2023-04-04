@@ -32,6 +32,7 @@ public class RouterBasedStoreSchemaFetcher implements StoreSchemaFetcher {
   public static final String TYPE_KEY_SCHEMA = "key_schema";
   public static final String TYPE_VALUE_SCHEMA = "value_schema";
   public static final String TYPE_UPDATE_SCHEMA = "update_schema";
+  public static final String TYPE_SUPERSET_SCHEMA = "superset_schema";
   private final AbstractAvroStoreClient storeClient;
   private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
 
@@ -76,29 +77,16 @@ public class RouterBasedStoreSchemaFetcher implements StoreSchemaFetcher {
 
   @Override
   public Schema getSupersetSchema() {
-    String valueSchemaRequestPath = TYPE_VALUE_SCHEMA + "/" + storeClient.getStoreName();
-    MultiSchemaResponse multiSchemaResponse = fetchAllValueSchemas(valueSchemaRequestPath);
-    int supersetSchemaId = multiSchemaResponse.getSuperSetSchemaId();
-    if (supersetSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID) {
-      return null;
-    }
-    String schemaStr = null;
-    for (MultiSchemaResponse.Schema schema: multiSchemaResponse.getSchemas()) {
-      if (supersetSchemaId == schema.getId()) {
-        schemaStr = schema.getSchemaStr();
-      }
-    }
-
-    if (schemaStr == null) {
-      throw new VeniceException(
-          "Could not find the value schema with id: " + supersetSchemaId + ". This is unexpected.");
-    }
-
+    // Fetch the latest superset schema for the specified value schema.
+    String supersetSchemaRequestPath = TYPE_SUPERSET_SCHEMA + "/" + storeClient.getStoreName();
+    String supersetSchemaStr = fetchSingleSchemaString(supersetSchemaRequestPath);
+    Schema supersetSchema;
     try {
-      return parseSchemaFromJSONLooseValidation(schemaStr);
+      supersetSchema = parseSchemaFromJSONLooseValidation(supersetSchemaStr);
     } catch (Exception e) {
       throw new VeniceException("Got exception while parsing superset schema", e);
     }
+    return supersetSchema;
   }
 
   @Override
