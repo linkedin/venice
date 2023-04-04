@@ -8,13 +8,11 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.PARTITION
 import static com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2.D2_SERVICE_DISCOVERY_RESPONSE_V2_ENABLED;
 import static com.linkedin.venice.meta.DataReplicationPolicy.ACTIVE_ACTIVE;
 import static com.linkedin.venice.meta.DataReplicationPolicy.NON_AGGREGATE;
+import static com.linkedin.venice.router.api.RouterResourceType.TYPE_SUPERSET_SCHEMA;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_CLUSTER_DISCOVERY;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_KEY_SCHEMA;
-import static com.linkedin.venice.router.api.VenicePathParser.TYPE_LEADER_CONTROLLER;
-import static com.linkedin.venice.router.api.VenicePathParser.TYPE_LEADER_CONTROLLER_LEGACY;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_REQUEST_TOPIC;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_RESOURCE_STATE;
-import static com.linkedin.venice.router.api.VenicePathParser.TYPE_UPDATE_SCHEMA;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_VALUE_SCHEMA;
 import static com.linkedin.venice.router.api.VenicePathParserHelper.parseRequest;
 import static com.linkedin.venice.utils.NettyUtils.setupResponseAndFlush;
@@ -175,6 +173,11 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
         // URI: /value_schema/{$storeName}/{$valueSchemaId} - Get single value schema
         handleValueSchemaLookup(ctx, helper);
         break;
+      case TYPE_SUPERSET_SCHEMA:
+        // The request could fetch the latest superset schema for the given store
+        // URI: /superset_schema/{$storeName} - Get all the value schema
+        handleSupersetSchemaLookup(ctx, helper);
+        break;
       case TYPE_UPDATE_SCHEMA:
         // URI: /update_schema/{$storeName}/{$valueSchemaId}
         // The request could fetch the latest derived update schema of a specific value schema
@@ -285,6 +288,26 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       responseObject.setSchemaStr(valueSchema.getSchema().toString());
       setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(responseObject), true, ctx);
     }
+  }
+
+  private void handleSupersetSchemaLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {
+    String storeName = helper.getResourceName();
+    checkResourceName(storeName, "/" + TYPE_SUPERSET_SCHEMA + "/${storeName}");
+
+    // URI: /superset_schema/{$storeName}
+    // Get the latest superset schema
+    SchemaResponse responseObject = new SchemaResponse();
+    responseObject.setCluster(clusterName);
+    responseObject.setName(storeName);
+    SchemaEntry supersetSchemaEntry = schemaRepo.getSupersetSchema(storeName);
+    if (supersetSchemaEntry == null) {
+      byte[] errBody = ("Superset schema doesn't exist for store: " + storeName).getBytes();
+      setupResponseAndFlush(NOT_FOUND, errBody, false, ctx);
+      return;
+    }
+    responseObject.setId(supersetSchemaEntry.getId());
+    responseObject.setSchemaStr(supersetSchemaEntry.getSchemaStr());
+    setupResponseAndFlush(OK, OBJECT_MAPPER.writeValueAsBytes(responseObject), true, ctx);
   }
 
   private void handleUpdateSchemaLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {

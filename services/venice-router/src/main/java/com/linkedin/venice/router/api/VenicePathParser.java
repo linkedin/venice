@@ -75,14 +75,15 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
   @Deprecated
   public static final String TYPE_LEADER_CONTROLLER_LEGACY =
       ControllerRoute.MASTER_CONTROLLER.getPath().replace("/", "");
-  public static final String TYPE_KEY_SCHEMA = "key_schema";
-  public static final String TYPE_VALUE_SCHEMA = "value_schema";
-  public static final String TYPE_UPDATE_SCHEMA = "update_schema";
-  public static final String TYPE_CLUSTER_DISCOVERY = "discover_cluster";
-  public static final String TYPE_REQUEST_TOPIC = "request_topic";
-  public static final String TYPE_HEALTH_CHECK = "admin";
-  public static final String TYPE_ADMIN = "admin"; // Creating a new variable name for code sanity
-  public static final String TYPE_RESOURCE_STATE = "resource_state";
+  public static final String TYPE_KEY_SCHEMA = RouterResourceType.TYPE_KEY_SCHEMA.toString();
+  public static final String TYPE_VALUE_SCHEMA = RouterResourceType.TYPE_VALUE_SCHEMA.toString();
+  public static final String TYPE_UPDATE_SCHEMA = RouterResourceType.TYPE_UPDATE_SCHEMA.toString();
+  public static final String TYPE_CLUSTER_DISCOVERY = RouterResourceType.TYPE_CLUSTER_DISCOVERY.toString();
+  public static final String TYPE_REQUEST_TOPIC = RouterResourceType.TYPE_REQUEST_TOPIC.toString();
+  public static final String TYPE_HEALTH_CHECK = RouterResourceType.TYPE_ADMIN.toString();
+  public static final String TYPE_ADMIN = RouterResourceType.TYPE_ADMIN.toString(); // Creating a new variable name for
+                                                                                    // code sanity
+  public static final String TYPE_RESOURCE_STATE = RouterResourceType.TYPE_RESOURCE_STATE.toString();
 
   private final VeniceVersionFinder versionFinder;
   private final VenicePartitionFinder partitionFinder;

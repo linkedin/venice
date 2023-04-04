@@ -31,6 +31,8 @@ public class RouterBasedStoreSchemaFetcherTest {
           + "  \"fields\": [           " + "       { \"name\": \"id\", \"type\": \"string\", \"default\": \"id\"},  "
           + "       { \"name\": \"name\", \"type\": \"string\", \"default\": \"id\"},  "
           + "       { \"name\": \"age\", \"type\": \"int\", \"default\": -1 }" + "  ] " + " } ";
+  private static final String valueSchemaStr3 =
+      "{    \"namespace\": \"example.avro\",    \"type\": \"record\",    \"name\": \"User\",    \"fields\": [        {            \"name\": \"name\",            \"type\": \"string\",            \"default\": \"id\"        },        {            \"name\": \"age\",            \"type\": \"int\",            \"default\": -1        }    ]}";
 
   private static final int TIMEOUT = 3;
 
@@ -72,7 +74,7 @@ public class RouterBasedStoreSchemaFetcherTest {
 
     // Each invocation should fetch the latest schema, but it is expected the object to not be the same as we don't
     // implement cache.
-    Schema expectedValueSchema = Schema.parse(valueSchemaStr2);
+    Schema expectedValueSchema = Schema.parse(valueSchemaStr3);
     Assert.assertEquals(valueSchema1, expectedValueSchema);
     Assert.assertEquals(valueSchema2, valueSchema1);
     Assert.assertNotSame(valueSchema1, valueSchema2);
@@ -101,20 +103,27 @@ public class RouterBasedStoreSchemaFetcherTest {
         .when(mockGetUpdateValueSchemaFuture2)
         .get();
     Mockito.doReturn(mockGetUpdateValueSchemaFuture2).when(mockClient).getRaw("update_schema/" + storeName + "/2");
+    CompletableFuture<byte[]> mockGetUpdateValueSchemaFuture3 = Mockito.mock(CompletableFuture.class);
+    Mockito.doReturn(OBJECT_MAPPER.writeValueAsBytes(createUpdateSchemaResponse(3, 1, valueSchemaStr3)))
+        .when(mockGetUpdateValueSchemaFuture3)
+        .get();
+    Mockito.doReturn(mockGetUpdateValueSchemaFuture3).when(mockClient).getRaw("update_schema/" + storeName + "/3");
 
     // Fetch both update schemas.
     StoreSchemaFetcher storeSchemaFetcher = new RouterBasedStoreSchemaFetcher(mockClient);
     Schema updateSchema1 = storeSchemaFetcher.getUpdateSchema(Schema.parse(valueSchemaStr1));
     Schema updateSchema2 = storeSchemaFetcher.getUpdateSchema(Schema.parse(valueSchemaStr2));
+    Schema updateSchema3 = storeSchemaFetcher.getUpdateSchema(Schema.parse(valueSchemaStr3));
     Assert.assertEquals(updateSchema1, UPDATE_SCHEMA_CONVERTER.convert(valueSchemaStr1));
     Assert.assertEquals(updateSchema2, UPDATE_SCHEMA_CONVERTER.convert(valueSchemaStr2));
+    Assert.assertEquals(updateSchema3, UPDATE_SCHEMA_CONVERTER.convert(valueSchemaStr3));
     // Each update schema fetch should call get value schemas first then get latest update schema.
-    Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(4)).getRaw(Mockito.anyString());
+    Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(6)).getRaw(Mockito.anyString());
   }
 
   private MultiSchemaResponse createValueSchemaMultiSchemaResponse() {
     MultiSchemaResponse multiSchemaResponse = new MultiSchemaResponse();
-    MultiSchemaResponse.Schema[] schemas = new MultiSchemaResponse.Schema[2];
+    MultiSchemaResponse.Schema[] schemas = new MultiSchemaResponse.Schema[3];
 
     MultiSchemaResponse.Schema schema1 = new MultiSchemaResponse.Schema();
     schema1.setId(1);
@@ -125,8 +134,41 @@ public class RouterBasedStoreSchemaFetcherTest {
     schema2.setId(2);
     schema2.setSchemaStr(valueSchemaStr2);
     schemas[1] = schema2;
+
+    MultiSchemaResponse.Schema schema3 = new MultiSchemaResponse.Schema();
+    schema3.setId(3);
+    schema3.setSchemaStr(valueSchemaStr3);
+    schemas[2] = schema3;
+
     multiSchemaResponse.setSchemas(schemas);
+    multiSchemaResponse.setSuperSetSchemaId(2);
     return multiSchemaResponse;
+  }
+
+  @Test
+  public void testGetSupersetSchema()
+      throws IOException, ExecutionException, InterruptedException, VeniceClientException {
+    AbstractAvroStoreClient mockClient = Mockito.mock(AbstractAvroStoreClient.class);
+    Mockito.doReturn(storeName).when(mockClient).getStoreName();
+    // Set up mocks for value schemas
+    CompletableFuture<byte[]> mockFuture = Mockito.mock(CompletableFuture.class);
+    Mockito.doReturn(OBJECT_MAPPER.writeValueAsBytes(createSupersetSchemaResponse(2, valueSchemaStr2)))
+        .when(mockFuture)
+        .get();
+    Mockito.doReturn(mockFuture).when(mockClient).getRaw("superset_schema/" + storeName);
+
+    // Get superset value schema twice.
+    StoreSchemaFetcher storeSchemaFetcher = new RouterBasedStoreSchemaFetcher(mockClient);
+    Schema valueSchema1 = storeSchemaFetcher.getSupersetSchema();
+    Schema valueSchema2 = storeSchemaFetcher.getSupersetSchema();
+
+    // Each invocation should fetch the latest superset schema, but it is expected the object to not be the same as we
+    // don't implement cache.
+    Schema expectedValueSchema = Schema.parse(valueSchemaStr2);
+    Assert.assertEquals(valueSchema1, expectedValueSchema);
+    Assert.assertEquals(valueSchema2, valueSchema1);
+    Assert.assertNotSame(valueSchema1, valueSchema2);
+    Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(2)).getRaw(Mockito.anyString());
   }
 
   private SchemaResponse createUpdateSchemaResponse(int valueSchemaId, int derivedSchemaId, String valueSchemaStr) {
@@ -134,6 +176,13 @@ public class RouterBasedStoreSchemaFetcherTest {
     schemaResponse.setId(valueSchemaId);
     schemaResponse.setDerivedSchemaId(derivedSchemaId);
     schemaResponse.setSchemaStr(UPDATE_SCHEMA_CONVERTER.convert(valueSchemaStr).toString());
+    return schemaResponse;
+  }
+
+  private SchemaResponse createSupersetSchemaResponse(int supersetSchemaId, String supersetSchemaStr) {
+    SchemaResponse schemaResponse = new SchemaResponse();
+    schemaResponse.setId(supersetSchemaId);
+    schemaResponse.setSchemaStr(supersetSchemaStr);
     return schemaResponse;
   }
 }
