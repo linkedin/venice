@@ -9,6 +9,17 @@ import java.util.function.Consumer;
  * The API for online applications to write to Venice. These APIs are only eventually consistent and the futures
  * returned by them only guarantee that the write operation was durable. There is no option to block until the data
  * is readable.
+ *
+ * All of these APIs have at least two versions - one that accepts a logical timestamp and one that doesn't.
+ * 1. Logical timestamps (in ms) are what Venice backend will use to resolve conflicts in case multiple writes modify
+ * the same record. An update to Venice could be triggered due to some trigger that can be attributed to a specific
+ * point in time. In such cases, it might be beneficial for applications to mark their updates to Venice with that
+ * timestamp and Venice will persist the record as if it had been received at that point in time - either by applying
+ * the update, dropping the update if a newer update has already been persisted, or applying an update partially only to
+ * fields that have not received an update with a newer timestamp yet.
+ * 2. In case the write requests are made without specifying the logical timestamp, then the time at which the message
+ * was produced is used as the logical timestamp during conflict resolution.
+ *
  * @param <K> Key of the record that needs to be updated
  * @param <V> Value that needs to be written
  */
