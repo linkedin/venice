@@ -32,6 +32,7 @@ public class RouterBasedStoreSchemaFetcher implements StoreSchemaFetcher {
   public static final String TYPE_KEY_SCHEMA = "key_schema";
   public static final String TYPE_VALUE_SCHEMA = "value_schema";
   public static final String TYPE_UPDATE_SCHEMA = "update_schema";
+  public static final String TYPE_SUPERSET_SCHEMA = "superset_schema";
   private final AbstractAvroStoreClient storeClient;
   private static final ObjectMapper OBJECT_MAPPER = ObjectMapperFactory.getInstance();
 
@@ -72,6 +73,20 @@ public class RouterBasedStoreSchemaFetcher implements StoreSchemaFetcher {
     } catch (Exception e) {
       throw new VeniceException("Got exception while parsing latest value schema", e);
     }
+  }
+
+  @Override
+  public Schema getSupersetSchema() {
+    // Fetch the latest superset schema for the specified value schema.
+    String supersetSchemaRequestPath = TYPE_SUPERSET_SCHEMA + "/" + storeClient.getStoreName();
+    String supersetSchemaStr = fetchSingleSchemaString(supersetSchemaRequestPath);
+    Schema supersetSchema;
+    try {
+      supersetSchema = parseSchemaFromJSONLooseValidation(supersetSchemaStr);
+    } catch (Exception e) {
+      throw new VeniceException("Got exception while parsing superset schema", e);
+    }
+    return supersetSchema;
   }
 
   @Override
