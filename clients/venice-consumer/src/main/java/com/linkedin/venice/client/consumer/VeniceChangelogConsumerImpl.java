@@ -1,6 +1,14 @@
 package com.linkedin.venice.client.consumer;
 
+import com.linkedin.davinci.repository.ThinClientMetaStoreBasedRepository;
+import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
+import com.linkedin.davinci.storage.chunking.SpecificRecordChunkingAdapter;
+import com.linkedin.davinci.store.memory.InMemoryStorageEngine;
+import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.client.change.capture.protocol.RecordChangeEvent;
+import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.NoopCompressor;
+import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -12,6 +20,7 @@ import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
@@ -23,6 +32,8 @@ import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
+import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.ChangeCaptureView;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -48,6 +59,16 @@ import org.apache.logging.log4j.Logger;
 public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsumer<K, V> {
   private static final Logger LOGGER = LogManager.getLogger(VeniceChangelogConsumerImpl.class);
   private final int partitionCount;
+
+  protected static final VeniceCompressor NO_OP_COMPRESSOR = new NoopCompressor();
+
+  protected final ThinClientMetaStoreBasedRepository readOnlySchemaRepository;
+
+  protected final ReadOnlySchemaRepository recordChangeEventSchemaRepository;
+
+  protected final AbstractAvroChunkingAdapter<RecordChangeEvent> CHUNKING_ADAPTER =
+      new SpecificRecordChunkingAdapter<>(RecordChangeEvent.class);
+
   protected final SchemaReader schemaReader;
   private final String viewClassName;
   private final Set<Integer> subscribedPartitions;
@@ -63,6 +84,18 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   protected final String storeName;
   protected final int storeCurrentVersion;
+
+  protected final boolean storeChunkingEnabled;
+
+  // This storage engine serves as a buffer for records which are chunked and have to be buffered before they can
+  // be returned to the client. We leverage the storageEngine interface here in order to take better advantage
+  // of the chunking and decompressing adapters that we've already built (which today are built around this interface)
+  // as chunked records are assembled we will eagerly evict all keys from the storage engine in order to keep the memory
+  // footprint as small as we can. We could use the object cache storage engine here in order to get LRU behavior
+  // but then that runs the risk of a parallel subscription having record chunks getting evicted before we have a chance
+  // to assemble them. So we rely on the simpler and concrete implementation as opposed to the abstraction in order
+  // to control and guarantee the behavior we're expecting.
+  protected final InMemoryStorageEngine inMemoryStorageEngine;
   protected final Consumer<KafkaKey, KafkaMessageEnvelope> kafkaConsumer;
   protected String currentTopic;
   protected Map<Integer, List<Long>> currentVersionTempHighWatermarks = new HashMap<>();
@@ -83,6 +116,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     StoreInfo store = storeResponse.getStore();
     this.storeCurrentVersion = store.getCurrentVersion();
     this.partitionCount = store.getPartitionCount();
+    this.storeChunkingEnabled = store.isChunkingEnabled();
     this.currentValuePayloadSize = new int[partitionCount];
     this.viewClassName = changelogClientConfig.getViewClassName();
     this.currentTopic =
@@ -92,6 +126,14 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     this.subscribedPartitions = new HashSet<>();
     Schema keySchema = schemaReader.getKeySchema();
     this.keyDeserializer = FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(keySchema, keySchema);
+    // The in memory storage engine only relies on the name of store and nothing else. We use an unversioned store name
+    // here in order to reduce confusion (as this storage engine can be used across version topics).
+    this.inMemoryStorageEngine = new InMemoryStorageEngine(storeName);
+    readOnlySchemaRepository = new ThinClientMetaStoreBasedRepository(
+        changelogClientConfig.getInnerClientConfig(),
+        new VeniceProperties(),
+        null);
+    recordChangeEventSchemaRepository = new RecordChangeEventReadOnlySchemaRepository(readOnlySchemaRepository);
     LOGGER.info(
         "Start a change log consumer client for store: {}, current version: {}, with partition count: {} and view class: {} ",
         storeName,
@@ -107,6 +149,12 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   @Override
   public CompletableFuture<Void> subscribe(Set<Integer> partitions) {
     return CompletableFuture.supplyAsync(() -> {
+      try {
+        readOnlySchemaRepository.subscribe(storeName);
+      } catch (InterruptedException e) {
+        throw new RuntimeException(e);
+      }
+      readOnlySchemaRepository.refresh();
       Set<TopicPartition> topicPartitionSet = kafkaConsumer.assignment();
       List<TopicPartition> topicPartitionList = getPartitionListToSubscribe(partitions, topicPartitionSet);
       kafkaConsumer.assign(topicPartitionList);
@@ -182,30 +230,110 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     return pubSubMessages;
   }
 
+  protected <T> T bufferAndAssembleRecordChangeEvent(
+      PubSubTopicPartition pubSubTopicPartition,
+      int schemaId,
+      byte[] keyBytes,
+      byte[] valueBytes,
+      long recordOffset,
+      AbstractAvroChunkingAdapter<T> chunkingAdapter,
+      Lazy<RecordDeserializer<T>> recordDeserializer,
+      int readerSchemaId,
+      ReadOnlySchemaRepository schemaRepository) {
+    T recordChangeEvent = null;
+    if (storeChunkingEnabled) {
+      if (!inMemoryStorageEngine.containsPartition(pubSubTopicPartition.getPartitionNumber())) {
+        inMemoryStorageEngine.addStoragePartition(pubSubTopicPartition.getPartitionNumber());
+      }
+      if (schemaId == AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()) {
+        // store in the database and walk away
+        inMemoryStorageEngine.put(
+            pubSubTopicPartition.getPartitionNumber(),
+            keyBytes,
+            ValueRecord.create(schemaId, valueBytes).serialize());
+        return null;
+      } else if (schemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
+        // This is the last value. Store it, and now read it from the in memory store as a fully assembled value
+        inMemoryStorageEngine.put(
+            pubSubTopicPartition.getPartitionNumber(),
+            keyBytes,
+            ValueRecord.create(schemaId, valueBytes).serialize());
+        try {
+          recordChangeEvent = chunkingAdapter.get(
+              inMemoryStorageEngine,
+              readerSchemaId,
+              pubSubTopicPartition.getPartitionNumber(),
+              ByteBuffer.wrap(keyBytes),
+              false,
+              null,
+              null,
+              null,
+              CompressionStrategy.NO_OP,
+              true,
+              schemaRepository,
+              storeName,
+              NO_OP_COMPRESSOR);
+        } catch (Exception ex) {
+          // We might get an exception if we haven't persisted all the chunks for a given key. This
+          // can actually happen if the client seeks to the middle of a chunked record either by
+          // only tailing the records or through direct offset management. This is ok, we just won't
+          // return this record since this is a course grained approach we can drop it.
+          LOGGER.warn(
+              "Encountered error assembling chunked record, this can happen when seeking between chunked records. Skipping offset {} on topic {}",
+              recordOffset,
+              pubSubTopicPartition.getPubSubTopic().getName());
+        }
+      } else {
+        // this is a fully specified record, no need to buffer and assemble it, just deserialize it
+        recordChangeEvent = recordDeserializer.get().deserialize(valueBytes);
+      }
+      // We only buffer one record at a time for a given partition. If we've made it this far
+      // we either just finished assembling a large record, or, didn't specify anything. So we'll clear
+      // the cache. Kafka might give duplicate delivery but it won't give out of order delivery, so
+      // this is safe to do in all such contexts.
+      inMemoryStorageEngine.dropPartition(pubSubTopicPartition.getPartitionNumber());
+    } else {
+      recordChangeEvent = recordDeserializer.get().deserialize(valueBytes);
+    }
+    return recordChangeEvent;
+  }
+
   protected Optional<PubSubMessage<K, ChangeEvent<V>, Long>> convertConsumerRecordToPubSubChangeEventMessage(
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
       PubSubTopicPartition pubSubTopicPartition) {
     Optional<PubSubMessage<K, ChangeEvent<V>, Long>> pubSubMessage = Optional.empty();
-    Long offset = consumerRecord.offset();
-    long timestamp = consumerRecord.timestamp();
-    int payloadSize = consumerRecord.serializedKeySize() + consumerRecord.serializedValueSize();
     byte[] keyBytes = consumerRecord.key().getKey();
-    K currentKey = keyDeserializer.deserialize(keyBytes);
     MessageType messageType = MessageType.valueOf(consumerRecord.value());
+    RecordChangeEvent recordChangeEvent;
+    // Internal store ingestion tasks only every persist PUT messages to either VT or view topics
     if (messageType.equals(MessageType.PUT)) {
       Put put = (Put) consumerRecord.value().payloadUnion;
-      byte[] valueBytes = put.putValue.array();
-      RecordChangeEvent recordChangeEvent = recordChangeDeserializer.deserialize(valueBytes);
+      recordChangeEvent = bufferAndAssembleRecordChangeEvent(
+          pubSubTopicPartition,
+          put.getSchemaId(),
+          keyBytes,
+          put.getPutValue().array(),
+          consumerRecord.offset(),
+          CHUNKING_ADAPTER,
+          Lazy.of(() -> recordChangeDeserializer),
+          AvroProtocolDefinition.RECORD_CHANGE_EVENT.getCurrentProtocolVersion(),
+          recordChangeEventSchemaRepository);
+      if (recordChangeEvent == null) {
+        // bufferAndAssembleRecordChangeEvent may have only buffered records and not returned anything yet because
+        // it's waiting for more input. In this case, just return an empty optional for now.
+        return Optional.empty();
+      }
       if (!filterRecordByVersionSwapHighWatermarks(
           recordChangeEvent.replicationCheckpointVector,
           pubSubTopicPartition)) {
+        int payloadSize = consumerRecord.serializedKeySize() + consumerRecord.serializedValueSize();
         pubSubMessage = Optional.of(
             convertChangeEventToPubSubMessage(
                 recordChangeEvent,
-                currentKey,
+                keyDeserializer.deserialize(keyBytes),
                 pubSubTopicPartition,
-                offset,
-                timestamp,
+                consumerRecord.offset(),
+                consumerRecord.timestamp(),
                 payloadSize));
       }
     } else {
@@ -227,6 +355,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       String newServingVersionTopic = versionSwap.newServingVersionTopic.toString();
       currentVersionHighWatermarks.put(pubSubTopicPartition.getPartitionNumber(), versionSwap.getLocalHighWatermarks());
       switchToNewTopic(newServingVersionTopic + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX);
+      inMemoryStorageEngine.drop();
       return true;
     }
     return false;

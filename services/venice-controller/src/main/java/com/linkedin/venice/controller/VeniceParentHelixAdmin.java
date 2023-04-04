@@ -170,6 +170,7 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.persona.StoragePersona;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -205,6 +206,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.views.VeniceView;
+import com.linkedin.venice.views.ViewUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
@@ -2260,6 +2262,8 @@ public class VeniceParentHelixAdmin implements Admin {
           .orElseGet(currStore::isActiveActiveReplicationEnabled);
 
       if (storeViewConfig.isPresent()) {
+        // Validate and merge store views if they're getting set
+        validateStoreViewConfig(storeViewConfig.get(), currStore);
         Map<String, StoreViewConfigRecord> mergedViewSettings =
             VeniceHelixAdmin.mergeNewViewConfigsIntoOldConfigs(currStore, storeViewConfig.get());
         setStore.views = mergedViewSettings;
@@ -2568,6 +2572,19 @@ public class VeniceParentHelixAdmin implements Admin {
       }
     } finally {
       releaseAdminMessageLock(clusterName, storeName);
+    }
+  }
+
+  private void validateStoreViewConfig(Map<String, String> stringMap, Store store) {
+    Map<String, ViewConfig> configs = StoreViewUtils.convertStringMapViewToViewConfig(stringMap);
+    for (Map.Entry<String, ViewConfig> viewConfig: configs.entrySet()) {
+      // TODO: Pass a proper properties object here. Today this isn't used in this context
+      VeniceView view = ViewUtils.getVeniceView(
+          viewConfig.getValue().getViewClassName(),
+          new Properties(),
+          store,
+          viewConfig.getValue().getViewParameters());
+      view.validateConfigs();
     }
   }
 

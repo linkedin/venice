@@ -41,6 +41,7 @@ include 'clients:venice-client'
 include 'clients:venice-push-job'
 include 'clients:venice-samza'
 include 'clients:venice-thin-client'
+include 'clients:venice-consumer'
 
 // Service modules
 include 'services:venice-controller'
@@ -51,7 +52,6 @@ include 'services:venice-server'
 include 'internal:venice-avro-compatibility-test'
 include 'internal:venice-client-common'
 include 'internal:venice-common'
-include 'internal:venice-consumer'
 include 'internal:venice-jdk-compatibility-test'
 include 'internal:venice-test-common'
 

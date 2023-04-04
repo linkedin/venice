@@ -35,6 +35,11 @@ public class DataProviderUtils {
     return new Object[][] { { false }, { true } };
   }
 
+  @DataProvider(name = "Compression-Strategies")
+  public static Object[][] compressionProvider() {
+    return allPermutationGenerator(COMPRESSION_STRATEGIES);
+  }
+
   @DataProvider(name = "Two-True-and-False")
   public static Object[][] twoBoolean() {
     return allPermutationGenerator(BOOLEAN, BOOLEAN);
