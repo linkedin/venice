@@ -50,7 +50,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
   protected final AbstractAvroChunkingAdapter CHUNKING_ADAPTER;
 
   private final CompressorFactory compressorFactory = new CompressorFactory();
-  private VeniceCompressor currentCompressor;
+  private VeniceCompressor currentCompressor = NO_OP_COMPRESSOR;
 
   public VeniceAfterImageConsumerImpl(
       ChangelogClientConfig changelogClientConfig,

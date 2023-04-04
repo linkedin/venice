@@ -5,6 +5,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.davinci.repository.ThinClientMetaStoreBasedRepository;
 import com.linkedin.venice.client.change.capture.protocol.RecordChangeEvent;
 import com.linkedin.venice.client.change.capture.protocol.ValueBytes;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
@@ -106,6 +107,8 @@ public class VeniceChangelogConsumerImplTest {
             .setViewClassName(ChangeCaptureView.CHANGE_CAPTURE_VIEW_WRITER_CLASS_NAME);
     VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
         new VeniceChangelogConsumerImpl<>(changelogClientConfig, mockKafkaConsumer);
+    ThinClientMetaStoreBasedRepository mockRepository = mock(ThinClientMetaStoreBasedRepository.class);
+    veniceChangelogConsumer.setReadOnlySchemaRepository(mockRepository);
     veniceChangelogConsumer.subscribe(new HashSet<>(Arrays.asList(0))).get();
     verify(mockKafkaConsumer).assign(Arrays.asList(new TopicPartition(oldChangeCaptureTopic, 0)));
 
@@ -151,6 +154,8 @@ public class VeniceChangelogConsumerImplTest {
             .setViewClassName("");
     VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
         new VeniceAfterImageConsumerImpl<>(changelogClientConfig, kafkaConsumer);
+    ThinClientMetaStoreBasedRepository mockRepository = mock(ThinClientMetaStoreBasedRepository.class);
+    veniceChangelogConsumer.setReadOnlySchemaRepository(mockRepository);
     veniceChangelogConsumer.subscribe(new HashSet<>(Arrays.asList(0))).get();
     verify(kafkaConsumer).assign(Arrays.asList(new TopicPartition(oldVersionTopic, 0)));
 

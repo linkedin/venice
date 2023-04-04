@@ -62,7 +62,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   protected static final VeniceCompressor NO_OP_COMPRESSOR = new NoopCompressor();
 
-  protected final ThinClientMetaStoreBasedRepository readOnlySchemaRepository;
+  protected ThinClientMetaStoreBasedRepository readOnlySchemaRepository;
 
   protected final ReadOnlySchemaRepository recordChangeEventSchemaRepository;
 
@@ -150,6 +150,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   public CompletableFuture<Void> subscribe(Set<Integer> partitions) {
     return CompletableFuture.supplyAsync(() -> {
       try {
+        readOnlySchemaRepository.start();
         readOnlySchemaRepository.subscribe(storeName);
       } catch (InterruptedException e) {
         throw new RuntimeException(e);
@@ -439,5 +440,9 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   public void close() {
     this.unsubscribeAll();
     kafkaConsumer.close();
+  }
+
+  protected void setReadOnlySchemaRepository(ThinClientMetaStoreBasedRepository repository) {
+    this.readOnlySchemaRepository = repository;
   }
 }
