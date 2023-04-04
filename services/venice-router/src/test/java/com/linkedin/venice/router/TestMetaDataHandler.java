@@ -355,6 +355,60 @@ public class TestMetaDataHandler {
   }
 
   @Test
+  public void testLatestValueSchemaLookup() throws IOException {
+    String storeName = "test_store";
+    String valueSchemaStr = "\"string\"";
+    String clusterName = "test-cluster";
+    int valueSchemaId = 1;
+    // Mock ReadOnlySchemaRepository
+    ReadOnlySchemaRepository schemaRepo = Mockito.mock(ReadOnlySchemaRepository.class);
+    SchemaEntry latestSchemaEntry = new SchemaEntry(valueSchemaId, valueSchemaStr);
+    Mockito.doReturn(latestSchemaEntry).when(schemaRepo).getSupersetOrLatestValueSchema(storeName);
+
+    FullHttpResponse response = passRequestToMetadataHandler(
+        "http://myRouterHost:4567/latest_value_schema/" + storeName,
+        null,
+        schemaRepo,
+        Mockito.mock(HelixReadOnlyStoreConfigRepository.class),
+        Collections.emptyMap(),
+        Collections.emptyMap());
+
+    Assert.assertEquals(response.status().code(), 200);
+    Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");
+    SchemaResponse schemaResponse = OBJECT_MAPPER.readValue(response.content().array(), SchemaResponse.class);
+
+    Assert.assertEquals(schemaResponse.getName(), storeName);
+    Assert.assertEquals(schemaResponse.getCluster(), clusterName);
+    Assert.assertFalse(schemaResponse.isError());
+    Assert.assertEquals(schemaResponse.getId(), valueSchemaId);
+    Assert.assertEquals(schemaResponse.getSchemaStr(), valueSchemaStr);
+  }
+
+  @Test
+  public void testLatestValueSchemaLookupWithNoLatestSchema() throws IOException {
+    String storeName = "test_store";
+
+    // Mock ReadOnlySchemaRepository
+    ReadOnlySchemaRepository schemaRepo = Mockito.mock(ReadOnlySchemaRepository.class);
+    Mockito.doReturn(null).when(schemaRepo).getSupersetOrLatestValueSchema(storeName);
+
+    FullHttpResponse response = passRequestToMetadataHandler(
+        "http://myRouterHost:4567/latest_value_schema2/" + storeName,
+        null,
+        schemaRepo,
+        Mockito.mock(HelixReadOnlyStoreConfigRepository.class),
+        Collections.emptyMap(),
+        Collections.emptyMap());
+
+    Assert.assertEquals(response.status().code(), 500);
+  }
+
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Resource name required.*")
+  public void testInvalidSupersetSchemaPath() throws IOException {
+    passRequestToMetadataHandler("http://myRouterHost:4567/latest_value_schema/", null, null);
+  }
+
+  @Test
   public void testUpdateSchemaLookup() throws IOException {
     String storeName = "test_store";
     String valueSchemaStr1 = "\"string\"";
