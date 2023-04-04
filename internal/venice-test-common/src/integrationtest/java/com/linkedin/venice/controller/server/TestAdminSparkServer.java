@@ -104,7 +104,7 @@ public class TestAdminSparkServer extends AbstractTestAdminSparkServer {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void controllerClientCanQueryInstanceStatusInCluster() {
-    MultiNodesStatusResponse nodeResponse = controllerClient.listInstancesStatuses();
+    MultiNodesStatusResponse nodeResponse = controllerClient.listInstancesStatuses(false);
     Assert.assertFalse(nodeResponse.isError(), nodeResponse.getError());
     Assert.assertEquals(nodeResponse.getInstancesStatusMap().size(), STORAGE_NODE_COUNT, "Node count does not match");
     Assert.assertEquals(

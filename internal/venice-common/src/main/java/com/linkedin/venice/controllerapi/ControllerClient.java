@@ -11,6 +11,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.DEFER_VER
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DERIVED_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DERIVED_SCHEMA_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.DEST_FABRIC;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.ENABLE_DISABLED_REPLICAS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.EXECUTION_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.EXPECTED_ROUTER_COUNT;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.FABRIC;
@@ -734,8 +735,12 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.LIST_NODES, newParams(), MultiNodeResponse.class);
   }
 
-  public MultiNodesStatusResponse listInstancesStatuses() {
-    return request(ControllerRoute.ClUSTER_HEALTH_INSTANCES, newParams(), MultiNodesStatusResponse.class);
+  public MultiNodesStatusResponse listInstancesStatuses(boolean enableReplicas) {
+    QueryParams params = newParams();
+    if (enableReplicas) {
+      params.add(ENABLE_DISABLED_REPLICAS, "true");
+    }
+    return request(ControllerRoute.ClUSTER_HEALTH_INSTANCES, params, MultiNodesStatusResponse.class);
   }
 
   public MultiReplicaResponse listReplicas(String storeName, int version) {
