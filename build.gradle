@@ -596,6 +596,7 @@ ext.createDiffFile = { ->
         ':!services/venice-controller/src/main/java/com/linkedin/venice/controller/VeniceParentHelixAdmin.java',
         ':!internal/venice-test-common/*',
         ':!services/venice-server/src/main/java/com/linkedin/venice/server/VeniceServer.java',
+        ':!internal/venice-common/src/main/java/com/linkedin/venice/controllerapi/ControllerClient.java',
 
         // Other files that have tests but are not executed in the regular unit test task
         ':!internal/alpini/*'
