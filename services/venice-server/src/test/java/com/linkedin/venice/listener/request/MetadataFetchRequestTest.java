@@ -14,11 +14,13 @@ public class MetadataFetchRequestTest {
   @Test
   public void testParseGetValidHttpRequest() {
     String storeName = "test_store";
-    String uri = "/" + QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
+    int hash = 12345;
+    String uri = "/" + QueryAction.METADATA.toString().toLowerCase() + "/" + storeName + "/" + hash;
     HttpRequest httpRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri);
     MetadataFetchRequest testRequest = MetadataFetchRequest.parseGetHttpRequest(httpRequest);
 
     Assert.assertEquals(testRequest.getStoreName(), storeName);
+    Assert.assertEquals(testRequest.getHash(), hash);
   }
 
   @Test

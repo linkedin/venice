@@ -482,7 +482,7 @@ public abstract class KafkaStoreIngestionServiceTest {
         .thenReturn(Collections.emptyList());
     Mockito.when(mockHelixInstanceConfigRepository.getInstanceGroupIdMapping()).thenReturn(Collections.emptyMap());
 
-    MetadataResponse metadataResponse = kafkaStoreIngestionService.getMetadata(storeName);
+    MetadataResponse metadataResponse = kafkaStoreIngestionService.getMetadata(storeName, 0);
 
     Assert.assertNotNull(metadataResponse);
     Assert.assertEquals(metadataResponse.getResponseRecord().getKeySchema().get("0"), "\"string\"");
@@ -494,4 +494,6 @@ public abstract class KafkaStoreIngestionServiceTest {
       Assert.assertTrue(metadataResponse.getResponseRecord().getRoutingInfo().isEmpty());
     }
   }
+
+  // TODO: add a test case for when we have the same hash which results in the response having all null fields
 }

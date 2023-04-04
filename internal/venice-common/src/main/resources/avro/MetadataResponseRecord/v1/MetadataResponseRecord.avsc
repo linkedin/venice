@@ -57,10 +57,14 @@
     {
       "name": "versions",
       "doc": "List of all version numbers",
-      "type": {
-        "type": "array",
-        "items": "int"
-      }
+      "type": [
+        "null",
+        {
+          "type": "array",
+          "items": "int"
+        }
+      ],
+      "default": null
     },
     {
       "name": "keySchema",

@@ -634,7 +634,8 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
 
   private MetadataResponse handleMetadataFetchRequest(MetadataFetchRequest request) {
     String storeName = request.getStoreName();
-    return metadataRetriever.getMetadata(storeName);
+    int hash = request.getHash();
+    return metadataRetriever.getMetadata(storeName, hash);
   }
 
   private void clearFieldsInReusedRecord(GenericRecord record, Schema schema) {

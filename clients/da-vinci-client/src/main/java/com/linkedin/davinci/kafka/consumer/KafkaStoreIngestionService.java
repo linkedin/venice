@@ -1082,7 +1082,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    * fetch request.
    */
   @Override
-  public MetadataResponse getMetadata(String storeName) {
+  public MetadataResponse getMetadata(String storeName, int hash) {
     MetadataResponse response = new MetadataResponse();
     try {
       Store store = metadataRepo.getStoreOrThrow(storeName);
@@ -1139,6 +1139,11 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       response.setLatestSuperSetValueSchemaId(latestSuperSetValueSchemaId);
       response.setRoutingInfo(routingInfo);
       response.setHelixGroupInfo(helixGroupInfo);
+
+      // return response with all fields set to null if client has up-to-date metadata
+      if (response.hashCode() == hash) {
+        return new MetadataResponse();
+      }
     } catch (VeniceNoStoreException e) {
       LOGGER.warn("Store {} not found in metadataRepo.", storeName);
       response.setMessage("Store \"" + storeName + "\" not found");

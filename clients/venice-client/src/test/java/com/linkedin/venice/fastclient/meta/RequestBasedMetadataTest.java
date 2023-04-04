@@ -97,7 +97,7 @@ public class RequestBasedMetadataTest {
         CompletableFuture.completedFuture(transportClientDictionaryResponse);
 
     doReturn(completableMetadataFuture).when(d2TransportClient)
-        .get(eq(QueryAction.METADATA.toString().toLowerCase() + "/" + storeName));
+        .get(eq(QueryAction.METADATA.toString().toLowerCase() + "/" + storeName + "/0"));
     doReturn(completableDictionaryFuture).when(d2TransportClient)
         .get(eq(QueryAction.DICTIONARY.toString().toLowerCase() + "/" + storeName + "/" + CURRENT_VERSION));
 

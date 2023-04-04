@@ -371,13 +371,14 @@ public class StorageReadRequestsHandlerTest {
   @Test
   public static void testMetadataFetchRequestsPassInStorageExecutionHandler() throws Exception {
     String storeName = "test_store_name";
+    int hash = 12345;
     Map<CharSequence, CharSequence> keySchema = Collections.singletonMap("test_key_schema_id", "test_key_schema");
     Map<CharSequence, CharSequence> valueSchemas =
         Collections.singletonMap("test_value_schema_id", "test_value_schemas");
     List<Object> outputArray = new ArrayList<Object>();
 
-    // [0]""/[1]"action"/[2]"store"
-    String uri = "/" + QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
+    // [0]""/[1]"action"/[2]"store"/[3]"hash"
+    String uri = "/" + QueryAction.METADATA.toString().toLowerCase() + "/" + storeName + "/" + hash;
     HttpRequest httpRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri);
     MetadataFetchRequest testRequest = MetadataFetchRequest.parseGetHttpRequest(httpRequest);
 
@@ -396,7 +397,7 @@ public class StorageReadRequestsHandlerTest {
     expectedMetadataResponse.setValueSchemas(valueSchemas);
 
     MetadataRetriever mockMetadataRetriever = mock(MetadataRetriever.class);
-    doReturn(expectedMetadataResponse).when(mockMetadataRetriever).getMetadata(eq(storeName));
+    doReturn(expectedMetadataResponse).when(mockMetadataRetriever).getMetadata(eq(storeName), eq(hash));
 
     /**
      * Capture the output written by {@link StorageReadRequestsHandler}

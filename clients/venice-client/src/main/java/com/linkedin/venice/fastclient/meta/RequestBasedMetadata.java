@@ -1,5 +1,6 @@
 package com.linkedin.venice.fastclient.meta;
 
+import com.linkedin.davinci.listener.response.MetadataResponse;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.D2ServiceDiscovery;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
@@ -71,6 +72,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private final ClusterStats clusterStats;
   private final FastClientStats clientStats;
   private volatile boolean isServiceDiscovered;
+  private int mostRecentHash;
 
   public RequestBasedMetadata(ClientConfig clientConfig, D2TransportClient transportClient) {
     super(clientConfig);
@@ -155,15 +157,14 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
     long currentTimeMs = System.currentTimeMillis();
     // call the METADATA endpoint
     try {
-      byte[] body = fetchMetadata().get().getBody();
+      byte[] body = fetchMetadata(mostRecentHash).get().getBody();
       RecordDeserializer<MetadataResponseRecord> metadataResponseDeserializer = FastSerializerDeserializerFactory
           .getFastAvroSpecificDeserializer(MetadataResponseRecord.SCHEMA$, MetadataResponseRecord.class);
       MetadataResponseRecord metadataResponse = metadataResponseDeserializer.deserialize(body);
       VersionProperties versionMetadata = metadataResponse.getVersionMetadata();
 
-      int fetchedVersion = versionMetadata.getCurrentVersion();
-
-      if (fetchedVersion != getCurrentStoreVersion()) {
+      if (versionMetadata != null && versionMetadata.getCurrentVersion() != getCurrentStoreVersion()) {
+        int fetchedVersion = versionMetadata.getCurrentVersion();
         newVersion = true;
         // call the DICTIONARY endpoint if needed
         CompletableFuture<TransportClientResponse> dictionaryFetchFuture = null;
@@ -223,6 +224,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
           currentVersion.set(fetchedVersion);
           clusterStats.updateCurrentVersion(getCurrentStoreVersion());
           latestSuperSetValueSchemaId.set(metadataResponse.getLatestSuperSetValueSchemaId());
+          mostRecentHash = MetadataResponse.hashCode(metadataResponse);
         } catch (ExecutionException | TimeoutException e) {
           LOGGER.warn(
               "Dictionary fetch operation could not complete in time for some of the versions. "
@@ -293,9 +295,9 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
     Utils.closeQuietlyWithErrorLogged(compressorFactory);
   }
 
-  private CompletableFuture<TransportClientResponse> fetchMetadata() {
+  private CompletableFuture<TransportClientResponse> fetchMetadata(int hash) {
     CompletableFuture<TransportClientResponse> metadataFuture = new CompletableFuture<>();
-    String url = QueryAction.METADATA.toString().toLowerCase() + "/" + storeName;
+    String url = QueryAction.METADATA.toString().toLowerCase() + "/" + storeName + "/" + hash;
 
     LOGGER.info("Fetching metadata for store {} from URL {} ", storeName, url);
     transportClient.get(url).whenComplete((response, throwable) -> {

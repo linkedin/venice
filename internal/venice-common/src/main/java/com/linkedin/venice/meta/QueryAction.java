@@ -18,6 +18,6 @@ public enum QueryAction {
   // Admin request from server admin tool
   ADMIN,
 
-  // METADATA is a GET request to /metadata/storename on the storage node to fetch metadata for that node
+  // METADATA is a GET request to /metadata/storename/hash on the storage node to fetch metadata for that node
   METADATA
 }

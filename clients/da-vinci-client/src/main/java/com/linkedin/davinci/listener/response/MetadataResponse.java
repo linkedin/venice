@@ -86,4 +86,19 @@ public class MetadataResponse {
   public MetadataResponseRecord getResponseRecord() {
     return responseRecord;
   }
+
+  @Override
+  public int hashCode() {
+    return hashCode(responseRecord);
+  }
+
+  public static int hashCode(MetadataResponseRecord res) {
+    int result = 1;
+    result = 31 * result + (res.versionMetadata == null ? 0 : res.versionMetadata.hashCode());
+    result = 31 * result + (res.versions == null ? 0 : res.versions.hashCode());
+    result = 31 * result + (res.latestSuperSetValueSchemaId == null ? 0 : res.latestSuperSetValueSchemaId.hashCode());
+    result = 31 * result + (res.routingInfo == null ? 0 : res.routingInfo.hashCode());
+    result = 31 * result + (res.helixGroupInfo == null ? 0 : res.helixGroupInfo.hashCode());
+    return result;
+  }
 }

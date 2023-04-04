@@ -11,5 +11,5 @@ public interface MetadataRetriever {
 
   AdminResponse getConsumptionSnapshots(String topicName, ComplementSet<Integer> partitions);
 
-  MetadataResponse getMetadata(String storeName);
+  MetadataResponse getMetadata(String storeName, int hash);
 }
