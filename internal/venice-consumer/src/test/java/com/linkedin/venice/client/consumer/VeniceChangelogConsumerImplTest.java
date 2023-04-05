@@ -1,8 +1,6 @@
 package com.linkedin.venice.client.consumer;
 
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.*;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.change.capture.protocol.RecordChangeEvent;
@@ -172,6 +170,10 @@ public class VeniceChangelogConsumerImplTest {
       Utf8 pubSubMessageValue = pubSubMessage.getValue().getCurrentValue();
       Assert.assertEquals(pubSubMessageValue.toString(), "newValue" + i);
     }
+
+    veniceChangelogConsumer.close();
+    verify(kafkaConsumer, times(2)).assign(any());
+    verify(kafkaConsumer).close();
   }
 
   private void prepareChangeCaptureRecordsToBePolled(
