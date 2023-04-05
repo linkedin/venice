@@ -3,8 +3,6 @@ package com.linkedin.venice.kafka;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.admin.InstrumentedKafkaAdmin;
-import com.linkedin.venice.kafka.admin.PubSubAdminAdapter;
 import com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcher;
 import com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcherFactory;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -12,6 +10,8 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.admin.InstrumentedApacheKafkaAdminAdapter;
+import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
@@ -160,7 +160,7 @@ public class TopicManager implements Closeable {
       final String kafkaAdminStatsName =
           String.format("%s_%s_%s", statsNamePrefix, pubSubAdmin.getClassName(), pubSubBootstrapServers);
       PubSubAdminAdapter instrumentedKafkaAdmin =
-          new InstrumentedKafkaAdmin(pubSubAdmin, optionalMetricsRepository.get(), kafkaAdminStatsName);
+          new InstrumentedApacheKafkaAdminAdapter(pubSubAdmin, optionalMetricsRepository.get(), kafkaAdminStatsName);
       logger.info(
           "Created instrumented Kafka admin client for Kafka cluster with bootstrap "
               + "server {} and has stats name prefix {}",
@@ -346,13 +346,6 @@ public class TopicManager implements Closeable {
       PubSubTopic topicName,
       long expectedRetentionInMs,
       PubSubTopicConfiguration pubSubTopicConfiguration) throws TopicDoesNotExistException {
-    /*
-        String retentionInMSStr = Long.toString(retentionInMS);
-    if (!topicProperties.containsKey(TopicConfig.RETENTION_MS_CONFIG) || // config doesn't exist
-        !topicProperties.getProperty(TopicConfig.RETENTION_MS_CONFIG).equals(retentionInMSStr)) { // config is different
-      topicProperties.put(TopicConfig.RETENTION_MS_CONFIG, Long.toString(retentionInMS));
-    
-     */
     Optional<Long> retentionTimeMs = pubSubTopicConfiguration.retentionInMs();
     if (!retentionTimeMs.isPresent() || expectedRetentionInMs != retentionTimeMs.get()) {
       pubSubTopicConfiguration.setRetentionInMs(Optional.of(expectedRetentionInMs));
@@ -508,7 +501,7 @@ public class TopicManager implements Closeable {
     // This is trying to guard concurrent topic deletion in Kafka.
     if (!CONCURRENT_TOPIC_DELETION_REQUEST_POLICY &&
     /**
-     * TODO: Add support for this call in the {@link com.linkedin.venice.kafka.admin.KafkaAdminClient}
+     * TODO: Add support for this call in the {@link ApacheKafkaAdminAdapter}
      * This is the last remaining call that depends on {@link kafka.utils.ZkUtils}.
      */
         kafkaReadOnlyAdmin.get().isTopicDeletionUnderway()) {

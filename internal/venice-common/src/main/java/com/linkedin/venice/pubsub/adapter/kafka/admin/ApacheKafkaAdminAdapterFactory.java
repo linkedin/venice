@@ -1,9 +1,11 @@
-package com.linkedin.venice.kafka.admin;
+package com.linkedin.venice.pubsub.adapter.kafka.admin;
 
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapterFactory;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.io.IOException;
 
 
 /**
@@ -19,7 +21,7 @@ public class ApacheKafkaAdminAdapterFactory implements PubSubAdminAdapterFactory
   public PubSubAdminAdapter create(VeniceProperties veniceProperties, PubSubTopicRepository pubSubTopicRepository) {
     ApacheKafkaAdminConfig adminConfig = new ApacheKafkaAdminConfig(veniceProperties);
     PubSubAdminAdapter pubSubAdminAdapter =
-        new KafkaAdminClient(adminConfig.getAdminProperties(), pubSubTopicRepository);
+        new ApacheKafkaAdminAdapter(adminConfig.getAdminProperties(), pubSubTopicRepository);
     return pubSubAdminAdapter;
   }
 
@@ -29,7 +31,6 @@ public class ApacheKafkaAdminAdapterFactory implements PubSubAdminAdapterFactory
   }
 
   @Override
-  public void close() {
+  public void close() throws IOException {
   }
-
 }

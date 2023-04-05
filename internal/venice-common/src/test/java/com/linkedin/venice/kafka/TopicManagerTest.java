@@ -2,8 +2,7 @@ package com.linkedin.venice.kafka;
 
 import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
 import static com.linkedin.venice.kafka.TopicManager.MAX_TOPIC_DELETE_RETRIES;
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.doReturn;
@@ -14,10 +13,6 @@ import static org.mockito.Mockito.times;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.integration.utils.PubSubBrokerConfigs;
-import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
-import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.kafka.admin.PubSubAdminAdapter;
 import com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcherImpl;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.EndOfPush;
@@ -38,20 +33,25 @@ import com.linkedin.venice.meta.ZKStore;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapter;
+import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
+import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubProducerCallback;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
+import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
+import com.linkedin.venice.unit.kafka.MockInMemoryAdminAdapter;
+import com.linkedin.venice.unit.kafka.consumer.MockInMemoryConsumer;
+import com.linkedin.venice.unit.kafka.consumer.poll.RandomPollStrategy;
+import com.linkedin.venice.unit.kafka.producer.MockInMemoryProducerAdapter;
 import com.linkedin.venice.utils.AvroRecordUtils;
-import com.linkedin.venice.utils.IntegrationTestPushUtils;
-import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -83,18 +83,103 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
+@Test(singleThreaded = true)
 public class TopicManagerTest {
   private static final Logger LOGGER = LogManager.getLogger(TopicManagerTest.class);
 
   /** Wait time for {@link #topicManager} operations, in seconds */
   private static final int WAIT_TIME_IN_SECONDS = 10;
-  private static final long MIN_COMPACTION_LAG = 24 * Time.MS_PER_HOUR;
+  protected static final long MIN_COMPACTION_LAG = 24 * Time.MS_PER_HOUR;
+  protected final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  protected TopicManager topicManager;
 
-  private PubSubBrokerWrapper kafka;
-  private TopicManager topicManager;
-  private TestMockTime mockTime;
+  @BeforeClass
+  public void setUp() {
+    createTopicManager();
+    Cache cacheNothingCache = mock(Cache.class);
+    Mockito.when(cacheNothingCache.getIfPresent(Mockito.any())).thenReturn(null);
+    topicManager.setTopicConfigCache(cacheNothingCache);
+  }
 
-  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+  private InMemoryKafkaBroker inMemoryKafkaBroker;
+
+  private void createTopicManager() {
+    inMemoryKafkaBroker = new InMemoryKafkaBroker("local");
+    PubSubAdminAdapterFactory pubSubAdminAdapterFactory = mock(ApacheKafkaAdminAdapterFactory.class);
+    MockInMemoryAdminAdapter mockInMemoryAdminAdapter = new MockInMemoryAdminAdapter(inMemoryKafkaBroker);
+    doReturn(mockInMemoryAdminAdapter).when(pubSubAdminAdapterFactory).create(any(), eq(pubSubTopicRepository));
+    MockInMemoryConsumer mockInMemoryConsumer =
+        new MockInMemoryConsumer(inMemoryKafkaBroker, new RandomPollStrategy(), mock(PubSubConsumer.class));
+    mockInMemoryConsumer.setMockInMemoryAdminAdapter(mockInMemoryAdminAdapter);
+    PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory = mock(PubSubConsumerAdapterFactory.class);
+    doReturn(mockInMemoryConsumer).when(pubSubConsumerAdapterFactory).create(any(), anyBoolean(), any(), anyString());
+
+    topicManager = TopicManagerRepository.builder()
+        .setPubSubProperties(k -> new VeniceProperties())
+        .setPubSubTopicRepository(pubSubTopicRepository)
+        .setLocalKafkaBootstrapServers("localhost:1234")
+        .setPubSubConsumerAdapterFactory(pubSubConsumerAdapterFactory)
+        .setPubSubAdminAdapterFactory(pubSubAdminAdapterFactory)
+        .setKafkaOperationTimeoutMs(500L)
+        .setTopicDeletionStatusPollIntervalMs(100L)
+        .setTopicMinLogCompactionLagMs(MIN_COMPACTION_LAG)
+        .build()
+        .getTopicManager();
+  }
+
+  private PubSubProducerAdapter createPubSubProducerAdapter() {
+    return new MockInMemoryProducerAdapter(inMemoryKafkaBroker);
+  }
+
+  @AfterClass
+  public void cleanUp() throws IOException {
+    topicManager.close();
+  }
+
+  /**
+   * This method produces either a random data record or a control message/record to Kafka with a given producer timestamp.
+   *
+   * @param topic
+   * @param isDataRecord
+   * @param producerTimestamp
+   * @throws ExecutionException
+   * @throws InterruptedException
+   */
+  private void produceToKafka(PubSubTopic topic, boolean isDataRecord, long producerTimestamp)
+      throws ExecutionException, InterruptedException {
+    Properties props = new Properties();
+    props.put(ApacheKafkaProducerConfig.KAFKA_KEY_SERIALIZER, KafkaKeySerializer.class.getName());
+    props.put(ApacheKafkaProducerConfig.KAFKA_VALUE_SERIALIZER, KafkaValueSerializer.class.getName());
+    props.put(ApacheKafkaProducerConfig.KAFKA_BOOTSTRAP_SERVERS, "localhost:1234");
+    PubSubProducerAdapter producer = createPubSubProducerAdapter();
+
+    final byte[] randomBytes = new byte[] { 0, 1 };
+
+    // Prepare record key
+    KafkaKey recordKey = new KafkaKey(isDataRecord ? MessageType.PUT : MessageType.CONTROL_MESSAGE, randomBytes);
+
+    // Prepare record value
+    KafkaMessageEnvelope recordValue = new KafkaMessageEnvelope();
+    recordValue.producerMetadata = new ProducerMetadata();
+    recordValue.producerMetadata.producerGUID = new GUID();
+    recordValue.producerMetadata.messageTimestamp = producerTimestamp;
+    recordValue.leaderMetadataFooter = new LeaderMetadata();
+    recordValue.leaderMetadataFooter.hostName = "localhost";
+
+    if (isDataRecord) {
+      Put put = new Put();
+      put.putValue = ByteBuffer.wrap(new byte[] { 0, 1 });
+      put.replicationMetadataPayload = ByteBuffer.wrap(randomBytes);
+      recordValue.payloadUnion = put;
+    } else {
+      ControlMessage controlMessage = new ControlMessage();
+      controlMessage.controlMessageType = ControlMessageType.END_OF_PUSH.getValue();
+      controlMessage.controlMessageUnion = new EndOfPush();
+      controlMessage.debugInfo = Collections.emptyMap();
+      recordValue.payloadUnion = controlMessage;
+    }
+    producer.sendMessage(topic.getName(), 0, recordKey, recordValue, null, mock(PubSubProducerCallback.class)).get();
+  }
 
   private PubSubTopic getTopic() {
     String callingFunction = Thread.currentThread().getStackTrace()[2].getMethodName();
@@ -107,30 +192,6 @@ public class TopicManagerTest {
         TimeUnit.SECONDS,
         () -> Assert.assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(topicName)));
     return topicName;
-  }
-
-  @BeforeClass
-  public void setUp() {
-    mockTime = new TestMockTime();
-    kafka = ServiceFactory.getPubSubBroker(new PubSubBrokerConfigs.Builder().setMockTime(mockTime).build());
-    topicManager =
-        IntegrationTestPushUtils
-            .getTopicManagerRepo(
-                DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
-                100L,
-                MIN_COMPACTION_LAG,
-                kafka.getAddress(),
-                pubSubTopicRepository)
-            .getTopicManager();
-    Cache cacheNothingCache = mock(Cache.class);
-    Mockito.when(cacheNothingCache.getIfPresent(Mockito.any())).thenReturn(null);
-    topicManager.setTopicConfigCache(cacheNothingCache);
-  }
-
-  @AfterClass
-  public void cleanUp() throws IOException {
-    topicManager.close();
-    kafka.close();
   }
 
   @Test
@@ -193,51 +254,6 @@ public class TopicManagerTest {
     Assert.assertThrows(
         VeniceException.class,
         () -> topicManager.getProducerTimestampOfLastDataRecord(pubSubTopicPartition, 1));
-  }
-
-  /**
-   * This method produces either a random data record or a control message/record to Kafka with a given producer timestamp.
-   *
-   * @param topic
-   * @param isDataRecord
-   * @param producerTimestamp
-   * @throws ExecutionException
-   * @throws InterruptedException
-   */
-  private void produceToKafka(PubSubTopic topic, boolean isDataRecord, long producerTimestamp)
-      throws ExecutionException, InterruptedException {
-    Properties props = new Properties();
-    props.put(ApacheKafkaProducerConfig.KAFKA_KEY_SERIALIZER, KafkaKeySerializer.class.getName());
-    props.put(ApacheKafkaProducerConfig.KAFKA_VALUE_SERIALIZER, KafkaValueSerializer.class.getName());
-    props.put(ApacheKafkaProducerConfig.KAFKA_BOOTSTRAP_SERVERS, kafka.getAddress());
-    PubSubProducerAdapter producer = new ApacheKafkaProducerAdapter(new ApacheKafkaProducerConfig(props));
-
-    final byte[] randomBytes = new byte[] { 0, 1 };
-
-    // Prepare record key
-    KafkaKey recordKey = new KafkaKey(isDataRecord ? MessageType.PUT : MessageType.CONTROL_MESSAGE, randomBytes);
-
-    // Prepare record value
-    KafkaMessageEnvelope recordValue = new KafkaMessageEnvelope();
-    recordValue.producerMetadata = new ProducerMetadata();
-    recordValue.producerMetadata.producerGUID = new GUID();
-    recordValue.producerMetadata.messageTimestamp = producerTimestamp;
-    recordValue.leaderMetadataFooter = new LeaderMetadata();
-    recordValue.leaderMetadataFooter.hostName = "localhost";
-
-    if (isDataRecord) {
-      Put put = new Put();
-      put.putValue = ByteBuffer.wrap(new byte[] { 0, 1 });
-      put.replicationMetadataPayload = ByteBuffer.wrap(randomBytes);
-      recordValue.payloadUnion = put;
-    } else {
-      ControlMessage controlMessage = new ControlMessage();
-      controlMessage.controlMessageType = ControlMessageType.END_OF_PUSH.getValue();
-      controlMessage.controlMessageUnion = new EndOfPush();
-      controlMessage.debugInfo = Collections.emptyMap();
-      recordValue.payloadUnion = controlMessage;
-    }
-    producer.sendMessage(topic.getName(), null, recordKey, recordValue, null, null).get();
   }
 
   @Test
@@ -306,15 +322,7 @@ public class TopicManagerTest {
     // Since we're dealing with a mock in this test case, we'll just use a fake topic name
     PubSubTopic topicName = pubSubTopicRepository.getTopic("mockTopicName_v1");
     // Without using mockito spy, the LOGGER inside TopicManager cannot be prepared.
-    TopicManager partiallyMockedTopicManager = Mockito.spy(
-        IntegrationTestPushUtils
-            .getTopicManagerRepo(
-                DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
-                100,
-                MIN_COMPACTION_LAG,
-                kafka.getAddress(),
-                pubSubTopicRepository)
-            .getTopicManager());
+    TopicManager partiallyMockedTopicManager = Mockito.spy(topicManager);
     Mockito.doThrow(VeniceOperationAgainstKafkaTimedOut.class)
         .when(partiallyMockedTopicManager)
         .ensureTopicIsDeletedAndBlock(topicName);
@@ -642,7 +650,7 @@ public class TopicManagerTest {
 
   @Test
   public void testUpdateTopicMinISR() {
-    String topic = Utils.getUniqueString("topic");
+    PubSubTopic topic = pubSubTopicRepository.getTopic(Utils.getUniqueTopicString("topic"));
     topicManager.createTopic(topic, 1, 1, true);
     Properties topicProperties = topicManager.getTopicConfig(topic);
     Assert.assertEquals(topicProperties.getProperty(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG), "1");
@@ -651,4 +659,5 @@ public class TopicManagerTest {
     topicProperties = topicManager.getTopicConfig(topic);
     Assert.assertEquals(topicProperties.getProperty(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG), "2");
   }
+
 }

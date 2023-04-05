@@ -1,4 +1,4 @@
-package com.linkedin.venice.kafka.admin;
+package com.linkedin.venice.pubsub.adapter.kafka.admin;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_ADMIN_GET_TOPIC_CONFIG_MAX_RETRY_TIME_SEC;
 import static com.linkedin.venice.utils.Time.MS_PER_SECOND;
@@ -9,6 +9,7 @@ import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.Utils;
@@ -46,13 +47,13 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-public class KafkaAdminClient implements PubSubAdminAdapter {
-  private static final Logger LOGGER = LogManager.getLogger(KafkaAdminClient.class);
+public class ApacheKafkaAdminAdapter implements PubSubAdminAdapter {
+  private static final Logger LOGGER = LogManager.getLogger(ApacheKafkaAdminAdapter.class);
   private AdminClient kafkaAdminClient;
   private Long maxRetryInMs;
   private PubSubTopicRepository pubSubTopicRepository;
 
-  public KafkaAdminClient(Properties properties, PubSubTopicRepository pubSubTopicRepository) {
+  public ApacheKafkaAdminAdapter(Properties properties, PubSubTopicRepository pubSubTopicRepository) {
     if (properties == null) {
       throw new IllegalArgumentException("properties cannot be null!");
     }
@@ -266,7 +267,7 @@ public class KafkaAdminClient implements PubSubAdminAdapter {
 
   @Override
   public String getClassName() {
-    return KafkaAdminClient.class.getName();
+    return ApacheKafkaAdminAdapter.class.getName();
   }
 
   @Override

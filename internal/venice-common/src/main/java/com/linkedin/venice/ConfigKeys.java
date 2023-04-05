@@ -1,8 +1,8 @@
 package com.linkedin.venice;
 
-import com.linkedin.venice.kafka.admin.PubSubAdminAdapter;
-import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumerConfig;
+import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerConfig;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
+import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 
 
 public class ConfigKeys {

@@ -1,4 +1,4 @@
-package com.linkedin.venice.kafka.admin;
+package com.linkedin.venice.pubsub.adapter.kafka.admin;
 
 import static com.linkedin.venice.stats.KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.CLOSE;
 import static com.linkedin.venice.stats.KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.CONTAINS_TOPIC;
@@ -15,6 +15,7 @@ import static com.linkedin.venice.stats.KafkaAdminWrapperStats.OCCURRENCE_LATENC
 
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
+import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.stats.KafkaAdminWrapperStats;
@@ -36,16 +37,19 @@ import org.apache.commons.lang.Validate;
  * This class delegates another {@link PubSubAdminAdapter} instance and keeps track of the invocation rate of methods
  * on the delegated instance
  */
-public class InstrumentedKafkaAdmin implements PubSubAdminAdapter {
+public class InstrumentedApacheKafkaAdminAdapter implements PubSubAdminAdapter {
   private final PubSubAdminAdapter kafkaAdmin;
   private final KafkaAdminWrapperStats kafkaAdminWrapperStats;
   private final Time time;
 
-  public InstrumentedKafkaAdmin(PubSubAdminAdapter kafkaAdmin, MetricsRepository metricsRepository, String statsName) {
+  public InstrumentedApacheKafkaAdminAdapter(
+      PubSubAdminAdapter kafkaAdmin,
+      MetricsRepository metricsRepository,
+      String statsName) {
     this(kafkaAdmin, metricsRepository, statsName, new SystemTime());
   }
 
-  public InstrumentedKafkaAdmin(
+  public InstrumentedApacheKafkaAdminAdapter(
       @Nonnull PubSubAdminAdapter kafkaAdmin,
       @Nonnull MetricsRepository metricsRepository,
       @Nonnull String statsName,
@@ -150,7 +154,8 @@ public class InstrumentedKafkaAdmin implements PubSubAdminAdapter {
 
   @Override
   public String getClassName() {
-    return String.format("%s delegated by %s", kafkaAdmin.getClassName(), InstrumentedKafkaAdmin.class.getName());
+    return String
+        .format("%s delegated by %s", kafkaAdmin.getClassName(), InstrumentedApacheKafkaAdminAdapter.class.getName());
   }
 
   private <T> T instrument(

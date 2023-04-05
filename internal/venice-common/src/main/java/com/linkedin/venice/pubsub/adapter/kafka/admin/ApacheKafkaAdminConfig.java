@@ -1,4 +1,4 @@
-package com.linkedin.venice.kafka.admin;
+package com.linkedin.venice.pubsub.adapter.kafka.admin;
 
 import static com.linkedin.venice.ConfigConstants.DEFAULT_KAFKA_ADMIN_GET_TOPIC_CONFIG_RETRY_IN_SECONDS;
 import static com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig.*;

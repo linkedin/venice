@@ -1,6 +1,5 @@
 package com.linkedin.venice.pubsub.api;
 
-import com.linkedin.venice.kafka.admin.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.Closeable;
@@ -11,7 +10,6 @@ import java.io.Closeable;
  *
  * A pus-sub specific concrete implementation of this interface should be provided to be able to create
  * and instantiate admins for that system.
- * TODO: change the name of PubSubAdminAdapter into PubSubAdminAdaptor
  */
 public interface PubSubAdminAdapterFactory<ADAPTER extends PubSubAdminAdapter> extends Closeable {
   /**
