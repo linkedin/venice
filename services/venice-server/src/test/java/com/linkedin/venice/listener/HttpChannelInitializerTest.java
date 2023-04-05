@@ -6,8 +6,8 @@ import static org.mockito.Mockito.mock;
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
+import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.security.SSLFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
@@ -19,7 +19,7 @@ import org.testng.annotations.Test;
 
 public class HttpChannelInitializerTest {
   private ReadOnlyStoreRepository storeMetadataRepository;
-  private CompletableFuture<RoutingDataRepository> routingRepository;
+  private CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewRepository;
   private MetricsRepository metricsRepository;
   private Optional<SSLFactory> sslFactory;
   private VeniceServerConfig serverConfig;
@@ -36,7 +36,7 @@ public class HttpChannelInitializerTest {
     storeAccessController = Optional.of(mock(DynamicAccessController.class));
     requestHandler = mock(StorageReadRequestsHandler.class);
     serverConfig = mock(VeniceServerConfig.class);
-    routingRepository = new CompletableFuture<>();
+    customizedViewRepository = new CompletableFuture<>();
   }
 
   @Test
@@ -45,7 +45,7 @@ public class HttpChannelInitializerTest {
     doReturn(10l).when(serverConfig).getNodeCapacityInRcu();
     HttpChannelInitializer initializer = new HttpChannelInitializer(
         storeMetadataRepository,
-        routingRepository,
+        customizedViewRepository,
         metricsRepository,
         sslFactory,
         serverConfig,
@@ -61,7 +61,7 @@ public class HttpChannelInitializerTest {
     doReturn(10l).when(serverConfig).getNodeCapacityInRcu();
     HttpChannelInitializer initializer = new HttpChannelInitializer(
         storeMetadataRepository,
-        routingRepository,
+        customizedViewRepository,
         metricsRepository,
         sslFactory,
         serverConfig,
