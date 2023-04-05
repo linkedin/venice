@@ -869,7 +869,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int subPartition,
       String kafkaUrl,
       long beforeProcessingRecordTimestamp) throws InterruptedException {
-    long queuePutStartTimeInNS = System.nanoTime();
+    boolean measureTime = emitMetrics.get();
+    long queuePutStartTimeInNS = measureTime ? System.nanoTime() : 0;
     storeBufferService.putConsumerRecord(
         consumedRecord,
         this,
@@ -878,7 +879,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         kafkaUrl,
         beforeProcessingRecordTimestamp); // blocking call
 
-    if (emitMetrics.get()) {
+    if (measureTime) {
       hostLevelIngestionStats.recordConsumerRecordsQueuePutLatency(LatencyUtils.getLatencyInMS(queuePutStartTimeInNS));
     }
   }
@@ -900,8 +901,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     long totalBytesRead = 0;
     double elapsedTimeForPuttingIntoQueue = 0;
     int subPartition = PartitionUtils.getSubPartition(topicPartition, amplificationFactor);
+    boolean metricsEnabled = emitMetrics.get();
     for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record: records) {
-      long beforeProcessingRecordTimestamp = System.nanoTime();
+      long beforeProcessingRecordTimestampNs = System.nanoTime();
       if (!shouldProcessRecord(record, subPartition)) {
         PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(subPartition);
         if (partitionConsumptionState != null) {
@@ -934,14 +936,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // This function may modify the original record in KME and it is unsafe to use the payload from KME directly after
       // this call.
       DelegateConsumerRecordResult delegateConsumerRecordResult =
-          delegateConsumerRecord(record, subPartition, kafkaUrl, kafkaClusterId, beforeProcessingRecordTimestamp);
+          delegateConsumerRecord(record, subPartition, kafkaUrl, kafkaClusterId, beforeProcessingRecordTimestampNs);
       switch (delegateConsumerRecordResult) {
         case QUEUED_TO_DRAINER:
-          long queuePutStartTimeInNS = System.nanoTime();
+          long queuePutStartTimeInNS = metricsEnabled ? System.nanoTime() : 0;
+
+          // blocking call
           storeBufferService
-              .putConsumerRecord(record, this, null, subPartition, kafkaUrl, beforeProcessingRecordTimestamp); // blocking
-                                                                                                               // call
-          elapsedTimeForPuttingIntoQueue += LatencyUtils.getLatencyInMS(queuePutStartTimeInNS);
+              .putConsumerRecord(record, this, null, subPartition, kafkaUrl, beforeProcessingRecordTimestampNs);
+
+          if (metricsEnabled) {
+            elapsedTimeForPuttingIntoQueue += LatencyUtils.getLatencyInMS(queuePutStartTimeInNS);
+          }
           break;
         case PRODUCED_TO_KAFKA:
         case SKIPPED_MESSAGE:
@@ -964,7 +970,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      */
     storageUtilizationManager.enforcePartitionQuota(topicPartition.getPartitionNumber(), totalBytesRead);
 
-    if (emitMetrics.get()) {
+    if (metricsEnabled) {
       if (totalBytesRead > 0) {
         hostLevelIngestionStats.recordTotalBytesReadFromKafkaAsUncompressedSize(totalBytesRead);
       }
@@ -1843,7 +1849,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       LeaderProducedRecordContext leaderProducedRecordContext,
       int subPartition,
       String kafkaUrl,
-      long beforeProcessingRecordTimestamp) throws InterruptedException {
+      long beforeProcessingRecordTimestampNs) throws InterruptedException {
     // The partitionConsumptionStateMap can be modified by other threads during consumption (for example when
     // unsubscribing)
     // in order to maintain thread safety, we hold onto the reference to the partitionConsumptionState and pass that
@@ -1861,7 +1867,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           partitionConsumptionState,
           leaderProducedRecordContext,
           kafkaUrl,
-          beforeProcessingRecordTimestamp);
+          beforeProcessingRecordTimestampNs);
     } catch (FatalDataValidationException e) {
       int faultyPartition = record.getTopicPartition().getPartitionNumber();
       String errorMessage;
@@ -2362,19 +2368,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PartitionConsumptionState partitionConsumptionState,
       LeaderProducedRecordContext leaderProducedRecordContext,
       String kafkaUrl,
-      long beforeProcessingRecordTimestamp) {
+      long beforeProcessingRecordTimestampNs) {
     // De-serialize payload into Venice Message format
     KafkaKey kafkaKey = consumerRecord.getKey();
     KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
     int sizeOfPersistedData = 0;
     try {
       // Assumes the timestamp on the record is the broker's timestamp when it received the message.
-      long consumerTimestampMs = System.currentTimeMillis();
+      long currentTimeMs = System.currentTimeMillis();
       long producerBrokerLatencyMs =
           Math.max(consumerRecord.getPubSubMessageTime() - kafkaValue.producerMetadata.messageTimestamp, 0);
-      long brokerConsumerLatencyMs = Math.max(consumerTimestampMs - consumerRecord.getPubSubMessageTime(), 0);
-      long producerConsumerLatencyMs = Math.max(consumerTimestampMs - kafkaValue.producerMetadata.messageTimestamp, 0);
+      long brokerConsumerLatencyMs = Math.max(currentTimeMs - consumerRecord.getPubSubMessageTime(), 0);
+      long producerConsumerLatencyMs = Math.max(currentTimeMs - kafkaValue.producerMetadata.messageTimestamp, 0);
       recordWriterStats(
+          currentTimeMs,
           producerBrokerLatencyMs,
           brokerConsumerLatencyMs,
           producerConsumerLatencyMs,
@@ -2426,13 +2433,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             consumerRecord.getOffset(),
             partitionConsumptionState);
       } else {
-        sizeOfPersistedData =
-            processKafkaDataMessage(consumerRecord, partitionConsumptionState, leaderProducedRecordContext);
+        sizeOfPersistedData = processKafkaDataMessage(
+            consumerRecord,
+            partitionConsumptionState,
+            leaderProducedRecordContext,
+            currentTimeMs);
       }
       versionedIngestionStats.recordConsumedRecordEndToEndProcessingLatency(
           storeName,
           versionNumber,
-          LatencyUtils.getLatencyInMS(beforeProcessingRecordTimestamp));
+          LatencyUtils.getLatencyInMS(beforeProcessingRecordTimestampNs),
+          currentTimeMs);
     } catch (DuplicateDataException e) {
       divErrorMetricCallback.execute(e);
       if (LOGGER.isDebugEnabled()) {
@@ -2482,6 +2493,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected void recordWriterStats(
+      long consumerTimestampMs,
       long producerBrokerLatencyMs,
       long brokerConsumerLatencyMs,
       long producerConsumerLatencyMs,
@@ -2490,6 +2502,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       versionedDIVStats.recordLatencies(
           storeName,
           versionNumber,
+          consumerTimestampMs,
           producerBrokerLatencyMs,
           brokerConsumerLatencyMs,
           producerConsumerLatencyMs);
@@ -2570,12 +2583,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * in order to insert the {@param schemaId} there. This avoids a byte array copy, which can be beneficial in terms
    * of GC.
    */
-  private void prependHeaderAndWriteToStorageEngine(int partition, byte[] keyBytes, Put put) {
+  private void prependHeaderAndWriteToStorageEngine(int partition, byte[] keyBytes, Put put, long currentTimeMs) {
     ByteBuffer putValue = put.putValue;
 
     if ((putValue.remaining() == 0) && (put.replicationMetadataPayload.remaining() > 0)) {
       // For RMD chunk, it is already prepended with the schema ID, so we will just put to storage engine.
-      writeToStorageEngine(partition, keyBytes, put);
+      writeToStorageEngine(partition, keyBytes, put, currentTimeMs);
     } else if (putValue.position() < ValueRecord.SCHEMA_HEADER_LENGTH) {
       throw new VeniceException(
           "Start position of 'putValue' ByteBuffer shouldn't be less than " + ValueRecord.SCHEMA_HEADER_LENGTH);
@@ -2591,22 +2604,24 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int backupBytes = putValue.getInt();
       putValue.position(putValue.position() - ValueRecord.SCHEMA_HEADER_LENGTH);
       ByteUtils.writeInt(putValue.array(), put.schemaId, putValue.position());
-      writeToStorageEngine(partition, keyBytes, put);
+      writeToStorageEngine(partition, keyBytes, put, currentTimeMs);
 
       /* We still want to recover the original position to make this function idempotent. */
       putValue.putInt(backupBytes);
     }
   }
 
-  private void writeToStorageEngine(int partition, byte[] keyBytes, Put put) {
-    long putStartTimeNs = System.nanoTime();
+  private void writeToStorageEngine(int partition, byte[] keyBytes, Put put, long currentTimeMs) {
+    boolean metricsEnabled = emitMetrics.get();
+    boolean traceEnabled = LOGGER.isTraceEnabled();
+    long putStartTimeNs = (metricsEnabled || traceEnabled) ? System.nanoTime() : 0;
     putInStorageEngine(partition, keyBytes, put);
     if (cacheBackend.isPresent()) {
       if (cacheBackend.get().getStorageEngine(kafkaVersionTopic) != null) {
         cacheBackend.get().getStorageEngine(kafkaVersionTopic).put(partition, keyBytes, put.putValue);
       }
     }
-    if (LOGGER.isTraceEnabled()) {
+    if (traceEnabled) {
       LOGGER.trace(
           "{} : Completed PUT to Store: {} in {} ns at {}",
           consumerTaskId,
@@ -2614,8 +2629,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           System.nanoTime() - putStartTimeNs,
           System.currentTimeMillis());
     }
-    if (emitMetrics.get()) {
-      hostLevelIngestionStats.recordStorageEnginePutLatency(LatencyUtils.getLatencyInMS(putStartTimeNs));
+    if (metricsEnabled) {
+      hostLevelIngestionStats.recordStorageEnginePutLatency(LatencyUtils.getLatencyInMS(putStartTimeNs), currentTimeMs);
     }
   }
 
@@ -2725,7 +2740,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private int processKafkaDataMessage(
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       PartitionConsumptionState partitionConsumptionState,
-      LeaderProducedRecordContext leaderProducedRecordContext) {
+      LeaderProducedRecordContext leaderProducedRecordContext,
+      long currentTimeMs) {
     int keyLen = 0;
     int valueLen = 0;
     KafkaKey kafkaKey = consumerRecord.getKey();
@@ -2763,7 +2779,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             // Followers are not affected since they are always consuming from VTs.
             producedPartition,
             keyBytes,
-            put);
+            put,
+            currentTimeMs);
         // grab the positive schema id (actual value schema id) to be used in schema warm-up value schema id.
         // for hybrid use case in read compute store in future we need revisit this as we can have multiple schemas.
         if (put.schemaId > 0) {

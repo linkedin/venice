@@ -42,7 +42,7 @@ public class WritePathLatencySensor {
   /**
    * Record the latency value.
    */
-  public void record(double value) {
-    sensor.record(value);
+  public void record(double value, long currentTimeMs) {
+    sensor.record(value, currentTimeMs);
   }
 }
