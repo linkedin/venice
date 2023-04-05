@@ -86,6 +86,7 @@ import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.TopicSwitch;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
@@ -206,6 +207,7 @@ import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.mockito.ArgumentCaptor;
+import org.mockito.ArgumentMatchers;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -3217,34 +3219,47 @@ public abstract class StoreIngestionTaskTest {
     Assert.assertEquals(mockNotifierError.size(), 0);
   }
 
-  @Test
-  public void testProduceToStoreBufferService() throws Exception {
-    KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, new byte[1]);
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testProduceToStoreBufferService(boolean activeActiveEnabled) throws Exception {
+    byte[] keyBytes = new byte[1];
+    KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, keyBytes);
     KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
     kafkaMessageEnvelope.messageType = MessageType.PUT.getValue();
     Put put = new Put();
-    put.putValue = ByteBuffer.allocate(1);
+    put.putValue = ByteBuffer.allocate(10);
+    put.putValue.position(4);
+    put.replicationMetadataPayload = ByteBuffer.allocate(10);
     kafkaMessageEnvelope.payloadUnion = put;
+    kafkaMessageEnvelope.producerMetadata = new ProducerMetadata();
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> pubSubMessage = new ImmutablePubSubMessage(
         kafkaKey,
         kafkaMessageEnvelope,
-        new PubSubTopicPartitionImpl(pubSubTopic, 1),
+        new PubSubTopicPartitionImpl(pubSubTopic, PARTITION_FOO),
         0,
         0,
         0);
 
     HostLevelIngestionStats stats = mock(HostLevelIngestionStats.class);
     when(mockAggStoreIngestionStats.getStoreStats(anyString())).thenReturn(stats);
+    LeaderProducedRecordContext leaderProducedRecordContext = mock(LeaderProducedRecordContext.class);
+    when(leaderProducedRecordContext.getMessageType()).thenReturn(MessageType.PUT);
+    when(leaderProducedRecordContext.getValueUnion()).thenReturn(put);
+    when(leaderProducedRecordContext.getKeyBytes()).thenReturn(keyBytes);
 
     runTest(Collections.singleton(PARTITION_FOO), () -> {
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          () -> assertTrue(storeIngestionTaskUnderTest.hasAnySubscription()));
+
       Runnable produce = () -> {
         try {
           storeIngestionTaskUnderTest.produceToStoreBufferService(
               pubSubMessage,
-              mock(LeaderProducedRecordContext.class),
-              0,
+              leaderProducedRecordContext,
+              PARTITION_FOO,
               localKafkaConsumerService.kafkaUrl,
-              0);
+              System.nanoTime());
         } catch (InterruptedException e) {
           throw new VeniceException(e);
         }
@@ -3258,7 +3273,16 @@ public abstract class StoreIngestionTaskTest {
       storeIngestionTaskUnderTest.enableMetricsEmission();
       produce.run();
       verify(stats, times(2)).recordConsumerRecordsQueuePutLatency(anyDouble());
-    }, false);
+
+      long currentTimeMs = System.currentTimeMillis();
+      long errorMargin = 10_000;
+      verify(mockVersionedStorageIngestionStats, timeout(1000).times(3)).recordConsumedRecordEndToEndProcessingLatency(
+          anyString(),
+          anyInt(),
+          ArgumentMatchers.doubleThat(argument -> argument >= 0 && argument < 1000),
+          ArgumentMatchers
+              .longThat(argument -> argument > currentTimeMs - errorMargin && argument < currentTimeMs + errorMargin));
+    }, activeActiveEnabled);
   }
 
   @Test

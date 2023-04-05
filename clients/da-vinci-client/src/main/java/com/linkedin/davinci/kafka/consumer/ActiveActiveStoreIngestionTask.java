@@ -432,13 +432,11 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             consumerTaskId + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
     }
 
-    long currentTimeNs = System.nanoTime();
-    long currentTimeMs = currentTimeNs / Time.NS_PER_MS;
     aggVersionedIngestionStats.recordConsumedRecordEndToEndProcessingLatency(
         storeName,
         versionNumber,
-        LatencyUtils.convertLatencyFromNSToMS(currentTimeNs - beforeProcessingRecordTimestamp),
-        currentTimeMs);
+        LatencyUtils.getLatencyInMS(beforeProcessingRecordTimestamp),
+        System.currentTimeMillis());
 
     if (mergeConflictResult.isUpdateIgnored()) {
       hostLevelIngestionStats.recordUpdateIgnoredDCR();

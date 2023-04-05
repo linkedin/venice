@@ -451,8 +451,8 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
     checkLongRunningTasksLatencySensor.record(latency);
   }
 
-  public void recordStorageEnginePutLatency(double latency) {
-    storageEnginePutLatencySensor.record(latency);
+  public void recordStorageEnginePutLatency(double latency, long currentTimeMs) {
+    storageEnginePutLatencySensor.record(latency, currentTimeMs);
   }
 
   public void recordWriteComputeCacheHitCount() {
