@@ -97,7 +97,6 @@ public class VeniceChangelogConsumerClientFactoryTest {
     StoreInfo mockStoreInfo = new StoreInfo();
     mockStoreInfo.setPartitionCount(1);
     mockStoreInfo.setCurrentVersion(1);
-    ViewConfig viewConfig = new ViewConfigImpl(ChangeCaptureView.class.getCanonicalName(), new HashMap<>());
     Map<String, ViewConfig> viewConfigMap = new HashMap<>();
     mockStoreInfo.setViewConfigs(viewConfigMap);
     Mockito.when(mockStoreResponse.getStore()).thenReturn(mockStoreInfo);
