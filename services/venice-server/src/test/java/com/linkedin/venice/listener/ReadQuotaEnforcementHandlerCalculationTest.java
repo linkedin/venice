@@ -2,10 +2,14 @@ package com.linkedin.venice.listener;
 
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
+import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.List;
@@ -20,21 +24,24 @@ public class ReadQuotaEnforcementHandlerCalculationTest {
   public void onePartitionFourReplicas() {
     // one partition, four replicas, one replica on this host. Portion should be 1/4
     PartitionAssignment pa = getPartitionAssignment("topic", nodeId, new int[] { 4 }, new int[] { 1 });
-    double portion = ReadQuotaEnforcementHandler.getNodeResponsibilityForQuota(pa, nodeId);
+    HelixCustomizedViewOfflinePushRepository cvRepository = getCVRepository("topic", nodeId, pa, new int[] { 4 });
+    double portion = ReadQuotaEnforcementHandler.getNodeResponsibilityForQuota(cvRepository, pa, nodeId);
     Assert.assertEquals(portion, 0.25d);
   }
 
   @Test
   void twoPartitionsTwoAndThreeReplicas() {
-    PartitionAssignment pa = getPartitionAssignment("topic", nodeId, new int[] { 2, 3 }, new int[] { 1, 1 });
-    double portion = ReadQuotaEnforcementHandler.getNodeResponsibilityForQuota(pa, nodeId);
+    PartitionAssignment pa = getPartitionAssignment("topic", nodeId, new int[] { 3, 3 }, new int[] { 1, 1 });
+    HelixCustomizedViewOfflinePushRepository cvRepository = getCVRepository("topic", nodeId, pa, new int[] { 2, 3 });
+    double portion = ReadQuotaEnforcementHandler.getNodeResponsibilityForQuota(cvRepository, pa, nodeId);
     Assert.assertEquals(portion, 0.41666666666666663d); // (1/2 + 1/3)/2
   }
 
   @Test
   void twoPartitionsTwoAndThreeReplicasOnlyTwoReplicasLocally() {
-    PartitionAssignment pa = getPartitionAssignment("topic", nodeId, new int[] { 2, 3, 3 }, new int[] { 1, 1, 0 });
-    double portion = ReadQuotaEnforcementHandler.getNodeResponsibilityForQuota(pa, nodeId);
+    PartitionAssignment pa = getPartitionAssignment("topic", nodeId, new int[] { 3, 3, 3 }, new int[] { 1, 1, 0 });
+    HelixCustomizedViewOfflinePushRepository cvRepository = getCVRepository("topic", nodeId, pa, new int[] { 2, 3, 3 });
+    double portion = ReadQuotaEnforcementHandler.getNodeResponsibilityForQuota(cvRepository, pa, nodeId);
     Assert.assertEquals(portion, 0.27777777777777773d); // (1/2 + 1/3 + 0/3)/3
   }
 
@@ -74,13 +81,44 @@ public class ReadQuotaEnforcementHandlerCalculationTest {
         } else {
           instances.add(new Instance(Utils.getUniqueString("nodeid"), "dummyHost-" + i, 1234));
         }
-
       }
+      doReturn(p).when(partition).getId();
       doReturn(instances).when(partition).getWorkingInstances();
-      doReturn(instances).when(partition).getReadyToServeInstances();
       partitions.add(partition);
     }
     doReturn(partitions).when(partitionAssignment).getAllPartitions();
     return partitionAssignment;
+  }
+
+  public static HelixCustomizedViewOfflinePushRepository getCVRepository(
+      String topic,
+      String thisNodeId,
+      PartitionAssignment partitionAssignment,
+      int[] readyToServeReplicas) {
+    HelixCustomizedViewOfflinePushRepository customizedViewOfflinePushRepository =
+        mock(HelixCustomizedViewOfflinePushRepository.class);
+    for (Partition p: partitionAssignment.getAllPartitions()) {
+      List<ReplicaState> replicaStates = new ArrayList<>();
+      int readyToServeReplicaCount = readyToServeReplicas[p.getId()];
+      for (Instance i: p.getWorkingInstances()) {
+        ReplicaState thisReplicaState = mock(ReplicaState.class);
+        doReturn(i.getNodeId()).when(thisReplicaState).getParticipantId();
+        if (thisNodeId.equals(i.getNodeId())) {
+          doReturn(ExecutionStatus.COMPLETED.name()).when(thisReplicaState).getVenicePushStatus();
+          replicaStates.add(thisReplicaState);
+          readyToServeReplicaCount -= 1;
+          continue;
+        }
+        if (readyToServeReplicaCount > 0) {
+          doReturn(ExecutionStatus.COMPLETED.name()).when(thisReplicaState).getVenicePushStatus();
+          readyToServeReplicaCount -= 1;
+        } else {
+          doReturn(ExecutionStatus.ERROR.name()).when(thisReplicaState).getVenicePushStatus();
+        }
+        replicaStates.add(thisReplicaState);
+      }
+      when(customizedViewOfflinePushRepository.getReplicaStates(topic, p.getId())).thenReturn(replicaStates);
+    }
+    return customizedViewOfflinePushRepository;
   }
 }

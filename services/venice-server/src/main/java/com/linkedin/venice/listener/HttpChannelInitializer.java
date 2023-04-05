@@ -7,8 +7,8 @@ import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.security.SSLFactory;
@@ -50,7 +50,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
 
   public HttpChannelInitializer(
       ReadOnlyStoreRepository storeMetadataRepository,
-      CompletableFuture<RoutingDataRepository> routingRepository,
+      CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewRepository,
       MetricsRepository metricsRepository,
       Optional<SSLFactory> sslFactory,
       VeniceServerConfig serverConfig,
@@ -104,7 +104,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
       this.quotaEnforcer = new ReadQuotaEnforcementHandler(
           serverConfig.getNodeCapacityInRcu(),
           storeMetadataRepository,
-          routingRepository,
+          customizedViewRepository,
           nodeId,
           quotaUsageStats);
 
