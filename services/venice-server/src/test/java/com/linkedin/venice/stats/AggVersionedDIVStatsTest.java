@@ -90,14 +90,6 @@ public class AggVersionedDIVStatsTest {
 
     String storeName = newStore.getName();
 
-    /**
-     * Since this is a brand new store, it does not yet contain any versions, which means we should get
-     * {@link NULL_DIV_STATS} on the version-specific stats...
-     */
-
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_current--current_idle_time.DIVStatsCounter").value(),
-        (double) NULL_DIV_STATS.code);
     Assert.assertEquals(reporter.query("." + storeName + "_total--corrupted_msg.DIVStatsCounter").value(), 0d);
     Assert.assertEquals(reporter.query("." + storeName + "_total--success_msg.DIVStatsCounter").value(), 0d);
   }
@@ -115,15 +107,14 @@ public class AggVersionedDIVStatsTest {
     // expect to see v1's stats on future reporter
     Assert.assertEquals(reporter.query("." + storeName + "--future_version.VersionStat").value(), 1d);
 
-    stats.recordCurrentIdleTime(storeName, 1);
-    Assert.assertEquals(reporter.query("." + storeName + "_future--current_idle_time.DIVStatsCounter").value(), 1d);
-
+    long consumerTimestampMs = System.currentTimeMillis();
     double v1ProducerBrokerLatencyMs = 801d;
     double v1BrokerConsumerLatencyMs = 201d;
     double v1ProducerConsumerLatencyMs = 1001d;
     stats.recordLatencies(
         storeName,
         1,
+        consumerTimestampMs,
         v1ProducerBrokerLatencyMs,
         v1BrokerConsumerLatencyMs,
         v1ProducerConsumerLatencyMs);
@@ -140,6 +131,7 @@ public class AggVersionedDIVStatsTest {
     stats.recordLeaderLatencies(
         storeName,
         1,
+        consumerTimestampMs,
         v1ProducerToSourceBrokerLatencyMs,
         v1SourceBrokerToLeaderConsumerLatencyMs,
         v1ProducerToLeaderConsumerLatencyMs);
@@ -156,6 +148,7 @@ public class AggVersionedDIVStatsTest {
     stats.recordFollowerLatencies(
         storeName,
         1,
+        consumerTimestampMs,
         v1ProducerToLocalBrokerLatencyMs,
         v1LocalBrokerToFollowerConsumerLatencyMs,
         v1ProducerToFollowerConsumerLatencyMs);
@@ -174,7 +167,6 @@ public class AggVersionedDIVStatsTest {
     Version version2 = new VersionImpl(storeName, 2);
     mockStore.addVersion(version2);
 
-    stats.recordCurrentIdleTime(storeName, 1);
     stats.recordDuplicateMsg(storeName, 2);
     double v2ProducerBrokerLatencyMs = 802d;
     double v2BrokerConsumerLatencyMs = 202d;
@@ -182,6 +174,7 @@ public class AggVersionedDIVStatsTest {
     stats.recordLatencies(
         storeName,
         2,
+        consumerTimestampMs,
         v2ProducerBrokerLatencyMs,
         v2BrokerConsumerLatencyMs,
         v2ProducerConsumerLatencyMs);
@@ -191,7 +184,6 @@ public class AggVersionedDIVStatsTest {
     Assert.assertEquals(reporter.query("." + storeName + "--future_version.VersionStat").value(), 2d);
     Assert.assertEquals(reporter.query("." + storeName + "--current_version.VersionStat").value(), 1d);
     Assert.assertEquals(reporter.query("." + storeName + "_future--duplicate_msg.DIVStatsCounter").value(), 1d);
-    Assert.assertEquals(reporter.query("." + storeName + "_current--current_idle_time.DIVStatsCounter").value(), 2d);
     Assert.assertEquals(
         reporter.query("." + storeName + "_current--producer_to_broker_latency_avg_ms.DIVStatsCounter").value(),
         v1ProducerBrokerLatencyMs);
@@ -211,6 +203,7 @@ public class AggVersionedDIVStatsTest {
     stats.recordLeaderLatencies(
         storeName,
         2,
+        consumerTimestampMs,
         v2ProducerToSourceBrokerLatencyMs,
         v2SourceBrokerToLeaderConsumerLatencyMs,
         v2ProducerToLeaderConsumerLatencyMs);
@@ -236,6 +229,7 @@ public class AggVersionedDIVStatsTest {
     stats.recordFollowerLatencies(
         storeName,
         2,
+        consumerTimestampMs,
         v2ProducerToLocalBrokerLatencyMs,
         v2LocalBrokerToFollowerConsumerLatencyMs,
         v2ProducerToFollowerConsumerLatencyMs);
@@ -261,7 +255,6 @@ public class AggVersionedDIVStatsTest {
     // since turning Version status to be online and becoming current version are two separated operations, expect to
     // see
     // v2's stats on backup reporter
-    Assert.assertEquals(reporter.query("." + storeName + "_current--current_idle_time.DIVStatsCounter").value(), 2d);
     Assert.assertEquals(reporter.query("." + storeName + "_future--duplicate_msg.DIVStatsCounter").value(), 0d);
 
     // v2 becomes the current version

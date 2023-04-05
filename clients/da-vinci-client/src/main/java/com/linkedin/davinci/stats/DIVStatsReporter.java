@@ -25,8 +25,6 @@ public class DIVStatsReporter extends AbstractVeniceStatsReporter<DIVStats> {
     registerSensor("missing_msg", new DIVStatsCounter(this, () -> (double) getStats().getMissingMsg()));
     registerSensor("corrupted_msg", new DIVStatsCounter(this, () -> (double) getStats().getCorruptedMsg()));
     registerSensor("success_msg", new DIVStatsCounter(this, () -> (double) getStats().getSuccessMsg()));
-    registerSensor("current_idle_time", new DIVStatsCounter(this, () -> (double) getStats().getCurrentIdleTime()));
-    registerSensor("overall_idle_time", new DIVStatsCounter(this, () -> (double) getStats().getOverallIdleTime()));
     registerSensor(
         "benign_leader_offset_rewind_count",
         new DIVStatsCounter(this, () -> (double) getStats().getBenignLeaderOffsetRewindCount()));

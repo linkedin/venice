@@ -120,7 +120,8 @@ class LeaderProducerCallback implements ChunkAwareCallback {
             .recordLeaderProducerCompletionTime(
                 ingestionTask.getStoreName(),
                 ingestionTask.versionNumber,
-                LatencyUtils.getLatencyInMS(produceTimeNs));
+                LatencyUtils.getLatencyInMS(produceTimeNs),
+                System.currentTimeMillis());
       }
 
       int producedRecordNum = 0;
