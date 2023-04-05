@@ -62,20 +62,22 @@ public class RouterBasedStoreSchemaFetcher implements StoreSchemaFetcher {
   public Schema getLatestValueSchema() {
     // Fetch the latest value schema for the specified value schema.
     String latestSchemaRequestPath = TYPE_LATEST_VALUE_SCHEMA + "/" + storeClient.getStoreName();
+    String latestSchemaStr;
     try {
-      String latestSchemaStr = fetchSingleSchemaString(latestSchemaRequestPath);
-      Schema latestSchema;
-      try {
-        latestSchema = parseSchemaFromJSONLooseValidation(latestSchemaStr);
-      } catch (Exception e) {
-        throw new VeniceException("Got exception while parsing superset schema", e);
-      }
-      return latestSchema;
+      latestSchemaStr = fetchSingleSchemaString(latestSchemaRequestPath);
     } catch (Exception e) {
       // If the routers don't support /latest_value_schema yet, an Exception will be thrown from executeRequest
-      // In such a case, fetch the latest value schema ƒrom the /value_schema endpoint.
+      // In such a case, fetch the latest value schema from the /value_schema endpoint.
       return getLatestValueSchemaFromAllValueSchemas();
     }
+
+    Schema latestSchema;
+    try {
+      latestSchema = parseSchemaFromJSONLooseValidation(latestSchemaStr);
+    } catch (Exception e) {
+      throw new VeniceException("Got exception while parsing superset schema", e);
+    }
+    return latestSchema;
   }
 
   private Schema getLatestValueSchemaFromAllValueSchemas() {
