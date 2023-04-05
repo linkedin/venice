@@ -393,7 +393,7 @@ public class TestMetaDataHandler {
     Mockito.doReturn(null).when(schemaRepo).getSupersetOrLatestValueSchema(storeName);
 
     FullHttpResponse response = passRequestToMetadataHandler(
-        "http://myRouterHost:4567/latest_value_schema2/" + storeName,
+        "http://myRouterHost:4567/latest_value_schema/" + storeName,
         null,
         schemaRepo,
         Mockito.mock(HelixReadOnlyStoreConfigRepository.class),
