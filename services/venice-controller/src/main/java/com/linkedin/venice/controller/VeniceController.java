@@ -262,10 +262,15 @@ public class VeniceController {
     if (args.length != 2) {
       Utils.exit("USAGE: java -jar venice-controller-all.jar <cluster_config_file_path> <controller_config_file_path>");
     }
+    run(args[0], args[1], true);
+  }
+
+  public static void run(String clusterConfigFilePath, String controllerConfigFilePath, boolean joinThread) {
+
     VeniceProperties controllerProps = null;
     try {
-      VeniceProperties clusterProps = Utils.parseProperties(args[0]);
-      VeniceProperties controllerBaseProps = Utils.parseProperties(args[1]);
+      VeniceProperties clusterProps = Utils.parseProperties(clusterConfigFilePath);
+      VeniceProperties controllerBaseProps = Utils.parseProperties(controllerConfigFilePath);
 
       controllerProps =
           new PropertyBuilder().put(clusterProps.toProperties()).put(controllerBaseProps.toProperties()).build();
@@ -285,6 +290,13 @@ public class VeniceController {
         d2Client);
     controller.start();
     addShutdownHook(controller, d2Client);
+    if (joinThread) {
+      try {
+        Thread.currentThread().join();
+      } catch (InterruptedException e) {
+        LOGGER.error("Unable to join thread in shutdown hook. ", e);
+      }
+    }
   }
 
   private static void addShutdownHook(VeniceController controller, D2Client d2Client) {
@@ -295,10 +307,5 @@ public class VeniceController {
         D2ClientUtils.shutdownClient(d2Client);
       }
     });
-    try {
-      Thread.currentThread().join();
-    } catch (InterruptedException e) {
-      LOGGER.error("Unable to join thread in shutdown hook. ", e);
-    }
   }
 }
