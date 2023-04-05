@@ -46,17 +46,13 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-public class KafkaAdminClient implements KafkaAdminWrapper {
+public class KafkaAdminClient implements PubSubAdminAdapter {
   private static final Logger LOGGER = LogManager.getLogger(KafkaAdminClient.class);
   private AdminClient kafkaAdminClient;
   private Long maxRetryInMs;
   private PubSubTopicRepository pubSubTopicRepository;
 
-  public KafkaAdminClient() {
-  }
-
-  @Override
-  public void initialize(Properties properties, PubSubTopicRepository pubSubTopicRepository) {
+  public KafkaAdminClient(Properties properties, PubSubTopicRepository pubSubTopicRepository) {
     if (properties == null) {
       throw new IllegalArgumentException("properties cannot be null!");
     }

@@ -1,6 +1,6 @@
 package com.linkedin.venice.kafka.partitionoffset;
 
-import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
+import com.linkedin.venice.kafka.admin.PubSubAdminAdapter;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
@@ -18,7 +18,7 @@ public class PartitionOffsetFetcherFactory {
       PubSubConsumerAdapterFactory pubSubConsumerAdapterFactory,
       VeniceProperties veniceProperties,
       String pubSubBootstrapServers,
-      Lazy<KafkaAdminWrapper> kafkaAdminWrapper,
+      Lazy<PubSubAdminAdapter> kafkaAdminWrapper,
       long kafkaOperationTimeoutMs,
       Optional<MetricsRepository> optionalMetricsRepository) {
     KafkaPubSubMessageDeserializer kafkaPubSubMessageDeserializer = new KafkaPubSubMessageDeserializer(

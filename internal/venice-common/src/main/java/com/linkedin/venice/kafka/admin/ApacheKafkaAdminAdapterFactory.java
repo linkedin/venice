@@ -12,15 +12,15 @@ import com.linkedin.venice.utils.VeniceProperties;
  * A kafka based admin client created using this factory is for managing and inspecting topics, brokers, configurations and ACLs.
  */
 
-public class ApacheKafkaAdminAdapterFactory implements PubSubAdminAdapterFactory<KafkaAdminWrapper> {
+public class ApacheKafkaAdminAdapterFactory implements PubSubAdminAdapterFactory<PubSubAdminAdapter> {
   private static final String NAME = "ApacheKafkaAdmin";
 
   @Override
-  public KafkaAdminWrapper create(VeniceProperties veniceProperties, PubSubTopicRepository pubSubTopicRepository) {
+  public PubSubAdminAdapter create(VeniceProperties veniceProperties, PubSubTopicRepository pubSubTopicRepository) {
     ApacheKafkaAdminConfig adminConfig = new ApacheKafkaAdminConfig(veniceProperties);
-    KafkaAdminWrapper kafkaAdminWrapper = new KafkaAdminClient();
-    kafkaAdminWrapper.initialize(adminConfig.getAdminProperties(), pubSubTopicRepository);
-    return kafkaAdminWrapper;
+    PubSubAdminAdapter pubSubAdminAdapter =
+        new KafkaAdminClient(adminConfig.getAdminProperties(), pubSubTopicRepository);
+    return pubSubAdminAdapter;
   }
 
   @Override

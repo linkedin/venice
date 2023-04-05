@@ -14,8 +14,6 @@ import static org.mockito.Mockito.when;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.kafka.KafkaClientFactory;
-import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -81,9 +79,15 @@ public class VeniceWriterTest {
   public void setUp() {
     pubSubBrokerWrapper = ServiceFactory.getPubSubBroker();
     pubSubConsumerAdapterFactory = IntegrationTestPushUtils.getVeniceConsumerFactory();
-    topicManager = IntegrationTestPushUtils
-        .getTopicManagerRepo(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100L, 0L, pubSubBrokerWrapper.getAddress(), pubSubTopicRepository)
-        .getTopicManager();
+    topicManager =
+        IntegrationTestPushUtils
+            .getTopicManagerRepo(
+                DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+                100L,
+                0L,
+                pubSubBrokerWrapper.getAddress(),
+                pubSubTopicRepository)
+            .getTopicManager();
   }
 
   @AfterClass
@@ -125,8 +129,8 @@ public class VeniceWriterTest {
         kafkaValueSerializer,
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
-    try (PubSubConsumer consumer =
-        pubSubConsumerAdapterFactory.create(new VeniceProperties(), false, pubSubDeserializer, pubSubBrokerWrapper.getAddress())) {
+    try (PubSubConsumer consumer = pubSubConsumerAdapterFactory
+        .create(new VeniceProperties(), false, pubSubDeserializer, pubSubBrokerWrapper.getAddress())) {
       PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(pubSubTopic, 0);
       consumer.subscribe(pubSubTopicPartition, -1);
       int lastSeenSequenceNumber = -1;

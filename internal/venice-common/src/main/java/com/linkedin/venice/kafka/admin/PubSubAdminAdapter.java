@@ -3,7 +3,6 @@ package com.linkedin.venice.kafka.admin;
 import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
-import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.RetryUtils;
@@ -11,7 +10,6 @@ import java.io.Closeable;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.Future;
 
@@ -19,9 +17,7 @@ import java.util.concurrent.Future;
 /**
  * In addition to the APIs below, implementers of this interface are expected to provide a public no-args constructor.
  */
-public interface KafkaAdminWrapper extends Closeable {
-  void initialize(Properties properties, PubSubTopicRepository pubSubTopicRepository);
-
+public interface PubSubAdminAdapter extends Closeable {
   void createTopic(
       PubSubTopic topicName,
       int numPartitions,

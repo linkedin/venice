@@ -5,7 +5,7 @@ import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_MIN_LOG_COMPA
 import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
+import com.linkedin.venice.kafka.admin.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
@@ -80,7 +80,7 @@ public class TopicManagerRepository implements Closeable {
     private long kafkaOperationTimeoutMs = DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
     private long topicDeletionStatusPollIntervalMs = DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS;
     private long topicMinLogCompactionLagMs = DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS;
-    private PubSubAdminAdapterFactory<KafkaAdminWrapper> pubSubAdminAdapterFactory;
+    private PubSubAdminAdapterFactory<PubSubAdminAdapter> pubSubAdminAdapterFactory;
     private PubSubConsumerAdapterFactory<PubSubConsumer> pubSubConsumerAdapterFactory;
     private PubSubTopicRepository pubSubTopicRepository;
     private MetricsRepository metricsRepository;
@@ -127,7 +127,7 @@ public class TopicManagerRepository implements Closeable {
       return pubSubTopicRepository;
     }
 
-    public PubSubAdminAdapterFactory<KafkaAdminWrapper> getPubSubAdminAdapterFactory() {
+    public PubSubAdminAdapterFactory<PubSubAdminAdapter> getPubSubAdminAdapterFactory() {
       return pubSubAdminAdapterFactory;
     }
 
@@ -164,7 +164,7 @@ public class TopicManagerRepository implements Closeable {
     }
 
     public Builder setPubSubAdminAdapterFactory(
-        PubSubAdminAdapterFactory<KafkaAdminWrapper> pubSubAdminAdapterFactory) {
+        PubSubAdminAdapterFactory<PubSubAdminAdapter> pubSubAdminAdapterFactory) {
       return set(() -> this.pubSubAdminAdapterFactory = pubSubAdminAdapterFactory);
     }
 

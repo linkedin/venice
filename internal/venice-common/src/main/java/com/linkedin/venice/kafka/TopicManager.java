@@ -4,7 +4,7 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.admin.InstrumentedKafkaAdmin;
-import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
+import com.linkedin.venice.kafka.admin.PubSubAdminAdapter;
 import com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcher;
 import com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcherFactory;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -88,9 +88,9 @@ public class TopicManager implements Closeable {
   private final long kafkaOperationTimeoutMs;
   private final long topicDeletionStatusPollIntervalMs;
   private final long topicMinLogCompactionLagMs;
-  private final PubSubAdminAdapterFactory<KafkaAdminWrapper> pubSubAdminAdapterFactory;
-  private final Lazy<KafkaAdminWrapper> kafkaWriteOnlyAdmin;
-  private final Lazy<KafkaAdminWrapper> kafkaReadOnlyAdmin;
+  private final PubSubAdminAdapterFactory<PubSubAdminAdapter> pubSubAdminAdapterFactory;
+  private final Lazy<PubSubAdminAdapter> kafkaWriteOnlyAdmin;
+  private final Lazy<PubSubAdminAdapter> kafkaReadOnlyAdmin;
   private final PartitionOffsetFetcher partitionOffsetFetcher;
 
   // It's expensive to grab the topic config over and over again, and it changes infrequently. So we temporarily cache
@@ -112,7 +112,7 @@ public class TopicManager implements Closeable {
     Optional<MetricsRepository> optionalMetricsRepository = Optional.ofNullable(builder.getMetricsRepository());
 
     this.kafkaReadOnlyAdmin = Lazy.of(() -> {
-      KafkaAdminWrapper kafkaReadOnlyAdmin =
+      PubSubAdminAdapter kafkaReadOnlyAdmin =
           pubSubAdminAdapterFactory.create(pubSubProperties.get(pubSubBootstrapServers), pubSubTopicRepository);
       kafkaReadOnlyAdmin = createInstrumentedPubSubAdmin(
           optionalMetricsRepository,
@@ -127,7 +127,7 @@ public class TopicManager implements Closeable {
     });
 
     this.kafkaWriteOnlyAdmin = Lazy.of(() -> {
-      KafkaAdminWrapper kafkaWriteOnlyAdmin =
+      PubSubAdminAdapter kafkaWriteOnlyAdmin =
           pubSubAdminAdapterFactory.create(pubSubProperties.get(pubSubBootstrapServers), pubSubTopicRepository);
       kafkaWriteOnlyAdmin = createInstrumentedPubSubAdmin(
           optionalMetricsRepository,
@@ -150,16 +150,16 @@ public class TopicManager implements Closeable {
         optionalMetricsRepository);
   }
 
-  private KafkaAdminWrapper createInstrumentedPubSubAdmin(
+  private PubSubAdminAdapter createInstrumentedPubSubAdmin(
       Optional<MetricsRepository> optionalMetricsRepository,
       String statsNamePrefix,
-      KafkaAdminWrapper pubSubAdmin,
+      PubSubAdminAdapter pubSubAdmin,
       String pubSubBootstrapServers) {
     if (optionalMetricsRepository.isPresent()) {
       // Use pub sub bootstrap server to identify which pub sub admin client stats it is
       final String kafkaAdminStatsName =
           String.format("%s_%s_%s", statsNamePrefix, pubSubAdmin.getClassName(), pubSubBootstrapServers);
-      KafkaAdminWrapper instrumentedKafkaAdmin =
+      PubSubAdminAdapter instrumentedKafkaAdmin =
           new InstrumentedKafkaAdmin(pubSubAdmin, optionalMetricsRepository.get(), kafkaAdminStatsName);
       logger.info(
           "Created instrumented Kafka admin client for Kafka cluster with bootstrap "
@@ -617,7 +617,7 @@ public class TopicManager implements Closeable {
   }
 
   /**
-   * See Java doc of {@link KafkaAdminWrapper#containsTopicWithExpectationAndRetry} which provides exactly the same
+   * See Java doc of {@link PubSubAdminAdapter#containsTopicWithExpectationAndRetry} which provides exactly the same
    * semantics.
    */
   public boolean containsTopicWithExpectationAndRetry(

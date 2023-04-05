@@ -17,7 +17,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.PubSubBrokerConfigs;
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
+import com.linkedin.venice.kafka.admin.PubSubAdminAdapter;
 import com.linkedin.venice.kafka.partitionoffset.PartitionOffsetFetcherImpl;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.EndOfPush;
@@ -509,8 +509,8 @@ public class TopicManagerTest {
     PubSubTopic topic = pubSubTopicRepository.getTopic(Utils.getUniqueTopicString("topic"));
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(topic, 0);
     // Mock an admin client to pass topic existence check
-    KafkaAdminWrapper mockKafkaAdminWrapper = mock(KafkaAdminWrapper.class);
-    doReturn(true).when(mockKafkaAdminWrapper)
+    PubSubAdminAdapter mockPubSubAdminAdapter = mock(PubSubAdminAdapter.class);
+    doReturn(true).when(mockPubSubAdminAdapter)
         .containsTopicWithPartitionCheckExpectationAndRetry(eq(pubSubTopicPartition), anyInt(), eq(true));
     PubSubConsumer mockPubSubConsumer = mock(PubSubConsumer.class);
     doThrow(new TimeoutException()).when(mockPubSubConsumer).endOffsets(any(), any());
@@ -520,7 +520,7 @@ public class TopicManagerTest {
     PubSubAdminAdapterFactory adminAdapterFactory = mock(PubSubAdminAdapterFactory.class);
     PubSubConsumerAdapterFactory consumerAdapterFactory = mock(PubSubConsumerAdapterFactory.class);
     doReturn(mockPubSubConsumer).when(consumerAdapterFactory).create(any(), anyBoolean(), any(), anyString());
-    doReturn(mockKafkaAdminWrapper).when(adminAdapterFactory).create(any(), eq(pubSubTopicRepository));
+    doReturn(mockPubSubAdminAdapter).when(adminAdapterFactory).create(any(), eq(pubSubTopicRepository));
     try (TopicManager topicManagerForThisTest = TopicManagerRepository.builder()
         .setPubSubProperties(k -> new VeniceProperties())
         .setPubSubTopicRepository(pubSubTopicRepository)

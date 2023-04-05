@@ -1,6 +1,6 @@
 package com.linkedin.venice.pubsub.api;
 
-import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
+import com.linkedin.venice.kafka.admin.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.Closeable;
@@ -11,9 +11,9 @@ import java.io.Closeable;
  *
  * A pus-sub specific concrete implementation of this interface should be provided to be able to create
  * and instantiate admins for that system.
- * TODO: change the name of KafkaAdminWrapper into PubSubAdminAdaptor
+ * TODO: change the name of PubSubAdminAdapter into PubSubAdminAdaptor
  */
-public interface PubSubAdminAdapterFactory<ADAPTER extends KafkaAdminWrapper> extends Closeable {
+public interface PubSubAdminAdapterFactory<ADAPTER extends PubSubAdminAdapter> extends Closeable {
   /**
    *
    * @param veniceProperties            A copy of venice properties. Relevant producer configs will be extracted from

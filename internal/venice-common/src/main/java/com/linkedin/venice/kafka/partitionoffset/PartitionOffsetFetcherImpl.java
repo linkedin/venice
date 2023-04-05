@@ -5,7 +5,7 @@ import static com.linkedin.venice.offsets.OffsetRecord.LOWEST_OFFSET;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
-import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
+import com.linkedin.venice.kafka.admin.PubSubAdminAdapter;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
@@ -49,7 +49,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
   private final Logger logger;
   private final Lock adminConsumerLock;
   private final Lock kafkaAdminWrapperLock;
-  private final Lazy<KafkaAdminWrapper> kafkaAdminWrapper;
+  private final Lazy<PubSubAdminAdapter> kafkaAdminWrapper;
   private final Lazy<PubSubConsumer> pubSubConsumer;
   private final Duration kafkaOperationTimeout;
 
@@ -58,7 +58,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
   }
 
   public PartitionOffsetFetcherImpl(
-      @Nonnull Lazy<KafkaAdminWrapper> kafkaAdminWrapper,
+      @Nonnull Lazy<PubSubAdminAdapter> kafkaAdminWrapper,
       @Nonnull Lazy<PubSubConsumer> pubSubConsumer,
       long kafkaOperationTimeoutMs,
       String kafkaBootstrapServers) {

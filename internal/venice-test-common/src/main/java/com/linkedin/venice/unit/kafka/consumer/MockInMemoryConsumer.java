@@ -189,7 +189,11 @@ public class MockInMemoryConsumer implements PubSubConsumer {
 
   @Override
   public List<PubSubTopicPartitionInfo> partitionsFor(PubSubTopic topic) {
-    return adminAdapter.partitionsFor(topic);
+    if (adminAdapter != null) {
+      return adminAdapter.partitionsFor(topic);
+    } else {
+      throw new UnsupportedOperationException("In-memory admin adapter is not set");
+    }
   }
 
   public void setMockInMemoryAdminAdapter(MockInMemoryAdminAdapter adminAdapter) {

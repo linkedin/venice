@@ -1,5 +1,6 @@
 package com.linkedin.venice;
 
+import com.linkedin.venice.kafka.admin.PubSubAdminAdapter;
 import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumerConfig;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
 
@@ -1522,7 +1523,7 @@ public class ConfigKeys {
   public static final String ROUTER_DICTIONARY_PROCESSING_THREADS = "router.dictionary.processing.threads";
 
   /**
-   * The class name to use for the {@link com.linkedin.venice.kafka.admin.KafkaAdminWrapper}.
+   * The class name to use for the {@link PubSubAdminAdapter}.
    */
   public static final String KAFKA_ADMIN_CLASS = "kafka.admin.class";
 

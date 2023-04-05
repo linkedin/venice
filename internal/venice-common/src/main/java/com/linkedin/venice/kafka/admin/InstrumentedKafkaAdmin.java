@@ -15,7 +15,6 @@ import static com.linkedin.venice.stats.KafkaAdminWrapperStats.OCCURRENCE_LATENC
 
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
-import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.stats.KafkaAdminWrapperStats;
@@ -26,7 +25,6 @@ import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.Future;
 import java.util.function.Supplier;
@@ -35,20 +33,20 @@ import org.apache.commons.lang.Validate;
 
 
 /**
- * This class delegates another {@link KafkaAdminWrapper} instance and keeps track of the invocation rate of methods
+ * This class delegates another {@link PubSubAdminAdapter} instance and keeps track of the invocation rate of methods
  * on the delegated instance
  */
-public class InstrumentedKafkaAdmin implements KafkaAdminWrapper {
-  private final KafkaAdminWrapper kafkaAdmin;
+public class InstrumentedKafkaAdmin implements PubSubAdminAdapter {
+  private final PubSubAdminAdapter kafkaAdmin;
   private final KafkaAdminWrapperStats kafkaAdminWrapperStats;
   private final Time time;
 
-  public InstrumentedKafkaAdmin(KafkaAdminWrapper kafkaAdmin, MetricsRepository metricsRepository, String statsName) {
+  public InstrumentedKafkaAdmin(PubSubAdminAdapter kafkaAdmin, MetricsRepository metricsRepository, String statsName) {
     this(kafkaAdmin, metricsRepository, statsName, new SystemTime());
   }
 
   public InstrumentedKafkaAdmin(
-      @Nonnull KafkaAdminWrapper kafkaAdmin,
+      @Nonnull PubSubAdminAdapter kafkaAdmin,
       @Nonnull MetricsRepository metricsRepository,
       @Nonnull String statsName,
       @Nonnull Time time) {
@@ -59,11 +57,6 @@ public class InstrumentedKafkaAdmin implements KafkaAdminWrapper {
     this.kafkaAdmin = kafkaAdmin;
     this.time = time;
     this.kafkaAdminWrapperStats = KafkaAdminWrapperStats.getInstance(metricsRepository, statsName);
-  }
-
-  @Override
-  public void initialize(Properties properties, PubSubTopicRepository pubSubTopicRepository) {
-    kafkaAdmin.initialize(properties, pubSubTopicRepository);
   }
 
   @Override
