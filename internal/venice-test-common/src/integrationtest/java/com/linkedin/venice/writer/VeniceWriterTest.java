@@ -130,7 +130,7 @@ public class VeniceWriterTest {
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
     try (PubSubConsumer consumer = pubSubConsumerAdapterFactory
-        .create(new VeniceProperties(), false, pubSubDeserializer, pubSubBrokerWrapper.getAddress())) {
+        .create(new VeniceProperties(properties), false, pubSubDeserializer, pubSubBrokerWrapper.getAddress())) {
       PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(pubSubTopic, 0);
       consumer.subscribe(pubSubTopicPartition, -1);
       int lastSeenSequenceNumber = -1;
