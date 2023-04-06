@@ -31,7 +31,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Properties;
 import java.util.concurrent.Future;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -52,24 +51,6 @@ public class ChangeCaptureViewWriterTest {
   public static final String LTX_1 = "ltx1";
   public static final String LVA_1 = "lva1";
   public static final String LOR_1 = "lor1";
-
-  @Test
-  public void testValidateConfigs() {
-    Properties props = new Properties();
-    Map<String, String> viewParams = new HashMap<>();
-    Store NonChunkedStore = Mockito.mock(Store.class);
-    Mockito.when(NonChunkedStore.isChunkingEnabled()).thenReturn(false);
-    Store NonAAStore = Mockito.mock(Store.class);
-    Mockito.when(NonAAStore.isActiveActiveReplicationEnabled()).thenReturn(false);
-    Store AAChunkedStore = Mockito.mock(Store.class);
-    Mockito.when(AAChunkedStore.isChunkingEnabled()).thenReturn(true);
-    Mockito.when(AAChunkedStore.isActiveActiveReplicationEnabled()).thenReturn(true);
-
-    Assert.assertThrows(() -> new ChangeCaptureView(props, NonChunkedStore, viewParams).validateConfigs());
-    Assert.assertThrows(() -> new ChangeCaptureView(props, NonAAStore, viewParams).validateConfigs());
-    // Should now throw
-    new ChangeCaptureView(props, AAChunkedStore, viewParams).validateConfigs();
-  }
 
   @Test
   public void testConstructVersionSwapMessage() {

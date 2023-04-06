@@ -65,7 +65,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
 
   protected final ReadOnlySchemaRepository recordChangeEventSchemaRepository;
 
-  protected final AbstractAvroChunkingAdapter<RecordChangeEvent> CHUNKING_ADAPTER =
+  protected AbstractAvroChunkingAdapter<RecordChangeEvent> CHUNKING_ADAPTER =
       new SpecificRecordChunkingAdapter<>(RecordChangeEvent.class);
 
   protected final SchemaReader schemaReader;

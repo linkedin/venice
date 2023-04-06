@@ -2,7 +2,6 @@ package com.linkedin.venice.client.consumer;
 
 import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD;
 
-import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.SpecificRecordChunkingAdapter;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -46,8 +45,6 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
   private static final Logger LOGGER = LogManager.getLogger(VeniceAfterImageConsumerImpl.class);
 
   private boolean isReadFromChangeCaptureTopic;
-
-  protected final AbstractAvroChunkingAdapter CHUNKING_ADAPTER;
 
   private final CompressorFactory compressorFactory = new CompressorFactory();
   private VeniceCompressor currentCompressor = NO_OP_COMPRESSOR;
