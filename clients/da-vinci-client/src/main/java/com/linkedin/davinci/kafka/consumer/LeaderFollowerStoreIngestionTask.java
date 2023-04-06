@@ -1760,6 +1760,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   @Override
   protected void recordWriterStats(
+      long consumerTimestampMs,
       long producerBrokerLatencyMs,
       long brokerConsumerLatencyMs,
       long producerConsumerLatencyMs,
@@ -1774,6 +1775,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         versionedDIVStats.recordLeaderLatencies(
             storeName,
             versionNumber,
+            consumerTimestampMs,
             producerBrokerLatencyMs,
             brokerConsumerLatencyMs,
             producerConsumerLatencyMs);
@@ -1781,12 +1783,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         versionedDIVStats.recordFollowerLatencies(
             storeName,
             versionNumber,
+            consumerTimestampMs,
             producerBrokerLatencyMs,
             brokerConsumerLatencyMs,
             producerConsumerLatencyMs);
       }
     } else {
       super.recordWriterStats(
+          consumerTimestampMs,
           producerBrokerLatencyMs,
           brokerConsumerLatencyMs,
           producerConsumerLatencyMs,
@@ -1809,11 +1813,20 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
-  private void recordFabricHybridConsumptionStats(int kafkaClusterId, int producedRecordSize, long upstreamOffset) {
+  private void recordRegionHybridConsumptionStats(
+      int kafkaClusterId,
+      int producedRecordSize,
+      long upstreamOffset,
+      long currentTimeMs) {
     if (kafkaClusterId >= 0) {
-      versionedIngestionStats
-          .recordRegionHybridConsumption(storeName, versionNumber, kafkaClusterId, producedRecordSize, upstreamOffset);
-      hostLevelIngestionStats.recordTotalRegionHybridBytesConsumed(kafkaClusterId, producedRecordSize);
+      versionedIngestionStats.recordRegionHybridConsumption(
+          storeName,
+          versionNumber,
+          kafkaClusterId,
+          producedRecordSize,
+          upstreamOffset,
+          currentTimeMs);
+      hostLevelIngestionStats.recordTotalRegionHybridBytesConsumed(kafkaClusterId, producedRecordSize, currentTimeMs);
     }
   }
 
@@ -1846,7 +1859,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       int subPartition,
       String kafkaUrl,
       int kafkaClusterId,
-      long beforeProcessingRecordTimestamp) {
+      long beforeProcessingRecordTimestampNs) {
     boolean produceToLocalKafka = false;
     try {
       KafkaKey kafkaKey = consumerRecord.getKey();
@@ -1888,7 +1901,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       validateRecordBeforeProducingToLocalKafka(consumerRecord, partitionConsumptionState, kafkaUrl, kafkaClusterId);
 
       if (consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()) {
-        recordFabricHybridConsumptionStats(kafkaClusterId, consumerRecord.getPayloadSize(), consumerRecord.getOffset());
+        recordRegionHybridConsumptionStats(
+            kafkaClusterId,
+            consumerRecord.getPayloadSize(),
+            consumerRecord.getOffset(),
+            beforeProcessingRecordTimestampNs);
         updateLatestInMemoryLeaderConsumedRTOffset(partitionConsumptionState, kafkaUrl, consumerRecord.getOffset());
       }
 
@@ -1967,7 +1984,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 subPartition,
                 kafkaUrl,
                 kafkaClusterId,
-                beforeProcessingRecordTimestamp);
+                beforeProcessingRecordTimestampNs);
             break;
           case START_OF_SEGMENT:
           case END_OF_SEGMENT:
@@ -1999,7 +2016,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                   subPartition,
                   kafkaUrl,
                   kafkaClusterId,
-                  beforeProcessingRecordTimestamp);
+                  beforeProcessingRecordTimestampNs);
             } else {
               /**
                * Based on current design handling this case (specially EOS) is tricky as we don't produce the SOS/EOS
@@ -2049,7 +2066,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 subPartition,
                 kafkaUrl,
                 kafkaClusterId,
-                beforeProcessingRecordTimestamp);
+                beforeProcessingRecordTimestampNs);
             break;
           case TOPIC_SWITCH:
             /**
@@ -2079,7 +2096,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 subPartition,
                 kafkaUrl,
                 kafkaClusterId,
-                beforeProcessingRecordTimestamp);
+                beforeProcessingRecordTimestampNs);
             break;
           case VERSION_SWAP:
             return DelegateConsumerRecordResult.QUEUED_TO_DRAINER;
@@ -2109,7 +2126,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             subPartition,
             kafkaUrl,
             kafkaClusterId,
-            beforeProcessingRecordTimestamp);
+            beforeProcessingRecordTimestampNs);
       }
       return DelegateConsumerRecordResult.PRODUCED_TO_KAFKA;
     } catch (Exception e) {

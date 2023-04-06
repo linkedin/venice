@@ -3,6 +3,7 @@ package com.linkedin.venice.stats;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Count;
+import io.tehuti.metrics.stats.Gauge;
 import io.tehuti.metrics.stats.Total;
 
 
@@ -14,6 +15,7 @@ public class ServerQuotaUsageStats extends AbstractVeniceStats {
   private final Sensor requestedKPS; // requested key per second
   private final Sensor rejectedQPS; // rejected query per second
   private final Sensor rejectedKPS; // rejected key per second
+  private final Sensor quotaUsageRatio; // quota usage key per second
 
   public ServerQuotaUsageStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
@@ -21,6 +23,7 @@ public class ServerQuotaUsageStats extends AbstractVeniceStats {
     requestedKPS = registerSensor("quota_rcu_requested_key", new Total());
     rejectedQPS = registerSensor("quota_rcu_rejected", new Count());
     rejectedKPS = registerSensor("quota_rcu_rejected_key", new Total());
+    quotaUsageRatio = registerSensor("read_quota_usage_ratio", new Gauge());
   }
 
   /**
@@ -40,5 +43,12 @@ public class ServerQuotaUsageStats extends AbstractVeniceStats {
     requestedKPS.record(rcu);
     rejectedQPS.record(rcu);
     rejectedKPS.record(rcu);
+  }
+
+  /**
+   * @param ratio The number of Read Capacity Units (KPS) used divided by total capacity
+   */
+  public void recordReadQuotaUsage(double ratio) {
+    quotaUsageRatio.record(ratio);
   }
 }

@@ -8,11 +8,11 @@ import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.cleaner.ResourceReadUsageTracker;
+import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.listener.ListenerService;
 import com.linkedin.venice.listener.StorageReadRequestsHandler;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.server.VeniceServerContext;
@@ -40,7 +40,7 @@ public class TestVeniceServer extends VeniceServer {
       StorageEngineRepository storageEngineRepository,
       ReadOnlyStoreRepository storeMetadataRepository,
       ReadOnlySchemaRepository schemaRepository,
-      CompletableFuture<RoutingDataRepository> routingRepository,
+      CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewRepository,
       MetadataRetriever metadataRetriever,
       VeniceServerConfig serverConfig,
       MetricsRepository metricsRepository,
@@ -55,7 +55,7 @@ public class TestVeniceServer extends VeniceServer {
         storageEngineRepository,
         storeMetadataRepository,
         schemaRepository,
-        routingRepository,
+        customizedViewRepository,
         metadataRetriever,
         serverConfig,
         metricsRepository,
