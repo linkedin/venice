@@ -74,22 +74,22 @@ public class RecordChangeEventReadOnlySchemaRepository implements ReadOnlySchema
 
   @Override
   public GeneratedSchemaID getDerivedSchemaId(String storeName, String derivedSchemaStr) {
-    return null;
+    throw new UnsupportedOperationException("Not Implemented!");
   }
 
   @Override
   public DerivedSchemaEntry getDerivedSchema(String storeName, int valueSchemaId, int writeComputeSchemaId) {
-    return null;
+    throw new UnsupportedOperationException("Not Implemented!");
   }
 
   @Override
   public Collection<DerivedSchemaEntry> getDerivedSchemas(String storeName) {
-    return null;
+    throw new UnsupportedOperationException("Not Implemented!");
   }
 
   @Override
   public DerivedSchemaEntry getLatestDerivedSchema(String storeName, int valueSchemaId) {
-    return null;
+    throw new UnsupportedOperationException("Not Implemented!");
   }
 
   @Override

@@ -8,6 +8,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.validation.UnsupportedMessageTypeException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -179,7 +180,7 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
             return null;
           }
         } catch (IOException e) {
-          throw new RuntimeException(e);
+          throw new VeniceException(e);
         }
         if (put.replicationMetadataVersionId > 0) {
           MultiSchemaResponse.Schema replicationMetadataSchema = replicationMetadataSchemaRepository
