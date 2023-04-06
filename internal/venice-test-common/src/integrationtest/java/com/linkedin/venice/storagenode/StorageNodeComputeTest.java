@@ -306,7 +306,7 @@ public class StorageNodeComputeTest {
       ThreadMXBean bean = ManagementFactory.getThreadMXBean();
       ThreadInfo[] infos = bean.dumpAllThreads(true, true);
       LOGGER.warn("Thread dump: ");
-      System.out.println(Arrays.stream(infos).map(Object::toString).collect(Collectors.joining()));
+      LOGGER.info(Arrays.stream(infos).map(Object::toString).collect(Collectors.joining()));
     }
   }
 
