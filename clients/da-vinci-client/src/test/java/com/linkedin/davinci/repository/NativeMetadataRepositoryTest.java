@@ -17,6 +17,8 @@ public class NativeMetadataRepositoryTest {
   private ClientConfig clientConfig;
   private VeniceProperties backendConfig;
 
+  private static final String STORE_NAME = "hardware_store";
+
   @BeforeClass
   public void setUpMocks() {
     clientConfig = mock(ClientConfig.class);
@@ -29,5 +31,11 @@ public class NativeMetadataRepositoryTest {
     NativeMetadataRepository nativeMetadataRepository =
         NativeMetadataRepository.getInstance(clientConfig, backendConfig);
     Assert.assertTrue(nativeMetadataRepository instanceof ThinClientMetaStoreBasedRepository);
+
+    Assert.assertThrows(() -> nativeMetadataRepository.subscribe(STORE_NAME));
+    nativeMetadataRepository.start();
+    nativeMetadataRepository.clear();
+    Assert.assertThrows(() -> nativeMetadataRepository.subscribe(STORE_NAME));
+    Assert.assertThrows(() -> nativeMetadataRepository.start());
   }
 }

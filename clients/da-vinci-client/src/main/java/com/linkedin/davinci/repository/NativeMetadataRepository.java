@@ -88,9 +88,23 @@ public abstract class NativeMetadataRepository
   }
 
   public synchronized void start() {
+    if (started.get() && scheduler.isShutdown()) {
+      // The only way the started flag would be true and the scheduler shutdown would be if we already
+      // started and called 'clear' on this object. So here we abort the call to prevent it being restarted again
+      throw new VeniceException(
+          "Calling start() failed! NativeMetadataRepository has already been cleared and shutdown!");
+    }
     if (!started.get()) {
       this.scheduler.scheduleAtFixedRate(this::refresh, 0, refreshIntervalInSeconds, TimeUnit.SECONDS);
       started.set(true);
+    }
+  }
+
+  private void throwIfNotStartedOrCleared() {
+    if (!started.get()) {
+      throw new VeniceException("NativeMetadataRepository isn't started yet! Call start() before use.");
+    } else if (scheduler.isShutdown()) {
+      throw new VeniceException("NativeMetadataRepository has already been cleared and shutdown!");
     }
   }
 
@@ -111,6 +125,7 @@ public abstract class NativeMetadataRepository
 
   @Override
   public void subscribe(String storeName) throws InterruptedException {
+    throwIfNotStartedOrCleared();
     if (!subscribedStoreMap.containsKey(storeName)) {
       refreshOneStore(storeName);
     }

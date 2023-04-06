@@ -8,6 +8,7 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.repository.ThinClientMetaStoreBasedRepository;
 import com.linkedin.venice.client.change.capture.protocol.RecordChangeEvent;
 import com.linkedin.venice.client.change.capture.protocol.ValueBytes;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -16,6 +17,7 @@ import com.linkedin.venice.kafka.protocol.EndOfPush;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
+import com.linkedin.venice.kafka.protocol.StartOfPush;
 import com.linkedin.venice.kafka.protocol.VersionSwap;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
@@ -188,6 +190,10 @@ public class VeniceChangelogConsumerImplTest {
       String oldVersionTopic,
       String newVersionTopic) {
     List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> consumerRecordList = new ArrayList<>();
+
+    // Add a start of push message
+    consumerRecordList.add(constructStartOfPushMessage(oldVersionTopic, partition));
+
     Map<TopicPartition, List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> consumerRecordsMap = new HashMap<>();
     for (long i = startIdx; i < endIdx; i++) {
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord = constructChangeCaptureConsumerRecord(
@@ -313,6 +319,20 @@ public class VeniceChangelogConsumerImplTest {
     ControlMessage controlMessage = new ControlMessage();
     controlMessage.controlMessageUnion = endOfPush;
     controlMessage.controlMessageType = ControlMessageType.END_OF_PUSH.getValue();
+    kafkaMessageEnvelope.payloadUnion = controlMessage;
+    return new ConsumerRecord<>(versionTopic, partition, 0, kafkaKey, kafkaMessageEnvelope);
+  }
+
+  private ConsumerRecord<KafkaKey, KafkaMessageEnvelope> constructStartOfPushMessage(
+      String versionTopic,
+      int partition) {
+    KafkaKey kafkaKey = new KafkaKey(MessageType.CONTROL_MESSAGE, null);
+    StartOfPush startOfPush = new StartOfPush();
+    startOfPush.compressionStrategy = CompressionStrategy.NO_OP.getValue();
+    KafkaMessageEnvelope kafkaMessageEnvelope = new KafkaMessageEnvelope();
+    ControlMessage controlMessage = new ControlMessage();
+    controlMessage.controlMessageUnion = startOfPush;
+    controlMessage.controlMessageType = ControlMessageType.START_OF_PUSH.getValue();
     kafkaMessageEnvelope.payloadUnion = controlMessage;
     return new ConsumerRecord<>(versionTopic, partition, 0, kafkaKey, kafkaMessageEnvelope);
   }
