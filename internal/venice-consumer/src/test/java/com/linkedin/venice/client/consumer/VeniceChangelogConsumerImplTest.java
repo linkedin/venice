@@ -1,8 +1,6 @@
 package com.linkedin.venice.client.consumer;
 
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.*;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.change.capture.protocol.RecordChangeEvent;
@@ -103,7 +101,7 @@ public class VeniceChangelogConsumerImplTest {
         new ChangelogClientConfig<>().setD2ControllerClient(d2ControllerClient)
             .setSchemaReader(schemaReader)
             .setStoreName(storeName)
-            .setViewClassName(ChangeCaptureView.CHANGE_CAPTURE_VIEW_WRITER_CLASS_NAME);
+            .setViewName("changeCaptureView");
     VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
         new VeniceChangelogConsumerImpl<>(changelogClientConfig, mockKafkaConsumer);
     veniceChangelogConsumer.subscribe(new HashSet<>(Arrays.asList(0))).get();
@@ -148,7 +146,7 @@ public class VeniceChangelogConsumerImplTest {
         new ChangelogClientConfig<>().setD2ControllerClient(d2ControllerClient)
             .setSchemaReader(schemaReader)
             .setStoreName(storeName)
-            .setViewClassName("");
+            .setViewName("");
     VeniceChangelogConsumerImpl<String, Utf8> veniceChangelogConsumer =
         new VeniceAfterImageConsumerImpl<>(changelogClientConfig, kafkaConsumer);
     veniceChangelogConsumer.subscribe(new HashSet<>(Arrays.asList(0))).get();
@@ -172,6 +170,10 @@ public class VeniceChangelogConsumerImplTest {
       Utf8 pubSubMessageValue = pubSubMessage.getValue().getCurrentValue();
       Assert.assertEquals(pubSubMessageValue.toString(), "newValue" + i);
     }
+
+    veniceChangelogConsumer.close();
+    verify(kafkaConsumer, times(2)).assign(any());
+    verify(kafkaConsumer).close();
   }
 
   private void prepareChangeCaptureRecordsToBePolled(

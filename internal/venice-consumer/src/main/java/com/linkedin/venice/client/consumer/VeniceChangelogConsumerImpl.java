@@ -39,7 +39,6 @@ import org.apache.avro.Schema;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -84,7 +83,7 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     this.storeCurrentVersion = store.getCurrentVersion();
     this.partitionCount = store.getPartitionCount();
     this.currentValuePayloadSize = new int[partitionCount];
-    this.viewClassName = changelogClientConfig.getViewClassName();
+    this.viewClassName = changelogClientConfig.getViewName();
     this.currentTopic =
         Version.composeKafkaTopic(storeName, storeCurrentVersion) + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX;
     this.replicationMetadataSchemaRepository = new ReplicationMetadataSchemaRepository(d2ControllerClient);
@@ -98,10 +97,6 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         storeCurrentVersion,
         partitionCount,
         viewClassName);
-  }
-
-  public VeniceChangelogConsumerImpl(ChangelogClientConfig changelogClientConfig) {
-    this(changelogClientConfig, new KafkaConsumer<>(changelogClientConfig.getConsumerProperties()));
   }
 
   @Override
