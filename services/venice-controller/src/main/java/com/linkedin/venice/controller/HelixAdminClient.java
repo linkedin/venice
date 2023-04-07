@@ -98,7 +98,6 @@ public interface HelixAdminClient {
 
   /**
    * Check if a resource exists in a cluster by checking its ideal state.
-   * @return
    */
   boolean containsResource(String clusterName, String resourceName);
 

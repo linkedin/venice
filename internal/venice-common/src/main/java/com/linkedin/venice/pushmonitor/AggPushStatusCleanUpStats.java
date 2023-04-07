@@ -19,19 +19,16 @@ public class AggPushStatusCleanUpStats extends AbstractVeniceAggStoreStats<PushS
         isUnregisterMetricForDeletedStoreEnabled);
   }
 
-  public void recordLeakedPushStatusCount(String storeName, int count) {
+  public void recordLeakedPushStatusCount(int count) {
     totalStats.recordLeakedPushStatusCount(count);
-    getStoreStats(storeName).recordLeakedPushStatusCount(count);
   }
 
-  public void recordSuccessfulLeakedPushStatusCleanUpCount(String storeName, int count) {
+  public void recordSuccessfulLeakedPushStatusCleanUpCount(int count) {
     totalStats.recordSuccessfulLeakedPushStatusCleanUpCount(count);
-    getStoreStats(storeName).recordSuccessfulLeakedPushStatusCleanUpCount(count);
   }
 
-  public void recordFailedLeakedPushStatusCleanUpCount(String storeName, int count) {
+  public void recordFailedLeakedPushStatusCleanUpCount(int count) {
     totalStats.recordFailedLeakedPushStatusCleanUpCount(count);
-    getStoreStats(storeName).recordFailedLeakedPushStatusCleanUpCount(count);
   }
 
   public void recordLeakedPushStatusCleanUpServiceState(PushStatusCleanUpServiceState state) {

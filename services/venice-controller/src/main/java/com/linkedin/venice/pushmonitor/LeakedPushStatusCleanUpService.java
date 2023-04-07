@@ -183,9 +183,8 @@ public class LeakedPushStatusCleanUpService extends AbstractVeniceService {
                   offlinePushAccessor.deleteOfflinePushStatusAndItsPartitionStatuses(kafkaTopic);
                 }
               });
-              aggPushStatusCleanUpStats.recordLeakedPushStatusCount(storeName, leakedPushStatusCounter);
-              aggPushStatusCleanUpStats
-                  .recordSuccessfulLeakedPushStatusCleanUpCount(storeName, leakedPushStatuses.size());
+              aggPushStatusCleanUpStats.recordLeakedPushStatusCount(leakedPushStatusCounter);
+              aggPushStatusCleanUpStats.recordSuccessfulLeakedPushStatusCleanUpCount(leakedPushStatuses.size());
             } catch (Throwable e) {
               /**
                * Don't stop the service for one single store
@@ -196,7 +195,7 @@ public class LeakedPushStatusCleanUpService extends AbstractVeniceService {
                   clusterName,
                   Version.composeKafkaTopic(storeName, versions.iterator().next()),
                   e);
-              aggPushStatusCleanUpStats.recordFailedLeakedPushStatusCleanUpCount(storeName, leakedPushStatuses.size());
+              aggPushStatusCleanUpStats.recordFailedLeakedPushStatusCleanUpCount(leakedPushStatuses.size());
             }
           }
 
