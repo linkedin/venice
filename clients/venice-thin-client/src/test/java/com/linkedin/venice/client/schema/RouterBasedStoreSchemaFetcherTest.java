@@ -94,8 +94,6 @@ public class RouterBasedStoreSchemaFetcherTest {
     StoreSchemaFetcher storeSchemaFetcher = new RouterBasedStoreSchemaFetcher(mockClient);
     List<Schema> allSchemas = storeSchemaFetcher.getAllValueSchemas();
 
-    // Each invocation should fetch the latest schema, but it is expected the object to not be the same as we don't
-    // implement cache.
     Assert.assertEquals(allSchemas.size(), 2);
     Assert.assertEquals(allSchemas.get(0), Schema.parse(valueSchemaStr1));
     Assert.assertEquals(allSchemas.get(1), Schema.parse(valueSchemaStr2));
