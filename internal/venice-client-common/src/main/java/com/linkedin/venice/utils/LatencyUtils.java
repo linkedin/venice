@@ -23,4 +23,22 @@ public class LatencyUtils {
   public static long getElapsedTimeInMs(long startTimeInMs) {
     return System.currentTimeMillis() - startTimeInMs;
   }
+
+  /***
+   * Sleep until number of milliseconds have passed, or the operation is interrupted.  This method will swallow the
+   * InterruptedException and terminate, if this is used in a loop it may become difficult to cleanly break out
+   * of the loop.
+   *
+   * @param millis
+   * @return true on success and false if sleep was interrupted
+   */
+  public static boolean sleep(long millis) {
+    try {
+      Thread.sleep(millis);
+      return true;
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      return false;
+    }
+  }
 }
