@@ -1,6 +1,7 @@
 package com.linkedin.venice.compression;
 
 import com.github.luben.zstd.Zstd;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
 import java.io.IOException;
@@ -48,6 +49,9 @@ public class CompressorFactory implements Closeable, AutoCloseable {
       int compressionLevel) {
     switch (compressionStrategy) {
       case ZSTD_WITH_DICT:
+        if (dictionary == null) {
+          throw new VeniceException("Null dictionary with ZSTD_WITH_DICT compression strategy isn't supported!");
+        }
         return versionSpecificCompressorMap
             .computeIfAbsent(kafkaTopic, key -> createCompressorWithDictionary(dictionary, compressionLevel));
       default:
