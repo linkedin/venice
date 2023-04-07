@@ -60,6 +60,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.BiFunction;
@@ -132,11 +133,6 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     LOGGER.info("Detected: {} on the classpath.", version);
   }
 
-  private final CompletableFuture<Map<K, V>> COMPLETABLE_FUTURE_FOR_EMPTY_KEY_IN_BATCH_GET =
-      CompletableFuture.completedFuture(new HashMap<>());
-  private final CompletableFuture<Map<K, GenericRecord>> COMPLETABLE_FUTURE_FOR_EMPTY_KEY_IN_COMPUTE =
-      CompletableFuture.completedFuture(new HashMap<>());
-
   private final ClientConfig clientConfig;
   protected final boolean needSchemaReader;
   /** Used to communicate with Venice backend to retrieve necessary store schemas */
@@ -184,7 +180,11 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
    **/
   private static Executor DESERIALIZATION_EXECUTOR;
 
-  private boolean whetherStoreInitTriggeredByRequestFail = false;
+  private volatile boolean whetherStoreInitTriggeredByRequestFail = false;
+
+  private Thread asyncStoreInitThread;
+  private static final long ASYNC_STORE_INIT_SLEEP_INTERVAL_MS = TimeUnit.MINUTES.toMillis(1); // 1ms
+  private long asyncStoreInitSleepIntervalMs = ASYNC_STORE_INIT_SLEEP_INTERVAL_MS;
 
   public static synchronized Executor getDefaultDeserializationExecutor() {
     if (DESERIALIZATION_EXECUTOR == null) {
@@ -251,6 +251,11 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     return TYPE_COMPUTE + "/" + storeName;
   }
 
+  // For testing
+  public void setAsyncStoreInitSleepIntervalMs(long intervalMs) {
+    this.asyncStoreInitSleepIntervalMs = intervalMs;
+  }
+
   /**
    * This function will try to initialize the store client at most once triggered by request.
    * If the store initialization fails even with the internal retries, all the subsequent requests will fail,
@@ -270,6 +275,25 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
         return getKeySerializerWithRetryWithShortInterval();
       } catch (Exception e) {
         whetherStoreInitTriggeredByRequestFail = true;
+        // Kick off an async thread to keep retrying
+        asyncStoreInitThread = new Thread(() -> {
+          while (true) {
+            try {
+              getKeySerializerWithRetryWithShortInterval();
+              whetherStoreInitTriggeredByRequestFail = false;
+              LOGGER.info("Successfully init store client by async store init thread");
+              break;
+            } catch (Exception ee) {
+              if (ee instanceof InterruptedException || !LatencyUtils.sleep(asyncStoreInitSleepIntervalMs)) {
+                LOGGER.warn("Async store init thread got interrupted, will exit the loop");
+                break;
+              }
+              LOGGER
+                  .error("Received exception while trying to init store client asynchronously, will keep retrying", ee);
+            }
+          }
+        });
+        asyncStoreInitThread.start();
         throw e;
       }
     }
@@ -684,6 +708,9 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       IOUtils.closeQuietly(schemaReader, LOGGER::error);
     }
     IOUtils.closeQuietly(compressorFactory, LOGGER::error);
+    if (asyncStoreInitThread != null) {
+      asyncStoreInitThread.interrupt();
+    }
   }
 
   protected Optional<Schema> getReaderSchema() {
