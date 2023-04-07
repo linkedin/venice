@@ -71,7 +71,7 @@ public class ServerKafkaClientFactory extends KafkaClientFactory {
       properties.setProperty("sasl.mechanism", serverConfig.getKafkaSaslMechanism());
       properties.setProperty("sasl.jaas.config", serverConfig.getKafkaSaslJaasConfig());
     }
-    LOGGER.info("Kafka client properties: {}", properties);
+    LOGGER.debug("Kafka client properties: {}", properties);
     return properties;
   }
 
