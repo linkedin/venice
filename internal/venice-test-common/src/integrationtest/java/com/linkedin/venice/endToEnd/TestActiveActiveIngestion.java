@@ -63,7 +63,6 @@ import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.MockCircularTime;
-import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
@@ -211,7 +210,6 @@ public class TestActiveActiveIngestion {
       // Use a unique key for DELETE with RMD validation
       int deleteWithRmdKeyIndex = 1000;
 
-      TestMockTime testMockTime = new TestMockTime();
       ZkServerWrapper localZkServer = multiRegionMultiClusterWrapper.getChildRegions().get(0).getZkServerWrapper();
       PubSubBrokerWrapper localKafka = multiRegionMultiClusterWrapper.getChildRegions().get(0).getKafkaBrokerWrapper();
       Properties consumerProperties = new Properties();
