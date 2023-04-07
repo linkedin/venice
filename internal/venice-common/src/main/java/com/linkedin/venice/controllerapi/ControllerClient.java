@@ -1222,7 +1222,6 @@ public class ControllerClient implements Closeable {
               "Retrying controller request, attempt = {}/{}, controller = {}, route = {}, params = {}, timeout = {}",
               attempt,
               maxAttempts,
-              timeoutMs,
               this.leaderControllerUrl,
               route.getPath(),
               params.getNameValuePairs(),
