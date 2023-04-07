@@ -32,9 +32,6 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import com.linkedin.venice.writer.VeniceWriterOptions;
-import java.lang.management.ManagementFactory;
-import java.lang.management.ThreadInfo;
-import java.lang.management.ThreadMXBean;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -49,7 +46,6 @@ import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -188,126 +184,118 @@ public class StorageNodeComputeTest {
       CompressionStrategy compressionStrategy,
       SerializerReuse serializerReuse,
       ValueSize valueLargerThan1MB) throws Exception {
-    try {
-      UpdateStoreQueryParams params = new UpdateStoreQueryParams();
-      params.setCompressionStrategy(compressionStrategy);
-      params.setReadComputationEnabled(true);
-      params.setChunkingEnabled(valueLargerThan1MB.config);
-      ControllerResponse controllerResponse = veniceCluster.updateStore(storeName, params);
-      Assert
-          .assertFalse(controllerResponse.isError(), "Error updating store settings: " + controllerResponse.getError());
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams();
+    params.setCompressionStrategy(compressionStrategy);
+    params.setReadComputationEnabled(true);
+    params.setChunkingEnabled(valueLargerThan1MB.config);
+    ControllerResponse controllerResponse = veniceCluster.updateStore(storeName, params);
+    Assert.assertFalse(controllerResponse.isError(), "Error updating store settings: " + controllerResponse.getError());
 
-      VersionCreationResponse newVersion = veniceCluster.getNewVersion(storeName, false);
-      Assert.assertFalse(newVersion.isError(), "Error creation new version: " + newVersion.getError());
-      final int pushVersion = newVersion.getVersion();
-      String topic = newVersion.getKafkaTopic();
-      int keyCount = 10;
-      String keyPrefix = "key_";
-      String valuePrefix = "value_";
+    VersionCreationResponse newVersion = veniceCluster.getNewVersion(storeName, false);
+    Assert.assertFalse(newVersion.isError(), "Error creation new version: " + newVersion.getError());
+    final int pushVersion = newVersion.getVersion();
+    String topic = newVersion.getKafkaTopic();
+    int keyCount = 10;
+    String keyPrefix = "key_";
+    String valuePrefix = "value_";
 
-      VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress());
-      try (VeniceWriter<Object, byte[], byte[]> veniceWriter = vwFactory.createVeniceWriter(
-          new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer)
-              .setValueSerializer(new DefaultSerializer())
-              .setChunkingEnabled(valueLargerThan1MB.config)
-              .build())) {
-        pushSyntheticDataForCompute(
-            topic,
-            keyPrefix,
-            valuePrefix,
-            keyCount,
-            veniceCluster,
-            veniceWriter,
-            pushVersion,
-            compressionStrategy,
-            valueLargerThan1MB.config);
-      }
-
-      AvroGenericStoreClient<String, Object> storeClient = clientsMap.get(serializerReuse);
-
-      // Run multiple rounds
-      int rounds = 100;
-      int cur = 0;
-      while (cur++ < rounds) {
-        Set<String> keySet = new HashSet<>();
-        for (int i = 0; i < keyCount; ++i) {
-          keySet.add(keyPrefix + i);
-        }
-        keySet.add("unknown_key");
-        List<Float> p = Arrays.asList(100.0f, 0.1f);
-        List<Float> cosP = Arrays.asList(123.4f, 5.6f);
-        List<Float> hadamardP = Arrays.asList(135.7f, 246.8f);
-
-        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
-          Map<String, ComputeGenericRecord> computeResult = storeClient.compute()
-              .project("id")
-              .dotProduct("member_feature", p, "member_score")
-              .cosineSimilarity("member_feature", cosP, "cosine_similarity_result")
-              .hadamardProduct("member_feature", hadamardP, "hadamard_product_result")
-              .count("namemap", "namemap_count")
-              .count("member_feature", "member_feature_count")
-              .execute(keySet)
-              /**
-               * Added 2s timeout as a safety net as ideally each request should take sub-second.
-               */
-              .get(2, TimeUnit.SECONDS);
-
-          Assert.assertEquals(computeResult.size(), 10);
-
-          computeResult.forEach((key, value) -> {
-            int keyIdx = getKeyIndex(key, keyPrefix);
-            // check projection result
-            Assert.assertEquals(value.get("id"), new Utf8(valuePrefix + keyIdx));
-            // check dotProduct result; should be double for V1 request
-            Assert.assertEquals(value.get("member_score"), (p.get(0) * (keyIdx + 1) + p.get(1) * ((keyIdx + 1) * 10)));
-
-            // check cosine similarity result; should be double for V1 request
-            float dotProductResult = cosP.get(0) * (float) (keyIdx + 1) + cosP.get(1) * (float) ((keyIdx + 1) * 10);
-            float valueVectorMagnitude = (float) Math.sqrt(
-                ((float) (keyIdx + 1) * (float) (keyIdx + 1)
-                    + ((float) (keyIdx + 1) * 10.0f) * ((float) (keyIdx + 1) * 10.0f)));
-            float parameterVectorMagnitude = (float) Math.sqrt((cosP.get(0) * cosP.get(0) + cosP.get(1) * cosP.get(1)));
-            float expectedCosineSimilarity = dotProductResult / (parameterVectorMagnitude * valueVectorMagnitude);
-            Assert.assertEquals((float) value.get("cosine_similarity_result"), expectedCosineSimilarity, 0.000001f);
-            Assert.assertEquals((int) value.get("member_feature_count"), 2);
-            Assert.assertEquals((int) value.get("namemap_count"), 0);
-
-            // check hadamard product
-            List<Float> hadamardProductResult = new ArrayList<>(2);
-            hadamardProductResult.add(hadamardP.get(0) * (float) (keyIdx + 1));
-            hadamardProductResult.add(hadamardP.get(1) * (float) ((keyIdx + 1) * 10));
-            Assert.assertEquals(value.get("hadamard_product_result"), hadamardProductResult);
-          });
-        });
-      }
-
-      /**
-       * 10 keys, 1 dot product, 1 cosine similarity, 1 hadamard product per request, 100 rounds; considering retries,
-       * compute operation counts should be higher.
-       */
-      Assert.assertTrue(
-          MetricsUtils.getSum(
-              "." + storeName + "--compute_dot_product_count.Total",
-              veniceCluster.getVeniceServers()) >= rounds * keyCount);
-      Assert.assertTrue(
-          MetricsUtils.getSum(
-              "." + storeName + "--compute_cosine_similarity_count.Total",
-              veniceCluster.getVeniceServers()) >= rounds * keyCount);
-      Assert.assertTrue(
-          MetricsUtils.getSum(
-              "." + storeName + "--compute_hadamard_product_count.Total",
-              veniceCluster.getVeniceServers()) >= rounds * keyCount);
-
-      // Check retry requests
-      Assert.assertTrue(
-          MetricsUtils.getSum(".total--compute_streaming_retry_count.LambdaStat", veniceCluster.getVeniceRouters()) > 0,
-          "After " + rounds + " reads, there should be some compute retry requests");
-    } catch (InterruptedException e) {
-      ThreadMXBean bean = ManagementFactory.getThreadMXBean();
-      ThreadInfo[] infos = bean.dumpAllThreads(true, true);
-      LOGGER.warn("Thread dump: ");
-      LOGGER.info(Arrays.stream(infos).map(Object::toString).collect(Collectors.joining()));
+    VeniceWriterFactory vwFactory = TestUtils.getVeniceWriterFactory(veniceCluster.getKafka().getAddress());
+    try (VeniceWriter<Object, byte[], byte[]> veniceWriter = vwFactory.createVeniceWriter(
+        new VeniceWriterOptions.Builder(topic).setKeySerializer(keySerializer)
+            .setValueSerializer(new DefaultSerializer())
+            .setChunkingEnabled(valueLargerThan1MB.config)
+            .build())) {
+      pushSyntheticDataForCompute(
+          topic,
+          keyPrefix,
+          valuePrefix,
+          keyCount,
+          veniceCluster,
+          veniceWriter,
+          pushVersion,
+          compressionStrategy,
+          valueLargerThan1MB.config);
     }
+
+    AvroGenericStoreClient<String, Object> storeClient = clientsMap.get(serializerReuse);
+
+    // Run multiple rounds
+    int rounds = 100;
+    int cur = 0;
+    while (cur++ < rounds) {
+      Set<String> keySet = new HashSet<>();
+      for (int i = 0; i < keyCount; ++i) {
+        keySet.add(keyPrefix + i);
+      }
+      keySet.add("unknown_key");
+      List<Float> p = Arrays.asList(100.0f, 0.1f);
+      List<Float> cosP = Arrays.asList(123.4f, 5.6f);
+      List<Float> hadamardP = Arrays.asList(135.7f, 246.8f);
+
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
+        Map<String, ComputeGenericRecord> computeResult = storeClient.compute()
+            .project("id")
+            .dotProduct("member_feature", p, "member_score")
+            .cosineSimilarity("member_feature", cosP, "cosine_similarity_result")
+            .hadamardProduct("member_feature", hadamardP, "hadamard_product_result")
+            .count("namemap", "namemap_count")
+            .count("member_feature", "member_feature_count")
+            .execute(keySet)
+            /**
+             * Added 2s timeout as a safety net as ideally each request should take sub-second.
+             */
+            .get(2, TimeUnit.SECONDS);
+
+        Assert.assertEquals(computeResult.size(), 10);
+
+        computeResult.forEach((key, value) -> {
+          int keyIdx = getKeyIndex(key, keyPrefix);
+          // check projection result
+          Assert.assertEquals(value.get("id"), new Utf8(valuePrefix + keyIdx));
+          // check dotProduct result; should be double for V1 request
+          Assert.assertEquals(value.get("member_score"), (p.get(0) * (keyIdx + 1) + p.get(1) * ((keyIdx + 1) * 10)));
+
+          // check cosine similarity result; should be double for V1 request
+          float dotProductResult = cosP.get(0) * (float) (keyIdx + 1) + cosP.get(1) * (float) ((keyIdx + 1) * 10);
+          float valueVectorMagnitude = (float) Math.sqrt(
+              ((float) (keyIdx + 1) * (float) (keyIdx + 1)
+                  + ((float) (keyIdx + 1) * 10.0f) * ((float) (keyIdx + 1) * 10.0f)));
+          float parameterVectorMagnitude = (float) Math.sqrt((cosP.get(0) * cosP.get(0) + cosP.get(1) * cosP.get(1)));
+          float expectedCosineSimilarity = dotProductResult / (parameterVectorMagnitude * valueVectorMagnitude);
+          Assert.assertEquals((float) value.get("cosine_similarity_result"), expectedCosineSimilarity, 0.000001f);
+          Assert.assertEquals((int) value.get("member_feature_count"), 2);
+          Assert.assertEquals((int) value.get("namemap_count"), 0);
+
+          // check hadamard product
+          List<Float> hadamardProductResult = new ArrayList<>(2);
+          hadamardProductResult.add(hadamardP.get(0) * (float) (keyIdx + 1));
+          hadamardProductResult.add(hadamardP.get(1) * (float) ((keyIdx + 1) * 10));
+          Assert.assertEquals(value.get("hadamard_product_result"), hadamardProductResult);
+        });
+      });
+    }
+
+    /**
+     * 10 keys, 1 dot product, 1 cosine similarity, 1 hadamard product per request, 100 rounds; considering retries,
+     * compute operation counts should be higher.
+     */
+    Assert.assertTrue(
+        MetricsUtils.getSum(
+            "." + storeName + "--compute_dot_product_count.Total",
+            veniceCluster.getVeniceServers()) >= rounds * keyCount);
+    Assert.assertTrue(
+        MetricsUtils.getSum(
+            "." + storeName + "--compute_cosine_similarity_count.Total",
+            veniceCluster.getVeniceServers()) >= rounds * keyCount);
+    Assert.assertTrue(
+        MetricsUtils.getSum(
+            "." + storeName + "--compute_hadamard_product_count.Total",
+            veniceCluster.getVeniceServers()) >= rounds * keyCount);
+
+    // Check retry requests
+    Assert.assertTrue(
+        MetricsUtils.getSum(".total--compute_streaming_retry_count.LambdaStat", veniceCluster.getVeniceRouters()) > 0,
+        "After " + rounds + " reads, there should be some compute retry requests");
   }
 
   /**
