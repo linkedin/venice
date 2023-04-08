@@ -138,7 +138,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   /** Used to communicate with Venice backend to retrieve necessary store schemas */
   private SchemaReader schemaReader;
   // Key serializer
-  protected RecordSerializer<K> keySerializer;
+  protected volatile RecordSerializer<K> keySerializer;
   // Multi-get request serializer
   protected RecordSerializer<ByteBuffer> multiGetRequestSerializer;
   protected RecordSerializer<ByteBuffer> computeRequestClientKeySerializer;
@@ -257,10 +257,8 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   }
 
   /**
-   * This function will try to initialize the store client at most once triggered by request.
-   * If the store initialization fails even with the internal retries, all the subsequent requests will fail,
-   * and the reason behind this design is that we don't want the retried store init occupy the application
-   * thread too long for every request, so that application's fallback logic can kick in.
+   * This function will try to initialize the store client at most once in a blocking fashion, and if the init
+   * fails, one async thread will be kicked off to init the store client periodically until the init succeeds.
    */
   protected RecordSerializer<K> getKeySerializerForRequest() {
     if (keySerializer != null) {
@@ -272,28 +270,36 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     }
     synchronized (this) {
       try {
+        if (keySerializer != null) {
+          whetherStoreInitTriggeredByRequestFail = false;
+          return keySerializer;
+        }
         return getKeySerializerWithRetryWithShortInterval();
       } catch (Exception e) {
         whetherStoreInitTriggeredByRequestFail = true;
         // Kick off an async thread to keep retrying
-        asyncStoreInitThread = new Thread(() -> {
-          while (true) {
-            try {
-              getKeySerializerWithRetryWithShortInterval();
-              whetherStoreInitTriggeredByRequestFail = false;
-              LOGGER.info("Successfully init store client by async store init thread");
-              break;
-            } catch (Exception ee) {
-              if (ee instanceof InterruptedException || !LatencyUtils.sleep(asyncStoreInitSleepIntervalMs)) {
-                LOGGER.warn("Async store init thread got interrupted, will exit the loop");
+        if (asyncStoreInitThread == null) {
+          // Spin up at most one async thread
+          asyncStoreInitThread = new Thread(() -> {
+            while (true) {
+              try {
+                getKeySerializerWithRetryWithShortInterval();
+                whetherStoreInitTriggeredByRequestFail = false;
+                LOGGER.info("Successfully init store client by async store init thread");
                 break;
+              } catch (Exception ee) {
+                if (ee instanceof InterruptedException || !LatencyUtils.sleep(asyncStoreInitSleepIntervalMs)) {
+                  LOGGER.warn("Async store init thread got interrupted, will exit the loop");
+                  break;
+                }
+                LOGGER.error(
+                    "Received exception while trying to init store client asynchronously, will keep retrying",
+                    ee);
               }
-              LOGGER
-                  .error("Received exception while trying to init store client asynchronously, will keep retrying", ee);
             }
-          }
-        });
-        asyncStoreInitThread.start();
+          });
+          asyncStoreInitThread.start();
+        }
         throw e;
       }
     }
@@ -382,9 +388,6 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     // init key serializer
     if (needSchemaReader) {
       if (getSchemaReader() != null) {
-        this.keySerializer = useFastAvro
-            ? FastSerializerDeserializerFactory.getAvroGenericSerializer(getSchemaReader().getKeySchema())
-            : SerializerDeserializerFactory.getAvroGenericSerializer(getSchemaReader().getKeySchema());
         // init multi-get request serializer
         this.multiGetRequestSerializer = useFastAvro
             ? FastSerializerDeserializerFactory
@@ -402,6 +405,13 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
                 .getFastAvroSpecificDeserializer(StreamingFooterRecordV1.SCHEMA$, StreamingFooterRecordV1.class)
             : SerializerDeserializerFactory
                 .getAvroSpecificDeserializer(StreamingFooterRecordV1.SCHEMA$, StreamingFooterRecordV1.class);
+        /**
+         * It is intentional to initialize {@link keySerializer} at last, so that other serializers are ready to use
+         * once {@link keySerializer} is ready.
+         */
+        this.keySerializer = useFastAvro
+            ? FastSerializerDeserializerFactory.getAvroGenericSerializer(getSchemaReader().getKeySchema())
+            : SerializerDeserializerFactory.getAvroGenericSerializer(getSchemaReader().getKeySchema());
       } else {
         throw new VeniceClientException("SchemaReader is null while initializing serializer");
       }
@@ -699,6 +709,9 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     warmUpVeniceClient();
   }
 
+  /**
+   * The behavior of READ apis will be non-deterministic after `close` function is called.
+   */
   @Override
   public void close() {
     boolean isHttp = transportClient instanceof HttpTransportClient;
