@@ -6,7 +6,8 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.LEADER_CONTROLLE
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.LeaderControllerResponse;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
+import com.linkedin.venice.integration.utils.PubSubBrokerConfigs;
+import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
@@ -39,21 +40,22 @@ import org.testng.annotations.Test;
 public class TestAdminSparkServerGetLeader {
   private String cluster = "test-primary-cluster";
   private VeniceControllerWrapper veniceControllerWrapper;
-  private KafkaBrokerWrapper kafkaBrokerWrapper;
+  private PubSubBrokerWrapper pubSubBrokerWrapper;
   private ZkServerWrapper zkServer;
 
   @BeforeMethod
   public void setUp() {
     zkServer = ServiceFactory.getZkServer();
-    kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServer);
+    pubSubBrokerWrapper =
+        ServiceFactory.getPubSubBroker(new PubSubBrokerConfigs.Builder().setZkWrapper(zkServer).build());
     veniceControllerWrapper = ServiceFactory
-        .getVeniceController(new VeniceControllerCreateOptions.Builder(cluster, zkServer, kafkaBrokerWrapper).build());
+        .getVeniceController(new VeniceControllerCreateOptions.Builder(cluster, zkServer, pubSubBrokerWrapper).build());
   }
 
   @AfterMethod
   public void cleanUp() {
     veniceControllerWrapper.close();
-    kafkaBrokerWrapper.close();
+    pubSubBrokerWrapper.close();
     zkServer.close();
   }
 

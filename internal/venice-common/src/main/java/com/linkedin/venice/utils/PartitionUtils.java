@@ -5,6 +5,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.PartitionerConfigImpl;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.UserPartitionAwarePartitioner;
@@ -24,41 +25,46 @@ public class PartitionUtils {
   private static final Logger LOGGER = LogManager.getLogger(PartitionUtils.class);
 
   /**
-   * Calculate partition count for new version. If the version is the first one of the given store,
-   * calculate the number by given store size and partition size. Otherwise, use the number from the current active
-   * version.
+   * Calculate partition count for new version. If store level partition count is not configured (0),
+   * calculate the number by storage quota and partition size. Otherwise, use the store level partition count.
    */
   public static int calculatePartitionCount(
       String storeName,
-      long storeSizeBytes,
-      int previousPartitionCount,
+      long storageQuota,
+      int storePartitionCount,
       long partitionSize,
       int minPartitionCount,
-      int maxPartitionCount) {
-    if (storeSizeBytes <= 0) {
-      throw new VeniceException("Store size: " + storeSizeBytes + " is invalid.");
+      int maxPartitionCount,
+      boolean isRoundUpEnabled,
+      int roundUpSize) {
+    if (storageQuota <= 0 && storageQuota != Store.UNLIMITED_STORAGE_QUOTA) {
+      throw new VeniceException("Storage quota: " + storageQuota + " is invalid.");
     }
-    if (previousPartitionCount == 0) {
-      // First Version, calculate partition count
-      long partitionCount = storeSizeBytes / partitionSize;
+    if (storePartitionCount == 0) {
+      // Store level partition count is not configured, calculate partition count
+      long partitionCount = storageQuota / partitionSize;
+      if (isRoundUpEnabled) {
+        // Round upwards to the next multiple of roundUpSize
+        partitionCount = (partitionCount + roundUpSize - 1) / roundUpSize * roundUpSize;
+      }
       if (partitionCount > maxPartitionCount) {
         partitionCount = maxPartitionCount;
       } else if (partitionCount < minPartitionCount) {
         partitionCount = minPartitionCount;
       }
       LOGGER.info(
-          "Assign partition count: {} by given size: {} for the first version of store: {}",
+          "Assign partition count: {} calculated by storage quota: {} to the new version of store: {}",
           partitionCount,
-          storeSizeBytes,
+          storageQuota,
           storeName);
       return (int) partitionCount;
     } else {
-      // Active version exists, use the partition count calculated before.
+      // Store level partition count is configured, use the number
       LOGGER.info(
-          "Assign partition count: {}, which come from previous version, for store: {}",
-          previousPartitionCount,
+          "Assign partition count: {} from store level config to the new version of store: {}",
+          storePartitionCount,
           storeName);
-      return previousPartitionCount;
+      return storePartitionCount;
     }
   }
 

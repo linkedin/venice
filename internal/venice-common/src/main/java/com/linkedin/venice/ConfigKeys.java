@@ -200,6 +200,14 @@ public class ConfigKeys {
   public static final String DEFAULT_NUMBER_OF_PARTITION_FOR_HYBRID = "default.partition.count.for.hybrid";
   public static final String DEFAULT_MAX_NUMBER_OF_PARTITIONS = "default.partition.max.count";
   public static final String DEFAULT_PARTITION_SIZE = "default.partition.size";
+  /**
+   * Whether to round up the version-level partition count calculated by storage quota. Default is false.
+   */
+  public static final String ENABLE_PARTITION_COUNT_ROUND_UP = "enable.partition.count.round.up";
+  /**
+   * If {@value ENABLE_PARTITION_COUNT_ROUND_UP} is enabled, this config defines the round up size. Default is 1.
+   */
+  public static final String PARTITION_COUNT_ROUND_UP_SIZE = "partition.count.round.up.size";
   public static final String OFFLINE_JOB_START_TIMEOUT_MS = "offline.job.start.timeout.ms";
   public static final String DELAY_TO_REBALANCE_MS = "delay.to.rebalance.ms";
   public static final String MIN_ACTIVE_REPLICA = "min.active.replica";

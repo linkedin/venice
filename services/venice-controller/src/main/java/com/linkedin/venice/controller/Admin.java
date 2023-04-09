@@ -450,9 +450,9 @@ public interface Admin extends AutoCloseable, Closeable {
   boolean isLeaderControllerFor(String clusterName);
 
   /**
-  * Calculate how many partitions are needed for the given store and size.
+  * Calculate how many partitions are needed for the given store.
   */
-  int calculateNumberOfPartitions(String clusterName, String storeName, long storeSize);
+  int calculateNumberOfPartitions(String clusterName, String storeName);
 
   int getReplicationFactor(String clusterName, String storeName);
 

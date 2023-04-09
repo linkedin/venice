@@ -56,61 +56,53 @@ public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVSta
     recordVersionedAndTotalStat(storeName, version, DIVStats::recordSuccessMsg);
   }
 
-  public void recordCurrentIdleTime(String storeName, int version) {
-    // we don't record current idle time for total stats
-    Utils.computeIfNotNull(getStats(storeName, version), DIVStats::recordCurrentIdleTime);
-  }
-
-  public void recordOverallIdleTime(String storeName, int version) {
-    recordVersionedAndTotalStat(storeName, version, DIVStats::recordOverallIdleTime);
-  }
-
-  public void resetCurrentIdleTime(String storeName, int version) {
-    // we don't record current idle time for total stats
-    Utils.computeIfNotNull(getStats(storeName, version), DIVStats::resetCurrentIdleTime);
-  }
-
   public void recordLatencies(
       String storeName,
       int version,
+      long currentTimeMs,
       double producerBrokerLatencyMs,
       double brokerConsumerLatencyMs,
       double producerConsumerLatencyMs) {
     recordVersionedAndTotalStat(storeName, version, stat -> {
-      stat.recordProducerBrokerLatencyMs(producerBrokerLatencyMs);
-      stat.recordBrokerConsumerLatencyMs(brokerConsumerLatencyMs);
-      stat.recordProducerConsumerLatencyMs(producerConsumerLatencyMs);
+      stat.recordProducerBrokerLatencyMs(producerBrokerLatencyMs, currentTimeMs);
+      stat.recordBrokerConsumerLatencyMs(brokerConsumerLatencyMs, currentTimeMs);
+      stat.recordProducerConsumerLatencyMs(producerConsumerLatencyMs, currentTimeMs);
     });
   }
 
   public void recordLeaderLatencies(
       String storeName,
       int version,
+      long currentTimeMs,
       double producerBrokerLatencyMs,
       double brokerConsumerLatencyMs,
       double producerConsumerLatencyMs) {
     recordVersionedAndTotalStat(storeName, version, stat -> {
-      stat.recordProducerSourceBrokerLatencyMs(producerBrokerLatencyMs);
-      stat.recordSourceBrokerLeaderConsumerLatencyMs(brokerConsumerLatencyMs);
-      stat.recordProducerLeaderConsumerLatencyMs(producerConsumerLatencyMs);
+      stat.recordProducerSourceBrokerLatencyMs(producerBrokerLatencyMs, currentTimeMs);
+      stat.recordSourceBrokerLeaderConsumerLatencyMs(brokerConsumerLatencyMs, currentTimeMs);
+      stat.recordProducerLeaderConsumerLatencyMs(producerConsumerLatencyMs, currentTimeMs);
     });
   }
 
   public void recordFollowerLatencies(
       String storeName,
       int version,
+      long currentTimeMs,
       double producerBrokerLatencyMs,
       double brokerConsumerLatencyMs,
       double producerConsumerLatencyMs) {
     recordVersionedAndTotalStat(storeName, version, stat -> {
-      stat.recordProducerLocalBrokerLatencyMs(producerBrokerLatencyMs);
-      stat.recordLocalBrokerFollowerConsumerLatencyMs(brokerConsumerLatencyMs);
-      stat.recordProducerFollowerConsumerLatencyMs(producerConsumerLatencyMs);
+      stat.recordProducerLocalBrokerLatencyMs(producerBrokerLatencyMs, currentTimeMs);
+      stat.recordLocalBrokerFollowerConsumerLatencyMs(brokerConsumerLatencyMs, currentTimeMs);
+      stat.recordProducerFollowerConsumerLatencyMs(producerConsumerLatencyMs, currentTimeMs);
     });
   }
 
-  public void recordLeaderProducerCompletionTime(String storeName, int version, double value) {
-    recordVersionedAndTotalStat(storeName, version, stat -> stat.recordLeaderProducerCompletionLatencyMs(value));
+  public void recordLeaderProducerCompletionTime(String storeName, int version, double value, long currentTimeMs) {
+    recordVersionedAndTotalStat(
+        storeName,
+        version,
+        stat -> stat.recordLeaderProducerCompletionLatencyMs(value, currentTimeMs));
   }
 
   public void recordBenignLeaderOffsetRewind(String storeName, int version) {
@@ -166,6 +158,8 @@ public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVSta
     resetTotalStats(storeName, existingVersions, DIVStats::getMissingMsg, DIVStats::setMissingMsg);
     // Update total corrupt msg count
     resetTotalStats(storeName, existingVersions, DIVStats::getCorruptedMsg, DIVStats::setCorruptedMsg);
+    // Update total success msg count
+    resetTotalStats(storeName, existingVersions, DIVStats::getSuccessMsg, DIVStats::setSuccessMsg);
   }
 
   private void resetTotalStats(

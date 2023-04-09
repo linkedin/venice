@@ -186,56 +186,61 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
 
     veniceAdmin.createStore(clusterName, storeName, "dev", KEY_SCHEMA, VALUE_SCHEMA);
 
-    long storeSize = partitionSize * (minPartitionNumber + 1);
-    int numberOfPartition = veniceAdmin.calculateNumberOfPartitions(clusterName, storeName, storeSize);
+    long storageQuota = partitionSize * (minPartitionNumber + 1);
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setStorageQuotaInByte(storageQuota));
+    int numberOfPartition = veniceAdmin.calculateNumberOfPartitions(clusterName, storeName);
     Assert.assertEquals(
         numberOfPartition,
-        storeSize / partitionSize,
+        storageQuota / partitionSize,
         "Number partition is smaller than max and bigger than min. So use the calculated result.");
-    storeSize = 1;
-    numberOfPartition = veniceAdmin.calculateNumberOfPartitions(clusterName, storeName, storeSize);
+    storageQuota = 1;
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setStorageQuotaInByte(storageQuota));
+    numberOfPartition = veniceAdmin.calculateNumberOfPartitions(clusterName, storeName);
     Assert.assertEquals(
         numberOfPartition,
         minPartitionNumber,
-        "Store size is too small so should use min number of partitions.");
-    storeSize = partitionSize * (maxPartitionNumber + 1);
-    numberOfPartition = veniceAdmin.calculateNumberOfPartitions(clusterName, storeName, storeSize);
+        "Store disk quota is too small so should use min number of partitions.");
+    storageQuota = partitionSize * (maxPartitionNumber + 1);
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setStorageQuotaInByte(storageQuota));
+    numberOfPartition = veniceAdmin.calculateNumberOfPartitions(clusterName, storeName);
     Assert.assertEquals(
         numberOfPartition,
         maxPartitionNumber,
-        "Store size is too big, should use max number of partitions.");
+        "Store disk quota is too big, should use max number of partitions.");
 
-    storeSize = Long.MAX_VALUE;
-    numberOfPartition = veniceAdmin.calculateNumberOfPartitions(clusterName, storeName, storeSize);
+    storageQuota = Long.MAX_VALUE;
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setStorageQuotaInByte(storageQuota));
+    numberOfPartition = veniceAdmin.calculateNumberOfPartitions(clusterName, storeName);
     Assert.assertEquals(numberOfPartition, maxPartitionNumber, "Partition is overflow from Integer, use max one.");
 
-    // invalid store; should fail.
-    Assert
-        .assertThrows(VeniceException.class, () -> veniceAdmin.calculateNumberOfPartitions(clusterName, storeName, -1));
+    // invalid storage quota; update store should fail.
+    Assert.assertThrows(
+        VeniceException.class,
+        () -> veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setStorageQuotaInByte(-2)));
   }
 
   @Test(timeOut = TOTAL_TIMEOUT_FOR_SHORT_TEST_MS)
-  public void testGetNumberOfPartitionsFromPreviousVersion() {
+  public void testGetNumberOfPartitionsFromStoreLevelConfig() {
     long partitionSize = controllerConfig.getPartitionSize();
     int maxPartitionNumber = controllerConfig.getMaxNumberOfPartition();
     int minPartitionNumber = controllerConfig.getNumberOfPartition();
     String storeName = Utils.getUniqueString("test");
 
     veniceAdmin.createStore(clusterName, storeName, "dev", KEY_SCHEMA, VALUE_SCHEMA);
-    long storeSize = partitionSize * (minPartitionNumber) + 1;
-    int numberOfParition = veniceAdmin.calculateNumberOfPartitions(clusterName, storeName, storeSize);
+    long storageQuota = partitionSize * (minPartitionNumber) + 1;
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setStorageQuotaInByte(storageQuota));
+    int numberOfPartition = veniceAdmin.calculateNumberOfPartitions(clusterName, storeName);
     Store store =
         veniceAdmin.getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository().getStore(storeName);
-    store.setPartitionCount(numberOfParition);
+    store.setPartitionCount(numberOfPartition);
     veniceAdmin.getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository().updateStore(store);
     Version v = veniceAdmin
-        .incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), numberOfParition, 1);
+        .incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), numberOfPartition, 1);
     veniceAdmin.setStoreCurrentVersion(clusterName, storeName, v.getNumber());
-    veniceAdmin.setStoreCurrentVersion(clusterName, storeName, v.getNumber());
-    storeSize = partitionSize * (maxPartitionNumber - 2);
-    numberOfParition = veniceAdmin.calculateNumberOfPartitions(clusterName, storeName, storeSize);
-    Assert
-        .assertEquals(numberOfParition, minPartitionNumber, "Should use the number of partition from previous version");
+    storageQuota = partitionSize * (maxPartitionNumber - 2);
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setStorageQuotaInByte(storageQuota));
+    numberOfPartition = veniceAdmin.calculateNumberOfPartitions(clusterName, storeName);
+    Assert.assertEquals(numberOfPartition, minPartitionNumber, "Should use the number of partition from store config");
   }
 
   @Test

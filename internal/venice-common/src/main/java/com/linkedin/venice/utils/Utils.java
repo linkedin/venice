@@ -268,13 +268,7 @@ public class Utils {
    * @return true on success and false if sleep was interrupted
    */
   public static boolean sleep(long millis) {
-    try {
-      Thread.sleep(millis);
-      return true;
-    } catch (InterruptedException e) {
-      Thread.currentThread().interrupt();
-      return false;
-    }
+    return LatencyUtils.sleep(millis);
   }
 
   public static int parseIntFromString(String value, String fieldName) {

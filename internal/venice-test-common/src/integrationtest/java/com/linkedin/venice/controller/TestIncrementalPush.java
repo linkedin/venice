@@ -48,13 +48,16 @@ public class TestIncrementalPush {
   public void testGetOfflineStatusIncrementalPush() {
     String storeName = Utils.getUniqueString("testIncPushStore");
     int partitionCount = 2;
-    int dataSize = partitionCount * partitionSize;
+    long storageQuota = (long) partitionCount * partitionSize;
     cluster.getNewStore(storeName);
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
-    params.setIncrementalPushEnabled(true).setHybridRewindSeconds(1).setHybridOffsetLagThreshold(1);
+    params.setIncrementalPushEnabled(true)
+        .setHybridRewindSeconds(1)
+        .setHybridOffsetLagThreshold(1)
+        .setStorageQuotaInByte(storageQuota);
     cluster.updateStore(storeName, params);
 
-    VersionCreationResponse response = cluster.getNewVersion(storeName, dataSize);
+    VersionCreationResponse response = cluster.getNewVersion(storeName);
     Assert.assertFalse(response.isError());
     String topicName = response.getKafkaTopic();
     // push version 1 to completion
@@ -71,7 +74,7 @@ public class TestIncrementalPush {
     // set up store for inc push to rt
 
     cluster.updateStore(storeName, params);
-    response = cluster.getNewVersion(storeName, dataSize);
+    response = cluster.getNewVersion(storeName);
     topicName = response.getKafkaTopic();
 
     // broadcast to VT

@@ -30,9 +30,8 @@ public class TestFileDescriptorLeak {
 
   @Test(invocationCount = 20, groups = { "flaky" })
   public void testKafkaBrokerLeak() {
-    try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
-        KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServer)) {
-      LOGGER.info("Created KafkaBrokerWrapper: {}", kafkaBrokerWrapper.getAddress());
+    try (PubSubBrokerWrapper pubSubBrokerWrapper = ServiceFactory.getPubSubBroker()) {
+      LOGGER.info("Created KafkaBrokerWrapper: {}", pubSubBrokerWrapper.getAddress());
     }
   }
 
