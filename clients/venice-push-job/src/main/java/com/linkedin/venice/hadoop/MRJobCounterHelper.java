@@ -43,7 +43,7 @@ public class MRJobCounterHelper {
   private static final String MAPPER_INVALID_INPUT_FILE = "Mapper invalid input file";
   private static final String MAPPER_SCHEMA_INCONSISTENCY_FAILURE = "Mapper schema inconsistency failure";
   private static final String MAPPER_ZSTD_DICT_TRAIN_FAILURE = "Mapper Zstd dict train failure";
-
+  private static final String MAPPER_ZSTD_DICT_TRAIN_SKIPPED = "Mapper Zstd dict train skipped";
   private static final String COUNTER_GROUP_KAFKA_INPUT_FORMAT = "KafkaInputFormat";
   private static final String COUNTER_PUT_OR_DELETE_RECORDS = "put or delete records";
 
@@ -108,6 +108,9 @@ public class MRJobCounterHelper {
 
   static final GroupAndCounterNames MAPPER_ZSTD_DICT_TRAIN_FAILURE_GROUP_COUNTER_NAME =
       new GroupAndCounterNames(MR_JOB_STATUS, MAPPER_ZSTD_DICT_TRAIN_FAILURE);
+
+  static final GroupAndCounterNames MAPPER_ZSTD_DICT_TRAIN_SKIPPED_GROUP_COUNTER_NAME =
+      new GroupAndCounterNames(MR_JOB_STATUS, MAPPER_ZSTD_DICT_TRAIN_SKIPPED);
 
   static final GroupAndCounterNames MAPPER_NUM_RECORDS_SUCCESSFULLY_PROCESSED_GROUP_COUNTER_NAME =
       new GroupAndCounterNames(MR_JOB_STATUS, MAPPER_NUM_RECORDS_SUCCESSFULLY_PROCESSED);
@@ -317,6 +320,14 @@ public class MRJobCounterHelper {
 
   static long getMapperZstdDictTrainFailureCount(Counters counters) {
     return getCountFromCounters(counters, MAPPER_ZSTD_DICT_TRAIN_FAILURE_GROUP_COUNTER_NAME);
+  }
+
+  static void incrMapperZstdDictTrainSkippedCount(Reporter reporter, long amount) {
+    incrAmountWithGroupCounterName(reporter, MAPPER_ZSTD_DICT_TRAIN_SKIPPED_GROUP_COUNTER_NAME, amount);
+  }
+
+  static long getMapperZstdDictTrainSkippedCount(Counters counters) {
+    return getCountFromCounters(counters, MAPPER_ZSTD_DICT_TRAIN_SKIPPED_GROUP_COUNTER_NAME);
   }
 
   static void incrMapperNumRecordsSuccessfullyProcessedCount(Reporter reporter, long amount) {

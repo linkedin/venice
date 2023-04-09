@@ -1490,9 +1490,11 @@ public class VenicePushJob implements AutoCloseable {
       }
 
       final long zstdDictCreationFailureCount = MRJobCounterHelper.getMapperZstdDictTrainFailureCount(counters);
-      final long zstdDictTrainSuccessCount = MRJobCounterHelper.getMapperZstdDictTrainSuccessCount(counters);
-      isZstdDictCreationSuccess = (zstdDictTrainSuccessCount == 1);
+      final long zstdDictCreationSuccessCount = MRJobCounterHelper.getMapperZstdDictTrainSuccessCount(counters);
+      final long zstdDictCreationSkippedCount = MRJobCounterHelper.getMapperZstdDictTrainSkippedCount(counters);
+      isZstdDictCreationSuccess = (zstdDictCreationSuccessCount == 1);
       boolean isZstdDictCreationFailure = (zstdDictCreationFailureCount == 1);
+      boolean isZstdDictCreationSkipped = (zstdDictCreationSkippedCount == 1);
 
       final long recordsSuccessfullyProcessedCount =
           MRJobCounterHelper.getMapperNumRecordsSuccessfullyProcessedCount(counters);
@@ -1518,6 +1520,19 @@ public class VenicePushJob implements AutoCloseable {
             updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.ZSTD_DICTIONARY_CREATION_FAILED);
             String err = "Training ZStd dictionary failed: Maybe the sample size is too small or the content is "
                 + "not suitable for creating dictionary.";
+            LOGGER.error(err);
+            throw new VeniceException(err);
+          }
+        } else if (isZstdDictCreationSkipped) {
+          if (storeSetting.compressionStrategy != CompressionStrategy.ZSTD_WITH_DICT) {
+            // Tried creating dictionary due to compressionMetricCollectionEnabled
+            LOGGER.warn(
+                "Skipped creating ZSTD dictionary as the sample size is too small. "
+                    + "But as this job's configured compression type don't "
+                    + "need dictionary, the job is not stopped");
+          } else {
+            updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.ZSTD_DICTIONARY_CREATION_FAILED);
+            String err = "Skipped creating ZSTD dictionary as the sample size is too small";
             LOGGER.error(err);
             throw new VeniceException(err);
           }
@@ -1876,9 +1891,18 @@ public class VenicePushJob implements AutoCloseable {
       // size of the Gzip compressed data
       pushJobDetails.totalGzipCompressedValueBytes =
           MRJobCounterHelper.getTotalGzipCompressedValueSize(runningJob.getCounters());
-      // size of the Zstd compressed data
+      // size of the Zstd with Dict compressed data
       pushJobDetails.totalZstdWithDictCompressedValueBytes =
           MRJobCounterHelper.getTotalZstdWithDictCompressedValueSize(runningJob.getCounters());
+      LOGGER.info(
+          "pushJobDetails MR Counters: \n\ttotalNumberOfRecords: {} \n\ttotalKeyBytes: {} \n\tsize of uncompressed value: {} \n\tValue Compression Strategy: {}, \n\tsize of the final stored data in SN (can be compressed using NO_OP/GZIP/ZSTD_WITH_DICT): {} \n\tsize of the Gzip compressed data: {} \n\tsize of the Zstd with Dict compressed data: {}",
+          pushJobDetails.totalNumberOfRecords,
+          pushJobDetails.totalKeyBytes,
+          pushJobDetails.totalRawValueBytes,
+          CompressionStrategy.valueOf(pushJobDetails.valueCompressionStrategy).name(),
+          pushJobDetails.totalCompressedValueBytes,
+          pushJobDetails.totalGzipCompressedValueBytes,
+          pushJobDetails.totalZstdWithDictCompressedValueBytes);
     } catch (Exception e) {
       LOGGER.warn(
           "Exception caught while updating push job details with map reduce counters. {}",

@@ -184,23 +184,37 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
       // if there are any input records: build dictionary from the data collected so far and append it
       if (isZstdDictCreationRequired) {
         if (inputDataInfo.hasRecords()) {
-          LOGGER.info(
-              "Creating ZSTD compression dictionary using {} bytes of samples",
-              inputDataInfoProvider.pushJobZstdConfig.getFilledSize());
-          ByteBuffer compressionDictionary;
-          try {
-            compressionDictionary = ByteBuffer.wrap(inputDataInfoProvider.getZstdDictTrainSamples());
-            mapperOutputRecord.put(KEY_ZSTD_COMPRESSION_DICTIONARY, compressionDictionary);
-            MRJobCounterHelper.incrMapperZstdDictTrainSuccessCount(reporter, 1);
-          } catch (Exception e) {
-            MRJobCounterHelper.incrMapperZstdDictTrainFailureCount(reporter, 1);
+          int collectedNumberOfSamples = inputDataInfoProvider.pushJobZstdConfig.getCollectedNumberOfSamples();
+          int minNumberOfSamples = inputDataInfoProvider.pushJobZstdConfig.getMinNumberOfSamples();
+          if (collectedNumberOfSamples < minNumberOfSamples) {
+            /** check {@link PushJobZstdConfig#minNumberOfSamples} */
+            MRJobCounterHelper.incrMapperZstdDictTrainSkippedCount(reporter, 1);
             LOGGER.error(
-                "Training ZStd compression dictionary failed: Maybe the sample size is too small or "
-                    + "the content is not suitable for creating dictionary :  ",
-                e);
+                "Skipped creating ZSTD Dictionary as the collected number of sample: {}, is "
+                    + "less than the minimum number of required samples: {}",
+                collectedNumberOfSamples,
+                minNumberOfSamples);
             return false;
+          } else {
+            LOGGER.info(
+                "Creating ZSTD compression dictionary using {} number of samples with {} bytes",
+                collectedNumberOfSamples,
+                inputDataInfoProvider.pushJobZstdConfig.getFilledSize());
+            ByteBuffer compressionDictionary;
+            try {
+              compressionDictionary = ByteBuffer.wrap(inputDataInfoProvider.getZstdDictTrainSamples());
+              mapperOutputRecord.put(KEY_ZSTD_COMPRESSION_DICTIONARY, compressionDictionary);
+              MRJobCounterHelper.incrMapperZstdDictTrainSuccessCount(reporter, 1);
+              LOGGER.info("Zstd compression dictionary size = {} bytes", compressionDictionary.remaining());
+            } catch (Exception e) {
+              MRJobCounterHelper.incrMapperZstdDictTrainFailureCount(reporter, 1);
+              LOGGER.error(
+                  "Training ZStd compression dictionary failed: Maybe the sample size is too small or "
+                      + "the content is not suitable for creating dictionary :  ",
+                  e);
+              return false;
+            }
           }
-          LOGGER.info("Zstd compression dictionary size = {} bytes", compressionDictionary.remaining());
         } else {
           LOGGER.info("No compression dictionary is generated as the input data doesn't contain any records");
         }
