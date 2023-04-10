@@ -14,7 +14,7 @@ import static com.linkedin.venice.meta.VersionStatus.NOT_CREATED;
 import static com.linkedin.venice.meta.VersionStatus.ONLINE;
 import static com.linkedin.venice.meta.VersionStatus.PUSHED;
 import static com.linkedin.venice.meta.VersionStatus.STARTED;
-import static com.linkedin.venice.pushmonitor.OfflinePushStatus.*;
+import static com.linkedin.venice.pushmonitor.OfflinePushStatus.HELIX_ASSIGNMENT_COMPLETED;
 import static com.linkedin.venice.utils.AvroSchemaUtils.isValidAvroSchema;
 import static com.linkedin.venice.views.ViewUtils.ETERNAL_TOPIC_RETENTION_ENABLED;
 import static com.linkedin.venice.views.ViewUtils.LOG_COMPACTION_ENABLED;

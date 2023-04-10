@@ -5,7 +5,8 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.END_OF_INCREMENTAL
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.ERROR;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.NOT_CREATED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED;
-import static com.linkedin.venice.pushmonitor.OfflinePushStatus.*;
+import static com.linkedin.venice.pushmonitor.OfflinePushStatus.HELIX_ASSIGNMENT_COMPLETED;
+import static com.linkedin.venice.pushmonitor.OfflinePushStatus.HELIX_RESOURCE_NOT_CREATED;
 
 import com.linkedin.venice.controller.HelixAdminClient;
 import com.linkedin.venice.exceptions.VeniceException;
