@@ -49,6 +49,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR;
 import static com.linkedin.venice.ConfigKeys.KAFKA_REPLICATION_FACTOR_RT_TOPICS;
 import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
 import static com.linkedin.venice.ConfigKeys.LEAKED_PUSH_STATUS_CLEAN_UP_SERVICE_SLEEP_INTERVAL_MS;
+import static com.linkedin.venice.ConfigKeys.LEAKED_RESOURCE_ALLOWED_LINGER_TIME_MS;
 import static com.linkedin.venice.ConfigKeys.MIN_ACTIVE_REPLICA;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_BATCH_ONLY_STORES;
 import static com.linkedin.venice.ConfigKeys.NATIVE_REPLICATION_SOURCE_FABRIC_AS_DEFAULT_FOR_HYBRID_STORES;
@@ -243,6 +244,13 @@ public class VeniceControllerClusterConfig {
   private long leakedPushStatusCleanUpServiceSleepIntervalInMs;
 
   /**
+   * The amount of time a leaked resource is allowed to linger before it is cleaned up.
+   *
+   * A leaked resource per store is allowed to linger for some time in order to gather troubleshooting information.
+   */
+  private long leakedResourceAllowedLingerTimeInMs;
+
+  /**
    * Jetty config overrides for Spark server
    */
   private VeniceProperties jettyConfigOverrides;
@@ -390,6 +398,9 @@ public class VeniceControllerClusterConfig {
     }
     this.leakedPushStatusCleanUpServiceSleepIntervalInMs =
         props.getLong(LEAKED_PUSH_STATUS_CLEAN_UP_SERVICE_SLEEP_INTERVAL_MS, TimeUnit.MINUTES.toMillis(15));
+    // 7 days should be enough for detecting and troubleshooting a leaked push status.
+    this.leakedResourceAllowedLingerTimeInMs =
+        props.getLong(LEAKED_RESOURCE_ALLOWED_LINGER_TIME_MS, TimeUnit.DAYS.toMillis(7));
     this.jettyConfigOverrides = props.clipAndFilterNamespace(CONTROLLER_JETTY_CONFIG_OVERRIDE_PREFIX);
     this.disableParentRequestTopicForStreamPushes =
         props.getBoolean(CONTROLLER_DISABLE_PARENT_REQUEST_TOPIC_FOR_STREAM_PUSHES, false);
@@ -637,6 +648,10 @@ public class VeniceControllerClusterConfig {
 
   public long getLeakedPushStatusCleanUpServiceSleepIntervalInMs() {
     return leakedPushStatusCleanUpServiceSleepIntervalInMs;
+  }
+
+  public long getLeakedResourceAllowedLingerTimeInMs() {
+    return leakedResourceAllowedLingerTimeInMs;
   }
 
   public String getNativeReplicationSourceFabricAsDefaultForBatchOnly() {

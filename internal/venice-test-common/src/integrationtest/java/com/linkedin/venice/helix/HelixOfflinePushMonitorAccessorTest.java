@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.testng.Assert;
@@ -167,5 +168,13 @@ public class HelixOfflinePushMonitorAccessorTest {
     for (int i = 0; i < partitionNum; i++) {
       Assert.assertEquals(fullPartitionStatusList.get(i).getPartitionId(), i);
     }
+  }
+
+  @Test
+  public void testGetOfflinePushStatusCreationTime() {
+    accessor.createOfflinePushStatusAndItsPartitionStatuses(offlinePushStatus);
+    Optional<Long> ctime = accessor.getOfflinePushStatusCreationTime(topic);
+    Assert.assertTrue(ctime.isPresent());
+    Assert.assertTrue(ctime.get() > 0);
   }
 }

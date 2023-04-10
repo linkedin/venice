@@ -97,6 +97,11 @@ public interface HelixAdminClient {
       int replicationFactor);
 
   /**
+   * Check if a resource exists in a cluster by checking its ideal state.
+   */
+  boolean containsResource(String clusterName, String resourceName);
+
+  /**
    * Drop a resource from a cluster.
    */
   void dropResource(String clusterName, String resourceName);
