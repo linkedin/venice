@@ -12,6 +12,7 @@ import com.linkedin.venice.security.SSLFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -22,6 +23,7 @@ public class HttpChannelInitializerTest {
   private CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewRepository;
   private MetricsRepository metricsRepository;
   private Optional<SSLFactory> sslFactory;
+  private Optional<Executor> sslHandshakeExecutor;
   private VeniceServerConfig serverConfig;
   private Optional<StaticAccessController> accessController;
   private Optional<DynamicAccessController> storeAccessController;
@@ -32,6 +34,7 @@ public class HttpChannelInitializerTest {
     storeMetadataRepository = mock(ReadOnlyStoreRepository.class);
     metricsRepository = new MetricsRepository();
     sslFactory = Optional.of(mock(SSLFactory.class));
+    sslHandshakeExecutor = Optional.of(mock(Executor.class));
     accessController = Optional.of(mock(StaticAccessController.class));
     storeAccessController = Optional.of(mock(DynamicAccessController.class));
     requestHandler = mock(StorageReadRequestsHandler.class);
@@ -48,6 +51,7 @@ public class HttpChannelInitializerTest {
         customizedViewRepository,
         metricsRepository,
         sslFactory,
+        sslHandshakeExecutor,
         serverConfig,
         accessController,
         storeAccessController,
@@ -64,6 +68,7 @@ public class HttpChannelInitializerTest {
         customizedViewRepository,
         metricsRepository,
         sslFactory,
+        sslHandshakeExecutor,
         serverConfig,
         accessController,
         storeAccessController,
