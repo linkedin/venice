@@ -3372,4 +3372,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
     return kafkaValue.leaderMetadataFooter != null && kafkaValue.leaderMetadataFooter.upstreamOffset >= 0;
   }
+
+  public void updateOffsetMetadataAndSync(String topic, int partitionId) {
+    PartitionConsumptionState pcs = getPartitionConsumptionState(partitionId);
+    LOGGER.info("DEBUGGING before sync: topic: {}, partition: {}, PCS: {}", topic, partitionId, pcs);
+    updateOffsetMetadataInOffsetRecord(pcs);
+    syncOffset(topic, pcs);
+    LOGGER.info("DEBUGGING after sync: topic: {}, partition: {}, PCS: {}", topic, partitionId, pcs);
+  }
 }

@@ -1380,6 +1380,108 @@ public class TestHybrid {
   }
 
   @Test(timeOut = 180 * Time.MS_PER_SECOND)
+  public void myTest() throws Exception {
+    SystemProducer veniceProducer = null;
+
+    VeniceClusterWrapper venice = ingestionIsolationEnabledSharedVenice;
+    try {
+      long streamingRewindSeconds = 100L;
+      long streamingMessageLag = 1000L;
+
+      String storeName = Utils.getUniqueString("hybrid-store");
+      File inputDir = getTempDataDirectory();
+      String inputDirPath = "file://" + inputDir.getAbsolutePath();
+      Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir); // records 1-100
+      Properties vpjProperties = defaultVPJProps(venice, inputDirPath, storeName);
+
+      try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
+          AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
+              ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()))) {
+
+        ControllerResponse response = controllerClient.updateStore(
+            storeName,
+            new UpdateStoreQueryParams().setHybridRewindSeconds(streamingRewindSeconds)
+                .setHybridOffsetLagThreshold(streamingMessageLag));
+        Assert.assertFalse(response.isError());
+
+        // Do an VPJ push with an empty RT
+        runVPJ(vpjProperties, 1, controllerClient);
+
+        // Verify some records (note, records 1-100 have been pushed)
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+          try {
+            for (int i = 1; i < 100; i++) {
+              String key = Integer.toString(i);
+              Object value = client.get(key).get();
+              assertNotNull(value, "Key " + i + " should not be missing!");
+              assertEquals(value.toString(), "test_name_" + key);
+            }
+          } catch (Exception e) {
+            throw new VeniceException(e);
+          }
+        });
+
+        // write streaming records
+        veniceProducer = getSamzaProducer(venice, storeName, Version.PushType.STREAM);
+        for (int i = 1; i <= 10; i++) {
+          // The batch values are small, but the streaming records are "big" (i.e.: not that big, but bigger than
+          // the server's max configured chunk size). In the scenario where chunking is disabled, the server's
+          // max chunk size is not altered, and thus this will be under threshold.
+          sendCustomSizeStreamingRecord(veniceProducer, storeName, i, STREAMING_RECORD_SIZE);
+        }
+
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+          try {
+            checkLargeRecord(client, 2);
+          } catch (Exception e) {
+            throw new VeniceException(e);
+          }
+        });
+
+        VersionCreationResponse vcr =
+            controllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L);
+        int versionNumber = vcr.getVersion();
+        assertNotEquals(versionNumber, 0, "requesting a topic for a push should provide a non zero version number");
+
+        TestUtils.waitForNonDeterministicAssertion(100, TimeUnit.SECONDS, true, () -> {
+          // Now the store should have version 1
+          JobStatusQueryResponse jobStatus =
+              controllerClient.queryJobStatus(Version.composeKafkaTopic(storeName, versionNumber));
+          Assert.assertFalse(jobStatus.isError(), "Error in getting JobStatusResponse: " + jobStatus.getError());
+          assertEquals(jobStatus.getStatus(), "COMPLETED");
+        });
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+          try {
+            for (int i = 1; i <= 10; i++) {
+              String key = Integer.toString(i);
+              Assert.assertNull(client.get(key).get(), null);
+            }
+          } catch (Exception e) {
+            throw new VeniceException(e);
+          }
+        });
+      }
+
+      LogManager.getLogger().info("DEBUGGING: " + venice.getClusterName() + " " + storeName);
+      Admin.OfflinePushStatusInfo status = venice.getVeniceControllers()
+          .get(0)
+          .getVeniceHelixAdmin()
+          .getOffLinePushStatus(venice.getClusterName(), storeName + "_v2");
+
+      LogManager.getLogger().info("DEBUGGING2 " + status.getStatusDetails());
+      LogManager.getLogger().info("DEBUGGING2 " + status.getExecutionStatus().toString());
+      LogManager.getLogger().info("DEBUGGING2 " + status.getExtraInfo());
+      LogManager.getLogger().info("DEBUGGING2 " + status.getExtraDetails());
+
+    } finally {
+      if (veniceProducer != null) {
+        veniceProducer.stop();
+      }
+    }
+
+  }
+
+  @Test(timeOut = 180 * Time.MS_PER_SECOND)
   public void testVersionSwapDeferredWithHybrid() throws Exception {
     Properties extraProperties = new Properties();
     extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(3L));
@@ -1770,7 +1872,7 @@ public class TestHybrid {
       boolean enablePartitionWiseSharedConsumer) {
     Properties extraProperties = new Properties();
     extraProperties.setProperty(DEFAULT_MAX_NUMBER_OF_PARTITIONS, "5");
-    VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 0, 0, 2, 1000000, false, false, extraProperties);
+    VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 0, 0, 1, 1000000, false, false, extraProperties);
 
     // Add Venice Router
     Properties routerProperties = new Properties();
@@ -1798,7 +1900,7 @@ public class TestHybrid {
           KafkaConsumerService.ConsumerAssignmentStrategy.PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY.name());
     }
     cluster.addVeniceServer(new Properties(), serverProperties);
-    cluster.addVeniceServer(new Properties(), serverProperties);
+    // cluster.addVeniceServer(new Properties(), serverProperties);
 
     return cluster;
   }

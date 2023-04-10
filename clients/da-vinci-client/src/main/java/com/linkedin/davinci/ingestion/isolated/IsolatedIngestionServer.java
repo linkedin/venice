@@ -384,6 +384,8 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
 
       // Collect the latest OffsetRecord ByteBuffer array and store version state before consumption stops.
       if (ingestionReportType.equals(IngestionReportType.COMPLETED)) {
+        // Force sync topic partition offsets before shutting down RocksDB and reopen in main process.
+        getStoreIngestionService().syncTopicPartitionOffset(topicName, partitionId);
         // Set offset record in ingestion report.
         report.offsetRecordArray = getStoreIngestionService().getPartitionOffsetRecords(topicName, partitionId);
 

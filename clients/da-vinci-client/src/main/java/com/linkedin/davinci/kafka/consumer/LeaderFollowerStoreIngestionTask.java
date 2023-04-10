@@ -1081,6 +1081,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           localKafkaServer);
     }
 
+    // Force sync offset metadata in before processing TopicSwitch.
+    LOGGER.info("DEBUGGING PRIOR TO TOPIC_SWITCH PCS: {}", partitionConsumptionState);
+    updateOffsetMetadataInOffsetRecord(partitionConsumptionState);
+
     TopicSwitch topicSwitch = (TopicSwitch) controlMessage.controlMessageUnion;
     /**
      * Currently just check whether the sourceKafkaServers list inside TopicSwitch control message only contains

@@ -950,6 +950,9 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           localKafkaServer);
     }
 
+    // Force sync offset metadata in before processing TopicSwitch.
+    updateOffsetMetadataInOffsetRecord(partitionConsumptionState);
+
     TopicSwitch topicSwitch = (TopicSwitch) controlMessage.controlMessageUnion;
     statusReportAdapter.reportTopicSwitchReceived(partitionConsumptionState);
 
