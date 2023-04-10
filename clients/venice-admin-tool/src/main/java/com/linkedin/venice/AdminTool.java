@@ -1601,7 +1601,7 @@ public class AdminTool {
     }
   }
 
-  private static boolean isClonedStoreOnline(
+  protected static boolean isClonedStoreOnline(
       ControllerClient srcControllerClient,
       ControllerClient destControllerClient,
       String storeName) {
