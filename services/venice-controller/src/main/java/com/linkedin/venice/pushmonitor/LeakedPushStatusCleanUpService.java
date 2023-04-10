@@ -7,8 +7,10 @@ import static com.linkedin.venice.pushmonitor.PushStatusCleanUpServiceState.STOP
 import com.linkedin.venice.controller.HelixVeniceClusterResources;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.LatencyUtils;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -53,8 +55,10 @@ public class LeakedPushStatusCleanUpService extends AbstractVeniceService {
   private final String clusterName;
   private final OfflinePushAccessor offlinePushAccessor;
   private final ReadOnlyStoreRepository metadataRepository;
+  private final StoreCleaner storeCleaner;
   private final AggPushStatusCleanUpStats aggPushStatusCleanUpStats;
   private final long sleepIntervalInMs;
+  private final long leakedResourceAllowedLingerTimeInMs;
   private final Thread cleanupThread;
   private final AtomicBoolean stop = new AtomicBoolean(false);
 
@@ -62,13 +66,17 @@ public class LeakedPushStatusCleanUpService extends AbstractVeniceService {
       String clusterName,
       OfflinePushAccessor offlinePushAccessor,
       ReadOnlyStoreRepository metadataRepository,
+      StoreCleaner storeCleaner,
       AggPushStatusCleanUpStats aggPushStatusCleanUpStats,
-      long sleepIntervalInMs) {
+      long sleepIntervalInMs,
+      long leakedResourceAllowedLingerTimeInMs) {
     this.clusterName = clusterName;
     this.offlinePushAccessor = offlinePushAccessor;
     this.metadataRepository = metadataRepository;
+    this.storeCleaner = storeCleaner;
     this.aggPushStatusCleanUpStats = aggPushStatusCleanUpStats;
     this.sleepIntervalInMs = sleepIntervalInMs;
+    this.leakedResourceAllowedLingerTimeInMs = leakedResourceAllowedLingerTimeInMs;
     this.cleanupThread = new Thread(new PushStatusCleanUpTask());
   }
 
@@ -138,19 +146,45 @@ public class LeakedPushStatusCleanUpService extends AbstractVeniceService {
                  * {@link MAX_LEAKED_VERSION_TO_KEEP} leaked push status for debugging; the rest will be deleted.
                  */
                 if (version < store.getCurrentVersion() && !store.containsVersion(version)) {
+                  String kafkaTopic = Version.composeKafkaTopic(storeName, version);
                   if (leakedPushStatusCounter++ < MAX_LEAKED_VERSION_TO_KEEP) {
+                    // If the leaked resources have been lingering for a while, we should still delete them.
+                    offlinePushAccessor.getOfflinePushStatusCreationTime(kafkaTopic).ifPresent(creationTime -> {
+                      long lingerTime = LatencyUtils.getElapsedTimeInMs(creationTime);
+                      if (lingerTime > leakedResourceAllowedLingerTimeInMs) {
+                        logger.info(
+                            "The leaked push status has been lingering over {}ms, add to deletion list: {}",
+                            leakedResourceAllowedLingerTimeInMs,
+                            kafkaTopic);
+                        leakedPushStatuses.add(Version.composeKafkaTopic(storeName, version));
+                      } else {
+                        logger.info(
+                            "Keep the leaked push status for investigation, so not deleting: {}, linger time: {}ms",
+                            kafkaTopic,
+                            lingerTime);
+                      }
+                    });
                     continue;
                   }
-                  leakedPushStatuses.add(Version.composeKafkaTopic(storeName, version));
+                  logger.info("Found a leaked push status: {} in cluster {}", kafkaTopic, clusterName);
+                  leakedPushStatuses.add(kafkaTopic);
                 }
               }
 
               /**
                * Delete all leaked push statuses
                */
-              leakedPushStatuses.stream().forEach(offlinePushAccessor::deleteOfflinePushStatusAndItsPartitionStatuses);
-              aggPushStatusCleanUpStats
-                  .recordSuccessfulLeakedPushStatusCleanUpCount(storeName, leakedPushStatuses.size());
+              leakedPushStatuses.stream().forEach(kafkaTopic -> {
+                logger.info("Deleting leaked push status: {} in cluster {}", kafkaTopic, clusterName);
+                if (storeCleaner.containsHelixResource(clusterName, kafkaTopic)) {
+                  logger.info("Store version {} is also leaked in Helix, delete it through Helix", kafkaTopic);
+                  storeCleaner.deleteHelixResource(clusterName, kafkaTopic);
+                } else {
+                  offlinePushAccessor.deleteOfflinePushStatusAndItsPartitionStatuses(kafkaTopic);
+                }
+              });
+              aggPushStatusCleanUpStats.recordLeakedPushStatusCount(leakedPushStatusCounter);
+              aggPushStatusCleanUpStats.recordSuccessfulLeakedPushStatusCleanUpCount(leakedPushStatuses.size());
             } catch (Throwable e) {
               /**
                * Don't stop the service for one single store
@@ -159,8 +193,9 @@ public class LeakedPushStatusCleanUpService extends AbstractVeniceService {
                   "{} doesn't exist in metadata repo in cluster {} but has leaked push status: {}",
                   storeName,
                   clusterName,
-                  Version.composeKafkaTopic(storeName, versions.iterator().next()));
-              aggPushStatusCleanUpStats.recordFailedLeakedPushStatusCleanUpCount(storeName, leakedPushStatuses.size());
+                  Version.composeKafkaTopic(storeName, versions.iterator().next()),
+                  e);
+              aggPushStatusCleanUpStats.recordFailedLeakedPushStatusCleanUpCount(leakedPushStatuses.size());
             }
           }
 
