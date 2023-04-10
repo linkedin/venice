@@ -28,8 +28,8 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
-public class testZstdLibrary {
-  private static final Logger LOGGER = LogManager.getLogger(testZstdLibrary.class);
+public class TestZstdLibrary {
+  private static final Logger LOGGER = LogManager.getLogger(TestZstdLibrary.class);
 
   private void runTest(int numOfFiles, int numOfRecordsPerFile, int dictSizeLimitInKB, int dictSampleSizeLimitInMB)
       throws Exception {
@@ -123,13 +123,13 @@ public class testZstdLibrary {
   @Test
   public void testZstdWith11toNSamplesV2() throws Exception {
     ZstdDictTrainer zstdDictTrainer = new ZstdDictTrainer(200 * BYTES_PER_MB, 1 * BYTES_PER_KB);
-    for (Integer i = 0; i < 11; i++) {
-      if (zstdDictTrainer.addSample(new byte[] { i.byteValue() }) == false) {
+    for (int i = 0; i < 11; i++) {
+      if (!zstdDictTrainer.addSample(new byte[] { (byte) i })) {
         throw new Exception("SAMPLE FULL");
       }
     }
-    for (Integer i = 11; i < 100000000; i++) {
-      if (zstdDictTrainer.addSample(new byte[] { i.byteValue() }) == false) {
+    for (int i = 11; i < 100000000; i++) {
+      if (!zstdDictTrainer.addSample(new byte[] { (byte) i })) {
         throw new Exception("SAMPLE FULL");
       }
       if (i % 25000000 == 0) {
