@@ -1472,7 +1472,14 @@ public class TestHybrid {
       LogManager.getLogger().info("DEBUGGING2 " + status.getExecutionStatus().toString());
       LogManager.getLogger().info("DEBUGGING2 " + status.getExtraInfo());
       LogManager.getLogger().info("DEBUGGING2 " + status.getExtraDetails());
-
+      LogManager.getLogger()
+          .info(
+              venice.getVeniceServers()
+                  .get(0)
+                  .getVeniceServer()
+                  .getHelixParticipationService()
+                  .getVeniceOfflinePushMonitorAccessor()
+                  .getOfflinePushStatusAndItsPartitionStatuses(storeName + "_v2"));
     } finally {
       if (veniceProducer != null) {
         veniceProducer.stop();
