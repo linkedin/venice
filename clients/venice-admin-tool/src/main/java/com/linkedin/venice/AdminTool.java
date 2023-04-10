@@ -306,7 +306,7 @@ public class AdminTool {
           printStorageNodeList();
           break;
         case CLUSTER_HEALTH_INSTANCES:
-          printInstancesStatuses();
+          printInstancesStatuses(cmd);
           break;
         case CLUSTER_HEALTH_STORES:
           printStoresStatuses();
@@ -1175,8 +1175,9 @@ public class AdminTool {
     printObject(nodeResponse);
   }
 
-  private static void printInstancesStatuses() {
-    MultiNodesStatusResponse nodeResponse = controllerClient.listInstancesStatuses();
+  private static void printInstancesStatuses(CommandLine cmd) {
+    String enableReplicas = getOptionalArgument(cmd, Arg.ENABLE_DISABLED_REPLICA, "false");
+    MultiNodesStatusResponse nodeResponse = controllerClient.listInstancesStatuses(enableReplicas.equals("true"));
     printObject(nodeResponse);
   }
 

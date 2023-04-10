@@ -62,17 +62,17 @@ public class StoreBufferService extends AbstractStoreBufferService {
     private final PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord;
     private final StoreIngestionTask ingestionTask;
     private final String kafkaUrl;
-    private final long beforeProcessingRecordTimestamp;
+    private final long beforeProcessingRecordTimestampNs;
 
     public QueueNode(
         PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
         StoreIngestionTask ingestionTask,
         String kafkaUrl,
-        long beforeProcessingRecordTimestamp) {
+        long beforeProcessingRecordTimestampNs) {
       this.consumerRecord = consumerRecord;
       this.ingestionTask = ingestionTask;
       this.kafkaUrl = kafkaUrl;
-      this.beforeProcessingRecordTimestamp = beforeProcessingRecordTimestamp;
+      this.beforeProcessingRecordTimestampNs = beforeProcessingRecordTimestampNs;
     }
 
     public PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> getConsumerRecord() {
@@ -95,8 +95,8 @@ public class StoreBufferService extends AbstractStoreBufferService {
       return this.kafkaUrl;
     }
 
-    public long getBeforeProcessingRecordTimestamp() {
-      return this.beforeProcessingRecordTimestamp;
+    public long getBeforeProcessingRecordTimestampNs() {
+      return this.beforeProcessingRecordTimestampNs;
     }
 
     /**
@@ -167,9 +167,9 @@ public class StoreBufferService extends AbstractStoreBufferService {
         PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
         StoreIngestionTask ingestionTask,
         String kafkaUrl,
-        long beforeProcessingRecordTimestamp,
+        long beforeProcessingRecordTimestampNs,
         CompletableFuture<Void> queuedRecordPersistedFuture) {
-      super(consumerRecord, ingestionTask, kafkaUrl, beforeProcessingRecordTimestamp);
+      super(consumerRecord, ingestionTask, kafkaUrl, beforeProcessingRecordTimestampNs);
       this.queuedRecordPersistedFuture = queuedRecordPersistedFuture;
     }
 
@@ -196,9 +196,9 @@ public class StoreBufferService extends AbstractStoreBufferService {
         PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
         StoreIngestionTask ingestionTask,
         String kafkaUrl,
-        long beforeProcessingRecordTimestamp,
+        long beforeProcessingRecordTimestampNs,
         LeaderProducedRecordContext leaderProducedRecordContext) {
-      super(consumerRecord, ingestionTask, kafkaUrl, beforeProcessingRecordTimestamp);
+      super(consumerRecord, ingestionTask, kafkaUrl, beforeProcessingRecordTimestampNs);
       this.leaderProducedRecordContext = leaderProducedRecordContext;
     }
 
@@ -246,7 +246,6 @@ public class StoreBufferService extends AbstractStoreBufferService {
       LeaderProducedRecordContext leaderProducedRecordContext = null;
       StoreIngestionTask ingestionTask = null;
       CompletableFuture<Void> recordPersistedFuture = null;
-      long beforeProcessingRecordTimestamp;
       while (isRunning.get()) {
         try {
           node = blockingQueue.take();
@@ -255,7 +254,6 @@ public class StoreBufferService extends AbstractStoreBufferService {
           leaderProducedRecordContext = node.getLeaderProducedRecordContext();
           ingestionTask = node.getIngestionTask();
           recordPersistedFuture = node.getQueuedRecordPersistedFuture();
-          beforeProcessingRecordTimestamp = node.getBeforeProcessingRecordTimestamp();
 
           long startTime = System.currentTimeMillis();
 
@@ -268,7 +266,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
               leaderProducedRecordContext,
               subPartition,
               node.getKafkaUrl(),
-              beforeProcessingRecordTimestamp);
+              node.getBeforeProcessingRecordTimestampNs());
 
           /**
            * Complete {@link QueueNode#queuedRecordPersistedFuture} since the processing for the current record is done.
@@ -383,7 +381,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
       LeaderProducedRecordContext leaderProducedRecordContext,
       int subPartition,
       String kafkaUrl,
-      long beforeProcessingRecordTimestamp) throws InterruptedException {
+      long beforeProcessingRecordTimestampNs) throws InterruptedException {
     if (leaderProducedRecordContext == null) {
       /**
        * The last queued record persisted future will only be setup when {@param leaderProducedRecordContext} is 'null',
@@ -396,7 +394,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
               consumerRecord,
               ingestionTask,
               kafkaUrl,
-              beforeProcessingRecordTimestamp,
+              beforeProcessingRecordTimestampNs,
               recordFuture));
 
       // Setup the last queued record's future
@@ -412,7 +410,7 @@ public class StoreBufferService extends AbstractStoreBufferService {
           leaderProducedRecordContext,
           subPartition,
           kafkaUrl,
-          beforeProcessingRecordTimestamp);
+          beforeProcessingRecordTimestampNs);
     }
   }
 
@@ -448,13 +446,13 @@ public class StoreBufferService extends AbstractStoreBufferService {
       LeaderProducedRecordContext leaderProducedRecordContext,
       int subPartition,
       String kafkaUrl,
-      long beforeProcessingRecordTimestamp) throws InterruptedException {
+      long beforeProcessingRecordTimestampNs) throws InterruptedException {
     ingestionTask.processConsumerRecord(
         consumerRecord,
         leaderProducedRecordContext,
         subPartition,
         kafkaUrl,
-        beforeProcessingRecordTimestamp);
+        beforeProcessingRecordTimestampNs);
 
     // complete the leaderProducedRecordContext future as processing for this leaderProducedRecordContext is done here.
     if (leaderProducedRecordContext != null) {

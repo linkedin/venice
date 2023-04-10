@@ -299,8 +299,8 @@ public class IngestionStats {
     return subscribePrepLatencySensor.getMax();
   }
 
-  public void recordSubscribePrepLatency(double value) {
-    subscribePrepLatencySensor.record(value);
+  public void recordSubscribePrepLatency(double value, long currentTimeMs) {
+    subscribePrepLatencySensor.record(value, currentTimeMs);
   }
 
   public void recordStalePartitionsWithoutIngestionTask() {
@@ -323,8 +323,8 @@ public class IngestionStats {
     return consumedRecordEndToEndProcessingLatencySensor.getMax();
   }
 
-  public void recordConsumedRecordEndToEndProcessingLatency(double value) {
-    consumedRecordEndToEndProcessingLatencySensor.record(value);
+  public void recordConsumedRecordEndToEndProcessingLatency(double value, long currentTimeMs) {
+    consumedRecordEndToEndProcessingLatencySensor.record(value, currentTimeMs);
   }
 
   public double getRecordsConsumed() {
@@ -332,7 +332,7 @@ public class IngestionStats {
   }
 
   public void recordRecordsConsumed() {
-    recordsConsumedSensor.record();
+    recordsConsumedSensor.record(1);
   }
 
   public double getBytesConsumed() {
@@ -400,10 +400,10 @@ public class IngestionStats {
     return rate != null ? rate.measure(METRIC_CONFIG, System.currentTimeMillis()) : 0.0;
   }
 
-  public void recordRegionHybridBytesConsumed(int regionId, double value) {
+  public void recordRegionHybridBytesConsumed(int regionId, double value, long currentTimeMs) {
     Sensor sensor = regionIdToHybridBytesConsumedSensorMap.get(regionId);
     if (sensor != null) {
-      sensor.record(value);
+      sensor.record(value, currentTimeMs);
     }
   }
 
@@ -412,10 +412,10 @@ public class IngestionStats {
     return rate != null ? rate.measure(METRIC_CONFIG, System.currentTimeMillis()) : 0.0;
   }
 
-  public void recordRegionHybridRecordsConsumed(int regionId, double value) {
+  public void recordRegionHybridRecordsConsumed(int regionId, double value, long currentTimeMs) {
     Sensor sensor = regionIdToHybridRecordsConsumedSensorMap.get(regionId);
     if (sensor != null) {
-      sensor.record(value);
+      sensor.record(value, currentTimeMs);
     }
   }
 
@@ -424,10 +424,10 @@ public class IngestionStats {
     return avg != null ? avg.measure(METRIC_CONFIG, System.currentTimeMillis()) : 0.0;
   }
 
-  public void recordRegionHybridAvgConsumedOffset(int regionId, double value) {
+  public void recordRegionHybridAvgConsumedOffset(int regionId, double value, long currentTimeMs) {
     Sensor sensor = regionIdToHybridAvgConsumedOffsetSensorMap.get(regionId);
     if (sensor != null) {
-      sensor.record(value);
+      sensor.record(value, currentTimeMs);
     }
   }
 

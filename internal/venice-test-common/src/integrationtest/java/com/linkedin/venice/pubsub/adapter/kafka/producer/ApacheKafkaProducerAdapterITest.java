@@ -13,9 +13,8 @@ import static org.testng.Assert.assertTrue;
 import static org.testng.Assert.fail;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
+import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
@@ -67,8 +66,7 @@ import org.testng.annotations.Test;
 public class ApacheKafkaProducerAdapterITest {
   private static final Logger LOGGER = LogManager.getLogger(ApacheKafkaProducerAdapterITest.class);
 
-  private ZkServerWrapper zkServerWrapper;
-  private KafkaBrokerWrapper kafkaBrokerWrapper;
+  private PubSubBrokerWrapper pubSubBrokerWrapper;
   // todo: The following AdminClient should be replaced with KafkaAdminClientAdapter when it is available
   private AdminClient kafkaAdminClient;
   private String topicName;
@@ -76,25 +74,23 @@ public class ApacheKafkaProducerAdapterITest {
 
   @BeforeClass(alwaysRun = true)
   public void setupKafka() {
-    zkServerWrapper = ServiceFactory.getZkServer();
-    kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServerWrapper);
+    pubSubBrokerWrapper = ServiceFactory.getPubSubBroker();
     Properties kafkaAdminProperties = new Properties();
-    kafkaAdminProperties.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaBrokerWrapper.getAddress());
+    kafkaAdminProperties.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, pubSubBrokerWrapper.getAddress());
     kafkaAdminClient = KafkaAdminClient.create(kafkaAdminProperties);
   }
 
   @AfterClass(alwaysRun = true)
   public void tearDown() {
     kafkaAdminClient.close(Duration.ZERO);
-    kafkaBrokerWrapper.close();
-    zkServerWrapper.close();
+    pubSubBrokerWrapper.close();
   }
 
   @BeforeMethod(alwaysRun = true)
   public void setupProducerAdapter() {
     topicName = Utils.getUniqueString("test-topic");
     Properties properties = new Properties();
-    properties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getAddress());
+    properties.put(KAFKA_BOOTSTRAP_SERVERS, pubSubBrokerWrapper.getAddress());
     properties.put(KAFKA_CLIENT_ID, topicName);
     ApacheKafkaProducerConfig producerConfig = new ApacheKafkaProducerConfig(properties);
     producerAdapter = new ApacheKafkaProducerAdapter(producerConfig);

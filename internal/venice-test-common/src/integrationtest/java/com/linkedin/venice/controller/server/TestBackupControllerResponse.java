@@ -9,7 +9,8 @@ import com.linkedin.venice.controllerapi.ControllerTransport;
 import com.linkedin.venice.controllerapi.QueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceHttpException;
-import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
+import com.linkedin.venice.integration.utils.PubSubBrokerConfigs;
+import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
@@ -26,7 +27,8 @@ public class TestBackupControllerResponse {
   public void backupControllerThrows421() throws Exception {
     String clusterName = "backupControllerThrows421";
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
-        KafkaBrokerWrapper kafka = ServiceFactory.getKafkaBroker(zkServer);
+        PubSubBrokerWrapper kafka =
+            ServiceFactory.getPubSubBroker(new PubSubBrokerConfigs.Builder().setZkWrapper(zkServer).build());
         ControllerTransport transport = new ControllerTransport(Optional.empty());
         VeniceControllerWrapper controller1 = ServiceFactory
             .getVeniceController(new VeniceControllerCreateOptions.Builder(clusterName, zkServer, kafka).build());

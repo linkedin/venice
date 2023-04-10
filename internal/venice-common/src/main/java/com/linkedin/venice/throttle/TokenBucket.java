@@ -17,6 +17,8 @@ public class TokenBucket {
   private final float refillPerSecond;// only used for logging
   private final Clock clock;
   private final AtomicLong tokens;
+  private final AtomicLong tokensCountAfterLastRefill;
+  private final AtomicLong tokensConsumedSinceLastRefill;
   private volatile long nextUpdateTime;
 
   /**
@@ -48,6 +50,8 @@ public class TokenBucket {
     this.clock = clock;
 
     tokens = new AtomicLong(capacity);
+    tokensCountAfterLastRefill = new AtomicLong(tokens.get());
+    tokensConsumedSinceLastRefill = new AtomicLong(0);
     nextUpdateTime = clock.millis() + refillIntervalMs;
 
     float refillIntervalSeconds = refillIntervalMs / (float) 1000;
@@ -84,6 +88,8 @@ public class TokenBucket {
               return newTokens;
             }
           });
+          tokensCountAfterLastRefill.set(tokens.get());
+          tokensConsumedSinceLastRefill.set(0);
           nextUpdateTime += refillCount * refillIntervalMs;
         }
       }
@@ -102,6 +108,14 @@ public class TokenBucket {
     return tokens.get();
   }
 
+  /**
+   * This method does not call #update(), so it is only accurate as of the last time #tryConsume() and update() was called
+   * @return ratio between number of tokens consumed since last refill over the total token count after the last refill
+   */
+  public double getStaleUsageRatio() {
+    return (double) tokensConsumedSinceLastRefill.get() / (double) tokensCountAfterLastRefill.get();
+  }
+
   public boolean tryConsume(long tokensToConsume) {
     return noRetryTryConsume(tokensToConsume) || (update() && noRetryTryConsume(tokensToConsume));
   }
@@ -109,6 +123,7 @@ public class TokenBucket {
   private boolean noRetryTryConsume(long tokensToConsume) {
     long tokensThatWereAvailable = tokens.getAndAccumulate(tokensToConsume, (existing, toConsume) -> {
       if (toConsume <= existing) { // there are sufficient tokens
+        tokensConsumedSinceLastRefill.getAndAdd(toConsume);
         return existing - toConsume;
       } else {
         return existing; // insufficient tokens, do not consume any

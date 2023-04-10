@@ -10,6 +10,7 @@ import static com.linkedin.venice.schema.writecompute.WriteComputeOperation.NO_O
 import static com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter.getFieldOperationType;
 
 import com.linkedin.davinci.replication.RmdWithValueSchemaId;
+import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
@@ -587,12 +588,17 @@ public class MergeConflictResolver {
       ByteBuffer oldValueBytes,
       RmdWithValueSchemaId rmdWithValueSchemaId,
       SchemaEntry readerValueSchemaEntry) {
-    if (oldValueBytes != null && rmdWithValueSchemaId == null) {
-      throw new IllegalArgumentException("If old value bytes present, value schema ID must present too.");
-    }
-    if (oldValueBytes == null && rmdWithValueSchemaId == null) {
-      // Value and RMD both never existed
-      GenericRecord newValue = SchemaUtils.createGenericRecord(readerValueSchemaEntry.getSchema());
+
+    if (rmdWithValueSchemaId == null) {
+      GenericRecord newValue;
+      if (oldValueBytes == null) {
+        // Value and RMD both never existed
+        newValue = SchemaUtils.createGenericRecord(readerValueSchemaEntry.getSchema());
+      } else {
+        int schemaId = ValueRecord.parseSchemaId(oldValueBytes.array());
+        Schema writerSchema = getValueSchema(schemaId);
+        newValue = deserializeValue(oldValueBytes, writerSchema, readerValueSchemaEntry.getSchema());
+      }
       GenericRecord newRmd = newRmdCreator.apply(readerValueSchemaEntry.getId());
       newRmd.put(TIMESTAMP_FIELD_NAME, createPerFieldTimestampRecord(newRmd.getSchema(), 0L, newValue));
       newRmd.put(REPLICATION_CHECKPOINT_VECTOR_FIELD, new ArrayList<Long>());

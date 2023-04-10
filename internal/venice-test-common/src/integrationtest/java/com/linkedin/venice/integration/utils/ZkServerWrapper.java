@@ -303,4 +303,8 @@ public class ZkServerWrapper extends ProcessWrapper {
     return paths;
   }
 
+  @Override
+  public String toString() {
+    return "ZkService[" + getServiceName() + "@" + getHost() + ":" + getPort() + "]";
+  }
 }

@@ -1,7 +1,5 @@
 package com.linkedin.venice.stats;
 
-import static com.linkedin.venice.stats.StatsErrorCode.NULL_DIV_STATS;
-
 import com.linkedin.davinci.stats.DIVStats;
 import com.linkedin.davinci.stats.DIVStatsReporter;
 import com.linkedin.davinci.stats.VeniceVersionedStatsReporter;
@@ -27,19 +25,12 @@ public class VersionedDIVStatsReporterTest {
         new VeniceVersionedStatsReporter<>(metricsRepository, storeName, DIVStatsReporter::new);
     DIVStats stats = new DIVStats();
 
-    stats.recordCurrentIdleTime();
     statsReporter.setFutureStats(1, stats);
     Assert.assertEquals(reporter.query("." + storeName + "--future_version.VersionStat").value(), 1d);
-    Assert.assertEquals(reporter.query("." + storeName + "_future--current_idle_time.DIVStatsCounter").value(), 1d);
 
     statsReporter.setFutureStats(0, null);
-    stats.recordCurrentIdleTime();
     statsReporter.setCurrentStats(1, stats);
     Assert.assertEquals(reporter.query("." + storeName + "--future_version.VersionStat").value(), 0d);
-    Assert.assertEquals(
-        reporter.query("." + storeName + "_future--current_idle_time.DIVStatsCounter").value(),
-        (double) NULL_DIV_STATS.code);
     Assert.assertEquals(reporter.query("." + storeName + "--current_version.VersionStat").value(), 1d);
-    Assert.assertEquals(reporter.query("." + storeName + "_current--current_idle_time.DIVStatsCounter").value(), 2d);
   }
 }

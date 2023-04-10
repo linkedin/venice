@@ -10,7 +10,7 @@ import org.apache.avro.specific.SpecificRecord;
 public class ChangelogClientConfig<T extends SpecificRecord> {
   private Properties consumerProperties;
   private SchemaReader schemaReader;
-  private String viewClassName;
+  private String viewName;
   private ClientConfig<T> innerClientConfig;
   private D2ControllerClient d2ControllerClient;
   private String controllerD2ServiceName;
@@ -51,13 +51,13 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return schemaReader;
   }
 
-  public ChangelogClientConfig<T> setViewClassName(String viewClassName) {
-    this.viewClassName = viewClassName;
+  public ChangelogClientConfig<T> setViewName(String viewName) {
+    this.viewName = viewName;
     return this;
   }
 
-  public String getViewClassName() {
-    return viewClassName;
+  public String getViewName() {
+    return viewName;
   }
 
   public ChangelogClientConfig<T> setControllerD2ServiceName(String controllerD2ServiceName) {
@@ -115,7 +115,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setD2ServiceName(config.getD2ServiceName())
         .setConsumerProperties(config.getConsumerProperties())
         .setSchemaReader(config.getSchemaReader())
-        .setViewClassName(config.getViewClassName())
+        .setViewName(config.getViewName())
         .setD2ControllerClient(config.getD2ControllerClient())
         .setControllerD2ServiceName(config.controllerD2ServiceName)
         .setControllerRequestRetryCount(config.getControllerRequestRetryCount());

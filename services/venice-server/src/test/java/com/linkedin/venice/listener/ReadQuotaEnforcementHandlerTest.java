@@ -6,23 +6,27 @@ import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static org.testng.Assert.assertEquals;
 
+import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.stats.AggServerQuotaUsageStats;
 import com.linkedin.venice.utils.Utils;
 import io.netty.channel.ChannelHandlerContext;
 import java.time.Clock;
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.testng.annotations.BeforeMethod;
@@ -38,7 +42,7 @@ public class ReadQuotaEnforcementHandlerTest {
   Clock clock;
   long currentTime;
   ReadOnlyStoreRepository storeRepository;
-  RoutingDataRepository routingRepository;
+  HelixCustomizedViewOfflinePushRepository customizedViewRepository;
   ReadQuotaEnforcementHandler quotaEnforcer;
   AggServerQuotaUsageStats stats;
 
@@ -50,16 +54,15 @@ public class ReadQuotaEnforcementHandlerTest {
     currentTime = 0;
     doReturn(currentTime).when(clock).millis();
     storeRepository = mock(ReadOnlyStoreRepository.class);
-    routingRepository = mock(RoutingDataRepository.class);
+    customizedViewRepository = mock(HelixCustomizedViewOfflinePushRepository.class);
     stats = mock(AggServerQuotaUsageStats.class);
     quotaEnforcer = new ReadQuotaEnforcementHandler(
         nodeCapacity,
         storeRepository,
-        CompletableFuture.completedFuture(routingRepository),
+        CompletableFuture.completedFuture(customizedViewRepository),
         thisNodeId,
         stats,
         clock);
-
   }
 
   /**
@@ -78,9 +81,7 @@ public class ReadQuotaEnforcementHandlerTest {
   /**
    * Test the case when there is a store-level quota which is less than the node-level capacity
    */
-  // TODO: this test fails consistently due to ReadQuotaEnforcementHandler.getNodeResponsibilityForQuota() leveraging
-  // getReadyToServeInstances() which no longer works with L/F state assignment. This needs refactoring.
-  // @Test
+  @Test
   public void testQuotaEnforcementAtStoreLevel() {
     String storeName = Utils.getUniqueString("store");
     String topic = Version.composeKafkaTopic(storeName, 1);
@@ -89,7 +90,14 @@ public class ReadQuotaEnforcementHandlerTest {
     doReturn(thisNodeId).when(thisInstance).getNodeId();
 
     Partition partition = mock(Partition.class);
-    doReturn(Collections.singletonList(thisInstance)).when(partition).getWorkingInstances();
+    doReturn(0).when(partition).getId();
+
+    List<ReplicaState> replicaStates = new ArrayList<>();
+    ReplicaState thisReplicaState = mock(ReplicaState.class);
+    doReturn(thisInstance.getNodeId()).when(thisReplicaState).getParticipantId();
+    doReturn(ExecutionStatus.COMPLETED.name()).when(thisReplicaState).getVenicePushStatus();
+    replicaStates.add(thisReplicaState);
+    when(customizedViewRepository.getReplicaStates(topic, partition.getId())).thenReturn(replicaStates);
 
     PartitionAssignment pa = mock(PartitionAssignment.class);
     doReturn(topic).when(pa).getTopic();
@@ -120,19 +128,30 @@ public class ReadQuotaEnforcementHandlerTest {
     doReturn("otherNodeId").when(otherInstance).getNodeId();
 
     Partition partition = mock(Partition.class);
-    doReturn(Arrays.asList(thisInstance, otherInstance)).when(partition).getWorkingInstances();
-    doReturn(Arrays.asList(thisInstance, otherInstance)).when(partition).getReadyToServeInstances();
+    doReturn(0).when(partition).getId();
+
+    List<ReplicaState> replicaStates = new ArrayList<>();
+    ReplicaState thisReplicaState = mock(ReplicaState.class);
+    doReturn(thisInstance.getNodeId()).when(thisReplicaState).getParticipantId();
+    doReturn(ExecutionStatus.COMPLETED.name()).when(thisReplicaState).getVenicePushStatus();
+    replicaStates.add(thisReplicaState);
+    ReplicaState otherReplicaState = mock(ReplicaState.class);
+    doReturn(otherInstance.getNodeId()).when(otherReplicaState).getParticipantId();
+    doReturn(ExecutionStatus.COMPLETED.name()).when(otherReplicaState).getVenicePushStatus();
+    replicaStates.add(otherReplicaState);
+    when(customizedViewRepository.getReplicaStates(topic, partition.getId())).thenReturn(replicaStates);
 
     PartitionAssignment pa = mock(PartitionAssignment.class);
     doReturn(topic).when(pa).getTopic();
     doReturn(Collections.singletonList(partition)).when(pa).getAllPartitions();
+    doReturn(pa).when(customizedViewRepository).getPartitionAssignments(topic);
 
     long storeReadQuota = 6; // rcu per second, only half will be supported on this node
     Store store = mock(Store.class);
     doReturn(storeReadQuota).when(store).getReadQuotaInCU();
     doReturn(store).when(storeRepository).getStore(any());
 
-    quotaEnforcer.onExternalViewChange(pa);
+    quotaEnforcer.onCustomizedViewChange(pa);
 
     runTest(topic, storeReadQuota / 2 * 5 * 10, storeReadQuota / 2 * 10, 10000);
   }

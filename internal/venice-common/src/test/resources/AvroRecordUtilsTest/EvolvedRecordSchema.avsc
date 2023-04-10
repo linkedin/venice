@@ -1,0 +1,30 @@
+{
+  "name": "record",
+  "type": "record",
+  "fields": [
+    {
+      "name": "field1",
+      "type": {
+        "name": "FieldRecord",
+        "type": "record",
+        "fields": [
+          {
+            "name": "field1_1",
+            "type": "int",
+            "default": -1
+          },
+          {
+            "name": "field1_2",
+            "type": "int",
+            "default": -5
+          }
+        ]
+      }
+    },
+    {
+      "name": "field2",
+      "type": "int",
+      "default": -10
+    }
+  ]
+}

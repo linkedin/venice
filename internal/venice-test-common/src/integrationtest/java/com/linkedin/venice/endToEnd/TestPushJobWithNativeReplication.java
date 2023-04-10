@@ -63,6 +63,7 @@ import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -152,7 +153,8 @@ public class TestPushJobWithNativeReplication {
     serverProperties.put(SERVER_KAFKA_PRODUCER_POOL_SIZE_PER_KAFKA_CLUSTER, "1");
 
     Properties controllerProps = new Properties();
-    controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 1000);
+    // This property is required for test stores that have 10 partitions
+    controllerProps.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 10);
     controllerProps
         .put(BatchJobHeartbeatConfigs.HEARTBEAT_STORE_CLUSTER_CONFIG.getConfigName(), VPJ_HEARTBEAT_STORE_CLUSTER);
     controllerProps.put(BatchJobHeartbeatConfigs.HEARTBEAT_ENABLED_CONFIG.getConfigName(), true);
@@ -181,6 +183,7 @@ public class TestPushJobWithNativeReplication {
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "storeSize")
   public void testNativeReplicationForBatchPush(int recordCount, int partitionCount) throws Exception {
     motherOfAllTests(
+        "testNativeReplicationForBatchPush",
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(partitionCount).setAmplificationFactor(2),
         recordCount,
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
@@ -242,6 +245,7 @@ public class TestPushJobWithNativeReplication {
   public void testNativeReplicationWithLeadershipHandover() throws Exception {
     int recordCount = 10000;
     motherOfAllTests(
+        "testNativeReplicationWithLeadershipHandover",
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1).setAmplificationFactor(2),
         recordCount,
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
@@ -302,6 +306,7 @@ public class TestPushJobWithNativeReplication {
   public void testNativeReplicationWithIngestionIsolationInDaVinci() throws Exception {
     int recordCount = 100;
     motherOfAllTests(
+        "testNativeReplicationWithIngestionIsolationInDaVinci",
         updateStoreParams -> updateStoreParams.setPartitionCount(2).setAmplificationFactor(2),
         recordCount,
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
@@ -335,6 +340,7 @@ public class TestPushJobWithNativeReplication {
   @Test(timeOut = TEST_TIMEOUT)
   public void testNativeReplicationForHybrid() throws Exception {
     motherOfAllTests(
+        "testNativeReplicationForHybrid",
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1)
             .setAmplificationFactor(2)
             .setHybridRewindSeconds(TEST_TIMEOUT)
@@ -414,6 +420,7 @@ public class TestPushJobWithNativeReplication {
     File inputDirInc = getTempDataDirectory();
 
     motherOfAllTests(
+        "testNativeReplicationForIncrementalPush",
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1)
             .setHybridOffsetLagThreshold(TEST_TIMEOUT)
             .setHybridRewindSeconds(2L)
@@ -441,6 +448,7 @@ public class TestPushJobWithNativeReplication {
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "storeSize")
   public void testActiveActiveForHeartbeatSystemStores(int recordCount, int partitionCount) throws Exception {
     motherOfAllTests(
+        "testActiveActiveForHeartbeatSystemStores",
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(partitionCount)
             .setIncrementalPushEnabled(true),
         recordCount,
@@ -511,6 +519,7 @@ public class TestPushJobWithNativeReplication {
   @Test(timeOut = TEST_TIMEOUT)
   public void testNativeReplicationForSourceOverride() throws Exception {
     motherOfAllTests(
+        "testNativeReplicationForSourceOverride",
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1),
         100,
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
@@ -529,6 +538,7 @@ public class TestPushJobWithNativeReplication {
   @Test(timeOut = TEST_TIMEOUT)
   public void testClusterLevelAdminCommandForNativeReplication() throws Exception {
     motherOfAllTests(
+        "testClusterLevelAdminCommandForNativeReplication",
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1),
         10,
         (parentControllerClient, clusterName, batchOnlyStoreName, props, inputDir) -> {
@@ -694,6 +704,7 @@ public class TestPushJobWithNativeReplication {
   @Test(timeOut = TEST_TIMEOUT)
   public void testMultiDataCenterRePushWithIncrementalPush() throws Exception {
     motherOfAllTests(
+        "testMultiDataCenterRePushWithIncrementalPush",
         updateStoreQueryParams -> updateStoreQueryParams.setPartitionCount(1),
         100,
         (parentControllerClient, clusterName, storeName, props, inputDir) -> {
@@ -780,13 +791,15 @@ public class TestPushJobWithNativeReplication {
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TEST_TIMEOUT)
   public void testEmptyPush(boolean toParent) {
     String clusterName = CLUSTER_NAMES[0];
-    String storeName = Utils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("testEmptyPush");
     String parentControllerUrl = parentControllers.get(0).getControllerUrl();
     String childControllerUrl = childDatacenters.get(0).getControllerConnectString();
 
     // Create store first
     try (ControllerClient controllerClientToParent = new ControllerClient(clusterName, parentControllerUrl)) {
       assertCommand(controllerClientToParent.createNewStore(storeName, "test_owner", "\"int\"", "\"int\""));
+      assertCommand(
+          controllerClientToParent.updateStore(storeName, new UpdateStoreQueryParams().setStorageQuotaInByte(1000)));
     }
 
     try (ControllerClient controllerClient =
@@ -807,7 +820,7 @@ public class TestPushJobWithNativeReplication {
     File inputDir = getTempDataDirectory();
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
-    String storeName = Utils.getUniqueString("store");
+    String storeName = Utils.getUniqueString("testPushDirectlyToChildColo");
     Properties props = IntegrationTestPushUtils.defaultVPJProps(childDatacenters.get(0), inputDirPath, storeName);
     createStoreForJob(clusterName, recordSchema, props).close();
 
@@ -817,7 +830,7 @@ public class TestPushJobWithNativeReplication {
   @Test(timeOut = TEST_TIMEOUT)
   public void testControllerBlocksConcurrentBatchPush() {
     String clusterName = CLUSTER_NAMES[0];
-    String storeName = Utils.getUniqueString("blocksConcurrentBatchPush");
+    String storeName = Utils.getUniqueString("testControllerBlocksConcurrentBatchPush");
     String pushId1 = Utils.getUniqueString(storeName + "_push");
     String pushId2 = Utils.getUniqueString(storeName + "_push");
     String parentControllerUrl = parentControllers.get(0).getControllerUrl();
@@ -825,6 +838,7 @@ public class TestPushJobWithNativeReplication {
     // Create store first
     try (ControllerClient controllerClient = new ControllerClient(clusterName, parentControllerUrl)) {
       controllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"");
+      controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setStorageQuotaInByte(100));
 
       assertCommand(
           controllerClient.requestTopicForWrites(
@@ -870,6 +884,7 @@ public class TestPushJobWithNativeReplication {
   }
 
   private void motherOfAllTests(
+      String storeNamePrefix,
       Function<UpdateStoreQueryParams, UpdateStoreQueryParams> updateStoreParamsTransformer,
       int recordCount,
       NativeReplicationTest test) throws Exception {
@@ -877,7 +892,7 @@ public class TestPushJobWithNativeReplication {
     File inputDir = getTempDataDirectory();
     String parentControllerUrls = multiRegionMultiClusterWrapper.getControllerConnectString();
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
-    String storeName = Utils.getUniqueString("store");
+    String storeName = Utils.getUniqueString(storeNamePrefix);
     Properties props =
         IntegrationTestPushUtils.defaultVPJProps(multiRegionMultiClusterWrapper, inputDirPath, storeName);
     props.put(SEND_CONTROL_MESSAGES_DIRECTLY, true);
@@ -902,12 +917,12 @@ public class TestPushJobWithNativeReplication {
                   .useControllerClient(
                       dc1Client -> TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
                         // verify the update store command has taken effect before starting the push job.
-                        Assert.assertEquals(
-                            dc0Client.getStore(storeName).getStore().getStorageQuotaInByte(),
-                            Store.UNLIMITED_STORAGE_QUOTA);
-                        Assert.assertEquals(
-                            dc1Client.getStore(storeName).getStore().getStorageQuotaInByte(),
-                            Store.UNLIMITED_STORAGE_QUOTA);
+                        StoreInfo store = dc0Client.getStore(storeName).getStore();
+                        Assert.assertNotNull(store);
+                        Assert.assertEquals(store.getStorageQuotaInByte(), Store.UNLIMITED_STORAGE_QUOTA);
+                        store = dc1Client.getStore(storeName).getStore();
+                        Assert.assertNotNull(store);
+                        Assert.assertEquals(store.getStorageQuotaInByte(), Store.UNLIMITED_STORAGE_QUOTA);
                       })));
 
       makeSureSystemStoreIsPushed(clusterName, storeName);

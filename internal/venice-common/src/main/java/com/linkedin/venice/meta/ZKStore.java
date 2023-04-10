@@ -9,6 +9,7 @@ import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.systemstore.schemas.StoreVersion;
 import com.linkedin.venice.utils.AvroCompatibilityUtils;
+import com.linkedin.venice.utils.AvroRecordUtils;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -96,7 +97,7 @@ public class ZKStore extends AbstractStore implements DataModelBackedStructure<S
       throw new VeniceException("Invalid store name: " + name);
     }
 
-    this.storeProperties = Store.prefillAvroRecordWithDefaultValue(new StoreProperties());
+    this.storeProperties = AvroRecordUtils.prefillAvroRecordWithDefaultValue(new StoreProperties());
     this.storeProperties.replicationFactor = replicationFactor;
 
     this.storeProperties.name = name;

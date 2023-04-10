@@ -29,8 +29,10 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.AllowlistAccessor;
 import com.linkedin.venice.helix.ZkAllowlistAccessor;
+import com.linkedin.venice.pubsub.api.PubSubClientsFactory;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.server.VeniceServer;
+import com.linkedin.venice.server.VeniceServerContext;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
 import com.linkedin.venice.tehuti.MetricsAware;
 import com.linkedin.venice.utils.ForkedJavaProcess;
@@ -80,9 +82,10 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
   private TestVeniceServer veniceServer;
   private final VeniceProperties serverProps;
   private final VeniceConfigLoader config;
-  private final Optional<ClientConfig> consumerClientConfig;
-  private final Optional<SSLFactory> sslFactory;
+  private final ClientConfig consumerClientConfig;
+  private final SSLFactory sslFactory;
   private final File dataDirectory;
+  private final PubSubClientsFactory pubSubClientsFactory;
 
   /**
    * Following member fields are only needed when server runs in forked mode. We need to save these information and
@@ -97,7 +100,6 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
   private boolean ssl;
   private boolean enableServerAllowlist;
   private boolean isAutoJoin;
-  private boolean consumerClientConfigPresent;
   private String veniceUrl;
   private String d2ServiceName;
   private String serverName;
@@ -109,9 +111,10 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       TestVeniceServer veniceServer,
       VeniceProperties serverProps,
       VeniceConfigLoader config,
-      Optional<ClientConfig> consumerClientConfig,
-      Optional<SSLFactory> sslFactory,
-      String regionName) {
+      ClientConfig consumerClientConfig,
+      SSLFactory sslFactory,
+      String regionName,
+      PubSubClientsFactory pubSubClientsFactory) {
     super(serviceName, dataDirectory);
     this.dataDirectory = dataDirectory;
     this.veniceServer = veniceServer;
@@ -120,6 +123,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
     this.consumerClientConfig = consumerClientConfig;
     this.sslFactory = sslFactory;
     this.regionName = regionName;
+    this.pubSubClientsFactory = pubSubClientsFactory;
   }
 
   VeniceServerWrapper(
@@ -128,8 +132,8 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       TestVeniceServer veniceServer,
       VeniceProperties serverProps,
       VeniceConfigLoader config,
-      Optional<ClientConfig> consumerClientConfig,
-      Optional<SSLFactory> sslFactory,
+      ClientConfig consumerClientConfig,
+      SSLFactory sslFactory,
       boolean forkServer,
       String clusterName,
       int listenPort,
@@ -138,8 +142,18 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       boolean enableServerAllowlist,
       boolean isAutoJoin,
       String serverName,
-      String regionName) {
-    this(serviceName, dataDirectory, veniceServer, serverProps, config, consumerClientConfig, sslFactory, regionName);
+      String regionName,
+      PubSubClientsFactory pubSubClientsFactory) {
+    this(
+        serviceName,
+        dataDirectory,
+        veniceServer,
+        serverProps,
+        config,
+        consumerClientConfig,
+        sslFactory,
+        regionName,
+        pubSubClientsFactory);
     this.forkServer = forkServer;
     this.clusterName = clusterName;
     this.listenPort = listenPort;
@@ -147,10 +161,9 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
     this.ssl = ssl;
     this.enableServerAllowlist = enableServerAllowlist;
     this.isAutoJoin = isAutoJoin;
-    this.consumerClientConfigPresent = consumerClientConfig.isPresent();
-    if (this.consumerClientConfigPresent) {
-      this.veniceUrl = consumerClientConfig.get().getVeniceURL();
-      this.d2ServiceName = consumerClientConfig.get().getD2ServiceName();
+    if (consumerClientConfig != null) {
+      this.veniceUrl = consumerClientConfig.getVeniceURL();
+      this.d2ServiceName = consumerClientConfig.getD2ServiceName();
     }
     this.serverName = serverName;
     this.regionName = regionName;
@@ -160,7 +173,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       String regionName,
       String clusterName,
       String zkAddress,
-      KafkaBrokerWrapper kafkaBrokerWrapper,
+      PubSubBrokerWrapper pubSubBrokerWrapper,
       Properties featureProperties,
       Properties configProperties,
       boolean forkServer,
@@ -175,8 +188,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
           Boolean.parseBoolean(featureProperties.getProperty(SERVER_ENABLE_KAFKA_OPENSSL, "false"));
       boolean ssl = Boolean.parseBoolean(featureProperties.getProperty(SERVER_ENABLE_SSL, "false"));
       boolean isAutoJoin = Boolean.parseBoolean(featureProperties.getProperty(SERVER_IS_AUTO_JOIN, "false"));
-      Optional<ClientConfig> consumerClientConfig =
-          Optional.ofNullable((ClientConfig) featureProperties.get(CLIENT_CONFIG_FOR_CONSUMER));
+      ClientConfig consumerClientConfig = (ClientConfig) featureProperties.get(CLIENT_CONFIG_FOR_CONSUMER);
 
       /** Create config directory under {@link dataDirectory} */
       File configDirectory = new File(dataDirectory.getAbsolutePath(), "config");
@@ -184,7 +196,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
 
       // Generate cluster.properties in config directory
       VeniceProperties clusterProps =
-          IntegrationTestUtils.getClusterProps(clusterName, zkAddress, kafkaBrokerWrapper, sslToKafka);
+          IntegrationTestUtils.getClusterProps(clusterName, zkAddress, pubSubBrokerWrapper, sslToKafka);
       File clusterConfigFile = new File(configDirectory, VeniceConfigLoader.CLUSTER_PROPERTIES_FILE);
       clusterProps.storeFlattened(clusterConfigFile);
 
@@ -246,18 +258,17 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
               listenPort);
         }
 
-        Optional<SSLFactory> sslFactory = Optional.empty();
-        if (ssl) {
-          sslFactory = Optional.of(SslUtils.getVeniceLocalSslFactory());
-        }
+        SSLFactory sslFactory = ssl ? SslUtils.getVeniceLocalSslFactory() : null;
 
-        TestVeniceServer server = new TestVeniceServer(
-            veniceConfigLoader,
-            new MetricsRepository(),
-            sslFactory,
-            Optional.empty(),
-            consumerClientConfig,
-            d2Servers);
+        VeniceServerContext.Builder serverContextBuilder =
+            new VeniceServerContext.Builder().setVeniceConfigLoader(veniceConfigLoader)
+                .setMetricsRepository(new MetricsRepository())
+                .setSslFactory(sslFactory)
+                .setClientConfigForConsumer(consumerClientConfig)
+                .setServiceDiscoveryAnnouncers(d2Servers)
+                .setPubSubClientsFactory(pubSubBrokerWrapper.getPubSubClientsFactory());
+
+        TestVeniceServer server = new TestVeniceServer(serverContextBuilder.build());
         return new VeniceServerWrapper(
             serviceName,
             dataDirectory,
@@ -266,7 +277,8 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
             veniceConfigLoader,
             consumerClientConfig,
             sslFactory,
-            regionName);
+            regionName,
+            pubSubBrokerWrapper.getPubSubClientsFactory());
       } else {
         return new VeniceServerWrapper(
             serviceName,
@@ -284,7 +296,8 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
             enableServerAllowlist,
             isAutoJoin,
             serverName,
-            regionName);
+            regionName,
+            pubSubBrokerWrapper.getPubSubClientsFactory());
       }
     };
   }
@@ -347,7 +360,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       if (isAutoJoin) {
         cmdList.add("--isAutoJoin");
       }
-      if (consumerClientConfigPresent) {
+      if (consumerClientConfig != null) {
         cmdList.add("--veniceUrl");
         cmdList.add(veniceUrl);
         cmdList.add("--d2ServiceName");
@@ -374,12 +387,16 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
 
   @Override
   protected void newProcess() throws Exception {
-    if (!forkServer) {
-      this.veniceServer =
-          new TestVeniceServer(config, new MetricsRepository(), sslFactory, Optional.empty(), consumerClientConfig);
-    } else {
-      // nothing to be done in forked mode.
+    if (forkServer) {
+      return; // nothing to be done in forked mode.
     }
+    this.veniceServer = new TestVeniceServer(
+        new VeniceServerContext.Builder().setVeniceConfigLoader(config)
+            .setMetricsRepository(new MetricsRepository())
+            .setSslFactory(sslFactory)
+            .setClientConfigForConsumer(consumerClientConfig)
+            .setPubSubClientsFactory(pubSubClientsFactory)
+            .build());
   }
 
   public TestVeniceServer getVeniceServer() {
@@ -434,14 +451,13 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
     if (cmd.hasOption("iaj")) {
       isAutoJoin = true;
     }
-    Optional<ClientConfig> consumerClientConfig = Optional.empty();
+    ClientConfig consumerClientConfig = null;
     if (cmd.hasOption("vu") && cmd.hasOption("dsn")) {
       String veniceUrl = cmd.getOptionValue("vu");
       String d2ServiceName = cmd.getOptionValue("dsn");
-      consumerClientConfig = Optional.of(
-          new ClientConfig().setVeniceURL(veniceUrl)
-              .setD2ServiceName(d2ServiceName)
-              .setSslFactory(SslUtils.getVeniceLocalSslFactory()));
+      consumerClientConfig = new ClientConfig().setVeniceURL(veniceUrl)
+          .setD2ServiceName(d2ServiceName)
+          .setSslFactory(SslUtils.getVeniceLocalSslFactory());
     }
 
     VeniceConfigLoader veniceConfigLoader = VeniceConfigLoader.loadFromConfigDirectory(serverConfigPath);
@@ -449,17 +465,13 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       joinClusterAllowlist(veniceConfigLoader.getVeniceClusterConfig().getZookeeperAddress(), clusterName, listenPort);
     }
 
-    Optional<SSLFactory> sslFactory = Optional.empty();
-    if (ssl) {
-      sslFactory = Optional.of(SslUtils.getVeniceLocalSslFactory());
-    }
-
-    TestVeniceServer server = new TestVeniceServer(
-        veniceConfigLoader,
-        new MetricsRepository(),
-        sslFactory,
-        Optional.empty(),
-        consumerClientConfig);
+    VeniceServerContext serverContext = new VeniceServerContext.Builder().setVeniceConfigLoader(veniceConfigLoader)
+        .setMetricsRepository(new MetricsRepository())
+        .setSslFactory(ssl ? SslUtils.getVeniceLocalSslFactory() : null)
+        .setClientConfigForConsumer(consumerClientConfig)
+        .setPubSubClientsFactory(ServiceFactory.getPubSubClientsFactory())
+        .build();
+    TestVeniceServer server = new TestVeniceServer(serverContext);
 
     if (!server.isStarted()) {
       server.start();

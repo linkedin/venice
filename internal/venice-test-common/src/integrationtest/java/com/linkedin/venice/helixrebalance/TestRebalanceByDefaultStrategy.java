@@ -1,5 +1,6 @@
 package com.linkedin.venice.helixrebalance;
 
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixState;
@@ -55,8 +56,10 @@ public class TestRebalanceByDefaultStrategy {
         false,
         false);
     String storeName = Utils.getUniqueString("testRollingUpgrade");
+    long storageQuota = (long) partitionSize * partitionNumber;
     cluster.getNewStore(storeName);
-    VersionCreationResponse response = cluster.getNewVersion(storeName, partitionSize * partitionNumber);
+    cluster.updateStore(storeName, new UpdateStoreQueryParams().setStorageQuotaInByte(storageQuota));
+    VersionCreationResponse response = cluster.getNewVersion(storeName);
 
     topicName = response.getKafkaTopic();
 

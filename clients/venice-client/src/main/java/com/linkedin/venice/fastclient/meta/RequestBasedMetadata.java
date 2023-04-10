@@ -122,13 +122,13 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   @Override
   public void start() {
     // perform cluster discovery work upfront and retrieve the server d2 service name
-    discoverD2Service(false);
+    discoverD2Service();
 
     // build a base for future metadata updates then start periodic refresh
     refresh();
   }
 
-  private void discoverD2Service(boolean retryOnFailure) {
+  private void discoverD2Service() {
     if (isServiceDiscovered) {
       return;
     }
@@ -137,8 +137,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
         return;
       }
       transportClient.setServiceName(clusterDiscoveryD2ServiceName);
-      String serverD2ServiceName =
-          d2ServiceDiscovery.find(transportClient, storeName, retryOnFailure).getServerD2Service();
+      String serverD2ServiceName = d2ServiceDiscovery.find(transportClient, storeName, true).getServerD2Service();
       transportClient.setServiceName(serverD2ServiceName);
       isServiceDiscovered = true;
     }
@@ -251,7 +250,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       if (!onDemandRefresh) {
         LOGGER.warn("Metadata fetch operation has failed with exception {}", e.getMessage());
         isServiceDiscovered = false;
-        discoverD2Service(true);
+        discoverD2Service();
         updateCache(true);
       } else {
         // pass the error along if the on demand refresh also fails

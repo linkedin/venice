@@ -67,7 +67,7 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
       LeaderProducedRecordContext leaderProducedRecordContext,
       int subPartition,
       String kafkaUrl,
-      long beforeProcessingRecordTimestamp) throws InterruptedException {
+      long beforeProcessingRecordTimestampNs) throws InterruptedException {
     PartitionConsumptionState partitionConsumptionState = ingestionTask.getPartitionConsumptionState(subPartition);
     boolean sortedInput = false;
     if (partitionConsumptionState != null) {
@@ -104,7 +104,7 @@ public class SeparatedStoreBufferService extends AbstractStoreBufferService {
         leaderProducedRecordContext,
         subPartition,
         kafkaUrl,
-        beforeProcessingRecordTimestamp);
+        beforeProcessingRecordTimestampNs);
   }
 
   @Override

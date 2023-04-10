@@ -197,6 +197,10 @@ task generateGHCI() {
   def targetFile = new File(targetDir, "gh-ci.yml")
   def targetFilePath = Paths.get(targetFile.getPath())
 
+  def validateGradleWrapperFile = new File(targetDir, "gh-ci-validate-gradle-wrapper.txt")
+  def validateGradleWrapperFilePath = Paths.get(validateGradleWrapperFile.getPath())
+  def validateGradleWrapperFileContent = new String(Files.readAllBytes(validateGradleWrapperFilePath))
+
   def paramFile = new File(targetDir, "gh-ci-parameterized-flow.txt")
   def paramFilePath = Paths.get(paramFile.getPath())
   def paramFileContent = new String(Files.readAllBytes(paramFilePath))
@@ -217,6 +221,10 @@ task generateGHCI() {
   append(targetFilePath, "jobs:\n")
 
   def jobs = []
+
+  def validateGradleWrapper = "ValidateGradleWrapper"
+  appendToGHCI(validateGradleWrapperFileContent, targetFilePath, validateGradleWrapper, 5, "")
+  jobs << validateGradleWrapper
 
   def common = "--stacktrace --continue --no-daemon "
   def staticAnalysisFlowGradleArgs = common + "-DmaxParallelForks=2 --parallel -Pspotallbugs clean check -x spotlessCheck -x test -x integrationTest -x jacocoTestCoverageVerification"

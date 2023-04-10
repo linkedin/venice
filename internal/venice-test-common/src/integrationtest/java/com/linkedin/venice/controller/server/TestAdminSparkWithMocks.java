@@ -1,7 +1,6 @@
 package com.linkedin.venice.controller.server;
 
 import static org.mockito.Mockito.anyBoolean;
-import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
@@ -72,7 +71,7 @@ public class TestAdminSparkWithMocks {
     doReturn(mockStore).when(admin).getStore(anyString(), anyString());
     doReturn(true).when(admin).isLeaderControllerFor(anyString());
     doReturn(1).when(admin).getReplicationFactor(anyString(), anyString());
-    doReturn(1).when(admin).calculateNumberOfPartitions(anyString(), anyString(), anyLong());
+    doReturn(1).when(admin).calculateNumberOfPartitions(anyString(), anyString());
     doReturn("kafka-bootstrap").when(admin).getKafkaBootstrapServers(anyBoolean());
     doReturn("store_rt").when(admin).getRealTimeTopic(anyString(), anyString());
     // Add a banned route not relevant to the test just to make sure theres coverage for unbanned routes still be
@@ -131,7 +130,7 @@ public class TestAdminSparkWithMocks {
     doReturn(mockStore).when(admin).getStore(anyString(), anyString());
     doReturn(true).when(admin).isLeaderControllerFor(anyString());
     doReturn(1).when(admin).getReplicationFactor(anyString(), anyString());
-    doReturn(1).when(admin).calculateNumberOfPartitions(anyString(), anyString(), anyLong());
+    doReturn(1).when(admin).calculateNumberOfPartitions(anyString(), anyString());
     doReturn("kafka-bootstrap").when(admin).getKafkaBootstrapServers(anyBoolean());
     doReturn("store_rt").when(admin).getRealTimeTopic(anyString(), anyString());
     AdminSparkServer server =
@@ -203,7 +202,7 @@ public class TestAdminSparkWithMocks {
     doReturn(true).when(admin).isParent();
     doReturn(true).when(admin).isLeaderControllerFor(anyString());
     doReturn(1).when(admin).getReplicationFactor(anyString(), anyString());
-    doReturn(1).when(admin).calculateNumberOfPartitions(anyString(), anyString(), anyLong());
+    doReturn(1).when(admin).calculateNumberOfPartitions(anyString(), anyString());
     doReturn(corpRegionKafka).when(admin).getKafkaBootstrapServers(anyBoolean());
     doReturn(true).when(admin).whetherEnableBatchPushFromAdmin(anyString());
     doReturn(true).when(admin).isActiveActiveReplicationEnabledInAllRegion(clusterName, storeName, false);
@@ -319,7 +318,7 @@ public class TestAdminSparkWithMocks {
     doReturn(mockStore).when(admin).getStore(anyString(), anyString());
     doReturn(true).when(admin).isLeaderControllerFor(anyString());
     doReturn(1).when(admin).getReplicationFactor(anyString(), anyString());
-    doReturn(1).when(admin).calculateNumberOfPartitions(anyString(), anyString(), anyLong());
+    doReturn(1).when(admin).calculateNumberOfPartitions(anyString(), anyString());
     doReturn("kafka-bootstrap").when(admin).getKafkaBootstrapServers(anyBoolean());
     doReturn("store_rt").when(admin).getRealTimeTopic(anyString(), anyString());
     doReturn(samzaPolicy).when(admin).isParent();
