@@ -1,7 +1,10 @@
 package com.linkedin.venice.helix;
 
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.anyInt;
+import static org.mockito.Mockito.anyString;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import java.util.Optional;
