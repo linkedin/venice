@@ -8,7 +8,7 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.io.IOException;
-import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import org.apache.avro.Schema;
@@ -92,11 +92,11 @@ public class RouterBasedStoreSchemaFetcherTest {
 
     // Get all value schemas
     StoreSchemaFetcher storeSchemaFetcher = new RouterBasedStoreSchemaFetcher(mockClient);
-    List<Schema> allSchemas = storeSchemaFetcher.getAllValueSchemas();
+    Set<Schema> allSchemas = storeSchemaFetcher.getAllValueSchemas();
 
     Assert.assertEquals(allSchemas.size(), 2);
-    Assert.assertEquals(allSchemas.get(0), Schema.parse(valueSchemaStr1));
-    Assert.assertEquals(allSchemas.get(1), Schema.parse(valueSchemaStr2));
+    Assert.assertTrue(allSchemas.contains(Schema.parse(valueSchemaStr1)));
+    Assert.assertTrue(allSchemas.contains(Schema.parse(valueSchemaStr2)));
     Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(1)).getRaw(Mockito.anyString());
   }
 
