@@ -129,6 +129,10 @@ publishing {
   }
 }
 
+def parser = new XmlSlurper()
+parser.setFeature("http://apache.org/xml/features/disallow-doctype-decl", false)
+parser.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false)
+
 subprojects {
   //apply group and version to all submodules
   group = rootProject.group
@@ -386,6 +390,15 @@ subprojects {
 
   jacocoTestReport {
     dependsOn test // tests are required to run before generating the report
+
+    reports {
+      xml.enabled = true
+      html.enabled = true
+    }
+
+    doLast {
+      parseJacocoXml("$buildDir/reports/jacoco/test/jacocoTestReport.xml")
+    }
   }
 
   afterEvaluate {
@@ -412,6 +425,7 @@ subprojects {
       // Report locates at <module_name>/build/reports/jacoco/diffCoverage/html/index.html
       reports {
         html = true
+        xml = true
       }
 
       violationRules {
@@ -419,6 +433,14 @@ subprojects {
         failOnViolation = true
       }
     }
+
+    task logDiffCoverage {
+      doLast {
+        parseJacocoXml("$buildDir/reports/jacoco/diffCoverage/report.xml")
+      }
+    }
+
+    diffCoverage.finalizedBy logDiffCoverage
   }
 
   task flakyTest(type: Test) {
@@ -615,4 +637,18 @@ ext.createDiffFile = { ->
   }
 
   return file
+}
+
+// for a given xml jacoco report, parse it and print out the branch coverage
+ext.parseJacocoXml = { filePath ->
+  try {
+    def jacocoReport = parser.parse(filePath).children()
+    def branchCoverage = jacocoReport.find { it.name() == 'counter' && it.@type == 'BRANCH' }
+    def branchCoverageRatio = branchCoverage.@covered.toDouble() / (branchCoverage.@missed.toDouble() + branchCoverage.@covered.toDouble())
+    println "Branch coverage: ${(branchCoverageRatio * 100.0).round(2)}%"
+  } catch (Exception e) {
+    // failure to retrieve numbers should not fail the build
+    project.logger.debug("Branch coverage: N/A. There's either no branch coverage or " +
+        "the jacoco report is not generated.", e)
+  }
 }
