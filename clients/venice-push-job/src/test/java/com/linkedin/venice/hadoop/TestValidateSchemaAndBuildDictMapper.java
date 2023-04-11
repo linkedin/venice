@@ -205,9 +205,9 @@ public class TestValidateSchemaAndBuildDictMapper extends AbstractTestVeniceMR {
     try (ValidateSchemaAndBuildDictMapper mapper = getMapper(mapperJobConfig -> {
       mapperJobConfig.setBoolean(USE_MAPPER_TO_BUILD_DICTIONARY, true);
       mapperJobConfig.setBoolean(ZSTD_DICTIONARY_CREATION_REQUIRED, true);
-      /** {@link PushJobZstdConfig#minNumberOfSamples} is 20 for not skipping dictionary,
-       *  so setting COMPRESSION_DICTIONARY_SAMPLE_SIZE >= 251 Bytes for this input file
-       *  will end up not skipping dictionary creation */
+      /** {@link PushJobZstdConfig#MINIMUM_NUMBER_OF_SAMPLES_REQUIRED_TO_BUILD_ZSTD_DICTIONARY} is 20
+       *  for not skipping dictionary, so setting COMPRESSION_DICTIONARY_SAMPLE_SIZE >= 251 Bytes for
+       *  this input file to not skip dictionary creation */
       mapperJobConfig.setInt(DefaultInputDataInfoProvider.COMPRESSION_DICTIONARY_SAMPLE_SIZE, 251);
     })) {
       OutputCollector<AvroWrapper<SpecificRecord>, NullWritable> output = mock(OutputCollector.class);
@@ -255,9 +255,9 @@ public class TestValidateSchemaAndBuildDictMapper extends AbstractTestVeniceMR {
     try (ValidateSchemaAndBuildDictMapper mapper = getMapper(mapperJobConfig -> {
       mapperJobConfig.setBoolean(USE_MAPPER_TO_BUILD_DICTIONARY, true);
       mapperJobConfig.setBoolean(ZSTD_DICTIONARY_CREATION_REQUIRED, true);
-      /** {@link PushJobZstdConfig#minNumberOfSamples} is 20 for not skipping dictionary,
-       *  so setting COMPRESSION_DICTIONARY_SAMPLE_SIZE < 251 Bytes for this input file
-       *  will end up skipping dictionary creation */
+      /** {@link PushJobZstdConfig#MINIMUM_NUMBER_OF_SAMPLES_REQUIRED_TO_BUILD_ZSTD_DICTIONARY} is 20
+       *  for not skipping dictionary, so setting COMPRESSION_DICTIONARY_SAMPLE_SIZE <= 250 Bytes for
+       *  this input file to skip dictionary creation */
       mapperJobConfig.setInt(DefaultInputDataInfoProvider.COMPRESSION_DICTIONARY_SAMPLE_SIZE, 250);
     })) {
       OutputCollector<AvroWrapper<SpecificRecord>, NullWritable> output = mock(OutputCollector.class);

@@ -56,7 +56,7 @@ public class TestZstdLibrary {
             fileStatus.getPath(),
             ETLValueSchemaTransformation.NONE);
 
-        InputDataInfoProvider.loadZstdTrainingSamples(recordReader, pushJobZstdConfig, LOGGER);
+        InputDataInfoProvider.loadZstdTrainingSamples(recordReader, pushJobZstdConfig);
       }
       LOGGER.info(
           "Collected {} Bytes from {} samples in {} files",
@@ -73,7 +73,7 @@ public class TestZstdLibrary {
 
   /**
    * Number of samples: 0 to 6 => ZstdException ("Src size is incorrect")
-   * Known issue for the below crashes: check {@link PushJobZstdConfig#minNumberOfSamples}
+   * Known issue for the below crashes: check {@link PushJobZstdConfig#MINIMUM_NUMBER_OF_SAMPLES_REQUIRED_TO_BUILD_ZSTD_DICTIONARY}
    * Number of samples: 7 to 9 => SIGSEGV
    * Number of samples: 10 => SIGFPE
    * It should not fail for other cases

@@ -1,5 +1,6 @@
 package com.linkedin.venice.hadoop;
 
+import static com.linkedin.venice.hadoop.PushJobZstdConfig.MINIMUM_NUMBER_OF_SAMPLES_REQUIRED_TO_BUILD_ZSTD_DICTIONARY;
 import static com.linkedin.venice.hadoop.VenicePushJob.COMPRESSION_METRIC_COLLECTION_ENABLED;
 import static com.linkedin.venice.hadoop.VenicePushJob.COMPRESSION_STRATEGY;
 import static com.linkedin.venice.hadoop.VenicePushJob.ETL_VALUE_SCHEMA_TRANSFORMATION;
@@ -185,9 +186,9 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
       if (isZstdDictCreationRequired) {
         if (inputDataInfo.hasRecords()) {
           int collectedNumberOfSamples = inputDataInfoProvider.pushJobZstdConfig.getCollectedNumberOfSamples();
-          int minNumberOfSamples = inputDataInfoProvider.pushJobZstdConfig.getMinNumberOfSamples();
+          int minNumberOfSamples = MINIMUM_NUMBER_OF_SAMPLES_REQUIRED_TO_BUILD_ZSTD_DICTIONARY;
           if (collectedNumberOfSamples < minNumberOfSamples) {
-            /** check {@link PushJobZstdConfig#minNumberOfSamples} */
+            /** check {@link MINIMUM_NUMBER_OF_SAMPLES_REQUIRED_TO_BUILD_ZSTD_DICTIONARY} */
             MRJobCounterHelper.incrMapperZstdDictTrainSkippedCount(reporter, 1);
             LOGGER.error(
                 "Training ZSTD compression dictionary skipped: The sample size is too small. "

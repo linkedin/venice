@@ -287,13 +287,13 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
         if (!pushJobSetting.useMapperToBuildDict) {
           /** If dictionary compression is enabled for version, read the records to get training samples */
           if (storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
-            InputDataInfoProvider.loadZstdTrainingSamples(recordReader, pushJobZstdConfig, LOGGER);
+            InputDataInfoProvider.loadZstdTrainingSamples(recordReader, pushJobZstdConfig);
           }
         } else {
           /** If dictionary compression is enabled for version or compression metric collection is enabled,
            * read the records to get training samples
            */
-          InputDataInfoProvider.loadZstdTrainingSamples(recordReader, pushJobZstdConfig, LOGGER);
+          InputDataInfoProvider.loadZstdTrainingSamples(recordReader, pushJobZstdConfig);
         }
       }
     }
@@ -371,13 +371,13 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
         if (!pushJobSetting.useMapperToBuildDict) {
           /** If dictionary compression is enabled for version, read the records to get training samples */
           if (storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
-            InputDataInfoProvider.loadZstdTrainingSamples(recordReader, pushJobZstdConfig, LOGGER);
+            InputDataInfoProvider.loadZstdTrainingSamples(recordReader, pushJobZstdConfig);
           }
         } else {
           /** If dictionary compression is enabled for version or compression metric collection is enabled,
            * read the records to get training samples
            */
-          InputDataInfoProvider.loadZstdTrainingSamples(recordReader, pushJobZstdConfig, LOGGER);
+          InputDataInfoProvider.loadZstdTrainingSamples(recordReader, pushJobZstdConfig);
         }
       }
     }

@@ -18,10 +18,10 @@ public class PushJobZstdConfig {
   /**
    * Known <a href="https://github.com/luben/zstd-jni/issues/253">zstd lib issue</a> which
    * crashes if the input sample is too small. So adding a preventive check to skip training
-   * the dictionary in such cases using minNumberOfSamples. Keeping it simple and hard coding
+   * the dictionary in such cases using a minimum limit of 20. Keeping it simple and hard coding
    * it as if this check doesn't prevent some edge cases then we can disable the feature itself
    */
-  private static int minNumberOfSamples = 20;
+  protected static final int MINIMUM_NUMBER_OF_SAMPLES_REQUIRED_TO_BUILD_ZSTD_DICTIONARY = 20;
   private int collectedNumberOfSamples;
 
   public PushJobZstdConfig(VeniceProperties props, int numFiles) {
@@ -52,10 +52,6 @@ public class PushJobZstdConfig {
 
   public void addFilledSize(int filledSize) {
     this.filledSize += filledSize;
-  }
-
-  public int getMinNumberOfSamples() {
-    return minNumberOfSamples;
   }
 
   public int getCollectedNumberOfSamples() {

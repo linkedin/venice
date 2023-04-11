@@ -6,6 +6,7 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.util.Iterator;
 import org.apache.avro.Schema;
+import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
@@ -16,6 +17,8 @@ public interface InputDataInfoProvider extends Closeable {
   /**
    * A POJO that contains input data information (schema information and input data file size)
    */
+  Logger LOGGER = LogManager.getLogger(InputDataInfoProvider.class.getName());
+
   class InputDataInfo {
     private final PushJobSchemaInfo pushJobSchemaInfo;
     private final long inputFileDataSizeInBytes;
@@ -83,10 +86,7 @@ public interface InputDataInfoProvider extends Closeable {
    * This function loads training samples from recordReader abstraction for building the Zstd dictionary.
    * @param recordReader The data accessor of input records.
    */
-  static void loadZstdTrainingSamples(
-      AbstractVeniceRecordReader recordReader,
-      PushJobZstdConfig pushJobZstdConfig,
-      Logger LOGGER) {
+  static void loadZstdTrainingSamples(AbstractVeniceRecordReader recordReader, PushJobZstdConfig pushJobZstdConfig) {
     int fileSampleSize = 0;
     Iterator<Pair<byte[], byte[]>> it = recordReader.iterator();
     while (it.hasNext()) {
