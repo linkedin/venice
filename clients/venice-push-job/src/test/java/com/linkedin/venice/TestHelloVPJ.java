@@ -13,5 +13,8 @@ public class TestHelloVPJ {
 
     s = "";
     Assert.assertFalse(HelloVPJ.isValid(s));
+
+    s = "dsa";
+    Assert.assertTrue(HelloVPJ.isValid(s));
   }
 }
