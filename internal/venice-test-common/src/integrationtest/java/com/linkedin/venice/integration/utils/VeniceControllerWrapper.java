@@ -188,7 +188,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(ENABLE_OFFLINE_PUSH_SSL_WHITELIST, false)
             .put(ENABLE_HYBRID_PUSH_SSL_WHITELIST, false)
             .put(KAFKA_BOOTSTRAP_SERVERS, options.getKafkaBroker().getAddress())
-            .put(OFFLINE_JOB_START_TIMEOUT_MS, 60_000)
+            .put(OFFLINE_JOB_START_TIMEOUT_MS, 120_000)
             // To speed up topic cleanup
             .put(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, 100)
             .put(TOPIC_CLEANUP_DELAY_FACTOR, 2)
