@@ -79,6 +79,10 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreStatus;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ZKStore;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.pushmonitor.OfflinePushStatus;
+import com.linkedin.venice.pushmonitor.PartitionStatus;
+import com.linkedin.venice.pushmonitor.ReplicaStatus;
 import com.linkedin.venice.samza.SamzaExitMode;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
@@ -1380,12 +1384,12 @@ public class TestHybrid {
   }
 
   @Test(timeOut = 180 * Time.MS_PER_SECOND)
-  public void myTest() throws Exception {
+  public void testOffsetRecordSyncedForIngestionIsolationHandover() throws Exception {
     SystemProducer veniceProducer = null;
 
     VeniceClusterWrapper venice = ingestionIsolationEnabledSharedVenice;
     try {
-      long streamingRewindSeconds = 100L;
+      long streamingRewindSeconds = 0L;
       long streamingMessageLag = 1000L;
 
       String storeName = Utils.getUniqueString("hybrid-store");
@@ -1461,25 +1465,23 @@ public class TestHybrid {
           }
         });
       }
-
-      LogManager.getLogger().info("DEBUGGING: " + venice.getClusterName() + " " + storeName);
-      Admin.OfflinePushStatusInfo status = venice.getVeniceControllers()
-          .get(0)
-          .getVeniceHelixAdmin()
-          .getOffLinePushStatus(venice.getClusterName(), storeName + "_v2");
-
-      LogManager.getLogger().info("DEBUGGING2 " + status.getStatusDetails());
-      LogManager.getLogger().info("DEBUGGING2 " + status.getExecutionStatus().toString());
-      LogManager.getLogger().info("DEBUGGING2 " + status.getExtraInfo());
-      LogManager.getLogger().info("DEBUGGING2 " + status.getExtraDetails());
-      LogManager.getLogger()
-          .info(
-              venice.getVeniceServers()
-                  .get(0)
-                  .getVeniceServer()
-                  .getHelixParticipationService()
-                  .getVeniceOfflinePushMonitorAccessor()
-                  .getOfflinePushStatusAndItsPartitionStatuses(storeName + "_v2"));
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+        try {
+          OfflinePushStatus offlinePushStatus = venice.getVeniceServers()
+              .get(0)
+              .getVeniceServer()
+              .getHelixParticipationService()
+              .getVeniceOfflinePushMonitorAccessor()
+              .getOfflinePushStatusAndItsPartitionStatuses(storeName + "_v2");
+          for (PartitionStatus partitionStatus: offlinePushStatus.getPartitionStatuses()) {
+            for (ReplicaStatus replicaStatus: partitionStatus.getReplicaStatuses()) {
+              Assert.assertEquals(replicaStatus.getCurrentStatus(), ExecutionStatus.COMPLETED);
+            }
+          }
+        } catch (Exception e) {
+          throw new VeniceException(e);
+        }
+      });
     } finally {
       if (veniceProducer != null) {
         veniceProducer.stop();
@@ -1879,7 +1881,7 @@ public class TestHybrid {
       boolean enablePartitionWiseSharedConsumer) {
     Properties extraProperties = new Properties();
     extraProperties.setProperty(DEFAULT_MAX_NUMBER_OF_PARTITIONS, "5");
-    VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 0, 0, 1, 1000000, false, false, extraProperties);
+    VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 0, 0, 2, 1000000, false, false, extraProperties);
 
     // Add Venice Router
     Properties routerProperties = new Properties();
@@ -1907,7 +1909,7 @@ public class TestHybrid {
           KafkaConsumerService.ConsumerAssignmentStrategy.PARTITION_WISE_SHARED_CONSUMER_ASSIGNMENT_STRATEGY.name());
     }
     cluster.addVeniceServer(new Properties(), serverProperties);
-    // cluster.addVeniceServer(new Properties(), serverProperties);
+    cluster.addVeniceServer(new Properties(), serverProperties);
 
     return cluster;
   }

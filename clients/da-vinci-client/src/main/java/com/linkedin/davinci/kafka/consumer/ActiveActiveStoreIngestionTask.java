@@ -919,7 +919,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   }
 
   @Override
-  protected void processTopicSwitch(
+  protected boolean processTopicSwitch(
       ControlMessage controlMessage,
       int partition,
       long offset,
@@ -1015,8 +1015,10 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     syncTopicSwitchToIngestionMetadataService(topicSwitch, partitionConsumptionState, upstreamStartOffsetByKafkaURL);
     if (!isLeader(partitionConsumptionState)) {
       partitionConsumptionState.getOffsetRecord().setLeaderTopic(newSourceTopic);
-      this.defaultReadyToServeChecker.apply(partitionConsumptionState);
+      // this.defaultReadyToServeChecker.apply(partitionConsumptionState);
+      return true;
     }
+    return false;
   }
 
   @Override

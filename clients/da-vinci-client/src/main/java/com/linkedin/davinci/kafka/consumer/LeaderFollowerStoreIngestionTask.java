@@ -1051,7 +1051,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
-  protected void processTopicSwitch(
+  protected boolean processTopicSwitch(
       ControlMessage controlMessage,
       int partition,
       long offset,
@@ -1082,6 +1082,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
 
     // Force sync offset metadata in before processing TopicSwitch.
+    LOGGER.info("DEBUGGING RECEIVED TOPIC SWITCH AT: {}", offset);
     LOGGER.info("DEBUGGING PRIOR TO TOPIC_SWITCH PCS: {}", partitionConsumptionState);
     updateOffsetMetadataInOffsetRecord(partitionConsumptionState);
 
@@ -1149,8 +1150,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
        * Real time topic for that partition is empty or the rewind start offset is very closed to the end, followers
        * calculate the lag of the leader and decides the lag is small enough.
        */
-      this.defaultReadyToServeChecker.apply(partitionConsumptionState);
+      // this.defaultReadyToServeChecker.apply(partitionConsumptionState);
+      return true;
     }
+    return false;
   }
 
   protected void syncTopicSwitchToIngestionMetadataService(
