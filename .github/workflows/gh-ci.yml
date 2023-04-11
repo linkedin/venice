@@ -117,6 +117,7 @@ jobs:
         with:
           token: ${{secrets.CODECOV_TOKEN}}
 
+
   AvroCompatibilityTests:
     strategy:
       fail-fast: false
