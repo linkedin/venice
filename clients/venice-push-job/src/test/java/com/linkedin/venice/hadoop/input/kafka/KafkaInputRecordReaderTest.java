@@ -72,7 +72,8 @@ public class KafkaInputRecordReaderTest {
       put.putValue = ByteBuffer.wrap(valueBytes);
       put.replicationMetadataPayload = ByteBuffer.allocate(0);
       messageEnvelope.payloadUnion = put;
-      consumerRecordList.add(new ImmutablePubSubMessage<>(kafkaKey, messageEnvelope, pubSubTopicPartition, i, -1, -1));
+      consumerRecordList
+          .add(new ImmutablePubSubMessage<>(kafkaKey, messageEnvelope, pubSubTopicPartition, (long) i, -1, -1));
     }
 
     Map<PubSubTopicPartition, List<PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long>>> recordsMap = new HashMap<>();

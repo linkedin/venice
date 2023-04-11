@@ -31,6 +31,7 @@ import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.VenicePushJob;
+import com.linkedin.venice.integration.utils.KafkaTestUtils;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
@@ -127,7 +128,7 @@ public class IntegrationTestPushUtils {
 
   public static Properties sslVPJProps(VeniceClusterWrapper veniceCluster, String inputDirPath, String storeName) {
     Properties props = defaultVPJProps(veniceCluster, inputDirPath, storeName);
-    props.putAll(KafkaSSLUtils.getLocalKafkaClientSSLConfig());
+    props.putAll(KafkaTestUtils.getLocalKafkaClientSSLConfig());
     return props;
   }
 

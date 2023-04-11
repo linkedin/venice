@@ -56,13 +56,13 @@ public class StoreBufferServiceTest {
     PubSubTopicPartition pubSubTopicPartition4 = new PubSubTopicPartitionImpl(pubSubTopic, partition4);
     String kafkaUrl = "blah";
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> cr1 =
-        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition1, -1, 0, 0);
+        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition1, -1L, 0, 0);
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> cr2 =
-        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition2, -1, 0, 0);
+        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition2, -1L, 0, 0);
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> cr3 =
-        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition3, -1, 0, 0);
+        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition3, -1L, 0, 0);
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> cr4 =
-        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition4, -1, 0, 0);
+        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition4, -1L, 0, 0);
 
     bufferService.putConsumerRecord(cr1, mockTask, null, partition1, kafkaUrl, 0L);
     bufferService.putConsumerRecord(cr2, mockTask, null, partition2, kafkaUrl, 0L);
@@ -93,9 +93,9 @@ public class StoreBufferServiceTest {
     PubSubTopicPartition pubSubTopicPartition2 = new PubSubTopicPartitionImpl(pubSubTopic, partition2);
     String kafkaUrl = "blah";
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> cr1 =
-        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition1, -1, 0, 0);
+        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition1, -1L, 0, 0);
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> cr2 =
-        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition2, -1, 0, 0);
+        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition2, -1L, 0, 0);
     Exception e = new VeniceException("test_exception");
 
     doThrow(e).when(mockTask).processConsumerRecord(cr1, null, partition1, kafkaUrl, 0L);
@@ -120,7 +120,7 @@ public class StoreBufferServiceTest {
     PubSubTopicPartition pubSubTopicPartition1 = new PubSubTopicPartitionImpl(pubSubTopic, partition);
     String kafkaUrl = "blah";
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> cr =
-        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition1, -1, 0, 0);
+        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition1, -1L, 0, 0);
     bufferService.start();
     bufferService.putConsumerRecord(cr, mockTask, null, partition, kafkaUrl, 0L);
     int nonExistingPartition = 2;
@@ -141,7 +141,7 @@ public class StoreBufferServiceTest {
     PubSubTopicPartition pubSubTopicPartition1 = new PubSubTopicPartitionImpl(pubSubTopic, partition);
     String kafkaUrl = "blah";
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> cr =
-        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition1, 100, 0, 0);
+        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition1, 100L, 0, 0);
     bufferService.start();
     bufferService.putConsumerRecord(cr, mockTask, null, partition, kafkaUrl, 0L);
     bufferService.internalDrainBufferedRecordsFromTopicPartition(pubSubTopicPartition1, 3, 50);
@@ -167,7 +167,7 @@ public class StoreBufferServiceTest {
     SeparatedStoreBufferService bufferService = new SeparatedStoreBufferService(serverConfig);
     for (int partition = 0; partition < partitionCount; ++partition) {
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> cr =
-          new ImmutablePubSubMessage<>(key, value, new PubSubTopicPartitionImpl(pubSubTopic, partition), 100, 0, 0);
+          new ImmutablePubSubMessage<>(key, value, new PubSubTopicPartitionImpl(pubSubTopic, partition), 100L, 0, 0);
       int drainerIndex;
       if (partition < 16) {
         drainerIndex = bufferService.sortedServiceDelegate.getDrainerIndexForConsumerRecord(cr, partition);
@@ -201,7 +201,7 @@ public class StoreBufferServiceTest {
     StoreBufferService bufferService = new StoreBufferService(8, 10000, 1000, queueLeaderWrites);
     for (int partition = 0; partition < partitionCount; ++partition) {
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> cr =
-          new ImmutablePubSubMessage<>(key, value, new PubSubTopicPartitionImpl(pubSubTopic, partition), 100, 0, 0);
+          new ImmutablePubSubMessage<>(key, value, new PubSubTopicPartitionImpl(pubSubTopic, partition), 100L, 0, 0);
       int drainerIndex = bufferService.getDrainerIndexForConsumerRecord(cr, partition);
       ++drainerPartitionCount[drainerIndex];
     }
@@ -223,9 +223,9 @@ public class StoreBufferServiceTest {
     PubSubTopicPartition pubSubTopicPartition2 = new PubSubTopicPartitionImpl(pubSubTopic, partition2);
     String kafkaUrl = "blah";
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> cr1 =
-        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition1, -1, 0, 0);
+        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition1, -1L, 0, 0);
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> cr2 =
-        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition2, -1, 0, 0);
+        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition2, -1L, 0, 0);
     Exception e = new VeniceChecksumException("test_exception");
     doThrow(e).when(mockTask).processConsumerRecord(cr1, null, partition1, kafkaUrl, 0L);
 
@@ -265,13 +265,13 @@ public class StoreBufferServiceTest {
     PubSubTopicPartition pubSubTopicPartition2 = new PubSubTopicPartitionImpl(pubSubTopic, partition2);
     String kafkaUrl = "blah";
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> cr1 =
-        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition1, 0, 0, 0);
+        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition1, 0L, 0, 0);
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> cr2 =
-        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition2, 0, 0, 0);
+        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition2, 0L, 0, 0);
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> cr3 =
-        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition1, 1, 0, 0);
+        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition1, 1L, 0, 0);
     PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> cr4 =
-        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition2, 1, 0, 0);
+        new ImmutablePubSubMessage<>(key, value, pubSubTopicPartition2, 1L, 0, 0);
 
     bufferService.putConsumerRecord(cr1, mockTask, null, partition1, kafkaUrl, 0);
     verify(unsortedSBS).putConsumerRecord(cr1, mockTask, null, partition1, kafkaUrl, 0);
