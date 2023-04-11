@@ -950,9 +950,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           localKafkaServer);
     }
 
-    // Force sync offset metadata in before processing TopicSwitch.
-    updateOffsetMetadataInOffsetRecord(partitionConsumptionState);
-
     TopicSwitch topicSwitch = (TopicSwitch) controlMessage.controlMessageUnion;
     statusReportAdapter.reportTopicSwitchReceived(partitionConsumptionState);
 
@@ -1015,7 +1012,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     syncTopicSwitchToIngestionMetadataService(topicSwitch, partitionConsumptionState, upstreamStartOffsetByKafkaURL);
     if (!isLeader(partitionConsumptionState)) {
       partitionConsumptionState.getOffsetRecord().setLeaderTopic(newSourceTopic);
-      // this.defaultReadyToServeChecker.apply(partitionConsumptionState);
       return true;
     }
     return false;

@@ -2493,8 +2493,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           leaderProducedRecordContext,
           kafkaUrl);
       if (checkReadyToServeAfterProcess) {
-        LOGGER.info("DEBUGGING NEW READY TO SERVE CHECK RUN: " + partitionConsumptionState);
-        this.defaultReadyToServeChecker.apply(partitionConsumptionState);
+        defaultReadyToServeChecker.apply(partitionConsumptionState);
       }
     }
     return sizeOfPersistedData;
@@ -3254,6 +3253,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return serverConfig;
   }
 
+  public void updateOffsetMetadataAndSync(String topic, int partitionId) {
+    PartitionConsumptionState pcs = getPartitionConsumptionState(partitionId);
+    updateOffsetMetadataInOffsetRecord(pcs);
+    syncOffset(topic, pcs);
+  }
+
   /**
    * The function returns local or remote topic manager.
    * @param sourceKafkaServer The address of source kafka bootstrap server.
@@ -3381,11 +3386,4 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return kafkaValue.leaderMetadataFooter != null && kafkaValue.leaderMetadataFooter.upstreamOffset >= 0;
   }
 
-  public void updateOffsetMetadataAndSync(String topic, int partitionId) {
-    PartitionConsumptionState pcs = getPartitionConsumptionState(partitionId);
-    LOGGER.info("DEBUGGING before sync: topic: {}, partition: {}, PCS: {}", topic, partitionId, pcs);
-    updateOffsetMetadataInOffsetRecord(pcs);
-    syncOffset(topic, pcs);
-    LOGGER.info("DEBUGGING after sync: topic: {}, partition: {}, PCS: {}", topic, partitionId, pcs);
-  }
 }

@@ -1196,6 +1196,11 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     return offsetRecordArray;
   }
 
+  /**
+   * Updates offset metadata and sync to storage for specified topic partition.
+   * This method is invoked only when isolated ingestion process is reporting topic partition completion to make sure
+   * ingestion process is persisted.
+   */
   public void syncTopicPartitionOffset(String topicName, int partition) {
     StoreIngestionTask storeIngestionTask = getStoreIngestionTask(topicName);
     int amplificationFactor = storeIngestionTask.getAmplificationFactor();

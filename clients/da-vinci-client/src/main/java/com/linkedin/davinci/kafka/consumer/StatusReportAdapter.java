@@ -15,7 +15,6 @@ import com.linkedin.venice.exceptions.VeniceIngestionTaskKilledException;
 import com.linkedin.venice.pushmonitor.SubPartitionStatus;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -227,9 +226,6 @@ public class StatusReportAdapter {
         String versionAwareStatus,
         Runnable report,
         boolean logStatus) {
-      if (status.equals(COMPLETED)) {
-        LOGGER.info("DEBUGGING COMPLETED THREAD: " + Arrays.toString(Thread.currentThread().getStackTrace()));
-      }
       // This is a safeguard to make sure we only report exactly once for each status.
       if (statusReportIndicatorMap.get(versionAwareStatus).compareAndSet(false, true)) {
         if (logStatus) {
