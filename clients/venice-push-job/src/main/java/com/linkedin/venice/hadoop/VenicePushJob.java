@@ -1883,13 +1883,12 @@ public class VenicePushJob implements AutoCloseable {
       LOGGER.info(
           "pushJobDetails MR Counters: \n\tTotal number of records: {} \n\tSize of keys: {} Bytes "
               + "\n\tsize of uncompressed value: {} Bytes \n\tConfigured value Compression Strategy: {} "
-              + "\n\tFinal data size stored in Venice (compressed using {}): {} Bytes "
+              + "\n\tFinal data size stored in Venice based on this compression strategy: {} Bytes "
               + "\n\tData size if compressed using Gzip: {} Bytes \n\tData size if "
               + "compressed using Zstd with Dictionary: {} Bytes",
           pushJobDetails.totalNumberOfRecords,
           pushJobDetails.totalKeyBytes,
           pushJobDetails.totalRawValueBytes,
-          CompressionStrategy.valueOf(pushJobDetails.valueCompressionStrategy).name(),
           CompressionStrategy.valueOf(pushJobDetails.valueCompressionStrategy).name(),
           pushJobDetails.totalCompressedValueBytes,
           pushJobDetails.totalGzipCompressedValueBytes,
