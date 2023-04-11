@@ -161,6 +161,11 @@ public class TestWriteUtils {
     } else {
       fileName = "simple_user";
     }
+    return writeSimpleAvroFileWithUserSchema(parentDir, recordCount, fileName);
+  }
+
+  public static Schema writeSimpleAvroFileWithUserSchema(File parentDir, int recordCount, String fileName)
+      throws IOException {
     return writeAvroFile(parentDir, fileName, USER_SCHEMA_STRING, (recordSchema, writer) -> {
       for (int i = 1; i <= recordCount; ++i) {
         GenericRecord user = new GenericData.Record(recordSchema);
@@ -170,6 +175,14 @@ public class TestWriteUtils {
         writer.append(user);
       }
     });
+  }
+
+  public static void writeMultipleAvroFilesWithUserSchema(File parentDir, int fileCount, int recordCount)
+      throws IOException {
+
+    for (int i = 0; i < fileCount; i++) {
+      writeSimpleAvroFileWithUserSchema(parentDir, recordCount, "testInput" + i + ".avro");
+    }
   }
 
   public static Schema writeSimpleAvroFileForValidateSchemaAndBuildDictMapperOutput(
