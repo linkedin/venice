@@ -11,13 +11,11 @@ import com.linkedin.venice.hadoop.exceptions.VeniceInconsistentSchemaException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonSchema;
-import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -289,13 +287,13 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
         if (!pushJobSetting.useMapperToBuildDict) {
           /** If dictionary compression is enabled for version, read the records to get training samples */
           if (storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
-            loadZstdTrainingSamples(recordReader);
+            InputDataInfoProvider.loadZstdTrainingSamples(recordReader, pushJobZstdConfig);
           }
         } else {
           /** If dictionary compression is enabled for version or compression metric collection is enabled,
            * read the records to get training samples
            */
-          loadZstdTrainingSamples(recordReader);
+          InputDataInfoProvider.loadZstdTrainingSamples(recordReader, pushJobZstdConfig);
         }
       }
     }
@@ -306,53 +304,6 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
     String keyField = props.getString(KEY_FIELD_PROP, "");
     String valueField = props.getString(VALUE_FIELD_PROP, "");
     return new VeniceVsonRecordReader(null, keyField, valueField, fs, path);
-  }
-
-  /**
-   * This function loads training samples from an Avro file for building the Zstd dictionary.
-   * @param recordReader The data accessor of input records.
-   */
-  @Override
-  public void loadZstdTrainingSamples(AbstractVeniceRecordReader recordReader) {
-    int fileSampleSize = 0;
-    Iterator<Pair<byte[], byte[]>> it = recordReader.iterator();
-    while (it.hasNext()) {
-      Pair<byte[], byte[]> record = it.next();
-      if (record == null) {
-        continue;
-      }
-
-      byte[] data = record.getSecond();
-
-      if (data == null || data.length == 0) {
-        continue;
-      }
-
-      if (fileSampleSize + data.length > this.pushJobZstdConfig.getMaxBytesPerFile()) {
-        String perFileLimitErrorMsg = String.format(
-            "Read %s to build dictionary. Reached limit per file of %s.",
-            ByteUtils.generateHumanReadableByteCountString(fileSampleSize),
-            ByteUtils.generateHumanReadableByteCountString(this.pushJobZstdConfig.getMaxBytesPerFile()));
-        LOGGER.debug(perFileLimitErrorMsg);
-        return;
-      }
-
-      // addSample returns false when the data read no longer fits in the 'sample' buffer limit
-      if (!this.pushJobZstdConfig.getZstdDictTrainer().addSample(data)) {
-        String maxSamplesReadErrorMsg = String.format(
-            "Read %s to build dictionary. Reached sample limit of %s.",
-            ByteUtils.generateHumanReadableByteCountString(fileSampleSize),
-            ByteUtils.generateHumanReadableByteCountString(this.pushJobZstdConfig.getSampleSize()));
-        LOGGER.debug(maxSamplesReadErrorMsg);
-        return;
-      }
-      fileSampleSize += data.length;
-      this.pushJobZstdConfig.setFilledSize(this.pushJobZstdConfig.getFilledSize() + fileSampleSize);
-    }
-
-    LOGGER.debug(
-        "Read {} to build dictionary. Reached EOF.",
-        ByteUtils.generateHumanReadableByteCountString(fileSampleSize));
   }
 
   @Override
@@ -420,13 +371,13 @@ public class DefaultInputDataInfoProvider implements InputDataInfoProvider {
         if (!pushJobSetting.useMapperToBuildDict) {
           /** If dictionary compression is enabled for version, read the records to get training samples */
           if (storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
-            loadZstdTrainingSamples(recordReader);
+            InputDataInfoProvider.loadZstdTrainingSamples(recordReader, pushJobZstdConfig);
           }
         } else {
           /** If dictionary compression is enabled for version or compression metric collection is enabled,
            * read the records to get training samples
            */
-          loadZstdTrainingSamples(recordReader);
+          InputDataInfoProvider.loadZstdTrainingSamples(recordReader, pushJobZstdConfig);
         }
       }
     }
