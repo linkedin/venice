@@ -21,7 +21,7 @@ public class PushJobZstdConfig {
    * the dictionary in such cases using minNumberOfSamples. Keeping it simple and hard coding
    * it as if this check doesn't prevent some edge cases then we can disable the feature itself
    */
-  private int minNumberOfSamples = 20;
+  private static int minNumberOfSamples = 20;
   private int collectedNumberOfSamples;
 
   public PushJobZstdConfig(VeniceProperties props, int numFiles) {

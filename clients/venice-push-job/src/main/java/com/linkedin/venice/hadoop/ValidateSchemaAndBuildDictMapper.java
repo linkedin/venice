@@ -190,8 +190,8 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
             /** check {@link PushJobZstdConfig#minNumberOfSamples} */
             MRJobCounterHelper.incrMapperZstdDictTrainSkippedCount(reporter, 1);
             LOGGER.error(
-                "Skipped creating ZSTD Dictionary as the collected number of sample: {}, is "
-                    + "less than the minimum number of required samples: {}",
+                "Training ZSTD compression dictionary skipped: The sample size is too small. "
+                    + "Collected number of samples: {}, Minimum number of required samples: {}",
                 collectedNumberOfSamples,
                 minNumberOfSamples);
             return false;
@@ -205,12 +205,11 @@ public class ValidateSchemaAndBuildDictMapper extends AbstractMapReduceTask
               compressionDictionary = ByteBuffer.wrap(inputDataInfoProvider.getZstdDictTrainSamples());
               mapperOutputRecord.put(KEY_ZSTD_COMPRESSION_DICTIONARY, compressionDictionary);
               MRJobCounterHelper.incrMapperZstdDictTrainSuccessCount(reporter, 1);
-              LOGGER.info("Zstd compression dictionary size = {} bytes", compressionDictionary.remaining());
+              LOGGER.info("ZSTD compression dictionary size = {} bytes", compressionDictionary.remaining());
             } catch (Exception e) {
               MRJobCounterHelper.incrMapperZstdDictTrainFailureCount(reporter, 1);
               LOGGER.error(
-                  "Training ZStd compression dictionary failed: Maybe the sample size is too small or "
-                      + "the content is not suitable for creating dictionary :  ",
+                  "Training ZSTD compression dictionary failed: The content might not be suitable for creating dictionary. ",
                   e);
               return false;
             }

@@ -341,7 +341,7 @@ public class TestVenicePushJobCheckpoints {
    * and the compression strategy is {@link CompressionStrategy#ZSTD_WITH_DICT}, leading to the failure captured
    * via exception and checkpoints reflecting the same.
    */
-  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Training ZStd dictionary failed.*")
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Training ZSTD compression dictionary failed.*")
   public void testHandlingFailureWithCompressionCollectionEnabledAndZstdCompression() throws Exception {
     testHandleErrorsInCounter(
         Arrays.asList(
@@ -405,7 +405,7 @@ public class TestVenicePushJobCheckpoints {
    * and the compression strategy is {@link CompressionStrategy#ZSTD_WITH_DICT}, leading to the skip captured
    * via exception and checkpoints reflecting the same.
    */
-  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Skipped creating ZSTD dictionary.*")
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Training ZSTD compression dictionary skipped.*")
   public void testHandlingSkippedWithCompressionCollectionEnabledAndZstdCompression() throws Exception {
     testHandleErrorsInCounter(
         Arrays.asList(

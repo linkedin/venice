@@ -88,7 +88,7 @@ public class TestZstdLibrary {
         runTest(1, i, 1, 1);
       } catch (Exception e) {
         if (e instanceof ZstdException && e.getMessage().equals("Src size is incorrect")) {
-          LOGGER.info("Src size is incorrect Exception thrown for {} samples", i);
+          LOGGER.info("Exception thrown for {} samples", i, e);
           numExceptions++;
         } else {
           throw e;

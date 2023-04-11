@@ -1509,30 +1509,16 @@ public class VenicePushJob implements AutoCloseable {
           }
         }
       } else if (recordsSuccessfullyProcessedCount == inputNumFiles) {
-        if (isZstdDictCreationFailure) {
+        if (isZstdDictCreationFailure || isZstdDictCreationSkipped) {
+          String err = isZstdDictCreationFailure
+              ? "Training ZSTD compression dictionary failed: The content might not be suitable for creating dictionary."
+              : "Training ZSTD compression dictionary skipped: The sample size is too small.";
           if (storeSetting.compressionStrategy != CompressionStrategy.ZSTD_WITH_DICT) {
             // Tried creating dictionary due to compressionMetricCollectionEnabled
             LOGGER.warn(
-                "Training ZStd dictionary failed: Maybe the sample size is too small or the content is not "
-                    + "suitable for creating dictionary. But as this job's configured compression type don't "
-                    + "need dictionary, the job is not stopped");
+                err + " But as this job's configured compression strategy don't need dictionary, the job is not stopped");
           } else {
             updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.ZSTD_DICTIONARY_CREATION_FAILED);
-            String err = "Training ZStd dictionary failed: Maybe the sample size is too small or the content is "
-                + "not suitable for creating dictionary.";
-            LOGGER.error(err);
-            throw new VeniceException(err);
-          }
-        } else if (isZstdDictCreationSkipped) {
-          if (storeSetting.compressionStrategy != CompressionStrategy.ZSTD_WITH_DICT) {
-            // Tried creating dictionary due to compressionMetricCollectionEnabled
-            LOGGER.warn(
-                "Skipped creating ZSTD dictionary as the sample size is too small. "
-                    + "But as this job's configured compression type don't "
-                    + "need dictionary, the job is not stopped");
-          } else {
-            updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.ZSTD_DICTIONARY_CREATION_FAILED);
-            String err = "Skipped creating ZSTD dictionary as the sample size is too small";
             LOGGER.error(err);
             throw new VeniceException(err);
           }
