@@ -268,6 +268,11 @@ public class ZkHelixAdminClient implements HelixAdminClient {
     }
   }
 
+  @Override
+  public boolean containsResource(String clusterName, String resourceName) {
+    return helixAdmin.getResourceIdealState(clusterName, resourceName) != null;
+  }
+
   /**
    * @see HelixAdminClient#dropResource(String, String)
    */
