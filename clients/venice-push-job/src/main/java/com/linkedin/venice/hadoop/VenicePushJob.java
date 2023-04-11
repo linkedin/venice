@@ -1881,10 +1881,15 @@ public class VenicePushJob implements AutoCloseable {
       pushJobDetails.totalZstdWithDictCompressedValueBytes =
           MRJobCounterHelper.getTotalZstdWithDictCompressedValueSize(runningJob.getCounters());
       LOGGER.info(
-          "pushJobDetails MR Counters: \n\ttotalNumberOfRecords: {} \n\ttotalKeyBytes: {} \n\tsize of uncompressed value: {} \n\tValue Compression Strategy: {}, \n\tsize of the final stored data in SN (can be compressed using NO_OP/GZIP/ZSTD_WITH_DICT): {} \n\tsize of the Gzip compressed data: {} \n\tsize of the Zstd with Dict compressed data: {}",
+          "pushJobDetails MR Counters: \n\tTotal number of records: {} \n\tSize of keys: {} Bytes "
+              + "\n\tsize of uncompressed value: {} Bytes \n\tConfigured value Compression Strategy: {} "
+              + "\n\tFinal data size stored in Venice (compressed using {}): {} Bytes "
+              + "\n\tData size if compressed using Gzip: {} Bytes \n\tData size if "
+              + "compressed using Zstd with Dictionary: {} Bytes",
           pushJobDetails.totalNumberOfRecords,
           pushJobDetails.totalKeyBytes,
           pushJobDetails.totalRawValueBytes,
+          CompressionStrategy.valueOf(pushJobDetails.valueCompressionStrategy).name(),
           CompressionStrategy.valueOf(pushJobDetails.valueCompressionStrategy).name(),
           pushJobDetails.totalCompressedValueBytes,
           pushJobDetails.totalGzipCompressedValueBytes,
