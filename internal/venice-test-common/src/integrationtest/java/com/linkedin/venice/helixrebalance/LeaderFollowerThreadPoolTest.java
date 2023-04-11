@@ -45,7 +45,6 @@ public class LeaderFollowerThreadPoolTest {
     int numOfController = 1;
     int numOfServers = 0;
     int numOfRouters = 1;
-
     cluster = ServiceFactory
         .getVeniceCluster(numOfController, numOfServers, numOfRouters, replicaFactor, partitionSize, false, false);
   }
@@ -100,7 +99,7 @@ public class LeaderFollowerThreadPoolTest {
    * 5.  Create another version and push data.
    * 6.  Assert that the second version cannot be completed and expect a Venice Error.
    */
-  @Test(timeOut = 120 * Time.MS_PER_SECOND)
+  @Test(timeOut = 150 * Time.MS_PER_SECOND)
   public void testLeaderFollowerSingleThreadPool() throws Exception {
     commonTestProcedures(false);
 

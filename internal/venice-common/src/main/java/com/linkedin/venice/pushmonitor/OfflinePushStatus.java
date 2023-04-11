@@ -48,7 +48,7 @@ public class OfflinePushStatus {
   /**
    * The initial status details will be overridden later, when the Helix resource is created.
    */
-  private Optional<String> statusDetails = Optional.of("Helix Resource not created.");
+  private Optional<String> statusDetails = Optional.of(HELIX_RESOURCE_NOT_CREATED);
   private List<StatusSnapshot> statusHistory;
   private String incrementalPushVersion = "";
   // Key is Partition Id (0 to n-1); value is the corresponding partition status.
@@ -57,6 +57,9 @@ public class OfflinePushStatus {
   private Map<String, String> pushProperties;
 
   private int successfulPushDurationInSecs = -1;
+
+  public static final String HELIX_RESOURCE_NOT_CREATED = "Helix Resource not created.";
+  public static final String HELIX_ASSIGNMENT_COMPLETED = "Helix assignment complete";
 
   public OfflinePushStatus(
       String kafkaTopic,
