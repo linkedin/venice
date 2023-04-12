@@ -340,7 +340,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
       int userPartition,
       String resourceName,
       PartitionerConfig partitionerConfig,
-      byte[] keyBytes) {
+      ByteBuffer keyByteBuffer) {
     if (partitionerConfig == null || partitionerConfig.getAmplificationFactor() == 1) {
       return userPartition;
     }
@@ -353,7 +353,8 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
       return PartitionUtils
           .getVenicePartitioner(partitionerConfig.getPartitionerClass(), 1, new VeniceProperties(partitionerParams));
     });
-    int subPartitionOffset = venicePartitioner.getPartitionId(keyBytes, partitionerConfig.getAmplificationFactor());
+    int subPartitionOffset =
+        venicePartitioner.getPartitionId(keyByteBuffer, partitionerConfig.getAmplificationFactor());
     int subPartition = userPartition * partitionerConfig.getAmplificationFactor() + subPartitionOffset;
     return subPartition;
   }
@@ -388,7 +389,8 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
   private ReadResponse handleSingleGetRequest(GetRouterRequest request) {
     String topic = request.getResourceName();
     PartitionerConfig partitionerConfig = getPartitionerConfig(topic);
-    int subPartition = getSubPartitionId(request.getPartition(), topic, partitionerConfig, request.getKeyBytes());
+    int subPartition =
+        getSubPartitionId(request.getPartition(), topic, partitionerConfig, ByteBuffer.wrap(request.getKeyBytes()));
     byte[] key = request.getKeyBytes();
 
     AbstractStorageEngine storageEngine = getStorageEngine(topic);
@@ -448,8 +450,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
           if (responseKeySizeList != null) {
             responseKeySizeList.set(subChunkCur, key.keyBytes.remaining());
           }
-          int subPartitionId =
-              getSubPartitionId(key.partitionId, topic, partitionerConfig, ByteUtils.extractByteArray(key.keyBytes));
+          int subPartitionId = getSubPartitionId(key.partitionId, topic, partitionerConfig, key.keyBytes);
           MultiGetResponseRecordV1 record =
               BatchGetChunkingAdapter.get(storageEngine, subPartitionId, key.keyBytes, isChunked, responseWrapper);
           if (record == null) {
@@ -507,8 +508,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     responseWrapper.setDatabaseLookupLatency(0);
     boolean isChunked = storageEngine.isChunked();
     for (MultiGetRouterRequestKeyV1 key: keys) {
-      int subPartitionId =
-          getSubPartitionId(key.partitionId, topic, partitionerConfig, ByteUtils.extractByteArray(key.keyBytes));
+      int subPartitionId = getSubPartitionId(key.partitionId, topic, partitionerConfig, key.keyBytes);
       MultiGetResponseRecordV1 record =
           BatchGetChunkingAdapter.get(storageEngine, subPartitionId, key.keyBytes, isChunked, responseWrapper);
       if (record == null) {
@@ -597,8 +597,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     VeniceCompressor compressor = compressorFactory.getCompressor(compressionStrategy, topic);
     for (ComputeRouterRequestKeyV1 key: keys) {
       clearFieldsInReusedRecord(reuseResultRecord, computeResultSchema);
-      int subPartitionId =
-          getSubPartitionId(key.partitionId, topic, partitionerConfig, ByteUtils.extractByteArray(key.keyBytes));
+      int subPartitionId = getSubPartitionId(key.partitionId, topic, partitionerConfig, key.keyBytes);
       ComputeResponseRecordV1 record = computeResult(
           storageEngine,
           storeName,
