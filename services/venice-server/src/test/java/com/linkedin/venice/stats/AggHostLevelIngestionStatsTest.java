@@ -9,7 +9,9 @@ import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.davinci.stats.HostLevelIngestionStats;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
+import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.Utils;
+import io.tehuti.TehutiException;
 import io.tehuti.metrics.MetricsRepository;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMaps;
 import java.util.Collections;
@@ -32,7 +34,8 @@ public class AggHostLevelIngestionStatsTest {
 
   @BeforeTest
   public void setUp() {
-    metricsRepository = new MetricsRepository();
+    TestMockTime time = new TestMockTime();
+    metricsRepository = new MetricsRepository(time);
     this.reporter = new MockTehutiReporter();
     metricsRepository.addReporter(reporter);
     VeniceServerConfig mockVeniceServerConfig = Mockito.mock(VeniceServerConfig.class);
@@ -42,7 +45,8 @@ public class AggHostLevelIngestionStatsTest {
         mockVeniceServerConfig,
         Collections.emptyMap(),
         mock(ReadOnlyStoreRepository.class),
-        true);
+        true,
+        time);
     fooStats = aggStats.getStoreStats(STORE_FOO);
     barStats = aggStats.getStoreStats(STORE_BAR);
 
@@ -58,6 +62,11 @@ public class AggHostLevelIngestionStatsTest {
     barStats.recordTotalBytesReadFromKafkaAsUncompressedSize(200);
     fooStats.recordDiskQuotaAllowed(100);
     fooStats.recordDiskQuotaAllowed(200);
+    fooStats.recordTotalRecordsConsumed();
+    barStats.recordTotalRecordsConsumed();
+    fooStats.recordTotalBytesConsumed(10);
+    fooStats.recordTotalBytesConsumed(30);
+    time.addMilliseconds(1000);
   }
 
   @AfterTest
@@ -73,6 +82,14 @@ public class AggHostLevelIngestionStatsTest {
     Assert.assertEquals(reporter.query("." + STORE_FOO + "--storage_quota_used.Avg").value(), 0.8);
     Assert.assertEquals(reporter.query(".total--bytes_read_from_kafka_as_uncompressed_size.Total").value(), 300d);
     Assert.assertEquals(reporter.query("." + STORE_FOO + "--global_store_disk_quota_allowed.Max").value(), 200d);
+
+    Assert.assertEquals(reporter.query(".total--records_consumed.Rate").value(), 2d);
+    Assert.assertThrows(TehutiException.class, () -> reporter.query("." + STORE_FOO + "--records_consumed.Rate"));
+    Assert.assertThrows(TehutiException.class, () -> reporter.query("." + STORE_BAR + "--records_consumed.Rate"));
+
+    Assert.assertEquals(reporter.query(".total--bytes_consumed.Rate").value(), 40d);
+    Assert.assertThrows(TehutiException.class, () -> reporter.query("." + STORE_FOO + "--bytes_consumed.Rate"));
+    Assert.assertThrows(TehutiException.class, () -> reporter.query("." + STORE_BAR + "--bytes_consumed.Rate"));
 
     aggStats.handleStoreDeleted(STORE_FOO);
     Assert.assertNull(metricsRepository.getMetric("." + STORE_FOO + "--kafka_poll_result_num.Total"));

@@ -3264,25 +3264,45 @@ public abstract class StoreIngestionTaskTest {
           throw new VeniceException(e);
         }
       };
-      verify(stats, times(0)).recordConsumerRecordsQueuePutLatency(anyDouble());
+      int wantedInvocationsForStatsWhichCanBeDisabled = 0;
+      int wantedInvocationsForAllOtherStats = 0;
+      verifyStats(stats, wantedInvocationsForStatsWhichCanBeDisabled, wantedInvocationsForAllOtherStats);
+
       produce.run();
-      verify(stats, times(1)).recordConsumerRecordsQueuePutLatency(anyDouble());
+      verifyStats(stats, ++wantedInvocationsForStatsWhichCanBeDisabled, ++wantedInvocationsForAllOtherStats);
+
       storeIngestionTaskUnderTest.disableMetricsEmission();
       produce.run();
-      verify(stats, times(1)).recordConsumerRecordsQueuePutLatency(anyDouble());
+      verifyStats(stats, wantedInvocationsForStatsWhichCanBeDisabled, ++wantedInvocationsForAllOtherStats);
+
       storeIngestionTaskUnderTest.enableMetricsEmission();
       produce.run();
-      verify(stats, times(2)).recordConsumerRecordsQueuePutLatency(anyDouble());
+      verifyStats(stats, ++wantedInvocationsForStatsWhichCanBeDisabled, ++wantedInvocationsForAllOtherStats);
 
       long currentTimeMs = System.currentTimeMillis();
       long errorMargin = 10_000;
-      verify(mockVersionedStorageIngestionStats, timeout(1000).times(3)).recordConsumedRecordEndToEndProcessingLatency(
-          anyString(),
-          anyInt(),
-          ArgumentMatchers.doubleThat(argument -> argument >= 0 && argument < 1000),
-          ArgumentMatchers
-              .longThat(argument -> argument > currentTimeMs - errorMargin && argument < currentTimeMs + errorMargin));
+      verify(mockVersionedStorageIngestionStats, timeout(1000).times(++wantedInvocationsForStatsWhichCanBeDisabled))
+          .recordConsumedRecordEndToEndProcessingLatency(
+              anyString(),
+              anyInt(),
+              ArgumentMatchers.doubleThat(argument -> argument >= 0 && argument < 1000),
+              ArgumentMatchers.longThat(
+                  argument -> argument > currentTimeMs - errorMargin && argument < currentTimeMs + errorMargin));
     }, activeActiveEnabled);
+  }
+
+  private void verifyStats(
+      HostLevelIngestionStats stats,
+      int wantedInvocationsForStatsWhichCanBeDisabled,
+      int wantedInvocationsForAllOtherStats) {
+    verify(stats, times(wantedInvocationsForStatsWhichCanBeDisabled)).recordConsumerRecordsQueuePutLatency(anyDouble());
+    verify(stats, timeout(1000).times(wantedInvocationsForAllOtherStats)).recordTotalRecordsConsumed();
+    verify(stats, timeout(1000).times(wantedInvocationsForAllOtherStats)).recordTotalBytesConsumed(anyLong());
+    verify(mockVersionedStorageIngestionStats, timeout(1000).times(wantedInvocationsForAllOtherStats))
+        .recordRecordsConsumed(anyString(), anyInt());
+    verify(mockVersionedStorageIngestionStats, timeout(1000).times(wantedInvocationsForAllOtherStats))
+        .recordBytesConsumed(anyString(), anyInt(), anyLong());
+
   }
 
   @Test
