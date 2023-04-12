@@ -5,6 +5,7 @@ import static com.linkedin.venice.stats.StatsErrorCode.INACTIVE_STORE_INGESTION_
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.kafka.consumer.PartitionConsumptionState;
 import com.linkedin.davinci.kafka.consumer.StoreIngestionTask;
+import com.linkedin.venice.stats.LongAdderRateGauge;
 import com.linkedin.venice.utils.RegionUtils;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;

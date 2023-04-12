@@ -1,5 +1,6 @@
 package com.linkedin.venice.stats;
 
+import io.tehuti.Metric;
 import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
@@ -56,6 +57,18 @@ public class AbstractVeniceStatsTest {
     stats.registerSensor("foo", new Gauge(() -> 1.0));
     Assert.assertEquals(metricsRepository.metrics().size(), 1);
     Assert.assertEquals(metricsRepository.getMetric(".myMetric--foo.Gauge").value(), 1.0);
+
+    Sensor percentileSensor = stats.registerSensor("bar", TehutiUtils.getPercentileStat(".myMetric--bar"));
+    Assert.assertEquals(metricsRepository.metrics().size(), 4);
+    Metric percentileMetric = metricsRepository.getMetric(".myMetric--bar.50thPercentile");
+    Assert.assertNotNull(percentileMetric);
+    Assert.assertEquals(percentileMetric.value(), Double.NaN);
+    percentileSensor.record(10.0);
+    Assert.assertEquals(percentileMetric.value(), 10.0, 0.1);
+
+    stats.registerSensor("baz", new LongAdderRateGauge());
+    Assert.assertEquals(metricsRepository.metrics().size(), 5);
+    Assert.assertEquals(metricsRepository.getMetric(".myMetric--baz.Rate").value(), 0.0);
   }
 
   @Test

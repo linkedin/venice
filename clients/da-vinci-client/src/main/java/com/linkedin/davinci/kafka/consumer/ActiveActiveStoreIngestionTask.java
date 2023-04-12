@@ -144,7 +144,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       int subPartition,
       String kafkaUrl,
       int kafkaClusterId,
-      long beforeProcessingRecordTimestampNs) {
+      long beforeProcessingRecordTimestampNs,
+      long currentTimeForMetricsMs) {
     if (!consumerRecord.getTopicPartition().getPubSubTopic().isRealTime()) {
       /**
        * We don't need to lock the partition here because during VT consumption there is only one consumption source.
@@ -154,7 +155,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           subPartition,
           kafkaUrl,
           kafkaClusterId,
-          beforeProcessingRecordTimestampNs);
+          beforeProcessingRecordTimestampNs,
+          currentTimeForMetricsMs);
     } else {
       /**
        * The below flow must be executed in a critical session for the same key:
@@ -176,7 +178,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             subPartition,
             kafkaUrl,
             kafkaClusterId,
-            beforeProcessingRecordTimestampNs);
+            beforeProcessingRecordTimestampNs,
+            currentTimeForMetricsMs);
       } finally {
         keyLevelLock.unlock();
         this.keyLevelLocksManager.get().releaseLock(byteArrayKey);
@@ -291,28 +294,31 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   RmdWithValueSchemaId getReplicationMetadataAndSchemaId(
       PartitionConsumptionState partitionConsumptionState,
       byte[] key,
-      int subPartition) {
+      int subPartition,
+      long currentTimeForMetricsMs) {
     PartitionConsumptionState.TransientRecord cachedRecord = partitionConsumptionState.getTransientRecord(key);
     if (cachedRecord != null) {
-      getHostLevelIngestionStats().recordIngestionReplicationMetadataCacheHitCount();
+      getHostLevelIngestionStats().recordIngestionReplicationMetadataCacheHitCount(currentTimeForMetricsMs);
       return new RmdWithValueSchemaId(
           cachedRecord.getValueSchemaId(),
           getRmdProtocolVersionID(),
           cachedRecord.getReplicationMetadataRecord());
     }
-    byte[] replicationMetadataWithValueSchemaBytes = getRmdWithValueSchemaByteBufferFromStorage(subPartition, key);
+    byte[] replicationMetadataWithValueSchemaBytes =
+        getRmdWithValueSchemaByteBufferFromStorage(subPartition, key, currentTimeForMetricsMs);
     if (replicationMetadataWithValueSchemaBytes == null) {
       return null; // No RMD for this key
     }
     return rmdSerDe.deserializeValueSchemaIdPrependedRmdBytes(replicationMetadataWithValueSchemaBytes);
   }
 
-  byte[] getRmdWithValueSchemaByteBufferFromStorage(int subPartition, byte[] key) {
+  byte[] getRmdWithValueSchemaByteBufferFromStorage(int subPartition, byte[] key, long currentTimeForMetricsMs) {
     final long lookupStartTimeInNS = System.nanoTime();
     ValueRecord result =
         SingleGetChunkingAdapter.getReplicationMetadata(getStorageEngine(), subPartition, key, isChunked(), null);
-    getHostLevelIngestionStats()
-        .recordIngestionReplicationMetadataLookUpLatency(LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
+    getHostLevelIngestionStats().recordIngestionReplicationMetadataLookUpLatency(
+        LatencyUtils.getLatencyInMS(lookupStartTimeInNS),
+        currentTimeForMetricsMs);
     if (result == null) {
       return null;
     }
@@ -327,7 +333,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       int subPartition,
       String kafkaUrl,
       int kafkaClusterId,
-      long beforeProcessingRecordTimestamp) {
+      long beforeProcessingRecordTimestampNs,
+      long currentTimeForMetricsMs) {
     /**
      * With {@link com.linkedin.davinci.replication.BatchConflictResolutionPolicy.BATCH_WRITE_LOSES} there is no need
      * to perform DCR before EOP and L/F DIV passthrough mode should be used. If the version is going through data
@@ -342,7 +349,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           subPartition,
           kafkaUrl,
           kafkaClusterId,
-          beforeProcessingRecordTimestamp);
+          beforeProcessingRecordTimestampNs,
+          currentTimeForMetricsMs);
       return;
     }
     KafkaKey kafkaKey = consumerRecord.getKey();
@@ -371,11 +379,15 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
             consumerTaskId + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
     }
 
-    Lazy<ByteBuffer> oldValueProvider =
-        Lazy.of(() -> getValueBytesForKey(partitionConsumptionState, keyBytes, consumerRecord.getTopicPartition()));
+    Lazy<ByteBuffer> oldValueProvider = Lazy.of(
+        () -> getValueBytesForKey(
+            partitionConsumptionState,
+            keyBytes,
+            consumerRecord.getTopicPartition(),
+            currentTimeForMetricsMs));
 
     final RmdWithValueSchemaId rmdWithValueSchemaID =
-        getReplicationMetadataAndSchemaId(partitionConsumptionState, keyBytes, subPartition);
+        getReplicationMetadataAndSchemaId(partitionConsumptionState, keyBytes, subPartition, currentTimeForMetricsMs);
 
     final long writeTimestamp = getWriteTimestampFromKME(kafkaValue);
     final long offsetSumPreOperation =
@@ -435,8 +447,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
     aggVersionedIngestionStats.recordConsumedRecordEndToEndProcessingLatency(
         storeName,
         versionNumber,
-        LatencyUtils.getLatencyInMS(beforeProcessingRecordTimestamp),
-        System.currentTimeMillis());
+        LatencyUtils.getLatencyInMS(beforeProcessingRecordTimestampNs),
+        currentTimeForMetricsMs);
 
     if (mergeConflictResult.isUpdateIgnored()) {
       hostLevelIngestionStats.recordUpdateIgnoredDCR();
@@ -474,7 +486,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           subPartition,
           kafkaUrl,
           kafkaClusterId,
-          beforeProcessingRecordTimestamp);
+          beforeProcessingRecordTimestampNs);
     }
   }
 
@@ -532,7 +544,8 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
   private ByteBuffer getValueBytesForKey(
       PartitionConsumptionState partitionConsumptionState,
       byte[] key,
-      PubSubTopicPartition topicPartition) {
+      PubSubTopicPartition topicPartition,
+      long currentTimeForMetricsMs) {
     ByteBuffer originalValue = null;
     // Find the existing value. If a value for this key is found from the transient map then use that value, otherwise
     // get it from DB.
@@ -556,9 +569,11 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           schemaRepository,
           storeName,
           compressor.get());
-      hostLevelIngestionStats.recordIngestionValueBytesLookUpLatency(LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
+      hostLevelIngestionStats.recordIngestionValueBytesLookUpLatency(
+          LatencyUtils.getLatencyInMS(lookupStartTimeInNS),
+          currentTimeForMetricsMs);
     } else {
-      hostLevelIngestionStats.recordIngestionValueBytesCacheHitCount();
+      hostLevelIngestionStats.recordIngestionValueBytesCacheHitCount(currentTimeForMetricsMs);
       // construct originalValue from this transient record only if it's not null.
       if (transientRecord.getValue() != null) {
         originalValue = ByteBuffer
@@ -589,7 +604,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       int subPartition,
       String kafkaUrl,
       int kafkaClusterId,
-      long beforeProcessingRecordTimestamp) {
+      long beforeProcessingRecordTimestampNs) {
 
     final ByteBuffer updatedValueBytes = maybeCompressData(
         consumerRecord.getTopicPartition().getPartitionNumber(),
@@ -628,7 +643,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           subPartition,
           kafkaUrl,
           kafkaClusterId,
-          beforeProcessingRecordTimestamp);
+          beforeProcessingRecordTimestampNs);
     } else {
       int valueLen = updatedValueBytes.remaining();
       partitionConsumptionState.setTransientRecord(
@@ -669,7 +684,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
           subPartition,
           kafkaUrl,
           kafkaClusterId,
-          beforeProcessingRecordTimestamp);
+          beforeProcessingRecordTimestampNs);
     }
   }
 
@@ -682,7 +697,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       int subPartition,
       String kafkaUrl,
       int kafkaClusterId,
-      long beforeProcessingRecordTimestamp) {
+      long beforeProcessingRecordTimestampNs) {
     super.produceToLocalKafka(
         consumerRecord,
         partitionConsumptionState,
@@ -691,7 +706,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         subPartition,
         kafkaUrl,
         kafkaClusterId,
-        beforeProcessingRecordTimestamp);
+        beforeProcessingRecordTimestampNs);
     // Update the partition consumption state to say that we've transmitted the message to kafka (but haven't
     // necessarily received an ack back yet).
     if (partitionConsumptionState.getLeaderFollowerState() == LEADER && partitionConsumptionState.isHybrid()
@@ -1366,7 +1381,7 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
       LeaderProducedRecordContext leaderProducedRecordContext,
       int subPartition,
       String kafkaUrl,
-      long beforeProcessingRecordTimestamp) {
+      long beforeProcessingRecordTimestampNs) {
     return new ActiveActiveProducerCallback(
         this,
         consumerRecord,
@@ -1374,6 +1389,6 @@ public class ActiveActiveStoreIngestionTask extends LeaderFollowerStoreIngestion
         leaderProducedRecordContext,
         subPartition,
         kafkaUrl,
-        beforeProcessingRecordTimestamp);
+        beforeProcessingRecordTimestampNs);
   }
 }

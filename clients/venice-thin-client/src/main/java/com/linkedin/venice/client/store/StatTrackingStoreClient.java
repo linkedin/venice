@@ -362,4 +362,9 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
     }
     throw new VeniceClientException(throwable);
   }
+
+  @Override
+  public String toString() {
+    return this.getClass().getSimpleName() + "(storeName: " + getStoreName() + ")";
+  }
 }
