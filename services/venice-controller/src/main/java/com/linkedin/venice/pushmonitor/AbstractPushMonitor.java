@@ -5,11 +5,14 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.END_OF_INCREMENTAL
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.ERROR;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.NOT_CREATED;
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED;
+import static com.linkedin.venice.pushmonitor.OfflinePushStatus.HELIX_ASSIGNMENT_COMPLETED;
+import static com.linkedin.venice.pushmonitor.OfflinePushStatus.HELIX_RESOURCE_NOT_CREATED;
 
 import com.linkedin.venice.controller.HelixAdminClient;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
+import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -39,6 +42,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -75,6 +79,7 @@ public abstract class AbstractPushMonitor
   private final HelixAdminClient helixAdminClient;
   private final EventThrottler helixClientThrottler;
   private final boolean disableErrorLeaderReplica;
+  private final long offlineJobResourceAssignmentWaitTimeInMilliseconds;
 
   public AbstractPushMonitor(
       String clusterName,
@@ -88,7 +93,8 @@ public abstract class AbstractPushMonitor
       String aggregateRealTimeSourceKafkaUrl,
       List<String> activeActiveRealTimeSourceKafkaURLs,
       HelixAdminClient helixAdminClient,
-      boolean disableErrorLeaderReplica) {
+      boolean disableErrorLeaderReplica,
+      long offlineJobResourceAssignmentWaitTimeInMilliseconds) {
     this.clusterName = clusterName;
     this.offlinePushAccessor = offlinePushAccessor;
     this.storeCleaner = storeCleaner;
@@ -103,6 +109,7 @@ public abstract class AbstractPushMonitor
     this.disableErrorLeaderReplica = disableErrorLeaderReplica;
     this.helixClientThrottler =
         new EventThrottler(10, "push_monitor_helix_client_throttler", false, EventThrottler.BLOCK_STRATEGY);
+    this.offlineJobResourceAssignmentWaitTimeInMilliseconds = offlineJobResourceAssignmentWaitTimeInMilliseconds;
   }
 
   @Override
@@ -468,7 +475,44 @@ public abstract class AbstractPushMonitor
     if (pushStatus == null) {
       return new Pair<>(ExecutionStatus.NOT_CREATED, "Offline job hasn't been created yet.");
     }
-    return new Pair<>(pushStatus.getCurrentStatus(), pushStatus.getStatusDetails());
+    ExecutionStatus currentPushStatus = pushStatus.getCurrentStatus();
+    if (currentPushStatus.equals(ExecutionStatus.NOT_STARTED) || currentPushStatus.equals(ExecutionStatus.STARTED)) {
+      // Check whether resource assignment has completed; if yes, continue; if no:
+      // 1. if the push duration hasn't passed the resource assignment wait timeout, log the current status
+      // 2. if the duration has passed the wait timeout, terminate the push
+      final ResourceAssignment resourceAssignment = routingDataRepository.getResourceAssignment();
+      final OfflinePushStrategy strategy = pushStatus.getStrategy();
+      final int replicationFactor = pushStatus.getReplicationFactor();
+      final PushStatusDecider statusDecider = PushStatusDecider.getDecider(strategy);
+      Optional<String> notReadyReason =
+          statusDecider.hasEnoughNodesToStartPush(topic, replicationFactor, resourceAssignment, Optional.empty());
+      if (notReadyReason.isPresent()) {
+        final long elapsedTimeInSec = getDurationInSec(pushStatus);
+        if (elapsedTimeInSec < TimeUnit.MILLISECONDS.toSeconds(offlineJobResourceAssignmentWaitTimeInMilliseconds)) {
+          LOGGER.info(
+              "After waiting for " + elapsedTimeInSec + " seconds, resource assignment for: " + topic
+                  + " is still not complete, strategy=" + strategy.toString() + ", replicationFactor="
+                  + replicationFactor + ", reason=" + notReadyReason.get());
+        } else {
+          // early termination
+          // Time out, after waiting maxWaitTimeMs, there are not enough nodes assigned.
+          recordPushPreparationDuration(topic, elapsedTimeInSec);
+          String errorMsg = "After waiting for " + elapsedTimeInSec + " seconds, resource assignment for: " + topic
+              + " timed out, strategy=" + strategy.toString() + ", replicationFactor=" + replicationFactor + ", reason="
+              + notReadyReason.get();
+          handleErrorPush(pushStatus, errorMsg);
+          return new Pair<>(ExecutionStatus.ERROR, errorMsg);
+        }
+      } else {
+        // Update the status details if this is the first time finding out Helix assignment completes
+        Optional<String> statusDetails = pushStatus.getOptionalStatusDetails();
+        if (statusDetails.isPresent() && Objects.equals(statusDetails.get(), HELIX_RESOURCE_NOT_CREATED)) {
+          refreshAndUpdatePushStatus(topic, ExecutionStatus.STARTED, Optional.of(HELIX_ASSIGNMENT_COMPLETED));
+          recordPushPreparationDuration(topic, getDurationInSec(pushStatus));
+        }
+      }
+    }
+    return new Pair<>(currentPushStatus, pushStatus.getStatusDetails());
   }
 
   @Override

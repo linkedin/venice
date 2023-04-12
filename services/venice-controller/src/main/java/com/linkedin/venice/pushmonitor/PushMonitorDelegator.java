@@ -55,7 +55,8 @@ public class PushMonitorDelegator implements PushMonitor {
       String aggregateRealTimeSourceKafkaUrl,
       List<String> activeActiveRealTimeSourceKafkaURLs,
       HelixAdminClient helixAdminClient,
-      boolean disableErrorLeaderReplica) {
+      boolean disableErrorLeaderReplica,
+      long offlineJobResourceAssignmentWaitTimeInMilliseconds) {
     this.clusterName = clusterName;
     this.metadataRepository = metadataRepository;
     this.offlinePushAccessor = offlinePushAccessor;
@@ -72,7 +73,8 @@ public class PushMonitorDelegator implements PushMonitor {
         aggregateRealTimeSourceKafkaUrl,
         activeActiveRealTimeSourceKafkaURLs,
         helixAdminClient,
-        disableErrorLeaderReplica);
+        disableErrorLeaderReplica,
+        offlineJobResourceAssignmentWaitTimeInMilliseconds);
     this.clusterLockManager = clusterLockManager;
 
     this.topicToPushMonitorMap = new VeniceConcurrentHashMap<>();
