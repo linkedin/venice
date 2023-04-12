@@ -336,15 +336,8 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     }
   }
 
-  private int getSubPartitionId(
-      int userPartition,
-      String resourceName,
-      PartitionerConfig partitionerConfig,
-      ByteBuffer keyByteBuffer) {
-    if (partitionerConfig == null || partitionerConfig.getAmplificationFactor() == 1) {
-      return userPartition;
-    }
-    VenicePartitioner venicePartitioner = resourceToPartitionerMap.computeIfAbsent(resourceName, k -> {
+  private VenicePartitioner getPartitioner(String resourceName, PartitionerConfig partitionerConfig) {
+    return resourceToPartitionerMap.computeIfAbsent(resourceName, k -> {
       Properties partitionerParams = new Properties();
       if (partitionerConfig.getPartitionerParams() != null) {
         partitionerParams.putAll(partitionerConfig.getPartitionerParams());
@@ -353,10 +346,33 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
       return PartitionUtils
           .getVenicePartitioner(partitionerConfig.getPartitionerClass(), 1, new VeniceProperties(partitionerParams));
     });
+  }
+
+  private int getSubPartitionId(
+      int userPartition,
+      String resourceName,
+      PartitionerConfig partitionerConfig,
+      byte[] keyBytes) {
+    if (partitionerConfig == null || partitionerConfig.getAmplificationFactor() == 1) {
+      return userPartition;
+    }
+    VenicePartitioner venicePartitioner = getPartitioner(resourceName, partitionerConfig);
+    int subPartitionOffset = venicePartitioner.getPartitionId(keyBytes, partitionerConfig.getAmplificationFactor());
+    return userPartition * partitionerConfig.getAmplificationFactor() + subPartitionOffset;
+  }
+
+  private int getSubPartitionId(
+      int userPartition,
+      String resourceName,
+      PartitionerConfig partitionerConfig,
+      ByteBuffer keyByteBuffer) {
+    if (partitionerConfig == null || partitionerConfig.getAmplificationFactor() == 1) {
+      return userPartition;
+    }
+    VenicePartitioner venicePartitioner = getPartitioner(resourceName, partitionerConfig);
     int subPartitionOffset =
         venicePartitioner.getPartitionId(keyByteBuffer, partitionerConfig.getAmplificationFactor());
-    int subPartition = userPartition * partitionerConfig.getAmplificationFactor() + subPartitionOffset;
-    return subPartition;
+    return userPartition * partitionerConfig.getAmplificationFactor() + subPartitionOffset;
   }
 
   private PartitionerConfig getPartitionerConfig(String resourceName) {
@@ -389,8 +405,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
   private ReadResponse handleSingleGetRequest(GetRouterRequest request) {
     String topic = request.getResourceName();
     PartitionerConfig partitionerConfig = getPartitionerConfig(topic);
-    int subPartition =
-        getSubPartitionId(request.getPartition(), topic, partitionerConfig, ByteBuffer.wrap(request.getKeyBytes()));
+    int subPartition = getSubPartitionId(request.getPartition(), topic, partitionerConfig, request.getKeyBytes());
     byte[] key = request.getKeyBytes();
 
     AbstractStorageEngine storageEngine = getStorageEngine(topic);
