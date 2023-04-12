@@ -16,6 +16,7 @@ if cur_version.major < 3 or (cur_version.major == 3 and cur_version.minor < 6):
     raise Exception(f'This script requires at least python 3.6, using {cur_version.major}.{cur_version.minor}')
 
 
+
 @click.command()
 @click.option('--bump-major', is_flag=True)
 @click.option('--bump-minor', is_flag=True)
