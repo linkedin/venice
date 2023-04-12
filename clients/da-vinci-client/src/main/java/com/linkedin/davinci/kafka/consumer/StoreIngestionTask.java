@@ -1916,7 +1916,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     /*
      * Report ingestion throughput metric based on the store version
      */
-    if (recordSize != 0) { // skip control messages
+    if (!record.getKey().isControlMessage()) { // skip control messages
       versionedIngestionStats.recordBytesConsumed(storeName, versionNumber, recordSize);
       versionedIngestionStats.recordRecordsConsumed(storeName, versionNumber);
 
