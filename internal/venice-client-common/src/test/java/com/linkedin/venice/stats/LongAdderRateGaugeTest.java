@@ -17,51 +17,38 @@ public class LongAdderRateGaugeTest {
   private static final TestMockTime TIME = new TestMockTime();
   private static final MetricConfig METRIC_CONFIG = new MetricConfig();
 
-  static class RateExtractor1 implements Function<LongAdderRateGauge, Double> {
+  static class ObjectWithToString {
+    @Override
+    public String toString() {
+      return this.getClass().getSimpleName();
+    }
+  }
+
+  static class RateExtractor1 extends ObjectWithToString implements Function<LongAdderRateGauge, Double> {
     @Override
     public Double apply(LongAdderRateGauge longAdderRateGauge) {
       return longAdderRateGauge.getRate();
     }
-
-    @Override
-    public String toString() {
-      return this.getClass().getSimpleName();
-    }
   }
 
-  static class RateExtractor2 implements Function<LongAdderRateGauge, Double> {
+  static class RateExtractor2 extends ObjectWithToString implements Function<LongAdderRateGauge, Double> {
     @Override
     public Double apply(LongAdderRateGauge longAdderRateGauge) {
       return longAdderRateGauge.measure(METRIC_CONFIG, TIME.getMilliseconds());
     }
-
-    @Override
-    public String toString() {
-      return this.getClass().getSimpleName();
-    }
   }
 
-  static class RateRecorder1 implements Consumer<LongAdderRateGauge> {
+  static class RateRecorder1 extends ObjectWithToString implements Consumer<LongAdderRateGauge> {
     @Override
     public void accept(LongAdderRateGauge longAdderRateGauge) {
       longAdderRateGauge.record();
     }
-
-    @Override
-    public String toString() {
-      return this.getClass().getSimpleName();
-    }
   }
 
-  static class RateRecorder2 implements Consumer<LongAdderRateGauge> {
+  static class RateRecorder2 extends ObjectWithToString implements Consumer<LongAdderRateGauge> {
     @Override
     public void accept(LongAdderRateGauge longAdderRateGauge) {
       longAdderRateGauge.record(1);
-    }
-
-    @Override
-    public String toString() {
-      return this.getClass().getSimpleName();
     }
   }
 

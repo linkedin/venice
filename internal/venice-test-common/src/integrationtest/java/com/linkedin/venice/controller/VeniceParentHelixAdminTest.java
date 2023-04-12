@@ -540,22 +540,22 @@ public class VeniceParentHelixAdminTest {
 
   @DataProvider(name = "CONTROLLER_SSL_SUPERSET_SCHEMA_GENERATOR")
   public static Object[][] controllerSSLAndSupersetSchemaGenerator() {
-    return new Object[][] { new Object[] { true, Optional.of(new SupersetSchemaGeneratorWithCustomProp("test_prop")) },
-        new Object[] { false, Optional.empty() } };
+    return new Object[][] { new Object[] { true, new SupersetSchemaGeneratorWithCustomProp("test_prop") },
+        new Object[] { false, null } };
   }
 
   @Test(dataProvider = "CONTROLLER_SSL_SUPERSET_SCHEMA_GENERATOR", timeOut = DEFAULT_TEST_TIMEOUT_MS * 10)
   public void testStoreMetaDataUpdateFromParentToChildController(
       boolean isControllerSslEnabled,
-      Optional<SupersetSchemaGenerator> supersetSchemaGenerator) throws IOException {
+      SupersetSchemaGenerator supersetSchemaGenerator) throws IOException {
     String clusterName = Utils.getUniqueString("testStoreMetadataUpdate");
     Properties properties = new Properties();
     // This cluster setup don't have server, we cannot perform push here.
     properties.setProperty(CONTROLLER_AUTO_MATERIALIZE_META_SYSTEM_STORE, String.valueOf(false));
     properties.setProperty(CONTROLLER_AUTO_MATERIALIZE_DAVINCI_PUSH_STATUS_SYSTEM_STORE, String.valueOf(false));
-    if (supersetSchemaGenerator.isPresent()) {
+    if (supersetSchemaGenerator != null) {
       properties.setProperty(CONTROLLER_PARENT_EXTERNAL_SUPERSET_SCHEMA_GENERATION_ENABLED, String.valueOf(true));
-      properties.put(VeniceControllerWrapper.SUPERSET_SCHEMA_GENERATOR, supersetSchemaGenerator.get());
+      properties.put(VeniceControllerWrapper.SUPERSET_SCHEMA_GENERATOR, supersetSchemaGenerator);
     }
 
     try (ZkServerWrapper zkServer = ServiceFactory.getZkServer();
