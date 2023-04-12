@@ -868,7 +868,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       LeaderProducedRecordContext leaderProducedRecordContext,
       int subPartition,
       String kafkaUrl,
-      long beforeProcessingRecordTimestamp) throws InterruptedException {
+      long beforeProcessingRecordTimestampNs,
+      long currentTimeForMetricsMs) throws InterruptedException {
     boolean measureTime = emitMetrics.get();
     long queuePutStartTimeInNS = measureTime ? System.nanoTime() : 0;
     storeBufferService.putConsumerRecord(
@@ -877,10 +878,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         leaderProducedRecordContext,
         subPartition,
         kafkaUrl,
-        beforeProcessingRecordTimestamp); // blocking call
+        beforeProcessingRecordTimestampNs); // blocking call
 
     if (measureTime) {
-      hostLevelIngestionStats.recordConsumerRecordsQueuePutLatency(LatencyUtils.getLatencyInMS(queuePutStartTimeInNS));
+      hostLevelIngestionStats.recordConsumerRecordsQueuePutLatency(
+          LatencyUtils.getLatencyInMS(queuePutStartTimeInNS),
+          currentTimeForMetricsMs);
     }
   }
 
@@ -902,6 +905,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     double elapsedTimeForPuttingIntoQueue = 0;
     int subPartition = PartitionUtils.getSubPartition(topicPartition, amplificationFactor);
     boolean metricsEnabled = emitMetrics.get();
+    long currentTimeForMetricsMs = System.currentTimeMillis();
     for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record: records) {
       long beforeProcessingRecordTimestampNs = System.nanoTime();
       if (!shouldProcessRecord(record, subPartition)) {
@@ -935,8 +939,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       waitReadyToProcessRecord(record);
       // This function may modify the original record in KME and it is unsafe to use the payload from KME directly after
       // this call.
-      DelegateConsumerRecordResult delegateConsumerRecordResult =
-          delegateConsumerRecord(record, subPartition, kafkaUrl, kafkaClusterId, beforeProcessingRecordTimestampNs);
+      DelegateConsumerRecordResult delegateConsumerRecordResult = delegateConsumerRecord(
+          record,
+          subPartition,
+          kafkaUrl,
+          kafkaClusterId,
+          beforeProcessingRecordTimestampNs,
+          currentTimeForMetricsMs);
       switch (delegateConsumerRecordResult) {
         case QUEUED_TO_DRAINER:
           long queuePutStartTimeInNS = metricsEnabled ? System.nanoTime() : 0;
@@ -961,7 +970,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // Update the latest message consumption time
       PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(subPartition);
       if (partitionConsumptionState != null) {
-        partitionConsumptionState.setLatestMessageConsumptionTimestampInMs(System.currentTimeMillis());
+        partitionConsumptionState.setLatestMessageConsumptionTimestampInMs(currentTimeForMetricsMs);
       }
     }
 
@@ -975,10 +984,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         hostLevelIngestionStats.recordTotalBytesReadFromKafkaAsUncompressedSize(totalBytesRead);
       }
       if (elapsedTimeForPuttingIntoQueue > 0) {
-        hostLevelIngestionStats.recordConsumerRecordsQueuePutLatency(elapsedTimeForPuttingIntoQueue);
+        hostLevelIngestionStats
+            .recordConsumerRecordsQueuePutLatency(elapsedTimeForPuttingIntoQueue, currentTimeForMetricsMs);
       }
 
-      hostLevelIngestionStats.recordStorageQuotaUsed(storageUtilizationManager.getDiskQuotaUsage());
+      hostLevelIngestionStats
+          .recordStorageQuotaUsed(storageUtilizationManager.getDiskQuotaUsage(), currentTimeForMetricsMs);
     }
   }
 
@@ -1113,8 +1124,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private void recordQuotaMetrics(Store store) {
     if (emitMetrics.get()) {
       long currentQuota = store.getStorageQuotaInByte();
-      hostLevelIngestionStats.recordDiskQuotaAllowed(currentQuota);
-      hostLevelIngestionStats.recordStorageQuotaUsed(storageUtilizationManager.getDiskQuotaUsage());
+      long currentTimeForMetricsMs = System.currentTimeMillis();
+      hostLevelIngestionStats.recordDiskQuotaAllowed(currentQuota, currentTimeForMetricsMs);
+      hostLevelIngestionStats
+          .recordStorageQuotaUsed(storageUtilizationManager.getDiskQuotaUsage(), currentTimeForMetricsMs);
     }
   }
 
@@ -2833,8 +2846,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     if (emitMetrics.get()) {
-      hostLevelIngestionStats.recordKeySize(keyLen);
-      hostLevelIngestionStats.recordValueSize(valueLen);
+      hostLevelIngestionStats.recordKeySize(keyLen, currentTimeMs);
+      hostLevelIngestionStats.recordValueSize(valueLen, currentTimeMs);
     }
 
     return keyLen + valueLen;
@@ -3278,10 +3291,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int subPartition,
       String kafkaUrl,
       int kafkaClusterId,
-      long beforeProcessingRecordTimestamp);
+      long beforeProcessingRecordTimestampNs,
+      long currentTimeForMetricsMs);
 
   /**
-   * This enum represents all potential results after calling {@link #delegateConsumerRecord(PubSubMessage, int, String, int, long)}.
+   * This enum represents all potential results after calling {@link #delegateConsumerRecord(PubSubMessage, int, String, int, long, long)}.
    */
   protected enum DelegateConsumerRecordResult {
     /**

@@ -78,6 +78,7 @@ import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionUtils;
+import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.locks.AutoCloseableLock;
@@ -369,7 +370,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         serverConfig,
         topicNameToIngestionTaskMap,
         metadataRepo,
-        serverConfig.isUnregisterMetricForDeletedStoreEnabled());
+        serverConfig.isUnregisterMetricForDeletedStoreEnabled(),
+        SystemTime.INSTANCE);
     AggVersionedDIVStats versionedDIVStats = new AggVersionedDIVStats(
         metricsRepository,
         metadataRepo,

@@ -6,6 +6,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.stats.AbstractVeniceAggStoreStats;
 import com.linkedin.venice.stats.StatsSupplier;
+import com.linkedin.venice.utils.Time;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
 
@@ -19,10 +20,11 @@ public class AggHostLevelIngestionStats extends AbstractVeniceAggStoreStats<Host
       VeniceServerConfig serverConfig,
       Map<String, StoreIngestionTask> ingestionTaskMap,
       ReadOnlyStoreRepository metadataRepository,
-      boolean unregisterMetricForDeletedStoreEnabled) {
+      boolean unregisterMetricForDeletedStoreEnabled,
+      Time time) {
     super(
         metricsRepository,
-        new HostLevelStoreIngestionStatsSupplier(serverConfig, ingestionTaskMap),
+        new HostLevelStoreIngestionStatsSupplier(serverConfig, ingestionTaskMap, time),
         metadataRepository,
         unregisterMetricForDeletedStoreEnabled);
   }
@@ -30,12 +32,15 @@ public class AggHostLevelIngestionStats extends AbstractVeniceAggStoreStats<Host
   static class HostLevelStoreIngestionStatsSupplier implements StatsSupplier<HostLevelIngestionStats> {
     private final VeniceServerConfig serverConfig;
     private final Map<String, StoreIngestionTask> ingestionTaskMap;
+    private final Time time;
 
     HostLevelStoreIngestionStatsSupplier(
         VeniceServerConfig serverConfig,
-        Map<String, StoreIngestionTask> ingestionTaskMap) {
+        Map<String, StoreIngestionTask> ingestionTaskMap,
+        Time time) {
       this.serverConfig = serverConfig;
       this.ingestionTaskMap = ingestionTaskMap;
+      this.time = time;
     }
 
     @Override
@@ -48,7 +53,13 @@ public class AggHostLevelIngestionStats extends AbstractVeniceAggStoreStats<Host
         MetricsRepository metricsRepository,
         String storeName,
         HostLevelIngestionStats totalStats) {
-      return new HostLevelIngestionStats(metricsRepository, serverConfig, storeName, totalStats, ingestionTaskMap);
+      return new HostLevelIngestionStats(
+          metricsRepository,
+          serverConfig,
+          storeName,
+          totalStats,
+          ingestionTaskMap,
+          time);
     }
   }
 }
