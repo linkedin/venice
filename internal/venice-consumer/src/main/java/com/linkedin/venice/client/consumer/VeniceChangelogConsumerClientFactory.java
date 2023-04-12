@@ -25,14 +25,14 @@ public class VeniceChangelogConsumerClientFactory {
 
   private KafkaConsumer consumer;
 
-  protected ViewClassGetter defaultViewClassGetter;
+  protected ViewClassGetter viewClassGetter;
 
   public VeniceChangelogConsumerClientFactory(
       ChangelogClientConfig globalChangelogClientConfig,
       MetricsRepository metricsRepository) {
     this.globalChangelogClientConfig = globalChangelogClientConfig;
     this.metricsRepository = metricsRepository;
-    this.defaultViewClassGetter = getDefaultViewClassGetter();
+    this.viewClassGetter = getDefaultViewClassGetter();
   }
 
   protected void setD2ControllerClient(D2ControllerClient d2ControllerClient) {
@@ -96,7 +96,7 @@ public class VeniceChangelogConsumerClientFactory {
   }
 
   private String getViewClass(String storeName, String viewName, D2ControllerClient d2ControllerClient, int retries) {
-    return this.defaultViewClassGetter.apply(storeName, viewName, d2ControllerClient, retries);
+    return this.viewClassGetter.apply(storeName, viewName, d2ControllerClient, retries);
   }
 
   private ViewClassGetter getDefaultViewClassGetter() {
@@ -118,7 +118,7 @@ public class VeniceChangelogConsumerClientFactory {
   }
 
   protected void setViewClassGetter(ViewClassGetter viewClassGetter) {
-    this.defaultViewClassGetter = viewClassGetter;
+    this.viewClassGetter = viewClassGetter;
   }
 
   @FunctionalInterface

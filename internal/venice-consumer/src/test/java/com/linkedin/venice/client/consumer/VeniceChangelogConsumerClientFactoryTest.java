@@ -135,7 +135,6 @@ public class VeniceChangelogConsumerClientFactoryTest {
         new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, new MetricsRepository());
     D2ControllerClient mockControllerClient = Mockito.mock(D2ControllerClient.class);
 
-    // veniceChangelogConsumerClientFactory.setD2ControllerClient(mockControllerClient);
     veniceChangelogConsumerClientFactory.setConsumer(mockKafkaConsumer);
 
     StoreResponse mockStoreResponse = Mockito.mock(StoreResponse.class);
