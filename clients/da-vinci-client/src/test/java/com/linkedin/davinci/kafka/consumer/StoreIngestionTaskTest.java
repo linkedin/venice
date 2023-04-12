@@ -3259,7 +3259,8 @@ public abstract class StoreIngestionTaskTest {
               leaderProducedRecordContext,
               PARTITION_FOO,
               localKafkaConsumerService.kafkaUrl,
-              System.nanoTime());
+              System.nanoTime(),
+              System.currentTimeMillis());
         } catch (InterruptedException e) {
           throw new VeniceException(e);
         }
@@ -3295,7 +3296,8 @@ public abstract class StoreIngestionTaskTest {
       HostLevelIngestionStats stats,
       int wantedInvocationsForStatsWhichCanBeDisabled,
       int wantedInvocationsForAllOtherStats) {
-    verify(stats, times(wantedInvocationsForStatsWhichCanBeDisabled)).recordConsumerRecordsQueuePutLatency(anyDouble());
+    verify(stats, times(wantedInvocationsForStatsWhichCanBeDisabled))
+        .recordConsumerRecordsQueuePutLatency(anyDouble(), anyLong());
     verify(stats, timeout(1000).times(wantedInvocationsForAllOtherStats)).recordTotalRecordsConsumed();
     verify(stats, timeout(1000).times(wantedInvocationsForAllOtherStats)).recordTotalBytesConsumed(anyLong());
     verify(mockVersionedStorageIngestionStats, timeout(1000).times(wantedInvocationsForAllOtherStats))

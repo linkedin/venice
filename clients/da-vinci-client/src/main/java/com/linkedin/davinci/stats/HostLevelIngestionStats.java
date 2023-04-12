@@ -16,8 +16,8 @@ import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Min;
+import io.tehuti.metrics.stats.OccurrenceRate;
 import io.tehuti.metrics.stats.Rate;
-import io.tehuti.metrics.stats.Total;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import java.util.Arrays;
 import java.util.Collections;
@@ -36,21 +36,20 @@ import java.util.function.Supplier;
 public class HostLevelIngestionStats extends AbstractVeniceStats {
   private final Time time;
   // The aggregated bytes ingested rate for the entire host
-  private final LongAdderRateGauge totalBytesConsumedSensor;
+  private final LongAdderRateGauge totalBytesConsumedRate;
   // The aggregated records ingested rate for the entire host
-  private final LongAdderRateGauge totalRecordsConsumedSensor;
+  private final LongAdderRateGauge totalRecordsConsumedRate;
 
   /*
    * Bytes read from Kafka by store ingestion task as a total. This metric includes bytes read for all store versions
    * allocated in a storage node reported with its uncompressed data size.
    */
-  private final Sensor totalBytesReadFromKafkaAsUncompressedSizeSensor;
+  private final LongAdderRateGauge totalBytesReadFromKafkaAsUncompressedSizeRate;
   private final Sensor storageQuotaUsedSensor;
   // disk quota allowed for a store without replication. It should be as a straight line unless we bumps the disk quota
   // allowed.
   private final Sensor diskQuotaSensor;
 
-  private final Sensor pollResultNumSensor;
   /** To measure 'put' latency of consumer records blocking queue */
   private final Sensor consumerRecordsQueuePutLatencySensor;
   private final Sensor keySizeSensor;
@@ -90,12 +89,12 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
    */
   private final Sensor writeComputeCacheHitCount;
 
-  private final LongAdderRateGauge totalLeaderBytesConsumedSensor;
-  private final LongAdderRateGauge totalLeaderRecordsConsumedSensor;
-  private final LongAdderRateGauge totalFollowerBytesConsumedSensor;
-  private final LongAdderRateGauge totalFollowerRecordsConsumedSensor;
-  private final LongAdderRateGauge totalLeaderBytesProducedSensor;
-  private final LongAdderRateGauge totalLeaderRecordsProducedSensor;
+  private final LongAdderRateGauge totalLeaderBytesConsumedRate;
+  private final LongAdderRateGauge totalLeaderRecordsConsumedRate;
+  private final LongAdderRateGauge totalFollowerBytesConsumedRate;
+  private final LongAdderRateGauge totalFollowerRecordsConsumedRate;
+  private final LongAdderRateGauge totalLeaderBytesProducedRate;
+  private final LongAdderRateGauge totalLeaderRecordsProducedRate;
   private final List<Sensor> totalHybridBytesConsumedByRegionId;
   private final List<Sensor> totalHybridRecordsConsumedByRegionId;
 
@@ -124,14 +123,14 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
   /**
    * Measure the count of ignored updates due to conflict resolution
    */
-  private final LongAdderRateGauge totalUpdateIgnoredDCRSensor;
+  private final LongAdderRateGauge totalUpdateIgnoredDCRRate;
 
   /**
    * Measure the count of tombstones created
    */
-  private final LongAdderRateGauge totalTombstoneCreationDCRSensor;
+  private final LongAdderRateGauge totalTombstoneCreationDCRRate;
 
-  private Sensor registerPerStoreAndTotal(
+  private Sensor registerPerStoreAndTotalSensor(
       String sensorName,
       HostLevelIngestionStats totalStats,
       Supplier<Sensor> totalSensor,
@@ -140,15 +139,7 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
     return registerSensor(sensorName, parent, stats);
   }
 
-  private Sensor registerOnlyTotal(
-      String sensorName,
-      HostLevelIngestionStats totalStats,
-      Supplier<Sensor> totalSensor,
-      MeasurableStat... stats) {
-    return totalStats == null ? registerSensor(sensorName, stats) : totalSensor.get();
-  }
-
-  private LongAdderRateGauge registerOnlyTotal(
+  private LongAdderRateGauge registerOnlyTotalRate(
       String sensorName,
       HostLevelIngestionStats totalStats,
       Supplier<LongAdderRateGauge> totalSensor) {
@@ -176,49 +167,49 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
     // Stats which are total only:
 
-    this.totalBytesConsumedSensor =
-        registerOnlyTotal("bytes_consumed", totalStats, () -> totalStats.totalBytesConsumedSensor);
+    this.totalBytesConsumedRate =
+        registerOnlyTotalRate("bytes_consumed", totalStats, () -> totalStats.totalBytesConsumedRate);
 
-    this.totalRecordsConsumedSensor =
-        registerOnlyTotal("records_consumed", totalStats, () -> totalStats.totalRecordsConsumedSensor);
+    this.totalRecordsConsumedRate =
+        registerOnlyTotalRate("records_consumed", totalStats, () -> totalStats.totalRecordsConsumedRate);
 
-    this.totalBytesReadFromKafkaAsUncompressedSizeSensor = registerOnlyTotal(
+    this.totalBytesReadFromKafkaAsUncompressedSizeRate = registerOnlyTotalRate(
         "bytes_read_from_kafka_as_uncompressed_size",
         totalStats,
-        () -> totalStats.totalBytesReadFromKafkaAsUncompressedSizeSensor,
-        new Rate(),
-        new Total());
+        () -> totalStats.totalBytesReadFromKafkaAsUncompressedSizeRate);
 
-    this.totalLeaderBytesConsumedSensor =
-        registerOnlyTotal("leader_bytes_consumed", totalStats, () -> totalStats.totalLeaderBytesConsumedSensor);
+    this.totalLeaderBytesConsumedRate =
+        registerOnlyTotalRate("leader_bytes_consumed", totalStats, () -> totalStats.totalLeaderBytesConsumedRate);
 
-    this.totalLeaderRecordsConsumedSensor =
-        registerOnlyTotal("leader_records_consumed", totalStats, () -> totalStats.totalLeaderRecordsConsumedSensor);
+    this.totalLeaderRecordsConsumedRate =
+        registerOnlyTotalRate("leader_records_consumed", totalStats, () -> totalStats.totalLeaderRecordsConsumedRate);
 
-    this.totalFollowerBytesConsumedSensor =
-        registerOnlyTotal("follower_bytes_consumed", totalStats, () -> totalStats.totalFollowerBytesConsumedSensor);
+    this.totalFollowerBytesConsumedRate =
+        registerOnlyTotalRate("follower_bytes_consumed", totalStats, () -> totalStats.totalFollowerBytesConsumedRate);
 
-    this.totalFollowerRecordsConsumedSensor =
-        registerOnlyTotal("follower_records_consumed", totalStats, () -> totalStats.totalFollowerRecordsConsumedSensor);
+    this.totalFollowerRecordsConsumedRate = registerOnlyTotalRate(
+        "follower_records_consumed",
+        totalStats,
+        () -> totalStats.totalFollowerRecordsConsumedRate);
 
-    this.totalLeaderBytesProducedSensor =
-        registerOnlyTotal("leader_bytes_produced", totalStats, () -> totalStats.totalLeaderBytesProducedSensor);
+    this.totalLeaderBytesProducedRate =
+        registerOnlyTotalRate("leader_bytes_produced", totalStats, () -> totalStats.totalLeaderBytesProducedRate);
 
-    this.totalLeaderRecordsProducedSensor =
-        registerOnlyTotal("leader_records_produced", totalStats, () -> totalStats.totalLeaderRecordsProducedSensor);
+    this.totalLeaderRecordsProducedRate =
+        registerOnlyTotalRate("leader_records_produced", totalStats, () -> totalStats.totalLeaderRecordsProducedRate);
 
-    this.totalUpdateIgnoredDCRSensor =
-        registerOnlyTotal("update_ignored_dcr", totalStats, () -> totalStats.totalUpdateIgnoredDCRSensor);
+    this.totalUpdateIgnoredDCRRate =
+        registerOnlyTotalRate("update_ignored_dcr", totalStats, () -> totalStats.totalUpdateIgnoredDCRRate);
 
-    this.totalTombstoneCreationDCRSensor =
-        registerOnlyTotal("tombstone_creation_dcr", totalStats, () -> totalStats.totalTombstoneCreationDCRSensor);
+    this.totalTombstoneCreationDCRRate =
+        registerOnlyTotalRate("tombstone_creation_dcr", totalStats, () -> totalStats.totalTombstoneCreationDCRRate);
 
-    this.totalTimestampRegressionDCRErrorRate = registerOnlyTotal(
+    this.totalTimestampRegressionDCRErrorRate = registerOnlyTotalRate(
         "timestamp_regression_dcr_error",
         totalStats,
         () -> totalStats.totalTimestampRegressionDCRErrorRate);
 
-    this.totalOffsetRegressionDCRErrorRate = registerOnlyTotal(
+    this.totalOffsetRegressionDCRErrorRate = registerOnlyTotalRate(
         "offset_regression_dcr_error",
         totalStats,
         () -> totalStats.totalOffsetRegressionDCRErrorRate);
@@ -292,66 +283,62 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
     // Stats which are both per-store and total:
 
-    this.pollResultNumSensor = registerPerStoreAndTotal(
-        "kafka_poll_result_num",
-        totalStats,
-        () -> totalStats.pollResultNumSensor,
-        new Avg(),
-        new Total());
-
-    this.consumerRecordsQueuePutLatencySensor = registerPerStoreAndTotal(
+    this.consumerRecordsQueuePutLatencySensor = registerPerStoreAndTotalSensor(
         "consumer_records_queue_put_latency",
         totalStats,
         () -> totalStats.consumerRecordsQueuePutLatencySensor,
         avgAndMax());
 
-    this.unexpectedMessageSensor = registerPerStoreAndTotal(
+    this.unexpectedMessageSensor = registerPerStoreAndTotalSensor(
         "unexpected_message",
         totalStats,
         () -> totalStats.unexpectedMessageSensor,
         new Rate());
 
-    this.inconsistentStoreMetadataSensor = registerPerStoreAndTotal(
+    this.inconsistentStoreMetadataSensor = registerPerStoreAndTotalSensor(
         "inconsistent_store_metadata",
         totalStats,
         () -> totalStats.inconsistentStoreMetadataSensor,
         new Count());
 
-    this.ingestionFailureSensor =
-        registerPerStoreAndTotal("ingestion_failure", totalStats, () -> totalStats.ingestionFailureSensor, new Count());
+    this.ingestionFailureSensor = registerPerStoreAndTotalSensor(
+        "ingestion_failure",
+        totalStats,
+        () -> totalStats.ingestionFailureSensor,
+        new Count());
 
-    this.leaderProducerSynchronizeLatencySensor = registerPerStoreAndTotal(
+    this.leaderProducerSynchronizeLatencySensor = registerPerStoreAndTotalSensor(
         "leader_producer_synchronize_latency",
         totalStats,
         () -> totalStats.leaderProducerSynchronizeLatencySensor,
         avgAndMax());
 
-    this.leaderWriteComputeLookUpLatencySensor = registerPerStoreAndTotal(
+    this.leaderWriteComputeLookUpLatencySensor = registerPerStoreAndTotalSensor(
         "leader_write_compute_lookup_latency",
         totalStats,
         () -> totalStats.leaderWriteComputeLookUpLatencySensor,
         avgAndMax());
 
-    this.leaderWriteComputeUpdateLatencySensor = registerPerStoreAndTotal(
+    this.leaderWriteComputeUpdateLatencySensor = registerPerStoreAndTotalSensor(
         "leader_write_compute_update_latency",
         totalStats,
         () -> totalStats.leaderWriteComputeUpdateLatencySensor,
         avgAndMax());
 
-    this.processConsumerActionLatencySensor = registerPerStoreAndTotal(
+    this.processConsumerActionLatencySensor = registerPerStoreAndTotalSensor(
         "process_consumer_actions_latency",
         totalStats,
         () -> totalStats.processConsumerActionLatencySensor,
         avgAndMax());
 
-    this.checkLongRunningTasksLatencySensor = registerPerStoreAndTotal(
+    this.checkLongRunningTasksLatencySensor = registerPerStoreAndTotalSensor(
         "check_long_running_task_latency",
         totalStats,
         () -> totalStats.checkLongRunningTasksLatencySensor,
         avgAndMax());
 
     String storageEnginePutLatencySensorName = "storage_engine_put_latency";
-    this.storageEnginePutLatencySensor = registerPerStoreAndTotal(
+    this.storageEnginePutLatencySensor = registerPerStoreAndTotalSensor(
         storageEnginePutLatencySensorName,
         totalStats,
         () -> totalStats.storageEnginePutLatencySensor,
@@ -359,37 +346,37 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         new Max(),
         TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + storageEnginePutLatencySensorName));
 
-    this.writeComputeCacheHitCount = registerPerStoreAndTotal(
+    this.writeComputeCacheHitCount = registerPerStoreAndTotalSensor(
         "write_compute_cache_hit_count",
         totalStats,
         () -> totalStats.writeComputeCacheHitCount,
-        avgAndMax());
+        new OccurrenceRate());
 
-    this.checksumVerificationFailureSensor = registerPerStoreAndTotal(
+    this.checksumVerificationFailureSensor = registerPerStoreAndTotalSensor(
         "checksum_verification_failure",
         totalStats,
         () -> totalStats.checksumVerificationFailureSensor,
         new Count());
 
-    this.leaderIngestionValueBytesLookUpLatencySensor = registerPerStoreAndTotal(
+    this.leaderIngestionValueBytesLookUpLatencySensor = registerPerStoreAndTotalSensor(
         "leader_ingestion_value_bytes_lookup_latency",
         totalStats,
         () -> totalStats.leaderIngestionValueBytesLookUpLatencySensor,
         avgAndMax());
 
-    this.leaderIngestionValueBytesCacheHitCount = registerPerStoreAndTotal(
+    this.leaderIngestionValueBytesCacheHitCount = registerPerStoreAndTotalSensor(
         "leader_ingestion_value_bytes_cache_hit_count",
         totalStats,
         () -> totalStats.leaderIngestionValueBytesCacheHitCount,
         new Rate());
 
-    this.leaderIngestionReplicationMetadataCacheHitCount = registerPerStoreAndTotal(
+    this.leaderIngestionReplicationMetadataCacheHitCount = registerPerStoreAndTotalSensor(
         "leader_ingestion_replication_metadata_cache_hit_count",
         totalStats,
         () -> totalStats.leaderIngestionReplicationMetadataCacheHitCount,
         new Rate());
 
-    this.leaderIngestionReplicationMetadataLookUpLatencySensor = registerPerStoreAndTotal(
+    this.leaderIngestionReplicationMetadataLookUpLatencySensor = registerPerStoreAndTotalSensor(
         "leader_ingestion_replication_metadata_lookup_latency",
         totalStats,
         () -> totalStats.leaderIngestionReplicationMetadataLookUpLatencySensor,
@@ -398,34 +385,30 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
   /** Record a host-level byte consumption rate across all store versions */
   public void recordTotalBytesConsumed(long bytes) {
-    totalBytesConsumedSensor.record(bytes);
+    totalBytesConsumedRate.record(bytes);
   }
 
   /** Record a host-level record consumption rate across all store versions */
   public void recordTotalRecordsConsumed() {
-    totalRecordsConsumedSensor.record();
+    totalRecordsConsumedRate.record();
   }
 
   public void recordTotalBytesReadFromKafkaAsUncompressedSize(long bytes) {
-    totalBytesReadFromKafkaAsUncompressedSizeSensor.record(bytes);
+    totalBytesReadFromKafkaAsUncompressedSizeRate.record(bytes);
   }
 
-  public void recordStorageQuotaUsed(double quotaUsed) {
+  public void recordStorageQuotaUsed(double quotaUsed, long currentTimeMs) {
     hybridQuotaUsageGauge = quotaUsed;
-    storageQuotaUsedSensor.record(quotaUsed);
+    storageQuotaUsedSensor.record(quotaUsed, currentTimeMs);
   }
 
-  public void recordDiskQuotaAllowed(long quotaAllowed) {
+  public void recordDiskQuotaAllowed(long quotaAllowed, long currentTimeMs) {
     diskQuotaAllowedGauge = quotaAllowed;
-    diskQuotaSensor.record(quotaAllowed);
+    diskQuotaSensor.record(quotaAllowed, currentTimeMs);
   }
 
-  public void recordPollResultNum(int count) {
-    pollResultNumSensor.record(count);
-  }
-
-  public void recordConsumerRecordsQueuePutLatency(double latency) {
-    consumerRecordsQueuePutLatencySensor.record(latency);
+  public void recordConsumerRecordsQueuePutLatency(double latency, long currentTimeMs) {
+    consumerRecordsQueuePutLatencySensor.record(latency, currentTimeMs);
   }
 
   public void recordUnexpectedMessage() {
@@ -436,12 +419,12 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
     inconsistentStoreMetadataSensor.record();
   }
 
-  public void recordKeySize(long bytes) {
-    keySizeSensor.record(bytes);
+  public void recordKeySize(long bytes, long currentTimeMs) {
+    keySizeSensor.record(bytes, currentTimeMs);
   }
 
-  public void recordValueSize(long bytes) {
-    valueSizeSensor.record(bytes);
+  public void recordValueSize(long bytes, long currentTimeMs) {
+    valueSizeSensor.record(bytes, currentTimeMs);
   }
 
   public void recordIngestionFailure() {
@@ -456,16 +439,16 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
     leaderWriteComputeLookUpLatencySensor.record(latency);
   }
 
-  public void recordIngestionValueBytesLookUpLatency(double latency) {
-    leaderIngestionValueBytesLookUpLatencySensor.record(latency);
+  public void recordIngestionValueBytesLookUpLatency(double latency, long currentTime) {
+    leaderIngestionValueBytesLookUpLatencySensor.record(latency, currentTime);
   }
 
-  public void recordIngestionValueBytesCacheHitCount() {
-    leaderIngestionValueBytesCacheHitCount.record();
+  public void recordIngestionValueBytesCacheHitCount(long currentTime) {
+    leaderIngestionValueBytesCacheHitCount.record(1, currentTime);
   }
 
-  public void recordIngestionReplicationMetadataLookUpLatency(double latency) {
-    leaderIngestionReplicationMetadataLookUpLatencySensor.record(latency);
+  public void recordIngestionReplicationMetadataLookUpLatency(double latency, long currentTimeMs) {
+    leaderIngestionReplicationMetadataLookUpLatencySensor.record(latency, currentTimeMs);
   }
 
   public void recordWriteComputeUpdateLatency(double latency) {
@@ -488,32 +471,32 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
     writeComputeCacheHitCount.record();
   }
 
-  public void recordIngestionReplicationMetadataCacheHitCount() {
-    leaderIngestionReplicationMetadataCacheHitCount.record();
+  public void recordIngestionReplicationMetadataCacheHitCount(long currentTimeMs) {
+    leaderIngestionReplicationMetadataCacheHitCount.record(1, currentTimeMs);
   }
 
   public void recordUpdateIgnoredDCR() {
-    totalUpdateIgnoredDCRSensor.record();
+    totalUpdateIgnoredDCRRate.record();
   }
 
   public void recordTombstoneCreatedDCR() {
-    totalTombstoneCreationDCRSensor.record();
+    totalTombstoneCreationDCRRate.record();
   }
 
   public void recordTotalLeaderBytesConsumed(long bytes) {
-    totalLeaderBytesConsumedSensor.record(bytes);
+    totalLeaderBytesConsumedRate.record(bytes);
   }
 
   public void recordTotalLeaderRecordsConsumed() {
-    totalLeaderRecordsConsumedSensor.record();
+    totalLeaderRecordsConsumedRate.record();
   }
 
   public void recordTotalFollowerBytesConsumed(long bytes) {
-    totalFollowerBytesConsumedSensor.record(bytes);
+    totalFollowerBytesConsumedRate.record(bytes);
   }
 
   public void recordTotalFollowerRecordsConsumed() {
-    totalFollowerRecordsConsumedSensor.record();
+    totalFollowerRecordsConsumedRate.record();
   }
 
   public void recordTotalRegionHybridBytesConsumed(int regionId, long bytes, long currentTimeMs) {
@@ -529,11 +512,11 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
   }
 
   public void recordTotalLeaderBytesProduced(long bytes) {
-    totalLeaderBytesProducedSensor.record(bytes);
+    totalLeaderBytesProducedRate.record(bytes);
   }
 
   public void recordTotalLeaderRecordsProduced(int count) {
-    totalLeaderRecordsProducedSensor.record(count);
+    totalLeaderRecordsProducedRate.record(count);
   }
 
   public void recordChecksumVerificationFailure() {

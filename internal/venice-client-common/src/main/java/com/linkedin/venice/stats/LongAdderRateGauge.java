@@ -39,14 +39,12 @@ public class LongAdderRateGauge extends Gauge {
   }
 
   private double getRate(long currentTimeMs) {
-    double elapsedTimeInSeconds = (double) (currentTimeMs - this.lastMeasurementTime) / Time.MS_PER_SECOND;
-    if (elapsedTimeInSeconds <= 0) {
-      /**
-       * N.B.: We are not looking for great precision at a very short timescale. The intended use case is for this
-       * function to be queried by the metric system ~1/minute. So the goal here is just to avoid a division by zero.
-       */
-      elapsedTimeInSeconds = 0.001;
-    }
+    /**
+     * N.B.: We are not looking for great precision at a very short timescale. The intended use case is for this
+     * function to be queried by the metric system ~1/minute. So the goal here is just to avoid a division by zero.
+     */
+    double elapsedTimeInSeconds =
+        Math.max((double) (currentTimeMs - this.lastMeasurementTime) / Time.MS_PER_SECOND, 0.001);
     this.lastMeasurementTime = currentTimeMs;
     return (double) this.adder.sumThenReset() / elapsedTimeInSeconds;
   }
