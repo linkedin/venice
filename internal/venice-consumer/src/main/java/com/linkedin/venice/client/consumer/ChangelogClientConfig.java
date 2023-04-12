@@ -1,5 +1,6 @@
 package com.linkedin.venice.client.consumer;
 
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.schema.SchemaReader;
@@ -13,6 +14,8 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
   private String viewName;
   private ClientConfig<T> innerClientConfig;
   private D2ControllerClient d2ControllerClient;
+
+  private D2Client d2Client;
   private String controllerD2ServiceName;
   private int controllerRequestRetryCount;
 
@@ -87,6 +90,15 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
     return this.d2ControllerClient;
   }
 
+  public ChangelogClientConfig<T> setD2Client(D2Client d2Client) {
+    this.d2Client = d2Client;
+    return this;
+  }
+
+  public D2Client getD2Client() {
+    return this.d2Client;
+  }
+
   public ChangelogClientConfig<T> setLocalD2ZkHosts(String localD2ZkHosts) {
     this.innerClientConfig.setVeniceURL(localD2ZkHosts);
     return this;
@@ -118,6 +130,7 @@ public class ChangelogClientConfig<T extends SpecificRecord> {
         .setViewName(config.getViewName())
         .setD2ControllerClient(config.getD2ControllerClient())
         .setControllerD2ServiceName(config.controllerD2ServiceName)
+        .setD2Client(config.getD2Client())
         .setControllerRequestRetryCount(config.getControllerRequestRetryCount());
     return newConfig;
   }
