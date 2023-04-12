@@ -48,6 +48,7 @@ public class VeniceChangelogConsumerClientFactory {
 
       ChangelogClientConfig newStoreChangelogClientConfig =
           ChangelogClientConfig.cloneConfig(globalChangelogClientConfig).setStoreName(storeName);
+      newStoreChangelogClientConfig.getInnerClientConfig().setMetricsRepository(metricsRepository);
 
       D2ControllerClient d2ControllerClient;
       if (this.d2ControllerClient != null) {
@@ -88,7 +89,6 @@ public class VeniceChangelogConsumerClientFactory {
             newStoreChangelogClientConfig,
             consumer != null ? consumer : new KafkaConsumer<>(newStoreChangelogClientConfig.getConsumerProperties()));
       }
-      newStoreChangelogClientConfig.getInnerClientConfig().setMetricsRepository(metricsRepository);
       return new VeniceAfterImageConsumerImpl(
           newStoreChangelogClientConfig,
           consumer != null ? consumer : new KafkaConsumer<>(newStoreChangelogClientConfig.getConsumerProperties()));
