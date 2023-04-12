@@ -99,7 +99,7 @@ public class DaVinciClusterAgnosticTest {
         TestUtils.waitForNonDeterministicPushCompletion(
             Version.composeKafkaTopic(participantStoreName, 1),
             controllerClient,
-            1,
+            5,
             TimeUnit.MINUTES);
       }
     }

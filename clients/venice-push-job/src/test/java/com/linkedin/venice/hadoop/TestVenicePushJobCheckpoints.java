@@ -1,6 +1,7 @@
 package com.linkedin.venice.hadoop;
 
 import static com.linkedin.venice.hadoop.VenicePushJob.COMPRESSION_METRIC_COLLECTION_ENABLED;
+import static com.linkedin.venice.hadoop.VenicePushJob.COMPRESSION_STRATEGY;
 import static com.linkedin.venice.hadoop.VenicePushJob.D2_ZK_HOSTS_PREFIX;
 import static com.linkedin.venice.hadoop.VenicePushJob.MULTI_REGION;
 import static com.linkedin.venice.hadoop.VenicePushJob.SOURCE_GRID_FABRIC;
@@ -302,6 +303,134 @@ public class TestVenicePushJobCheckpoints {
         });
   }
 
+  /**
+   * Handle cases where dictionary creation in the mapper failed: COMPRESSION_METRIC_COLLECTION_ENABLED is true,
+   * but the compression strategy is {@link CompressionStrategy#NO_OP}, leading to the failure being ignored and
+   * the job finishes all check points as the success case.
+   */
+  @Test
+  public void testHandlingFailureWithCompressionCollectionEnabled() throws Exception {
+    testHandleErrorsInCounter(
+        Arrays.asList(
+            new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 1),
+            new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0),
+            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0),
+            // All reducers closed
+            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT),
+            // ValidateSchemaAndBuildDictMapper related counters below
+            // Number of Processed files
+            new MockCounterInfo(
+                MRJobCounterHelper.MAPPER_NUM_RECORDS_SUCCESSFULLY_PROCESSED_GROUP_COUNTER_NAME,
+                NUMBER_OF_FILES_TO_READ_AND_BUILD_DICT_COUNT), // no +1 as the last part (build dict) failed
+            // Dictionary building succeeded if enabled
+            new MockCounterInfo(MRJobCounterHelper.MAPPER_ZSTD_DICT_TRAIN_FAILURE_GROUP_COUNTER_NAME, 1)),
+        Arrays.asList(
+            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+            VenicePushJob.PushJobCheckpoints.VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB_COMPLETED,
+            VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
+            VenicePushJob.PushJobCheckpoints.MAP_REDUCE_JOB_COMPLETED,
+            VenicePushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED),
+        properties -> {
+          properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, "true");
+          properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, "true");
+        });
+  }
+
+  /**
+   * Handle cases where dictionary creation in the mapper failed: COMPRESSION_METRIC_COLLECTION_ENABLED is true,
+   * and the compression strategy is {@link CompressionStrategy#ZSTD_WITH_DICT}, leading to the failure captured
+   * via exception and checkpoints reflecting the same.
+   */
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Training ZSTD compression dictionary failed.*")
+  public void testHandlingFailureWithCompressionCollectionEnabledAndZstdCompression() throws Exception {
+    testHandleErrorsInCounter(
+        Arrays.asList(
+            new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 1),
+            new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0),
+            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0),
+            // All reducers closed
+            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT),
+            // ValidateSchemaAndBuildDictMapper related counters below
+            // Number of Processed files
+            new MockCounterInfo(
+                MRJobCounterHelper.MAPPER_NUM_RECORDS_SUCCESSFULLY_PROCESSED_GROUP_COUNTER_NAME,
+                NUMBER_OF_FILES_TO_READ_AND_BUILD_DICT_COUNT), // no +1 as the last part (build dict) failed
+            // Dictionary building succeeded if enabled
+            new MockCounterInfo(MRJobCounterHelper.MAPPER_ZSTD_DICT_TRAIN_FAILURE_GROUP_COUNTER_NAME, 1)),
+        Arrays.asList(
+            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+            VenicePushJob.PushJobCheckpoints.ZSTD_DICTIONARY_CREATION_FAILED),
+        properties -> {
+          properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, "true");
+          properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, "true");
+          properties.setProperty(COMPRESSION_STRATEGY, CompressionStrategy.ZSTD_WITH_DICT.toString());
+        });
+  }
+
+  /**
+   * Handle cases where dictionary creation in the mapper is skipped: COMPRESSION_METRIC_COLLECTION_ENABLED is true,
+   * but the compression strategy is {@link CompressionStrategy#NO_OP}, leading to the skip being ignored and
+   * the job finishes all check points as the success case.
+   */
+  @Test
+  public void testHandlingSkippedWithCompressionCollectionEnabled() throws Exception {
+    testHandleErrorsInCounter(
+        Arrays.asList(
+            new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 1),
+            new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0),
+            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0),
+            // All reducers closed
+            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT),
+            // ValidateSchemaAndBuildDictMapper related counters below
+            // Number of Processed files
+            new MockCounterInfo(
+                MRJobCounterHelper.MAPPER_NUM_RECORDS_SUCCESSFULLY_PROCESSED_GROUP_COUNTER_NAME,
+                NUMBER_OF_FILES_TO_READ_AND_BUILD_DICT_COUNT), // no +1 as the last part (build dict) failed
+            // Dictionary building succeeded if enabled
+            new MockCounterInfo(MRJobCounterHelper.MAPPER_ZSTD_DICT_TRAIN_SKIPPED_GROUP_COUNTER_NAME, 1)),
+        Arrays.asList(
+            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+            VenicePushJob.PushJobCheckpoints.VALIDATE_SCHEMA_AND_BUILD_DICT_MAP_JOB_COMPLETED,
+            VenicePushJob.PushJobCheckpoints.NEW_VERSION_CREATED,
+            VenicePushJob.PushJobCheckpoints.MAP_REDUCE_JOB_COMPLETED,
+            VenicePushJob.PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED),
+        properties -> {
+          properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, "true");
+          properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, "true");
+        });
+  }
+
+  /**
+   * Handle cases where dictionary creation in the mapper skipped: COMPRESSION_METRIC_COLLECTION_ENABLED is true,
+   * and the compression strategy is {@link CompressionStrategy#ZSTD_WITH_DICT}, leading to the skip captured
+   * via exception and checkpoints reflecting the same.
+   */
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Training ZSTD compression dictionary skipped.*")
+  public void testHandlingSkippedWithCompressionCollectionEnabledAndZstdCompression() throws Exception {
+    testHandleErrorsInCounter(
+        Arrays.asList(
+            new MockCounterInfo(MRJobCounterHelper.TOTAL_VALUE_SIZE_GROUP_COUNTER_NAME, 1),
+            new MockCounterInfo(MRJobCounterHelper.WRITE_ACL_FAILURE_GROUP_COUNTER_NAME, 0),
+            new MockCounterInfo(MRJobCounterHelper.DUP_KEY_WITH_DISTINCT_VALUE_GROUP_COUNTER_NAME, 0),
+            // All reducers closed
+            new MockCounterInfo(MRJobCounterHelper.REDUCER_CLOSED_COUNT_GROUP_COUNTER_NAME, PARTITION_COUNT),
+            // ValidateSchemaAndBuildDictMapper related counters below
+            // Number of Processed files
+            new MockCounterInfo(
+                MRJobCounterHelper.MAPPER_NUM_RECORDS_SUCCESSFULLY_PROCESSED_GROUP_COUNTER_NAME,
+                NUMBER_OF_FILES_TO_READ_AND_BUILD_DICT_COUNT), // no +1 as the last part (build dict) failed
+            // Dictionary building succeeded if enabled
+            new MockCounterInfo(MRJobCounterHelper.MAPPER_ZSTD_DICT_TRAIN_SKIPPED_GROUP_COUNTER_NAME, 1)),
+        Arrays.asList(
+            VenicePushJob.PushJobCheckpoints.INITIALIZE_PUSH_JOB,
+            VenicePushJob.PushJobCheckpoints.ZSTD_DICTIONARY_CREATION_FAILED),
+        properties -> {
+          properties.setProperty(USE_MAPPER_TO_BUILD_DICTIONARY, "true");
+          properties.setProperty(COMPRESSION_METRIC_COLLECTION_ENABLED, "true");
+          properties.setProperty(COMPRESSION_STRATEGY, CompressionStrategy.ZSTD_WITH_DICT.toString());
+        });
+  }
+
   @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "Insufficient ACLs to write to the store")
   public void testHandleWriteAclFailed() throws Exception {
     testHandleErrorsInCounter(
@@ -594,7 +723,7 @@ public class TestVenicePushJobCheckpoints {
       extraProps.accept(props);
     }
     ControllerClient controllerClient = mock(ControllerClient.class);
-    configureControllerClientMock(controllerClient);
+    configureControllerClientMock(controllerClient, props);
     configureClusterDiscoverControllerClient(controllerClient);
     try (VenicePushJob venicePushJob = new VenicePushJob("job-id", props)) {
       venicePushJob.setControllerClient(controllerClient);
@@ -693,7 +822,7 @@ public class TestVenicePushJobCheckpoints {
     return jobStatusQueryResponse;
   }
 
-  private void configureControllerClientMock(ControllerClient controllerClient) {
+  private void configureControllerClientMock(ControllerClient controllerClient, Properties props) {
     StoreResponse storeResponse = mock(StoreResponse.class);
     when(controllerClient.getClusterName()).thenReturn(TEST_CLUSTER_NAME);
 
@@ -708,7 +837,8 @@ public class TestVenicePushJobCheckpoints {
     when(storeInfo.getStorageQuotaInByte()).thenReturn(1000L);
     when(storeInfo.isSchemaAutoRegisterFromPushJobEnabled()).thenReturn(false);
     when(storeResponse.getStore()).thenReturn(storeInfo);
-    when(storeInfo.getCompressionStrategy()).thenReturn(CompressionStrategy.NO_OP);
+    when(storeInfo.getCompressionStrategy()).thenReturn(
+        CompressionStrategy.valueOf(props.getProperty(COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.toString())));
 
     SchemaResponse keySchemaResponse = mock(SchemaResponse.class);
     when(keySchemaResponse.isError()).thenReturn(false);

@@ -20,6 +20,7 @@ import static org.mockito.Mockito.when;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.helix.HelixState;
+import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.ingestion.control.RealTimeTopicSwitcher;
 import com.linkedin.venice.meta.BufferReplayPolicy;
 import com.linkedin.venice.meta.DataReplicationPolicy;
@@ -110,6 +111,7 @@ public abstract class AbstractPushMonitorTest {
     verify(mockAccessor, atLeastOnce()).createOfflinePushStatusAndItsPartitionStatuses(pushStatus);
     verify(mockAccessor, atLeastOnce()).subscribePartitionStatusChange(pushStatus, monitor);
     verify(mockRoutingDataRepo, atLeastOnce()).subscribeRoutingDataChange(getTopic(), monitor);
+    doReturn(mock(ResourceAssignment.class)).when(mockRoutingDataRepo).getResourceAssignment();
     try {
       monitor.startMonitorOfflinePush(
           topic,
@@ -793,6 +795,22 @@ public abstract class AbstractPushMonitorTest {
     @Override
     public void topicCleanupWhenPushComplete(String clusterName, String storeName, int versionNumber) {
       // no-op
+    }
+
+    @Override
+    public boolean containsHelixResource(String clusterName, String resourceName) {
+      return true;
+    }
+
+    @Override
+    public void deleteHelixResource(String clusterName, String resourceName) {
+      try (AutoCloseableLock ignore = clusterLockManager.createStoreWriteLock(storeName)) {
+        try {
+          Thread.sleep(1000);
+        } catch (InterruptedException e) {
+          e.printStackTrace();
+        }
+      }
     }
   }
 

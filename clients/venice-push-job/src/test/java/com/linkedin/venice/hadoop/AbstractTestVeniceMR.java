@@ -11,6 +11,7 @@ import static com.linkedin.venice.hadoop.VenicePushJob.SSL_TRUST_STORE_PROPERTY_
 import static com.linkedin.venice.hadoop.VenicePushJob.STORAGE_ENGINE_OVERHEAD_RATIO;
 import static com.linkedin.venice.hadoop.VenicePushJob.STORAGE_QUOTA_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.TOPIC_PROP;
+import static com.linkedin.venice.hadoop.VenicePushJob.USE_MAPPER_TO_BUILD_DICTIONARY;
 import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_FIELD_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.VALUE_SCHEMA_ID_PROP;
 import static com.linkedin.venice.hadoop.VenicePushJob.ZSTD_DICTIONARY_CREATION_REQUIRED;
@@ -72,6 +73,7 @@ public class AbstractTestVeniceMR {
     config.setDouble(STORAGE_ENGINE_OVERHEAD_RATIO, DEFAULT_STORAGE_ENGINE_OVERHEAD_RATIO);
     config.setBoolean(ALLOW_DUPLICATE_KEY, false);
     config.set(COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.toString());
+    config.setBoolean(USE_MAPPER_TO_BUILD_DICTIONARY, false);
     config.setBoolean(COMPRESSION_METRIC_COLLECTION_ENABLED, false);
     config.setBoolean(ZSTD_DICTIONARY_CREATION_REQUIRED, false);
     config.setBoolean(ZSTD_DICTIONARY_CREATION_SUCCESS, false);

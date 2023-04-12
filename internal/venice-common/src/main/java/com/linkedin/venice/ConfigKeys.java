@@ -1676,6 +1676,11 @@ public class ConfigKeys {
       "leaked.push.status.clean.up.service.interval.ms";
 
   /**
+   * This config defines the allowed linger time for a leaked resource.
+   */
+  public static final String LEAKED_RESOURCE_ALLOWED_LINGER_TIME_MS = "leaked.resource.allowed.linger.time.ms";
+
+  /**
    * This config controls whether to use da-vinci based implementation of the system store repository when
    * CLIENT_USE_SYSTEM_STORE_REPOSITORY is set to true. By default the thin-client based implementation will be used.
    */
