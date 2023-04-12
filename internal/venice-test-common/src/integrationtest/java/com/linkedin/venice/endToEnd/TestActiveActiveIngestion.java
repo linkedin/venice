@@ -71,6 +71,7 @@ import com.linkedin.venice.utils.TestWriteUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.view.TestView;
 import com.linkedin.venice.views.ChangeCaptureView;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -188,9 +189,9 @@ public class TestActiveActiveIngestion {
       String keySchemaStr = recordSchema.getField(DEFAULT_KEY_FIELD_PROP).schema().toString();
       String valueSchemaStr = recordSchema.getField(DEFAULT_VALUE_FIELD_PROP).schema().toString();
       Map<String, String> viewConfig = new HashMap<>();
-      // viewConfig.put(
-      // "testView",
-      // "{\"viewClassName\" : \"" + TestView.class.getCanonicalName() + "\", \"viewParameters\" : {}}");
+      viewConfig.put(
+          "testView",
+          "{\"viewClassName\" : \"" + TestView.class.getCanonicalName() + "\", \"viewParameters\" : {}}");
 
       viewConfig.put(
           "changeCaptureView",
@@ -474,18 +475,18 @@ public class TestActiveActiveIngestion {
       });
 
       // Verify version swap count matches with version count - 1 (since we don't transmit from version 0 to version 1)
-      // TestUtils.waitForNonDeterministicAssertion(
-      // 5,
-      // TimeUnit.SECONDS,
-      // () -> Assert.assertEquals(TestView.getInstance().getVersionSwapCountForStore(storeName), 3));
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          () -> Assert.assertEquals(TestView.getInstance().getVersionSwapCountForStore(storeName), 3));
 
       // Verify total updates match up (first 20 + next 20 should make 40, And then double it again as rewind updates
       // are
       // applied to a version)
-      // TestUtils.waitForNonDeterministicAssertion(
-      // 5,
-      // TimeUnit.SECONDS,
-      // () -> Assert.assertEquals(TestView.getInstance().getRecordCountForStore(storeName), 85));
+      TestUtils.waitForNonDeterministicAssertion(
+          5,
+          TimeUnit.SECONDS,
+          () -> Assert.assertEquals(TestView.getInstance().getRecordCountForStore(storeName), 85));
 
       parentControllerClient.disableAndDeleteStore(storeName);
 
