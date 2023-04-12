@@ -2265,7 +2265,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
       if (storeViewConfig.isPresent()) {
         // Validate and merge store views if they're getting set
-        // validateStoreViewConfig(storeViewConfig.get(), currStore);
+        validateStoreViewConfig(storeViewConfig.get(), currStore);
         Map<String, StoreViewConfigRecord> mergedViewSettings =
             VeniceHelixAdmin.mergeNewViewConfigsIntoOldConfigs(currStore, storeViewConfig.get());
         setStore.views = mergedViewSettings;

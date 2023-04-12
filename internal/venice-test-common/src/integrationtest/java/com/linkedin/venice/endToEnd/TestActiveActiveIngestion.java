@@ -155,7 +155,7 @@ public class TestActiveActiveIngestion {
   @AfterClass
   public void cleanUp() {
     multiRegionMultiClusterWrapper.close();
-    // TestView.resetCounters();
+    TestView.resetCounters();
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "Compression-Strategies", dataProviderClass = DataProviderUtils.class)

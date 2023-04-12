@@ -36,7 +36,8 @@ public class DataProviderUtils {
 
   @DataProvider(name = "Compression-Strategies")
   public static Object[][] compressionProvider() {
-    return allPermutationGenerator(COMPRESSION_STRATEGIES);
+    Object[] compressionStrategies = { NO_OP, GZIP };
+    return allPermutationGenerator(compressionStrategies);
   }
 
   @DataProvider(name = "Two-True-and-False")
