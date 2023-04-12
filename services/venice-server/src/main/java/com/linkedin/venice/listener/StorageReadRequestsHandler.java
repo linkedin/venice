@@ -448,7 +448,8 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
           if (responseKeySizeList != null) {
             responseKeySizeList.set(subChunkCur, key.keyBytes.remaining());
           }
-          int subPartitionId = getSubPartitionId(key.partitionId, topic, partitionerConfig, key.keyBytes.array());
+          int subPartitionId =
+              getSubPartitionId(key.partitionId, topic, partitionerConfig, ByteUtils.extractByteArray(key.keyBytes));
           MultiGetResponseRecordV1 record =
               BatchGetChunkingAdapter.get(storageEngine, subPartitionId, key.keyBytes, isChunked, responseWrapper);
           if (record == null) {
@@ -506,7 +507,8 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     responseWrapper.setDatabaseLookupLatency(0);
     boolean isChunked = storageEngine.isChunked();
     for (MultiGetRouterRequestKeyV1 key: keys) {
-      int subPartitionId = getSubPartitionId(key.partitionId, topic, partitionerConfig, key.keyBytes.array());
+      int subPartitionId =
+          getSubPartitionId(key.partitionId, topic, partitionerConfig, ByteUtils.extractByteArray(key.keyBytes));
       MultiGetResponseRecordV1 record =
           BatchGetChunkingAdapter.get(storageEngine, subPartitionId, key.keyBytes, isChunked, responseWrapper);
       if (record == null) {
@@ -595,7 +597,8 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     VeniceCompressor compressor = compressorFactory.getCompressor(compressionStrategy, topic);
     for (ComputeRouterRequestKeyV1 key: keys) {
       clearFieldsInReusedRecord(reuseResultRecord, computeResultSchema);
-      int subPartitionId = getSubPartitionId(key.partitionId, topic, partitionerConfig, key.keyBytes.array());
+      int subPartitionId =
+          getSubPartitionId(key.partitionId, topic, partitionerConfig, ByteUtils.extractByteArray(key.keyBytes));
       ComputeResponseRecordV1 record = computeResult(
           storageEngine,
           storeName,
