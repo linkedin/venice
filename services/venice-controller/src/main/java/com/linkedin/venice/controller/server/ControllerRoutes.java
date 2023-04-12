@@ -2,11 +2,13 @@ package com.linkedin.venice.controller.server;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_LOG_COMPACTION_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_MIN_IN_SYNC_REPLICA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_RETENTION_IN_MS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerRoute.LEADER_CONTROLLER;
 import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_CHILD_CLUSTERS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOPIC_LOG_COMPACTION;
+import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOPIC_MIN_IN_SYNC_REPLICA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOPIC_RETENTION;
 
 import com.linkedin.venice.HttpConstants;
@@ -106,6 +108,18 @@ public class ControllerRoutes extends AbstractRoute {
           Utils.parseLongFromString(adminRequest.queryParams(KAFKA_TOPIC_RETENTION_IN_MS), KAFKA_TOPIC_RETENTION_IN_MS);
       TopicManager topicManager = admin.getTopicManager();
       topicManager.updateTopicRetention(topicName, kafkaTopicRetentionIsMs);
+    });
+  }
+
+  public Route updateKafkaTopicMinInSyncReplica(Admin admin) {
+    return updateKafkaTopicConfig(admin, adminRequest -> {
+      AdminSparkServer.validateParams(adminRequest, UPDATE_KAFKA_TOPIC_MIN_IN_SYNC_REPLICA.getParams(), admin);
+      String topicName = adminRequest.queryParams(TOPIC);
+      int kafkaTopicMinISR = Utils.parseIntFromString(
+          adminRequest.queryParams(KAFKA_TOPIC_MIN_IN_SYNC_REPLICA),
+          KAFKA_TOPIC_MIN_IN_SYNC_REPLICA);
+      TopicManager topicManager = admin.getTopicManager();
+      topicManager.updateTopicMinInSyncReplica(topicName, kafkaTopicMinISR);
     });
   }
 

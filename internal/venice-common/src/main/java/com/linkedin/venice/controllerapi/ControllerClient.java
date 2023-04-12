@@ -21,6 +21,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCLUDE_S
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.INCREMENTAL_PUSH_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.IS_WRITE_COMPUTE_ENABLED;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_LOG_COMPACTION_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_MIN_IN_SYNC_REPLICA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_RETENTION_IN_MS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KEY_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.LOCKED_NODE_ID_LIST_SEPARATOR;
@@ -549,6 +550,11 @@ public class ControllerClient implements Closeable {
   public ControllerResponse updateKafkaTopicRetention(String kafkaTopicName, long retentionInMs) {
     QueryParams params = newParams().add(TOPIC, kafkaTopicName).add(KAFKA_TOPIC_RETENTION_IN_MS, retentionInMs);
     return request(ControllerRoute.UPDATE_KAFKA_TOPIC_RETENTION, params, ControllerResponse.class);
+  }
+
+  public ControllerResponse updateKafkaTopicMinInSyncReplica(String kafkaTopicName, int minISR) {
+    QueryParams params = newParams().add(TOPIC, kafkaTopicName).add(KAFKA_TOPIC_MIN_IN_SYNC_REPLICA, minISR);
+    return request(ControllerRoute.UPDATE_KAFKA_TOPIC_MIN_IN_SYNC_REPLICA, params, ControllerResponse.class);
   }
 
   public <R extends ControllerResponse> R retryableRequest(int totalAttempts, Function<ControllerClient, R> request) {

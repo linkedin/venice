@@ -461,6 +461,9 @@ public class AdminTool {
         case UPDATE_KAFKA_TOPIC_RETENTION:
           updateKafkaTopicRetention(cmd);
           break;
+        case UPDATE_KAFKA_TOPIC_MIN_IN_SYNC_REPLICA:
+          updateKafkaTopicMinInSyncReplica(cmd);
+          break;
         case START_FABRIC_BUILDOUT:
           startFabricBuildout(cmd);
           break;
@@ -2374,6 +2377,14 @@ public class AdminTool {
       String kafkaTopicName = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
       long kafkaTopicRetentionTimeInMs = Long.parseLong(getRequiredArgument(cmd, Arg.KAFKA_TOPIC_RETENTION_IN_MS));
       return client.updateKafkaTopicRetention(kafkaTopicName, kafkaTopicRetentionTimeInMs);
+    });
+  }
+
+  private static void updateKafkaTopicMinInSyncReplica(CommandLine cmd) {
+    updateKafkaTopicConfig(cmd, client -> {
+      String kafkaTopicName = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
+      int kafkaTopicMinISR = Integer.parseInt(getRequiredArgument(cmd, Arg.KAFKA_TOPIC_MIN_IN_SYNC_REPLICA));
+      return client.updateKafkaTopicMinInSyncReplica(kafkaTopicName, kafkaTopicMinISR);
     });
   }
 
