@@ -1175,6 +1175,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       OffsetRecord offsetRecord =
           new OffsetRecord(offsetRecordArray.get(subPartition - offset).array(), partitionStateSerializer);
       storageMetadataService.put(topicName, subPartition, offsetRecord);
+      LOGGER
+          .info("Updated OffsetRecord: {} for topic: {}, partition: {}", offsetRecord.toString(), topicName, partition);
     }
   }
 
@@ -1194,6 +1196,20 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       offsetRecordArray.add(ByteBuffer.wrap(pcs.getOffsetRecord().toBytes()));
     }
     return offsetRecordArray;
+  }
+
+  /**
+   * Updates offset metadata and sync to storage for specified topic partition.
+   * This method is invoked only when isolated ingestion process is reporting topic partition completion to make sure
+   * ingestion process is persisted.
+   */
+  public void syncTopicPartitionOffset(String topicName, int partition) {
+    StoreIngestionTask storeIngestionTask = getStoreIngestionTask(topicName);
+    int amplificationFactor = storeIngestionTask.getAmplificationFactor();
+    for (int i = 0; i < amplificationFactor; i++) {
+      int subPartitionId = amplificationFactor * partition + i;
+      storeIngestionTask.updateOffsetMetadataAndSync(topicName, subPartitionId);
+    }
   }
 
   public final ReadOnlyStoreRepository getMetadataRepo() {
