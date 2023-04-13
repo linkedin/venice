@@ -29,6 +29,10 @@ public class MonitorCommand extends Command {
     this.params = params;
   }
 
+  public MonitorCommand.Params getParams() {
+    return this.params;
+  }
+
   @Override
   public MonitorCommand.Result getResult() {
     return result;
@@ -41,13 +45,14 @@ public class MonitorCommand extends Command {
 
   @Override
   public void execute() {
-    String storeName = params.store;
+    String storeName = getParams().getStore();
 
     // Find out cluster name.
-    String clusterName = params.pCtrlCliWithoutCluster.discoverCluster(storeName).getCluster();
+    String clusterName = getParams().getPCtrlCliWithoutCluster().discoverCluster(storeName).getCluster();
 
     // Create a new controller client with cluster name specified.
-    try (ControllerClient parentCtrlCli = buildControllerClient(clusterName, params.parentUrl, params.sslFactory)) {
+    try (ControllerClient parentCtrlCli =
+        buildControllerClient(clusterName, getParams().getParentUrl(), getParams().getSslFactory())) {
       StoreResponse storeResponse = parentCtrlCli.getStore(storeName);
       if (storeResponse.isError()) {
         completeCoreWorkWithError(storeResponse.getError());
@@ -61,12 +66,12 @@ public class MonitorCommand extends Command {
        */
       MultiStoreStatusResponse response = parentCtrlCli.getFutureVersions(clusterName, storeName);
 
-      if (!response.getStoreStatusMap().containsKey(params.targetRegion)) {
-        completeCoreWorkWithError(String.format("No status for region: %s", params.targetRegion));
+      if (!response.getStoreStatusMap().containsKey(getParams().getTargetRegion())) {
+        completeCoreWorkWithError(String.format("No status for region: %s", getParams().getTargetRegion()));
         return;
       }
 
-      int futureVersion = Integer.parseInt(response.getStoreStatusMap().get(params.targetRegion));
+      int futureVersion = Integer.parseInt(response.getStoreStatusMap().get(getParams().getTargetRegion()));
       if (futureVersion == Store.NON_EXISTING_VERSION) {
         completeCoreWorkWithMessage("No ongoing offline pushes");
         return;
@@ -78,7 +83,7 @@ public class MonitorCommand extends Command {
 
       // Query job status.
       JobStatusQueryResponse jobStatusQueryResponse =
-          parentCtrlCli.queryDetailedJobStatus(kafkaTopic, params.targetRegion);
+          parentCtrlCli.queryDetailedJobStatus(kafkaTopic, getParams().getTargetRegion());
 
       if (jobStatusQueryResponse.isError()
           || jobStatusQueryResponse.getStatus().equalsIgnoreCase(ExecutionStatus.ERROR.toString())) {
@@ -132,6 +137,34 @@ public class MonitorCommand extends Command {
     private ControllerClient pCtrlCliWithoutCluster;
     private String parentUrl;
     private Optional<SSLFactory> sslFactory;
+
+    public Params(MonitorCommand.Params p) {
+      super(p);
+      this.setTargetRegion(p.getTargetRegion());
+      this.setPCtrlCliWithoutCluster(p.getPCtrlCliWithoutCluster());
+      this.setParentUrl(p.getParentUrl());
+      this.setSslFactory(p.getSslFactory());
+    }
+
+    public Params() {
+
+    }
+
+    public String getTargetRegion() {
+      return targetRegion;
+    }
+
+    public ControllerClient getPCtrlCliWithoutCluster() {
+      return pCtrlCliWithoutCluster;
+    }
+
+    public String getParentUrl() {
+      return parentUrl;
+    }
+
+    public Optional<SSLFactory> getSslFactory() {
+      return sslFactory;
+    }
 
     public void setTargetRegion(String fabric) {
       this.targetRegion = fabric;

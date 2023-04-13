@@ -18,6 +18,13 @@ public abstract class Command {
     public void setStore(String store) {
       this.store = store;
     }
+
+    public Params() {
+    }
+
+    public Params(Params p) {
+      this.setStore(p.getStore());
+    }
   }
 
   public abstract static class Result {

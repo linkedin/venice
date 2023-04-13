@@ -85,7 +85,7 @@ public class EstimateDataRecoveryTimeCommand extends Command {
     private Optional<SSLFactory> sslFactory;
 
     public Params(Params p) {
-      setStore(p.getStore());
+      super(p);
       setPCtrlCliWithoutCluster(p.getPCtrlCliWithoutCluster());
       setTargetRegion(p.getTargetRegion());
       setSslFactory(p.getSslFactory());

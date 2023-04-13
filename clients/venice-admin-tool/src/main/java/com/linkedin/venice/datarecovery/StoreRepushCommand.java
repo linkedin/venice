@@ -143,6 +143,33 @@ public class StoreRepushCommand extends Command {
     // Debug run.
     private boolean debug = false;
 
+    public Params() {
+    }
+
+    public Params(StoreRepushCommand.Params p) {
+      super(p);
+      this.setStore(p.getStore());
+      this.setSourceFabric(p.getSourceFabric());
+      this.setExtraCommandArgs(p.getExtraCommandArgs());
+      this.setDebug(p.getDebug());
+    }
+
+    public String getSourceFabric() {
+      return sourceFabric;
+    }
+
+    public String getCommand() {
+      return command;
+    }
+
+    public String getExtraCommandArgs() {
+      return extraCommandArgs;
+    }
+
+    public boolean getDebug() {
+      return debug;
+    }
+
     public void setDebug(boolean debug) {
       this.debug = debug;
     }

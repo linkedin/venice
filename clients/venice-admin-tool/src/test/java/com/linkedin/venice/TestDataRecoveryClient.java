@@ -75,6 +75,13 @@ public class TestDataRecoveryClient {
       for (int i = 0; i < numOfStores; i++) {
         Assert.assertFalse(executor.getTasks().get(i).getTaskResult().isError());
       }
+      Set<String> storeNames = new HashSet<>();
+      // Double-check the stores recovered. We do not want to see duplicates in the final report.
+      for (int i = 0; i < numOfStores; i++) {
+        String storeName = executor.getTasks().get(i).getTaskParams().getCmdParams().getStore();
+        Assert.assertFalse(storeNames.contains(storeName));
+        storeNames.add(storeName);
+      }
     } else {
       // Verify all stores are executed unsuccessfully.
       for (int i = 0; i < numOfStores; i++) {
@@ -99,12 +106,12 @@ public class TestDataRecoveryClient {
     cmdParams.setParentUrl("https://localhost:7036");
     cmdParams.setPCtrlCliWithoutCluster(controllerClient);
     EstimateDataRecoveryTimeCommand mockCmd = spy(EstimateDataRecoveryTimeCommand.class);
-    List<DataRecoveryTask> tasks = buildTasks(storeNames, mockCmd, cmdParams);
+    List<DataRecoveryTask> tasks = buildEstimateTasks(storeNames, mockCmd, cmdParams);
     doReturn(cmdParams).when(mockCmd).getParams();
     D2ServiceDiscoveryResponse r = new D2ServiceDiscoveryResponse();
     r.setCluster("test");
     doReturn(r).when(controllerClient).discoverCluster(anyString());
-    doReturn(controllerClient).when(mockCmd).buildControllerClient(any(), any(), any());
+    doReturn(controllerClient).when(mockCmd).buildControllerClient(anyString(), anyString(), any());
 
     doReturn(tasks).when(estimator).buildTasks(any(), any());
     DataRecoveryClient dataRecoveryClient = mock(DataRecoveryClient.class);
@@ -157,7 +164,7 @@ public class TestDataRecoveryClient {
 
     // Inject the mocked command into the running system.
     Set<String> storeName = new HashSet<>(Arrays.asList("store1", "store2", "store3"));
-    List<DataRecoveryTask> tasks = buildTasks(storeName, mockStoreRepushCmd, cmdParams);
+    List<DataRecoveryTask> tasks = buildExecuteTasks(storeName, mockStoreRepushCmd, cmdParams);
     doReturn(tasks).when(executor).buildTasks(any(), any());
 
     // Partial mock of Client class to confirm to-be-repushed stores from standard input.
@@ -175,6 +182,48 @@ public class TestDataRecoveryClient {
     List<DataRecoveryTask> tasks = new ArrayList<>();
     for (String name: storeNames) {
       DataRecoveryTask.TaskParams taskParams = new DataRecoveryTask.TaskParams(name, params);
+      tasks.add(new DataRecoveryTask(cmd, taskParams));
+    }
+    return tasks;
+  }
+
+  private List<DataRecoveryTask> buildExecuteTasks(
+      Set<String> storeNames,
+      Command cmd,
+      StoreRepushCommand.Params params) {
+    List<DataRecoveryTask> tasks = new ArrayList<>();
+    for (String name: storeNames) {
+      StoreRepushCommand.Params p = new StoreRepushCommand.Params(params);
+      DataRecoveryTask.TaskParams taskParams = new DataRecoveryTask.TaskParams(name, p);
+      tasks.add(new DataRecoveryTask(cmd, taskParams));
+    }
+    return tasks;
+  }
+
+  private List<DataRecoveryTask> buildMonitorTasks(Set<String> storeNames, Command cmd, MonitorCommand.Params params) {
+    List<DataRecoveryTask> tasks = new ArrayList<>();
+    for (String name: storeNames) {
+      MonitorCommand.Params p = new MonitorCommand.Params(params);
+      p.setStore(name);
+      DataRecoveryTask.TaskParams taskParams = new DataRecoveryTask.TaskParams(name, p);
+      MonitorCommand newCmd = mock(MonitorCommand.class);
+      p.setPCtrlCliWithoutCluster(params.getPCtrlCliWithoutCluster());
+      p.setParentUrl(params.getParentUrl());
+      doReturn(p).when(newCmd).getParams();
+      doReturn(params.getPCtrlCliWithoutCluster()).when(newCmd).buildControllerClient(anyString(), anyString(), any());
+      tasks.add(new DataRecoveryTask(newCmd, taskParams));
+    }
+    return tasks;
+  }
+
+  private List<DataRecoveryTask> buildEstimateTasks(
+      Set<String> storeNames,
+      Command cmd,
+      EstimateDataRecoveryTimeCommand.Params params) {
+    List<DataRecoveryTask> tasks = new ArrayList<>();
+    for (String name: storeNames) {
+      EstimateDataRecoveryTimeCommand.Params p = new EstimateDataRecoveryTimeCommand.Params(params);
+      DataRecoveryTask.TaskParams taskParams = new DataRecoveryTask.TaskParams(name, p);
       tasks.add(new DataRecoveryTask(cmd, taskParams));
     }
     return tasks;
@@ -218,6 +267,7 @@ public class TestDataRecoveryClient {
 
     MonitorCommand.Params monitorParams = new MonitorCommand.Params();
     monitorParams.setTargetRegion(region);
+    monitorParams.setParentUrl("https://localhost:7036");
     monitorParams.setPCtrlCliWithoutCluster(mockedCli);
 
     MonitorCommand mockMonitorCmd = spy(MonitorCommand.class);
@@ -226,7 +276,7 @@ public class TestDataRecoveryClient {
 
     // Inject the mocked command into the running system.
     Set<String> storeName = new HashSet<>(Arrays.asList("store1", "store2", "store3"));
-    List<DataRecoveryTask> tasks = buildTasks(storeName, mockMonitorCmd, monitorParams);
+    List<DataRecoveryTask> tasks = buildMonitorTasks(storeName, mockMonitorCmd, monitorParams);
     doReturn(tasks).when(monitor).buildTasks(any(), any());
 
     // client monitors three store recovery progress.

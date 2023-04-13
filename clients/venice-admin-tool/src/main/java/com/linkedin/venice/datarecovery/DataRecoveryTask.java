@@ -71,7 +71,7 @@ public class DataRecoveryTask implements Runnable {
     public TaskParams(String storeName, Command.Params cmdParams) {
       this.store = storeName;
       this.cmdParams = cmdParams;
-      this.cmdParams.setStore(this.store);
+      this.cmdParams.setStore(storeName);
     }
 
     public String getStore() {
