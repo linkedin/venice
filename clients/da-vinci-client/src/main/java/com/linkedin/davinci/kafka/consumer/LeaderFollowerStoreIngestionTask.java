@@ -1050,6 +1050,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     return Objects.equals(partitionConsumptionState.getLeaderFollowerState(), LEADER);
   }
 
+  /**
+   * Process {@link TopicSwitch} control message at given partition offset for a specific {@link PartitionConsumptionState}.
+   * Return whether we need to execute additional ready-to-serve check after this message is processed.
+   */
   @Override
   protected boolean processTopicSwitch(
       ControlMessage controlMessage,
