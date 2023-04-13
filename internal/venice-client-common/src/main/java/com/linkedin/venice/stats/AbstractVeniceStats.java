@@ -10,6 +10,7 @@ import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Percentiles;
+import io.tehuti.metrics.stats.Rate;
 import io.tehuti.metrics.stats.Total;
 import java.util.Map;
 import java.util.function.Supplier;
@@ -84,15 +85,15 @@ public class AbstractVeniceStats {
         for (MeasurableStat stat: stats) {
           if (stat instanceof Percentiles) {
             Percentiles percentilesStat = (Percentiles) stat;
-            if (percentilesStat.stats().size() > 0) { // Only checking one is enough to determine if we have already
-                                                      // added this set
+            if (percentilesStat.stats().size() > 0) {
+              // Only checking one is enough to determine if we have already added this set
               String metricName = percentilesStat.stats().get(0).name();
               if (metricsRepository.getMetric(metricName) == null) {
                 sensor.add(percentilesStat, config);
               }
             }
           } else {
-            String metricName = sensorFullName + "." + stat.getClass().getSimpleName();
+            String metricName = sensorFullName + "." + metricNameSuffix(stat);
             if (metricsRepository.getMetric(metricName) == null) {
               sensor.add(metricName, stat, config);
             }
@@ -101,6 +102,14 @@ public class AbstractVeniceStats {
       }
       return sensor;
     });
+  }
+
+  /**
+   * N.B.: {@link LongAdderRateGauge} is just an implementation detail, and we do not wish to alter metric names
+   * due to it, so we call it the same as {@link Rate}.
+   */
+  private String metricNameSuffix(MeasurableStat stat) {
+    return (stat instanceof LongAdderRateGauge ? Rate.class : stat.getClass()).getSimpleName();
   }
 
   protected void unregisterAllSensors() {

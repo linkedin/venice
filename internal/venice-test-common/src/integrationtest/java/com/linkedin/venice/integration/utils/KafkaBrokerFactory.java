@@ -12,7 +12,6 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 import kafka.metrics.KafkaMetricsReporter;
 import kafka.server.KafkaConfig;
@@ -195,7 +194,7 @@ class KafkaBrokerFactory implements PubSubBrokerFactory {
     private static KafkaServer instantiateNewKafkaServer(KafkaConfig kafkaConfig, TestMockTime mockTime) {
       // We cannot get a kafka.utils.Time out of an Optional<TestMockTime>, even though TestMockTime implements it.
       org.apache.kafka.common.utils.Time time =
-          Optional.<org.apache.kafka.common.utils.Time>ofNullable(mockTime).orElse(SystemTime.SYSTEM);
+          mockTime == null ? SystemTime.SYSTEM : new KafkaMockTimeWrapper(mockTime);
       int port = kafkaConfig.getInt(KafkaConfig.PortProp());
       // Scala's Some (i.e.: the non-empty Optional) needs to be instantiated via Some's object (i.e.: static companion
       // class)

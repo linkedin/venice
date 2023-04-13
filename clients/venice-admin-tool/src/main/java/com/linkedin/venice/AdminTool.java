@@ -1601,7 +1601,7 @@ public class AdminTool {
     }
   }
 
-  private static boolean isClonedStoreOnline(
+  protected static boolean isClonedStoreOnline(
       ControllerClient srcControllerClient,
       ControllerClient destControllerClient,
       String storeName) {
@@ -1641,6 +1641,12 @@ public class AdminTool {
       int srcLatestOnlineVersionOfMetaSystemStore = getLatestOnlineVersionNum(srcMetaSystemStore.getVersions());
       int destLatestOnlineVersionOfMetaSystemStore = getLatestOnlineVersionNum(destMetaSystemStore.getVersions());
       destMetaStoreOnline = destLatestOnlineVersionOfMetaSystemStore >= srcLatestOnlineVersionOfMetaSystemStore;
+      if (!destMetaStoreOnline) {
+        System.err.println(
+            "Meta system store is not ready. Online version in dest cluster: "
+                + destLatestOnlineVersionOfMetaSystemStore + ". Online version in src cluster: "
+                + srcLatestOnlineVersionOfMetaSystemStore);
+      }
     }
     boolean destDaVinciPushStatusStoreOnline = true;
     if (srcStore.isDaVinciPushStatusStoreEnabled()) {
@@ -1656,6 +1662,17 @@ public class AdminTool {
           getLatestOnlineVersionNum(destDaVinciPushStatusSystemStore.getVersions());
       destDaVinciPushStatusStoreOnline =
           destLatestOnlineVersionOfDaVinciPushStatusSystemStore >= srcLatestOnlineVersionOfDaVinciPushStatusSystemStore;
+      if (!destDaVinciPushStatusStoreOnline) {
+        System.err.println(
+            "DaVinci push status system store is not ready. Online version in dest cluster: "
+                + destLatestOnlineVersionOfDaVinciPushStatusSystemStore + ". Online version in src cluster: "
+                + srcLatestOnlineVersionOfDaVinciPushStatusSystemStore);
+      }
+    }
+    if (destLatestOnlineVersion < srcLatestOnlineVersion) {
+      System.err.println(
+          "User store is not ready. Online version in dest cluster: " + destLatestOnlineVersion
+              + ".  Online version in src cluster: " + srcLatestOnlineVersion);
     }
     return (destLatestOnlineVersion >= srcLatestOnlineVersion) && destMetaStoreOnline
         && destDaVinciPushStatusStoreOnline;

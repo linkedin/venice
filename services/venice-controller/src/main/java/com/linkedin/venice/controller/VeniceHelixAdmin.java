@@ -53,6 +53,7 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
+import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.NodeReplicasReadinessState;
 import com.linkedin.venice.controllerapi.RepushInfo;
 import com.linkedin.venice.controllerapi.SchemaResponse;
@@ -1297,11 +1298,22 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     // Create a new store in destination cluster
-    destControllerClient
+    NewStoreResponse newStoreResponse = destControllerClient
         .createNewStore(storeName, srcStore.getOwner(), keySchema, valueSchemaEntries.get(0).getSchema().toString());
+    if (newStoreResponse.isError()) {
+      throw new VeniceException(
+          "Failed to create store " + storeName + " in dest cluster " + destClusterName + ". Error "
+              + newStoreResponse.getError());
+    }
     // Add other value schemas
-    for (int i = 1; i < valueSchemaEntries.size(); i++) {
-      destControllerClient.addValueSchema(storeName, valueSchemaEntries.get(i).getSchema().toString());
+    for (SchemaEntry schemaEntry: valueSchemaEntries) {
+      SchemaResponse schemaResponse =
+          destControllerClient.addValueSchema(storeName, schemaEntry.getSchema().toString());
+      if (schemaResponse.isError()) {
+        throw new VeniceException(
+            "Failed to add value schema " + schemaEntry.getId() + " into store " + storeName + " in dest cluster "
+                + destClusterName + ". Error " + schemaResponse.getError());
+      }
     }
 
     // Copy remaining properties that will make the cloned store almost identical to the original
@@ -1313,43 +1325,52 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       if (params.isDifferent(paramsInChildColo)) {
         // Src parent controller calls dest parent controller to update store with store configs in child colo.
         paramsInChildColo.setRegionsFilter(entry.getKey());
-        LOGGER.info("Sending update-store request {} to {}", paramsInChildColo, entry.getKey());
-        destControllerClient.updateStore(storeName, paramsInChildColo);
+        LOGGER.info("Sending update-store request {} to store {} in {}", paramsInChildColo, storeName, entry.getKey());
+        ControllerResponse updateStoreResponse = destControllerClient.updateStore(storeName, paramsInChildColo);
+        if (updateStoreResponse.isError()) {
+          throw new VeniceException(
+              "Failed to update store " + storeName + " in dest cluster " + destClusterName + " in region "
+                  + paramsInChildColo + ". Error " + updateStoreResponse.getError());
+        }
       } else {
         remainingRegions.add(entry.getKey());
       }
     }
     params.setRegionsFilter(String.join(",", remainingRegions));
-    LOGGER.info("Sending update-store request {} to {}", params, remainingRegions);
-    destControllerClient.updateStore(storeName, params);
+    LOGGER.info("Sending update-store request {} to store {} in {}", params, storeName, remainingRegions);
+    ControllerResponse updateStoreResponse = destControllerClient.updateStore(storeName, params);
+    if (updateStoreResponse.isError()) {
+      throw new VeniceException(
+          "Failed to update store " + storeName + " in dest cluster " + destClusterName + " in regions "
+              + remainingRegions + ". Error " + updateStoreResponse.getError());
+    }
 
     Consumer<String> versionMigrationConsumer = migratingStoreName -> {
       Store migratingStore = this.getStore(srcClusterName, migratingStoreName);
       List<Version> versionsToMigrate = getVersionsToMigrate(srcStoresInChildColos, migratingStore);
       LOGGER.info(
-          "Adding versions: {} to store: {} in the dest cluster: {}",
+          "Adding versions {} to store {} in dest cluster {}",
           versionsToMigrate.stream().map(Version::getNumber).map(String::valueOf).collect(Collectors.joining(",")),
           migratingStoreName,
           destClusterName);
       for (Version version: versionsToMigrate) {
-        try {
-          destControllerClient.addVersionAndStartIngestion(
-              migratingStoreName,
-              version.getPushJobId(),
-              version.getNumber(),
-              // Version topic might be deleted in parent. Get partition count from version instead of topic manager.
-              version.getPartitionCount(),
-              version.getPushType(),
-              // Version topic might be deleted in parent. Remote Kafka is set to null for store migration.
-              // Migrated stores should bootstrap by consuming the version topics in its local fabric.
-              null,
-              version.getHybridStoreConfig() == null ? -1 : version.getHybridStoreConfig().getRewindTimeInSeconds(),
-              version.getRmdVersionId());
-        } catch (Exception e) {
+        VersionResponse versionResponse = destControllerClient.addVersionAndStartIngestion(
+            migratingStoreName,
+            version.getPushJobId(),
+            version.getNumber(),
+            // Version topic might be deleted in parent. Get partition count from version instead of topic manager.
+            version.getPartitionCount(),
+            version.getPushType(),
+            // Pass through source addresses as they point to child Kafka in which version topics are not deleted.
+            // Before migration ends, dest stores all leaders and followers consume version topics in local fabric.
+            version.getPushStreamSourceAddress(),
+            version.getHybridStoreConfig() == null ? -1 : version.getHybridStoreConfig().getRewindTimeInSeconds(),
+            version.getRmdVersionId());
+        if (versionResponse.isError()) {
           throw new VeniceException(
-              "An exception was thrown when attempting to add version and start ingestion for store "
-                  + migratingStoreName + " and version " + version.getNumber(),
-              e);
+              "Failed to add version and start ingestion for store " + migratingStoreName + " and version "
+                  + version.getNumber() + " in dest cluster " + destClusterName + ". Error "
+                  + versionResponse.getError());
         }
       }
     };
@@ -1869,6 +1890,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           clusterName);
     } else {
       try (AutoCloseableLock ignore = resources.getClusterLockManager().createStoreWriteLock(storeName)) {
+        VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
+        if (systemStoreType != null && systemStoreType.equals(VeniceSystemStoreType.META_STORE)) {
+          setUpMetaStoreAndMayProduceSnapshot(clusterName, systemStoreType.extractRegularStoreName(storeName));
+        }
+        if (systemStoreType != null && systemStoreType.equals(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE)) {
+          setUpDaVinciPushStatusStore(clusterName, systemStoreType.extractRegularStoreName(storeName));
+        }
+
         version.setPushType(pushType);
         store.addVersion(version);
         // Apply cluster-level native replication configs
@@ -2158,7 +2187,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
            */
           VeniceSystemStoreType systemStoreType = VeniceSystemStoreType.getSystemStoreType(storeName);
           if (systemStoreType != null && systemStoreType.equals(VeniceSystemStoreType.META_STORE)) {
-            produceSnapshotToMetaStoreRT(clusterName, systemStoreType.extractRegularStoreName(storeName));
+            setUpMetaStoreAndMayProduceSnapshot(clusterName, systemStoreType.extractRegularStoreName(storeName));
           }
           if (systemStoreType != null && systemStoreType.equals(VeniceSystemStoreType.DAVINCI_PUSH_STATUS_STORE)) {
             setUpDaVinciPushStatusStore(clusterName, systemStoreType.extractRegularStoreName(storeName));
@@ -7158,7 +7187,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
   }
 
-  private void produceSnapshotToMetaStoreRT(String clusterName, String regularStoreName) {
+  private void setUpMetaStoreAndMayProduceSnapshot(String clusterName, String regularStoreName) {
     checkControllerLeadershipFor(clusterName);
     ReadWriteStoreRepository repository = getHelixVeniceClusterResources(clusterName).getStoreMetadataRepository();
     Store store = repository.getStore(regularStoreName);
@@ -7166,8 +7195,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       throwStoreDoesNotExist(clusterName, regularStoreName);
     }
     String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(regularStoreName);
-    // Make sure RT topic is before producing the snapshot
-    getRealTimeTopic(clusterName, metaStoreName);
+    if (!isParent()) {
+      // Make sure RT topic in child region exists before producing. There's no write to parent region meta store RT.
+      getRealTimeTopic(clusterName, metaStoreName);
+    }
 
     // Update the store flag to enable meta system store.
     if (!store.isStoreMetaSystemStoreEnabled()) {
@@ -7178,7 +7209,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
     Optional<MetaStoreWriter> metaStoreWriter = getHelixVeniceClusterResources(clusterName).getMetaStoreWriter();
     if (!metaStoreWriter.isPresent()) {
-      LOGGER.error(
+      LOGGER.info(
           "MetaStoreWriter from VeniceHelixResource is absent, will skip producing snapshot to meta store RT for store: {}",
           regularStoreName);
       return;

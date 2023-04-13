@@ -1465,14 +1465,14 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       int subPartition,
       String kafkaUrl,
       int kafkaClusterId,
-      long beforeProcessingRecordTimestamp) {
+      long beforeProcessingRecordTimestampNs) {
     LeaderProducerCallback callback = createProducerCallback(
         consumerRecord,
         partitionConsumptionState,
         leaderProducedRecordContext,
         subPartition,
         kafkaUrl,
-        beforeProcessingRecordTimestamp);
+        beforeProcessingRecordTimestampNs);
     long sourceTopicOffset = consumerRecord.getOffset();
     LeaderMetadataWrapper leaderMetadataWrapper = new LeaderMetadataWrapper(sourceTopicOffset, kafkaClusterId);
     partitionConsumptionState.setLastLeaderPersistFuture(leaderProducedRecordContext.getPersistedToDBFuture());
@@ -1859,7 +1859,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       int subPartition,
       String kafkaUrl,
       int kafkaClusterId,
-      long beforeProcessingRecordTimestampNs) {
+      long beforeProcessingRecordTimestampNs,
+      long currentTimeForMetricsMs) {
     boolean produceToLocalKafka = false;
     try {
       KafkaKey kafkaKey = consumerRecord.getKey();
@@ -1905,7 +1906,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             kafkaClusterId,
             consumerRecord.getPayloadSize(),
             consumerRecord.getOffset(),
-            beforeProcessingRecordTimestampNs);
+            currentTimeForMetricsMs);
         updateLatestInMemoryLeaderConsumedRTOffset(partitionConsumptionState, kafkaUrl, consumerRecord.getOffset());
       }
 
@@ -2126,7 +2127,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             subPartition,
             kafkaUrl,
             kafkaClusterId,
-            beforeProcessingRecordTimestampNs);
+            beforeProcessingRecordTimestampNs,
+            currentTimeForMetricsMs);
       }
       return DelegateConsumerRecordResult.PRODUCED_TO_KAFKA;
     } catch (Exception e) {
@@ -2604,7 +2606,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       int subPartition,
       String kafkaUrl,
       int kafkaClusterId,
-      long beforeProcessingRecordTimestamp) {
+      long beforeProcessingRecordTimestampNs,
+      long currentTimeForMetricsMs) {
     KafkaKey kafkaKey = consumerRecord.getKey();
     KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
     byte[] keyBytes = kafkaKey.getKey();
@@ -2680,7 +2683,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             subPartition,
             kafkaUrl,
             kafkaClusterId,
-            beforeProcessingRecordTimestamp);
+            beforeProcessingRecordTimestampNs);
         break;
 
       case UPDATE:
@@ -2691,7 +2694,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             kafkaUrl,
             kafkaClusterId,
             partitionConsumptionState,
-            beforeProcessingRecordTimestamp);
+            beforeProcessingRecordTimestampNs);
         break;
 
       case DELETE:
@@ -2726,7 +2729,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             subPartition,
             kafkaUrl,
             kafkaClusterId,
-            beforeProcessingRecordTimestamp);
+            beforeProcessingRecordTimestampNs);
         break;
 
       default:
@@ -2759,7 +2762,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       String kafkaUrl,
       int kafkaClusterId,
       PartitionConsumptionState partitionConsumptionState,
-      long beforeProcessingRecordTimestamp) {
+      long beforeProcessingRecordTimestampNs) {
 
     final int subPartition = partitionConsumptionState.getPartition();
     final int readerValueSchemaId;
@@ -2853,7 +2856,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           subPartition,
           kafkaUrl,
           kafkaClusterId,
-          beforeProcessingRecordTimestamp);
+          beforeProcessingRecordTimestampNs);
     }
   }
 
@@ -3099,7 +3102,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       LeaderProducedRecordContext leaderProducedRecordContext,
       int subPartition,
       String kafkaUrl,
-      long beforeProcessingRecordTimestamp) {
+      long beforeProcessingRecordTimestampNs) {
     return new LeaderProducerCallback(
         this,
         consumerRecord,
@@ -3107,7 +3110,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         leaderProducedRecordContext,
         subPartition,
         kafkaUrl,
-        beforeProcessingRecordTimestamp);
+        beforeProcessingRecordTimestampNs);
   }
 
   protected Lazy<VeniceWriter<byte[], byte[], byte[]>> getVeniceWriter() {
