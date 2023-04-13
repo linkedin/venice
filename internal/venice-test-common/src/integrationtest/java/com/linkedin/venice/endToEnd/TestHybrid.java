@@ -79,6 +79,10 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreStatus;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ZKStore;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.pushmonitor.OfflinePushStatus;
+import com.linkedin.venice.pushmonitor.PartitionStatus;
+import com.linkedin.venice.pushmonitor.ReplicaStatus;
 import com.linkedin.venice.samza.SamzaExitMode;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
@@ -1377,6 +1381,113 @@ public class TestHybrid {
         veniceProducer.stop();
       }
     }
+  }
+
+  @Test(timeOut = 180 * Time.MS_PER_SECOND)
+  public void testOffsetRecordSyncedForIngestionIsolationHandover() throws Exception {
+    SystemProducer veniceProducer = null;
+
+    VeniceClusterWrapper venice = ingestionIsolationEnabledSharedVenice;
+    try {
+      long streamingRewindSeconds = 0L;
+      long streamingMessageLag = 1000L;
+
+      String storeName = Utils.getUniqueString("hybrid-store");
+      File inputDir = getTempDataDirectory();
+      String inputDirPath = "file://" + inputDir.getAbsolutePath();
+      Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir); // records 1-100
+      Properties vpjProperties = defaultVPJProps(venice, inputDirPath, storeName);
+
+      try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
+          AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
+              ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()))) {
+
+        ControllerResponse response = controllerClient.updateStore(
+            storeName,
+            new UpdateStoreQueryParams().setHybridRewindSeconds(streamingRewindSeconds)
+                .setHybridOffsetLagThreshold(streamingMessageLag));
+        Assert.assertFalse(response.isError());
+
+        // Do an VPJ push with an empty RT
+        runVPJ(vpjProperties, 1, controllerClient);
+
+        // Verify some records (note, records 1-100 have been pushed)
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+          try {
+            for (int i = 1; i < 100; i++) {
+              String key = Integer.toString(i);
+              Object value = client.get(key).get();
+              assertNotNull(value, "Key " + i + " should not be missing!");
+              assertEquals(value.toString(), "test_name_" + key);
+            }
+          } catch (Exception e) {
+            throw new VeniceException(e);
+          }
+        });
+
+        // write streaming records
+        veniceProducer = getSamzaProducer(venice, storeName, Version.PushType.STREAM);
+        for (int i = 1; i <= 10; i++) {
+          // The batch values are small, but the streaming records are "big" (i.e.: not that big, but bigger than
+          // the server's max configured chunk size). In the scenario where chunking is disabled, the server's
+          // max chunk size is not altered, and thus this will be under threshold.
+          sendCustomSizeStreamingRecord(veniceProducer, storeName, i, STREAMING_RECORD_SIZE);
+        }
+
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+          try {
+            checkLargeRecord(client, 2);
+          } catch (Exception e) {
+            throw new VeniceException(e);
+          }
+        });
+
+        VersionCreationResponse vcr =
+            controllerClient.emptyPush(storeName, Utils.getUniqueString("empty-hybrid-push"), 1L);
+        int versionNumber = vcr.getVersion();
+        assertNotEquals(versionNumber, 0, "requesting a topic for a push should provide a non zero version number");
+
+        TestUtils.waitForNonDeterministicAssertion(100, TimeUnit.SECONDS, true, () -> {
+          // Now the store should have version 1
+          JobStatusQueryResponse jobStatus =
+              controllerClient.queryJobStatus(Version.composeKafkaTopic(storeName, versionNumber));
+          Assert.assertFalse(jobStatus.isError(), "Error in getting JobStatusResponse: " + jobStatus.getError());
+          assertEquals(jobStatus.getStatus(), "COMPLETED");
+        });
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+          try {
+            for (int i = 1; i <= 10; i++) {
+              String key = Integer.toString(i);
+              Assert.assertNull(client.get(key).get(), null);
+            }
+          } catch (Exception e) {
+            throw new VeniceException(e);
+          }
+        });
+      }
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
+        try {
+          OfflinePushStatus offlinePushStatus = venice.getVeniceServers()
+              .get(0)
+              .getVeniceServer()
+              .getHelixParticipationService()
+              .getVeniceOfflinePushMonitorAccessor()
+              .getOfflinePushStatusAndItsPartitionStatuses(storeName + "_v2");
+          for (PartitionStatus partitionStatus: offlinePushStatus.getPartitionStatuses()) {
+            for (ReplicaStatus replicaStatus: partitionStatus.getReplicaStatuses()) {
+              Assert.assertEquals(replicaStatus.getCurrentStatus(), ExecutionStatus.COMPLETED);
+            }
+          }
+        } catch (Exception e) {
+          throw new VeniceException(e);
+        }
+      });
+    } finally {
+      if (veniceProducer != null) {
+        veniceProducer.stop();
+      }
+    }
+
   }
 
   @Test(timeOut = 180 * Time.MS_PER_SECOND)

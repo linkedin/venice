@@ -174,7 +174,7 @@ public class MainIngestionReportHandler extends SimpleChannelInboundHandler<Full
         StoreVersionState storeVersionState =
             IsolatedIngestionUtils.deserializeStoreVersionState(topicName, report.storeVersionState.array());
         mainIngestionMonitorService.getStorageMetadataService().putStoreVersionState(topicName, storeVersionState);
-        LOGGER.info("Updated storeVersionState for topic: {} {}", topicName, storeVersionState.toString());
+        LOGGER.info("Updated storeVersionState: {} for topic: {}", storeVersionState.toString(), topicName);
       }
     }
   }
