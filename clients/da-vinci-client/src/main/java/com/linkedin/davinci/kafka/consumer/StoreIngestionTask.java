@@ -2281,7 +2281,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // NoOp
   }
 
-  protected void processTopicSwitch(
+  protected boolean processTopicSwitch(
       ControlMessage controlMessage,
       int partition,
       long offset,
@@ -2295,12 +2295,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * In this method, we pass both offset and partitionConsumptionState(ps). The reason behind it is that ps's
    * offset is stale and is not updated until the very end
    */
-  private void processControlMessage(
+  private boolean processControlMessage(
       KafkaMessageEnvelope kafkaMessageEnvelope,
       ControlMessage controlMessage,
       int partition,
       long offset,
       PartitionConsumptionState partitionConsumptionState) {
+    boolean checkReadyToServeAfterProcess = false;
     /**
      * If leader consumes control messages from topics other than version topic, it should produce
      * them to version topic; however, START_OF_SEGMENT and END_OF_SEGMENT should not be forwarded
@@ -2340,7 +2341,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         processEndOfIncrementalPush(controlMessage, partitionConsumptionState);
         break;
       case TOPIC_SWITCH:
-        processTopicSwitch(controlMessage, partition, offset, partitionConsumptionState);
+        checkReadyToServeAfterProcess =
+            processTopicSwitch(controlMessage, partition, offset, partitionConsumptionState);
         break;
       case VERSION_SWAP:
         processVersionSwapMessage(controlMessage, partition, partitionConsumptionState);
@@ -2349,6 +2351,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         throw new UnsupportedMessageTypeException(
             "Unrecognized Control message type " + controlMessage.controlMessageType);
     }
+    return checkReadyToServeAfterProcess;
   }
 
   /**
@@ -2386,6 +2389,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     KafkaKey kafkaKey = consumerRecord.getKey();
     KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
     int sizeOfPersistedData = 0;
+    boolean checkReadyToServeAfterProcess = false;
     try {
       // Assumes the timestamp on the record is the broker's timestamp when it received the message.
       long currentTimeMs = System.currentTimeMillis();
@@ -2439,7 +2443,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         ControlMessage controlMessage = (leaderProducedRecordContext == null
             ? (ControlMessage) kafkaValue.payloadUnion
             : (ControlMessage) leaderProducedRecordContext.getValueUnion());
-        processControlMessage(
+        checkReadyToServeAfterProcess = processControlMessage(
             kafkaValue,
             controlMessage,
             consumerRecord.getTopicPartition().getPartitionNumber(),
@@ -2501,6 +2505,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           consumerRecord,
           leaderProducedRecordContext,
           kafkaUrl);
+      if (checkReadyToServeAfterProcess) {
+        defaultReadyToServeChecker.apply(partitionConsumptionState);
+      }
     }
     return sizeOfPersistedData;
   }
@@ -3259,6 +3266,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return serverConfig;
   }
 
+  public void updateOffsetMetadataAndSync(String topic, int partitionId) {
+    PartitionConsumptionState pcs = getPartitionConsumptionState(partitionId);
+    updateOffsetMetadataInOffsetRecord(pcs);
+    syncOffset(topic, pcs);
+  }
+
   /**
    * The function returns local or remote topic manager.
    * @param sourceKafkaServer The address of source kafka bootstrap server.
@@ -3386,4 +3399,5 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
     return kafkaValue.leaderMetadataFooter != null && kafkaValue.leaderMetadataFooter.upstreamOffset >= 0;
   }
+
 }

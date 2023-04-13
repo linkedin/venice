@@ -1050,8 +1050,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     return Objects.equals(partitionConsumptionState.getLeaderFollowerState(), LEADER);
   }
 
+  /**
+   * Process {@link TopicSwitch} control message at given partition offset for a specific {@link PartitionConsumptionState}.
+   * Return whether we need to execute additional ready-to-serve check after this message is processed.
+   */
   @Override
-  protected void processTopicSwitch(
+  protected boolean processTopicSwitch(
       ControlMessage controlMessage,
       int partition,
       long offset,
@@ -1136,17 +1140,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       partitionConsumptionState.getOffsetRecord().setLeaderTopic(newSourceTopic);
       partitionConsumptionState.getOffsetRecord()
           .setLeaderUpstreamOffset(OffsetRecord.NON_AA_REPLICATION_UPSTREAM_OFFSET_MAP_KEY, upstreamStartOffset);
-
       /**
-       * We need to measure offset lag here for follower; if real-time topic is empty and never gets any new message,
-       * follower replica will never become online.
-       *
+       * We need to measure offset lag after processing TopicSwitch for follower; if real-time topic is empty and never
+       * gets any new message, follower replica will never become online.
        * If we measure lag here for follower, follower might become online faster than leader in extreme case:
        * Real time topic for that partition is empty or the rewind start offset is very closed to the end, followers
        * calculate the lag of the leader and decides the lag is small enough.
        */
-      this.defaultReadyToServeChecker.apply(partitionConsumptionState);
+      return true;
     }
+    return false;
   }
 
   protected void syncTopicSwitchToIngestionMetadataService(
