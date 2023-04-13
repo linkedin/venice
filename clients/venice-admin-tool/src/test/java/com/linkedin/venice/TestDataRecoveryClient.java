@@ -206,7 +206,7 @@ public class TestDataRecoveryClient {
       MonitorCommand.Params p = new MonitorCommand.Params(params);
       p.setStore(name);
       DataRecoveryTask.TaskParams taskParams = new DataRecoveryTask.TaskParams(name, p);
-      MonitorCommand newCmd = mock(MonitorCommand.class);
+      MonitorCommand newCmd = spy(MonitorCommand.class);
       p.setPCtrlCliWithoutCluster(params.getPCtrlCliWithoutCluster());
       p.setParentUrl(params.getParentUrl());
       doReturn(p).when(newCmd).getParams();
@@ -223,8 +223,14 @@ public class TestDataRecoveryClient {
     List<DataRecoveryTask> tasks = new ArrayList<>();
     for (String name: storeNames) {
       EstimateDataRecoveryTimeCommand.Params p = new EstimateDataRecoveryTimeCommand.Params(params);
+      p.setStore(name);
       DataRecoveryTask.TaskParams taskParams = new DataRecoveryTask.TaskParams(name, p);
-      tasks.add(new DataRecoveryTask(cmd, taskParams));
+      EstimateDataRecoveryTimeCommand newCmd = spy(EstimateDataRecoveryTimeCommand.class);
+      p.setPCtrlCliWithoutCluster(params.getPCtrlCliWithoutCluster());
+      p.setParentUrl(params.getParentUrl());
+      doReturn(p).when(newCmd).getParams();
+      doReturn(params.getPCtrlCliWithoutCluster()).when(newCmd).buildControllerClient(anyString(), anyString(), any());
+      tasks.add(new DataRecoveryTask(newCmd, taskParams));
     }
     return tasks;
   }
@@ -272,7 +278,7 @@ public class TestDataRecoveryClient {
 
     MonitorCommand mockMonitorCmd = spy(MonitorCommand.class);
     mockMonitorCmd.setParams(monitorParams);
-    doReturn(mockedCli).when(mockMonitorCmd).buildControllerClient(any(), any(), any());
+    doReturn(mockedCli).when(mockMonitorCmd).buildControllerClient(anyString(), anyString(), any());
 
     // Inject the mocked command into the running system.
     Set<String> storeName = new HashSet<>(Arrays.asList("store1", "store2", "store3"));
