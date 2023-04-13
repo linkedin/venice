@@ -8,6 +8,7 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.schema.writecompute.WriteComputeSchemaConverter;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import java.io.IOException;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import org.apache.avro.Schema;
@@ -77,6 +78,26 @@ public class RouterBasedStoreSchemaFetcherTest {
     Assert.assertEquals(valueSchema2, valueSchema1);
     Assert.assertNotSame(valueSchema1, valueSchema2);
     Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(2)).getRaw(Mockito.anyString());
+  }
+
+  @Test
+  public void testGetAllValueSchemas()
+      throws IOException, ExecutionException, InterruptedException, VeniceClientException {
+    AbstractAvroStoreClient mockClient = Mockito.mock(AbstractAvroStoreClient.class);
+    Mockito.doReturn(storeName).when(mockClient).getStoreName();
+    // Set up mocks for value schemas
+    CompletableFuture<byte[]> mockFuture = Mockito.mock(CompletableFuture.class);
+    Mockito.doReturn(OBJECT_MAPPER.writeValueAsBytes(createValueSchemaMultiSchemaResponse())).when(mockFuture).get();
+    Mockito.doReturn(mockFuture).when(mockClient).getRaw("value_schema/" + storeName);
+
+    // Get all value schemas
+    StoreSchemaFetcher storeSchemaFetcher = new RouterBasedStoreSchemaFetcher(mockClient);
+    Set<Schema> allSchemas = storeSchemaFetcher.getAllValueSchemas();
+
+    Assert.assertEquals(allSchemas.size(), 2);
+    Assert.assertTrue(allSchemas.contains(Schema.parse(valueSchemaStr1)));
+    Assert.assertTrue(allSchemas.contains(Schema.parse(valueSchemaStr2)));
+    Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(1)).getRaw(Mockito.anyString());
   }
 
   @Test
