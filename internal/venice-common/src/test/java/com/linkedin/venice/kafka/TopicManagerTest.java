@@ -72,7 +72,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.PartitionInfo;
-import org.apache.kafka.common.config.TopicConfig;
 import org.apache.kafka.common.errors.TimeoutException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -652,12 +651,12 @@ public class TopicManagerTest {
   public void testUpdateTopicMinISR() {
     PubSubTopic topic = pubSubTopicRepository.getTopic(Utils.getUniqueTopicString("topic"));
     topicManager.createTopic(topic, 1, 1, true);
-    Properties topicProperties = topicManager.getTopicConfig(topic);
-    Assert.assertEquals(topicProperties.getProperty(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG), "1");
+    PubSubTopicConfiguration pubSubTopicConfiguration = topicManager.getTopicConfig(topic);
+    Assert.assertTrue(pubSubTopicConfiguration.minInSyncReplicas().get() == 1);
     // Update minISR to 2
     topicManager.updateTopicMinInSyncReplica(topic, 2);
-    topicProperties = topicManager.getTopicConfig(topic);
-    Assert.assertEquals(topicProperties.getProperty(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG), "2");
+    pubSubTopicConfiguration = topicManager.getTopicConfig(topic);
+    Assert.assertTrue(pubSubTopicConfiguration.minInSyncReplicas().get() == 2);
   }
 
 }

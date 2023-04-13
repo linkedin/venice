@@ -395,6 +395,20 @@ public class TopicManager implements Closeable {
     return topicProperties.minLogCompactionLagMs();
   }
 
+  public boolean updateTopicMinInSyncReplica(PubSubTopic topicName, int minISR) throws TopicDoesNotExistException {
+    PubSubTopicConfiguration pubSubTopicConfiguration = getTopicConfig(topicName);
+    Optional<Integer> currentMinISR = pubSubTopicConfiguration.minInSyncReplicas();
+    // config doesn't exist config is different
+    if (!currentMinISR.isPresent() || !currentMinISR.get().equals(minISR)) {
+      pubSubTopicConfiguration.setMinInSyncReplicas(Optional.of(minISR));
+      kafkaWriteOnlyAdmin.get().setTopicConfig(topicName, pubSubTopicConfiguration);
+      logger.info("Updated topic: {} with min.insync.replicas: {}", topicName, minISR);
+      return true;
+    }
+    // min.insync.replicas has already been updated for this topic before
+    return false;
+  }
+
   public Map<PubSubTopic, Long> getAllTopicRetentions() {
     return kafkaReadOnlyAdmin.get().getAllTopicRetentions();
   }

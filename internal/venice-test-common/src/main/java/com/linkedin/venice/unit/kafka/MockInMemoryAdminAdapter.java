@@ -45,6 +45,10 @@ public class MockInMemoryAdminAdapter implements PubSubAdminAdapter {
     if (!topicPubSubTopicConfigurationMap.containsKey(topic)) {
       inMemoryKafkaBroker.createTopic(topic.getName(), numPartitions);
     }
+    // Emulates kafka default setting.
+    if (!topicPubSubTopicConfiguration.minInSyncReplicas().isPresent()) {
+      topicPubSubTopicConfiguration.setMinInSyncReplicas(Optional.of(1));
+    }
     topicPubSubTopicConfigurationMap.put(topic, topicPubSubTopicConfiguration);
     topicPartitionNumMap.put(topic, new ArrayList<>());
     for (int i = 0; i < numPartitions; i++) {

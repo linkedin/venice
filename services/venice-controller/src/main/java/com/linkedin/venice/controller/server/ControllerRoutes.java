@@ -122,7 +122,7 @@ public class ControllerRoutes extends AbstractRoute {
   public Route updateKafkaTopicMinInSyncReplica(Admin admin) {
     return updateKafkaTopicConfig(admin, adminRequest -> {
       AdminSparkServer.validateParams(adminRequest, UPDATE_KAFKA_TOPIC_MIN_IN_SYNC_REPLICA.getParams(), admin);
-      String topicName = adminRequest.queryParams(TOPIC);
+      PubSubTopic topicName = pubSubTopicRepository.getTopic(adminRequest.queryParams(TOPIC));
       int kafkaTopicMinISR = Utils.parseIntFromString(
           adminRequest.queryParams(KAFKA_TOPIC_MIN_IN_SYNC_REPLICA),
           KAFKA_TOPIC_MIN_IN_SYNC_REPLICA);
