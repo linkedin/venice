@@ -253,13 +253,13 @@ public enum ControllerRoute {
       "/get_region_push_details", HttpMethod.GET, Arrays.asList(CLUSTER, NAME, PARTITION_DETAIL_ENABLED)
   ),
   UPDATE_KAFKA_TOPIC_LOG_COMPACTION(
-      "/update_kafka_topic_log_compaction", HttpMethod.GET, Arrays.asList(TOPIC, KAFKA_TOPIC_LOG_COMPACTION_ENABLED)
+      "/update_kafka_topic_log_compaction", HttpMethod.POST, Arrays.asList(TOPIC, KAFKA_TOPIC_LOG_COMPACTION_ENABLED)
   ),
   UPDATE_KAFKA_TOPIC_RETENTION(
-      "/update_kafka_topic_retention", HttpMethod.GET, Arrays.asList(TOPIC, KAFKA_TOPIC_RETENTION_IN_MS)
+      "/update_kafka_topic_retention", HttpMethod.POST, Arrays.asList(TOPIC, KAFKA_TOPIC_RETENTION_IN_MS)
   ),
   UPDATE_KAFKA_TOPIC_MIN_IN_SYNC_REPLICA(
-      "/update_kafka_topic_min_in_sync_replica", HttpMethod.GET, Arrays.asList(TOPIC, KAFKA_TOPIC_MIN_IN_SYNC_REPLICA)
+      "/update_kafka_topic_min_in_sync_replica", HttpMethod.POST, Arrays.asList(TOPIC, KAFKA_TOPIC_MIN_IN_SYNC_REPLICA)
   ), GET_ADMIN_TOPIC_METADATA("/get_admin_topic_metadata", HttpMethod.GET, Collections.singletonList(CLUSTER), NAME),
   UPDATE_ADMIN_TOPIC_METADATA(
       "/update_admin_topic_metadata", HttpMethod.POST, Arrays.asList(CLUSTER, EXECUTION_ID), NAME, OFFSET,
