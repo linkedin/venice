@@ -48,6 +48,7 @@ import static com.linkedin.venice.Arg.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.Arg.KAFKA_CONSUMER_CONFIG_FILE;
 import static com.linkedin.venice.Arg.KAFKA_OPERATION_TIMEOUT;
 import static com.linkedin.venice.Arg.KAFKA_TOPIC_LOG_COMPACTION_ENABLED;
+import static com.linkedin.venice.Arg.KAFKA_TOPIC_MIN_IN_SYNC_REPLICA;
 import static com.linkedin.venice.Arg.KAFKA_TOPIC_NAME;
 import static com.linkedin.venice.Arg.KAFKA_TOPIC_PARTITION;
 import static com.linkedin.venice.Arg.KAFKA_TOPIC_RETENTION_IN_MS;
@@ -396,6 +397,10 @@ public enum Command {
   UPDATE_KAFKA_TOPIC_RETENTION(
       "update-kafka-topic-retention", "Update retention config of a topic through controllers",
       new Arg[] { URL, KAFKA_TOPIC_NAME, KAFKA_TOPIC_RETENTION_IN_MS }, new Arg[] { CLUSTER }
+  ),
+  UPDATE_KAFKA_TOPIC_MIN_IN_SYNC_REPLICA(
+      "update-kafka-topic-min-in-sync-replica", "Update minISR of a topic through controllers",
+      new Arg[] { URL, KAFKA_TOPIC_NAME, KAFKA_TOPIC_MIN_IN_SYNC_REPLICA }, new Arg[] { CLUSTER }
   ),
   START_FABRIC_BUILDOUT(
       "start-fabric-buildout",
