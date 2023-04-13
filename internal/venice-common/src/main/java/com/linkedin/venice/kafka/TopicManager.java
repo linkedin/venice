@@ -172,6 +172,20 @@ public class TopicManager implements Closeable {
         kafkaClientFactory);
   }
 
+  // For testing only
+  public TopicManager(KafkaAdminWrapper kafkaWriteOnlyAdmin, KafkaAdminWrapper kafkaReadOnlyAdmin) {
+    this.kafkaWriteOnlyAdmin = Lazy.of(() -> kafkaWriteOnlyAdmin);
+    this.kafkaReadOnlyAdmin = Lazy.of(() -> kafkaReadOnlyAdmin);
+    this.logger = LogManager.getLogger(TopicManager.class);
+    this.kafkaBootstrapServers = null;
+    this.kafkaOperationTimeoutMs = TimeUnit.SECONDS.toMillis(60);
+    this.topicDeletionStatusPollIntervalMs = TimeUnit.SECONDS.toMillis(1);
+    this.topicMinLogCompactionLagMs = TimeUnit.SECONDS.toMillis(60);
+    this.kafkaClientFactory = null;
+    this.kafkaRawBytesConsumer = null;
+    this.partitionOffsetFetcher = null;
+  }
+
   /**
    * Create a topic, and block until the topic is created, with a default timeout of
    * {@value #DEFAULT_KAFKA_OPERATION_TIMEOUT_MS}, after which this function will throw a VeniceException.
@@ -415,6 +429,22 @@ public class TopicManager implements Closeable {
     return topicProperties.containsKey(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG)
         ? Long.parseLong((String) topicProperties.get(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG))
         : 0L;
+  }
+
+  public boolean updateTopicMinInSyncReplica(String topicName, int minISR) throws TopicDoesNotExistException {
+    String expectedMinISRString = Integer.toString(minISR);
+    Properties topicProperties = getTopicConfig(topicName);
+    if (!topicProperties.containsKey(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG) || // config doesn't exist
+        !topicProperties.getProperty(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG).equals(expectedMinISRString)) { // config
+                                                                                                              // is
+                                                                                                              // different
+      topicProperties.put(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG, expectedMinISRString);
+      kafkaWriteOnlyAdmin.get().setTopicConfig(topicName, topicProperties);
+      logger.info("Updated topic: {} with min.insync.replicas: {}", topicName, minISR);
+      return true;
+    }
+    // min.insync.replicas has already been updated for this topic before
+    return false;
   }
 
   public Map<String, Long> getAllTopicRetentions() {
