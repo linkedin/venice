@@ -1856,4 +1856,16 @@ public class ConfigKeys {
    * but that can have other side effects, so it may not be preferred.
    */
   public static final String FAST_AVRO_FIELD_LIMIT_PER_METHOD = "fast.avro.field.limit.per.method";
+
+  /**
+   * Config to control the number of threads in the thread pool executor used for ssl handshake in servers. The purpose
+   * is to limit the concurrency of ssl handshakes. The feature to use a thread pool executor for handling ssl
+   * handshakes is disabled if the value of this config is <= 0. The default value is 0.
+   */
+  public static final String SERVER_SSL_HANDSHAKE_THREAD_POOL_SIZE = "server.ssl.handshake.thread.pool.size";
+
+  /**
+   * Config to control the queue capacity for the thread pool executor used for ssl handshake in servers.
+   */
+  public static final String SERVER_SSL_HANDSHAKE_QUEUE_CAPACITY = "server.ssl.handshake.queue.capacity";
 }
