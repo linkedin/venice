@@ -22,6 +22,11 @@ public class ApacheKafkaProducerConfigTest {
   private static final String KAFKA_BROKER_ADDR = "kafka.broker.com:8181";
   private static final String PRODUCER_NAME = "sender-store_v1";
 
+  private static final String SASL_JAAS_CONFIG =
+      "org.apache.kafka.common.security.plain.PlainLoginModule required " + "username=\"foo\" password=\"bar\"\n";
+
+  private static final String SASL_MECHANISM = "PLAIN";
+
   @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Required property: kafka.bootstrap.servers is missing.*")
   public void testConfiguratorThrowsAnExceptionWhenBrokerAddressIsMissing() {
     VeniceProperties veniceProperties = new VeniceProperties();
@@ -85,5 +90,22 @@ public class ApacheKafkaProducerConfigTest {
     props.put(KAFKA_BOOTSTRAP_SERVERS, KAFKA_BROKER_ADDR);
     props.put(SSL_KAFKA_BOOTSTRAP_SERVERS, "ssl.kafka.broker.com:8182");
     assertEquals(new ApacheKafkaProducerConfig(props).getBrokerAddress(), "ssl.kafka.broker.com:8182");
+  }
+
+  @Test
+  public void testSaslConfiguration() {
+    // broker address from props should be used
+    Properties props = new Properties();
+    props.put(SSL_TO_KAFKA, true);
+    props.put(KAFKA_BOOTSTRAP_SERVERS, KAFKA_BROKER_ADDR);
+    props.put(SSL_KAFKA_BOOTSTRAP_SERVERS, "ssl.kafka.broker.com:8182");
+    props.put("kafka.sasl.jaas.config", SASL_JAAS_CONFIG);
+    props.put("kafka.sasl.mechanism", SASL_MECHANISM);
+    props.put("kafka.security.protocol", "SASL_SSL");
+    ApacheKafkaProducerConfig apacheKafkaProducerConfig = new ApacheKafkaProducerConfig(props);
+    Properties producerProperties = apacheKafkaProducerConfig.getProducerProperties();
+    assertEquals(SASL_JAAS_CONFIG, producerProperties.get("sasl.jaas.config"));
+    assertEquals(SASL_MECHANISM, producerProperties.get("sasl.mechanism"));
+    assertEquals("SASL_SSL", producerProperties.get("security.protocol"));
   }
 }
