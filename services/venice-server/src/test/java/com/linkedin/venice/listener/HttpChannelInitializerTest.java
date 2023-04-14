@@ -1,5 +1,6 @@
 package com.linkedin.venice.listener;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
@@ -8,10 +9,14 @@ import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.helix.HelixCustomizedViewOfflinePushRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.security.SSLConfig;
 import com.linkedin.venice.security.SSLFactory;
+import io.netty.channel.ChannelPipeline;
+import io.netty.channel.socket.SocketChannel;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -21,7 +26,10 @@ public class HttpChannelInitializerTest {
   private ReadOnlyStoreRepository storeMetadataRepository;
   private CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewRepository;
   private MetricsRepository metricsRepository;
-  private Optional<SSLFactory> sslFactory;
+  private Optional<SSLFactory> sslFactoryOptional;
+
+  private SSLFactory sslFactory;
+  private Executor sslHandshakeExecutor;
   private VeniceServerConfig serverConfig;
   private Optional<StaticAccessController> accessController;
   private Optional<DynamicAccessController> storeAccessController;
@@ -31,7 +39,9 @@ public class HttpChannelInitializerTest {
   public void setUp() {
     storeMetadataRepository = mock(ReadOnlyStoreRepository.class);
     metricsRepository = new MetricsRepository();
-    sslFactory = Optional.of(mock(SSLFactory.class));
+    sslFactory = mock(SSLFactory.class);
+    sslFactoryOptional = Optional.of(sslFactory);
+    sslHandshakeExecutor = mock(Executor.class);
     accessController = Optional.of(mock(StaticAccessController.class));
     storeAccessController = Optional.of(mock(DynamicAccessController.class));
     requestHandler = mock(StorageReadRequestsHandler.class);
@@ -47,7 +57,8 @@ public class HttpChannelInitializerTest {
         storeMetadataRepository,
         customizedViewRepository,
         metricsRepository,
-        sslFactory,
+        sslFactoryOptional,
+        sslHandshakeExecutor,
         serverConfig,
         accessController,
         storeAccessController,
@@ -63,11 +74,33 @@ public class HttpChannelInitializerTest {
         storeMetadataRepository,
         customizedViewRepository,
         metricsRepository,
-        sslFactory,
+        sslFactoryOptional,
+        sslHandshakeExecutor,
         serverConfig,
         accessController,
         storeAccessController,
         requestHandler);
     Assert.assertNull(initializer.getQuotaEnforcer());
+  }
+
+  @Test
+  public void testInitChannelWithSSLExecutor() {
+    SSLConfig sslConfig = new SSLConfig();
+    doReturn(sslConfig).when(sslFactory).getSSLConfig();
+    ChannelPipeline channelPipeline = mock(ChannelPipeline.class);
+    SocketChannel ch = mock(SocketChannel.class);
+    doReturn(channelPipeline).when(ch).pipeline();
+    doReturn(channelPipeline).when(channelPipeline).addLast(any());
+    HttpChannelInitializer initializer = new HttpChannelInitializer(
+        storeMetadataRepository,
+        customizedViewRepository,
+        metricsRepository,
+        sslFactoryOptional,
+        sslHandshakeExecutor,
+        serverConfig,
+        accessController,
+        storeAccessController,
+        requestHandler);
+    initializer.initChannel(ch);
   }
 }
