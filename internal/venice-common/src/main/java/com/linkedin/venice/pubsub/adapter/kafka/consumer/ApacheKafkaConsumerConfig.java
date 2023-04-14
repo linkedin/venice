@@ -27,9 +27,9 @@ public class ApacheKafkaConsumerConfig {
   public static final String KAFKA_MAX_PARTITION_FETCH_BYTES_CONFIG =
       KAFKA_CONFIG_PREFIX + ConsumerConfig.MAX_PARTITION_FETCH_BYTES_CONFIG;
   public static final String KAFKA_CONSUMER_POLL_RETRY_TIMES_CONFIG =
-      KAFKA_CONFIG_PREFIX + ApacheKafkaConsumer.CONSUMER_POLL_RETRY_TIMES_CONFIG;
+      KAFKA_CONFIG_PREFIX + ApacheKafkaConsumerAdapter.CONSUMER_POLL_RETRY_TIMES_CONFIG;
   public static final String KAFKA_CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG =
-      KAFKA_CONFIG_PREFIX + ApacheKafkaConsumer.CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG;
+      KAFKA_CONFIG_PREFIX + ApacheKafkaConsumerAdapter.CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG;
 
   private final Properties consumerProperties;
 

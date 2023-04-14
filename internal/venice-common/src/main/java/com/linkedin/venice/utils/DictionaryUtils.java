@@ -8,11 +8,11 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
@@ -42,7 +42,7 @@ public class DictionaryUtils {
         new KafkaValueSerializer(),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
-    try (PubSubConsumer pubSubConsumer = pubSubConsumerAdapterFactory
+    try (PubSubConsumerAdapter pubSubConsumer = pubSubConsumerAdapterFactory
         .create(getKafkaConsumerProps(props), false, kafkaPubSubMessageDeserializer, null)) {
       return DictionaryUtils.readDictionaryFromKafka(topicName, pubSubConsumer, pubSubTopicRepository);
     }
@@ -56,7 +56,7 @@ public class DictionaryUtils {
    */
   public static ByteBuffer readDictionaryFromKafka(
       String topicName,
-      PubSubConsumer pubSubConsumer,
+      PubSubConsumerAdapter pubSubConsumer,
       PubSubTopicRepository pubSubTopicRepository) {
     LOGGER.info("Consuming from topic: {} till StartOfPush", topicName);
     PubSubTopic pubSubTopic = pubSubTopicRepository.getTopic(topicName);

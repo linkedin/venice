@@ -1,12 +1,9 @@
-package com.linkedin.venice.pubsub.consumer;
+package com.linkedin.venice.pubsub.api;
 
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
-import com.linkedin.venice.pubsub.api.PubSubMessage;
-import com.linkedin.venice.pubsub.api.PubSubTopic;
-import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import java.io.Closeable;
 import java.time.Duration;
 import java.util.Collection;
@@ -15,7 +12,7 @@ import java.util.Map;
 import java.util.Set;
 
 
-public interface PubSubConsumer extends AutoCloseable, Closeable {
+public interface PubSubConsumerAdapter extends AutoCloseable, Closeable {
   void subscribe(PubSubTopicPartition pubSubTopicPartition, long lastReadOffset);
 
   void unSubscribe(PubSubTopicPartition pubSubTopicPartition);

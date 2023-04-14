@@ -8,8 +8,8 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
-import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.lazy.Lazy;
@@ -81,7 +81,7 @@ public class TopicManagerRepository implements Closeable {
     private long topicDeletionStatusPollIntervalMs = DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS;
     private long topicMinLogCompactionLagMs = DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS;
     private PubSubAdminAdapterFactory<PubSubAdminAdapter> pubSubAdminAdapterFactory;
-    private PubSubConsumerAdapterFactory<PubSubConsumer> pubSubConsumerAdapterFactory;
+    private PubSubConsumerAdapterFactory<PubSubConsumerAdapter> pubSubConsumerAdapterFactory;
     private PubSubTopicRepository pubSubTopicRepository;
     private MetricsRepository metricsRepository;
     private SSLPropertiesSupplier pubSubProperties;
@@ -131,7 +131,7 @@ public class TopicManagerRepository implements Closeable {
       return pubSubAdminAdapterFactory;
     }
 
-    public PubSubConsumerAdapterFactory<PubSubConsumer> getPubSubConsumerAdapterFactory() {
+    public PubSubConsumerAdapterFactory<PubSubConsumerAdapter> getPubSubConsumerAdapterFactory() {
       return pubSubConsumerAdapterFactory;
     }
 
@@ -169,7 +169,7 @@ public class TopicManagerRepository implements Closeable {
     }
 
     public Builder setPubSubConsumerAdapterFactory(
-        PubSubConsumerAdapterFactory<PubSubConsumer> pubSubConsumerAdapterFactory) {
+        PubSubConsumerAdapterFactory<PubSubConsumerAdapter> pubSubConsumerAdapterFactory) {
       return set(() -> this.pubSubConsumerAdapterFactory = pubSubConsumerAdapterFactory);
     }
 

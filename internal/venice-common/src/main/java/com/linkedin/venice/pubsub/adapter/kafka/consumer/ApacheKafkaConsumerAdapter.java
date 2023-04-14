@@ -8,10 +8,10 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.adapter.kafka.TopicPartitionsOffsetsTracker;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.time.Duration;
@@ -41,8 +41,8 @@ import org.apache.logging.log4j.Logger;
  * backoff
  */
 @NotThreadsafe
-public class ApacheKafkaConsumer implements PubSubConsumer {
-  private static final Logger LOGGER = LogManager.getLogger(ApacheKafkaConsumer.class);
+public class ApacheKafkaConsumerAdapter implements PubSubConsumerAdapter {
+  private static final Logger LOGGER = LogManager.getLogger(ApacheKafkaConsumerAdapter.class);
 
   public static final String CONSUMER_POLL_RETRY_TIMES_CONFIG = "consumer.poll.retry.times";
   public static final String CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG = "consumer.poll.retry.backoff.ms";
@@ -59,11 +59,11 @@ public class ApacheKafkaConsumer implements PubSubConsumer {
 
   private final KafkaPubSubMessageDeserializer pubSubMessageDeserializer;
 
-  public ApacheKafkaConsumer(Properties props, KafkaPubSubMessageDeserializer pubSubMessageDeserializer) {
+  public ApacheKafkaConsumerAdapter(Properties props, KafkaPubSubMessageDeserializer pubSubMessageDeserializer) {
     this(props, DEFAULT_PARTITIONS_OFFSETS_COLLECTION_ENABLE, pubSubMessageDeserializer);
   }
 
-  public ApacheKafkaConsumer(
+  public ApacheKafkaConsumerAdapter(
       Properties props,
       boolean isKafkaConsumerOffsetCollectionEnabled,
       KafkaPubSubMessageDeserializer pubSubMessageDeserializer) {
@@ -74,7 +74,7 @@ public class ApacheKafkaConsumer implements PubSubConsumer {
         pubSubMessageDeserializer);
   }
 
-  public ApacheKafkaConsumer(
+  public ApacheKafkaConsumerAdapter(
       Consumer<byte[], byte[]> consumer,
       VeniceProperties props,
       boolean isKafkaConsumerOffsetCollectionEnabled,

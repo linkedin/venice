@@ -14,7 +14,7 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumer;
+import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import java.nio.ByteBuffer;
@@ -28,7 +28,7 @@ import org.testng.annotations.Test;
 public class TopicMessageFinderTest {
   @Test
   public void testTopicMessageFinder() {
-    ApacheKafkaConsumer apacheKafkaConsumer = mock(ApacheKafkaConsumer.class);
+    ApacheKafkaConsumerAdapter apacheKafkaConsumer = mock(ApacheKafkaConsumerAdapter.class);
     PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     String topic = "1_rt";
     int assignedPartition = 0;

@@ -6,7 +6,7 @@ import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
-import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumer;
+import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
@@ -24,7 +24,7 @@ import org.testng.annotations.Test;
 
 
 public class ApacheKafkaConsumerTest {
-  ApacheKafkaConsumer consumer;
+  ApacheKafkaConsumerAdapter consumer;
   PubSubBrokerWrapper kafkaBroker;
 
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
@@ -36,7 +36,7 @@ public class ApacheKafkaConsumerTest {
     properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     properties.setProperty(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaBroker.getAddress());
-    consumer = new ApacheKafkaConsumer(properties, mock(KafkaPubSubMessageDeserializer.class));
+    consumer = new ApacheKafkaConsumerAdapter(properties, mock(KafkaPubSubMessageDeserializer.class));
   }
 
   @AfterMethod
@@ -92,11 +92,11 @@ public class ApacheKafkaConsumerTest {
     assertConsumerHasSpecificNumberOfAssignedPartitions(consumer, 1);
   }
 
-  private void assertConsumerHasNoAssignment(ApacheKafkaConsumer c) {
+  private void assertConsumerHasNoAssignment(ApacheKafkaConsumerAdapter c) {
     Assert.assertEquals(c.getAssignment().size(), 0, "Consumer should have no assignment!");
   }
 
-  private void assertConsumerHasSpecificNumberOfAssignedPartitions(ApacheKafkaConsumer c, int expected) {
+  private void assertConsumerHasSpecificNumberOfAssignedPartitions(ApacheKafkaConsumerAdapter c, int expected) {
     Assert
         .assertEquals(c.getAssignment().size(), expected, "Consumer should have exactly " + expected + " assignments!");
   }

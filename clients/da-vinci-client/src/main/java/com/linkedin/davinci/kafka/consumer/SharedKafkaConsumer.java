@@ -6,10 +6,10 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
@@ -28,20 +28,20 @@ import org.apache.logging.log4j.Logger;
 
 
 /**
- * This class is a synchronized version of {@link PubSubConsumer}.
+ * This class is a synchronized version of {@link PubSubConsumerAdapter}.
  *
- * In addition to the existing API of {@link PubSubConsumer}, this class also adds specific functions used by
+ * In addition to the existing API of {@link PubSubConsumerAdapter}, this class also adds specific functions used by
  * {@link KafkaConsumerService}, notably: {@link #subscribe(PubSubTopic, PubSubTopicPartition, long)} which keeps track of the
  * mapping of which TopicPartition is used by which version-topic.
  *
  * It also provides some callbacks used by the {@link KafkaConsumerService} to react to certain changes, in a way that
  * minimizes bidirectional coupling as much as possible.
- * TODO: Rename this class to SharedPubSubConsumer
+ * TODO: move this logic inside consumption task, this class does not need to be sub-class of {@link PubSubConsumerAdapter}
  */
-class SharedKafkaConsumer implements PubSubConsumer {
+class SharedKafkaConsumer implements PubSubConsumerAdapter {
   private static final Logger LOGGER = LogManager.getLogger(SharedKafkaConsumer.class);
 
-  protected final PubSubConsumer delegate;
+  protected final PubSubConsumerAdapter delegate;
 
   private final KafkaConsumerServiceStats stats;
 
@@ -82,7 +82,7 @@ class SharedKafkaConsumer implements PubSubConsumer {
   private volatile long pollTimes = 0;
 
   public SharedKafkaConsumer(
-      PubSubConsumer delegate,
+      PubSubConsumerAdapter delegate,
       KafkaConsumerServiceStats stats,
       Runnable assignmentChangeListener,
       UnsubscriptionListener unsubscriptionListener) {
@@ -90,7 +90,7 @@ class SharedKafkaConsumer implements PubSubConsumer {
   }
 
   SharedKafkaConsumer(
-      PubSubConsumer delegate,
+      PubSubConsumerAdapter delegate,
       KafkaConsumerServiceStats stats,
       Runnable assignmentChangeListener,
       UnsubscriptionListener unsubscriptionListener,
@@ -304,31 +304,31 @@ class SharedKafkaConsumer implements PubSubConsumer {
 
   @Override
   public Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp, Duration timeout) {
-    return null;
+    throw new UnsupportedOperationException("offsetForTime is not supported in SharedKafkaConsumer");
   }
 
   @Override
   public Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp) {
-    return null;
+    throw new UnsupportedOperationException("offsetForTime is not supported in SharedKafkaConsumer");
   }
 
   @Override
   public Long beginningOffset(PubSubTopicPartition partition, Duration timeout) {
-    return null;
+    throw new UnsupportedOperationException("beginningOffset is not supported in SharedKafkaConsumer");
   }
 
   @Override
   public Map<PubSubTopicPartition, Long> endOffsets(Collection<PubSubTopicPartition> partitions, Duration timeout) {
-    return null;
+    throw new UnsupportedOperationException("endOffsets is not supported in SharedKafkaConsumer");
   }
 
   @Override
   public Long endOffset(PubSubTopicPartition pubSubTopicPartition) {
-    return null;
+    throw new UnsupportedOperationException("endOffset is not supported in SharedKafkaConsumer");
   }
 
   @Override
   public List<PubSubTopicPartitionInfo> partitionsFor(PubSubTopic topic) {
-    return null;
+    throw new UnsupportedOperationException("partitionsFor is not supported in SharedKafkaConsumer");
   }
 }

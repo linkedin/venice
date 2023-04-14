@@ -17,10 +17,10 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
@@ -71,7 +71,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
 
   private static final PubSubTopicRepository PUBSUB_TOPIC_REPOSITORY = new PubSubTopicRepository();
 
-  private final PubSubConsumer consumer;
+  private final PubSubConsumerAdapter consumer;
   private final TopicPartition topicPartition;
   private final PubSubTopicPartition pubSubTopicPartition;
   private final long maxNumberOfRecords;
@@ -109,7 +109,7 @@ public class KafkaInputRecordReader implements RecordReader<KafkaInputMapperKey,
       InputSplit split,
       JobConf job,
       Reporter reporter,
-      PubSubConsumer consumer,
+      PubSubConsumerAdapter consumer,
       PubSubTopicRepository pubSubTopicRepository) {
     if (!(split instanceof KafkaInputSplit)) {
       throw new VeniceException("InputSplit for RecordReader is not valid split type.");

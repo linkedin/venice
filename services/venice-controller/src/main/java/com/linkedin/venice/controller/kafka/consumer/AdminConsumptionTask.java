@@ -24,11 +24,11 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LatencyUtils;
@@ -142,7 +142,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private final boolean remoteConsumptionEnabled;
 
   private boolean isSubscribed;
-  private final PubSubConsumer consumer;
+  private final PubSubConsumerAdapter consumer;
   private volatile long offsetToSkip = UNASSIGNED_VALUE;
   private volatile long offsetToSkipDIV = UNASSIGNED_VALUE;
   /**
@@ -239,7 +239,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
   public AdminConsumptionTask(
       String clusterName,
-      PubSubConsumer consumer,
+      PubSubConsumerAdapter consumer,
       boolean remoteConsumptionEnabled,
       Optional<String> remoteKafkaServerUrl,
       VeniceHelixAdmin admin,

@@ -8,11 +8,11 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.throttle.EventThrottler;
@@ -46,6 +46,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   private final MetricsRepository metricsRepository;
   private final TopicExistenceChecker topicExistenceChecker;
   private final boolean liveConfigBasedKafkaThrottlingEnabled;
+  private final boolean isKafkaConsumerOffsetCollectionEnabled;
   private final KafkaConsumerService.ConsumerAssignmentStrategy sharedConsumerAssignmentStrategy;
   private final Map<String, KafkaConsumerService> kafkaServerToConsumerServiceMap = new VeniceConcurrentHashMap<>();
   private final Map<String, String> kafkaClusterUrlToAliasMap;
@@ -76,6 +77,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     this.sharedConsumerAssignmentStrategy = serverConfig.getSharedConsumerAssignmentStrategy();
     this.kafkaClusterUrlToAliasMap = serverConfig.getKafkaClusterUrlToAliasMap();
     this.kafkaClusterUrlToIdMap = serverConfig.getKafkaClusterUrlToIdMap();
+    this.isKafkaConsumerOffsetCollectionEnabled = serverConfig.isKafkaConsumerOffsetCollectionEnabled();
     this.pubSubDeserializer = pubSubDeserializer;
     this.sslPropertiesSupplier = sslPropertiesSupplier;
     LOGGER.info("Successfully initialized AggKafkaConsumerService");
@@ -142,7 +144,8 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
             liveConfigBasedKafkaThrottlingEnabled,
             pubSubDeserializer,
             SystemTime.INSTANCE,
-            null));
+            null,
+            isKafkaConsumerOffsetCollectionEnabled));
 
     if (!consumerService.isRunning()) {
       consumerService.start();
@@ -182,7 +185,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   }
 
   void resetOffsetFor(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
-    PubSubConsumer consumer;
+    PubSubConsumerAdapter consumer;
     for (KafkaConsumerService consumerService: kafkaServerToConsumerServiceMap.values()) {
       consumer = consumerService.getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
       if (consumer != null) {
@@ -252,7 +255,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   }
 
   void pauseConsumerFor(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
-    PubSubConsumer consumer;
+    PubSubConsumerAdapter consumer;
     for (KafkaConsumerService consumerService: kafkaServerToConsumerServiceMap.values()) {
       consumer = consumerService.getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
       if (consumer != null) {
@@ -262,7 +265,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   }
 
   void resumeConsumerFor(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
-    PubSubConsumer consumer;
+    PubSubConsumerAdapter consumer;
     for (KafkaConsumerService consumerService: kafkaServerToConsumerServiceMap.values()) {
       consumer = consumerService.getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
       if (consumer != null) {

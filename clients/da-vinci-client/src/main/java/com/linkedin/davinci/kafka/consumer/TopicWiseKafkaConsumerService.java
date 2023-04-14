@@ -49,7 +49,8 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
       final boolean liveConfigBasedKafkaThrottlingEnabled,
       KafkaPubSubMessageDeserializer pubSubDeserializer,
       final Time time,
-      final KafkaConsumerServiceStats stats) {
+      final KafkaConsumerServiceStats stats,
+      final boolean isKafkaConsumerOffsetCollectionEnabled) {
     super(
         consumerFactory,
         consumerProperties,
@@ -65,7 +66,8 @@ public class TopicWiseKafkaConsumerService extends KafkaConsumerService {
         liveConfigBasedKafkaThrottlingEnabled,
         pubSubDeserializer,
         time,
-        stats);
+        stats,
+        isKafkaConsumerOffsetCollectionEnabled);
     LOGGER = LogManager.getLogger(TopicWiseKafkaConsumerService.class + " [" + kafkaUrl + "]");
   }
 

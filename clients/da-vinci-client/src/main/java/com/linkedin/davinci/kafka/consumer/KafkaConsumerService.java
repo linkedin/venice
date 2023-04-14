@@ -7,11 +7,11 @@ import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.throttle.EventThrottler;
@@ -98,7 +98,8 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
       final boolean liveConfigBasedKafkaThrottlingEnabled,
       final KafkaPubSubMessageDeserializer pubSubDeserializer,
       final Time time,
-      final KafkaConsumerServiceStats statsOverride) {
+      final KafkaConsumerServiceStats statsOverride,
+      final boolean isKafkaConsumerOffsetCollectionEnabled) {
     this.kafkaUrl = consumerProperties.getProperty(KAFKA_BOOTSTRAP_SERVERS);
     this.LOGGER = LogManager.getLogger(KafkaConsumerService.class.getSimpleName() + " [" + kafkaUrl + "]");
 
@@ -119,8 +120,11 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
        */
       consumerProperties.setProperty(ConsumerConfig.CLIENT_ID_CONFIG, getUniqueClientId(kafkaUrl, i));
       SharedKafkaConsumer pubSubConsumer = new SharedKafkaConsumer(
-          // TODO: change this boolean from server config.
-          pubSubConsumerAdapterFactory.create(new VeniceProperties(consumerProperties), true, pubSubDeserializer, null),
+          pubSubConsumerAdapterFactory.create(
+              new VeniceProperties(consumerProperties),
+              isKafkaConsumerOffsetCollectionEnabled,
+              pubSubDeserializer,
+              null),
           stats,
           this::recordPartitionsPerConsumerSensor,
           this::handleUnsubscription);
@@ -189,7 +193,9 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
       PubSubTopic versionTopic,
       PubSubTopicPartition topicPartition);
 
-  protected void removeTopicPartitionFromConsumptionTask(PubSubConsumer consumer, PubSubTopicPartition topicPartition) {
+  protected void removeTopicPartitionFromConsumptionTask(
+      PubSubConsumerAdapter consumer,
+      PubSubTopicPartition topicPartition) {
     consumerToConsumptionTask.get(consumer).removeDataReceiver(topicPartition);
   }
 
@@ -212,7 +218,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
    * Stop specific subscription associated with the given version topic.
    */
   void unSubscribe(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
-    PubSubConsumer consumer = getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
+    PubSubConsumerAdapter consumer = getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
     if (consumer != null) {
       consumer.unSubscribe(pubSubTopicPartition);
       consumerToConsumptionTask.get(consumer).removeDataReceiver(pubSubTopicPartition);
@@ -228,8 +234,8 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
   }
 
   void batchUnsubscribe(PubSubTopic versionTopic, Set<PubSubTopicPartition> topicPartitionsToUnSub) {
-    Map<PubSubConsumer, Set<PubSubTopicPartition>> consumerUnSubTopicPartitionSet = new HashMap<>();
-    PubSubConsumer consumer;
+    Map<PubSubConsumerAdapter, Set<PubSubTopicPartition>> consumerUnSubTopicPartitionSet = new HashMap<>();
+    PubSubConsumerAdapter consumer;
     for (PubSubTopicPartition topicPartition: topicPartitionsToUnSub) {
       consumer = getConsumerAssignedToVersionTopicPartition(versionTopic, topicPartition);
       if (consumer != null) {
@@ -239,7 +245,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
       }
     }
     /**
-     * Leverage {@link PubSubConsumer#batchUnsubscribe(Set)}.
+     * Leverage {@link PubSubConsumerAdapter#batchUnsubscribe(Set)}.
      */
     consumerUnSubTopicPartitionSet.forEach((c, tpSet) -> {
       c.batchUnsubscribe(tpSet);
@@ -385,7 +391,8 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
         boolean liveConfigBasedKafkaThrottlingEnabled,
         KafkaPubSubMessageDeserializer pubSubDeserializer,
         Time time,
-        KafkaConsumerServiceStats stats);
+        KafkaConsumerServiceStats stats,
+        boolean isKafkaConsumerOffsetCollectionEnabled);
   }
 
   final void recordPartitionsPerConsumerSensor() {
@@ -411,7 +418,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
     return getSomeOffsetFor(
         versionTopic,
         pubSubTopicPartition,
-        PubSubConsumer::getOffsetLag,
+        PubSubConsumerAdapter::getOffsetLag,
         stats::recordOffsetLagIsAbsent,
         stats::recordOffsetLagIsPresent);
   }
@@ -420,7 +427,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
     return getSomeOffsetFor(
         versionTopic,
         pubSubTopicPartition,
-        PubSubConsumer::getLatestOffset,
+        PubSubConsumerAdapter::getLatestOffset,
         stats::recordLatestOffsetIsAbsent,
         stats::recordLatestOffsetIsPresent);
   }
@@ -431,7 +438,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
       OffsetGetter offsetGetter,
       Runnable sensorIfAbsent,
       Runnable sensorIfPresent) {
-    PubSubConsumer consumer = getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
+    PubSubConsumerAdapter consumer = getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
     if (consumer == null) {
       sensorIfAbsent.run();
       return -1;
@@ -447,7 +454,7 @@ public abstract class KafkaConsumerService extends AbstractVeniceService {
   }
 
   private interface OffsetGetter {
-    long apply(PubSubConsumer consumer, PubSubTopicPartition pubSubTopicPartition);
+    long apply(PubSubConsumerAdapter consumer, PubSubTopicPartition pubSubTopicPartition);
   }
 
   /**

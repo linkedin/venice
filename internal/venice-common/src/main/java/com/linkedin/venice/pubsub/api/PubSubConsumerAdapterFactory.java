@@ -1,6 +1,5 @@
 package com.linkedin.venice.pubsub.api;
 
-import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.Closeable;
 
@@ -11,7 +10,7 @@ import java.io.Closeable;
  * A pus-sub specific concrete implementation of this interface should be provided to be able to create
  * and instantiate consumers for that system.
  */
-public interface PubSubConsumerAdapterFactory<ADAPTER extends PubSubConsumer> extends Closeable {
+public interface PubSubConsumerAdapterFactory<ADAPTER extends PubSubConsumerAdapter> extends Closeable {
   /**
    *
    * @param veniceProperties            A copy of venice properties. Relevant consumer configs will be extracted from

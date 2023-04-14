@@ -1,7 +1,8 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
-import static com.linkedin.venice.hadoop.VenicePushJob.*;
-import static com.linkedin.venice.hadoop.input.kafka.KafkaInputUtils.*;
+import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_BROKER_URL;
+import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
+import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_TOPIC;
 
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperKey;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
@@ -41,7 +42,7 @@ public class KafkaInputFormat implements InputFormat<KafkaInputMapperKey, KafkaI
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   protected Map<TopicPartition, Long> getLatestOffsets(JobConf config) {
-    VeniceProperties consumerProperties = getConsumerProperties(config);
+    VeniceProperties consumerProperties = KafkaInputUtils.getConsumerProperties(config);
     try (TopicManagerRepository topicManagerRepository = TopicManagerRepository.builder()
         .setPubSubProperties(k -> consumerProperties)
         .setLocalKafkaBootstrapServers(config.get(KAFKA_INPUT_BROKER_URL))

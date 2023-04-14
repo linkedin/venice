@@ -1,27 +1,27 @@
 package com.linkedin.venice.pubsub.adapter.kafka.consumer;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
-import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 
 
-public class ApacheKafkaConsumerAdapterFactory implements PubSubConsumerAdapterFactory<PubSubConsumer> {
-  private static final String NAME = "ApacheKafkaConsumer";
+public class ApacheKafkaConsumerAdapterFactory implements PubSubConsumerAdapterFactory<PubSubConsumerAdapter> {
+  private static final String NAME = "ApacheKafkaConsumerAdapter";
 
   @Override
-  public ApacheKafkaConsumer create(
+  public ApacheKafkaConsumerAdapter create(
       VeniceProperties veniceProperties,
       boolean isKafkaConsumerOffsetCollectionEnabled,
       PubSubMessageDeserializer pubSubMessageDeserializer,
       String consumerName) {
     ApacheKafkaConsumerConfig apacheKafkaConsumerConfig = new ApacheKafkaConsumerConfig(veniceProperties, consumerName);
     if (pubSubMessageDeserializer instanceof KafkaPubSubMessageDeserializer) {
-      return new ApacheKafkaConsumer(
+      return new ApacheKafkaConsumerAdapter(
           new KafkaConsumer<>(apacheKafkaConsumerConfig.getConsumerProperties()),
           veniceProperties,
           isKafkaConsumerOffsetCollectionEnabled,

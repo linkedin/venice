@@ -5,10 +5,10 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
 import com.linkedin.venice.unit.kafka.MockInMemoryAdminAdapter;
 import com.linkedin.venice.unit.kafka.consumer.poll.PollStrategy;
@@ -22,7 +22,7 @@ import java.util.Set;
 
 
 /**
- * A {@link PubSubConsumer} implementation which reads messages from the {@link InMemoryKafkaBroker}.
+ * A {@link PubSubConsumerAdapter} implementation which reads messages from the {@link InMemoryKafkaBroker}.
  *
  * Used in unit tests as a lightweight alternative to a full-fledged integration test. Can be configured
  * with various {@link PollStrategy} implementations in order to tweak the consuming behavior.
@@ -34,11 +34,11 @@ import java.util.Set;
  *
  * TODO: Remove synchronized keyword in this class when consumer operations in consumption task is event-driven.
  */
-public class MockInMemoryConsumer implements PubSubConsumer {
+public class MockInMemoryConsumer implements PubSubConsumerAdapter {
   private final InMemoryKafkaBroker broker;
   private final Map<PubSubTopicPartition, Long> offsets = new HashMap<>();
   private final PollStrategy pollStrategy;
-  private final PubSubConsumer delegate;
+  private final PubSubConsumerAdapter delegate;
   private final Set<PubSubTopicPartition> pausedTopicPartitions = new HashSet<>();
 
   private MockInMemoryAdminAdapter adminAdapter;
@@ -48,7 +48,7 @@ public class MockInMemoryConsumer implements PubSubConsumer {
    *                 do not return the result of the mock, but rather the results of the in-memory
    *                 consumer components.
    */
-  public MockInMemoryConsumer(InMemoryKafkaBroker broker, PollStrategy pollStrategy, PubSubConsumer delegate) {
+  public MockInMemoryConsumer(InMemoryKafkaBroker broker, PollStrategy pollStrategy, PubSubConsumerAdapter delegate) {
     this.broker = broker;
     this.pollStrategy = pollStrategy;
     this.delegate = delegate;

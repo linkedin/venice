@@ -1,6 +1,6 @@
 package com.linkedin.venice.unit.kafka;
 
-import static com.linkedin.venice.utils.Time.*;
+import static com.linkedin.venice.utils.Time.MS_PER_SECOND;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceRetriableException;

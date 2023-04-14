@@ -13,6 +13,7 @@ import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.pubsub.adapter.kafka.admin.InstrumentedApacheKafkaAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapterFactory;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.ExceptionUtils;
@@ -45,10 +46,10 @@ import org.apache.logging.log4j.Logger;
 /**
  * Topic Manager is shared by multiple cluster's controllers running in one physical Venice controller instance.
  *
- * This class contains one global {@link com.linkedin.venice.pubsub.consumer.PubSubConsumer}, which is not thread-safe, so when you add new functions,
+ * This class contains one global {@link PubSubConsumerAdapter}, which is not thread-safe, so when you add new functions,
  * which is using this global consumer, please add 'synchronized' keyword, otherwise this {@link TopicManager}
  * won't be thread-safe, and Kafka consumer will report the following error when multiple threads are trying to
- * use the same consumer: PubSubConsumer is not safe for multi-threaded access.
+ * use the same consumer: PubSubConsumerAdapter is not safe for multi-threaded access.
  */
 public class TopicManager implements Closeable {
   private static final int MINIMUM_TOPIC_DELETION_STATUS_POLL_TIMES = 10;

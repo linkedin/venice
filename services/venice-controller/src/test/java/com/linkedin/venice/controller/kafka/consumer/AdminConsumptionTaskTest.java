@@ -71,10 +71,10 @@ import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -144,7 +144,7 @@ public class AdminConsumptionTaskTest {
   private static final String valueSchema = "\"string\"";
 
   // Objects will be used by each test method
-  private PubSubConsumer mockKafkaConsumer;
+  private PubSubConsumerAdapter mockKafkaConsumer;
   private VeniceHelixAdmin admin;
   private OffsetManager offsetManager;
   private AdminTopicMetadataAccessor adminTopicMetadataAccessor;
@@ -164,7 +164,7 @@ public class AdminConsumptionTaskTest {
     veniceWriter = getVeniceWriter(inMemoryKafkaBroker);
     executionIdAccessor = new InMemoryExecutionIdAccessor();
 
-    mockKafkaConsumer = mock(PubSubConsumer.class);
+    mockKafkaConsumer = mock(PubSubConsumerAdapter.class);
 
     admin = mock(VeniceHelixAdmin.class);
     // By default, current controller is the leader controller

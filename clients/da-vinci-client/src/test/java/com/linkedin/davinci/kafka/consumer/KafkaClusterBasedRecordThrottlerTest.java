@@ -8,9 +8,9 @@ import static org.mockito.Mockito.mock;
 
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
 import com.linkedin.venice.utils.TestMockTime;
@@ -74,8 +74,8 @@ public class KafkaClusterBasedRecordThrottlerTest {
       consumerRecords.get(pubSubTopicPartition).add(mock(PubSubMessage.class));
     }
 
-    PubSubConsumer localConsumer = mock(PubSubConsumer.class);
-    PubSubConsumer remoteConsumer = mock(PubSubConsumer.class);
+    PubSubConsumerAdapter localConsumer = mock(PubSubConsumerAdapter.class);
+    PubSubConsumerAdapter remoteConsumer = mock(PubSubConsumerAdapter.class);
 
     // Assume consumer.poll always returns some records
     doReturn(consumerRecords).when(localConsumer).poll(anyLong());

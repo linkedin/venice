@@ -19,9 +19,9 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.utils.ByteUtils;
 import java.io.IOException;
@@ -49,7 +49,7 @@ public class KafkaInputRecordReaderTest {
     conf.set(VenicePushJob.KAFKA_SOURCE_KEY_SCHEMA_STRING_PROP, ChunkedKeySuffix.SCHEMA$.toString());
     String topic = "1_v1";
     conf.set(KAFKA_INPUT_TOPIC, topic);
-    PubSubConsumer consumer = mock(PubSubConsumer.class);
+    PubSubConsumerAdapter consumer = mock(PubSubConsumerAdapter.class);
 
     int assignedPartition = 0;
     int numRecord = 100;

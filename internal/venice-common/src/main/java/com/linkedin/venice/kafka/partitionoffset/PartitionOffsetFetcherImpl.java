@@ -10,10 +10,10 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
 import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.utils.RetryUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.lazy.Lazy;
@@ -50,7 +50,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
   private final Lock adminConsumerLock;
   private final Lock kafkaAdminWrapperLock;
   private final Lazy<PubSubAdminAdapter> kafkaAdminWrapper;
-  private final Lazy<PubSubConsumer> pubSubConsumer;
+  private final Lazy<PubSubConsumerAdapter> pubSubConsumer;
   private final Duration kafkaOperationTimeout;
 
   private enum TopicEndType {
@@ -59,7 +59,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
 
   public PartitionOffsetFetcherImpl(
       @Nonnull Lazy<PubSubAdminAdapter> kafkaAdminWrapper,
-      @Nonnull Lazy<PubSubConsumer> pubSubConsumer,
+      @Nonnull Lazy<PubSubConsumerAdapter> pubSubConsumer,
       long kafkaOperationTimeoutMs,
       String kafkaBootstrapServers) {
     Validate.notNull(kafkaAdminWrapper);

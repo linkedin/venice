@@ -24,7 +24,7 @@ import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAsserti
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicCompletion;
 import static com.linkedin.venice.utils.Time.MS_PER_DAY;
 import static com.linkedin.venice.utils.Time.MS_PER_HOUR;
-import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.after;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyDouble;
@@ -116,13 +116,13 @@ import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
@@ -264,8 +264,8 @@ public abstract class StoreIngestionTaskTest {
   private ReadOnlySchemaRepository mockSchemaRepo;
   private ReadOnlyStoreRepository mockMetadataRepo;
   /** N.B.: This mock can be used to verify() calls, but not to return arbitrary things. */
-  private PubSubConsumer mockLocalKafkaConsumer;
-  private PubSubConsumer mockRemoteKafkaConsumer;
+  private PubSubConsumerAdapter mockLocalKafkaConsumer;
+  private PubSubConsumerAdapter mockRemoteKafkaConsumer;
   private TopicManager mockTopicManager;
   private TopicManagerRepository mockTopicManagerRepository;
   private AggHostLevelIngestionStats mockAggStoreIngestionStats;
@@ -437,8 +437,8 @@ public abstract class StoreIngestionTaskTest {
     mockRecordsThrottler = mock(EventThrottler.class);
     mockSchemaRepo = mock(ReadOnlySchemaRepository.class);
     mockMetadataRepo = mock(ReadOnlyStoreRepository.class);
-    mockLocalKafkaConsumer = mock(PubSubConsumer.class);
-    mockRemoteKafkaConsumer = mock(PubSubConsumer.class);
+    mockLocalKafkaConsumer = mock(PubSubConsumerAdapter.class);
+    mockRemoteKafkaConsumer = mock(PubSubConsumerAdapter.class);
     kafkaUrlToRecordsThrottler = new HashMap<>();
     kafkaClusterBasedRecordThrottler = new KafkaClusterBasedRecordThrottler(kafkaUrlToRecordsThrottler);
 
@@ -858,7 +858,8 @@ public abstract class StoreIngestionTaskTest {
         isLiveConfigEnabled,
         pubSubDeserializer,
         SystemTime.INSTANCE,
-        kafkaConsumerServiceStats);
+        kafkaConsumerServiceStats,
+        false);
     localKafkaConsumerService.start();
 
     Properties remoteKafkaProps = new Properties();
@@ -878,7 +879,8 @@ public abstract class StoreIngestionTaskTest {
         isLiveConfigEnabled,
         pubSubDeserializer,
         SystemTime.INSTANCE,
-        kafkaConsumerServiceStats);
+        kafkaConsumerServiceStats,
+        false);
     remoteKafkaConsumerService.start();
 
     doReturn(100L).when(mockBandwidthThrottler).getMaxRatePerSecond();
