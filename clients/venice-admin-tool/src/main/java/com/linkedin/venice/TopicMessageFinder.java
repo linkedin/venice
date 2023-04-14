@@ -4,7 +4,6 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.store.QueryTool;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumer;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.StoreInfo;
@@ -12,9 +11,10 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
@@ -114,7 +114,7 @@ public class TopicMessageFinder {
         new LandFillObjectPool<>(KafkaMessageEnvelope::new),
         new LandFillObjectPool<>(KafkaMessageEnvelope::new));
     consume(
-        new ApacheKafkaConsumer(consumerProps, kafkaPubSubMessageDeserializer),
+        new ApacheKafkaConsumerAdapter(consumerProps, kafkaPubSubMessageDeserializer),
         assignedPubSubTopicPartition,
         startOffset,
         endOffset,
@@ -124,13 +124,13 @@ public class TopicMessageFinder {
 
   /** For unit tests */
   static void consume(
-      PubSubConsumer c,
+      PubSubConsumerAdapter c,
       PubSubTopicPartition assignedPubSubTopicPartition,
       long startOffset,
       long endOffset,
       long progressInterval,
       byte[] serializedKey) {
-    try (PubSubConsumer consumer = c) {
+    try (PubSubConsumerAdapter consumer = c) {
       long recordCnt = 0;
       long lastReportRecordCnt = 0;
       consumer.subscribe(assignedPubSubTopicPartition, startOffset);

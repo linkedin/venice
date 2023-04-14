@@ -1,6 +1,8 @@
 package com.linkedin.venice;
 
+import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerConfig;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerConfig;
+import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
 
 
 public class ConfigKeys {
@@ -38,6 +40,21 @@ public class ConfigKeys {
   public static final String KAFKA_PRODUCER_RETRIES_CONFIG = ApacheKafkaProducerConfig.KAFKA_PRODUCER_RETRIES_CONFIG;
   public static final String KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS =
       ApacheKafkaProducerConfig.KAFKA_PRODUCER_DELIVERY_TIMEOUT_MS;
+
+  public static final String KAFKA_AUTO_OFFSET_RESET_CONFIG = ApacheKafkaConsumerConfig.KAFKA_AUTO_OFFSET_RESET_CONFIG;
+  public static final String KAFKA_ENABLE_AUTO_COMMIT_CONFIG =
+      ApacheKafkaConsumerConfig.KAFKA_ENABLE_AUTO_COMMIT_CONFIG;
+  public static final String KAFKA_FETCH_MIN_BYTES_CONFIG = ApacheKafkaConsumerConfig.KAFKA_FETCH_MIN_BYTES_CONFIG;
+  public static final String KAFKA_FETCH_MAX_BYTES_CONFIG = ApacheKafkaConsumerConfig.KAFKA_FETCH_MAX_BYTES_CONFIG;
+  public static final String KAFKA_MAX_POLL_RECORDS_CONFIG = ApacheKafkaConsumerConfig.KAFKA_MAX_POLL_RECORDS_CONFIG;
+  public static final String KAFKA_FETCH_MAX_WAIT_MS_CONFIG = ApacheKafkaConsumerConfig.KAFKA_FETCH_MAX_WAIT_MS_CONFIG;
+  public static final String KAFKA_MAX_PARTITION_FETCH_BYTES_CONFIG =
+      ApacheKafkaConsumerConfig.KAFKA_MAX_PARTITION_FETCH_BYTES_CONFIG;
+  public static final String KAFKA_CONSUMER_POLL_RETRY_TIMES_CONFIG =
+      ApacheKafkaConsumerConfig.KAFKA_CONSUMER_POLL_RETRY_TIMES_CONFIG;
+  public static final String KAFKA_CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG =
+      ApacheKafkaConsumerConfig.KAFKA_CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG;
+
   public static final String KAFKA_ADMIN_GET_TOPIC_CONFIG_MAX_RETRY_TIME_SEC =
       "kafka.admin.get.topic.config.max.retry.sec";
 
@@ -1506,7 +1523,7 @@ public class ConfigKeys {
   public static final String ROUTER_DICTIONARY_PROCESSING_THREADS = "router.dictionary.processing.threads";
 
   /**
-   * The class name to use for the {@link com.linkedin.venice.kafka.admin.KafkaAdminWrapper}.
+   * The class name to use for the {@link PubSubAdminAdapter}.
    */
   public static final String KAFKA_ADMIN_CLASS = "kafka.admin.class";
 

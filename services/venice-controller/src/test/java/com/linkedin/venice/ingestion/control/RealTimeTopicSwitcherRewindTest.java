@@ -3,7 +3,6 @@ package com.linkedin.venice.ingestion.control;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyList;
 import static org.mockito.Mockito.anyLong;
-import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -20,6 +19,8 @@ import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfigImpl;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -39,6 +40,8 @@ public class RealTimeTopicSwitcherRewindTest {
   private RealTimeTopicSwitcher topicReplicator;
   private TestMockTime mockTime;
 
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+
   @BeforeTest
   public void setUp() {
     final Map<Integer, Long> startingOffsets = new HashMap<>();
@@ -57,13 +60,13 @@ public class RealTimeTopicSwitcherRewindTest {
     when(topicReplicator.getTopicManager()).thenReturn(topicManager);
     when(topicReplicator.getVeniceWriterFactory()).thenReturn(veniceWriterFactory);
     when(topicReplicator.getTimer()).thenReturn(mockTime);
-    when(topicManager.containsTopicAndAllPartitionsAreOnline(anyString())).thenReturn(true);
+    when(topicManager.containsTopicAndAllPartitionsAreOnline(any())).thenReturn(true);
     when(veniceWriterFactory.<byte[], byte[], byte[]>createVeniceWriter(any())).thenReturn(veniceWriter);
 
     // Methods under test
-    doCallRealMethod().when(topicReplicator).ensurePreconditions(anyString(), anyString(), any(), any());
+    doCallRealMethod().when(topicReplicator).ensurePreconditions(any(), any(), any(), any());
     doCallRealMethod().when(topicReplicator).getRewindStartTime(any(), any(), anyLong());
-    doCallRealMethod().when(topicReplicator).sendTopicSwitch(anyString(), anyString(), anyLong(), anyList());
+    doCallRealMethod().when(topicReplicator).sendTopicSwitch(any(), any(), anyLong(), anyList());
   }
 
   @Test
@@ -78,8 +81,8 @@ public class RealTimeTopicSwitcherRewindTest {
             HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
             DataReplicationPolicy.NON_AGGREGATE,
             BufferReplayPolicy.REWIND_FROM_EOP)));
-    final String sourceTopicName = "source topic name";
-    final String destinationTopicName = "destination topic name";
+    final PubSubTopic sourceTopicName = pubSubTopicRepository.getTopic("source topic name_v1");
+    final PubSubTopic destinationTopicName = pubSubTopicRepository.getTopic("destination topic name_v1");
 
     topicReplicator.ensurePreconditions(sourceTopicName, destinationTopicName, store, hybridStoreConfig);
     long rewindStartTime =
@@ -112,8 +115,8 @@ public class RealTimeTopicSwitcherRewindTest {
             HybridStoreConfigImpl.DEFAULT_HYBRID_TIME_LAG_THRESHOLD,
             DataReplicationPolicy.NON_AGGREGATE,
             BufferReplayPolicy.REWIND_FROM_SOP)));
-    final String sourceTopicName = "source topic name";
-    final String destinationTopicName = "destination topic name";
+    final PubSubTopic sourceTopicName = pubSubTopicRepository.getTopic("source topic name_v1");
+    final PubSubTopic destinationTopicName = pubSubTopicRepository.getTopic("destination topic name_v1");
 
     topicReplicator.ensurePreconditions(sourceTopicName, destinationTopicName, store, hybridStoreConfig);
     long rewindStartTime =

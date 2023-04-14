@@ -13,9 +13,9 @@ import static org.mockito.Mockito.mock;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
-import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -27,7 +27,6 @@ import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.util.Collections;
-import java.util.Optional;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -55,14 +54,14 @@ public class TestAdminConsumerService {
         .build();
     VeniceControllerConfig controllerConfig = new VeniceControllerConfig(props);
 
-    ControllerKafkaClientFactory consumerFactory = new ControllerKafkaClientFactory(
-        controllerConfig,
-        Optional.of(new KafkaClientFactory.MetricsParameters("test", metricsRepository)));
+    PubSubConsumerAdapterFactory consumerFactory = mock(PubSubConsumerAdapterFactory.class);
 
     VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
     doReturn(mock(ZkClient.class)).when(admin).getZkClient();
     doReturn(mock(HelixAdapterSerializer.class)).when(admin).getAdapterSerializer();
     doReturn(consumerFactory).when(admin).getVeniceConsumerFactory();
+    doReturn("localhost:1234").when(admin).getKafkaBootstrapServers(true);
+    doReturn(true).when(admin).isSslToKafka();
 
     AdminConsumerService adminConsumerService1 = null;
     AdminConsumerService adminConsumerService2 = null;

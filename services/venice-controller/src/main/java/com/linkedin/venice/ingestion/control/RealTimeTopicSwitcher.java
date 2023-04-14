@@ -15,6 +15,8 @@ import com.linkedin.venice.meta.DataReplicationPolicy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -47,12 +49,16 @@ public class RealTimeTopicSwitcher {
   private final Integer kafkaReplicationFactorForRTTopics;
   private final Optional<Integer> minSyncReplicasForRTTopics;
 
+  private final PubSubTopicRepository pubSubTopicRepository;
+
   public RealTimeTopicSwitcher(
       TopicManager topicManager,
       VeniceWriterFactory veniceWriterFactory,
-      VeniceProperties veniceProperties) {
+      VeniceProperties veniceProperties,
+      PubSubTopicRepository pubSubTopicRepository) {
     this.topicManager = topicManager;
     this.veniceWriterFactory = veniceWriterFactory;
+    this.pubSubTopicRepository = pubSubTopicRepository;
     this.timer = new SystemTime();
     this.destKafkaBootstrapServers = veniceProperties.getBoolean(ConfigKeys.SSL_TO_KAFKA, false)
         ? veniceProperties.getString(ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS)
@@ -73,17 +79,17 @@ public class RealTimeTopicSwitcher {
    * @throws TopicException
    */
   void sendTopicSwitch(
-      String realTimeTopicName,
-      String topicWhereToSendTheTopicSwitch,
+      PubSubTopic realTimeTopic,
+      PubSubTopic topicWhereToSendTheTopicSwitch,
       long rewindStartTimestamp,
       List<String> remoteKafkaUrls) throws TopicException {
     String errorPrefix = "Cannot send TopicSwitch into '" + topicWhereToSendTheTopicSwitch
-        + "' instructing to switch to '" + realTimeTopicName + "' because";
-    if (realTimeTopicName.equals(topicWhereToSendTheTopicSwitch)) {
+        + "' instructing to switch to '" + realTimeTopic + "' because";
+    if (realTimeTopic.equals(topicWhereToSendTheTopicSwitch)) {
       throw new DuplicateTopicException(errorPrefix + " they are the same topic.");
     }
-    if (!getTopicManager().containsTopicAndAllPartitionsAreOnline(realTimeTopicName)) {
-      throw new TopicDoesNotExistException(errorPrefix + " topic " + realTimeTopicName + " does not exist.");
+    if (!getTopicManager().containsTopicAndAllPartitionsAreOnline(realTimeTopic)) {
+      throw new TopicDoesNotExistException(errorPrefix + " topic " + realTimeTopic + " does not exist.");
     }
     if (!getTopicManager().containsTopicAndAllPartitionsAreOnline(topicWhereToSendTheTopicSwitch)) {
       throw new TopicDoesNotExistException(
@@ -98,16 +104,16 @@ public class RealTimeTopicSwitcher {
     }
 
     try (VeniceWriter<byte[], byte[], byte[]> veniceWriter = getVeniceWriterFactory().createVeniceWriter(
-        new VeniceWriterOptions.Builder(topicWhereToSendTheTopicSwitch).setTime(getTimer())
+        new VeniceWriterOptions.Builder(topicWhereToSendTheTopicSwitch.getName()).setTime(getTimer())
             .setPartitionCount(destinationPartitionCount)
             .build())) {
       veniceWriter
-          .broadcastTopicSwitch(sourceClusters, realTimeTopicName, rewindStartTimestamp, Collections.emptyMap());
+          .broadcastTopicSwitch(sourceClusters, realTimeTopic.getName(), rewindStartTimestamp, Collections.emptyMap());
     }
     LOGGER.info(
         "Successfully sent TopicSwitch into '{}' instructing to switch to '{}' with a rewindStartTimestamp of {}.",
         topicWhereToSendTheTopicSwitch,
-        realTimeTopicName,
+        realTimeTopic,
         rewindStartTimestamp);
   }
 
@@ -115,8 +121,8 @@ public class RealTimeTopicSwitcher {
    * General verification and topic creation for hybrid stores.
    */
   void ensurePreconditions(
-      String srcTopicName,
-      String topicWhereToSendTheTopicSwitch,
+      PubSubTopic srcTopicName,
+      PubSubTopic topicWhereToSendTheTopicSwitch,
       Store store,
       Optional<HybridStoreConfig> hybridStoreConfig) {
     // Carrying on assuming that there needs to be only one and only TopicManager
@@ -141,16 +147,16 @@ public class RealTimeTopicSwitcher {
     if (!getTopicManager().containsTopicAndAllPartitionsAreOnline(srcTopicName)) {
       int partitionCount;
       Optional<Version> version =
-          store.getVersion(Version.parseVersionFromKafkaTopicName(topicWhereToSendTheTopicSwitch));
+          store.getVersion(Version.parseVersionFromKafkaTopicName(topicWhereToSendTheTopicSwitch.getName()));
       if (version.isPresent()) {
         partitionCount = version.get().getPartitionCount();
       } else {
         partitionCount = store.getPartitionCount();
       }
-      int replicationFactor = Version.isRealTimeTopic(srcTopicName)
+      int replicationFactor = srcTopicName.isRealTime()
           ? kafkaReplicationFactorForRTTopics
           : getTopicManager().getReplicationFactor(topicWhereToSendTheTopicSwitch);
-      Optional<Integer> minISR = Version.isRealTimeTopic(srcTopicName) ? minSyncReplicasForRTTopics : Optional.empty();
+      Optional<Integer> minISR = srcTopicName.isRealTime() ? minSyncReplicasForRTTopics : Optional.empty();
       getTopicManager().createTopic(
           srcTopicName,
           partitionCount,
@@ -224,7 +230,7 @@ public class RealTimeTopicSwitcher {
     // if a previous version didn't have an RT, then there will be no
     // version consuming the topic switch message. We'll transmit the version switch
     // message so long as there exists some RT
-    if (!topicManager.containsTopic(Version.composeRealTimeTopic(store.getName()))) {
+    if (!topicManager.containsTopic(pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(store.getName())))) {
       // NoOp
       return;
     }
@@ -254,14 +260,17 @@ public class RealTimeTopicSwitcher {
 
   public void switchToRealTimeTopic(
       String realTimeTopicName,
-      String topicWhereToSendTheTopicSwitch,
+      String topicNameWhereToSendTheTopicSwitch,
       Store store,
       String aggregateRealTimeSourceKafkaUrl,
       List<String> activeActiveRealTimeSourceKafkaURLs) {
-    if (!Version.isRealTimeTopic(realTimeTopicName)) {
-      throw new IllegalArgumentException("The realTimeTopicName param is invalid: " + realTimeTopicName);
+    PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(realTimeTopicName);
+    PubSubTopic topicWhereToSendTheTopicSwitch = pubSubTopicRepository.getTopic(topicNameWhereToSendTheTopicSwitch);
+    if (!realTimeTopic.isRealTime()) {
+      throw new IllegalArgumentException("The realTimeTopicName param is invalid: " + realTimeTopic);
     }
-    Version version = store.getVersion(Version.parseVersionFromKafkaTopicName(topicWhereToSendTheTopicSwitch))
+
+    Version version = store.getVersion(Version.parseVersionFromKafkaTopicName(topicWhereToSendTheTopicSwitch.getName()))
         .orElseThrow(
             () -> new VeniceException(
                 "Corresponding version does not exist for topic: " + topicWhereToSendTheTopicSwitch + " in store: "
@@ -273,10 +282,10 @@ public class RealTimeTopicSwitcher {
     } else {
       hybridStoreConfig = Optional.ofNullable(store.getHybridStoreConfig());
     }
-    ensurePreconditions(realTimeTopicName, topicWhereToSendTheTopicSwitch, store, hybridStoreConfig);
+    ensurePreconditions(realTimeTopic, topicWhereToSendTheTopicSwitch, store, hybridStoreConfig);
     long rewindStartTimestamp = getRewindStartTime(version, hybridStoreConfig, version.getCreatedTime());
-    String finalTopicWhereToSendTheTopicSwitch = version.getPushType().isStreamReprocessing()
-        ? Version.composeStreamReprocessingTopic(store.getName(), version.getNumber())
+    PubSubTopic finalTopicWhereToSendTheTopicSwitch = version.getPushType().isStreamReprocessing()
+        ? pubSubTopicRepository.getTopic(Version.composeStreamReprocessingTopic(store.getName(), version.getNumber()))
         : topicWhereToSendTheTopicSwitch;
     List<String> remoteKafkaUrls = new ArrayList<>(Math.max(1, activeActiveRealTimeSourceKafkaURLs.size()));
 
@@ -288,9 +297,9 @@ public class RealTimeTopicSwitcher {
     LOGGER.info(
         "Will send TopicSwitch into '{}' instructing to switch to '{}' with a rewindStartTimestamp of {}.",
         topicWhereToSendTheTopicSwitch,
-        realTimeTopicName,
+        realTimeTopic,
         rewindStartTimestamp);
-    sendTopicSwitch(realTimeTopicName, finalTopicWhereToSendTheTopicSwitch, rewindStartTimestamp, remoteKafkaUrls);
+    sendTopicSwitch(realTimeTopic, finalTopicWhereToSendTheTopicSwitch, rewindStartTimestamp, remoteKafkaUrls);
   }
 
   private static boolean isAggregate(Store store) {

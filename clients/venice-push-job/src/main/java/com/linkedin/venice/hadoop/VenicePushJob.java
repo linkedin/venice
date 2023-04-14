@@ -1726,8 +1726,7 @@ public class VenicePushJob implements AutoCloseable {
           if (isSslEnabled()) {
             kafkaConsumerProperties.putAll(this.sslProperties.get());
           }
-          kafkaConsumerProperties
-              .setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, pushJobSetting.kafkaInputBrokerUrl);
+          kafkaConsumerProperties.setProperty(KAFKA_BOOTSTRAP_SERVERS, pushJobSetting.kafkaInputBrokerUrl);
           compressionDictionary = DictionaryUtils
               .readDictionaryFromKafka(pushJobSetting.kafkaInputTopic, new VeniceProperties(kafkaConsumerProperties));
         }
@@ -2724,7 +2723,7 @@ public class VenicePushJob implements AutoCloseable {
     // We need the two configs with bootstrap servers since VeniceWriterFactory requires kafka.bootstrap.servers while
     // the Kafka consumer requires bootstrap.servers.
     conf.set(KAFKA_BOOTSTRAP_SERVERS, topicInfo.kafkaUrl);
-    conf.set(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, topicInfo.kafkaUrl);
+    conf.set(KAFKA_BOOTSTRAP_SERVERS, topicInfo.kafkaUrl);
     conf.set(PARTITIONER_CLASS, topicInfo.partitionerClass);
     // flatten partitionerParams since JobConf class does not support set an object
     topicInfo.partitionerParams.forEach(conf::set);

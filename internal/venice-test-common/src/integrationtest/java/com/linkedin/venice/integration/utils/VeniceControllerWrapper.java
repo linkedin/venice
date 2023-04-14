@@ -54,9 +54,9 @@ import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.supersetschema.SupersetSchemaGenerator;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.d2.D2Server;
-import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapter;
 import com.linkedin.venice.servicediscovery.ServiceDiscoveryAnnouncer;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.KafkaSSLUtils;
@@ -192,7 +192,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             // To speed up topic cleanup
             .put(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, 100)
             .put(TOPIC_CLEANUP_DELAY_FACTOR, 2)
-            .put(KAFKA_ADMIN_CLASS, KafkaAdminClient.class.getName())
+            .put(KAFKA_ADMIN_CLASS, ApacheKafkaAdminAdapter.class.getName())
             .put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
             // Moving from topic monitor to admin protocol for add version and starting ingestion
             .put(CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL, true)

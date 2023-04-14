@@ -12,10 +12,10 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -27,14 +27,14 @@ import org.testng.annotations.Test;
 
 
 public class SharedKafkaConsumerTest {
-  protected PubSubConsumer consumer;
+  protected PubSubConsumerAdapter consumer;
   protected KafkaConsumerServiceStats consumerServiceStats;
 
   protected PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @BeforeMethod
   public void setUp() {
-    consumer = mock(PubSubConsumer.class);
+    consumer = mock(PubSubConsumerAdapter.class);
     consumerServiceStats = mock(KafkaConsumerServiceStats.class);
   }
 

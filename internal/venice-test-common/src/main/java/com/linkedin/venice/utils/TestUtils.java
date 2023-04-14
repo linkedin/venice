@@ -7,7 +7,6 @@ import static com.linkedin.venice.ConfigKeys.SERVER_FORKED_PROCESS_JVM_ARGUMENT_
 import static com.linkedin.venice.ConfigKeys.SERVER_INGESTION_MODE;
 import static com.linkedin.venice.utils.TestWriteUtils.STRING_SCHEMA;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
@@ -47,7 +46,6 @@ import com.linkedin.venice.helix.HelixInstanceConverter;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.VeniceOfflinePushMonitorAccessor;
-import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.meta.IngestionMode;
@@ -69,7 +67,6 @@ import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.ApacheKafkaProducerAdapterFactory;
 import com.linkedin.venice.pubsub.adapter.kafka.producer.SharedKafkaProducerAdapterFactory;
-import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -672,9 +669,6 @@ public class TestUtils {
     VeniceProperties mockVeniceProperties = mock(VeniceProperties.class);
     doReturn(true).when(mockVeniceProperties).isEmpty();
     doReturn(mockVeniceProperties).when(mockVeniceServerConfig).getKafkaConsumerConfigsForLocalConsumption();
-    KafkaClientFactory mockKafkaClientFactory = mock(KafkaClientFactory.class);
-    PubSubConsumer pubSubConsumer = mock(PubSubConsumer.class);
-    doReturn(pubSubConsumer).when(mockKafkaClientFactory).getConsumer(any(), any());
 
     StorageEngineRepository mockStorageEngineRepository = mock(StorageEngineRepository.class);
     doReturn(mock(AbstractStorageEngine.class)).when(mockStorageEngineRepository).getLocalStorageEngine(anyString());
@@ -727,14 +721,12 @@ public class TestUtils {
     doReturn(Optional.of(version)).when(mockStore).getVersion(anyInt());
 
     return new StoreIngestionTaskFactory.Builder().setVeniceWriterFactory(mock(VeniceWriterFactory.class))
-        .setKafkaClientFactory(mockKafkaClientFactory)
         .setStorageEngineRepository(mockStorageEngineRepository)
         .setStorageMetadataService(mockStorageMetadataService)
         .setLeaderFollowerNotifiersQueue(new ArrayDeque<>())
         .setSchemaRepository(mock(ReadOnlySchemaRepository.class))
         .setMetadataRepository(mockReadOnlyStoreRepository)
         .setTopicManagerRepository(mock(TopicManagerRepository.class))
-        .setTopicManagerRepositoryJavaBased(mock(TopicManagerRepository.class))
         .setHostLevelIngestionStats(mock(AggHostLevelIngestionStats.class))
         .setVersionedDIVStats(mock(AggVersionedDIVStats.class))
         .setVersionedIngestionStats(mock(AggVersionedIngestionStats.class))
