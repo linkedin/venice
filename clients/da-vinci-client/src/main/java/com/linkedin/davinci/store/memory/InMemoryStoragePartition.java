@@ -70,8 +70,9 @@ public class InMemoryStoragePartition extends AbstractStoragePartition {
   @Override
   public byte[] get(ByteBuffer key) {
     ByteArray keyArray = new ByteArray(key.array());
-    if (partitionDb.containsKey(keyArray)) {
-      return partitionDb.get(keyArray).get();
+    ByteArray byteArray = partitionDb.get(keyArray);
+    if (byteArray != null) {
+      return byteArray.get();
     }
     return null;
   }
