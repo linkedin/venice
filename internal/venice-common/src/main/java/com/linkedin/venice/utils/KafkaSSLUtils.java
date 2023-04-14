@@ -73,15 +73,17 @@ public class KafkaSSLUtils {
    * @return
    */
   public static boolean isKafkaProtocolValid(String kafkaProtocol) {
-    return kafkaProtocol.equals(SecurityProtocol.PLAINTEXT.name()) || kafkaProtocol.equals(SecurityProtocol.SSL.name());
+    return kafkaProtocol.equals(SecurityProtocol.PLAINTEXT.name()) || kafkaProtocol.equals(SecurityProtocol.SSL.name())
+        || kafkaProtocol.equals(SecurityProtocol.SASL_PLAINTEXT.name())
+        || kafkaProtocol.equals(SecurityProtocol.SASL_SSL.name());
   }
 
   public static boolean isKafkaSSLProtocol(String kafkaProtocol) {
-    return kafkaProtocol.equals(SecurityProtocol.SSL.name());
+    return kafkaProtocol.equals(SecurityProtocol.SSL.name()) || kafkaProtocol.equals(SecurityProtocol.SASL_SSL.name());
   }
 
   public static boolean isKafkaSSLProtocol(SecurityProtocol kafkaProtocol) {
-    return kafkaProtocol == SecurityProtocol.SSL;
+    return kafkaProtocol == SecurityProtocol.SSL || kafkaProtocol == SecurityProtocol.SASL_SSL;
   }
 
   /**
