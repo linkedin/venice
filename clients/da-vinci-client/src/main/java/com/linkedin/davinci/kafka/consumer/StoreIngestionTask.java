@@ -1916,24 +1916,25 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     /*
      * Report ingestion throughput metric based on the store version
      */
-    versionedIngestionStats.recordBytesConsumed(storeName, versionNumber, recordSize);
-    versionedIngestionStats.recordRecordsConsumed(storeName, versionNumber);
+    if (!record.getKey().isControlMessage()) { // skip control messages
+      versionedIngestionStats.recordBytesConsumed(storeName, versionNumber, recordSize);
+      versionedIngestionStats.recordRecordsConsumed(storeName, versionNumber);
 
-    /*
-     * Meanwhile, contribute to the host-level ingestion throughput rate, which aggregates the consumption rate across
-     * all store versions.
-     */
-    hostLevelIngestionStats.recordTotalBytesConsumed(recordSize);
-    hostLevelIngestionStats.recordTotalRecordsConsumed();
+      /*
+       * Meanwhile, contribute to the host-level ingestion throughput rate, which aggregates the consumption rate across
+       * all store versions.
+       */
+      hostLevelIngestionStats.recordTotalBytesConsumed(recordSize);
+      hostLevelIngestionStats.recordTotalRecordsConsumed();
 
-    /*
-     * Also update this stats separately for Leader and Follower.
-     */
-    recordProcessedRecordStats(partitionConsumptionState, recordSize);
-
+      /*
+       * Also update this stats separately for Leader and Follower.
+       */
+      recordProcessedRecordStats(partitionConsumptionState, recordSize);
+      partitionConsumptionState.incrementProcessedRecordSizeSinceLastSync(recordSize);
+    }
     reportIfCatchUpVersionTopicOffset(partitionConsumptionState);
 
-    partitionConsumptionState.incrementProcessedRecordSizeSinceLastSync(recordSize);
     long syncBytesInterval = partitionConsumptionState.isDeferredWrite()
         ? databaseSyncBytesIntervalForDeferredWriteMode
         : databaseSyncBytesIntervalForTransactionalMode;
