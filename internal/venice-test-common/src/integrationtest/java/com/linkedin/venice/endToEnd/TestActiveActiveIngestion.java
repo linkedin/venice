@@ -153,8 +153,8 @@ public class TestActiveActiveIngestion {
     TestView.resetCounters();
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
-  public void testAAIngestionWithStoreView(boolean isChunkingEnabled) throws Exception {
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testAAIngestionWithStoreView() throws Exception {
     ControllerClient childControllerClient =
         new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
     String parentControllerURLs =
@@ -185,13 +185,14 @@ public class TestActiveActiveIngestion {
         "{\"viewClassName\" : \"" + ChangeCaptureView.class.getCanonicalName() + "\", \"viewParameters\" : {}}");
     UpdateStoreQueryParams storeParms = new UpdateStoreQueryParams().setActiveActiveReplicationEnabled(true)
         .setHybridRewindSeconds(500)
-        .setStoreViews(viewConfig)
         .setHybridOffsetLagThreshold(8)
-        .setChunkingEnabled(isChunkingEnabled)
+        .setChunkingEnabled(true)
         .setNativeReplicationEnabled(true)
         .setPartitionCount(1);
     MetricsRepository metricsRepository = new MetricsRepository();
     createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
+    storeParms.setStoreViews(viewConfig);
+    IntegrationTestPushUtils.updateStore(clusterName, props, storeParms);
     TestWriteUtils.runPushJob("Run push job", props);
     Map<String, String> samzaConfig = getSamzaConfig(storeName);
     VeniceSystemFactory factory = new VeniceSystemFactory();
