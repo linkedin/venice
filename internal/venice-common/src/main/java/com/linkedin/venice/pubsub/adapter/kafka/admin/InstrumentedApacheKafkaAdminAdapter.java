@@ -1,4 +1,4 @@
-package com.linkedin.venice.kafka.admin;
+package com.linkedin.venice.pubsub.adapter.kafka.admin;
 
 import static com.linkedin.venice.stats.KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.CLOSE;
 import static com.linkedin.venice.stats.KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.CONTAINS_TOPIC;
@@ -14,38 +14,43 @@ import static com.linkedin.venice.stats.KafkaAdminWrapperStats.OCCURRENCE_LATENC
 import static com.linkedin.venice.stats.KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.SET_TOPIC_CONFIG;
 
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
+import com.linkedin.venice.pubsub.PubSubTopicConfiguration;
+import com.linkedin.venice.pubsub.api.PubSubAdminAdapter;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.stats.KafkaAdminWrapperStats;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
-import java.util.Collection;
+import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.Future;
 import java.util.function.Supplier;
 import javax.annotation.Nonnull;
 import org.apache.commons.lang.Validate;
-import org.apache.kafka.clients.admin.TopicDescription;
-import org.apache.kafka.common.KafkaFuture;
 
 
 /**
- * This class delegates another {@link KafkaAdminWrapper} instance and keeps track of the invocation rate of methods
+ * This class delegates another {@link PubSubAdminAdapter} instance and keeps track of the invocation rate of methods
  * on the delegated instance
  */
-public class InstrumentedKafkaAdmin implements KafkaAdminWrapper {
-  private final KafkaAdminWrapper kafkaAdmin;
+public class InstrumentedApacheKafkaAdminAdapter implements PubSubAdminAdapter {
+  private final PubSubAdminAdapter kafkaAdmin;
   private final KafkaAdminWrapperStats kafkaAdminWrapperStats;
   private final Time time;
 
-  public InstrumentedKafkaAdmin(KafkaAdminWrapper kafkaAdmin, MetricsRepository metricsRepository, String statsName) {
+  public InstrumentedApacheKafkaAdminAdapter(
+      PubSubAdminAdapter kafkaAdmin,
+      MetricsRepository metricsRepository,
+      String statsName) {
     this(kafkaAdmin, metricsRepository, statsName, new SystemTime());
   }
 
-  public InstrumentedKafkaAdmin(
-      @Nonnull KafkaAdminWrapper kafkaAdmin,
+  public InstrumentedApacheKafkaAdminAdapter(
+      @Nonnull PubSubAdminAdapter kafkaAdmin,
       @Nonnull MetricsRepository metricsRepository,
       @Nonnull String statsName,
       @Nonnull Time time) {
@@ -59,14 +64,13 @@ public class InstrumentedKafkaAdmin implements KafkaAdminWrapper {
   }
 
   @Override
-  public void initialize(Properties properties) {
-    kafkaAdmin.initialize(properties);
-  }
-
-  @Override
-  public void createTopic(String topicName, int numPartitions, int replication, Properties topicProperties) {
+  public void createTopic(
+      PubSubTopic topicName,
+      int numPartitions,
+      int replication,
+      PubSubTopicConfiguration pubSubTopicConfiguration) {
     instrument(CREATE_TOPIC, () -> {
-      kafkaAdmin.createTopic(topicName, numPartitions, replication, topicProperties);
+      kafkaAdmin.createTopic(topicName, numPartitions, replication, pubSubTopicConfiguration);
       return null;
     });
   }
@@ -76,57 +80,62 @@ public class InstrumentedKafkaAdmin implements KafkaAdminWrapper {
    * we record the occurrence rate at least
    */
   @Override
-  public KafkaFuture<Void> deleteTopic(String topicName) {
+  public Future<Void> deleteTopic(PubSubTopic topicName) {
     return instrument(DELETE_TOPIC, () -> kafkaAdmin.deleteTopic(topicName));
   }
 
   @Override
-  public Set<String> listAllTopics() {
+  public Set<PubSubTopic> listAllTopics() {
     return instrument(LIST_ALL_TOPICS, () -> kafkaAdmin.listAllTopics());
   }
 
   @Override
-  public void setTopicConfig(String topicName, Properties topicProperties) {
+  public void setTopicConfig(PubSubTopic topicName, PubSubTopicConfiguration pubSubTopicConfiguration) {
     instrument(SET_TOPIC_CONFIG, () -> {
-      kafkaAdmin.setTopicConfig(topicName, topicProperties);
+      kafkaAdmin.setTopicConfig(topicName, pubSubTopicConfiguration);
       return null;
     });
   }
 
   @Override
-  public Map<String, Long> getAllTopicRetentions() {
+  public Map<PubSubTopic, Long> getAllTopicRetentions() {
     return instrument(GET_ALL_TOPIC_RETENTIONS, () -> kafkaAdmin.getAllTopicRetentions());
   }
 
   @Override
-  public Properties getTopicConfig(String topicName) throws TopicDoesNotExistException {
+  public PubSubTopicConfiguration getTopicConfig(PubSubTopic topicName) throws TopicDoesNotExistException {
     return instrument(GET_TOPIC_CONFIG, () -> kafkaAdmin.getTopicConfig(topicName));
   }
 
   @Override
-  public Properties getTopicConfigWithRetry(String topicName) {
+  public PubSubTopicConfiguration getTopicConfigWithRetry(PubSubTopic topicName) {
     return instrument(GET_TOPIC_CONFIG_WITH_RETRY, () -> kafkaAdmin.getTopicConfigWithRetry(topicName));
   }
 
   @Override
-  public boolean containsTopic(String topic) {
+  public boolean containsTopic(PubSubTopic topic) {
     return instrument(CONTAINS_TOPIC, () -> kafkaAdmin.containsTopic(topic));
   }
 
   @Override
-  public boolean containsTopicWithPartitionCheck(String topic, int partitionID) {
-    return instrument(CONTAINS_TOPIC, () -> kafkaAdmin.containsTopicWithPartitionCheck(topic, partitionID));
+  public boolean containsTopicWithPartitionCheck(PubSubTopicPartition pubSubTopicPartition) {
+    return instrument(CONTAINS_TOPIC, () -> kafkaAdmin.containsTopicWithPartitionCheck(pubSubTopicPartition));
   }
 
   @Override
-  public boolean containsTopicWithExpectationAndRetry(String topic, int maxRetries, final boolean expectedResult) {
+  public boolean containsTopicWithExpectationAndRetry(PubSubTopic topic, int maxRetries, final boolean expectedResult) {
     return instrument(
         CONTAINS_TOPIC_WITH_RETRY,
         () -> kafkaAdmin.containsTopicWithExpectationAndRetry(topic, maxRetries, expectedResult));
   }
 
   @Override
-  public Map<String, Properties> getSomeTopicConfigs(Set<String> topicNames) {
+  public List<Class<? extends Throwable>> getRetriableExceptions() {
+    return kafkaAdmin.getRetriableExceptions();
+  }
+
+  @Override
+  public Map<PubSubTopic, PubSubTopicConfiguration> getSomeTopicConfigs(Set<PubSubTopic> topicNames) {
     return instrument(GET_SOME_TOPIC_CONFIGS, () -> kafkaAdmin.getSomeTopicConfigs(topicNames));
   }
 
@@ -145,17 +154,8 @@ public class InstrumentedKafkaAdmin implements KafkaAdminWrapper {
 
   @Override
   public String getClassName() {
-    return String.format("%s delegated by %s", kafkaAdmin.getClassName(), InstrumentedKafkaAdmin.class.getName());
-  }
-
-  @Override
-  public Map<String, KafkaFuture<TopicDescription>> describeTopics(Collection<String> topicNames) {
-    final long startTimeMs = time.getMilliseconds();
-    final Map<String, KafkaFuture<TopicDescription>> res = kafkaAdmin.describeTopics(topicNames);
-    kafkaAdminWrapperStats.recordLatency(
-        KafkaAdminWrapperStats.OCCURRENCE_LATENCY_SENSOR_TYPE.DESCRIBE_TOPICS,
-        Utils.calculateDurationMs(time, startTimeMs));
-    return res;
+    return String
+        .format("%s delegated by %s", kafkaAdmin.getClassName(), InstrumentedApacheKafkaAdminAdapter.class.getName());
   }
 
   private <T> T instrument(

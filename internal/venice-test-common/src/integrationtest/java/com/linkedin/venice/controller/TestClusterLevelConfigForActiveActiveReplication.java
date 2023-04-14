@@ -208,7 +208,8 @@ public class TestClusterLevelConfigForActiveActiveReplication extends AbstractTe
         TestUtils.getMultiClusterConfigFromOneCluster(
             new VeniceControllerConfig(new VeniceProperties(controllerProperties))),
         new MetricsRepository(),
-        D2TestUtils.getAndStartD2Client(zkAddress));
+        D2TestUtils.getAndStartD2Client(zkAddress),
+        pubSubTopicRepository);
 
     veniceAdmin.initStorageCluster(clusterName);
     TopicManagerRepository originalTopicManagerRepository = veniceAdmin.getTopicManagerRepository();

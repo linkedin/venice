@@ -113,7 +113,8 @@ public class TestActiveActiveReplicationWithDownRegion {
     // TODO: This takes FOREVER when we close a kafka broker prematurely, BUT it does finish... There seems to be a
     // problem
     // with how we handle processes that are closed are already.
-    // KafkaAdminClient that bemoans it's lost broker for a long time before timing out and giving up (I think in the
+    // ApacheKafkaAdminAdapter that bemoans it's lost broker for a long time before timing out and giving up (I think in
+    // the
     // controller).
     multiRegionMultiClusterWrapper.close();
   }

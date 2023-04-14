@@ -9,6 +9,8 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ZKStore;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.GeneratedSchemaID;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -67,10 +69,13 @@ public class MetaStoreWriter implements Closeable {
   private final HelixReadOnlyZKSharedSchemaRepository zkSharedSchemaRepository;
   private int derivedComputeSchemaId = -1;
 
+  private final PubSubTopicRepository pubSubTopicRepository;
+
   public MetaStoreWriter(
       TopicManager topicManager,
       VeniceWriterFactory writerFactory,
-      HelixReadOnlyZKSharedSchemaRepository schemaRepo) {
+      HelixReadOnlyZKSharedSchemaRepository schemaRepo,
+      PubSubTopicRepository pubSubTopicRepository) {
     this.topicManager = topicManager;
     this.writerFactory = writerFactory;
     /**
@@ -80,6 +85,7 @@ public class MetaStoreWriter implements Closeable {
         .convertFromValueRecordSchema(
             AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema());
     this.zkSharedSchemaRepository = schemaRepo;
+    this.pubSubTopicRepository = pubSubTopicRepository;
   }
 
   /**
@@ -376,12 +382,12 @@ public class MetaStoreWriter implements Closeable {
 
   private VeniceWriter prepareToWrite(String metaStoreName) {
     return metaStoreWriterMap.computeIfAbsent(metaStoreName, k -> {
-      String rtTopic = Version.composeRealTimeTopic(metaStoreName);
+      PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(metaStoreName));
       if (!topicManager.containsTopicAndAllPartitionsAreOnline(rtTopic)) {
         throw new VeniceException("Realtime topic: " + rtTopic + " doesn't exist or some partitions are not online");
       }
 
-      VeniceWriterOptions options = new VeniceWriterOptions.Builder(rtTopic)
+      VeniceWriterOptions options = new VeniceWriterOptions.Builder(rtTopic.getName())
           .setKeySerializer(
               new VeniceAvroKafkaSerializer(
                   AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE_KEY.getCurrentProtocolVersionSchema()))
@@ -421,7 +427,7 @@ public class MetaStoreWriter implements Closeable {
      * to write a Control Message to the RT topic, and it could hang if the topic doesn't exist.
      * This check is a best-effort since the race condition is still there between topic check and closing VeniceWriter.
      */
-    String rtTopic = Version.composeRealTimeTopic(metaStoreName);
+    PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(metaStoreName));
     if (!topicManager.containsTopicAndAllPartitionsAreOnline(rtTopic)) {
       LOGGER.info(
           "RT topic: {} for meta system store: {} doesn't exist, will only close the internal producer without sending END_OF_SEGMENT control messages",

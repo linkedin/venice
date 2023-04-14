@@ -123,11 +123,15 @@ public class TestHybridQuota {
     try (
         ControllerClient controllerClient =
             createStoreForJob(sharedVenice.getClusterName(), recordSchema, vpjProperties);
-        TopicManager topicManager = new TopicManager(
-            DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
-            100,
-            0L,
-            IntegrationTestPushUtils.getVeniceConsumerFactory(sharedVenice.getKafka()))) {
+        TopicManager topicManager =
+            IntegrationTestPushUtils
+                .getTopicManagerRepo(
+                    DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+                    100L,
+                    0L,
+                    sharedVenice.getKafka().getAddress(),
+                    sharedVenice.getPubSubTopicRepository())
+                .getTopicManager()) {
 
       // Setting the hybrid store quota here will cause the VPJ push failed.
       ControllerResponse response = controllerClient.updateStore(
@@ -170,7 +174,8 @@ public class TestHybridQuota {
       runVPJ(vpjProperties, 2, controllerClient);
       String topicForStoreVersion2 = Version.composeKafkaTopic(storeName, 2);
       Assert.assertTrue(
-          topicManager.isTopicCompactionEnabled(topicForStoreVersion1),
+          topicManager
+              .isTopicCompactionEnabled(sharedVenice.getPubSubTopicRepository().getTopic(topicForStoreVersion1)),
           "topic: " + topicForStoreVersion1 + " should have compaction enabled");
       // We did not do any STREAM push here. For a version topic, it should have both hybrid store quota status and
       // offline

@@ -11,7 +11,6 @@ import com.linkedin.davinci.storage.StorageEngineRepository;
 import com.linkedin.davinci.storage.StorageMetadataService;
 import com.linkedin.davinci.store.cache.backend.ObjectCacheBackend;
 import com.linkedin.davinci.store.view.VeniceViewWriterFactory;
-import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
@@ -90,14 +89,12 @@ public class StoreIngestionTaskFactory {
     private VeniceWriterFactory veniceWriterFactory;
 
     private VeniceViewWriterFactory veniceViewWriterFactory;
-    private KafkaClientFactory kafkaClientFactory;
     private StorageEngineRepository storageEngineRepository;
     private StorageMetadataService storageMetadataService;
     private Queue<VeniceNotifier> leaderFollowerNotifiers;
     private ReadOnlySchemaRepository schemaRepo;
     private ReadOnlyStoreRepository metadataRepo;
     private TopicManagerRepository topicManagerRepository;
-    private TopicManagerRepository topicManagerRepositoryJavaBased;
     private AggHostLevelIngestionStats ingestionStats;
     private AggVersionedDIVStats versionedDIVStats;
     private AggVersionedIngestionStats versionedStorageIngestionStats;
@@ -154,20 +151,12 @@ public class StoreIngestionTaskFactory {
       return remoteIngestionRepairService;
     }
 
-    public KafkaClientFactory getKafkaClientFactory() {
-      return kafkaClientFactory;
-    }
-
     public Builder setMetaStoreWriter(MetaStoreWriter metaStoreWriter) {
       return set(() -> this.metaStoreWriter = metaStoreWriter);
     }
 
     public MetaStoreWriter getMetaStoreWriter() {
       return this.metaStoreWriter;
-    }
-
-    public Builder setKafkaClientFactory(KafkaClientFactory consumerFactory) {
-      return set(() -> this.kafkaClientFactory = consumerFactory);
     }
 
     public StorageEngineRepository getStorageEngineRepository() {
@@ -216,14 +205,6 @@ public class StoreIngestionTaskFactory {
 
     public Builder setTopicManagerRepository(TopicManagerRepository topicManagerRepository) {
       return set(() -> this.topicManagerRepository = topicManagerRepository);
-    }
-
-    public TopicManagerRepository getTopicManagerRepositoryJavaBased() {
-      return topicManagerRepositoryJavaBased;
-    }
-
-    public Builder setTopicManagerRepositoryJavaBased(TopicManagerRepository topicManagerRepositoryJavaBased) {
-      return set(() -> this.topicManagerRepositoryJavaBased = topicManagerRepositoryJavaBased);
     }
 
     public AggHostLevelIngestionStats getIngestionStats() {

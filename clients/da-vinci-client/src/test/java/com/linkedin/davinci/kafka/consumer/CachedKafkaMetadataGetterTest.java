@@ -7,8 +7,13 @@ import static org.mockito.Mockito.when;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
+import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -18,35 +23,39 @@ import org.testng.annotations.Test;
 
 
 public class CachedKafkaMetadataGetterTest {
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+
   @Test
   public void testGetEarliestOffset() {
     CachedKafkaMetadataGetter cachedKafkaMetadataGetter = new CachedKafkaMetadataGetter(1000);
     TopicManager mockTopicManager = mock(TopicManager.class);
-    String testTopic = "test_v1";
+    PubSubTopic testTopic = pubSubTopicRepository.getTopic("test_v1");
     int partition = 0;
+    PubSubTopicPartition testTopicPartition = new PubSubTopicPartitionImpl(testTopic, partition);
     String testBrokerUrl = "I_Am_A_Broker_dot_com.com";
     Long earliestOffset = 1L;
     when(mockTopicManager.getKafkaBootstrapServers()).thenReturn(testBrokerUrl);
-    when(mockTopicManager.getPartitionEarliestOffsetAndRetry(anyString(), anyInt(), anyInt()))
-        .thenReturn(earliestOffset);
+    when(mockTopicManager.getPartitionEarliestOffsetAndRetry(any(), anyInt())).thenReturn(earliestOffset);
     Assert.assertEquals(
-        (Long) cachedKafkaMetadataGetter.getEarliestOffset(mockTopicManager, testTopic, partition),
+        (Long) cachedKafkaMetadataGetter.getEarliestOffset(mockTopicManager, testTopicPartition),
         earliestOffset);
 
     TopicManager mockTopicManagerThatThrowsException = mock(TopicManager.class);
     when(mockTopicManagerThatThrowsException.getKafkaBootstrapServers()).thenReturn(testBrokerUrl);
-    when(mockTopicManagerThatThrowsException.getPartitionEarliestOffsetAndRetry(anyString(), anyInt(), anyInt()))
+    when(mockTopicManagerThatThrowsException.getPartitionEarliestOffsetAndRetry(any(), anyInt()))
         .thenThrow(TopicDoesNotExistException.class);
 
     // Even though we're passing a weird topic manager, we should have cached the last value, so this should return the
     // cached offset of 1
     Assert.assertEquals(
-        (Long) cachedKafkaMetadataGetter.getEarliestOffset(mockTopicManagerThatThrowsException, testTopic, partition),
+        (Long) cachedKafkaMetadataGetter.getEarliestOffset(mockTopicManagerThatThrowsException, testTopicPartition),
         earliestOffset);
 
     // Now check for an uncached value and verify we get the error code for topic does not exist.
     Assert.assertEquals(
-        cachedKafkaMetadataGetter.getEarliestOffset(mockTopicManagerThatThrowsException, testTopic, partition + 1),
+        cachedKafkaMetadataGetter.getEarliestOffset(
+            mockTopicManagerThatThrowsException,
+            new PubSubTopicPartitionImpl(testTopic, partition + 1)),
         StatsErrorCode.LAG_MEASUREMENT_FAILURE.code);
 
   }
@@ -54,8 +63,9 @@ public class CachedKafkaMetadataGetterTest {
   @Test
   public void testCacheWillResetStatusWhenExceptionIsThrown() {
     CachedKafkaMetadataGetter cachedKafkaMetadataGetter = new CachedKafkaMetadataGetter(1000);
-    CachedKafkaMetadataGetter.KafkaMetadataCacheKey key =
-        new CachedKafkaMetadataGetter.KafkaMetadataCacheKey("server", "topic", 1);
+    CachedKafkaMetadataGetter.KafkaMetadataCacheKey key = new CachedKafkaMetadataGetter.KafkaMetadataCacheKey(
+        "server",
+        new PubSubTopicPartitionImpl(pubSubTopicRepository.getTopic(Utils.getUniqueTopicString("topic")), 1));
     Map<CachedKafkaMetadataGetter.KafkaMetadataCacheKey, CachedKafkaMetadataGetter.ValueAndExpiryTime<Long>> offsetCache =
         new VeniceConcurrentHashMap<>();
     CachedKafkaMetadataGetter.ValueAndExpiryTime<Long> valueCache =

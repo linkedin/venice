@@ -1,5 +1,6 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.eq;
@@ -27,7 +28,6 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
 import java.util.function.BooleanSupplier;
-import org.apache.kafka.clients.CommonClientConfigs;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -59,8 +59,7 @@ public class PushTimeoutTest {
     Version version = mockStore.getVersion(versionNumber).get();
 
     Properties mockKafkaConsumerProperties = mock(Properties.class);
-    doReturn("localhost").when(mockKafkaConsumerProperties)
-        .getProperty(eq(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG));
+    doReturn("localhost").when(mockKafkaConsumerProperties).getProperty(eq(KAFKA_BOOTSTRAP_SERVERS));
 
     VeniceStoreVersionConfig mockVeniceStoreVersionConfig = mock(VeniceStoreVersionConfig.class);
     String versionTopic = version.kafkaTopicName();
@@ -118,8 +117,7 @@ public class PushTimeoutTest {
     Version version = mockStore.getVersion(versionNumber).get();
 
     Properties mockKafkaConsumerProperties = mock(Properties.class);
-    doReturn("localhost").when(mockKafkaConsumerProperties)
-        .getProperty(eq(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG));
+    doReturn("localhost").when(mockKafkaConsumerProperties).getProperty(eq(KAFKA_BOOTSTRAP_SERVERS));
 
     VeniceStoreVersionConfig mockVeniceStoreVersionConfig = mock(VeniceStoreVersionConfig.class);
     String versionTopic = version.kafkaTopicName();

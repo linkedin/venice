@@ -1,15 +1,18 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+
 import com.linkedin.davinci.config.VeniceServerConfig;
 import com.linkedin.davinci.ingestion.consumption.ConsumedDataReceiver;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.KafkaClientFactory;
+import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.throttle.EventThrottler;
@@ -22,7 +25,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
-import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -34,7 +36,7 @@ import org.apache.logging.log4j.Logger;
 public class AggKafkaConsumerService extends AbstractVeniceService {
   private static final Logger LOGGER = LogManager.getLogger(AggKafkaConsumerService.class);
 
-  private final KafkaClientFactory consumerFactory;
+  private final PubSubConsumerAdapterFactory consumerFactory;
   private final int numOfConsumersPerKafkaCluster;
   private final long readCycleDelayMs;
   private final long sharedConsumerNonExistingTopicCleanupDelayMS;
@@ -44,14 +46,17 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   private final MetricsRepository metricsRepository;
   private final TopicExistenceChecker topicExistenceChecker;
   private final boolean liveConfigBasedKafkaThrottlingEnabled;
+  private final boolean isKafkaConsumerOffsetCollectionEnabled;
   private final KafkaConsumerService.ConsumerAssignmentStrategy sharedConsumerAssignmentStrategy;
   private final Map<String, KafkaConsumerService> kafkaServerToConsumerServiceMap = new VeniceConcurrentHashMap<>();
   private final Map<String, String> kafkaClusterUrlToAliasMap;
   private final Object2IntMap<String> kafkaClusterUrlToIdMap;
   private final KafkaPubSubMessageDeserializer pubSubDeserializer;
+  private final TopicManagerRepository.SSLPropertiesSupplier sslPropertiesSupplier;
 
   public AggKafkaConsumerService(
-      final KafkaClientFactory consumerFactory,
+      final PubSubConsumerAdapterFactory consumerFactory,
+      TopicManagerRepository.SSLPropertiesSupplier sslPropertiesSupplier,
       final VeniceServerConfig serverConfig,
       final EventThrottler bandwidthThrottler,
       final EventThrottler recordsThrottler,
@@ -72,7 +77,9 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
     this.sharedConsumerAssignmentStrategy = serverConfig.getSharedConsumerAssignmentStrategy();
     this.kafkaClusterUrlToAliasMap = serverConfig.getKafkaClusterUrlToAliasMap();
     this.kafkaClusterUrlToIdMap = serverConfig.getKafkaClusterUrlToIdMap();
+    this.isKafkaConsumerOffsetCollectionEnabled = serverConfig.isKafkaConsumerOffsetCollectionEnabled();
     this.pubSubDeserializer = pubSubDeserializer;
+    this.sslPropertiesSupplier = sslPropertiesSupplier;
     LOGGER.info("Successfully initialized AggKafkaConsumerService");
   }
 
@@ -108,7 +115,9 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
    * @param consumerProperties consumer properties that are used to create {@link KafkaConsumerService}
    */
   public synchronized KafkaConsumerService createKafkaConsumerService(final Properties consumerProperties) {
-    final String kafkaUrl = consumerProperties.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
+    final String kafkaUrl = consumerProperties.getProperty(KAFKA_BOOTSTRAP_SERVERS);
+    Properties properties = sslPropertiesSupplier.get(kafkaUrl).toProperties();
+    consumerProperties.putAll(properties);
     if (kafkaUrl == null || kafkaUrl.isEmpty()) {
       throw new IllegalArgumentException("Kafka URL must be set in the consumer properties config. Got: " + kafkaUrl);
     }
@@ -135,7 +144,8 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
             liveConfigBasedKafkaThrottlingEnabled,
             pubSubDeserializer,
             SystemTime.INSTANCE,
-            null));
+            null,
+            isKafkaConsumerOffsetCollectionEnabled));
 
     if (!consumerService.isRunning()) {
       consumerService.start();
@@ -175,7 +185,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   }
 
   void resetOffsetFor(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
-    PubSubConsumer consumer;
+    PubSubConsumerAdapter consumer;
     for (KafkaConsumerService consumerService: kafkaServerToConsumerServiceMap.values()) {
       consumer = consumerService.getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
       if (consumer != null) {
@@ -245,7 +255,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   }
 
   void pauseConsumerFor(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
-    PubSubConsumer consumer;
+    PubSubConsumerAdapter consumer;
     for (KafkaConsumerService consumerService: kafkaServerToConsumerServiceMap.values()) {
       consumer = consumerService.getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
       if (consumer != null) {
@@ -255,7 +265,7 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
   }
 
   void resumeConsumerFor(PubSubTopic versionTopic, PubSubTopicPartition pubSubTopicPartition) {
-    PubSubConsumer consumer;
+    PubSubConsumerAdapter consumer;
     for (KafkaConsumerService consumerService: kafkaServerToConsumerServiceMap.values()) {
       consumer = consumerService.getConsumerAssignedToVersionTopicPartition(versionTopic, pubSubTopicPartition);
       if (consumer != null) {

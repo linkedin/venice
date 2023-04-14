@@ -79,6 +79,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreStatus;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ZKStore;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.pushmonitor.PartitionStatus;
@@ -186,11 +187,15 @@ public class TestHybrid {
                 .build());
         ControllerClient controllerClient =
             new ControllerClient(venice.getClusterName(), parentController.getControllerUrl());
-        TopicManager topicManager = new TopicManager(
-            DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
-            100,
-            0L,
-            IntegrationTestPushUtils.getVeniceConsumerFactory(venice.getKafka()))) {
+        TopicManager topicManager =
+            IntegrationTestPushUtils
+                .getTopicManagerRepo(
+                    DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+                    100,
+                    0l,
+                    venice.getKafka().getAddress(),
+                    venice.getPubSubTopicRepository())
+                .getTopicManager()) {
       long streamingRewindSeconds = 25L;
       long streamingMessageLag = 2L;
       final String storeName = Utils.getUniqueString("multi-colo-hybrid-store");
@@ -230,7 +235,9 @@ public class TestHybrid {
       });
 
       // And real-time topic should exist now.
-      assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(Version.composeRealTimeTopic(storeName)));
+      assertTrue(
+          topicManager.containsTopicAndAllPartitionsAreOnline(
+              sharedVenice.getPubSubTopicRepository().getTopic(Version.composeRealTimeTopic(storeName))));
       // Creating a store object with default values since we're not updating bootstrap to online timeout
       StoreProperties storeProperties = AvroRecordUtils.prefillAvroRecordWithDefaultValue(new StoreProperties());
       storeProperties.name = storeName;
@@ -238,7 +245,8 @@ public class TestHybrid {
       storeProperties.createdTime = System.currentTimeMillis();
       Store store = new ZKStore(storeProperties);
       assertEquals(
-          topicManager.getTopicRetention(Version.composeRealTimeTopic(storeName)),
+          topicManager.getTopicRetention(
+              sharedVenice.getPubSubTopicRepository().getTopic(Version.composeRealTimeTopic(storeName))),
           TopicManager.getExpectedRetentionTimeInMs(store, hybridStoreConfig),
           "RT retention not configured properly");
       // Make sure RT retention is updated when the rewind time is updated
@@ -247,7 +255,8 @@ public class TestHybrid {
       controllerClient
           .updateStore(storeName, new UpdateStoreQueryParams().setHybridRewindSeconds(newStreamingRewindSeconds));
       assertEquals(
-          topicManager.getTopicRetention(Version.composeRealTimeTopic(storeName)),
+          topicManager.getTopicRetention(
+              sharedVenice.getPubSubTopicRepository().getTopic(Version.composeRealTimeTopic(storeName))),
           TopicManager.getExpectedRetentionTimeInMs(store, hybridStoreConfig),
           "RT retention not updated properly");
     }
@@ -311,11 +320,15 @@ public class TestHybrid {
       try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
           AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
               ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()));
-          TopicManager topicManager = new TopicManager(
-              DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
-              100,
-              MIN_COMPACTION_LAG,
-              IntegrationTestPushUtils.getVeniceConsumerFactory(venice.getKafka()))) {
+          TopicManager topicManager =
+              IntegrationTestPushUtils
+                  .getTopicManagerRepo(
+                      DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+                      100,
+                      0l,
+                      venice.getKafka().getAddress(),
+                      sharedVenice.getPubSubTopicRepository())
+                  .getTopicManager()) {
 
         Cache cacheNothingCache = Mockito.mock(Cache.class);
         Mockito.when(cacheNothingCache.getIfPresent(Mockito.any())).thenReturn(null);
@@ -334,7 +347,8 @@ public class TestHybrid {
         runVPJ(vpjProperties, 1, controllerClient);
 
         // verify the topic compaction policy
-        String topicForStoreVersion1 = Version.composeKafkaTopic(storeName, 1);
+        PubSubTopic topicForStoreVersion1 =
+            sharedVenice.getPubSubTopicRepository().getTopic(Version.composeKafkaTopic(storeName, 1));
         Assert.assertTrue(
             topicManager.isTopicCompactionEnabled(topicForStoreVersion1),
             "topic: " + topicForStoreVersion1 + " should have compaction enabled");
@@ -380,7 +394,8 @@ public class TestHybrid {
         // Run one more VPJ
         runVPJ(vpjProperties, 2, controllerClient);
         // verify the topic compaction policy
-        String topicForStoreVersion2 = Version.composeKafkaTopic(storeName, 2);
+        PubSubTopic topicForStoreVersion2 =
+            sharedVenice.getPubSubTopicRepository().getTopic(Version.composeKafkaTopic(storeName, 2));
         Assert.assertTrue(
             topicManager.isTopicCompactionEnabled(topicForStoreVersion2),
             "topic: " + topicForStoreVersion2 + " should have compaction enabled");
@@ -416,7 +431,8 @@ public class TestHybrid {
         // Run VPJ a third Time
         runVPJ(vpjProperties, 3, controllerClient);
         // verify the topic compaction policy
-        String topicForStoreVersion3 = Version.composeKafkaTopic(storeName, 3);
+        PubSubTopic topicForStoreVersion3 =
+            sharedVenice.getPubSubTopicRepository().getTopic(Version.composeKafkaTopic(storeName, 3));
         Assert.assertTrue(
             topicManager.isTopicCompactionEnabled(topicForStoreVersion3),
             "topic: " + topicForStoreVersion3 + " should have compaction enabled");
@@ -833,8 +849,8 @@ public class TestHybrid {
        * All messages in TS1 should not be replayed into VT and should not be queryable;
        * but messages in TS2 should be replayed and queryable.
        */
-      String tmpTopic1 = storeName + "_tmp1_rt";
-      String tmpTopic2 = storeName + "_tmp2_rt";
+      PubSubTopic tmpTopic1 = sharedVenice.getPubSubTopicRepository().getTopic(storeName + "_tmp1_rt");
+      PubSubTopic tmpTopic2 = sharedVenice.getPubSubTopicRepository().getTopic(storeName + "_tmp2_rt");
       TopicManager topicManager = venice.getLeaderVeniceController().getVeniceAdmin().getTopicManager();
       topicManager.createTopic(tmpTopic1, partitionCnt, 1, true);
       topicManager.createTopic(tmpTopic2, partitionCnt, 1, true);
@@ -846,7 +862,7 @@ public class TestHybrid {
       veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, venice.getKafka().getAddress());
       AvroSerializer<String> stringSerializer = new AvroSerializer(Schema.parse(STRING_SCHEMA));
       try (VeniceWriter<byte[], byte[], byte[]> tmpWriter1 = TestUtils.getVeniceWriterFactory(veniceWriterProperties)
-          .createVeniceWriter(new VeniceWriterOptions.Builder(tmpTopic1).build())) {
+          .createVeniceWriter(new VeniceWriterOptions.Builder(tmpTopic1.getName()).build())) {
         // Write 10 records
         for (int i = 0; i < 10; ++i) {
           tmpWriter1.put(stringSerializer.serialize("key_" + i), stringSerializer.serialize("value_" + i), 1);
@@ -857,7 +873,7 @@ public class TestHybrid {
        *  Build a producer that writes to {@link tmpTopic2}
        */
       try (VeniceWriter<byte[], byte[], byte[]> tmpWriter2 = TestUtils.getVeniceWriterFactory(veniceWriterProperties)
-          .createVeniceWriter(new VeniceWriterOptions.Builder(tmpTopic2).build())) {
+          .createVeniceWriter(new VeniceWriterOptions.Builder(tmpTopic2.getName()).build())) {
         // Write 10 records
         for (int i = 10; i < 20; ++i) {
           tmpWriter2.put(stringSerializer.serialize("key_" + i), stringSerializer.serialize("value_" + i), 1);
@@ -882,10 +898,16 @@ public class TestHybrid {
               .getVeniceWriterFactory(veniceWriterProperties)
               .createVeniceWriter(new VeniceWriterOptions.Builder(Version.composeRealTimeTopic(storeName)).build());) {
         // Build a producer to produce 2 TS messages into RT
-        realTimeTopicWriter
-            .broadcastTopicSwitch(Collections.singletonList(venice.getKafka().getAddress()), tmpTopic1, -1L, null);
-        realTimeTopicWriter
-            .broadcastTopicSwitch(Collections.singletonList(venice.getKafka().getAddress()), tmpTopic2, -1L, null);
+        realTimeTopicWriter.broadcastTopicSwitch(
+            Collections.singletonList(venice.getKafka().getAddress()),
+            tmpTopic1.getName(),
+            -1L,
+            null);
+        realTimeTopicWriter.broadcastTopicSwitch(
+            Collections.singletonList(venice.getKafka().getAddress()),
+            tmpTopic2.getName(),
+            -1L,
+            null);
 
         TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, true, () -> {
           // All messages from tmpTopic2 should exist
@@ -1102,11 +1124,15 @@ public class TestHybrid {
       try (ControllerClient controllerClient = createStoreForJob(venice.getClusterName(), recordSchema, vpjProperties);
           AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
               ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()));
-          TopicManager topicManager = new TopicManager(
-              DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
-              100,
-              MIN_COMPACTION_LAG,
-              IntegrationTestPushUtils.getVeniceConsumerFactory(venice.getKafka()))) {
+          TopicManager topicManager =
+              IntegrationTestPushUtils
+                  .getTopicManagerRepo(
+                      DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+                      100L,
+                      MIN_COMPACTION_LAG,
+                      venice.getKafka().getAddress(),
+                      sharedVenice.getPubSubTopicRepository())
+                  .getTopicManager()) {
 
         ControllerResponse response = controllerClient.updateStore(
             storeName,
