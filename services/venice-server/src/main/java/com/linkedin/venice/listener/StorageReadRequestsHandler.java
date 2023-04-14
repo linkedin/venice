@@ -336,15 +336,8 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     }
   }
 
-  private int getSubPartitionId(
-      int userPartition,
-      String resourceName,
-      PartitionerConfig partitionerConfig,
-      byte[] keyBytes) {
-    if (partitionerConfig == null || partitionerConfig.getAmplificationFactor() == 1) {
-      return userPartition;
-    }
-    VenicePartitioner venicePartitioner = resourceToPartitionerMap.computeIfAbsent(resourceName, k -> {
+  private VenicePartitioner getPartitioner(String resourceName, PartitionerConfig partitionerConfig) {
+    return resourceToPartitionerMap.computeIfAbsent(resourceName, k -> {
       Properties partitionerParams = new Properties();
       if (partitionerConfig.getPartitionerParams() != null) {
         partitionerParams.putAll(partitionerConfig.getPartitionerParams());
@@ -353,9 +346,33 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
       return PartitionUtils
           .getVenicePartitioner(partitionerConfig.getPartitionerClass(), 1, new VeniceProperties(partitionerParams));
     });
+  }
+
+  private int getSubPartitionId(
+      int userPartition,
+      String resourceName,
+      PartitionerConfig partitionerConfig,
+      byte[] keyBytes) {
+    if (partitionerConfig == null || partitionerConfig.getAmplificationFactor() == 1) {
+      return userPartition;
+    }
+    VenicePartitioner venicePartitioner = getPartitioner(resourceName, partitionerConfig);
     int subPartitionOffset = venicePartitioner.getPartitionId(keyBytes, partitionerConfig.getAmplificationFactor());
-    int subPartition = userPartition * partitionerConfig.getAmplificationFactor() + subPartitionOffset;
-    return subPartition;
+    return userPartition * partitionerConfig.getAmplificationFactor() + subPartitionOffset;
+  }
+
+  private int getSubPartitionId(
+      int userPartition,
+      String resourceName,
+      PartitionerConfig partitionerConfig,
+      ByteBuffer keyByteBuffer) {
+    if (partitionerConfig == null || partitionerConfig.getAmplificationFactor() == 1) {
+      return userPartition;
+    }
+    VenicePartitioner venicePartitioner = getPartitioner(resourceName, partitionerConfig);
+    int subPartitionOffset =
+        venicePartitioner.getPartitionId(keyByteBuffer, partitionerConfig.getAmplificationFactor());
+    return userPartition * partitionerConfig.getAmplificationFactor() + subPartitionOffset;
   }
 
   private PartitionerConfig getPartitionerConfig(String resourceName) {
@@ -448,7 +465,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
           if (responseKeySizeList != null) {
             responseKeySizeList.set(subChunkCur, key.keyBytes.remaining());
           }
-          int subPartitionId = getSubPartitionId(key.partitionId, topic, partitionerConfig, key.keyBytes.array());
+          int subPartitionId = getSubPartitionId(key.partitionId, topic, partitionerConfig, key.keyBytes);
           MultiGetResponseRecordV1 record =
               BatchGetChunkingAdapter.get(storageEngine, subPartitionId, key.keyBytes, isChunked, responseWrapper);
           if (record == null) {
@@ -506,7 +523,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     responseWrapper.setDatabaseLookupLatency(0);
     boolean isChunked = storageEngine.isChunked();
     for (MultiGetRouterRequestKeyV1 key: keys) {
-      int subPartitionId = getSubPartitionId(key.partitionId, topic, partitionerConfig, key.keyBytes.array());
+      int subPartitionId = getSubPartitionId(key.partitionId, topic, partitionerConfig, key.keyBytes);
       MultiGetResponseRecordV1 record =
           BatchGetChunkingAdapter.get(storageEngine, subPartitionId, key.keyBytes, isChunked, responseWrapper);
       if (record == null) {
@@ -595,7 +612,7 @@ public class StorageReadRequestsHandler extends ChannelInboundHandlerAdapter {
     VeniceCompressor compressor = compressorFactory.getCompressor(compressionStrategy, topic);
     for (ComputeRouterRequestKeyV1 key: keys) {
       clearFieldsInReusedRecord(reuseResultRecord, computeResultSchema);
-      int subPartitionId = getSubPartitionId(key.partitionId, topic, partitionerConfig, key.keyBytes.array());
+      int subPartitionId = getSubPartitionId(key.partitionId, topic, partitionerConfig, key.keyBytes);
       ComputeResponseRecordV1 record = computeResult(
           storageEngine,
           storeName,
