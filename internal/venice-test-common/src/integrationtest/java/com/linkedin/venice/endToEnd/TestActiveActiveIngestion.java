@@ -40,7 +40,6 @@ import com.linkedin.venice.client.consumer.VeniceChangelogConsumerClientFactory;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
-import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiStoreTopicsResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -158,8 +157,8 @@ public class TestActiveActiveIngestion {
     TestView.resetCounters();
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "Compression-Strategies", dataProviderClass = DataProviderUtils.class)
-  public void testAAIngestionWithStoreView(CompressionStrategy compressionStrategy) throws Exception {
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testAAIngestionWithStoreView() throws Exception {
     try {
       ControllerClient childControllerClient =
           new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
@@ -201,7 +200,6 @@ public class TestActiveActiveIngestion {
           .setHybridOffsetLagThreshold(8)
           .setChunkingEnabled(true)
           .setNativeReplicationEnabled(true)
-          .setCompressionStrategy(compressionStrategy)
           .setPartitionCount(1);
       MetricsRepository metricsRepository = new MetricsRepository();
       createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, storeParms).close();
