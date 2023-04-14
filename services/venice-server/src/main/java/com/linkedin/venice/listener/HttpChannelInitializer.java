@@ -40,7 +40,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
   private final AggServerHttpRequestStats multiGetStats;
   private final AggServerHttpRequestStats computeStats;
   private final Optional<SSLFactory> sslFactory;
-  private final Optional<Executor> sslHandshakeExecutor;
+  private final Executor sslHandshakeExecutor;
   private final Optional<ServerAclHandler> aclHandler;
   private final Optional<ServerStoreAclHandler> storeAclHandler;
   private final VerifySslHandler verifySsl = new VerifySslHandler();
@@ -55,7 +55,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
       CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewRepository,
       MetricsRepository metricsRepository,
       Optional<SSLFactory> sslFactory,
-      Optional<Executor> sslHandshakeExecutor,
+      Executor sslHandshakeExecutor,
       VeniceServerConfig serverConfig,
       Optional<StaticAccessController> routerAccessController,
       Optional<DynamicAccessController> storeAccessController,
@@ -148,7 +148,9 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
   public void initChannel(SocketChannel ch) {
     if (sslFactory.isPresent()) {
       SslInitializer sslInitializer = new SslInitializer(SslUtils.toAlpiniSSLFactory(sslFactory.get()), false);
-      sslHandshakeExecutor.ifPresent(sslInitializer::enableSslTaskExecutor);
+      if (sslHandshakeExecutor != null) {
+        sslInitializer.enableSslTaskExecutor(sslHandshakeExecutor);
+      }
       ch.pipeline().addLast(sslInitializer);
     }
     ChannelPipelineConsumer httpPipelineInitializer = (pipeline, whetherNeedServerCodec) -> {

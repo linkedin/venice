@@ -27,7 +27,6 @@ import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
@@ -84,14 +83,12 @@ public class ListenerService extends AbstractVeniceService {
         serverConfig.getComputeQueueCapacity());
     new ThreadPoolStats(metricsRepository, computeExecutor, "storage_compute_thread_pool");
 
-    Optional<Executor> sslHandshakeExecutor = Optional.empty();
-    if (sslFactory.isPresent()) {
+    if (sslFactory.isPresent() && serverConfig.getSslHandshakeThreadPoolSize() > 0) {
       this.sslHandshakeExecutor = createThreadPool(
           serverConfig.getSslHandshakeThreadPoolSize(),
           "SSLHandShakeThread",
           serverConfig.getSslHandshakeQueueCapacity());
       new ThreadPoolStats(metricsRepository, this.sslHandshakeExecutor, "ssl_handshake_thread_pool");
-      sslHandshakeExecutor = Optional.of(this.sslHandshakeExecutor);
     }
 
     StorageReadRequestsHandler requestHandler = createRequestHandler(

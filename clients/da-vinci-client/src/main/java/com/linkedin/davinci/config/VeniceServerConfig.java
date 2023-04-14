@@ -379,7 +379,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int fastAvroFieldLimitPerMethod;
 
   /**
-   * The number of threads used to limit the concurrency of ssl handshake for servers.
+   * The number of threads used to limit the concurrency of ssl handshake for servers. The feature to use a thread pool
+   * executor for handling ssl handshakes is disabled if the value of this config is <= 0. The default value is 0.
    */
   private final int sslHandshakeThreadPoolSize;
 
@@ -489,7 +490,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     kafkaOpenSSLEnabled = serverProperties.getBoolean(SERVER_ENABLE_KAFKA_OPENSSL, false);
     helixHybridStoreQuotaEnabled = serverProperties.getBoolean(HELIX_HYBRID_STORE_QUOTA_ENABLED, false);
     ssdHealthCheckShutdownTimeMs = serverProperties.getLong(SERVER_SHUTDOWN_DISK_UNHEALTHY_TIME_MS, 200000);
-    sslHandshakeThreadPoolSize = serverProperties.getInt(SERVER_SSL_HANDSHAKE_THREAD_POOL_SIZE, 100);
+    sslHandshakeThreadPoolSize = serverProperties.getInt(SERVER_SSL_HANDSHAKE_THREAD_POOL_SIZE, 0);
     sslHandshakeQueueCapacity = serverProperties.getInt(SERVER_SSL_HANDSHAKE_QUEUE_CAPACITY, Integer.MAX_VALUE);
 
     /**

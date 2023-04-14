@@ -1859,7 +1859,8 @@ public class ConfigKeys {
 
   /**
    * Config to control the number of threads in the thread pool executor used for ssl handshake in servers. The purpose
-   * is to limit the concurrency of ssl handshakes.
+   * is to limit the concurrency of ssl handshakes. The feature to use a thread pool executor for handling ssl
+   * handshakes is disabled if the value of this config is <= 0. The default value is 0.
    */
   public static final String SERVER_SSL_HANDSHAKE_THREAD_POOL_SIZE = "server.ssl.handshake.thread.pool.size";
 

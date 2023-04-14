@@ -29,7 +29,7 @@ public class HttpChannelInitializerTest {
   private Optional<SSLFactory> sslFactoryOptional;
 
   private SSLFactory sslFactory;
-  private Optional<Executor> sslHandshakeExecutor;
+  private Executor sslHandshakeExecutor;
   private VeniceServerConfig serverConfig;
   private Optional<StaticAccessController> accessController;
   private Optional<DynamicAccessController> storeAccessController;
@@ -41,7 +41,7 @@ public class HttpChannelInitializerTest {
     metricsRepository = new MetricsRepository();
     sslFactory = mock(SSLFactory.class);
     sslFactoryOptional = Optional.of(sslFactory);
-    sslHandshakeExecutor = Optional.of(mock(Executor.class));
+    sslHandshakeExecutor = mock(Executor.class);
     accessController = Optional.of(mock(StaticAccessController.class));
     storeAccessController = Optional.of(mock(DynamicAccessController.class));
     requestHandler = mock(StorageReadRequestsHandler.class);
