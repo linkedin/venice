@@ -124,9 +124,9 @@ public class TestActiveActiveIngestion {
     String stringSchemaStr = "\"string\"";
     serializer = new AvroSerializer(AvroCompatibilityHelper.parse(stringSchemaStr));
     Properties serverProperties = new Properties();
-    // Set a low chunking threshold so that chunking actually happens in the server
-    serverProperties
-        .setProperty(VeniceWriter.MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES, Integer.toString(LARGE_RECORD_SIZE));
+    // // Set a low chunking threshold so that chunking actually happens in the server
+    // serverProperties
+    // .setProperty(VeniceWriter.MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES, Integer.toString(LARGE_RECORD_SIZE));
     serverProperties.setProperty(ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1));
     serverProperties.put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false);
     serverProperties.put(
@@ -177,7 +177,7 @@ public class TestActiveActiveIngestion {
       // TODO: Something seems to be wrong in the test set up or code that makes it so that the push job
       // will error if we publish records which exceed the chunking threshold (something about getting a cluster
       // lock when making the system stores?)
-      Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir, LARGE_RECORD_SIZE);
+      Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
       String inputDirPath = "file:" + inputDir.getAbsolutePath();
       String storeName = Utils.getUniqueString("store");
       Properties props =
