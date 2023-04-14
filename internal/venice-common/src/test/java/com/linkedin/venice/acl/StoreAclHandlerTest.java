@@ -45,6 +45,7 @@ public class StoreAclHandlerTest {
   private boolean[] hasStore = { false };
   private boolean[] isSystemStore = { false };
   private boolean[] isFailOpen = { false };
+  private boolean[] isMetadata = { false };
 
   @BeforeMethod
   public void setUp() throws Exception {
@@ -73,14 +74,13 @@ public class StoreAclHandlerTest {
     SocketAddress address = mock(SocketAddress.class);
     when(channel.remoteAddress()).thenReturn(address);
 
-    when(req.uri()).thenReturn("/random/storename/random");
     when(req.method()).thenReturn(HttpMethod.GET);
   }
 
   @Test
   public void accessGranted() throws Exception {
     hasAccess[0] = true;
-    enumerate(hasAcl, hasStore, isSystemStore, isFailOpen);
+    enumerate(hasAcl, hasStore, isSystemStore, isFailOpen, isMetadata);
 
     verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.FORBIDDEN)));
     verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.UNAUTHORIZED)));
@@ -88,20 +88,20 @@ public class StoreAclHandlerTest {
     // Store doesn't exist 8 times
     verify(ctx, times(8)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
 
-    // No access control 4 times + access control 4 times
-    verify(ctx, times(8)).fireChannelRead(req);
+    // No access control 20 times + access control 4 times
+    verify(ctx, times(24)).fireChannelRead(req);
   }
 
   @Test
   public void accessDenied() throws Exception {
     hasAccess[0] = false;
-    enumerate(hasAcl, hasStore, isSystemStore, isFailOpen);
+    enumerate(hasAcl, hasStore, isSystemStore, isFailOpen, isMetadata);
 
     // Store doesn't exist 8 times
     verify(ctx, times(8)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
 
-    // No access control 4 times
-    verify(ctx, times(4)).fireChannelRead(req);
+    // No access control 20 times
+    verify(ctx, times(20)).fireChannelRead(req);
 
     // 1 of the 4 rejects is due to internal error
     verify(ctx, times(1)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.UNAUTHORIZED)));
@@ -113,12 +113,12 @@ public class StoreAclHandlerTest {
   @Test
   public void storeExists() throws Exception {
     hasStore[0] = true;
-    enumerate(hasAccess, hasAcl, isFailOpen, isSystemStore);
+    enumerate(hasAccess, hasAcl, isFailOpen, isSystemStore, isMetadata);
 
     verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
 
-    // No access control 8 times, access control 4 times granted
-    verify(ctx, times(12)).fireChannelRead(req);
+    // No access control 24 times, access control 4 times granted
+    verify(ctx, times(28)).fireChannelRead(req);
 
     // 1 of the 4 rejects is due to internal error
     verify(ctx, times(1)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.UNAUTHORIZED)));
@@ -130,9 +130,9 @@ public class StoreAclHandlerTest {
   @Test
   public void storeMissing() throws Exception {
     hasStore[0] = false;
-    enumerate(hasAccess, hasAcl, isFailOpen, isSystemStore);
+    enumerate(hasAccess, hasAcl, isFailOpen, isSystemStore, isMetadata);
 
-    verify(ctx, never()).fireChannelRead(req);
+    verify(ctx, times(16)).fireChannelRead(req);
     verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.FORBIDDEN)));
     verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.UNAUTHORIZED)));
     verify(ctx, times(16)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
@@ -142,15 +142,24 @@ public class StoreAclHandlerTest {
   public void aclDisabledForSystemStore() throws Exception {
     isSystemStore[0] = true;
     hasStore[0] = true;
-    enumerate(hasAccess, hasAcl, isFailOpen);
+    enumerate(hasAccess, hasAcl, isFailOpen, isMetadata);
 
     verify(ctx, never()).writeAndFlush(any());
-    verify(ctx, times(8)).fireChannelRead(req);
+    verify(ctx, times(16)).fireChannelRead(req);
+  }
+
+  @Test
+  public void aclDisabledForMetadataEndpoint() throws Exception {
+    isMetadata[0] = true;
+    enumerate(hasAccess, hasAcl, isSystemStore, isFailOpen);
+
+    verify(ctx, never()).writeAndFlush(any());
+    verify(ctx, times(16)).fireChannelRead(req);
   }
 
   @Test
   public void aclMissing() throws Exception {
-    enumerate(hasStore, hasAcl, hasAccess, isSystemStore, isFailOpen);
+    enumerate(hasStore, hasAcl, hasAccess, isSystemStore, isFailOpen, isMetadata);
 
     verify(ctx, times(1)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.UNAUTHORIZED)));
 
@@ -169,6 +178,11 @@ public class StoreAclHandlerTest {
       when(metadataRepo.getStoreOrThrow(any())).thenThrow(new VeniceNoStoreException("storename"));
     }
     when(store.isSystemStore()).thenReturn(isSystemStore[0]);
+    if (isMetadata[0]) {
+      when(req.uri()).thenReturn("/metadata/storename/random");
+    } else {
+      when(req.uri()).thenReturn("/random/storename/random");
+    }
   }
 
   /**
@@ -180,6 +194,7 @@ public class StoreAclHandlerTest {
    *   _hasStore=           (i>>2) % 2 == 1|    F   F   F   F   T ...
    *   _isAccessControlled= (i>>3) % 2 == 1|    F   F   F   F   F ...
    *   _isFailOpen=         (i>>4) % 2 == 1|    F   F   F   F   F ...
+   *   _isMetadata=         (i>>5) % 2 == 1|    F   F   F   F   F ...
    * }
    */
   private void enumerate(boolean[]... conditions) throws Exception {
