@@ -393,6 +393,8 @@ public abstract class TestRead {
         Assert.assertEquals(getMaxServerMetricValue(".total--compute_request_part_count.Max"), 1.0);
       }
       // Verify storage node metrics
+      Assert.assertTrue(getMaxServerMetricValue(".total--records_consumed.Rate") > 0.0);
+
       Assert.assertTrue(getMaxServerMetricValue(".total--multiget_request_size_in_bytes.Max") > 0.0);
       Assert.assertTrue(getMaxServerMetricValue(".total--compute_request_size_in_bytes.Max") > 0.0);
       for (VeniceServerWrapper veniceServerWrapper: veniceCluster.getVeniceServers()) {
