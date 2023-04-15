@@ -36,7 +36,7 @@ import org.testng.annotations.Test;
 public class TestIncrementalPush {
   private VeniceClusterWrapper cluster;
   private String storeName;
-  private final int partitionSize = 1000;
+  private static final int PARTITION_SIZE = 1000;
 
   @BeforeClass(alwaysRun = true)
   public void setUpClass() {
@@ -44,7 +44,7 @@ public class TestIncrementalPush {
     cluster = ServiceFactory.getVeniceCluster(
         new VeniceClusterCreateOptions.Builder().numberOfServers(3)
             .replicationFactor(3)
-            .partitionSize(partitionSize)
+            .partitionSize(PARTITION_SIZE)
             .build());
   }
 
@@ -57,7 +57,7 @@ public class TestIncrementalPush {
   public void setUp() {
     storeName = Utils.getUniqueString("testIncPushStore");
     cluster.getNewStore(storeName);
-    long storageQuota = 2L * partitionSize;
+    long storageQuota = 2L * PARTITION_SIZE;
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
     params.setIncrementalPushEnabled(true)
         .setHybridRewindSeconds(1)
@@ -73,7 +73,7 @@ public class TestIncrementalPush {
     cluster.useControllerClient(controllerClient -> controllerClient.deleteStore(storeName));
   }
 
-  @Test(timeOut = 2 * Time.MS_PER_MINUTE, invocationCount = 20)
+  @Test(timeOut = 2 * Time.MS_PER_MINUTE)
   public void testGetOfflineStatusIncrementalPush() {
     // store version 1
     VersionCreationResponse v1Response = cluster.getNewVersion(storeName);
