@@ -1,21 +1,31 @@
 package com.linkedin.venice.controller;
 
+import static com.linkedin.venice.utils.TestUtils.assertCommand;
+import static java.util.Objects.requireNonNull;
+import static org.testng.Assert.assertEquals;
+
+import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.BackupStrategy;
+import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
+import org.testng.annotations.AfterClass;
 import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -25,32 +35,29 @@ import org.testng.annotations.Test;
  */
 public class TestIncrementalPush {
   private VeniceClusterWrapper cluster;
-  int partitionSize = 1000;
-  int replicaFactor = 3;
-  int numberOfServer = 3;
+  private String storeName;
+  private final int partitionSize = 1000;
 
-  @BeforeMethod
-  public void setUp() {
+  @BeforeClass(alwaysRun = true)
+  public void setUpClass() {
+    // set the system property to use the local controller
     cluster = ServiceFactory.getVeniceCluster(
-        new VeniceClusterCreateOptions.Builder().numberOfServers(numberOfServer)
-            .replicationFactor(replicaFactor)
+        new VeniceClusterCreateOptions.Builder().numberOfServers(3)
+            .replicationFactor(3)
             .partitionSize(partitionSize)
-            .minActiveReplica(replicaFactor - 1)
             .build());
   }
 
-  @AfterMethod
-  public void cleanUp() {
+  @AfterClass(alwaysRun = true)
+  public void tearDownClass() {
     cluster.close();
   }
 
-  @Test(timeOut = 2 * Time.MS_PER_MINUTE, invocationCount = 20)
-  public void testGetOfflineStatusIncrementalPush() {
-    String storeName = Utils.getUniqueString("testIncPushStore");
-    int partitionCount = 2;
-    long storageQuota = (long) partitionCount * partitionSize;
+  @BeforeMethod(alwaysRun = true)
+  public void setUp() {
+    storeName = Utils.getUniqueString("testIncPushStore");
     cluster.getNewStore(storeName);
-
+    long storageQuota = 2L * partitionSize;
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
     params.setIncrementalPushEnabled(true)
         .setHybridRewindSeconds(1)
@@ -59,7 +66,15 @@ public class TestIncrementalPush {
         .setBackupStrategy(BackupStrategy.KEEP_MIN_VERSIONS)
         .setNumVersionsToPreserve(3);
     cluster.updateStore(storeName, params);
+  }
 
+  @AfterMethod(alwaysRun = true)
+  public void cleanUp() {
+    cluster.useControllerClient(controllerClient -> controllerClient.deleteStore(storeName));
+  }
+
+  @Test(timeOut = 2 * Time.MS_PER_MINUTE, invocationCount = 20)
+  public void testGetOfflineStatusIncrementalPush() {
     // store version 1
     VersionCreationResponse v1Response = cluster.getNewVersion(storeName);
     Assert.assertFalse(v1Response.isError());
@@ -74,8 +89,8 @@ public class TestIncrementalPush {
     veniceWriterVt1.broadcastEndOfIncrementalPush(incPushV1, new HashMap<>());
 
     TestUtils.waitForNonDeterministicCompletion(
-        1,
-        TimeUnit.MINUTES,
+        30,
+        TimeUnit.SECONDS,
         () -> cluster.getLeaderVeniceController()
             .getVeniceAdmin()
             .getOffLinePushStatus(cluster.getClusterName(), versionTopic1, Optional.of(incPushV1), null)
@@ -90,9 +105,20 @@ public class TestIncrementalPush {
     veniceWriterVt2.broadcastStartOfPush(new HashMap<>());
     veniceWriterVt2.broadcastEndOfPush(new HashMap<>());
 
+    // make sure the store has 2 versions
+    cluster.useControllerClient(controllerClient -> {
+      StoreResponse storeResponse =
+          assertCommand(controllerClient.getStore(storeName), "Store response should not be null");
+      StoreInfo storeInfo = requireNonNull(storeResponse.getStore(), "Store should not be null");
+      List<Version> storeVersions = requireNonNull(storeInfo.getVersions(), "Store versions should not be null");
+      assertEquals(storeVersions.size(), 2, "Store should have 2 versions");
+    });
+
+    // even though current version does not contain the incremental push,
+    // status from the previous version should be returned
     TestUtils.waitForNonDeterministicCompletion(
-        1,
-        TimeUnit.MINUTES,
+        30,
+        TimeUnit.SECONDS,
         () -> cluster.getLeaderVeniceController()
             .getVeniceAdmin()
             .getOffLinePushStatus(cluster.getClusterName(), versionTopic2, Optional.of(incPushV1), null)
@@ -103,8 +129,8 @@ public class TestIncrementalPush {
     veniceWriterVt2.broadcastStartOfIncrementalPush(incPush2, new HashMap<>());
     // validate current version query works
     TestUtils.waitForNonDeterministicCompletion(
-        1,
-        TimeUnit.MINUTES,
+        30,
+        TimeUnit.SECONDS,
         () -> cluster.getLeaderVeniceController()
             .getVeniceAdmin()
             .getOffLinePushStatus(cluster.getClusterName(), versionTopic2, Optional.of(incPush2), null)
