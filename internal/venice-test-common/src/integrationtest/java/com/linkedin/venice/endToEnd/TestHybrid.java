@@ -37,9 +37,12 @@ import static org.testng.Assert.assertTrue;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.luben.zstd.Zstd;
 import com.linkedin.davinci.kafka.consumer.KafkaConsumerService;
+import com.linkedin.venice.client.schema.RouterBackedSchemaReader;
+import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.client.store.DelegatingStoreClient;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
@@ -79,6 +82,8 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreStatus;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ZKStore;
+import com.linkedin.venice.producer.OnlineVeniceProducer;
+import com.linkedin.venice.producer.VeniceProducer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
@@ -87,6 +92,8 @@ import com.linkedin.venice.pushmonitor.ReplicaStatus;
 import com.linkedin.venice.samza.SamzaExitMode;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
+import com.linkedin.venice.schema.SchemaReader;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
@@ -99,9 +106,11 @@ import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.CompletableFutureCallback;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterOptions;
+import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -113,6 +122,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -343,7 +353,7 @@ public class TestHybrid {
 
         Assert.assertFalse(response.isError());
 
-        // Do an VPJ push
+        // Do a VPJ push
         runVPJ(vpjProperties, 1, controllerClient);
 
         // verify the topic compaction policy
@@ -1052,8 +1062,12 @@ public class TestHybrid {
         DEFAULT_KEY_SCHEMA,
         DEFAULT_VALUE_SCHEMA,
         IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, i)));
-    try (AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
-        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()))) {
+    try (
+        AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
+            ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(cluster.getRandomRouterURL()));
+        AvroGenericStoreClient kmeClient = ClientFactory.getAndStartGenericAvroClient(
+            ClientConfig.defaultGenericClientConfig(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName())
+                .setVeniceURL(cluster.getRandomRouterURL()))) {
       TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, true, true, () -> {
         for (Integer i = 0; i < keyCount; i++) {
           assertEquals(client.get(i).get(), i);
@@ -1065,9 +1079,37 @@ public class TestHybrid {
       }
       producer.stop();
 
+      AbstractAvroStoreClient avroStoreClient =
+          (AbstractAvroStoreClient<String, Object>) ((DelegatingStoreClient) client).getInnerStoreClient();
+
+      AbstractAvroStoreClient kmeStoreClient =
+          (AbstractAvroStoreClient<String, Object>) ((DelegatingStoreClient) kmeClient).getInnerStoreClient();
+
+      Properties onlineProducerProps = new Properties();
+      try (
+          SchemaReader kmeSchemaReader = new RouterBackedSchemaReader(
+              kmeStoreClient,
+              Optional.empty(),
+              Optional.empty(),
+              ClientConfig.DEFAULT_SCHEMA_REFRESH_PERIOD,
+              null);
+          VeniceProducer veniceOnlineProducer = new OnlineVeniceProducer(
+              avroStoreClient,
+              kmeSchemaReader,
+              new VeniceProperties(onlineProducerProps),
+              new MetricsRepository(),
+              null)) {
+        for (int i = keyCount; i < keyCount * 2; i++) {
+          veniceOnlineProducer.asyncPut(i, i * 2).get();
+        }
+      }
+
       TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, true, true, () -> {
         for (int i = 0; i < keyCount; i++) {
           assertEquals(client.get(i).get(), i + 1);
+        }
+        for (int i = keyCount; i < keyCount * 2; i++) {
+          assertEquals(client.get(i).get(), i * 2);
         }
       });
       cluster.createVersion(
@@ -1078,6 +1120,9 @@ public class TestHybrid {
       TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, true, true, () -> {
         for (int i = 0; i < keyCount; i++) {
           assertEquals(client.get(i).get(), i + 1);
+        }
+        for (int i = keyCount; i < keyCount * 2; i++) {
+          assertEquals(client.get(i).get(), i * 2);
         }
       });
     }
@@ -1142,7 +1187,7 @@ public class TestHybrid {
 
         Assert.assertFalse(response.isError());
 
-        // Do an VPJ push with an empty RT
+        // Do a VPJ push with an empty RT
         runVPJ(vpjProperties, 1, controllerClient);
 
         // Verify some records (note, records 1-100 have been pushed)
@@ -1252,7 +1297,7 @@ public class TestHybrid {
 
         Assert.assertFalse(response.isError());
 
-        // Do an VPJ push
+        // Do a VPJ push
         runVPJ(vpjProperties, 1, controllerClient);
 
         /**
@@ -1434,7 +1479,7 @@ public class TestHybrid {
                 .setHybridOffsetLagThreshold(streamingMessageLag));
         Assert.assertFalse(response.isError());
 
-        // Do an VPJ push with an empty RT
+        // Do a VPJ push with an empty RT
         runVPJ(vpjProperties, 1, controllerClient);
 
         // Verify some records (note, records 1-100 have been pushed)
@@ -1541,10 +1586,10 @@ public class TestHybrid {
               .setHybridOffsetLagThreshold(streamingMessageLag)
               .setPartitionCount(1));
       Assert.assertFalse(response.isError());
-      // Do an VPJ push normally to make sure everything is working fine.
+      // Do a VPJ push normally to make sure everything is working fine.
       runVPJ(vpjProperties, 1, controllerClient);
 
-      // Now do an VPJ push with version swap deferred to make sure we don't swap.
+      // Now do a VPJ push with version swap deferred to make sure we don't swap.
       vpjProperties.put(DEFER_VERSION_SWAP, "true");
       runVPJ(vpjProperties, 1, controllerClient);
 
@@ -1612,7 +1657,7 @@ public class TestHybrid {
               .setHybridOffsetLagThreshold(streamingMessageLag)
               .setPartitionCount(1));
       Assert.assertFalse(response.isError());
-      // Do an VPJ push
+      // Do a VPJ push
       runVPJ(vpjProperties, 1, controllerClient);
       Properties veniceWriterProperties = new Properties();
       veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, venice.getKafka().getAddress());
@@ -1660,7 +1705,6 @@ public class TestHybrid {
     final int keyCount = 20;
     final int replicationFactor = 2;
     final int amplificationFactor = 5;
-    final boolean leaderFollowerEnabled = true;
     VeniceClusterWrapper cluster = enableIngestionIsolation ? ingestionIsolationEnabledSharedVenice : sharedVenice;
     UpdateStoreQueryParams params = new UpdateStoreQueryParams().setPartitionCount(partitionCount)
         .setReplicationFactor(replicationFactor)

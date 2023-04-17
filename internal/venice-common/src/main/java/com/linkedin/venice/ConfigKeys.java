@@ -1868,4 +1868,15 @@ public class ConfigKeys {
    * Config to control the queue capacity for the thread pool executor used for ssl handshake in servers.
    */
   public static final String SERVER_SSL_HANDSHAKE_QUEUE_CAPACITY = "server.ssl.handshake.queue.capacity";
+
+  /**
+   * Number of threads for online Venice producer. This controls how many messages can be processed at a time
+   */
+  public static final String CLIENT_PRODUCER_THREAD_NUM = "client.producer.thread.num";
+
+  /**
+   * The refresh interval for online producer to refresh value schemas and update schemas that rely on periodic polling.
+   */
+  public static final String CLIENT_PRODUCER_SCHEMA_REFRESH_INTERVAL_SECONDS =
+      "client.producer.schema.refresh.interval.seconds";
 }
