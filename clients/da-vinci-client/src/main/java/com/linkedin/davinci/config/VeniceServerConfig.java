@@ -86,6 +86,8 @@ import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_CONSUMER_NON_EXISTING
 import static com.linkedin.venice.ConfigKeys.SERVER_SHARED_KAFKA_PRODUCER_ENABLED;
 import static com.linkedin.venice.ConfigKeys.SERVER_SHUTDOWN_DISK_UNHEALTHY_TIME_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS;
+import static com.linkedin.venice.ConfigKeys.SERVER_SSL_HANDSHAKE_QUEUE_CAPACITY;
+import static com.linkedin.venice.ConfigKeys.SERVER_SSL_HANDSHAKE_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.SERVER_STORE_TO_EARLY_TERMINATION_THRESHOLD_MS_MAP;
 import static com.linkedin.venice.ConfigKeys.SERVER_SYSTEM_STORE_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_UNSUB_AFTER_BATCHPUSH;
@@ -105,8 +107,8 @@ import com.linkedin.davinci.kafka.consumer.RemoteIngestionRepairService;
 import com.linkedin.davinci.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.meta.IngestionMode;
+import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapter;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -376,6 +378,17 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean readOnlyForBatchOnlyStoreEnabled; // TODO: remove this config as its never used in prod
   private final int fastAvroFieldLimitPerMethod;
 
+  /**
+   * The number of threads used to limit the concurrency of ssl handshake for servers. The feature to use a thread pool
+   * executor for handling ssl handshakes is disabled if the value of this config is <= 0. The default value is 0.
+   */
+  private final int sslHandshakeThreadPoolSize;
+
+  /**
+   * The queue capacity for ssl handshake threadpool executor.
+   */
+  private final int sslHandshakeQueueCapacity;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
   }
@@ -477,6 +490,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     kafkaOpenSSLEnabled = serverProperties.getBoolean(SERVER_ENABLE_KAFKA_OPENSSL, false);
     helixHybridStoreQuotaEnabled = serverProperties.getBoolean(HELIX_HYBRID_STORE_QUOTA_ENABLED, false);
     ssdHealthCheckShutdownTimeMs = serverProperties.getLong(SERVER_SHUTDOWN_DISK_UNHEALTHY_TIME_MS, 200000);
+    sslHandshakeThreadPoolSize = serverProperties.getInt(SERVER_SSL_HANDSHAKE_THREAD_POOL_SIZE, 0);
+    sslHandshakeQueueCapacity = serverProperties.getInt(SERVER_SSL_HANDSHAKE_QUEUE_CAPACITY, Integer.MAX_VALUE);
 
     /**
      * In the test of feature store user case, when we did a rolling bounce of storage nodes, the high latency happened
@@ -493,7 +508,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     }
 
     restServiceEpollEnabled = serverProperties.getBoolean(SERVER_REST_SERVICE_EPOLL_ENABLED, false);
-    kafkaAdminClass = serverProperties.getString(KAFKA_ADMIN_CLASS, KafkaAdminClient.class.getName());
+    kafkaAdminClass = serverProperties.getString(KAFKA_ADMIN_CLASS, ApacheKafkaAdminAdapter.class.getName());
     kafkaWriteOnlyClass = serverProperties.getString(KAFKA_WRITE_ONLY_ADMIN_CLASS, kafkaAdminClass);
     kafkaReadOnlyClass = serverProperties.getString(KAFKA_READ_ONLY_ADMIN_CLASS, kafkaAdminClass);
     // Disable it by default, and when router connection warming is enabled, we need to adjust this config.
@@ -1007,5 +1022,13 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getFastAvroFieldLimitPerMethod() {
     return fastAvroFieldLimitPerMethod;
+  }
+
+  public int getSslHandshakeThreadPoolSize() {
+    return sslHandshakeThreadPoolSize;
+  }
+
+  public int getSslHandshakeQueueCapacity() {
+    return sslHandshakeQueueCapacity;
   }
 }

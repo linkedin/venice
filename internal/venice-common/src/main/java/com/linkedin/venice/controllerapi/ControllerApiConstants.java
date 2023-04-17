@@ -195,7 +195,7 @@ public class ControllerApiConstants {
 
   public static final String KAFKA_TOPIC_LOG_COMPACTION_ENABLED = "kafka.topic.log.compaction.enabled";
   public static final String KAFKA_TOPIC_RETENTION_IN_MS = "kafka.topic.retention.in.ms";
-
+  public static final String KAFKA_TOPIC_MIN_IN_SYNC_REPLICA = "kafka.topic.min.in.sync.replica";
   public static final String UPSTREAM_OFFSET = "upstream_offset";
 
   public static final String PERSONA_NAME = "persona_name";

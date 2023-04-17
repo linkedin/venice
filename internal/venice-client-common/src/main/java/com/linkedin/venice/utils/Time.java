@@ -1,8 +1,5 @@
 package com.linkedin.venice.utils;
 
-import java.util.Date;
-
-
 /**
  * The interface to time itself. Oh wow, your head totally just exploded.
  */
@@ -25,10 +22,6 @@ public interface Time {
   long getMilliseconds();
 
   long getNanoseconds();
-
-  int getSeconds();
-
-  Date getCurrentDate();
 
   void sleep(long ms) throws InterruptedException;
 }

@@ -3,6 +3,7 @@ package com.linkedin.davinci.kafka.consumer;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.RESET_OFFSET;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.SUBSCRIBE;
 import static com.linkedin.davinci.kafka.consumer.ConsumerActionType.UNSUBSCRIBE;
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static java.util.concurrent.TimeUnit.HOURS;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
@@ -41,7 +42,6 @@ import com.linkedin.venice.exceptions.validation.FatalDataValidationException;
 import com.linkedin.venice.exceptions.validation.ImproperlyStartedSegmentException;
 import com.linkedin.venice.exceptions.validation.UnsupportedMessageTypeException;
 import com.linkedin.venice.guid.GuidUtils;
-import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
@@ -166,14 +166,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final ReadOnlyStoreRepository storeRepository;
   protected final String consumerTaskId;
   protected final Properties kafkaProps;
-  protected final KafkaClientFactory kafkaClientFactory;
   protected final AtomicBoolean isRunning;
   protected final AtomicBoolean emitMetrics; // TODO: remove this once we migrate to versioned stats
   protected final AtomicInteger consumerActionSequenceNumber = new AtomicInteger(0);
   protected final PriorityBlockingQueue<ConsumerAction> consumerActionsQueue;
   protected final StorageMetadataService storageMetadataService;
   protected final TopicManagerRepository topicManagerRepository;
-  protected final TopicManagerRepository topicManagerRepositoryJavaBased;
   protected final CachedKafkaMetadataGetter cachedKafkaMetadataGetter;
   /** Per-partition consumption state map */
   protected final ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap;
@@ -315,7 +313,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.emptyPollSleepMs = storeConfig.getKafkaEmptyPollSleepMs();
     this.databaseSyncBytesIntervalForTransactionalMode = storeConfig.getDatabaseSyncBytesIntervalForTransactionalMode();
     this.databaseSyncBytesIntervalForDeferredWriteMode = storeConfig.getDatabaseSyncBytesIntervalForDeferredWriteMode();
-    this.kafkaClientFactory = builder.getKafkaClientFactory();
     this.kafkaProps = kafkaConsumerProperties;
     this.storageEngineRepository = builder.getStorageEngineRepository();
     this.storageMetadataService = builder.getStorageMetadataService();
@@ -338,7 +335,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.kafkaDataIntegrityValidator = new KafkaDataIntegrityValidator(this.kafkaVersionTopic);
     this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, kafkaVersionTopic);
     this.topicManagerRepository = builder.getTopicManagerRepository();
-    this.topicManagerRepositoryJavaBased = builder.getTopicManagerRepositoryJavaBased();
     this.cachedKafkaMetadataGetter = new CachedKafkaMetadataGetter(storeConfig.getTopicOffsetCheckIntervalMs());
 
     this.hostLevelIngestionStats = builder.getIngestionStats().getStoreStats(storeName);
@@ -405,7 +401,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         amplificationFactorAdapter);
 
     this.cacheBackend = cacheBackend;
-    this.localKafkaServer = this.kafkaProps.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
+    this.localKafkaServer = this.kafkaProps.getProperty(KAFKA_BOOTSTRAP_SERVERS);
     this.localKafkaServerSingletonSet = Collections.singleton(localKafkaServer);
     this.isDaVinciClient = builder.isDaVinciClient();
     this.isActiveActiveReplicationEnabled = version.isActiveActiveReplicationEnabled();
@@ -657,7 +653,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        * TODO: find a better solution
        */
       final long versionTopicPartitionOffset =
-          cachedKafkaMetadataGetter.getOffset(getTopicManager(localKafkaServer), kafkaVersionTopic, partitionId);
+          cachedKafkaMetadataGetter.getOffset(getTopicManager(localKafkaServer), versionTopic, partitionId);
       isLagAcceptable =
           versionTopicPartitionOffset <= partitionConsumptionState.getLatestProcessedLocalVersionTopicOffset()
               + SLOPPY_OFFSET_CATCHUP_THRESHOLD;
@@ -747,13 +743,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                       realTimeTopicKafkaURLs));
             }
 
-            final String lagMeasurementTopic = realTimeTopic.getName();
+            final PubSubTopic lagMeasurementTopic = pubSubTopicRepository.getTopic(realTimeTopic.getName());
+            final PubSubTopicPartition pubSubTopicPartition =
+                new PubSubTopicPartitionImpl(lagMeasurementTopic, partitionId);
             // Since DaVinci clients run in embedded mode, they may not have network ACLs to check remote RT to get
             // the latest producer timestamp in RT. Only use the latest producer time in local RT.
             final String lagMeasurementKafkaUrl = isDaVinciClient ? localKafkaServer : realTimeTopicKafkaURL;
 
-            if (!cachedKafkaMetadataGetter
-                .containsTopic(getTopicManager(lagMeasurementKafkaUrl), lagMeasurementTopic)) {
+            if (!cachedKafkaMetadataGetter.containsTopic(getTopicManager(lagMeasurementKafkaUrl), realTimeTopic)) {
               timestampLagIsAcceptable = true;
               if (!REDUNDANT_LOGGING_FILTER.isRedundantException(msgIdentifier)) {
                 LOGGER.info(
@@ -762,10 +759,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                     lagMeasurementTopic);
               }
             } else {
-              long latestProducerTimestampInTopic = cachedKafkaMetadataGetter.getProducerTimestampOfLastDataMessage(
-                  getTopicManager(lagMeasurementKafkaUrl),
-                  lagMeasurementTopic,
-                  partitionId);
+              long latestProducerTimestampInTopic = cachedKafkaMetadataGetter
+                  .getProducerTimestampOfLastDataMessage(getTopicManager(lagMeasurementKafkaUrl), pubSubTopicPartition);
               if (latestProducerTimestampInTopic < 0
                   || latestProducerTimestampInTopic <= latestConsumedProducerTimestamp) {
                 timestampLagIsAcceptable = true;
@@ -868,7 +863,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       LeaderProducedRecordContext leaderProducedRecordContext,
       int subPartition,
       String kafkaUrl,
-      long beforeProcessingRecordTimestamp) throws InterruptedException {
+      long beforeProcessingRecordTimestampNs,
+      long currentTimeForMetricsMs) throws InterruptedException {
     boolean measureTime = emitMetrics.get();
     long queuePutStartTimeInNS = measureTime ? System.nanoTime() : 0;
     storeBufferService.putConsumerRecord(
@@ -877,10 +873,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         leaderProducedRecordContext,
         subPartition,
         kafkaUrl,
-        beforeProcessingRecordTimestamp); // blocking call
+        beforeProcessingRecordTimestampNs); // blocking call
 
     if (measureTime) {
-      hostLevelIngestionStats.recordConsumerRecordsQueuePutLatency(LatencyUtils.getLatencyInMS(queuePutStartTimeInNS));
+      hostLevelIngestionStats.recordConsumerRecordsQueuePutLatency(
+          LatencyUtils.getLatencyInMS(queuePutStartTimeInNS),
+          currentTimeForMetricsMs);
     }
   }
 
@@ -902,6 +900,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     double elapsedTimeForPuttingIntoQueue = 0;
     int subPartition = PartitionUtils.getSubPartition(topicPartition, amplificationFactor);
     boolean metricsEnabled = emitMetrics.get();
+    long currentTimeForMetricsMs = System.currentTimeMillis();
     for (PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> record: records) {
       long beforeProcessingRecordTimestampNs = System.nanoTime();
       if (!shouldProcessRecord(record, subPartition)) {
@@ -935,8 +934,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       waitReadyToProcessRecord(record);
       // This function may modify the original record in KME and it is unsafe to use the payload from KME directly after
       // this call.
-      DelegateConsumerRecordResult delegateConsumerRecordResult =
-          delegateConsumerRecord(record, subPartition, kafkaUrl, kafkaClusterId, beforeProcessingRecordTimestampNs);
+      DelegateConsumerRecordResult delegateConsumerRecordResult = delegateConsumerRecord(
+          record,
+          subPartition,
+          kafkaUrl,
+          kafkaClusterId,
+          beforeProcessingRecordTimestampNs,
+          currentTimeForMetricsMs);
       switch (delegateConsumerRecordResult) {
         case QUEUED_TO_DRAINER:
           long queuePutStartTimeInNS = metricsEnabled ? System.nanoTime() : 0;
@@ -961,7 +965,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // Update the latest message consumption time
       PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(subPartition);
       if (partitionConsumptionState != null) {
-        partitionConsumptionState.setLatestMessageConsumptionTimestampInMs(System.currentTimeMillis());
+        partitionConsumptionState.setLatestMessageConsumptionTimestampInMs(currentTimeForMetricsMs);
       }
     }
 
@@ -975,10 +979,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         hostLevelIngestionStats.recordTotalBytesReadFromKafkaAsUncompressedSize(totalBytesRead);
       }
       if (elapsedTimeForPuttingIntoQueue > 0) {
-        hostLevelIngestionStats.recordConsumerRecordsQueuePutLatency(elapsedTimeForPuttingIntoQueue);
+        hostLevelIngestionStats
+            .recordConsumerRecordsQueuePutLatency(elapsedTimeForPuttingIntoQueue, currentTimeForMetricsMs);
       }
 
-      hostLevelIngestionStats.recordStorageQuotaUsed(storageUtilizationManager.getDiskQuotaUsage());
+      hostLevelIngestionStats
+          .recordStorageQuotaUsed(storageUtilizationManager.getDiskQuotaUsage(), currentTimeForMetricsMs);
     }
   }
 
@@ -1113,8 +1119,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private void recordQuotaMetrics(Store store) {
     if (emitMetrics.get()) {
       long currentQuota = store.getStorageQuotaInByte();
-      hostLevelIngestionStats.recordDiskQuotaAllowed(currentQuota);
-      hostLevelIngestionStats.recordStorageQuotaUsed(storageUtilizationManager.getDiskQuotaUsage());
+      long currentTimeForMetricsMs = System.currentTimeMillis();
+      hostLevelIngestionStats.recordDiskQuotaAllowed(currentQuota, currentTimeForMetricsMs);
+      hostLevelIngestionStats
+          .recordStorageQuotaUsed(storageUtilizationManager.getDiskQuotaUsage(), currentTimeForMetricsMs);
     }
   }
 
@@ -1688,7 +1696,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * @see CachedKafkaMetadataGetter#getOffset(TopicManager, String, int)
      * TODO: Refactor this using PubSubTopicPartition.
      */
-    return cachedKafkaMetadataGetter.getOffset(getTopicManager(kafkaUrl), kafkaVersionTopic, partition);
+    return cachedKafkaMetadataGetter.getOffset(getTopicManager(kafkaUrl), versionTopic, partition);
   }
 
   protected long getPartitionOffsetLag(String kafkaSourceAddress, PubSubTopic topic, int partition) {
@@ -1908,24 +1916,25 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     /*
      * Report ingestion throughput metric based on the store version
      */
-    versionedIngestionStats.recordBytesConsumed(storeName, versionNumber, recordSize);
-    versionedIngestionStats.recordRecordsConsumed(storeName, versionNumber);
+    if (!record.getKey().isControlMessage()) { // skip control messages
+      versionedIngestionStats.recordBytesConsumed(storeName, versionNumber, recordSize);
+      versionedIngestionStats.recordRecordsConsumed(storeName, versionNumber);
 
-    /*
-     * Meanwhile, contribute to the host-level ingestion throughput rate, which aggregates the consumption rate across
-     * all store versions.
-     */
-    hostLevelIngestionStats.recordTotalBytesConsumed(recordSize);
-    hostLevelIngestionStats.recordTotalRecordsConsumed();
+      /*
+       * Meanwhile, contribute to the host-level ingestion throughput rate, which aggregates the consumption rate across
+       * all store versions.
+       */
+      hostLevelIngestionStats.recordTotalBytesConsumed(recordSize);
+      hostLevelIngestionStats.recordTotalRecordsConsumed();
 
-    /*
-     * Also update this stats separately for Leader and Follower.
-     */
-    recordProcessedRecordStats(partitionConsumptionState, recordSize);
-
+      /*
+       * Also update this stats separately for Leader and Follower.
+       */
+      recordProcessedRecordStats(partitionConsumptionState, recordSize);
+      partitionConsumptionState.incrementProcessedRecordSizeSinceLastSync(recordSize);
+    }
     reportIfCatchUpVersionTopicOffset(partitionConsumptionState);
 
-    partitionConsumptionState.incrementProcessedRecordSizeSinceLastSync(recordSize);
     long syncBytesInterval = partitionConsumptionState.isDeferredWrite()
         ? databaseSyncBytesIntervalForDeferredWriteMode
         : databaseSyncBytesIntervalForTransactionalMode;
@@ -2268,7 +2277,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     // NoOp
   }
 
-  protected void processTopicSwitch(
+  protected boolean processTopicSwitch(
       ControlMessage controlMessage,
       int partition,
       long offset,
@@ -2282,12 +2291,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * In this method, we pass both offset and partitionConsumptionState(ps). The reason behind it is that ps's
    * offset is stale and is not updated until the very end
    */
-  private void processControlMessage(
+  private boolean processControlMessage(
       KafkaMessageEnvelope kafkaMessageEnvelope,
       ControlMessage controlMessage,
       int partition,
       long offset,
       PartitionConsumptionState partitionConsumptionState) {
+    boolean checkReadyToServeAfterProcess = false;
     /**
      * If leader consumes control messages from topics other than version topic, it should produce
      * them to version topic; however, START_OF_SEGMENT and END_OF_SEGMENT should not be forwarded
@@ -2327,7 +2337,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         processEndOfIncrementalPush(controlMessage, partitionConsumptionState);
         break;
       case TOPIC_SWITCH:
-        processTopicSwitch(controlMessage, partition, offset, partitionConsumptionState);
+        checkReadyToServeAfterProcess =
+            processTopicSwitch(controlMessage, partition, offset, partitionConsumptionState);
         break;
       case VERSION_SWAP:
         processVersionSwapMessage(controlMessage, partition, partitionConsumptionState);
@@ -2336,6 +2347,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         throw new UnsupportedMessageTypeException(
             "Unrecognized Control message type " + controlMessage.controlMessageType);
     }
+    return checkReadyToServeAfterProcess;
   }
 
   /**
@@ -2373,6 +2385,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     KafkaKey kafkaKey = consumerRecord.getKey();
     KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
     int sizeOfPersistedData = 0;
+    boolean checkReadyToServeAfterProcess = false;
     try {
       // Assumes the timestamp on the record is the broker's timestamp when it received the message.
       long currentTimeMs = System.currentTimeMillis();
@@ -2426,7 +2439,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         ControlMessage controlMessage = (leaderProducedRecordContext == null
             ? (ControlMessage) kafkaValue.payloadUnion
             : (ControlMessage) leaderProducedRecordContext.getValueUnion());
-        processControlMessage(
+        checkReadyToServeAfterProcess = processControlMessage(
             kafkaValue,
             controlMessage,
             consumerRecord.getTopicPartition().getPartitionNumber(),
@@ -2488,6 +2501,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           consumerRecord,
           leaderProducedRecordContext,
           kafkaUrl);
+      if (checkReadyToServeAfterProcess) {
+        defaultReadyToServeChecker.apply(partitionConsumptionState);
+      }
     }
     return sizeOfPersistedData;
   }
@@ -2523,18 +2539,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       PubSubMessage<KafkaKey, KafkaMessageEnvelope, Long> consumerRecord,
       boolean endOfPushReceived,
       PartitionConsumptionState partitionConsumptionState) {
-
     Lazy<Boolean> tolerateMissingMsgs = Lazy.of(() -> {
       TopicManager topicManager = topicManagerRepository.getTopicManager();
       // Tolerate missing message if store version is data recovery + hybrid and TS not received yet (due to source
       // topic
       // data may have been log compacted) or log compaction is enabled and record is old enough for log compaction.
-      String topicName = consumerRecord.getTopicPartition().getPubSubTopic().getName();
+      PubSubTopic pubSubTopic = consumerRecord.getTopicPartition().getPubSubTopic();
 
       return (isDataRecovery && isHybridMode() && partitionConsumptionState.getTopicSwitch() == null)
-          || (topicManager.isTopicCompactionEnabled(topicName)
+          || (topicManager.isTopicCompactionEnabled(pubSubTopic)
               && LatencyUtils.getElapsedTimeInMs(consumerRecord.getPubSubMessageTime()) >= topicManager
-                  .getTopicMinLogCompactionLagMs(topicName));
+                  .getTopicMinLogCompactionLagMs(pubSubTopic));
     });
 
     try {
@@ -2833,8 +2848,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     if (emitMetrics.get()) {
-      hostLevelIngestionStats.recordKeySize(keyLen);
-      hostLevelIngestionStats.recordValueSize(valueLen);
+      hostLevelIngestionStats.recordKeySize(keyLen, currentTimeMs);
+      hostLevelIngestionStats.recordValueSize(valueLen, currentTimeMs);
     }
 
     return keyLen + valueLen;
@@ -2958,7 +2973,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // cluster these metastore writes could be spiky
         if (metaStoreWriter != null && !VeniceSystemStoreType.META_STORE.isSystemStore(storeName)) {
           String metaStoreName = VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName);
-          String metaStoreRT = Version.composeRealTimeTopic(metaStoreName);
+          PubSubTopic metaStoreRT = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(metaStoreName));
           if (getTopicManager(localKafkaServer).containsTopic(metaStoreRT)) {
             metaStoreWriter.writeInUseValueSchema(storeName, versionNumber, schemaId);
           }
@@ -3080,7 +3095,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       boolean consumeRemotely) {
     Properties newConsumerProps = new Properties();
     newConsumerProps.putAll(localConsumerProps);
-    newConsumerProps.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, remoteKafkaSourceAddress);
+    newConsumerProps.setProperty(KAFKA_BOOTSTRAP_SERVERS, remoteKafkaSourceAddress);
     VeniceProperties customizedConsumerConfigs = consumeRemotely
         ? serverConfig.getKafkaConsumerConfigsForRemoteConsumption()
         : serverConfig.getKafkaConsumerConfigsForLocalConsumption();
@@ -3246,6 +3261,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return serverConfig;
   }
 
+  public void updateOffsetMetadataAndSync(String topic, int partitionId) {
+    PartitionConsumptionState pcs = getPartitionConsumptionState(partitionId);
+    updateOffsetMetadataInOffsetRecord(pcs);
+    syncOffset(topic, pcs);
+  }
+
   /**
    * The function returns local or remote topic manager.
    * @param sourceKafkaServer The address of source kafka bootstrap server.
@@ -3257,7 +3278,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return topicManagerRepository.getTopicManager();
     }
     // Use java-based kafka admin client to get remote topic manager
-    return topicManagerRepositoryJavaBased.getTopicManager(sourceKafkaServer);
+    return topicManagerRepository.getTopicManager(sourceKafkaServer);
   }
 
   /**
@@ -3278,10 +3299,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       int subPartition,
       String kafkaUrl,
       int kafkaClusterId,
-      long beforeProcessingRecordTimestamp);
+      long beforeProcessingRecordTimestampNs,
+      long currentTimeForMetricsMs);
 
   /**
-   * This enum represents all potential results after calling {@link #delegateConsumerRecord(PubSubMessage, int, String, int, long)}.
+   * This enum represents all potential results after calling {@link #delegateConsumerRecord(PubSubMessage, int, String, int, long, long)}.
    */
   protected enum DelegateConsumerRecordResult {
     /**
@@ -3372,4 +3394,5 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     KafkaMessageEnvelope kafkaValue = consumerRecord.getValue();
     return kafkaValue.leaderMetadataFooter != null && kafkaValue.leaderMetadataFooter.upstreamOffset >= 0;
   }
+
 }

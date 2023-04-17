@@ -27,6 +27,7 @@ import io.netty.handler.timeout.IdleStateHandler;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -39,6 +40,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
   private final AggServerHttpRequestStats multiGetStats;
   private final AggServerHttpRequestStats computeStats;
   private final Optional<SSLFactory> sslFactory;
+  private final Executor sslHandshakeExecutor;
   private final Optional<ServerAclHandler> aclHandler;
   private final Optional<ServerStoreAclHandler> storeAclHandler;
   private final VerifySslHandler verifySsl = new VerifySslHandler();
@@ -53,6 +55,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
       CompletableFuture<HelixCustomizedViewOfflinePushRepository> customizedViewRepository,
       MetricsRepository metricsRepository,
       Optional<SSLFactory> sslFactory,
+      Executor sslHandshakeExecutor,
       VeniceServerConfig serverConfig,
       Optional<StaticAccessController> routerAccessController,
       Optional<DynamicAccessController> storeAccessController,
@@ -87,6 +90,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     }
 
     this.sslFactory = sslFactory;
+    this.sslHandshakeExecutor = sslHandshakeExecutor;
     this.storeAclHandler = storeAccessController.isPresent()
         ? Optional.of(new ServerStoreAclHandler(storeAccessController.get(), storeMetadataRepository))
         : Optional.empty();
@@ -143,7 +147,11 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
   @Override
   public void initChannel(SocketChannel ch) {
     if (sslFactory.isPresent()) {
-      ch.pipeline().addLast(new SslInitializer(SslUtils.toAlpiniSSLFactory(sslFactory.get()), false));
+      SslInitializer sslInitializer = new SslInitializer(SslUtils.toAlpiniSSLFactory(sslFactory.get()), false);
+      if (sslHandshakeExecutor != null) {
+        sslInitializer.enableSslTaskExecutor(sslHandshakeExecutor);
+      }
+      ch.pipeline().addLast(sslInitializer);
     }
     ChannelPipelineConsumer httpPipelineInitializer = (pipeline, whetherNeedServerCodec) -> {
       StatsHandler statsHandler = new StatsHandler(singleGetStats, multiGetStats, computeStats);

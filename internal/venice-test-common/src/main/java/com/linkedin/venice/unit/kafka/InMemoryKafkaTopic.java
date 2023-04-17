@@ -72,4 +72,8 @@ class InMemoryKafkaTopic {
   int getPartitionCount() {
     return partitions.length;
   }
+
+  Long getEndOffsets(int partition) {
+    return (long) partitions[partition].size();
+  }
 }

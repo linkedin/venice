@@ -92,6 +92,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_ACL;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_ADMIN_TOPIC_METADATA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_CLUSTER_CONFIG;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOPIC_LOG_COMPACTION;
+import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOPIC_MIN_IN_SYNC_REPLICA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOPIC_RETENTION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_STORAGE_PERSONA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_STORE;
@@ -110,6 +111,7 @@ import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.Utils;
@@ -161,6 +163,7 @@ public class AdminSparkServer extends AbstractVeniceService {
   private final List<ControllerRoute> disabledRoutes;
 
   private final boolean disableParentRequestTopicForStreamPushes;
+  private final PubSubTopicRepository pubSubTopicRepository;
 
   public AdminSparkServer(
       int port,
@@ -173,7 +176,8 @@ public class AdminSparkServer extends AbstractVeniceService {
       Optional<DynamicAccessController> accessController,
       List<ControllerRoute> disabledRoutes,
       VeniceProperties jettyConfigOverrides,
-      boolean disableParentRequestTopicForStreamPushes) {
+      boolean disableParentRequestTopicForStreamPushes,
+      PubSubTopicRepository pubSubTopicRepository) {
     this.port = port;
     this.enforceSSL = enforceSSL;
     this.sslEnabled = sslConfig.isPresent();
@@ -196,6 +200,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService = Service.ignite();
     this.disabledRoutes = disabledRoutes;
     this.disableParentRequestTopicForStreamPushes = disableParentRequestTopicForStreamPushes;
+    this.pubSubTopicRepository = pubSubTopicRepository;
   }
 
   @Override
@@ -268,8 +273,8 @@ public class AdminSparkServer extends AbstractVeniceService {
     });
 
     // Build all different routes
-    ControllerRoutes controllerRoutes = new ControllerRoutes(sslEnabled, accessController);
-    StoresRoutes storesRoutes = new StoresRoutes(sslEnabled, accessController);
+    ControllerRoutes controllerRoutes = new ControllerRoutes(sslEnabled, accessController, pubSubTopicRepository);
+    StoresRoutes storesRoutes = new StoresRoutes(sslEnabled, accessController, pubSubTopicRepository);
     JobRoutes jobRoutes = new JobRoutes(sslEnabled, accessController);
     SkipAdminRoute skipAdminRoute = new SkipAdminRoute(sslEnabled, accessController);
     CreateVersion createVersion = new CreateVersion(
@@ -413,8 +418,12 @@ public class AdminSparkServer extends AbstractVeniceService {
         IS_STORE_VERSION_READY_FOR_DATA_RECOVERY.getPath(),
         dataRecoveryRoutes.isStoreVersionReadyForDataRecovery(admin));
     httpService.post(DATA_RECOVERY.getPath(), dataRecoveryRoutes.dataRecovery(admin));
-    httpService.get(UPDATE_KAFKA_TOPIC_LOG_COMPACTION.getPath(), controllerRoutes.updateKafkaTopicLogCompaction(admin));
-    httpService.get(UPDATE_KAFKA_TOPIC_RETENTION.getPath(), controllerRoutes.updateKafkaTopicRetention(admin));
+    httpService
+        .post(UPDATE_KAFKA_TOPIC_LOG_COMPACTION.getPath(), controllerRoutes.updateKafkaTopicLogCompaction(admin));
+    httpService.post(UPDATE_KAFKA_TOPIC_RETENTION.getPath(), controllerRoutes.updateKafkaTopicRetention(admin));
+    httpService.post(
+        UPDATE_KAFKA_TOPIC_MIN_IN_SYNC_REPLICA.getPath(),
+        controllerRoutes.updateKafkaTopicMinInSyncReplica(admin));
 
     httpService.get(GET_ADMIN_TOPIC_METADATA.getPath(), adminTopicMetadataRoutes.getAdminTopicMetadata(admin));
     httpService.post(UPDATE_ADMIN_TOPIC_METADATA.getPath(), adminTopicMetadataRoutes.updateAdminTopicMetadata(admin));

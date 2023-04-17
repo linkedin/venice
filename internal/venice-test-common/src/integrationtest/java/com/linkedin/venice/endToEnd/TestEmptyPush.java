@@ -1,5 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIMEOUT_MS;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.defaultVPJProps;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.runVPJ;
@@ -26,6 +27,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.utils.DictionaryUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -36,7 +38,6 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
-import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.samza.system.SystemProducer;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -66,7 +67,7 @@ public class TestEmptyPush {
     String kafkaUrl = venice.getKafka().getAddress();
 
     Properties props = (Properties) properties.clone();
-    props.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafkaUrl);
+    props.setProperty(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
     return DictionaryUtils.readDictionaryFromKafka(topic, new VeniceProperties(props));
   }
 
@@ -76,11 +77,15 @@ public class TestEmptyPush {
     try (
         ControllerClient controllerClient =
             new ControllerClient(venice.getClusterName(), venice.getAllControllersURLs());
-        TopicManager topicManager = new TopicManager(
-            DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
-            100,
-            0L,
-            IntegrationTestPushUtils.getVeniceConsumerFactory(venice.getKafka()))) {
+        TopicManager topicManager =
+            IntegrationTestPushUtils
+                .getTopicManagerRepo(
+                    DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+                    100,
+                    0l,
+                    venice.getKafka().getAddress(),
+                    venice.getPubSubTopicRepository())
+                .getTopicManager()) {
       controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);
       controllerClient.updateStore(
           storeName,
@@ -100,7 +105,9 @@ public class TestEmptyPush {
       assertNotNull(
           dictForVersion1,
           "Dict shouldn't be null for the empty push to a hybrid store without any records in RT");
-      assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(Version.composeRealTimeTopic(storeName)));
+      PubSubTopic storeRealTimeTopic =
+          venice.getPubSubTopicRepository().getTopic(Version.composeRealTimeTopic(storeName));
+      assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(storeRealTimeTopic));
 
       // Start writing some real-time records
       SystemProducer veniceProducer =

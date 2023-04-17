@@ -200,7 +200,7 @@ public enum Arg {
   ),
   KAFKA_TOPIC_RETENTION_IN_MS(
       "kafka-topic-retention-in-ms", "ktrim", true, "Kafka topic retention time in milliseconds"
-  ),
+  ), KAFKA_TOPIC_MIN_IN_SYNC_REPLICA("kafka-topic-min-in-sync-replica", "ktmisr", true, "Kafka topic minISR config"),
   CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED(
       ConfigKeys.CHILD_CONTROLLER_ADMIN_TOPIC_CONSUMPTION_ENABLED, "atc", true,
       "whether child controller consumes admin topic"

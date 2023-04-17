@@ -52,7 +52,8 @@ public class VeniceControllerService extends AbstractVeniceService {
       D2Client d2Client,
       Optional<ClientConfig> routerClientConfig,
       Optional<ICProvider> icProvider,
-      Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator) {
+      Optional<SupersetSchemaGenerator> externalSupersetSchemaGenerator,
+      PubSubTopicRepository pubSubTopicRepository) {
     this.multiClusterConfigs = multiClusterConfigs;
     VeniceHelixAdmin internalAdmin = new VeniceHelixAdmin(
         multiClusterConfigs,
@@ -61,7 +62,8 @@ public class VeniceControllerService extends AbstractVeniceService {
         d2Client,
         sslConfig,
         accessController,
-        icProvider);
+        icProvider,
+        pubSubTopicRepository);
 
     if (multiClusterConfigs.isParent()) {
       this.admin = new VeniceParentHelixAdmin(
@@ -73,7 +75,8 @@ public class VeniceControllerService extends AbstractVeniceService {
           authorizerService,
           createLingeringStoreVersionChecker(multiClusterConfigs, metricsRepository),
           WriteComputeSchemaConverter.getInstance(),
-          externalSupersetSchemaGenerator);
+          externalSupersetSchemaGenerator,
+          pubSubTopicRepository);
       LOGGER.info("Controller works as a parent controller.");
     } else {
       this.admin = internalAdmin;
@@ -93,7 +96,6 @@ public class VeniceControllerService extends AbstractVeniceService {
     }
     // The admin consumer needs to use VeniceHelixAdmin to update Zookeeper directly
     consumerServicesByClusters = new HashMap<>(multiClusterConfigs.getClusters().size());
-    PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
     /** N.B. The code below is copied from {@link com.linkedin.venice.controller.init.SystemSchemaInitializationRoutine */
     // BiConsumer<Integer, Schema> newSchemaEncountered = (schemaId, schema) -> internalAdmin.addValueSchema(
     // "?", // TODO: Figure out a clean way to retrieve the cluster name param

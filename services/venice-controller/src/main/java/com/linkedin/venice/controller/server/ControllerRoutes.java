@@ -2,11 +2,13 @@ package com.linkedin.venice.controller.server;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_LOG_COMPACTION_ENABLED;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_MIN_IN_SYNC_REPLICA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.KAFKA_TOPIC_RETENTION_IN_MS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerRoute.LEADER_CONTROLLER;
 import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_CHILD_CLUSTERS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOPIC_LOG_COMPACTION;
+import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOPIC_MIN_IN_SYNC_REPLICA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_KAFKA_TOPIC_RETENTION;
 
 import com.linkedin.venice.HttpConstants;
@@ -18,6 +20,8 @@ import com.linkedin.venice.controllerapi.LeaderControllerResponse;
 import com.linkedin.venice.exceptions.ErrorType;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.utils.Utils;
 import java.util.Optional;
 import org.apache.http.HttpStatus;
@@ -26,8 +30,14 @@ import spark.Route;
 
 
 public class ControllerRoutes extends AbstractRoute {
-  public ControllerRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
+  private final PubSubTopicRepository pubSubTopicRepository;
+
+  public ControllerRoutes(
+      boolean sslEnabled,
+      Optional<DynamicAccessController> accessController,
+      PubSubTopicRepository pubSubTopicRepository) {
     super(sslEnabled, accessController);
+    this.pubSubTopicRepository = pubSubTopicRepository;
   }
 
   /**
@@ -80,12 +90,12 @@ public class ControllerRoutes extends AbstractRoute {
   }
 
   /**
-   * @see TopicManager#updateTopicCompactionPolicy(String, boolean)
+   * @see TopicManager#updateTopicCompactionPolicy(PubSubTopic, boolean)
    */
   public Route updateKafkaTopicLogCompaction(Admin admin) {
     return updateKafkaTopicConfig(admin, adminRequest -> {
       AdminSparkServer.validateParams(adminRequest, UPDATE_KAFKA_TOPIC_LOG_COMPACTION.getParams(), admin);
-      String topicName = adminRequest.queryParams(TOPIC);
+      PubSubTopic topicName = pubSubTopicRepository.getTopic(adminRequest.queryParams(TOPIC));
       boolean kafkaTopicLogCompactionEnabled = Utils.parseBooleanFromString(
           adminRequest.queryParams(KAFKA_TOPIC_LOG_COMPACTION_ENABLED),
           KAFKA_TOPIC_LOG_COMPACTION_ENABLED);
@@ -96,16 +106,28 @@ public class ControllerRoutes extends AbstractRoute {
   }
 
   /**
-   * @see TopicManager#updateTopicRetention(String, long)
+   * @see TopicManager#updateTopicRetention(PubSubTopic, long)
    */
   public Route updateKafkaTopicRetention(Admin admin) {
     return updateKafkaTopicConfig(admin, adminRequest -> {
       AdminSparkServer.validateParams(adminRequest, UPDATE_KAFKA_TOPIC_RETENTION.getParams(), admin);
-      String topicName = adminRequest.queryParams(TOPIC);
+      PubSubTopic topicName = pubSubTopicRepository.getTopic(adminRequest.queryParams(TOPIC));
       long kafkaTopicRetentionIsMs =
           Utils.parseLongFromString(adminRequest.queryParams(KAFKA_TOPIC_RETENTION_IN_MS), KAFKA_TOPIC_RETENTION_IN_MS);
       TopicManager topicManager = admin.getTopicManager();
       topicManager.updateTopicRetention(topicName, kafkaTopicRetentionIsMs);
+    });
+  }
+
+  public Route updateKafkaTopicMinInSyncReplica(Admin admin) {
+    return updateKafkaTopicConfig(admin, adminRequest -> {
+      AdminSparkServer.validateParams(adminRequest, UPDATE_KAFKA_TOPIC_MIN_IN_SYNC_REPLICA.getParams(), admin);
+      PubSubTopic topicName = pubSubTopicRepository.getTopic(adminRequest.queryParams(TOPIC));
+      int kafkaTopicMinISR = Utils.parseIntFromString(
+          adminRequest.queryParams(KAFKA_TOPIC_MIN_IN_SYNC_REPLICA),
+          KAFKA_TOPIC_MIN_IN_SYNC_REPLICA);
+      TopicManager topicManager = admin.getTopicManager();
+      topicManager.updateTopicMinInSyncReplica(topicName, kafkaTopicMinISR);
     });
   }
 

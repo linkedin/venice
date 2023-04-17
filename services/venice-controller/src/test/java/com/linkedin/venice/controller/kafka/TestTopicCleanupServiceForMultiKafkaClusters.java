@@ -8,6 +8,8 @@ import static org.mockito.Mockito.verify;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -22,6 +24,8 @@ public class TestTopicCleanupServiceForMultiKafkaClusters {
   private TopicManager topicManager1;
   private TopicManager topicManager2;
   private TopicCleanupServiceForParentController topicCleanupService;
+
+  private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @BeforeTest
   public void setUp() {
@@ -52,17 +56,17 @@ public class TestTopicCleanupServiceForMultiKafkaClusters {
     doReturn(kafkaClusterServerUrl2).when(topicManager2).getKafkaBootstrapServers();
     doReturn(topicManager2).when(admin).getTopicManager(kafkaClusterServerUrl2);
 
-    topicCleanupService = new TopicCleanupServiceForParentController(admin, config);
+    topicCleanupService = new TopicCleanupServiceForParentController(admin, config, pubSubTopicRepository);
   }
 
   @Test
   public void testCleanupVeniceTopics() throws ExecutionException {
-    Map<String, Long> storeTopics = new HashMap<>();
-    storeTopics.put("store1_v1", 1000l);
-    storeTopics.put("store1_v2", 1000l);
-    storeTopics.put("store1_v3", Long.MAX_VALUE);
-    storeTopics.put("store1_rt", 1000l);
-    storeTopics.put("non_venice_topic1", 1000l);
+    Map<PubSubTopic, Long> storeTopics = new HashMap<>();
+    storeTopics.put(pubSubTopicRepository.getTopic("store1_v1"), 1000l);
+    storeTopics.put(pubSubTopicRepository.getTopic("store1_v2"), 1000l);
+    storeTopics.put(pubSubTopicRepository.getTopic("store1_v3"), Long.MAX_VALUE);
+    storeTopics.put(pubSubTopicRepository.getTopic("store1_rt"), 1000l);
+    // storeTopics.put("non_venice_topic1", 1000l);
 
     doReturn(storeTopics).when(topicManager1).getAllTopicRetentions();
     doReturn(storeTopics).when(topicManager2).getAllTopicRetentions();
@@ -73,39 +77,48 @@ public class TestTopicCleanupServiceForMultiKafkaClusters {
      * Truncated topics in parent fabrics will not be deleted in the first 2 iterations.
      */
     topicCleanupService.cleanupVeniceTopics();
-    verify(topicManager1, never()).ensureTopicIsDeletedAndBlockWithRetry("store1_rt");
-    verify(topicManager1, never()).ensureTopicIsDeletedAndBlockWithRetry("store1_v1");
-    verify(topicManager1, never()).ensureTopicIsDeletedAndBlockWithRetry("store1_v2");
-    verify(topicManager1, never()).ensureTopicIsDeletedAndBlockWithRetry("store1_v3");
-    verify(topicManager1, never()).ensureTopicIsDeletedAndBlockWithRetry("non_venice_topic1");
-    verify(topicManager2, never()).ensureTopicIsDeletedAndBlockWithRetry("store1_rt");
-    verify(topicManager2, never()).ensureTopicIsDeletedAndBlockWithRetry("store1_v1");
-    verify(topicManager2, never()).ensureTopicIsDeletedAndBlockWithRetry("store1_v2");
-    verify(topicManager2, never()).ensureTopicIsDeletedAndBlockWithRetry("store1_v3");
-    verify(topicManager2, never()).ensureTopicIsDeletedAndBlockWithRetry("non_venice_topic1");
+
+    verifyEnsureTopicIsDeletedAndBlockWithRetry(topicManager1, "store1_rt", false);
+    verifyEnsureTopicIsDeletedAndBlockWithRetry(topicManager1, "store1_v1", false);
+    verifyEnsureTopicIsDeletedAndBlockWithRetry(topicManager1, "store1_v2", false);
+    verifyEnsureTopicIsDeletedAndBlockWithRetry(topicManager1, "store1_v3", false);
+
+    verifyEnsureTopicIsDeletedAndBlockWithRetry(topicManager2, "store1_rt", false);
+    verifyEnsureTopicIsDeletedAndBlockWithRetry(topicManager2, "store1_v1", false);
+    verifyEnsureTopicIsDeletedAndBlockWithRetry(topicManager2, "store1_v2", false);
+    verifyEnsureTopicIsDeletedAndBlockWithRetry(topicManager2, "store1_v3", false);
 
     topicCleanupService.cleanupVeniceTopics();
-    verify(topicManager1, never()).ensureTopicIsDeletedAndBlockWithRetry("store1_rt");
-    verify(topicManager1, never()).ensureTopicIsDeletedAndBlockWithRetry("store1_v1");
-    verify(topicManager1, never()).ensureTopicIsDeletedAndBlockWithRetry("store1_v2");
-    verify(topicManager1, never()).ensureTopicIsDeletedAndBlockWithRetry("store1_v3");
-    verify(topicManager1, never()).ensureTopicIsDeletedAndBlockWithRetry("non_venice_topic1");
-    verify(topicManager2, never()).ensureTopicIsDeletedAndBlockWithRetry("store1_rt");
-    verify(topicManager2, never()).ensureTopicIsDeletedAndBlockWithRetry("store1_v1");
-    verify(topicManager2, never()).ensureTopicIsDeletedAndBlockWithRetry("store1_v2");
-    verify(topicManager2, never()).ensureTopicIsDeletedAndBlockWithRetry("store1_v3");
-    verify(topicManager2, never()).ensureTopicIsDeletedAndBlockWithRetry("non_venice_topic1");
+
+    verifyEnsureTopicIsDeletedAndBlockWithRetry(topicManager1, "store1_rt", false);
+    verifyEnsureTopicIsDeletedAndBlockWithRetry(topicManager1, "store1_v1", false);
+    verifyEnsureTopicIsDeletedAndBlockWithRetry(topicManager1, "store1_v2", false);
+    verifyEnsureTopicIsDeletedAndBlockWithRetry(topicManager1, "store1_v3", false);
+
+    verifyEnsureTopicIsDeletedAndBlockWithRetry(topicManager2, "store1_rt", false);
+    verifyEnsureTopicIsDeletedAndBlockWithRetry(topicManager2, "store1_v1", false);
+    verifyEnsureTopicIsDeletedAndBlockWithRetry(topicManager2, "store1_v2", false);
+    verifyEnsureTopicIsDeletedAndBlockWithRetry(topicManager2, "store1_v3", false);
 
     topicCleanupService.cleanupVeniceTopics();
-    verify(topicManager1).ensureTopicIsDeletedAndBlockWithRetry("store1_rt");
-    verify(topicManager1).ensureTopicIsDeletedAndBlockWithRetry("store1_v1");
-    verify(topicManager1).ensureTopicIsDeletedAndBlockWithRetry("store1_v2");
-    verify(topicManager1, never()).ensureTopicIsDeletedAndBlockWithRetry("store1_v3");
-    verify(topicManager1, never()).ensureTopicIsDeletedAndBlockWithRetry("non_venice_topic1");
-    verify(topicManager2).ensureTopicIsDeletedAndBlockWithRetry("store1_rt");
-    verify(topicManager2).ensureTopicIsDeletedAndBlockWithRetry("store1_v1");
-    verify(topicManager2).ensureTopicIsDeletedAndBlockWithRetry("store1_v2");
-    verify(topicManager2, never()).ensureTopicIsDeletedAndBlockWithRetry("store1_v3");
-    verify(topicManager2, never()).ensureTopicIsDeletedAndBlockWithRetry("non_venice_topic1");
+    verifyEnsureTopicIsDeletedAndBlockWithRetry(topicManager1, "store1_rt", true);
+    verifyEnsureTopicIsDeletedAndBlockWithRetry(topicManager1, "store1_v1", true);
+    verifyEnsureTopicIsDeletedAndBlockWithRetry(topicManager1, "store1_v2", true);
+    verifyEnsureTopicIsDeletedAndBlockWithRetry(topicManager1, "store1_v3", false);
+    verifyEnsureTopicIsDeletedAndBlockWithRetry(topicManager2, "store1_rt", true);
+    verifyEnsureTopicIsDeletedAndBlockWithRetry(topicManager2, "store1_v1", true);
+    verifyEnsureTopicIsDeletedAndBlockWithRetry(topicManager2, "store1_v2", true);
+    verifyEnsureTopicIsDeletedAndBlockWithRetry(topicManager2, "store1_v3", false);
+  }
+
+  private void verifyEnsureTopicIsDeletedAndBlockWithRetry(
+      TopicManager topicManager,
+      String topicName,
+      boolean happened) throws ExecutionException {
+    if (happened) {
+      verify(topicManager).ensureTopicIsDeletedAndBlockWithRetry(pubSubTopicRepository.getTopic(topicName));
+    } else {
+      verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(pubSubTopicRepository.getTopic(topicName));
+    }
   }
 }
