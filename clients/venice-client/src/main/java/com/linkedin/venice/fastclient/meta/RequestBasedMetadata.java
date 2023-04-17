@@ -375,6 +375,11 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
     return isReady;
   }
 
+  @Override
+  public int getLargestValueSchemaId() {
+    return schemas.get().getMaxValueSchemaId();
+  }
+
   /**
    * Used for test only
    * @param d2ServiceDiscovery

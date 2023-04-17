@@ -597,6 +597,11 @@ public class TestClientSimulator implements Client {
       public Integer getLatestValueSchemaId() {
         return 0;
       }
+
+      @Override
+      public int getLargestValueSchemaId() {
+        return 0;
+      }
     };
 
     return ClientFactory.getAndStartGenericStoreClient(metadata, clientConfig);

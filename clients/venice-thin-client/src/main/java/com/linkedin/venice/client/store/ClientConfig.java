@@ -24,6 +24,7 @@ public class ClientConfig<T extends SpecificRecord> {
   public static final int DEFAULT_ZK_TIMEOUT_MS = 5000;
   public static final String DEFAULT_CLUSTER_DISCOVERY_D2_SERVICE_NAME = "venice-discovery";
   public static final String DEFAULT_D2_ZK_BASE_PATH = "/d2";
+  public static final int DEFAULT_SCHEMA_REFRESH_PERIOD_SEC = Integer.MAX_VALUE;
 
   // Basic settings
   private String storeName;
@@ -52,7 +53,7 @@ public class ClientConfig<T extends SpecificRecord> {
   private boolean reuseObjectsForSerialization = false;
   private boolean forceClusterDiscoveryAtStartTime = false;
   private boolean projectionFieldValidation = true;
-
+  private int schemaRefreshPeriodSec = DEFAULT_SCHEMA_REFRESH_PERIOD_SEC;
   private Optional<Predicate<Schema>> preferredSchemaFilter = Optional.empty();
 
   // Security settings
@@ -110,6 +111,7 @@ public class ClientConfig<T extends SpecificRecord> {
         .setForceClusterDiscoveryAtStartTime(config.isForceClusterDiscoveryAtStartTime())
         .setProjectionFieldValidationEnabled(config.isProjectionFieldValidationEnabled())
         .setPreferredSchemaFilter(config.getPreferredSchemaFilter().orElse(null))
+        .setSchemaRefreshPeriodSec(config.getSchemaRefreshPeriodSec())
 
         // Test settings
         .setTime(config.getTime());
@@ -409,6 +411,15 @@ public class ClientConfig<T extends SpecificRecord> {
 
   public ClientConfig<T> setPreferredSchemaFilter(Predicate<Schema> preferredSchemaFilter) {
     this.preferredSchemaFilter = Optional.ofNullable(preferredSchemaFilter);
+    return this;
+  }
+
+  public int getSchemaRefreshPeriodSec() {
+    return schemaRefreshPeriodSec;
+  }
+
+  public ClientConfig<T> setSchemaRefreshPeriodSec(int schemaRefreshPeriodSec) {
+    this.schemaRefreshPeriodSec = schemaRefreshPeriodSec;
     return this;
   }
 

@@ -9,6 +9,7 @@ import static com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2.D2_
 import static com.linkedin.venice.meta.DataReplicationPolicy.ACTIVE_ACTIVE;
 import static com.linkedin.venice.meta.DataReplicationPolicy.NON_AGGREGATE;
 import static com.linkedin.venice.router.api.RouterResourceType.TYPE_LATEST_VALUE_SCHEMA;
+import static com.linkedin.venice.router.api.RouterResourceType.TYPE_UPDATE_SCHEMA;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_CLUSTER_DISCOVERY;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_KEY_SCHEMA;
 import static com.linkedin.venice.router.api.VenicePathParser.TYPE_REQUEST_TOPIC;
@@ -320,7 +321,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
 
   private void handleUpdateSchemaLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {
     String storeName = helper.getResourceName();
-    checkResourceName(storeName, "/" + TYPE_VALUE_SCHEMA + "/${storeName}/${valueSchemaId}");
+    checkResourceName(storeName, "/" + TYPE_UPDATE_SCHEMA + "/${storeName}/${valueSchemaId}");
     String valueSchemaIdStr = helper.getKey();
     if (valueSchemaIdStr == null || valueSchemaIdStr.isEmpty()) {
       byte[] errBody = ("Value schema ID not found in this request").getBytes();

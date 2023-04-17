@@ -1,6 +1,7 @@
 package com.linkedin.venice.schema;
 
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
+import java.util.Comparator;
 import org.apache.avro.Schema;
 
 
@@ -45,5 +46,14 @@ public class SchemaRepoBackedSchemaReader implements SchemaReader {
   @Override
   public Integer getLatestValueSchemaId() {
     return schemaRepository.getSupersetOrLatestValueSchema(storeName).getId();
+  }
+
+  @Override
+  public int getLargestValueSchemaId() {
+    return schemaRepository.getValueSchemas(storeName)
+        .stream()
+        .map(SchemaEntry::getId)
+        .max(Comparator.naturalOrder())
+        .orElse(SchemaData.INVALID_VALUE_SCHEMA_ID);
   }
 }

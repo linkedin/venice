@@ -1,5 +1,6 @@
 package com.linkedin.venice.client.schema;
 
+import static com.linkedin.venice.client.store.ClientConfig.DEFAULT_SCHEMA_REFRESH_PERIOD_SEC;
 import static com.linkedin.venice.schema.AvroSchemaParseUtils.parseSchemaFromJSONLooseValidation;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -15,6 +16,7 @@ import com.linkedin.venice.service.ICProvider;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.ObjectMapperFactory;
 import com.linkedin.venice.utils.RetryUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.IOException;
 import java.time.Duration;
@@ -46,8 +48,11 @@ public class RouterBackedSchemaReader implements SchemaReader {
   private final AtomicReference<SchemaEntry> latestValueSchemaEntry = new AtomicReference<>();
   private final String storeName;
   private final AbstractAvroStoreClient storeClient;
-  private final Predicate<Schema> preferredSchemaFilter;
+  private final Optional<Predicate<Schema>> preferredSchemaFilter;
+  private final long valueSchemaRefreshPeriodMs;
   private final ICProvider icProvider;
+  private int largestValueSchemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
+  private long lastValueSchemaRefreshTimeMs = 0;
 
   RouterBackedSchemaReader(Supplier<AbstractAvroStoreClient> clientSupplier) throws VeniceClientException {
     this(clientSupplier, Optional.empty(), Optional.empty());
@@ -65,11 +70,29 @@ public class RouterBackedSchemaReader implements SchemaReader {
       Optional<Schema> readerSchema,
       Optional<Predicate<Schema>> preferredSchemaFilter,
       ICProvider icProvider) {
+    this(clientSupplier, readerSchema, preferredSchemaFilter, DEFAULT_SCHEMA_REFRESH_PERIOD_SEC, icProvider);
+  }
+
+  public RouterBackedSchemaReader(
+      Supplier<AbstractAvroStoreClient> clientSupplier,
+      Optional<Schema> readerSchema,
+      Optional<Predicate<Schema>> preferredSchemaFilter,
+      long valueSchemaRefreshPeriodInSec) {
+    this(clientSupplier, readerSchema, preferredSchemaFilter, valueSchemaRefreshPeriodInSec, null);
+  }
+
+  public RouterBackedSchemaReader(
+      Supplier<AbstractAvroStoreClient> clientSupplier,
+      Optional<Schema> readerSchema,
+      Optional<Predicate<Schema>> preferredSchemaFilter,
+      long valueSchemaRefreshPeriodInSec,
+      ICProvider icProvider) {
     this.storeClient = clientSupplier.get();
     this.storeName = this.storeClient.getStoreName();
     this.readerSchema = readerSchema;
-    this.preferredSchemaFilter = preferredSchemaFilter.orElse(schema -> true);
+    this.preferredSchemaFilter = preferredSchemaFilter;
     readerSchema.ifPresent(AvroSchemaUtils::validateAvroSchemaStr);
+    this.valueSchemaRefreshPeriodMs = valueSchemaRefreshPeriodInSec * Time.MS_PER_SECOND;
     this.icProvider = icProvider;
   }
 
@@ -146,6 +169,16 @@ public class RouterBackedSchemaReader implements SchemaReader {
       throw new VeniceClientException("Could not find schema: " + schema + ". for store " + storeName);
     }
     return valueSchemaMapR.get(schema);
+  }
+
+  @Override
+  public int getLargestValueSchemaId() {
+    if (System.currentTimeMillis() - lastValueSchemaRefreshTimeMs >= valueSchemaRefreshPeriodMs) {
+      synchronized (this) {
+        refreshAllValueSchema();
+      }
+    }
+    return largestValueSchemaId;
   }
 
   @Override
@@ -256,9 +289,13 @@ public class RouterBackedSchemaReader implements SchemaReader {
         if (latestSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID || latestSchemaId < schemaId) {
           latestSchemaId = schemaId;
         }
-        if (preferredSchemaFilter.test(writerSchema)
+        if (preferredSchemaFilter.isPresent() && preferredSchemaFilter.get().test(writerSchema)
             && (latestPreferredSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID || latestPreferredSchemaId < schemaId)) {
           latestPreferredSchemaId = schemaId;
+        }
+
+        if (schemaId > largestValueSchemaId) {
+          largestValueSchemaId = schemaId;
         }
       }
 
@@ -277,6 +314,8 @@ public class RouterBackedSchemaReader implements SchemaReader {
           }
         }
       }
+
+      lastValueSchemaRefreshTimeMs = System.currentTimeMillis();
     } catch (Exception e) {
       throw new VeniceClientException(
           "Got exception while trying to fetch single schema. " + getExceptionDetails(requestPath),

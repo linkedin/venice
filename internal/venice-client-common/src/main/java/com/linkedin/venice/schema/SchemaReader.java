@@ -17,5 +17,16 @@ public interface SchemaReader extends Closeable {
 
   Schema getLatestValueSchema();
 
+  /**
+   * Get the latest value schema id. This may be different from the largest value schema if the superset schema is not
+   * the value schema with the largest id
+   * @return
+   */
   Integer getLatestValueSchemaId();
+
+  /**
+   * Get the largest used value schema id
+   * @return
+   */
+  int getLargestValueSchemaId();
 }
