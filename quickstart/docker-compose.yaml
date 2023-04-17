@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   zookeeper:
-    image: venicedb/zookeeper:latest
+    image: "venicedb/zookeeper:latest"
     container_name: zookeeper
     hostname: zookeeper
     healthcheck:
@@ -13,7 +13,7 @@ services:
         retries: 5
 
   kafka:
-    image: venicedb/kafka:latest
+    image: "venicedb/kafka:latest"
     container_name: kafka
     hostname: kafka
     depends_on:
@@ -27,7 +27,7 @@ services:
         retries: 5
 
   venice-controller:
-    image: venicedb/venice-controller:latest
+    image: "venicedb/venice-controller:${TAG:-latest}"
     container_name: venice-controller
     hostname: venice-controller
     depends_on:
@@ -41,7 +41,7 @@ services:
         retries: 5
 
   venice-server:
-    image: venicedb/venice-server:latest
+    image: "venicedb/venice-server:${TAG:-latest}"
     container_name: venice-server
     hostname: venice-server
     depends_on:
@@ -55,7 +55,7 @@ services:
         retries: 5
 
   venice-router:
-    image: venicedb/venice-router:latest
+    image: "venicedb/venice-router:${TAG:-latest}"
     container_name: venice-router
     hostname: venice-router
     depends_on:
@@ -69,7 +69,7 @@ services:
         retries: 5
 
   venice-client:
-    image: venicedb/venice-client:latest
+    image: "venicedb/venice-client:${TAG:-latest}"
     container_name: venice-client
     hostname: venice-client
     tty: true
