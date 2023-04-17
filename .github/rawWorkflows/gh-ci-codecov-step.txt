@@ -1,0 +1,12 @@
+      - name: Upload coverage reports to Codecov - $ModuleName - $SubModuleName
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{secrets.CODECOV_TOKEN}}
+          files: './$ModuleName/$SubModuleName/build/reports/jacoco/test/jacocoTestReport.xml'
+          flags: $SubModuleName
+      - name: Upload coverage reports to Codecov - DiffCoverage - $SubModuleName
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{secrets.CODECOV_TOKEN}}
+          files: './$ModuleName/$SubModuleName/build/reports/jacoco/diffCoverage/report.xml'
+          flags: diff_$SubModuleName

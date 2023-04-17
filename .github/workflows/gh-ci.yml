@@ -112,86 +112,151 @@ jobs:
           name: ${{ github.job }}
           path: ${{ github.job }}-artifacts.tar.gz
           retention-days: 30
-      - name: Upload coverage reports to Codecov - da-vinci-client
+
+      - name: Upload coverage reports to Codecov - clients - da-vinci-client
         uses: codecov/codecov-action@v3
         with:
           token: ${{secrets.CODECOV_TOKEN}}
           files: './clients/da-vinci-client/build/reports/jacoco/test/jacocoTestReport.xml'
-          flags: davinci
-      - name: Upload coverage reports to Codecov - venice-admin-tool
+          flags: da-vinci-client
+      - name: Upload coverage reports to Codecov - DiffCoverage - da-vinci-client
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{secrets.CODECOV_TOKEN}}
+          files: './clients/da-vinci-client/build/reports/jacoco/diffCoverage/report.xml'
+          flags: diff_da-vinci-client
+      - name: Upload coverage reports to Codecov - clients - venice-admin-tool
         uses: codecov/codecov-action@v3
         with:
           token: ${{secrets.CODECOV_TOKEN}}
           files: './clients/venice-admin-tool/build/reports/jacoco/test/jacocoTestReport.xml'
           flags: venice-admin-tool
-      - name: Upload coverage reports to Codecov - venice-client
+      - name: Upload coverage reports to Codecov - DiffCoverage - venice-admin-tool
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{secrets.CODECOV_TOKEN}}
+          files: './clients/venice-admin-tool/build/reports/jacoco/diffCoverage/report.xml'
+          flags: diff_venice-admin-tool
+      - name: Upload coverage reports to Codecov - clients - venice-client
         uses: codecov/codecov-action@v3
         with:
           token: ${{secrets.CODECOV_TOKEN}}
           files: './clients/venice-client/build/reports/jacoco/test/jacocoTestReport.xml'
           flags: venice-client
-      - name: Upload coverage reports to Codecov - venice-push-job
+      - name: Upload coverage reports to Codecov - DiffCoverage - venice-client
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{secrets.CODECOV_TOKEN}}
+          files: './clients/venice-client/build/reports/jacoco/diffCoverage/report.xml'
+          flags: diff_venice-client
+      - name: Upload coverage reports to Codecov - clients - venice-push-job
         uses: codecov/codecov-action@v3
         with:
           token: ${{secrets.CODECOV_TOKEN}}
           files: './clients/venice-push-job/build/reports/jacoco/test/jacocoTestReport.xml'
           flags: venice-push-job
-      - name: Upload coverage reports to Codecov - venice-samza
+      - name: Upload coverage reports to Codecov - DiffCoverage - venice-push-job
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{secrets.CODECOV_TOKEN}}
+          files: './clients/venice-push-job/build/reports/jacoco/diffCoverage/report.xml'
+          flags: diff_venice-push-job
+      - name: Upload coverage reports to Codecov - clients - venice-samza
         uses: codecov/codecov-action@v3
         with:
           token: ${{secrets.CODECOV_TOKEN}}
           files: './clients/venice-samza/build/reports/jacoco/test/jacocoTestReport.xml'
           flags: venice-samza
-      - name: Upload coverage reports to Codecov - venice-thin-client
+      - name: Upload coverage reports to Codecov - DiffCoverage - venice-samza
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{secrets.CODECOV_TOKEN}}
+          files: './clients/venice-samza/build/reports/jacoco/diffCoverage/report.xml'
+          flags: diff_venice-samza
+      - name: Upload coverage reports to Codecov - clients - venice-thin-client
         uses: codecov/codecov-action@v3
         with:
           token: ${{secrets.CODECOV_TOKEN}}
           files: './clients/venice-thin-client/build/reports/jacoco/test/jacocoTestReport.xml'
           flags: venice-thin-client
-      - name: Upload coverage reports to Codecov - venice-thin-client
+      - name: Upload coverage reports to Codecov - DiffCoverage - venice-thin-client
         uses: codecov/codecov-action@v3
         with:
           token: ${{secrets.CODECOV_TOKEN}}
-          files: './clients/venice-thin-client/build/reports/jacoco/test/jacocoTestReport.xml'
-          flags: venice-thin-client
-      - name: Upload coverage reports to Codecov - venice-client-common
+          files: './clients/venice-thin-client/build/reports/jacoco/diffCoverage/report.xml'
+          flags: diff_venice-thin-client
+      - name: Upload coverage reports to Codecov - internal - venice-client-common
         uses: codecov/codecov-action@v3
         with:
           token: ${{secrets.CODECOV_TOKEN}}
           files: './internal/venice-client-common/build/reports/jacoco/test/jacocoTestReport.xml'
           flags: venice-client-common
-      - name: Upload coverage reports to Codecov - venice-common
+      - name: Upload coverage reports to Codecov - DiffCoverage - venice-client-common
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{secrets.CODECOV_TOKEN}}
+          files: './internal/venice-client-common/build/reports/jacoco/diffCoverage/report.xml'
+          flags: diff_venice-client-common
+      - name: Upload coverage reports to Codecov - internal - venice-common
         uses: codecov/codecov-action@v3
         with:
           token: ${{secrets.CODECOV_TOKEN}}
           files: './internal/venice-common/build/reports/jacoco/test/jacocoTestReport.xml'
           flags: venice-common
-      - name: Upload coverage reports to Codecov - venice-consumer
+      - name: Upload coverage reports to Codecov - DiffCoverage - venice-common
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{secrets.CODECOV_TOKEN}}
+          files: './internal/venice-common/build/reports/jacoco/diffCoverage/report.xml'
+          flags: diff_venice-common
+      - name: Upload coverage reports to Codecov - internal - venice-consumer
         uses: codecov/codecov-action@v3
         with:
           token: ${{secrets.CODECOV_TOKEN}}
           files: './internal/venice-consumer/build/reports/jacoco/test/jacocoTestReport.xml'
           flags: venice-consumer
-      - name: Upload coverage reports to Codecov - venice-controller
+      - name: Upload coverage reports to Codecov - DiffCoverage - venice-consumer
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{secrets.CODECOV_TOKEN}}
+          files: './internal/venice-consumer/build/reports/jacoco/diffCoverage/report.xml'
+          flags: diff_venice-consumer
+      - name: Upload coverage reports to Codecov - services - venice-controller
         uses: codecov/codecov-action@v3
         with:
           token: ${{secrets.CODECOV_TOKEN}}
           files: './services/venice-controller/build/reports/jacoco/test/jacocoTestReport.xml'
           flags: venice-controller
-      - name: Upload coverage reports to Codecov - venice-router
+      - name: Upload coverage reports to Codecov - DiffCoverage - venice-controller
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{secrets.CODECOV_TOKEN}}
+          files: './services/venice-controller/build/reports/jacoco/diffCoverage/report.xml'
+          flags: diff_venice-controller
+      - name: Upload coverage reports to Codecov - services - venice-router
         uses: codecov/codecov-action@v3
         with:
           token: ${{secrets.CODECOV_TOKEN}}
           files: './services/venice-router/build/reports/jacoco/test/jacocoTestReport.xml'
           flags: venice-router
-      - name: Upload coverage reports to Codecov - venice-server
+      - name: Upload coverage reports to Codecov - DiffCoverage - venice-router
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{secrets.CODECOV_TOKEN}}
+          files: './services/venice-router/build/reports/jacoco/diffCoverage/report.xml'
+          flags: diff_venice-router
+      - name: Upload coverage reports to Codecov - services - venice-server
         uses: codecov/codecov-action@v3
         with:
           token: ${{secrets.CODECOV_TOKEN}}
           files: './services/venice-server/build/reports/jacoco/test/jacocoTestReport.xml'
           flags: venice-server
-
-
+      - name: Upload coverage reports to Codecov - DiffCoverage - venice-server
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{secrets.CODECOV_TOKEN}}
+          files: './services/venice-server/build/reports/jacoco/diffCoverage/report.xml'
+          flags: diff_venice-server
   AvroCompatibilityTests:
     strategy:
       fail-fast: false

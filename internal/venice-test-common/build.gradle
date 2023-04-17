@@ -193,79 +193,120 @@ task integrationTestZ(type: Test) {
 }
 
 task generateGHCI() {
-//  def targetDir = rootDir.getPath() + "/.github/rawWorkflows/"
-//  def targetFile = new File(targetDir, "gh-ci.yml")
-//  def targetFilePath = Paths.get(targetFile.getPath())
-//
-//  def validateGradleWrapperFile = new File(targetDir, "gh-ci-validate-gradle-wrapper.txt")
-//  def validateGradleWrapperFilePath = Paths.get(validateGradleWrapperFile.getPath())
-//  def validateGradleWrapperFileContent = new String(Files.readAllBytes(validateGradleWrapperFilePath))
-//
-//  def paramFile = new File(targetDir, "gh-ci-parameterized-flow.txt")
-//  def paramFilePath = Paths.get(paramFile.getPath())
-//  def paramFileContent = new String(Files.readAllBytes(paramFilePath))
-//
-//  def alpiniParamFile = new File(targetDir, "gh-ci-alpini-parametrized-flow.txt")
-//  def alpiniParamFilePath = Paths.get(alpiniParamFile.getPath())
-//  def alpiniParamFileContent = new String(Files.readAllBytes(alpiniParamFilePath))
-//
-//  targetFile.delete()
-//  targetFile.createNewFile()
-//
-//  append(targetFilePath, "# Auto-generated file. Do not edit manually!\n#\n")
-//  append(targetFilePath, "# To alter these flows, edit:\n#\n#     internal/venice-test-common/build.gradle\n#\n")
-//  append(targetFilePath, "# To regenerate, run:\n#\n#     ./gradlew generateGHCI\n\n")
-//
-//  append(targetFilePath, "name: VeniceCI\n\n")
-//  append(targetFilePath, "on: [push, pull_request, workflow_dispatch]\n\n")
-//  append(targetFilePath, "jobs:\n")
-//
-//  def jobs = []
-//
-//  def validateGradleWrapper = "ValidateGradleWrapper"
-//  appendToGHCI(validateGradleWrapperFileContent, targetFilePath, validateGradleWrapper, 5, "")
-//  jobs << validateGradleWrapper
-//
-//  def common = "--stacktrace --continue --no-daemon "
-//  def staticAnalysisFlowGradleArgs = common + "-DmaxParallelForks=2 --parallel -Pspotallbugs clean check -x spotlessCheck -x test -x integrationTest -x jacocoTestCoverageVerification"
-//
-//  def staticAnalysis = "StaticAnalysis"
-//  appendToGHCI(paramFileContent, targetFilePath, staticAnalysis, 20, staticAnalysisFlowGradleArgs)
-//  jobs << staticAnalysis
-//
-//  def unitTestsAndCodeCoverage = "UnitTestsAndCodeCoverage"
-//  def unitTestsFlowGradleArgs = "-x :internal:venice-avro-compatibility-test:test jacocoTestCoverageVerification diffCoverage --continue"
-//  appendToGHCI(paramFileContent, targetFilePath, unitTestsAndCodeCoverage, 60, unitTestsFlowGradleArgs)
-//  jobs << unitTestsAndCodeCoverage
-//
-//  def avroCompatibilityTests = "AvroCompatibilityTests"
-//  def avroCompatibilityFlowGradleArgs = "-DmaxParallelForks=2 --parallel :internal:venice-avro-compatibility-test:test --continue"
-//  appendToGHCI(paramFileContent, targetFilePath, avroCompatibilityTests, 60, avroCompatibilityFlowGradleArgs)
-//  jobs << avroCompatibilityTests
-//
-//  def integTestGradleArgs = common + "-DforkEvery=1 -DmaxParallelForks=1 integrationTest"
-//  integrationTestBuckets.each { name, patterns ->
-//    def flowName = "IntegrationTests" + name
-//    jobs << flowName
-//    appendToGHCI(paramFileContent, targetFilePath, flowName, 120, integTestGradleArgs + name)
-//  }
-//  def otherTest = "IntegrationTestsZ"
-//  appendToGHCI(paramFileContent, targetFilePath, otherTest, 120, integTestGradleArgs + "Z")
-//  jobs << otherTest
-//
-//  def alpiniUnitTests = "AlpiniUnitTests"
-//  appendToGHCI(alpiniParamFileContent, targetFilePath, alpiniUnitTests, 120, common + "-DmaxParallelForks=1 alpiniUnitTest")
-//  jobs << alpiniUnitTests
-//
-//  def alpiniFunctionalTests = "AlpiniFunctionalTests"
-//  appendToGHCI(alpiniParamFileContent, targetFilePath, alpiniFunctionalTests, 120, common + "-DmaxParallelForks=1 alpiniFunctionalTest")
-//  jobs << alpiniFunctionalTests
-//
-//  // define a job that depends others to manage the status check
-//  appendToGHCI(paramFileContent, targetFilePath, "DummyStep", 120, "clean", jobs)
-//
-//  def finalDestinationPath = Paths.get(rootDir.getPath() + "/.github/workflows/gh-ci.yml")
-//  Files.move(targetFilePath, finalDestinationPath, StandardCopyOption.REPLACE_EXISTING)
+  def targetDir = rootDir.getPath() + "/.github/rawWorkflows/"
+  def targetFile = new File(targetDir, "gh-ci.yml")
+  def targetFilePath = Paths.get(targetFile.getPath())
+
+  def validateGradleWrapperFile = new File(targetDir, "gh-ci-validate-gradle-wrapper.txt")
+  def validateGradleWrapperFilePath = Paths.get(validateGradleWrapperFile.getPath())
+  def validateGradleWrapperFileContent = new String(Files.readAllBytes(validateGradleWrapperFilePath))
+
+  def paramFile = new File(targetDir, "gh-ci-parameterized-flow.txt")
+  def paramFilePath = Paths.get(paramFile.getPath())
+  def paramFileContent = new String(Files.readAllBytes(paramFilePath))
+
+  def alpiniParamFile = new File(targetDir, "gh-ci-alpini-parametrized-flow.txt")
+  def alpiniParamFilePath = Paths.get(alpiniParamFile.getPath())
+  def alpiniParamFileContent = new String(Files.readAllBytes(alpiniParamFilePath))
+
+  targetFile.delete()
+  targetFile.createNewFile()
+
+  append(targetFilePath, "# Auto-generated file. Do not edit manually!\n#\n")
+  append(targetFilePath, "# To alter these flows, edit:\n#\n#     internal/venice-test-common/build.gradle\n#\n")
+  append(targetFilePath, "# To regenerate, run:\n#\n#     ./gradlew generateGHCI\n\n")
+
+  append(targetFilePath, "name: VeniceCI\n\n")
+  append(targetFilePath, "on: [push, pull_request, workflow_dispatch]\n\n")
+  append(targetFilePath, "jobs:\n")
+
+  def jobs = []
+
+  def validateGradleWrapper = "ValidateGradleWrapper"
+  appendToGHCI(validateGradleWrapperFileContent, targetFilePath, validateGradleWrapper, 5, "")
+  jobs << validateGradleWrapper
+
+  def common = "--stacktrace --continue --no-daemon "
+  def staticAnalysisFlowGradleArgs = common + "-DmaxParallelForks=2 --parallel -Pspotallbugs clean check -x spotlessCheck -x test -x integrationTest -x jacocoTestCoverageVerification"
+
+  def staticAnalysis = "StaticAnalysis"
+  appendToGHCI(paramFileContent, targetFilePath, staticAnalysis, 20, staticAnalysisFlowGradleArgs)
+  jobs << staticAnalysis
+
+  def unitTestsAndCodeCoverage = "UnitTestsAndCodeCoverage"
+  def unitTestsFlowGradleArgs = "-x :internal:venice-avro-compatibility-test:test jacocoTestCoverageVerification diffCoverage --continue"
+  appendToGHCI(paramFileContent, targetFilePath, unitTestsAndCodeCoverage, 60, unitTestsFlowGradleArgs)
+  jobs << unitTestsAndCodeCoverage
+
+  // append additional steps for unitTestsAndCodeCoverage
+  def codecovParamFile = new File(targetDir, "gh-ci-codecov-step.txt")
+  def codecovParamFilePath = Paths.get(codecovParamFile.getPath())
+  def codecovParamFileContent = new String(Files.readAllBytes(codecovParamFilePath))
+
+  appendCodeCovAction(codecovParamFileContent, targetFilePath)
+
+  def avroCompatibilityTests = "AvroCompatibilityTests"
+  def avroCompatibilityFlowGradleArgs = "-DmaxParallelForks=2 --parallel :internal:venice-avro-compatibility-test:test --continue"
+  appendToGHCI(paramFileContent, targetFilePath, avroCompatibilityTests, 60, avroCompatibilityFlowGradleArgs)
+  jobs << avroCompatibilityTests
+
+  def integTestGradleArgs = common + "-DforkEvery=1 -DmaxParallelForks=1 integrationTest"
+  integrationTestBuckets.each { name, patterns ->
+    def flowName = "IntegrationTests" + name
+    jobs << flowName
+    appendToGHCI(paramFileContent, targetFilePath, flowName, 120, integTestGradleArgs + name)
+  }
+  def otherTest = "IntegrationTestsZ"
+  appendToGHCI(paramFileContent, targetFilePath, otherTest, 120, integTestGradleArgs + "Z")
+  jobs << otherTest
+
+  def alpiniUnitTests = "AlpiniUnitTests"
+  appendToGHCI(alpiniParamFileContent, targetFilePath, alpiniUnitTests, 120, common + "-DmaxParallelForks=1 alpiniUnitTest")
+  jobs << alpiniUnitTests
+
+  def alpiniFunctionalTests = "AlpiniFunctionalTests"
+  appendToGHCI(alpiniParamFileContent, targetFilePath, alpiniFunctionalTests, 120, common + "-DmaxParallelForks=1 alpiniFunctionalTest")
+  jobs << alpiniFunctionalTests
+
+  // define a job that depends others to manage the status check
+  appendToGHCI(paramFileContent, targetFilePath, "DummyStep", 120, "clean", jobs)
+
+  def finalDestinationPath = Paths.get(rootDir.getPath() + "/.github/workflows/gh-ci.yml")
+  Files.move(targetFilePath, finalDestinationPath, StandardCopyOption.REPLACE_EXISTING)
+}
+
+def appendCodeCovAction(String paramFileContent, Path targetFilePath) {
+  def moduleBuckets = [
+      "clients": [
+          "da-vinci-client",
+          "venice-admin-tool",
+          "venice-client",
+          "venice-push-job",
+          "venice-samza",
+          "venice-thin-client"
+      ],
+      "internal": [
+          "venice-client-common",
+          "venice-common",
+          "venice-consumer"
+      ],
+      "services": [
+          "venice-controller",
+          "venice-router",
+          "venice-server"
+      ]
+  ]
+
+  moduleBuckets.forEach({ module, subModules ->
+    subModules.forEach({ subModule ->
+      String postProcessing = paramFileContent
+        .replace("\$ModuleName", module)
+        .replace("\$SubModuleName", subModule)
+
+      append(targetFilePath, postProcessing)
+      append(targetFilePath, "\n")
+    })
+  })
 }
 
 def appendToGHCI(String paramFileContent, Path targetFilePath, String flowName, int timeOut, String gradleArguments, ArrayList dependency=null, String conditional=null) {

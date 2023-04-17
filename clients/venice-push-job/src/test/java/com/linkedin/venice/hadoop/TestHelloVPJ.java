@@ -1,6 +1,5 @@
-package com.linkedin.venice;
+package com.linkedin.venice.hadoop;
 
-import com.linkedin.venice.hadoop.HelloVPJ;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
