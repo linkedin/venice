@@ -10,11 +10,14 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.davinci.ingestion.main.MainIngestionMonitorService;
 import com.linkedin.davinci.ingestion.main.MainTopicIngestionStatus;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
+import com.linkedin.davinci.notifier.VeniceNotifier;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceTimeoutException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -23,6 +26,9 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Supplier;
@@ -171,5 +177,16 @@ public class IsolatedIngestionBackendTest {
       backend.executeCommandWithRetry(topic, partition, STOP_CONSUMPTION, () -> false, localCommandRunnable);
       Assert.assertEquals(executionFlag.get(), -1);
     }
+  }
+
+  @Test
+  public void testIsolatedIngestionNotifierAsyncCompletionHandling() {
+    IsolatedIngestionBackend backend = mock(IsolatedIngestionBackend.class);
+    VeniceNotifier ingestionNotifier = mock(VeniceNotifier.class);
+    ExecutorService executor = Executors.newFixedThreadPool(10);
+    when(backend.getCompletionHandlingExecutor()).thenReturn(executor);
+    when(backend.getIsolatedIngestionNotifier(any())).thenCallRealMethod();
+    backend.getIsolatedIngestionNotifier(ingestionNotifier).completed("topic_v1", 1, 123L, "", Optional.empty());
+    verify(backend, times(1)).getCompletionHandlingExecutor();
   }
 }
