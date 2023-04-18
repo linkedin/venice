@@ -20,6 +20,8 @@ import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.PartitionUtils;
+import com.linkedin.venice.utils.SystemTime;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -71,6 +73,8 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private final ClusterStats clusterStats;
   private final FastClientStats clientStats;
   private volatile boolean isServiceDiscovered;
+  private final Time time = new SystemTime();
+  private boolean isInitialized = false;
 
   public RequestBasedMetadata(ClientConfig clientConfig, D2TransportClient transportClient) {
     super(clientConfig);
@@ -262,20 +266,32 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   }
 
   private void refresh() {
-    try {
-      if (updateCache(false)) {
-        if (routingStrategy instanceof HelixScatterGatherRoutingStrategy) {
-          ((HelixScatterGatherRoutingStrategy) routingStrategy).updateHelixGroupInfo(helixGroupInfo);
+    int attempt = 0;
+
+    do {
+      try {
+        if (attempt++ > 0) {
+          time.sleep(TimeUnit.SECONDS.toMillis(60));
+        }
+        if (updateCache(false)) {
+          if (routingStrategy instanceof HelixScatterGatherRoutingStrategy) {
+            ((HelixScatterGatherRoutingStrategy) routingStrategy).updateHelixGroupInfo(helixGroupInfo);
+          } else {
+            routingStrategy = new HelixScatterGatherRoutingStrategy(helixGroupInfo);
+          }
+          isInitialized = true;
+        }
+      } catch (Exception e) {
+        // Catch all errors so periodic refresh doesn't break on transient errors.
+        if (isInitialized) {
+          LOGGER.error("Encountered unexpected error during periodic refresh", e);
         } else {
-          routingStrategy = new HelixScatterGatherRoutingStrategy(helixGroupInfo);
+          LOGGER.error("Encountered unexpected error during initial refresh", e);
         }
       }
-    } catch (Exception e) {
-      // Catch all errors so periodic refresh doesn't break on transient errors.
-      LOGGER.error("Encountered unexpected error during periodic refresh", e);
-    } finally {
-      scheduler.schedule(this::refresh, refreshIntervalInSeconds, TimeUnit.SECONDS);
-    }
+    } while (!isInitialized);
+
+    scheduler.schedule(this::refresh, refreshIntervalInSeconds, TimeUnit.SECONDS);
   }
 
   @Override
