@@ -186,7 +186,12 @@ public class IsolatedIngestionBackendTest {
     ExecutorService executor = Executors.newFixedThreadPool(10);
     when(backend.getCompletionHandlingExecutor()).thenReturn(executor);
     when(backend.getIsolatedIngestionNotifier(any())).thenCallRealMethod();
-    backend.getIsolatedIngestionNotifier(ingestionNotifier).completed("topic_v1", 1, 123L, "", Optional.empty());
+    String topic = "topic_v1";
+    when(backend.isTopicPartitionIngesting(topic, 0)).thenReturn(false);
+    when(backend.isTopicPartitionIngesting(topic, 1)).thenReturn(true);
+    backend.getIsolatedIngestionNotifier(ingestionNotifier).completed(topic, 0, 123L, "", Optional.empty());
+    verify(backend, times(0)).getCompletionHandlingExecutor();
+    backend.getIsolatedIngestionNotifier(ingestionNotifier).completed(topic, 1, 123L, "", Optional.empty());
     verify(backend, times(1)).getCompletionHandlingExecutor();
   }
 }

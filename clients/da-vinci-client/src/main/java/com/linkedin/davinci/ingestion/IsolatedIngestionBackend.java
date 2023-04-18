@@ -253,7 +253,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
         .equals(MainPartitionIngestionStatus.MAIN);
   }
 
-  private boolean isTopicPartitionIngesting(String topicName, int partition) {
+  boolean isTopicPartitionIngesting(String topicName, int partition) {
     return !getMainIngestionMonitorService().getTopicPartitionIngestionStatus(topicName, partition)
         .equals(MainPartitionIngestionStatus.NOT_EXIST);
   }
@@ -272,20 +272,20 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
           String message,
           Optional<LeaderFollowerStateType> leaderState) {
         // Use thread pool to handle the completion reporting to make sure it is not blocking the report.
-        getCompletionHandlingExecutor().submit(() -> {
-          if (isTopicPartitionIngesting(kafkaTopic, partition)) {
+        if (isTopicPartitionIngesting(kafkaTopic, partition)) {
+          getCompletionHandlingExecutor().submit(() -> {
             VeniceStoreVersionConfig config = configLoader.getStoreConfig(kafkaTopic);
             config.setRestoreDataPartitions(false);
             config.setRestoreMetadataPartition(false);
             // Start partition consumption locally.
             startConsumption(config, partition, leaderState);
-          } else {
-            LOGGER.error(
-                "Partition: {} of topic: {} is not assigned to this host, will not resume the ingestion on main process.",
-                partition,
-                kafkaTopic);
-          }
-        });
+          });
+        } else {
+          LOGGER.error(
+              "Partition: {} of topic: {} is not assigned to this host, will not resume the ingestion on main process.",
+              partition,
+              kafkaTopic);
+        }
       }
     };
   }
