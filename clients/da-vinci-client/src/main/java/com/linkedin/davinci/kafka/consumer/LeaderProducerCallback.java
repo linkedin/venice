@@ -124,6 +124,17 @@ class LeaderProducerCallback implements ChunkAwareCallback {
                 ingestionTask.versionNumber,
                 LatencyUtils.getLatencyInMS(produceTimeNs),
                 currentTimeForMetricsMs);
+        if (ingestionTask.isHybridMode()) {
+          long nearlineProducerToLocalBrokerLatencyMs =
+              sourceConsumerRecord.getValue().producerMetadata.messageTimestamp;
+
+          ingestionTask.getVersionIngestionStats()
+              .recordNearlineProducerToLocalBrokerLatency(
+                  ingestionTask.getStoreName(),
+                  ingestionTask.versionNumber,
+                  LatencyUtils.getLatencyInMS(nearlineProducerToLocalBrokerLatencyMs),
+                  currentTimeForMetricsMs);
+        }
       }
 
       int producedRecordNum = 0;
