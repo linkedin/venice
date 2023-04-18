@@ -4,5 +4,7 @@ flag_management:
     statuses:
       - type: project
         target: auto
+        threshold: 100% # Allow coverage to drop by 100% since we don't use Codecov for code coverage enforcement yet.
       - type: patch
         target: auto
+        threshold: 100% # Ditto
