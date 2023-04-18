@@ -1,4 +1,4 @@
-package com.linkedin.venice.client.consumer;
+package com.linkedin.davinci.consumer;
 
 import com.linkedin.venice.client.change.capture.protocol.RecordChangeEvent;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;

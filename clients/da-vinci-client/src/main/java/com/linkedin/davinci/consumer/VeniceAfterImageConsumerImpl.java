@@ -1,4 +1,4 @@
-package com.linkedin.venice.client.consumer;
+package com.linkedin.davinci.consumer;
 
 import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT_VECTOR_FIELD;
 

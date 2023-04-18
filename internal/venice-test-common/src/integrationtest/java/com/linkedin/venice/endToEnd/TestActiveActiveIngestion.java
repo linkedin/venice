@@ -31,11 +31,11 @@ import static com.linkedin.venice.utils.TestWriteUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestWriteUtils.writeSimpleAvroFileWithUserSchema;
 
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.davinci.consumer.ChangeEvent;
+import com.linkedin.davinci.consumer.ChangelogClientConfig;
+import com.linkedin.davinci.consumer.VeniceChangelogConsumer;
+import com.linkedin.davinci.consumer.VeniceChangelogConsumerClientFactory;
 import com.linkedin.venice.ConfigKeys;
-import com.linkedin.venice.client.consumer.ChangeEvent;
-import com.linkedin.venice.client.consumer.ChangelogClientConfig;
-import com.linkedin.venice.client.consumer.VeniceChangelogConsumer;
-import com.linkedin.venice.client.consumer.VeniceChangelogConsumerClientFactory;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;

@@ -1,4 +1,4 @@
-package com.linkedin.venice.client.consumer;
+package com.linkedin.davinci.consumer;
 
 import com.linkedin.davinci.repository.ThinClientMetaStoreBasedRepository;
 import com.linkedin.davinci.storage.chunking.AbstractAvroChunkingAdapter;

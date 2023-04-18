@@ -1,4 +1,4 @@
-package com.linkedin.venice.client.consumer;
+package com.linkedin.davinci.consumer;
 
 import static org.mockito.Mockito.*;
 

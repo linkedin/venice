@@ -1,4 +1,4 @@
-package com.linkedin.venice.client.consumer;
+package com.linkedin.davinci.consumer;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.client.store.ClientConfig;
