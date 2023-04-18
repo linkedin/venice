@@ -14,6 +14,8 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.linkedin.davinci.config.VeniceConfigLoader;
+import com.linkedin.davinci.config.VeniceStoreVersionConfig;
 import com.linkedin.davinci.ingestion.main.MainIngestionMonitorService;
 import com.linkedin.davinci.ingestion.main.MainTopicIngestionStatus;
 import com.linkedin.davinci.kafka.consumer.KafkaStoreIngestionService;
@@ -183,10 +185,14 @@ public class IsolatedIngestionBackendTest {
   public void testIsolatedIngestionNotifierAsyncCompletionHandling() {
     IsolatedIngestionBackend backend = mock(IsolatedIngestionBackend.class);
     VeniceNotifier ingestionNotifier = mock(VeniceNotifier.class);
+    VeniceConfigLoader configLoader = mock(VeniceConfigLoader.class);
+    VeniceStoreVersionConfig storeVersionConfig = mock(VeniceStoreVersionConfig.class);
     ExecutorService executor = Executors.newFixedThreadPool(10);
     when(backend.getCompletionHandlingExecutor()).thenReturn(executor);
     when(backend.getIsolatedIngestionNotifier(any())).thenCallRealMethod();
+    when(backend.getConfigLoader()).thenReturn(configLoader);
     String topic = "topic_v1";
+    when(configLoader.getStoreConfig(topic)).thenReturn(storeVersionConfig);
     when(backend.isTopicPartitionIngesting(topic, 0)).thenReturn(false);
     when(backend.isTopicPartitionIngesting(topic, 1)).thenReturn(true);
     backend.getIsolatedIngestionNotifier(ingestionNotifier).completed(topic, 0, 123L, "", Optional.empty());
