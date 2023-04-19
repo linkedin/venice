@@ -39,7 +39,6 @@ dependencies {
     exclude group: 'org.mockito', module: 'mockito-all'
   }
 
-  implementation project(':clients:venice-consumer')
   implementation project(':clients:da-vinci-client')
   implementation project(':clients:venice-client')
   implementation project(':clients:venice-push-job')

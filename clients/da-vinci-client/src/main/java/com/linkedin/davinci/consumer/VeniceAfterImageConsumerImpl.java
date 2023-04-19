@@ -5,10 +5,7 @@ import static com.linkedin.venice.schema.rmd.RmdConstants.REPLICATION_CHECKPOINT
 import com.linkedin.davinci.storage.chunking.GenericChunkingAdapter;
 import com.linkedin.davinci.storage.chunking.SpecificRecordChunkingAdapter;
 import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.venice.compression.CompressorFactory;
-import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.validation.UnsupportedMessageTypeException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -26,7 +23,6 @@ import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.ChangeCaptureView;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -46,9 +42,6 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
   private static final Logger LOGGER = LogManager.getLogger(VeniceAfterImageConsumerImpl.class);
 
   private boolean isReadFromChangeCaptureTopic;
-
-  private final CompressorFactory compressorFactory = new CompressorFactory();
-  private VeniceCompressor currentCompressor = NO_OP_COMPRESSOR;
 
   public VeniceAfterImageConsumerImpl(
       ChangelogClientConfig changelogClientConfig,
@@ -127,7 +120,9 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
       }
       // TODO: This relies on consuming the beginning of the version topic. This is what some libraries do anyway under
       // the hood, but it seems clumsy here. Should refactor
-      currentCompressor = compressorFactory.createVersionSpecificCompressorIfNotExist(
+      // TODO: This factory maintains a cache of ZSTD compression strategies. We'll need to clean this out as we remove
+      // subscriptions. Will add this in the checkpointing feature.
+      compressorFactory.createVersionSpecificCompressorIfNotExist(
           CompressionStrategy.valueOf(startOfPush.compressionStrategy),
           pubSubTopicPartition.getPubSubTopic().getName(),
           dictionary);
@@ -162,25 +157,21 @@ public class VeniceAfterImageConsumerImpl<K, V> extends VeniceChangelogConsumerI
       case PUT:
         Put put = (Put) kafkaMessageEnvelope.payloadUnion;
         Schema valueSchema = schemaReader.getValueSchema(put.schemaId);
-        try {
-          currentValue = (V) bufferAndAssembleRecordChangeEvent(
-              pubSubTopicPartition,
-              put.getSchemaId(),
-              currentKey,
-              currentCompressor.decompress(put.getPutValue()).array(),
-              offset,
-              CHUNKING_ADAPTER,
-              Lazy.of(() -> FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(valueSchema, valueSchema)),
-              put.schemaId,
-              readOnlySchemaRepository);
-          if (currentValue == null) {
-            // This was an event which we had to buffer, so don't return a result. We'll terminate early here as we
-            // should
-            // only do book keeping on consumed offset watermarks for those events which we return to the client.
-            return null;
-          }
-        } catch (IOException e) {
-          throw new VeniceException(e);
+        currentValue = (V) bufferAndAssembleRecordChangeEvent(
+            pubSubTopicPartition,
+            put.getSchemaId(),
+            currentKey,
+            put.getPutValue().array(),
+            offset,
+            CHUNKING_ADAPTER,
+            Lazy.of(() -> FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(valueSchema, valueSchema)),
+            put.schemaId,
+            readOnlySchemaRepository);
+        if (currentValue == null) {
+          // This was an event which we had to buffer, so don't return a result. We'll terminate early here as we
+          // should
+          // only do book keeping on consumed offset watermarks for those events which we return to the client.
+          return null;
         }
         if (put.replicationMetadataVersionId > 0) {
           MultiSchemaResponse.Schema replicationMetadataSchema = replicationMetadataSchemaRepository

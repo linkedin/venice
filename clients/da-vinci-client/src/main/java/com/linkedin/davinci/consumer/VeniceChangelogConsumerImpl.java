@@ -6,7 +6,7 @@ import com.linkedin.davinci.storage.chunking.SpecificRecordChunkingAdapter;
 import com.linkedin.davinci.store.memory.InMemoryStorageEngine;
 import com.linkedin.davinci.store.record.ValueRecord;
 import com.linkedin.venice.client.change.capture.protocol.RecordChangeEvent;
-import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.NoopCompressor;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
@@ -35,6 +35,7 @@ import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.lazy.Lazy;
 import com.linkedin.venice.views.ChangeCaptureView;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -60,6 +61,10 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
   private final int partitionCount;
 
   protected static final VeniceCompressor NO_OP_COMPRESSOR = new NoopCompressor();
+
+  protected VeniceCompressor currentCompressor = NO_OP_COMPRESSOR;
+
+  protected final CompressorFactory compressorFactory = new CompressorFactory();
 
   protected ThinClientMetaStoreBasedRepository readOnlySchemaRepository;
 
@@ -118,8 +123,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
     this.storeChunkingEnabled = store.isChunkingEnabled();
     this.currentValuePayloadSize = new int[partitionCount];
     this.viewClassName = changelogClientConfig.getViewName();
-    this.currentTopic =
-        Version.composeKafkaTopic(storeName, storeCurrentVersion) + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX;
+    this.currentTopic = Version.composeKafkaTopic(storeName, storeCurrentVersion);// +
+                                                                                  // ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX;
     this.replicationMetadataSchemaRepository = new ReplicationMetadataSchemaRepository(d2ControllerClient);
     this.schemaReader = changelogClientConfig.getSchemaReader();
     this.subscribedPartitions = new HashSet<>();
@@ -237,6 +242,8 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       int readerSchemaId,
       ReadOnlySchemaRepository schemaRepository) {
     T recordChangeEvent = null;
+    VeniceCompressor compressor =
+        compressorFactory.getVersionSpecificCompressor(pubSubTopicPartition.getPubSubTopic().getName());
     if (storeChunkingEnabled) {
       if (!inMemoryStorageEngine.containsPartition(pubSubTopicPartition.getPartitionNumber())) {
         inMemoryStorageEngine.addStoragePartition(pubSubTopicPartition.getPartitionNumber());
@@ -264,11 +271,11 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
               null,
               null,
               null,
-              CompressionStrategy.NO_OP,
+              compressor.getCompressionStrategy(),
               true,
               schemaRepository,
               storeName,
-              NO_OP_COMPRESSOR);
+              compressor);
         } catch (Exception ex) {
           // We might get an exception if we haven't persisted all the chunks for a given key. This
           // can actually happen if the client seeks to the middle of a chunked record either by
@@ -281,7 +288,11 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
         }
       } else {
         // this is a fully specified record, no need to buffer and assemble it, just deserialize it
-        recordChangeEvent = recordDeserializer.get().deserialize(valueBytes);
+        try {
+          recordChangeEvent = recordDeserializer.get().deserialize(compressor.decompress(ByteBuffer.wrap(valueBytes)));
+        } catch (IOException e) {
+          throw new RuntimeException(e);
+        }
       }
       // We only buffer one record at a time for a given partition. If we've made it this far
       // we either just finished assembling a large record, or, didn't specify anything. So we'll clear
@@ -289,7 +300,11 @@ public class VeniceChangelogConsumerImpl<K, V> implements VeniceChangelogConsume
       // this is safe to do in all such contexts.
       inMemoryStorageEngine.dropPartition(pubSubTopicPartition.getPartitionNumber());
     } else {
-      recordChangeEvent = recordDeserializer.get().deserialize(valueBytes);
+      try {
+        recordChangeEvent = recordDeserializer.get().deserialize(compressor.decompress(ByteBuffer.wrap(valueBytes)));
+      } catch (IOException e) {
+        throw new RuntimeException(e);
+      }
     }
     return recordChangeEvent;
   }
