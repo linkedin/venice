@@ -1868,4 +1868,13 @@ public class ConfigKeys {
    * Config to control the queue capacity for the thread pool executor used for ssl handshake in servers.
    */
   public static final String SERVER_SSL_HANDSHAKE_QUEUE_CAPACITY = "server.ssl.handshake.queue.capacity";
+
+  /**
+   * Server would update replica status to meta system store. This config set timeout on all these replica status updates,
+   * which will make update to meta system store a best effort operation; as a result, ingestion and deployment will not
+   * be blocked, but fast-client could be at risk. We should monitor the timeout metrics of replica status updates until
+   * meta system store is no longer in the critical path of fast-client reads.
+   */
+  public static final String SERVER_META_SYSTEM_STORE_WRITE_TIMEOUT_IN_MS =
+      "server.meta.system.store.write.timeout.in.ms";
 }

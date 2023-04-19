@@ -88,6 +88,11 @@ public class PubSubSharedProducerAdapter implements PubSubProducerAdapter {
   }
 
   @Override
+  public void flush(long timeoutInMs) {
+    producerAdapter.flush(timeoutInMs);
+  }
+
+  @Override
   public void close(int closeTimeOutMs, boolean doFlush) {
     producerAdapter.close(closeTimeOutMs, doFlush);
   }

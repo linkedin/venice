@@ -1,5 +1,6 @@
 package com.linkedin.davinci.notifier;
 
+import com.linkedin.davinci.stats.AggHostLevelIngestionStats;
 import com.linkedin.venice.common.VeniceSystemStoreType;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -7,6 +8,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.system.store.MetaStoreWriter;
+import org.apache.kafka.common.errors.TimeoutException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -20,16 +22,19 @@ public class MetaSystemStoreReplicaStatusNotifier implements VeniceNotifier {
   private final String clusterName;
   private final ReadOnlyStoreRepository storeRepository;
   private final Instance instance;
+  private final AggHostLevelIngestionStats aggHostLevelIngestionStats;
 
   public MetaSystemStoreReplicaStatusNotifier(
       String clusterName,
       MetaStoreWriter metaStoreWriter,
       ReadOnlyStoreRepository storeRepository,
-      Instance instance) {
+      Instance instance,
+      AggHostLevelIngestionStats aggHostLevelIngestionStats) {
     this.clusterName = clusterName;
     this.metaStoreWriter = metaStoreWriter;
     this.storeRepository = storeRepository;
     this.instance = instance;
+    this.aggHostLevelIngestionStats = aggHostLevelIngestionStats;
   }
 
   private void report(String kafkaTopic, int partitionId, ExecutionStatus status) {
@@ -63,7 +68,17 @@ public class MetaSystemStoreReplicaStatusNotifier implements VeniceNotifier {
             e);
       }
     } else {
-      metaStoreWriter.writeStoreReplicaStatus(clusterName, storeName, version, partitionId, instance, status);
+      try {
+        metaStoreWriter.writeStoreReplicaStatus(clusterName, storeName, version, partitionId, instance, status);
+      } catch (TimeoutException e) {
+        LOGGER.error(
+            "Timeout while trying to report replica status: {} for topic: {}, partition: {}",
+            status,
+            kafkaTopic,
+            partitionId);
+        this.aggHostLevelIngestionStats.getTotalStats().recordMetaSystemStoreWriteTimeout();
+        throw e;
+      }
     }
   }
 

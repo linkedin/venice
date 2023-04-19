@@ -130,6 +130,8 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
    */
   private final LongAdderRateGauge totalTombstoneCreationDCRRate;
 
+  private final LongAdderRateGauge totalMetaSystemStoreWriteTimeoutRate;
+
   private Sensor registerPerStoreAndTotalSensor(
       String sensorName,
       HostLevelIngestionStats totalStats,
@@ -213,6 +215,11 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
         "offset_regression_dcr_error",
         totalStats,
         () -> totalStats.totalOffsetRegressionDCRErrorRate);
+
+    this.totalMetaSystemStoreWriteTimeoutRate = registerOnlyTotalRate(
+        "meta_system_store_write_timeout",
+        totalStats,
+        () -> totalStats.totalMetaSystemStoreWriteTimeoutRate);
 
     Int2ObjectMap<String> kafkaClusterIdToAliasMap = serverConfig.getKafkaClusterIdToAliasMap();
     int listSize = kafkaClusterIdToAliasMap.isEmpty() ? 0 : Collections.max(kafkaClusterIdToAliasMap.keySet()) + 1;
@@ -529,5 +536,9 @@ public class HostLevelIngestionStats extends AbstractVeniceStats {
 
   public void recordOffsetRegressionDCRError() {
     totalOffsetRegressionDCRErrorRate.record();
+  }
+
+  public void recordMetaSystemStoreWriteTimeout() {
+    totalMetaSystemStoreWriteTimeoutRate.record();
   }
 }

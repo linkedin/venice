@@ -338,6 +338,19 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     VeniceNotifier notifier = new LogNotifier();
     this.leaderFollowerNotifiers.add(notifier);
 
+    this.hostLevelIngestionStats = new AggHostLevelIngestionStats(
+        metricsRepository,
+        serverConfig,
+        topicNameToIngestionTaskMap,
+        metadataRepo,
+        serverConfig.isUnregisterMetricForDeletedStoreEnabled(),
+        SystemTime.INSTANCE);
+    AggVersionedDIVStats versionedDIVStats = new AggVersionedDIVStats(
+        metricsRepository,
+        metadataRepo,
+        serverConfig.isUnregisterMetricForDeletedStoreEnabled());
+    this.versionedIngestionStats = new AggVersionedIngestionStats(metricsRepository, metadataRepo, serverConfig);
+
     /**
      * Only Venice SN will pass this param: {@param zkSharedSchemaRepository} since {@link metaStoreWriter} is
      * used to report the replica status from Venice SN.
@@ -347,12 +360,14 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           topicManagerRepository.getTopicManager(),
           veniceWriterFactoryForMetaStoreWriter,
           zkSharedSchemaRepository.get(),
-          pubSubTopicRepository);
+          pubSubTopicRepository,
+          serverConfig.getMetaSystemStoreWriteTimeoutInMs());
       this.metaSystemStoreReplicaStatusNotifier = new MetaSystemStoreReplicaStatusNotifier(
           serverConfig.getClusterName(),
           metaStoreWriter,
           metadataRepo,
-          Instance.fromHostAndPort(Utils.getHostName(), serverConfig.getListenerPort()));
+          Instance.fromHostAndPort(Utils.getHostName(), serverConfig.getListenerPort()),
+          this.hostLevelIngestionStats);
       LOGGER.info("MetaSystemStoreReplicaStatusNotifier was initialized");
       metadataRepo.registerStoreDataChangedListener(new StoreDataChangedListener() {
         @Override
@@ -369,18 +384,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       this.metaSystemStoreReplicaStatusNotifier = null;
     }
 
-    this.hostLevelIngestionStats = new AggHostLevelIngestionStats(
-        metricsRepository,
-        serverConfig,
-        topicNameToIngestionTaskMap,
-        metadataRepo,
-        serverConfig.isUnregisterMetricForDeletedStoreEnabled(),
-        SystemTime.INSTANCE);
-    AggVersionedDIVStats versionedDIVStats = new AggVersionedDIVStats(
-        metricsRepository,
-        metadataRepo,
-        serverConfig.isUnregisterMetricForDeletedStoreEnabled());
-    this.versionedIngestionStats = new AggVersionedIngestionStats(metricsRepository, metadataRepo, serverConfig);
     if (serverConfig.isDedicatedDrainerQueueEnabled()) {
       this.storeBufferService = new SeparatedStoreBufferService(serverConfig);
     } else {

@@ -108,6 +108,13 @@ public class ApacheKafkaProducerAdapter implements PubSubProducerAdapter {
   }
 
   @Override
+  public void flush(long timeoutInMs) {
+    if (producer != null) {
+      producer.flush(timeoutInMs, TimeUnit.MILLISECONDS);
+    }
+  }
+
+  @Override
   public void close(int closeTimeOutMs, boolean doFlush) {
     if (producer == null) {
       return; // producer has been closed already

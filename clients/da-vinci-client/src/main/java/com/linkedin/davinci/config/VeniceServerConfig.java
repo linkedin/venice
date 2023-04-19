@@ -61,6 +61,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_LEAKED_RESOURCE_CLEANUP_ENAB
 import static com.linkedin.venice.ConfigKeys.SERVER_LEAKED_RESOURCE_CLEAN_UP_INTERVAL_IN_MINUTES;
 import static com.linkedin.venice.ConfigKeys.SERVER_LOCAL_CONSUMER_CONFIG_PREFIX;
 import static com.linkedin.venice.ConfigKeys.SERVER_MAX_REQUEST_SIZE;
+import static com.linkedin.venice.ConfigKeys.SERVER_META_SYSTEM_STORE_WRITE_TIMEOUT_IN_MS;
 import static com.linkedin.venice.ConfigKeys.SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_NETTY_IDLE_TIME_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_NETTY_WORKER_THREADS;
@@ -389,6 +390,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
    */
   private final int sslHandshakeQueueCapacity;
 
+  private final long metaSystemStoreWriteTimeoutInMs;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     this(serverProperties, Collections.emptyMap());
   }
@@ -492,6 +495,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     ssdHealthCheckShutdownTimeMs = serverProperties.getLong(SERVER_SHUTDOWN_DISK_UNHEALTHY_TIME_MS, 200000);
     sslHandshakeThreadPoolSize = serverProperties.getInt(SERVER_SSL_HANDSHAKE_THREAD_POOL_SIZE, 0);
     sslHandshakeQueueCapacity = serverProperties.getInt(SERVER_SSL_HANDSHAKE_QUEUE_CAPACITY, Integer.MAX_VALUE);
+    metaSystemStoreWriteTimeoutInMs = serverProperties.getInt(SERVER_META_SYSTEM_STORE_WRITE_TIMEOUT_IN_MS, 180000);
 
     /**
      * In the test of feature store user case, when we did a rolling bounce of storage nodes, the high latency happened
@@ -1030,5 +1034,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getSslHandshakeQueueCapacity() {
     return sslHandshakeQueueCapacity;
+  }
+
+  public long getMetaSystemStoreWriteTimeoutInMs() {
+    return metaSystemStoreWriteTimeoutInMs;
   }
 }

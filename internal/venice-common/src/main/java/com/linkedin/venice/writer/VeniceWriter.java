@@ -389,6 +389,16 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   }
 
   @Override
+  public void flush(long timeoutInMs) {
+    if (timeoutInMs < 0) {
+      // infinite timeout
+      producerAdapter.flush();
+    } else {
+      producerAdapter.flush(timeoutInMs);
+    }
+  }
+
+  @Override
   public String toString() {
     return this.getClass().getSimpleName() + "{topicName: " + topicName + ", producerGUID: " + producerGUID
         + ", numberOfPartitions: " + numberOfPartitions + "}";
@@ -1281,7 +1291,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     startOfSegment.checksumType = checkSumType.getValue();
     startOfSegment.upcomingAggregates = new ArrayList<>(); // TODO Add extra aggregates
     controlMessage.controlMessageUnion = startOfSegment;
-    sendControlMessage(controlMessage, partition, debugInfo, null, DEFAULT_LEADER_METADATA_WRAPPER);
+    asyncSendControlMessage(controlMessage, partition, debugInfo, null, DEFAULT_LEADER_METADATA_WRAPPER);
   }
 
   /**
@@ -1300,7 +1310,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     endOfSegment.computedAggregates = new ArrayList<>(); // TODO Add extra aggregates
     endOfSegment.finalSegment = finalSegment;
     controlMessage.controlMessageUnion = endOfSegment;
-    sendControlMessage(controlMessage, partition, debugInfo, null, DEFAULT_LEADER_METADATA_WRAPPER);
+    asyncSendControlMessage(controlMessage, partition, debugInfo, null, DEFAULT_LEADER_METADATA_WRAPPER);
   }
 
   /**

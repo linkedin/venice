@@ -53,4 +53,6 @@ public abstract class AbstractVeniceWriter<K, V, U> implements Closeable {
       PubSubProducerCallback callback);
 
   public abstract void flush();
+
+  public abstract void flush(long timeoutInMs);
 }

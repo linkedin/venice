@@ -70,12 +70,23 @@ public class MetaStoreWriter implements Closeable {
   private int derivedComputeSchemaId = -1;
 
   private final PubSubTopicRepository pubSubTopicRepository;
+  // -1 means infinite timeout
+  private final long metaSystemStoreWriteTimeoutInMs;
 
   public MetaStoreWriter(
       TopicManager topicManager,
       VeniceWriterFactory writerFactory,
       HelixReadOnlyZKSharedSchemaRepository schemaRepo,
       PubSubTopicRepository pubSubTopicRepository) {
+    this(topicManager, writerFactory, schemaRepo, pubSubTopicRepository, -1);
+  }
+
+  public MetaStoreWriter(
+      TopicManager topicManager,
+      VeniceWriterFactory writerFactory,
+      HelixReadOnlyZKSharedSchemaRepository schemaRepo,
+      PubSubTopicRepository pubSubTopicRepository,
+      long metaSystemStoreWriteTimeoutInMs) {
     this.topicManager = topicManager;
     this.writerFactory = writerFactory;
     /**
@@ -86,6 +97,7 @@ public class MetaStoreWriter implements Closeable {
             AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.getCurrentProtocolVersionSchema());
     this.zkSharedSchemaRepository = schemaRepo;
     this.pubSubTopicRepository = pubSubTopicRepository;
+    this.metaSystemStoreWriteTimeoutInMs = metaSystemStoreWriteTimeoutInMs;
   }
 
   /**
@@ -312,7 +324,7 @@ public class MetaStoreWriter implements Closeable {
       }
     });
     writer.delete(key, null);
-    writer.flush();
+    writer.flush(this.metaSystemStoreWriteTimeoutInMs);
   }
 
   /**
@@ -346,7 +358,7 @@ public class MetaStoreWriter implements Closeable {
     StoreMetaValue value = valueSupplier.get();
     value.timestamp = System.currentTimeMillis();
     writer.put(key, value, AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.currentProtocolVersion.get());
-    writer.flush();
+    writer.flush(this.metaSystemStoreWriteTimeoutInMs);
   }
 
   private void update(
@@ -377,7 +389,7 @@ public class MetaStoreWriter implements Closeable {
         AvroProtocolDefinition.METADATA_SYSTEM_SCHEMA_STORE.currentProtocolVersion.get(),
         derivedComputeSchemaId,
         null);
-    writer.flush();
+    writer.flush(this.metaSystemStoreWriteTimeoutInMs);
   }
 
   private VeniceWriter prepareToWrite(String metaStoreName) {
