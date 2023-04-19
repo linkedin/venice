@@ -141,6 +141,15 @@ public class MainIngestionRequestClient implements Closeable {
     sendIngestionCommandWithRetry(ingestionTaskCommand, topicName, Optional.empty(), 1);
   }
 
+  public void shutdownIngestionTask(String topicName) {
+    IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
+    ingestionTaskCommand.commandType = IngestionCommandType.SHUTDOWN_INGESTION_TASK.getValue();
+    ingestionTaskCommand.topicName = topicName;
+
+    // We do not need to retry here. Retry will slow down DaVinciBackend's shutdown speed severely.
+    sendIngestionCommandWithRetry(ingestionTaskCommand, topicName, Optional.empty(), 1);
+  }
+
   public void removeStorageEngine(String topicName) {
     IngestionTaskCommand ingestionTaskCommand = new IngestionTaskCommand();
     ingestionTaskCommand.commandType = IngestionCommandType.REMOVE_STORAGE_ENGINE.getValue();

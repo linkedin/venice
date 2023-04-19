@@ -187,6 +187,13 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
   }
 
   @Override
+  public void shutdownIngestionTask(String topicName) {
+    mainIngestionRequestClient.shutdownIngestionTask(topicName);
+    super.shutdownIngestionTask(topicName);
+    mainIngestionMonitorService.cleanupTopicState(topicName);
+  }
+
+  @Override
   public void addIngestionNotifier(VeniceNotifier ingestionListener) {
     if (ingestionListener != null) {
       super.addIngestionNotifier(ingestionListener);

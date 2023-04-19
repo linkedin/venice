@@ -686,11 +686,12 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    * This method closes the specified {@link StoreIngestionTask} and wait for up to 10 seconds for fully shutdown.
    * @param topicName Topic name of the ingestion task to be shutdown.
    */
-  protected void shutdownStoreIngestionTask(String topicName) {
+  public void shutdownStoreIngestionTask(String topicName) {
     try (AutoCloseableLock ignore = topicLockManager.getLockForResource(topicName)) {
       if (topicNameToIngestionTaskMap.containsKey(topicName)) {
         StoreIngestionTask storeIngestionTask = topicNameToIngestionTaskMap.remove(topicName);
         storeIngestionTask.shutdown(10000);
+        LOGGER.info("Successfully shut down ingestion task for {}", topicName);
       } else {
         LOGGER.info("Ignoring close request for not-existing consumption task {}", topicName);
       }

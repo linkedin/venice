@@ -75,6 +75,11 @@ public class DefaultIngestionBackend implements DaVinciIngestionBackend, VeniceI
   }
 
   @Override
+  public void shutdownIngestionTask(String topicName) {
+    getStoreIngestionService().shutdownStoreIngestionTask(topicName);
+  }
+
+  @Override
   public void removeStorageEngine(String topicName) {
     getStorageService().removeStorageEngine(topicName);
   }
