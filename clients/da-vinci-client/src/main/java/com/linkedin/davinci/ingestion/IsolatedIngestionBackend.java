@@ -31,7 +31,6 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -233,10 +232,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
 
   public void close() {
     try {
-      completionReportHandlingExecutor.shutdown();
-      if (!completionReportHandlingExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
-        completionReportHandlingExecutor.shutdownNow();
-      }
+      completionReportHandlingExecutor.shutdownNow();
       mainIngestionMonitorService.stopInner();
       mainIngestionRequestClient.shutdownForkedProcessComponent(IngestionComponentType.KAFKA_INGESTION_SERVICE);
       mainIngestionRequestClient.shutdownForkedProcessComponent(IngestionComponentType.STORAGE_SERVICE);
