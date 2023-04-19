@@ -181,6 +181,10 @@ public class IsolatedIngestionServerHandler extends SimpleChannelInboundHandler<
           isolatedIngestionServer.getIngestionBackend().killConsumptionTask(topicName);
           isolatedIngestionServer.cleanupTopicState(topicName);
           break;
+        case SHUTDOWN_INGESTION_TASK:
+          isolatedIngestionServer.getIngestionBackend().shutdownIngestionTask(topicName);
+          isolatedIngestionServer.cleanupTopicState(topicName);
+          break;
         case IS_PARTITION_CONSUMING:
           report.isPositive = storeIngestionService.isPartitionConsuming(topicName, partitionId);
           break;

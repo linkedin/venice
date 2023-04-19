@@ -24,6 +24,8 @@ public interface IngestionBackendBase extends Closeable {
 
   void killConsumptionTask(String topicName);
 
+  void shutdownIngestionTask(String topicName);
+
   void addIngestionNotifier(VeniceNotifier ingestionListener);
 
   /**
