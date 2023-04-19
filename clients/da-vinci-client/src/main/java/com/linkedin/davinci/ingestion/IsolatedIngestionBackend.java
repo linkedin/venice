@@ -271,12 +271,12 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
           long offset,
           String message,
           Optional<LeaderFollowerStateType> leaderState) {
-        VeniceStoreVersionConfig config = getConfigLoader().getStoreConfig(kafkaTopic);
-        config.setRestoreDataPartitions(false);
-        config.setRestoreMetadataPartition(false);
         // Use thread pool to handle the completion reporting to make sure it is not blocking the report.
         if (isTopicPartitionIngesting(kafkaTopic, partition)) {
           getCompletionHandlingExecutor().submit(() -> {
+            VeniceStoreVersionConfig config = getConfigLoader().getStoreConfig(kafkaTopic);
+            config.setRestoreDataPartitions(false);
+            config.setRestoreMetadataPartition(false);
             // Start partition consumption locally.
             startConsumption(config, partition, leaderState);
           });
