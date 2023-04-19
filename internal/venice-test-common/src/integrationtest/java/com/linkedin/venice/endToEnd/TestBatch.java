@@ -1,5 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 import static com.linkedin.venice.hadoop.VenicePushJob.ALLOW_DUPLICATE_KEY;
 import static com.linkedin.venice.hadoop.VenicePushJob.COMPRESSION_METRIC_COLLECTION_ENABLED;
 import static com.linkedin.venice.hadoop.VenicePushJob.DEFAULT_KEY_FIELD_PROP;
@@ -90,7 +91,6 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.generic.IndexedRecord;
 import org.apache.avro.util.Utf8;
 import org.apache.commons.lang.StringUtils;
-import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
@@ -389,7 +389,7 @@ public abstract class TestBatch {
     // Collect the dict of the current version.
     String sourceTopic = Version.composeKafkaTopic(storeName, 2);
     Properties props = new Properties();
-    props.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, veniceCluster.getKafka().getAddress());
+    props.setProperty(KAFKA_BOOTSTRAP_SERVERS, veniceCluster.getKafka().getAddress());
     VeniceProperties veniceProperties = new VeniceProperties(props);
     ByteBuffer sourceDict = DictionaryUtils.readDictionaryFromKafka(sourceTopic, veniceProperties);
 

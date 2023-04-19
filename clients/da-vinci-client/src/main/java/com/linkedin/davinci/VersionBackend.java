@@ -114,7 +114,7 @@ public class VersionBackend {
       entry.getValue().cancel(true);
     }
     try {
-      backend.getIngestionBackend().killConsumptionTask(version.kafkaTopicName());
+      backend.getIngestionBackend().shutdownIngestionTask(version.kafkaTopicName());
     } catch (VeniceException e) {
       LOGGER.error("Encounter exception when killing consumption task: {}", version.kafkaTopicName(), e);
     }

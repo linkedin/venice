@@ -24,11 +24,11 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LatencyUtils;
@@ -142,7 +142,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private final boolean remoteConsumptionEnabled;
 
   private boolean isSubscribed;
-  private final PubSubConsumer consumer;
+  private final PubSubConsumerAdapter consumer;
   private volatile long offsetToSkip = UNASSIGNED_VALUE;
   private volatile long offsetToSkipDIV = UNASSIGNED_VALUE;
   /**
@@ -239,7 +239,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
   public AdminConsumptionTask(
       String clusterName,
-      PubSubConsumer consumer,
+      PubSubConsumerAdapter consumer,
       boolean remoteConsumptionEnabled,
       Optional<String> remoteKafkaServerUrl,
       VeniceHelixAdmin admin,
@@ -313,9 +313,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           continue;
         }
         if (!isSubscribed) {
-          if (whetherTopicExists(topic)) {
+          if (whetherTopicExists(pubSubTopic)) {
             // Topic was not created by this process, so we make sure it has the right retention.
-            makeSureAdminTopicUsingInfiniteRetentionPolicy(topic);
+            makeSureAdminTopicUsingInfiniteRetentionPolicy(pubSubTopic);
           } else {
             String logMessageFormat = "Admin topic: {} hasn't been created yet. {}";
             if (!isParentController) {
@@ -330,7 +330,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
               continue;
             }
             LOGGER.info(logMessageFormat, topic, "Since this is the parent controller, it will be created now.");
-            admin.getTopicManager().createTopic(topic, 1, adminTopicReplicationFactor, true, false, minInSyncReplicas);
+            admin.getTopicManager()
+                .createTopic(pubSubTopic, 1, adminTopicReplicationFactor, true, false, minInSyncReplicas);
             LOGGER.info("Admin topic {} is created.", topic);
           }
           subscribe();
@@ -608,7 +609,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     consumer.close();
   }
 
-  private boolean whetherTopicExists(String topicName) {
+  private boolean whetherTopicExists(PubSubTopic topicName) {
     if (topicExists) {
       return true;
     }
@@ -621,7 +622,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     return topicExists;
   }
 
-  private void makeSureAdminTopicUsingInfiniteRetentionPolicy(String topicName) {
+  private void makeSureAdminTopicUsingInfiniteRetentionPolicy(PubSubTopic topicName) {
     if (remoteConsumptionEnabled) {
       sourceKafkaClusterTopicManager.updateTopicRetention(topicName, Long.MAX_VALUE);
     } else {
@@ -943,8 +944,10 @@ public class AdminConsumptionTask implements Runnable, Closeable {
        *  In the default read_uncommitted isolation level, the end offset is the high watermark (that is, the offset of
        *  the last successfully replicated message plus one), so subtract 1 from the max offset result.
        */
-      long sourceAdminTopicEndOffset = sourceKafkaClusterTopicManager
-          .getPartitionLatestOffsetAndRetry(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, 10) - 1;
+      PubSubTopicPartition adminTopicPartition =
+          new PubSubTopicPartitionImpl(pubSubTopic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+      long sourceAdminTopicEndOffset =
+          sourceKafkaClusterTopicManager.getPartitionLatestOffsetAndRetry(adminTopicPartition, 10) - 1;
       /**
        * If the first consumer poll returns nothing, "lastConsumedOffset" will remain as {@link #UNASSIGNED_VALUE}, so a
        * huge lag will be reported, but actually that's not case since consumer is subscribed to the last checkpoint offset.

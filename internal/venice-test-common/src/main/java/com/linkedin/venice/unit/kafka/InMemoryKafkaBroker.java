@@ -84,4 +84,8 @@ public class InMemoryKafkaBroker {
   public String getKafkaBootstrapServer() {
     return brokerNamePrefix + "_InMemoryKafkaBroker:" + port;
   }
+
+  public Long endOffsets(String topicName, int partition) {
+    return topics.get(topicName).getEndOffsets(partition);
+  }
 }

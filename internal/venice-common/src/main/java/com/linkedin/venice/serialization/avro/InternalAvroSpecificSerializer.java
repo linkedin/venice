@@ -3,7 +3,7 @@ package com.linkedin.venice.serialization.avro;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerFactoryImpl;
+import com.linkedin.venice.pubsub.api.PubSubMessageDeserializer;
 import com.linkedin.venice.schema.SchemaReader;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.utils.ByteUtils;
@@ -57,8 +57,8 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
    * Used to configure the {@link #schemaReader}.
    *
    * Deprecated: This path has now been superseded by {@link #setSchemaReader(SchemaReader)}, which is used everywhere
-   *             except in {@link KafkaConsumerFactoryImpl#getRecordKafkaConsumer()}. Once that usage is also eliminated
-   *             we could remove the config from here.
+   *             except in {@link com.linkedin.venice.kafka.KafkaClientFactory#getConsumer(Properties, PubSubMessageDeserializer)} ()}.
+   *             Once that usage is also eliminated we could remove the config from here.
    */
   @Deprecated
   public static final String VENICE_SCHEMA_READER_CONFIG = "venice.schema-reader";

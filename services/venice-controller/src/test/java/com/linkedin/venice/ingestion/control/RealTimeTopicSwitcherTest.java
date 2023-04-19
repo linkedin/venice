@@ -23,6 +23,8 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionImpl;
 import com.linkedin.venice.meta.ViewConfig;
 import com.linkedin.venice.meta.ViewConfigImpl;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -49,6 +51,8 @@ public class RealTimeTopicSwitcherTest {
   private VeniceWriterFactory mockVeniceWriterFactory;
   private String aggregateRealTimeSourceKafkaUrl = "aggregate-real-time-source-kafka-url";
 
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+
   @BeforeMethod
   public void setUp() {
     mockTopicManager = mock(TopicManager.class);
@@ -59,14 +63,17 @@ public class RealTimeTopicSwitcherTest {
     properties.put(ConfigKeys.KAFKA_REPLICATION_FACTOR_RT_TOPICS, Integer.toString(KAFKA_RF_FOR_RT_TOPICS));
     properties.put(ConfigKeys.KAFKA_MIN_IN_SYNC_REPLICAS_RT_TOPICS, Integer.toString(KAFKA_MIN_ISR_FOR_RT_TOPICS));
     // filler bootstrap servers
-    leaderStorageNodeReplicator =
-        new RealTimeTopicSwitcher(mockTopicManager, mockVeniceWriterFactory, new VeniceProperties(properties));
+    leaderStorageNodeReplicator = new RealTimeTopicSwitcher(
+        mockTopicManager,
+        mockVeniceWriterFactory,
+        new VeniceProperties(properties),
+        pubSubTopicRepository);
   }
 
   @Test
   public void testPrepareAndStartReplication() {
-    String srcTopic = "testTopic_rt";
-    String destTopic = "testTopic_v1";
+    PubSubTopic srcTopic = pubSubTopicRepository.getTopic("testTopic_rt");
+    PubSubTopic destTopic = pubSubTopicRepository.getTopic("testTopic_v1");
     Store mockStore = mock(Store.class);
     HybridStoreConfig mockHybridConfig = mock(HybridStoreConfig.class);
     List<PartitionInfo> partitionInfos = new ArrayList<>();
@@ -74,8 +81,9 @@ public class RealTimeTopicSwitcherTest {
 
     doReturn(true).when(mockStore).isHybrid();
     doReturn(mockHybridConfig).when(mockStore).getHybridStoreConfig();
-    Version version = new VersionImpl(Version.parseStoreFromKafkaTopicName(destTopic), 1, "test-id");
-    doReturn(Optional.of(version)).when(mockStore).getVersion(Version.parseVersionFromKafkaTopicName(destTopic));
+    Version version = new VersionImpl(destTopic.getStoreName(), 1, "test-id");
+    doReturn(Optional.of(version)).when(mockStore)
+        .getVersion(Version.parseVersionFromKafkaTopicName(destTopic.getName()));
     doReturn(3600L).when(mockHybridConfig).getRewindTimeInSeconds();
     doReturn(REWIND_FROM_EOP).when(mockHybridConfig).getBufferReplayPolicy();
     doReturn(true).when(mockTopicManager).containsTopicAndAllPartitionsAreOnline(srcTopic);
@@ -85,8 +93,8 @@ public class RealTimeTopicSwitcherTest {
     doReturn(mockVeniceWriter).when(mockVeniceWriterFactory).createVeniceWriter(any(VeniceWriterOptions.class));
 
     leaderStorageNodeReplicator.switchToRealTimeTopic(
-        srcTopic,
-        destTopic,
+        srcTopic.getName(),
+        destTopic.getName(),
         mockStore,
         aggregateRealTimeSourceKafkaUrl,
         Collections.emptyList());
@@ -96,8 +104,8 @@ public class RealTimeTopicSwitcherTest {
 
   @Test
   public void testPrepareAndStartReplicationWithNativeReplication() {
-    String srcTopic = "testTopic_rt";
-    String destTopic = "testTopic_v1";
+    PubSubTopic srcTopic = pubSubTopicRepository.getTopic("testTopic_rt");
+    PubSubTopic destTopic = pubSubTopicRepository.getTopic("testTopic_v1");
     Store mockStore = mock(Store.class);
     HybridStoreConfig mockHybridConfig = mock(HybridStoreConfig.class);
     List<PartitionInfo> partitionInfos = new ArrayList<>();
@@ -105,9 +113,10 @@ public class RealTimeTopicSwitcherTest {
 
     doReturn(true).when(mockStore).isHybrid();
     doReturn(mockHybridConfig).when(mockStore).getHybridStoreConfig();
-    Version version = new VersionImpl(Version.parseStoreFromKafkaTopicName(destTopic), 1, "test-id");
+    Version version = new VersionImpl(destTopic.getStoreName(), 1, "test-id");
     version.setNativeReplicationEnabled(true);
-    doReturn(Optional.of(version)).when(mockStore).getVersion(Version.parseVersionFromKafkaTopicName(destTopic));
+    doReturn(Optional.of(version)).when(mockStore)
+        .getVersion(Version.parseVersionFromKafkaTopicName(destTopic.getName()));
     doReturn(3600L).when(mockHybridConfig).getRewindTimeInSeconds();
     doReturn(REWIND_FROM_EOP).when(mockHybridConfig).getBufferReplayPolicy();
     doReturn(DataReplicationPolicy.AGGREGATE).when(mockHybridConfig).getDataReplicationPolicy();
@@ -118,15 +127,15 @@ public class RealTimeTopicSwitcherTest {
     doReturn(mockVeniceWriter).when(mockVeniceWriterFactory).createVeniceWriter(any(VeniceWriterOptions.class));
 
     leaderStorageNodeReplicator.switchToRealTimeTopic(
-        srcTopic,
-        destTopic,
+        srcTopic.getName(),
+        destTopic.getName(),
         mockStore,
         aggregateRealTimeSourceKafkaUrl,
         Collections.emptyList());
 
     List<CharSequence> expectedSourceClusters = new ArrayList<>();
     expectedSourceClusters.add(aggregateRealTimeSourceKafkaUrl);
-    verify(mockVeniceWriter).broadcastTopicSwitch(eq(expectedSourceClusters), eq(srcTopic), anyLong(), any());
+    verify(mockVeniceWriter).broadcastTopicSwitch(eq(expectedSourceClusters), eq(srcTopic.getName()), anyLong(), any());
   }
 
   // TODO(zpoliczer): Disabling the test as it seems there is a bug in the code.
@@ -142,7 +151,7 @@ public class RealTimeTopicSwitcherTest {
     Version version3 = new VersionImpl(storeName, 3, "push3");
     version3.setViewConfigs(viewConfigs);
 
-    String realTimeTopic = Version.composeRealTimeTopic(storeName);
+    PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
     Store mockStore = mock(Store.class);
     when(mockStore.getName()).thenReturn(storeName);
     when(mockStore.getVersion(1)).thenReturn(Optional.of(version1));
@@ -164,7 +173,7 @@ public class RealTimeTopicSwitcherTest {
         .thenReturn(aggregateRealTimeSourceKafkaUrl);
 
     RealTimeTopicSwitcher realTimeTopicSwitcher =
-        new RealTimeTopicSwitcher(mockTopicManager, mockWriterFactory, mockVeniceProperties);
+        new RealTimeTopicSwitcher(mockTopicManager, mockWriterFactory, mockVeniceProperties, pubSubTopicRepository);
 
     // Version 1 does not have a view but 2 does. In this case DON'T transmit a version swap message
     realTimeTopicSwitcher.transmitVersionSwapMessage(mockStore, 1, 2);
@@ -178,7 +187,7 @@ public class RealTimeTopicSwitcherTest {
     realTimeTopicSwitcher.transmitVersionSwapMessage(mockStore, 2, 3);
     verify(mockWriterFactory, times(2)).createVeniceWriter(vwOptionsArgumentCaptor.capture());
     VeniceWriterOptions capturedVwo = vwOptionsArgumentCaptor.getValue();
-    Assert.assertEquals(capturedVwo.getTopicName(), realTimeTopic);
+    Assert.assertEquals(capturedVwo.getTopicName(), realTimeTopic.getName());
 
     ArgumentCaptor<String> oldVersionCaptor = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> newVersionCaptor = ArgumentCaptor.forClass(String.class);
@@ -192,15 +201,16 @@ public class RealTimeTopicSwitcherTest {
 
   @Test
   public void testEnsurePreconditions() {
-    String srcTopic = "testTopic_rt";
-    String destTopic = "testTopic_v1";
+    PubSubTopic srcTopic = pubSubTopicRepository.getTopic("testTopic_rt");
+    PubSubTopic destTopic = pubSubTopicRepository.getTopic("testTopic_v1");
     Store mockStore = mock(Store.class);
     HybridStoreConfig mockHybridConfig = mock(HybridStoreConfig.class);
 
     doReturn(true).when(mockStore).isHybrid();
     doReturn(mockHybridConfig).when(mockStore).getHybridStoreConfig();
-    Version version = new VersionImpl(Version.parseStoreFromKafkaTopicName(destTopic), 1, "test-id");
-    doReturn(Optional.of(version)).when(mockStore).getVersion(Version.parseVersionFromKafkaTopicName(destTopic));
+    Version version = new VersionImpl(destTopic.getStoreName(), 1, "test-id");
+    doReturn(Optional.of(version)).when(mockStore)
+        .getVersion(Version.parseVersionFromKafkaTopicName(destTopic.getName()));
     doReturn(3600L).when(mockHybridConfig).getRewindTimeInSeconds();
     doReturn(REWIND_FROM_EOP).when(mockHybridConfig).getBufferReplayPolicy();
     doReturn(false).when(mockTopicManager).containsTopicAndAllPartitionsAreOnline(srcTopic);

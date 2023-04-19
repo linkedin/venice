@@ -28,6 +28,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.stats.HelixMessageChannelStats;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.MockTestStateModelFactory;
@@ -79,6 +80,8 @@ class AbstractTestVeniceHelixAdmin {
   HelixMessageChannelStats helixMessageChannelStats;
   VeniceControllerMultiClusterConfig multiClusterConfig;
 
+  final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+
   public void setupCluster() throws Exception {
     setupCluster(true, new MetricsRepository());
   }
@@ -103,8 +106,11 @@ class AbstractTestVeniceHelixAdmin {
     helixMessageChannelStats = new HelixMessageChannelStats(new MetricsRepository(), clusterName);
     controllerConfig = new VeniceControllerConfig(controllerProps);
     multiClusterConfig = TestUtils.getMultiClusterConfigFromOneCluster(controllerConfig);
-    veniceAdmin =
-        new VeniceHelixAdmin(multiClusterConfig, metricsRepository, D2TestUtils.getAndStartD2Client(zkAddress));
+    veniceAdmin = new VeniceHelixAdmin(
+        multiClusterConfig,
+        metricsRepository,
+        D2TestUtils.getAndStartD2Client(zkAddress),
+        pubSubTopicRepository);
     veniceAdmin.initStorageCluster(clusterName);
     startParticipant();
     waitUntilIsLeader(veniceAdmin, clusterName, LEADER_CHANGE_TIMEOUT_MS);

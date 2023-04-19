@@ -1,11 +1,17 @@
 package com.linkedin.venice.kafka.consumer;
 
-import static org.mockito.Mockito.*;
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
@@ -16,7 +22,6 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.Properties;
 import java.util.Set;
-import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.TopicPartition;
@@ -26,9 +31,9 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
-public class ApacheKafkaPubSubConsumerTest {
-  private ApacheKafkaConsumer apacheKafkaConsumerWithOffsetTrackingDisabled;
-  private ApacheKafkaConsumer apacheKafkaConsumerWithOffsetTrackingEnabled;
+public class ApacheKafkaPubSubConsumerAdapterTest {
+  private ApacheKafkaConsumerAdapter apacheKafkaConsumerWithOffsetTrackingDisabled;
+  private ApacheKafkaConsumerAdapter apacheKafkaConsumerWithOffsetTrackingEnabled;
 
   private KafkaConsumer<byte[], byte[]> delegateKafkaConsumer;
   private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
@@ -39,15 +44,15 @@ public class ApacheKafkaPubSubConsumerTest {
     Properties properties = new Properties();
     properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
     properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class);
-    properties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, "broker address");
+    properties.setProperty(KAFKA_BOOTSTRAP_SERVERS, "broker address");
     KafkaPubSubMessageDeserializer kafkaPubSubMessageDeserializer = mock(KafkaPubSubMessageDeserializer.class);
-    apacheKafkaConsumerWithOffsetTrackingDisabled = new ApacheKafkaConsumer(
+    apacheKafkaConsumerWithOffsetTrackingDisabled = new ApacheKafkaConsumerAdapter(
         delegateKafkaConsumer,
         new VeniceProperties(properties),
         false,
         kafkaPubSubMessageDeserializer);
 
-    apacheKafkaConsumerWithOffsetTrackingEnabled = new ApacheKafkaConsumer(
+    apacheKafkaConsumerWithOffsetTrackingEnabled = new ApacheKafkaConsumerAdapter(
         delegateKafkaConsumer,
         new VeniceProperties(properties),
         true,
@@ -56,7 +61,7 @@ public class ApacheKafkaPubSubConsumerTest {
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testApacheKafkaConsumer(boolean enabledOffsetCollection) {
-    ApacheKafkaConsumer consumer = enabledOffsetCollection
+    ApacheKafkaConsumerAdapter consumer = enabledOffsetCollection
         ? apacheKafkaConsumerWithOffsetTrackingEnabled
         : apacheKafkaConsumerWithOffsetTrackingDisabled;
     PubSubTopic testTopic = pubSubTopicRepository.getTopic("test_topic_v1");

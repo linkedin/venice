@@ -1,4 +1,4 @@
-package com.linkedin.venice.kafka.consumer;
+package com.linkedin.venice.pubsub.adapter.kafka;
 
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -23,8 +23,8 @@ import org.apache.logging.log4j.Logger;
 /**
  * This class tracks consumed topic partitions' offsets
  */
-class TopicPartitionsOffsetsTracker {
-  enum ResultType {
+public class TopicPartitionsOffsetsTracker {
+  public enum ResultType {
     VALID_OFFSET_LAG, NO_OFFSET_LAG, INVALID_OFFSET_LAG
   }
 
@@ -39,15 +39,15 @@ class TopicPartitionsOffsetsTracker {
   private final Duration offsetsUpdateInterval;
   private final StatsAccumulator statsAccumulator;
 
-  TopicPartitionsOffsetsTracker() {
+  public TopicPartitionsOffsetsTracker() {
     this(DEFAULT_OFFSETS_UPDATE_INTERVAL);
   }
 
-  TopicPartitionsOffsetsTracker(Duration offsetsUpdateInterval) {
+  public TopicPartitionsOffsetsTracker(Duration offsetsUpdateInterval) {
     this(offsetsUpdateInterval, DEFAULT_MIN_LOG_INTERVAL);
   }
 
-  TopicPartitionsOffsetsTracker(@Nonnull Duration offsetsUpdateInterval, Duration minLogInterval) {
+  public TopicPartitionsOffsetsTracker(@Nonnull Duration offsetsUpdateInterval, Duration minLogInterval) {
     Validate.notNull(offsetsUpdateInterval);
     this.offsetsUpdateInterval = offsetsUpdateInterval;
     this.lastMetricsCollectedTime = null;
@@ -65,7 +65,9 @@ class TopicPartitionsOffsetsTracker {
    *
    * @param records consumed records
    */
-  void updateEndAndCurrentOffsets(ConsumerRecords<byte[], byte[]> records, Map<MetricName, ? extends Metric> metrics) {
+  public void updateEndAndCurrentOffsets(
+      ConsumerRecords<byte[], byte[]> records,
+      Map<MetricName, ? extends Metric> metrics) {
     if (lastMetricsCollectedTime != null && LatencyUtils
         .getElapsedTimeInMs(lastMetricsCollectedTime.toEpochMilli()) < offsetsUpdateInterval.toMillis()) {
       return; // Not yet
@@ -115,7 +117,7 @@ class TopicPartitionsOffsetsTracker {
    *
    * @param topicPartition
    */
-  void removeTrackedOffsets(TopicPartition topicPartition) {
+  public void removeTrackedOffsets(TopicPartition topicPartition) {
     topicPartitionCurrentOffset.remove(topicPartition);
     topicPartitionEndOffset.remove(topicPartition);
   }
@@ -123,7 +125,7 @@ class TopicPartitionsOffsetsTracker {
   /**
    * Clear all tracked offsets state
    */
-  void clearAllOffsetState() {
+  public void clearAllOffsetState() {
     topicPartitionCurrentOffset.clear();
     topicPartitionEndOffset.clear();
   }
@@ -134,7 +136,7 @@ class TopicPartitionsOffsetsTracker {
    * @param partition
    * @return end offset of a topic partition if there is any.
    */
-  long getEndOffset(String topic, int partition) {
+  public long getEndOffset(String topic, int partition) {
     Double endOffset = topicPartitionEndOffset.get(new TopicPartition(topic, partition));
     return endOffset == null ? -1 : endOffset.longValue();
   }
@@ -145,7 +147,7 @@ class TopicPartitionsOffsetsTracker {
    * @param partition
    * @return end offset of a topic partition if there is any.
    */
-  long getOffsetLag(String topic, int partition) {
+  public long getOffsetLag(String topic, int partition) {
     TopicPartition topicPartition = new TopicPartition(topic, partition);
     final Double endOffset = topicPartitionEndOffset.get(topicPartition);
     if (endOffset == null) {
@@ -170,7 +172,7 @@ class TopicPartitionsOffsetsTracker {
   /**
    * Package private for testing purpose
    */
-  Map<ResultType, Integer> getResultsStats() {
+  public Map<ResultType, Integer> getResultsStats() {
     return statsAccumulator.getResultsStats();
   }
 

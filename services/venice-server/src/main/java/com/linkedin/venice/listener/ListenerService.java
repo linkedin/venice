@@ -48,6 +48,8 @@ public class ListenerService extends AbstractVeniceService {
   private final ThreadPoolExecutor executor;
   private final ThreadPoolExecutor computeExecutor;
 
+  private ThreadPoolExecutor sslHandshakeExecutor;
+
   // TODO: move netty config to a config file
   private static int nettyBacklogSize = 1000;
 
@@ -81,6 +83,14 @@ public class ListenerService extends AbstractVeniceService {
         serverConfig.getComputeQueueCapacity());
     new ThreadPoolStats(metricsRepository, computeExecutor, "storage_compute_thread_pool");
 
+    if (sslFactory.isPresent() && serverConfig.getSslHandshakeThreadPoolSize() > 0) {
+      this.sslHandshakeExecutor = createThreadPool(
+          serverConfig.getSslHandshakeThreadPoolSize(),
+          "SSLHandShakeThread",
+          serverConfig.getSslHandshakeQueueCapacity());
+      new ThreadPoolStats(metricsRepository, this.sslHandshakeExecutor, "ssl_handshake_thread_pool");
+    }
+
     StorageReadRequestsHandler requestHandler = createRequestHandler(
         executor,
         computeExecutor,
@@ -100,6 +110,7 @@ public class ListenerService extends AbstractVeniceService {
         customizedViewRepository,
         metricsRepository,
         sslFactory,
+        sslHandshakeExecutor,
         serverConfig,
         routerAccessController,
         storeAccessController,

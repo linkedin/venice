@@ -18,6 +18,8 @@ import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.Collections;
@@ -32,6 +34,8 @@ import org.testng.annotations.Test;
 
 
 public class TestVeniceHelixAdminWithoutCluster {
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
+
   @Test
   public void canMergeNewHybridConfigValuesToOldStore() {
     String storeName = Utils.getUniqueString("storeName");
@@ -123,9 +127,10 @@ public class TestVeniceHelixAdminWithoutCluster {
   public void testCheckResourceCleanupBeforeStoreCreationWhenSomeVersionTopicStillExists() {
     String clusterName = "cluster1";
     String storeName = Utils.getUniqueString("test_store_recreation");
-    Set<String> topics = new HashSet<>();
-    topics.add(Version.composeKafkaTopic(storeName, 1));
-    topics.add("unknown_store_v1");
+    Set<PubSubTopic> topics = new HashSet<>();
+
+    topics.add(pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 1)));
+    topics.add(pubSubTopicRepository.getTopic("unknown_store_v1"));
     testCheckResourceCleanupBeforeStoreCreationWithParams(
         clusterName,
         storeName,
@@ -140,9 +145,9 @@ public class TestVeniceHelixAdminWithoutCluster {
   public void testCheckResourceCleanupBeforeStoreCreationWhenRTTopicStillExists() {
     String clusterName = "cluster1";
     String storeName = Utils.getUniqueString("test_store_recreation");
-    Set<String> topics = new HashSet<>();
-    topics.add(Version.composeRealTimeTopic(storeName));
-    topics.add("unknown_store_v1");
+    Set<PubSubTopic> topics = new HashSet<>();
+    topics.add(pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName)));
+    topics.add(pubSubTopicRepository.getTopic("unknown_store_v1"));
     testCheckResourceCleanupBeforeStoreCreationWithParams(
         clusterName,
         storeName,
@@ -157,9 +162,11 @@ public class TestVeniceHelixAdminWithoutCluster {
   public void testCheckResourceCleanupBeforeStoreCreationWhenSomeSystemStoreTopicStillExists() {
     String clusterName = "cluster1";
     String storeName = Utils.getUniqueString("test_store_recreation");
-    Set<String> topics = new HashSet<>();
-    topics.add(Version.composeRealTimeTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName)));
-    topics.add("unknown_store_v1");
+    Set<PubSubTopic> topics = new HashSet<>();
+    topics.add(
+        pubSubTopicRepository
+            .getTopic(Version.composeRealTimeTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName))));
+    topics.add(pubSubTopicRepository.getTopic("unknown_store_v1"));
     testCheckResourceCleanupBeforeStoreCreationWithParams(
         clusterName,
         storeName,
@@ -209,7 +216,7 @@ public class TestVeniceHelixAdminWithoutCluster {
       String storeName,
       Optional<StoreConfig> storeConfig,
       Optional<Store> store,
-      Set<String> topics,
+      Set<PubSubTopic> topics,
       List<String> helixResources,
       Consumer<VeniceHelixAdmin> testExecution) {
     VeniceHelixAdmin admin = mock(VeniceHelixAdmin.class);
