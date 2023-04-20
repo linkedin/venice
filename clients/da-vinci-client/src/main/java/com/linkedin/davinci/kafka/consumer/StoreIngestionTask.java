@@ -2451,6 +2451,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             partitionConsumptionState,
             leaderProducedRecordContext,
             currentTimeMs);
+        if (isHybridMode() && partitionConsumptionState.hasLagCaughtUp()) {
+          versionedIngestionStats.recordNearlineLocalBrokerToReadyToServeLatency(
+              storeName,
+              versionNumber,
+              LatencyUtils.getLatencyInMS(beforeProcessingRecordTimestampNs),
+              currentTimeMs);
+        }
       }
       versionedIngestionStats.recordConsumedRecordEndToEndProcessingLatency(
           storeName,
