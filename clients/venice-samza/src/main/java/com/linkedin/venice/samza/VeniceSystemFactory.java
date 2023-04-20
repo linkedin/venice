@@ -19,6 +19,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SslUtils;
+import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Serializable;
 import java.util.Arrays;
@@ -86,6 +87,8 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
    */
   public static final String VENICE_CHILD_D2_ZK_HOSTS = "venice.child.d2.zk.hosts";
 
+  public static final String VENICE_CONTROLLER_DISCOVERY_URL = "venice.controller.discovery.url";
+
   /**
    * D2 ZK hosts for Venice Parent Cluster.
    */
@@ -144,6 +147,16 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
   @Override
   public SystemConsumer getConsumer(String systemName, Config config, MetricsRegistry registry) {
     throw new SamzaException("There is no Venice Consumer");
+  }
+
+  public Optional<String> getControllerDiscoveryUrl(Config config) {
+    String discoveryUrl = config.get(VENICE_CONTROLLER_DISCOVERY_URL);
+
+    if (isEmpty(discoveryUrl)) {
+      return Optional.empty();
+    }
+
+    return Optional.of(discoveryUrl);
   }
 
   /**
@@ -298,6 +311,7 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
     }
 
     String samzaJobId = config.get(DEPLOYMENT_ID);
+    Optional<String> discoveryUrl = getControllerDiscoveryUrl(config);
     String prefix = SYSTEMS_PREFIX + systemName + DOT;
     Version.PushType venicePushType;
     try {
@@ -306,6 +320,54 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
       throw new SamzaException(
           "Cannot parse venice push type: " + pushTypeString + ".  Must be one of: "
               + Arrays.stream(Version.PushType.values()).map(Enum::toString).collect(Collectors.joining(",")));
+    }
+
+    String runningFabric = config.get(SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION);
+    LOGGER.info("Running Fabric from config: {}", runningFabric);
+    if (runningFabric == null) {
+      runningFabric = System.getProperty(SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION);
+      LOGGER.info("Running Fabric from environment: {}", runningFabric);
+      if (runningFabric != null) {
+        runningFabric = runningFabric.toLowerCase();
+      }
+    }
+    if (runningFabric != null && runningFabric.contains("corp")) {
+      runningFabric = NATIVE_REPLICATION_DEFAULT_SOURCE_FABRIC;
+    }
+    LOGGER.info("Final Running Fabric: {}", runningFabric);
+
+    boolean verifyLatestProtocolPresent = config.getBoolean(VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION, true);
+    // Build Ssl Factory if Controller SSL is enabled
+    Optional<SSLFactory> sslFactory = Optional.empty();
+    boolean controllerSslEnabled = config.getBoolean(SSL_ENABLED, true);
+    if (controllerSslEnabled) {
+      LOGGER.info("Controller ACL is enabled.");
+      String sslFactoryClassName = config.get(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
+      Properties sslProps = getSslProperties(config);
+      sslFactory = Optional.of(SslUtils.getSSLFactory(sslProps, sslFactoryClassName));
+    }
+
+    Optional<String> partitioners = Optional.ofNullable(config.get(VENICE_PARTITIONERS));
+
+    if (discoveryUrl.isPresent()) {
+
+      LOGGER.info("Configs for {} producer: ", systemName);
+      LOGGER.info("{}{}: {}", prefix, VENICE_STORE, storeName);
+      LOGGER.info("{}{}: {}", prefix, VENICE_AGGREGATE, veniceAggregate);
+      LOGGER.info("{}{}: {}", prefix, VENICE_PUSH_TYPE, venicePushType);
+      LOGGER.info("{}: {}", VENICE_CONTROLLER_DISCOVERY_URL, discoveryUrl.get());
+
+      return new VeniceSystemProducer(
+          discoveryUrl,
+          storeName,
+          venicePushType,
+          samzaJobId,
+          runningFabric,
+          verifyLatestProtocolPresent,
+          this,
+          sslFactory,
+          partitioners,
+          SystemTime.INSTANCE);
     }
 
     String veniceParentZKHosts = config.get(VENICE_PARENT_D2_ZK_HOSTS);
@@ -321,6 +383,7 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
         throw new SamzaException(
             "Either " + VENICE_CHILD_D2_ZK_HOSTS + " or " + LEGACY_CHILD_D2_ZK_HOSTS_PROPERTY + " should be defined");
       }
+
       localVeniceZKHosts = legacyLocalVeniceZKHosts;
     }
 
@@ -338,18 +401,6 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
       parentControllerD2Service = LEGACY_VENICE_PARENT_CONTROLLER_D2_SERVICE;
     }
 
-    // Build Ssl Factory if Controller SSL is enabled
-    Optional<SSLFactory> sslFactory = Optional.empty();
-    boolean controllerSslEnabled = config.getBoolean(SSL_ENABLED, true);
-    if (controllerSslEnabled) {
-      LOGGER.info("Controller ACL is enabled.");
-      String sslFactoryClassName = config.get(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
-      Properties sslProps = getSslProperties(config);
-      sslFactory = Optional.of(SslUtils.getSSLFactory(sslProps, sslFactoryClassName));
-    }
-
-    Optional<String> partitioners = Optional.ofNullable(config.get(VENICE_PARTITIONERS));
-
     LOGGER.info("Configs for {} producer: ", systemName);
     LOGGER.info("{}{}: {}", prefix, VENICE_STORE, storeName);
     LOGGER.info("{}{}: {}", prefix, VENICE_AGGREGATE, veniceAggregate);
@@ -358,20 +409,6 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
     LOGGER.info("{}: {}", VENICE_CHILD_D2_ZK_HOSTS, localVeniceZKHosts);
     LOGGER.info("{}: {}", VENICE_PARENT_CONTROLLER_D2_SERVICE, parentControllerD2Service);
     LOGGER.info("{}: {}", VENICE_CHILD_CONTROLLER_D2_SERVICE, localControllerD2Service);
-
-    String runningFabric = config.get(SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION);
-    LOGGER.info("Running Fabric from config: {}", runningFabric);
-    if (runningFabric == null) {
-      runningFabric = System.getProperty(SYSTEM_PROPERTY_FOR_APP_RUNNING_REGION);
-      LOGGER.info("Running Fabric from environment: {}", runningFabric);
-      if (runningFabric != null) {
-        runningFabric = runningFabric.toLowerCase();
-      }
-    }
-    if (runningFabric != null && runningFabric.contains("corp")) {
-      runningFabric = NATIVE_REPLICATION_DEFAULT_SOURCE_FABRIC;
-    }
-    LOGGER.info("Final Running Fabric: {}", runningFabric);
 
     String primaryControllerColoD2ZKHost;
     String primaryControllerD2Service;
@@ -387,7 +424,6 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
         primaryControllerColoD2ZKHost,
         primaryControllerD2Service);
 
-    boolean verifyLatestProtocolPresent = config.getBoolean(VALIDATE_VENICE_INTERNAL_SCHEMA_VERSION, true);
     SystemProducer systemProducer = createSystemProducer(
         localVeniceZKHosts,
         primaryControllerColoD2ZKHost,
@@ -398,7 +434,7 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
         runningFabric,
         verifyLatestProtocolPresent,
         config, // Although we don't use this config in our default implementation, overridden implementations might
-                // need this
+        // need this
         sslFactory,
         partitioners);
     this.systemProducerStatues.computeIfAbsent(systemProducer, k -> Pair.create(true, false));
