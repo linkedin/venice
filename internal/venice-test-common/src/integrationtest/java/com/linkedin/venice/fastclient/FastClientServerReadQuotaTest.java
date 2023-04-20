@@ -43,7 +43,7 @@ public class FastClientServerReadQuotaTest extends AbstractClientEndToEndSetup {
       Assert.assertNotNull(serverMetric.getMetric(readQuotaRejectedString));
       Assert.assertNotNull(serverMetric.getMetric(readQuotaUsageRatio));
     });
-    Assert.assertTrue(serverMetric.getMetric(readQuotaRequestedString).value() > 0);
+    Assert.assertTrue(serverMetric.getMetric(readQuotaRequestedString).value() >= 500);
     Assert.assertEquals(serverMetric.getMetric(readQuotaRejectedString).value(), 0d);
     Assert.assertTrue(serverMetric.getMetric(readQuotaUsageRatio).value() > 0);
 
