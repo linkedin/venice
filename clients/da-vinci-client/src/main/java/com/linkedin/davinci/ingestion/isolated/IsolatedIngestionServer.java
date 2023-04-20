@@ -415,8 +415,6 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
             report.message);
       }
 
-      setResourceToBeUnsubscribed(topicName, partitionId);
-
       Future<?> executionFuture = submitStopConsumptionAndCloseStorageTask(report);
       statusReportingExecutor.execute(() -> {
         try {
@@ -427,7 +425,9 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
               partitionId,
               topicName);
         }
-        reportClient.reportIngestionStatus(report);
+        if (reportClient.reportIngestionStatus(report)) {
+          setResourceToBeUnsubscribed(topicName, partitionId);
+        }
       });
     } else {
       statusReportingExecutor.execute(() -> reportClient.reportIngestionStatus(report));
