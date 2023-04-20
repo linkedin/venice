@@ -71,6 +71,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private final ClusterStats clusterStats;
   private final FastClientStats clientStats;
   private volatile boolean isServiceDiscovered;
+  private volatile boolean isReady;
 
   public RequestBasedMetadata(ClientConfig clientConfig, D2TransportClient transportClient) {
     super(clientConfig);
@@ -270,6 +271,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
           routingStrategy = new HelixScatterGatherRoutingStrategy(helixGroupInfo);
         }
       }
+      isReady = true;
     } catch (Exception e) {
       // Catch all errors so periodic refresh doesn't break on transient errors.
       LOGGER.error("Encountered unexpected error during periodic refresh", e);
@@ -366,6 +368,11 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       latestValueSchemaId = schemas.get().getMaxValueSchemaId();
     }
     return latestValueSchemaId;
+  }
+
+  @Override
+  public boolean isReady() {
+    return isReady;
   }
 
   /**

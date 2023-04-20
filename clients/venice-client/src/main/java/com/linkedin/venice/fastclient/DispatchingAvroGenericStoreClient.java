@@ -127,6 +127,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
 
   @Override
   protected CompletableFuture<V> get(GetRequestContext requestContext, K key) throws VeniceClientException {
+    verifyMetadataInitialized();
     requestContext.instanceHealthMonitor = metadata.getInstanceHealthMonitor();
     if (requestContext.requestUri == null) {
       /**
@@ -283,6 +284,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   @Override
   protected CompletableFuture<Map<K, V>> batchGet(BatchGetRequestContext<K, V> requestContext, Set<K> keys)
       throws VeniceClientException {
+    verifyMetadataInitialized();
     CompletableFuture<Map<K, V>> responseFuture = new CompletableFuture<>();
     CompletableFuture<VeniceResponseMap<K, V>> streamingResponseFuture = streamingBatchGet(requestContext, keys);
     streamingResponseFuture.whenComplete((response, throwable) -> {
@@ -308,6 +310,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
   protected CompletableFuture<VeniceResponseMap<K, V>> streamingBatchGet(
       BatchGetRequestContext<K, V> requestContext,
       Set<K> keys) throws VeniceClientException {
+    verifyMetadataInitialized();
     // keys that do not exist in the storage nodes
     Queue<K> nonExistingKeys = new ConcurrentLinkedQueue<>();
     VeniceConcurrentHashMap<K, V> valueMap = new VeniceConcurrentHashMap<>();
@@ -353,7 +356,7 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
       BatchGetRequestContext<K, V> requestContext,
       Set<K> keys,
       StreamingCallback<K, V> callback) {
-
+    verifyMetadataInitialized();
     /* This implementation is intentionally designed to separate the request phase (scatter) and the response handling
      * phase (gather). These internal methods help to keep this separation and leaves room for future fine-grained control. */
     streamingBatchGetInternal(requestContext, keys, (transportClientResponse, throwable) -> {
@@ -595,11 +598,19 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
     return System.nanoTime() - startTimeStamp;
   }
 
+  private void verifyMetadataInitialized() throws VeniceClientException {
+    if (!metadata.isReady()) {
+      throw new VeniceClientException(metadata.getStoreName() + " metadata is not ready, attempting to re-initialize");
+    }
+    if (keySerializer == null) {
+      keySerializer = getKeySerializer(getKeySchema());
+    }
+  }
+
   @Override
   public void start() throws VeniceClientException {
     metadata.start();
-    // Initialize key serializer after metadata.start().
-    this.keySerializer = getKeySerializer(getKeySchema());
+
     this.multiGetSerializer =
         FastSerializerDeserializerFactory.getAvroGenericSerializer(MultiGetRouterRequestKeyV1.SCHEMA$);
   }
