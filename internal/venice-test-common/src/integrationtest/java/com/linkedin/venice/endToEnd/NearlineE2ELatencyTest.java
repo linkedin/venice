@@ -24,6 +24,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.AbstractMap;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -157,7 +158,7 @@ public class NearlineE2ELatencyTest {
     SystemProducer dc0Producer =
         getSamzaProducer(childDatacenters.get(0).getClusters().get(CLUSTER_NAME), storeName, Version.PushType.STREAM);
 
-    for (int i = 0; i < 10; i++) {
+    for (int i = 10; i < 20; i++) {
       sendStreamingRecord(dc0Producer, storeName, i);
     }
 
@@ -172,7 +173,7 @@ public class NearlineE2ELatencyTest {
     // Check if nearline timestamp is preserved
 
     // In each server inspect the state of tasks
-
+    // DebugUtils.logStats();
   }
 
   @AfterClass(alwaysRun = true)
@@ -182,7 +183,7 @@ public class NearlineE2ELatencyTest {
 
   private void logMultiCluster() {
     LOGGER.info(
-        "Multiregion cluster created : parentRegion: {}, childRegions: {},"
+        "--> Multiregion cluster created : parentRegion: {}, childRegions: {},"
             + " clusters: {}, zk: {}, broker: {}, controllers: {}",
         multiRegionMultiClusterWrapper.getParentRegionName(),
         multiRegionMultiClusterWrapper.getChildRegionNames(),
@@ -194,9 +195,11 @@ public class NearlineE2ELatencyTest {
             .map(VeniceControllerWrapper::getControllerUrl)
             .collect(Collectors.joining(",")));
 
+    Map<String, String> debugNames = new HashMap<>();
+
     for (VeniceMultiClusterWrapper childDatacenter: childDatacenters) {
       LOGGER.info(
-          "ChildDataCenter : name: {}, controllers: {} clusters: {}, zk: {}, broker: {}",
+          "--> ChildDataCenter : name: {}, controllers: {} clusters: {}, zk: {}, broker: {}",
           childDatacenter.getRegionName(),
           childDatacenter.getControllers()
               .entrySet()
@@ -210,23 +213,32 @@ public class NearlineE2ELatencyTest {
       for (String cluster: clusters.keySet()) {
         VeniceClusterWrapper clusterWrapper = clusters.get(cluster);
         LOGGER.info(
-            "Cluster -> cluster: {}, region: {} , controller: {}, zk: {}, broker: {} ",
+            "--> Cluster -> cluster: {}, region: {} , controller: {}, zk: {}, broker: {} ",
             cluster,
             clusterWrapper.getRegionName(),
             clusterWrapper.getAllControllersURLs(),
             clusterWrapper.getZk(),
             clusterWrapper.getKafka());
+        LOGGER.info("--> broker: {}", clusterWrapper.getKafka());
+        debugNames.put(clusterWrapper.getKafka().getSSLAddress(), childDatacenter.getRegionName() + "-ks");
+        debugNames.put(clusterWrapper.getKafka().getAddress(), childDatacenter.getRegionName() + "-kh");
         for (VeniceControllerWrapper controller: clusterWrapper.getVeniceControllers()) {
-          LOGGER.info("Controller: {}", controller.getControllerUrl());
+          LOGGER.info("--> Controller: {}", controller.getControllerUrl());
+          debugNames.put(controller.getControllerUrl(), childDatacenter.getRegionName() + "-c");
         }
-        for (VeniceServerWrapper server: clusterWrapper.getVeniceServers()) {
-          LOGGER.info("Server: {}", server.getAddressForLogging());
+        for (int i = 0; i < clusterWrapper.getVeniceServers().size(); i++) {
+          VeniceServerWrapper server = clusterWrapper.getVeniceServers().get(i);
+          LOGGER.info("--> Server: {}", server.getAddressForLogging());
+          debugNames.put(server.getAddressForLogging(), childDatacenter.getRegionName() + "-s" + i);
         }
         for (VeniceRouterWrapper router: clusterWrapper.getVeniceRouters()) {
-          LOGGER.info("Router: {}", router.getAddressForLogging());
+          LOGGER.info("--> Router: {}", router.getAddressForLogging());
+          debugNames.put(router.getAddressForLogging(), childDatacenter.getRegionName() + "-r");
         }
       }
     }
+
+    // DebugUtils.debugNames(debugNames);
   }
 
 }
