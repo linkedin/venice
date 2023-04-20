@@ -492,6 +492,11 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
       }
 
       @Override
+      public void flush(long timeoutInMs) {
+        // no-op
+      }
+
+      @Override
       public void close() {
         // no-op
       }
@@ -561,6 +566,11 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
 
       @Override
       public void flush() {
+        // no-op
+      }
+
+      @Override
+      public void flush(long timeoutInMs) {
         // no-op
       }
 
