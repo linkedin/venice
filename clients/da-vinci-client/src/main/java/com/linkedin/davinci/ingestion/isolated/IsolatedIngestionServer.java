@@ -415,20 +415,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
             report.message);
       }
 
-      Future<?> executionFuture = submitStopConsumptionAndCloseStorageTask(report);
-      statusReportingExecutor.execute(() -> {
-        try {
-          executionFuture.get();
-        } catch (ExecutionException | InterruptedException e) {
-          LOGGER.warn(
-              "Encounter exception when trying to stop consumption and close storage for {} of topic: {}",
-              partitionId,
-              topicName);
-        }
-        if (reportClient.reportIngestionStatus(report)) {
-          setResourceToBeUnsubscribed(topicName, partitionId);
-        }
-      });
+      stopConsumptionAndReport(report);
     } else {
       statusReportingExecutor.execute(() -> reportClient.reportIngestionStatus(report));
     }
@@ -452,14 +439,14 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
 
   // Set the topic partition state to be unsubscribed.
   public void setResourceToBeUnsubscribed(String topicName, int partition) {
-    topicPartitionSubscriptionMap.computeIfAbsent(topicName, s -> new VeniceConcurrentHashMap<>())
+    getTopicPartitionSubscriptionMap().computeIfAbsent(topicName, s -> new VeniceConcurrentHashMap<>())
         .computeIfAbsent(partition, p -> new AtomicBoolean(false))
         .set(false);
   }
 
   // Set the topic partition state to be subscribed.
   public void setResourceToBeSubscribed(String topicName, int partition) {
-    topicPartitionSubscriptionMap.computeIfAbsent(topicName, s -> new VeniceConcurrentHashMap<>())
+    getTopicPartitionSubscriptionMap().computeIfAbsent(topicName, s -> new VeniceConcurrentHashMap<>())
         .computeIfAbsent(partition, p -> new AtomicBoolean(true))
         .set(true);
   }
@@ -475,7 +462,7 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
   }
 
   public void maybeSubscribeNewResource(String topicName, int partition) {
-    topicPartitionSubscriptionMap.computeIfAbsent(topicName, s -> new VeniceConcurrentHashMap<>())
+    getTopicPartitionSubscriptionMap().computeIfAbsent(topicName, s -> new VeniceConcurrentHashMap<>())
         .computeIfAbsent(partition, p -> new AtomicBoolean(true));
   }
 
@@ -483,11 +470,42 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     return topicPartitionSubscriptionMap;
   }
 
+  ExecutorService getStatusReportingExecutor() {
+    return statusReportingExecutor;
+  }
+
+  IsolatedIngestionRequestClient getReportClient() {
+    return reportClient;
+  }
+
+  void stopConsumptionAndReport(IngestionTaskReport report) {
+    String topicName = report.topicName.toString();
+    int partitionId = report.partitionId;
+    Future<?> executionFuture = submitStopConsumptionAndCloseStorageTask(report);
+    getStatusReportingExecutor().execute(() -> {
+      LOGGER.info("DEBUGGING 1");
+      try {
+        executionFuture.get();
+      } catch (ExecutionException | InterruptedException e) {
+        LOGGER.warn(
+            "Encounter exception when trying to stop consumption and close storage for {} of topic: {}",
+            partitionId,
+            topicName);
+      }
+      LOGGER.info("DEBUGGING 2");
+      if (getReportClient().reportIngestionStatus(report)) {
+        LOGGER.info("DEBUGGING 3");
+        setResourceToBeUnsubscribed(topicName, partitionId);
+        LOGGER.info("DEBUGGING 4");
+      }
+    });
+  }
+
   /**
    * Handle the logic of COMPLETED/ERROR here since we need to stop related ingestion task and close RocksDB partition.
    * Since the logic takes time to wait for completion, we need to execute it in async fashion to prevent blocking other operations.
    */
-  private Future<?> submitStopConsumptionAndCloseStorageTask(IngestionTaskReport report) {
+  Future<?> submitStopConsumptionAndCloseStorageTask(IngestionTaskReport report) {
     String topicName = report.topicName.toString();
     int partitionId = report.partitionId;
     return longRunningTaskExecutor.submit(() -> {
