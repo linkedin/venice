@@ -71,7 +71,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
   private final ClusterStats clusterStats;
   private final FastClientStats clientStats;
   private volatile boolean isServiceDiscovered;
-  private boolean isReady = false;
+  private volatile boolean isReady;
 
   public RequestBasedMetadata(ClientConfig clientConfig, D2TransportClient transportClient) {
     super(clientConfig);
