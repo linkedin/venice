@@ -110,7 +110,7 @@ public class VeniceChangelogConsumerImplTest {
     ThinClientMetaStoreBasedRepository mockRepository = mock(ThinClientMetaStoreBasedRepository.class);
     veniceChangelogConsumer.setReadOnlySchemaRepository(mockRepository);
     veniceChangelogConsumer.subscribe(new HashSet<>(Arrays.asList(0))).get();
-    verify(mockKafkaConsumer).assign(Arrays.asList(new TopicPartition(oldChangeCaptureTopic, 0)));
+    verify(mockKafkaConsumer).assign(Arrays.asList(new TopicPartition(oldVersionTopic, 0)));
 
     List<PubSubMessage<String, ChangeEvent<Utf8>, Long>> pubSubMessages =
         (List<PubSubMessage<String, ChangeEvent<Utf8>, Long>>) veniceChangelogConsumer.poll(100);
@@ -171,9 +171,9 @@ public class VeniceChangelogConsumerImplTest {
     prepareChangeCaptureRecordsToBePolled(0L, 10L, kafkaConsumer, oldChangeCaptureTopic, 0, oldVersionTopic, "");
     pubSubMessages = (List<PubSubMessage<String, ChangeEvent<Utf8>, Long>>) veniceChangelogConsumer.poll(100);
     Assert.assertFalse(pubSubMessages.isEmpty());
-    Assert.assertEquals(pubSubMessages.size(), 5);
-    for (int i = 5; i < 10; i++) {
-      PubSubMessage<String, ChangeEvent<Utf8>, Long> pubSubMessage = pubSubMessages.get(i - 5);
+    Assert.assertEquals(pubSubMessages.size(), 10);
+    for (int i = 0; i < 10; i++) {
+      PubSubMessage<String, ChangeEvent<Utf8>, Long> pubSubMessage = pubSubMessages.get(i);
       Utf8 pubSubMessageValue = pubSubMessage.getValue().getCurrentValue();
       Assert.assertEquals(pubSubMessageValue.toString(), "newValue" + i);
     }

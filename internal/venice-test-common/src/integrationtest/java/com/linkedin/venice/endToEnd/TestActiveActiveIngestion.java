@@ -108,7 +108,7 @@ import org.testng.annotations.Test;
 
 public class TestActiveActiveIngestion {
   private static final int TEST_TIMEOUT = 360 * Time.MS_PER_SECOND;
-  public static final int LARGE_RECORD_SIZE = 1024 * 3;
+  public static final int LARGE_RECORD_SIZE = 1024;
   private static final String[] CLUSTER_NAMES =
       IntStream.range(0, 1).mapToObj(i -> "venice-cluster" + i).toArray(String[]::new);
 
@@ -259,7 +259,15 @@ public class TestActiveActiveIngestion {
     Map<String, ChangeEvent<Utf8>> polledChangeEvents = new HashMap<>();
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
       pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
-      Assert.assertTrue(polledChangeEvents.size() == 21);
+      Assert.assertEquals(polledChangeEvents.size(), 100);
+    });
+
+    polledChangeEvents.clear();
+
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      // 21 events for nearline events
+      Assert.assertEquals(polledChangeEvents.size(), 21);
       for (int i = 0; i < 10; i++) {
         String key = Integer.toString(i);
         ChangeEvent<Utf8> changeEvent = polledChangeEvents.get(key);
@@ -350,6 +358,9 @@ public class TestActiveActiveIngestion {
     // As records keys from VPJ start from 1, real-time produced records' key starts from 0, the message with key as 0
     // is new message.
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+      // poll enough to get through the empty push and the topic jump to RT.
+      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       String deleteWithRmdKey = Integer.toString(deleteWithRmdKeyIndex);
       String persistWithRmdKey = Integer.toString(deleteWithRmdKeyIndex + 1);
@@ -383,18 +394,54 @@ public class TestActiveActiveIngestion {
     polledChangeEvents.clear();
     AtomicInteger totalPolledAfterImageMessages = new AtomicInteger();
     Map<String, Utf8> polledAfterImageEvents = new HashMap<>();
-    TestUtils.waitForNonDeterministicAssertion(20, TimeUnit.SECONDS, true, () -> {
+    Map<String, Utf8> totalPolledAfterImageEvents = new HashMap<>();
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
+      pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       pollChangeEventsFromChangeCaptureConsumer(polledChangeEvents, veniceChangelogConsumer);
       // Filter previous 21 messages.
       Assert.assertEquals(polledChangeEvents.size(), 20);
+
+      // Consume from beginning of the version that was current at time of consumer subscription (version 2) since
+      // version 2
+      // was a repush of 101 records (0-100) with streaming updates on 1-10 and deletes on 10-19, then we expect
+      // a grand total of 91 records in this version. We'll consume up to EOP
+
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+        totalPolledAfterImageMessages
+            .addAndGet(pollAfterImageEventsFromChangeCaptureConsumer(polledAfterImageEvents, veniceAfterImageConsumer));
+        Assert.assertEquals(polledAfterImageEvents.size(), 91);
+        totalPolledAfterImageEvents.putAll(polledAfterImageEvents);
+        polledAfterImageEvents.clear();
+      });
+
+      // With this next poll, we'll begin consuming the change capture topic on Version 2 up to the Version swap.
+      // There will be one streaming record applied before the version swap message is consumed
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+        totalPolledAfterImageMessages
+            .addAndGet(pollAfterImageEventsFromChangeCaptureConsumer(polledAfterImageEvents, veniceAfterImageConsumer));
+        Assert.assertEquals(polledAfterImageEvents.size(), 1);
+        totalPolledAfterImageEvents.putAll(polledAfterImageEvents);
+        polledAfterImageEvents.clear();
+      });
+
+      // Consume version 3 change capture. This will consist of 20 events that were applied onto version 3
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+        totalPolledAfterImageMessages
+            .addAndGet(pollAfterImageEventsFromChangeCaptureConsumer(polledAfterImageEvents, veniceAfterImageConsumer));
+        Assert.assertEquals(polledAfterImageEvents.size(), 20);
+        totalPolledAfterImageEvents.putAll(polledAfterImageEvents);
+        polledAfterImageEvents.clear();
+      });
+
+      // Make sure nothing else comes out
       totalPolledAfterImageMessages
           .addAndGet(pollAfterImageEventsFromChangeCaptureConsumer(polledAfterImageEvents, veniceAfterImageConsumer));
-      // keys (0-100), 1000, and 1001, the total would be 103.
-      Assert.assertEquals(polledAfterImageEvents.size(), 103);
+      Assert.assertEquals(polledAfterImageEvents.size(), 0);
       // After image consumer consumed 3 different topics: v2, v2_cc and v3_cc.
       // The total messages: 102 (v2 repush from v1, key: 0-100, 1000) + 1 (v2_cc, key: 1001) + 42 (v3_cc, key: 0-39,
       // 1000, 1001) - 22 (filtered from v3_cc, key: 0-19, 1000 and 1001 as they were read already.)
-      Assert.assertEquals(totalPolledAfterImageMessages.get(), 123);
+      Assert.assertEquals(totalPolledAfterImageMessages.get(), 112);
       for (int i = 20; i < 40; i++) {
         String key = Integer.toString(i);
         ChangeEvent<Utf8> changeEvent = polledChangeEvents.get(key);
@@ -408,7 +455,7 @@ public class TestActiveActiveIngestion {
       }
       for (int i = 0; i < 100; i++) {
         String key = Integer.toString(i);
-        Utf8 afterImageValue = polledAfterImageEvents.get(key);
+        Utf8 afterImageValue = totalPolledAfterImageEvents.get(key);
         if (i < 10 || (i >= 20 && i < 30)) {
           Assert.assertNotNull(afterImageValue);
           Assert.assertEquals(afterImageValue.toString(), "stream_" + i);
@@ -487,7 +534,7 @@ public class TestActiveActiveIngestion {
   private void pollChangeEventsFromChangeCaptureConsumer(
       Map<String, ChangeEvent<Utf8>> polledChangeEvents,
       VeniceChangelogConsumer veniceChangelogConsumer) {
-    Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, Long>> pubSubMessages = veniceChangelogConsumer.poll(100);
+    Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, Long>> pubSubMessages = veniceChangelogConsumer.poll(10000);
     for (PubSubMessage<Utf8, ChangeEvent<Utf8>, Long> pubSubMessage: pubSubMessages) {
       ChangeEvent<Utf8> changeEvent = pubSubMessage.getValue();
       String key = pubSubMessage.getKey().toString();
@@ -499,7 +546,7 @@ public class TestActiveActiveIngestion {
       Map<String, Utf8> polledChangeEvents,
       VeniceChangelogConsumer veniceChangelogConsumer) {
     int polledMessagesNum = 0;
-    Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, Long>> pubSubMessages = veniceChangelogConsumer.poll(100);
+    Collection<PubSubMessage<Utf8, ChangeEvent<Utf8>, Long>> pubSubMessages = veniceChangelogConsumer.poll(1000);
     for (PubSubMessage<Utf8, ChangeEvent<Utf8>, Long> pubSubMessage: pubSubMessages) {
       Utf8 afterImageEvent = pubSubMessage.getValue().getCurrentValue();
       String key = pubSubMessage.getKey().toString();
