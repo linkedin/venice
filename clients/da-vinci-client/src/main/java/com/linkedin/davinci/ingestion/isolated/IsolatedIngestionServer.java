@@ -483,7 +483,6 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
     int partitionId = report.partitionId;
     Future<?> executionFuture = submitStopConsumptionAndCloseStorageTask(report);
     getStatusReportingExecutor().execute(() -> {
-      LOGGER.info("DEBUGGING 1");
       try {
         executionFuture.get();
       } catch (ExecutionException | InterruptedException e) {
@@ -492,11 +491,8 @@ public class IsolatedIngestionServer extends AbstractVeniceService {
             partitionId,
             topicName);
       }
-      LOGGER.info("DEBUGGING 2");
       if (getReportClient().reportIngestionStatus(report)) {
-        LOGGER.info("DEBUGGING 3");
         setResourceToBeUnsubscribed(topicName, partitionId);
-        LOGGER.info("DEBUGGING 4");
       }
     });
   }
