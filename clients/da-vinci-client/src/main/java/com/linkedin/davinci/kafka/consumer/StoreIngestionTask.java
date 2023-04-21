@@ -2159,6 +2159,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         StoreVersionState newStoreVersionState = new StoreVersionState();
         newStoreVersionState.sorted = startOfPush.sorted;
         newStoreVersionState.chunked = startOfPush.chunked;
+        LOGGER.info("DEBUGGING CHUNKING CONFIG SOP->SVS: " + newStoreVersionState.chunked + " " + versionNumber);
         newStoreVersionState.compressionStrategy = startOfPush.compressionStrategy;
         newStoreVersionState.compressionDictionary = startOfPush.compressionDictionary;
         newStoreVersionState.batchConflictResolutionPolicy = startOfPush.timestampPolicy;

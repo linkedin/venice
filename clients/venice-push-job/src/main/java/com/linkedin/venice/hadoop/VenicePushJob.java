@@ -236,6 +236,8 @@ public class VenicePushJob implements AutoCloseable {
   // compression.
   public static final String KAFKA_INPUT_COMPRESSION_BUILD_NEW_DICT_ENABLED =
       "kafka.input.compression.build.new.dict.enabled";
+
+  public static final String KAFKA_INPUT_SOURCE_TOPIC_CHUNKING_ENABLED = "kafka.input.source.topic.chunking.enabled";
   /**
    * Optional.
    * If we want to use a different rewind time from the default store-level rewind time config for Kafka Input re-push,
@@ -1716,6 +1718,7 @@ public class VenicePushJob implements AutoCloseable {
           LOGGER.info("Rebuild a new Zstd dictionary from the input topic: {}", pushJobSetting.kafkaInputTopic);
           paramBuilder.setKafkaInputBroker(pushJobSetting.kafkaInputBrokerUrl)
               .setTopicName(pushJobSetting.kafkaInputTopic)
+              .setSourceVersionChunkingEnabled(storeSetting.sourceKafkaInputVersionInfo.isChunkingEnabled())
               .setSourceVersionCompressionStrategy(storeSetting.sourceKafkaInputVersionInfo.getCompressionStrategy());
           KafkaInputDictTrainer dictTrainer = new KafkaInputDictTrainer(paramBuilder.build());
           compressionDictionary = ByteBuffer.wrap(dictTrainer.trainDict());
@@ -1761,6 +1764,7 @@ public class VenicePushJob implements AutoCloseable {
               sourceKafkaUrl);
           paramBuilder.setKafkaInputBroker(repushInfoResponse.getRepushInfo().getKafkaBrokerUrl())
               .setTopicName(sourceTopicName)
+              .setSourceVersionChunkingEnabled(repushInfoResponse.getRepushInfo().getVersion().isChunkingEnabled())
               .setSourceVersionCompressionStrategy(
                   repushInfoResponse.getRepushInfo().getVersion().getCompressionStrategy());
           KafkaInputDictTrainer dictTrainer = new KafkaInputDictTrainer(paramBuilder.build());
@@ -2298,8 +2302,9 @@ public class VenicePushJob implements AutoCloseable {
       storeSetting.sourceKafkaInputVersionInfo = sourceVersion.get();
       // Skip quota check
       storeSetting.storeStorageQuota = Store.UNLIMITED_STORAGE_QUOTA;
-
-      storeSetting.isChunkingEnabled = sourceVersion.get().isChunkingEnabled();
+      if (sourceVersion.get().isChunkingEnabled() && !storeResponse.getStore().isChunkingEnabled()) {
+        throw new VeniceException("Source version has chunking enabled while chunking is disabled in store config.");
+      }
     }
     return storeSetting;
   }
