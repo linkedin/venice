@@ -1,6 +1,7 @@
 package com.linkedin.venice.pubsub.adapter.kafka.producer;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.pubsub.adapter.kafka.ApacheKafkaUtils;
@@ -20,6 +21,7 @@ import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.Metric;
 import org.apache.kafka.common.MetricName;
+import org.apache.kafka.common.errors.TimeoutException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -109,8 +111,13 @@ public class ApacheKafkaProducerAdapter implements PubSubProducerAdapter {
 
   @Override
   public void flush(long timeoutInMs) {
-    if (producer != null) {
-      producer.flush(timeoutInMs, TimeUnit.MILLISECONDS);
+    try {
+      if (producer != null) {
+        producer.flush(timeoutInMs, TimeUnit.MILLISECONDS);
+      }
+    } catch (TimeoutException e) {
+      // Wrap the TimeoutException as Venice timeout exception
+      throw new VeniceOperationAgainstKafkaTimedOut("Timeout while flushing Kafka producer", e);
     }
   }
 
@@ -119,14 +126,19 @@ public class ApacheKafkaProducerAdapter implements PubSubProducerAdapter {
     if (producer == null) {
       return; // producer has been closed already
     }
-    if (doFlush) {
-      // Flush out all the messages in the producer buffer
-      producer.flush(closeTimeOutMs, TimeUnit.MILLISECONDS);
-      LOGGER.info("Flushed all the messages in producer before closing");
+    try {
+      if (doFlush) {
+        // Flush out all the messages in the producer buffer
+        producer.flush(closeTimeOutMs, TimeUnit.MILLISECONDS);
+        LOGGER.info("Flushed all the messages in producer before closing");
+      }
+      producer.close(Duration.ofMillis(closeTimeOutMs));
+      // Recycle the internal buffer allocated by KafkaProducer ASAP.
+      producer = null;
+    } catch (TimeoutException e) {
+      // Wrap the TimeoutException as Venice timeout exception
+      throw new VeniceOperationAgainstKafkaTimedOut("Timeout while closing Kafka producer", e);
     }
-    producer.close(Duration.ofMillis(closeTimeOutMs));
-    // Recycle the internal buffer allocated by KafkaProducer ASAP.
-    producer = null;
   }
 
   @Override
