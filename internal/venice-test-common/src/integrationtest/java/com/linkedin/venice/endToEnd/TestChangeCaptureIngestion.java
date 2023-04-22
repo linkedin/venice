@@ -9,7 +9,6 @@ import static com.linkedin.venice.samza.VeniceSystemFactory.*;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.*;
 import static com.linkedin.venice.utils.TestWriteUtils.*;
 
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.davinci.consumer.ChangeEvent;
 import com.linkedin.davinci.consumer.ChangelogClientConfig;
 import com.linkedin.davinci.consumer.VeniceChangelogConsumer;
@@ -29,7 +28,6 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
-import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.VeniceUserStoreType;
@@ -39,7 +37,6 @@ import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
-import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.MockCircularTime;
@@ -89,13 +86,9 @@ public class TestChangeCaptureIngestion {
   private VeniceTwoLayerMultiRegionMultiClusterWrapper multiRegionMultiClusterWrapper;
   private String clusterName;
   private VeniceClusterWrapper clusterWrapper;
-  private VeniceServerWrapper serverWrapper;
-  private AvroSerializer serializer;
 
   @BeforeClass
   public void setUp() {
-    String stringSchemaStr = "\"string\"";
-    serializer = new AvroSerializer(AvroCompatibilityHelper.parse(stringSchemaStr));
     Properties serverProperties = new Properties();
     // Set a low chunking threshold so that chunking actually happens in the server
     serverProperties
