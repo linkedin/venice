@@ -94,6 +94,7 @@ public abstract class AbstractClientEndToEndSetup {
    * is faster than the counter decrement following a successful get, so some get() calls will
    * not be sent due to blocked instances. Setting this variable to be 100 from the tests for now.
    * This needs to be discussed further.
+   */
   public final Object[] BATCH_GET_KEY_SIZE = { 2, recordCnt };
 
   @DataProvider(name = "FastClient-Four-Boolean-And-A-Number")
