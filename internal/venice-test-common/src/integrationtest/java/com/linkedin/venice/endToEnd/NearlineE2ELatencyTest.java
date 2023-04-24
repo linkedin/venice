@@ -19,9 +19,11 @@ import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiRegionMultiClusterWrapper;
 import com.linkedin.venice.meta.RegionPushDetails;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.AbstractMap;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -145,6 +147,7 @@ public class NearlineE2ELatencyTest {
         Assert.assertFalse(detail.getPartitionDetails().isEmpty());
         Assert.assertFalse(detail.getPartitionDetails().get(0).getReplicaDetails().isEmpty());
       }
+
     }
 
     try {
@@ -153,10 +156,9 @@ public class NearlineE2ELatencyTest {
       throw new RuntimeException(e);
     }
 
-    childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
+    VeniceClusterWrapper cluster0 = childDatacenters.get(0).getClusters().get(CLUSTER_NAME);
 
-    SystemProducer dc0Producer =
-        getSamzaProducer(childDatacenters.get(0).getClusters().get(CLUSTER_NAME), storeName, Version.PushType.STREAM);
+    SystemProducer dc0Producer = getSamzaProducer(cluster0, storeName, Version.PushType.STREAM);
 
     for (int i = 10; i < 20; i++) {
       sendStreamingRecord(dc0Producer, storeName, i);
@@ -167,6 +169,15 @@ public class NearlineE2ELatencyTest {
     } catch (InterruptedException e) {
       throw new RuntimeException(e);
     }
+
+    cluster0.getVeniceServers().forEach(s -> {
+      VeniceServerWrapper veniceServerWrapper = (VeniceServerWrapper) s;
+      VeniceServer veniceServer = veniceServerWrapper.getVeniceServer();
+      MetricsRepository metricsRepository = veniceServer.getMetricsRepository();
+      metricsRepository.metrics().forEach((k, v) -> {
+        LOGGER.info("Server: {} , Metric: {}, Value: {}", veniceServerWrapper.getAddressForLogging(), k, v);
+      });
+    });
 
     // Primary servers receive from broker
     // Secondary servers receive from primary servers
