@@ -78,6 +78,7 @@ dependencies {
   }
   testImplementation project(':clients:venice-admin-tool')
   testImplementation project(':internal:alpini:common:alpini-common-base')
+  testImplementation project(":internal:venice-common").sourceSets.test.output
 
   jmhAnnotationProcessor libraries.jmhGenerator
   jmhImplementation libraries.jmhCore

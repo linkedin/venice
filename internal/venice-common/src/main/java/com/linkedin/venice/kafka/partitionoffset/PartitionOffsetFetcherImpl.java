@@ -48,14 +48,9 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
 
   private final Logger logger;
   private final Lock adminConsumerLock;
-  private final Lock kafkaAdminWrapperLock;
   private final Lazy<PubSubAdminAdapter> kafkaAdminWrapper;
   private final Lazy<PubSubConsumerAdapter> pubSubConsumer;
   private final Duration kafkaOperationTimeout;
-
-  private enum TopicEndType {
-    BEGINNING, END
-  }
 
   public PartitionOffsetFetcherImpl(
       @Nonnull Lazy<PubSubAdminAdapter> kafkaAdminWrapper,
@@ -66,7 +61,6 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
     this.kafkaAdminWrapper = kafkaAdminWrapper;
     this.pubSubConsumer = pubSubConsumer;
     this.adminConsumerLock = new ReentrantLock();
-    this.kafkaAdminWrapperLock = new ReentrantLock();
     this.kafkaOperationTimeout = Duration.ofMillis(kafkaOperationTimeoutMs);
     this.logger =
         LogManager.getLogger(PartitionOffsetFetcherImpl.class.getSimpleName() + " [" + kafkaBootstrapServers + "]");
@@ -325,7 +319,7 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
           "Last record count must be greater than or equal to 1. Got: " + lastRecordsCount);
     }
 
-    try (AutoCloseableLock ignore = AutoCloseableLock.of(kafkaAdminWrapperLock)) {
+    try (AutoCloseableLock ignore = AutoCloseableLock.of(adminConsumerLock)) {
       if (!kafkaAdminWrapper.get()
           .containsTopicWithExpectationAndRetry(pubSubTopicPartition.getPubSubTopic(), 3, true)) {
         throw new TopicDoesNotExistException("Topic " + pubSubTopicPartition.getPubSubTopic() + " does not exist!");
@@ -554,8 +548,8 @@ public class PartitionOffsetFetcherImpl implements PartitionOffsetFetcher {
     if (kafkaAdminWrapper.isPresent()) {
       IOUtils.closeQuietly(kafkaAdminWrapper.get(), logger::error);
     }
-    if (kafkaAdminWrapper.isPresent()) {
-      IOUtils.closeQuietly(kafkaAdminWrapper.get(), logger::error);
+    if (pubSubConsumer.isPresent()) {
+      IOUtils.closeQuietly(pubSubConsumer.get(), logger::error);
     }
   }
 }
