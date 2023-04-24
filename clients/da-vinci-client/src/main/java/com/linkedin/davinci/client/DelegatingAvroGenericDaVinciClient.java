@@ -7,14 +7,12 @@ import com.linkedin.venice.client.store.ComputeGenericRecord;
 import com.linkedin.venice.client.store.ComputeRequestBuilder;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
-import java.io.ByteArrayOutputStream;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.avro.io.BinaryEncoder;
 
 
 /**
@@ -109,25 +107,6 @@ public class DelegatingAvroGenericDaVinciClient<K, V>
       StreamingCallback<K, ComputeGenericRecord> callback,
       long preRequestTimeInNS) throws VeniceClientException {
     delegate.compute(computeRequestWrapper, keys, resultSchema, callback, preRequestTimeInNS);
-  }
-
-  @Override
-  public void compute(
-      ComputeRequestWrapper computeRequestWrapper,
-      Set<K> keys,
-      Schema resultSchema,
-      StreamingCallback<K, ComputeGenericRecord> callback,
-      long preRequestTimeInNS,
-      BinaryEncoder reusedEncoder,
-      ByteArrayOutputStream reusedOutputStream) throws VeniceClientException {
-    delegate.compute(
-        computeRequestWrapper,
-        keys,
-        resultSchema,
-        callback,
-        preRequestTimeInNS,
-        reusedEncoder,
-        reusedOutputStream);
   }
 
   @Override

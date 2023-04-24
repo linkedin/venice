@@ -81,7 +81,7 @@ public interface AvroGenericStoreClient<K, V> extends Closeable {
    * @param callback
    * @throws VeniceClientException
    */
-  default void streamingBatchGet(final Set<K> keys, StreamingCallback<K, V> callback) throws VeniceClientException {
+  default void streamingBatchGet(Set<K> keys, StreamingCallback<K, V> callback) throws VeniceClientException {
     throw new VeniceClientException(
         "Please use CachingVeniceStoreClientFactory#getAndStartAvroGenericStoreClient() "
             + "or VeniceGenericStoreClientFactory#createInstance() to generate a Venice avro generic client");

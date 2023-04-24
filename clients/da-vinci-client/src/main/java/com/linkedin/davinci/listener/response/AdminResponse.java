@@ -7,7 +7,6 @@ import com.linkedin.venice.admin.protocol.response.ServerConfigSnapshot;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
-import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import io.netty.buffer.ByteBuf;
@@ -96,8 +95,7 @@ public class AdminResponse {
   public byte[] serializedResponse() {
     RecordSerializer<AdminResponseRecord> serializer =
         SerializerDeserializerFactory.getAvroGenericSerializer(AdminResponseRecord.SCHEMA$);
-
-    return serializer.serialize(this.responseRecord, AvroSerializer.REUSE.get());
+    return serializer.serialize(this.responseRecord);
   }
 
   public int getResponseSchemaIdHeader() {

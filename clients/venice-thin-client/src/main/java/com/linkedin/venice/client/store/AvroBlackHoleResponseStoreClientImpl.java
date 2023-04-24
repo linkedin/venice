@@ -8,16 +8,15 @@ import com.linkedin.venice.client.store.streaming.TrackingStreamingCallback;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientStreamingCallback;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
-import java.io.ByteArrayOutputStream;
+import com.linkedin.venice.serializer.RecordSerializer;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Iterator;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.apache.avro.Schema;
-import org.apache.avro.io.BinaryEncoder;
 
 
 /**
@@ -38,78 +37,33 @@ public class AvroBlackHoleResponseStoreClientImpl<K, V> extends AvroGenericStore
       Schema resultSchema,
       StreamingCallback<K, ComputeGenericRecord> callback,
       long preRequestTimeInNS) throws VeniceClientException {
-    compute(computeRequestWrapper, keys, resultSchema, callback, preRequestTimeInNS, null, null);
-  }
-
-  /**
-   * Avoid copying data and creating new objects as much as possible in this function; when constructing
-   * an ArrayList with a set, a deep copy would happen, so the original "keys" set will be used directly
-   * for serialization.
-   */
-  @Override
-  public void compute(
-      ComputeRequestWrapper computeRequestWrapper,
-      Set<K> keys,
-      Schema resultSchema,
-      StreamingCallback<K, ComputeGenericRecord> callback,
-      long preRequestTimeInNS,
-      BinaryEncoder reusedEncoder,
-      ByteArrayOutputStream reusedOutputStream) throws VeniceClientException {
     if (handleCallbackForEmptyKeySet(keys, callback)) {
       // empty key set
       return;
     }
 
-    boolean reuseObjects = (reusedEncoder != null && reusedOutputStream != null);
-    byte[] serializedComputeRequest = reuseObjects
-        ? computeRequestWrapper.serialize(reusedEncoder, reusedOutputStream)
-        : computeRequestWrapper.serialize();
-    byte[] serializedFullComputeRequest = reuseObjects
-        ? serializeComputeRequest(keys, serializedComputeRequest, reusedEncoder, reusedOutputStream)
-        : serializeComputeRequest(keys, serializedComputeRequest);
+    byte[] serializedComputeRequest = serializeComputeRequest(computeRequestWrapper, keys);
 
-    final Map<String, String> headerMap =
-        (computeRequestWrapper.getComputeRequestVersion() == COMPUTE_REQUEST_VERSION_V2)
-            ? COMPUTE_HEADER_MAP_FOR_STREAMING_V2
-            : COMPUTE_HEADER_MAP_FOR_STREAMING_V3;
+    Map<String, String> headerMap = (computeRequestWrapper.getComputeRequestVersion() == COMPUTE_REQUEST_VERSION_V2)
+        ? COMPUTE_HEADER_MAP_FOR_STREAMING_V2
+        : COMPUTE_HEADER_MAP_FOR_STREAMING_V3;
 
     getTransportClient().streamPost(
         getComputeRequestPath(),
         headerMap,
-        serializedFullComputeRequest,
+        serializedComputeRequest,
         new BlackHoleStreamingCallback<>(keys.size(), callback),
         keys.size());
   }
 
-  /**
-   *
-   */
-  private byte[] serializeComputeRequest(
-      Set<K> keySet,
-      byte[] serializedComputeRequest,
-      BinaryEncoder reusedEncoder,
-      ByteArrayOutputStream reusedOutputStream) {
-    List<ByteBuffer> serializedKeyList = new ArrayList<>();
-    Iterator<K> iter = keySet.iterator();
-    while (iter.hasNext()) {
-      serializedKeyList.add(
-          ByteBuffer.wrap(getKeySerializerWithoutRetry().serialize(iter.next(), reusedEncoder, reusedOutputStream)));
+  private byte[] serializeComputeRequest(ComputeRequestWrapper computeRequestWrapper, Collection<K> keys) {
+    RecordSerializer keySerializer = getKeySerializerWithoutRetry();
+    List<ByteBuffer> serializedKeyList = new ArrayList<>(keys.size());
+    ByteBuffer serializedComputeRequest = ByteBuffer.wrap(computeRequestWrapper.serialize());
+    for (K key: keys) {
+      serializedKeyList.add(ByteBuffer.wrap(keySerializer.serialize(key)));
     }
-    return computeRequestClientKeySerializer.serializeObjects(
-        serializedKeyList,
-        ByteBuffer.wrap(serializedComputeRequest),
-        reusedEncoder,
-        reusedOutputStream);
-  }
-
-  private byte[] serializeComputeRequest(Set<K> keySet, byte[] serializedComputeRequest) {
-    List<ByteBuffer> serializedKeyList = new ArrayList<>();
-    Iterator<K> iter = keySet.iterator();
-    while (iter.hasNext()) {
-      serializedKeyList.add(ByteBuffer.wrap(getKeySerializerWithoutRetry().serialize(iter.next())));
-    }
-    return computeRequestClientKeySerializer
-        .serializeObjects(serializedKeyList, ByteBuffer.wrap(serializedComputeRequest));
+    return computeRequestClientKeySerializer.serializeObjects(serializedKeyList, serializedComputeRequest);
   }
 
   /**
