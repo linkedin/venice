@@ -103,7 +103,7 @@ public class TopicManagerTest {
 
   private InMemoryKafkaBroker inMemoryKafkaBroker;
 
-  private void createTopicManager() {
+  protected void createTopicManager() {
     inMemoryKafkaBroker = new InMemoryKafkaBroker("local");
     PubSubAdminAdapterFactory pubSubAdminAdapterFactory = mock(ApacheKafkaAdminAdapterFactory.class);
     MockInMemoryAdminAdapter mockInMemoryAdminAdapter = new MockInMemoryAdminAdapter(inMemoryKafkaBroker);
@@ -127,7 +127,11 @@ public class TopicManagerTest {
         .getTopicManager();
   }
 
-  private PubSubProducerAdapter createPubSubProducerAdapter() {
+  protected PubSubProducerAdapter createPubSubProducerAdapter() {
+    Properties props = new Properties();
+    props.put(ApacheKafkaProducerConfig.KAFKA_KEY_SERIALIZER, KafkaKeySerializer.class.getName());
+    props.put(ApacheKafkaProducerConfig.KAFKA_VALUE_SERIALIZER, KafkaValueSerializer.class.getName());
+    props.put(ApacheKafkaProducerConfig.KAFKA_BOOTSTRAP_SERVERS, "localhost:1234");
     return new MockInMemoryProducerAdapter(inMemoryKafkaBroker);
   }
 
@@ -145,12 +149,8 @@ public class TopicManagerTest {
    * @throws ExecutionException
    * @throws InterruptedException
    */
-  private void produceToKafka(PubSubTopic topic, boolean isDataRecord, long producerTimestamp)
+  protected void produceToKafka(PubSubTopic topic, boolean isDataRecord, long producerTimestamp)
       throws ExecutionException, InterruptedException {
-    Properties props = new Properties();
-    props.put(ApacheKafkaProducerConfig.KAFKA_KEY_SERIALIZER, KafkaKeySerializer.class.getName());
-    props.put(ApacheKafkaProducerConfig.KAFKA_VALUE_SERIALIZER, KafkaValueSerializer.class.getName());
-    props.put(ApacheKafkaProducerConfig.KAFKA_BOOTSTRAP_SERVERS, "localhost:1234");
     PubSubProducerAdapter producer = createPubSubProducerAdapter();
 
     final byte[] randomBytes = new byte[] { 0, 1 };
@@ -181,7 +181,7 @@ public class TopicManagerTest {
     producer.sendMessage(topic.getName(), 0, recordKey, recordValue, null, mock(PubSubProducerCallback.class)).get();
   }
 
-  private PubSubTopic getTopic() {
+  protected PubSubTopic getTopic() {
     String callingFunction = Thread.currentThread().getStackTrace()[2].getMethodName();
     PubSubTopic topicName = pubSubTopicRepository.getTopic(Utils.getUniqueTopicString(callingFunction));
     int partitions = 1;

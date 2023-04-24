@@ -544,6 +544,8 @@ public class Utils {
     } else if (pubSubTopicType.equals(PubSubTopicType.VIEW_TOPIC)) {
       return getUniqueString(prefix) + Version.VERSION_SEPARATOR + (version)
           + ChangeCaptureView.CHANGE_CAPTURE_TOPIC_SUFFIX;
+    } else if (pubSubTopicType.equals(PubSubTopicType.UNKNOWN_TYPE_TOPIC)) {
+      return getUniqueString(prefix);
     } else {
       throw new VeniceException("Unsupported topic type for: " + pubSubTopicType);
     }
