@@ -13,6 +13,7 @@ import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.VeniceCompressor;
+import com.linkedin.venice.fastclient.meta.RequestBasedMetadata;
 import com.linkedin.venice.fastclient.meta.StoreMetadata;
 import com.linkedin.venice.fastclient.transport.R2TransportClient;
 import com.linkedin.venice.fastclient.transport.TransportClientResponseForRoute;
@@ -270,6 +271,12 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
             return null;
           });
     }
+
+    // On demand refresh on mis-routing
+    if (valueFuture.isCompletedExceptionally() && metadata instanceof RequestBasedMetadata) {
+      ((RequestBasedMetadata) metadata).updateCache(true);
+    }
+
     return valueFuture;
   }
 
@@ -303,6 +310,12 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
         responseFuture.complete(response);
       }
     });
+
+    // On demand refresh metadata on mis-routing
+    if (responseFuture.isCompletedExceptionally() && metadata instanceof RequestBasedMetadata) {
+      ((RequestBasedMetadata) metadata).updateCache(true);
+    }
+
     return responseFuture;
   }
 
@@ -338,6 +351,12 @@ public class DispatchingAvroGenericStoreClient<K, V> extends InternalAvroStoreCl
         }
       }
     });
+
+    // On demand refresh metadata on mis-routing
+    if (streamingResponseFuture.isCompletedExceptionally() && metadata instanceof RequestBasedMetadata) {
+      ((RequestBasedMetadata) metadata).updateCache(true);
+    }
+
     return streamingResponseFuture;
   }
 

@@ -150,9 +150,9 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
    * @param onDemandRefresh
    * @return if the fetched metadata was an updated version
    */
-  private synchronized boolean updateCache(boolean onDemandRefresh) throws InterruptedException {
-    boolean updateComplete = true;
-    boolean newVersion = false;
+  public synchronized boolean updateCache(boolean onDemandRefresh) throws VeniceClientException {
+    boolean isUpdateComplete = true;
+    boolean isNewVersion = false;
     long currentTimeMs = System.currentTimeMillis();
     // call the METADATA endpoint
     try {
@@ -165,7 +165,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       int fetchedVersion = versionMetadata.getCurrentVersion();
 
       if (fetchedVersion != getCurrentStoreVersion()) {
-        newVersion = true;
+        isNewVersion = true;
         // call the DICTIONARY endpoint if needed
         CompletableFuture<TransportClientResponse> dictionaryFetchFuture = null;
         if (!versionZstdDictionaryMap.containsKey(fetchedVersion)
@@ -224,13 +224,13 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
           currentVersion.set(fetchedVersion);
           clusterStats.updateCurrentVersion(getCurrentStoreVersion());
           latestSuperSetValueSchemaId.set(metadataResponse.getLatestSuperSetValueSchemaId());
-        } catch (ExecutionException | TimeoutException e) {
+        } catch (ExecutionException | InterruptedException | TimeoutException e) {
           LOGGER.warn(
               "Dictionary fetch operation could not complete in time for some of the versions. "
                   + "Will be retried on next refresh",
               e);
           clusterStats.recordVersionUpdateFailure();
-          updateComplete = false;
+          isUpdateComplete = false;
         }
 
         // Evict entries from inactive versions
@@ -242,10 +242,10 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
         versionZstdDictionaryMap.entrySet().removeIf(entry -> !activeVersions.contains(entry.getKey()));
       }
 
-      if (updateComplete) {
+      if (isUpdateComplete) {
         clientStats.updateCacheTimestamp(currentTimeMs);
       }
-    } catch (ExecutionException e) {
+    } catch (ExecutionException | InterruptedException e) {
       // perform an on demand refresh if update fails in case of store migration
       // TODO: need a better way to handle store migration
       if (!onDemandRefresh) {
@@ -259,7 +259,7 @@ public class RequestBasedMetadata extends AbstractStoreMetadata {
       }
     }
 
-    return newVersion;
+    return isNewVersion;
   }
 
   private void refresh() {
