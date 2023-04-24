@@ -52,7 +52,6 @@ import com.linkedin.venice.unit.kafka.producer.MockInMemoryProducerAdapter;
 import com.linkedin.venice.utils.AvroRecordUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
-import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -175,7 +174,7 @@ public class TopicManagerTest {
 
   protected PubSubTopic getTopic() {
     String callingFunction = Thread.currentThread().getStackTrace()[2].getMethodName();
-    PubSubTopic topicName = pubSubTopicRepository.getTopic(Utils.getUniqueTopicString(callingFunction));
+    PubSubTopic topicName = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString(callingFunction));
     int partitions = 1;
     int replicas = 1;
     topicManager.createTopic(topicName, partitions, replicas, false);
@@ -358,7 +357,7 @@ public class TopicManagerTest {
 
   @Test
   public void testGetTopicConfig() {
-    PubSubTopic topic = pubSubTopicRepository.getTopic(Utils.getUniqueTopicString("topic"));
+    PubSubTopic topic = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString("topic"));
     topicManager.createTopic(topic, 1, 1, true);
     PubSubTopicConfiguration topicProperties = topicManager.getTopicConfig(topic);
     Assert.assertTrue(topicProperties.retentionInMs().isPresent());
@@ -367,13 +366,13 @@ public class TopicManagerTest {
 
   @Test(expectedExceptions = TopicDoesNotExistException.class)
   public void testGetTopicConfigWithUnknownTopic() {
-    PubSubTopic topic = pubSubTopicRepository.getTopic(Utils.getUniqueTopicString("topic"));
+    PubSubTopic topic = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString("topic"));
     topicManager.getTopicConfig(topic);
   }
 
   @Test
   public void testUpdateTopicRetention() {
-    PubSubTopic topic = pubSubTopicRepository.getTopic(Utils.getUniqueTopicString("topic"));
+    PubSubTopic topic = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString("topic"));
     topicManager.createTopic(topic, 1, 1, true);
     topicManager.updateTopicRetention(topic, 0);
     PubSubTopicConfiguration topicProperties = topicManager.getTopicConfig(topic);
@@ -384,9 +383,9 @@ public class TopicManagerTest {
   @Test
   public void testListAllTopics() {
     Set<PubSubTopic> expectTopics = new HashSet<>(topicManager.listTopics());
-    PubSubTopic topic1 = pubSubTopicRepository.getTopic(Utils.getUniqueTopicString("topic"));
-    PubSubTopic topic2 = pubSubTopicRepository.getTopic(Utils.getUniqueTopicString("topic"));
-    PubSubTopic topic3 = pubSubTopicRepository.getTopic(Utils.getUniqueTopicString("topic"));
+    PubSubTopic topic1 = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString("topic"));
+    PubSubTopic topic2 = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString("topic"));
+    PubSubTopic topic3 = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString("topic"));
     // Create 1 topic, expect 1 topic in total
     topicManager.createTopic(topic1, 1, 1, true);
     expectTopics.add(topic1);
@@ -408,9 +407,9 @@ public class TopicManagerTest {
 
   @Test
   public void testGetAllTopicRetentions() {
-    PubSubTopic topic1 = pubSubTopicRepository.getTopic(Utils.getUniqueTopicString("topic"));
-    PubSubTopic topic2 = pubSubTopicRepository.getTopic(Utils.getUniqueTopicString("topic"));
-    PubSubTopic topic3 = pubSubTopicRepository.getTopic(Utils.getUniqueTopicString("topic"));
+    PubSubTopic topic1 = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString("topic"));
+    PubSubTopic topic2 = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString("topic"));
+    PubSubTopic topic3 = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString("topic"));
     topicManager.createTopic(topic1, 1, 1, true);
     topicManager.createTopic(topic2, 1, 1, false);
     topicManager.createTopic(topic3, 1, 1, false);
@@ -448,7 +447,7 @@ public class TopicManagerTest {
 
   @Test
   public void testUpdateTopicCompactionPolicy() {
-    PubSubTopic topic = pubSubTopicRepository.getTopic(Utils.getUniqueTopicString("topic"));
+    PubSubTopic topic = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString("topic"));
     topicManager.createTopic(topic, 1, 1, true);
     Assert.assertFalse(
         topicManager.isTopicCompactionEnabled(topic),
@@ -467,13 +466,13 @@ public class TopicManagerTest {
 
   @Test
   public void testGetConfigForNonExistingTopic() {
-    PubSubTopic nonExistingTopic = pubSubTopicRepository.getTopic(Utils.getUniqueTopicString("non-existing-topic"));
+    PubSubTopic nonExistingTopic = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString("non-existing-topic"));
     Assert.assertThrows(TopicDoesNotExistException.class, () -> topicManager.getTopicConfig(nonExistingTopic));
   }
 
   @Test
   public void testGetLatestOffsetForNonExistingTopic() {
-    PubSubTopic nonExistingTopic = pubSubTopicRepository.getTopic(Utils.getUniqueTopicString("non-existing-topic"));
+    PubSubTopic nonExistingTopic = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString("non-existing-topic"));
     Assert.assertThrows(
         TopicDoesNotExistException.class,
         () -> topicManager.getPartitionLatestOffsetAndRetry(new PubSubTopicPartitionImpl(nonExistingTopic, 0), 10));
@@ -481,7 +480,7 @@ public class TopicManagerTest {
 
   @Test
   public void testGetLatestProducerTimestampForNonExistingTopic() {
-    PubSubTopic nonExistingTopic = pubSubTopicRepository.getTopic(Utils.getUniqueTopicString("non-existing-topic"));
+    PubSubTopic nonExistingTopic = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString("non-existing-topic"));
     Assert.assertThrows(
         TopicDoesNotExistException.class,
         () -> topicManager.getProducerTimestampOfLastDataRecord(new PubSubTopicPartitionImpl(nonExistingTopic, 0), 10));
@@ -489,7 +488,7 @@ public class TopicManagerTest {
 
   @Test
   public void testGetAndUpdateTopicRetentionForNonExistingTopic() {
-    PubSubTopic nonExistingTopic = pubSubTopicRepository.getTopic(Utils.getUniqueTopicString("non-existing-topic"));
+    PubSubTopic nonExistingTopic = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString("non-existing-topic"));
     Assert.assertThrows(TopicDoesNotExistException.class, () -> topicManager.getTopicRetention(nonExistingTopic));
     Assert.assertThrows(
         TopicDoesNotExistException.class,
@@ -498,7 +497,7 @@ public class TopicManagerTest {
 
   @Test
   public void testUpdateTopicCompactionPolicyForNonExistingTopic() {
-    PubSubTopic nonExistingTopic = pubSubTopicRepository.getTopic(Utils.getUniqueTopicString("non-existing-topic"));
+    PubSubTopic nonExistingTopic = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString("non-existing-topic"));
     Assert.assertThrows(
         TopicDoesNotExistException.class,
         () -> topicManager.updateTopicCompactionPolicy(nonExistingTopic, true));
@@ -506,7 +505,7 @@ public class TopicManagerTest {
 
   @Test
   public void testTimeoutOnGettingMaxOffset() throws IOException {
-    PubSubTopic topic = pubSubTopicRepository.getTopic(Utils.getUniqueTopicString("topic"));
+    PubSubTopic topic = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString("topic"));
     PubSubTopicPartition pubSubTopicPartition = new PubSubTopicPartitionImpl(topic, 0);
     // Mock an admin client to pass topic existence check
     PubSubAdminAdapter mockPubSubAdminAdapter = mock(PubSubAdminAdapter.class);
@@ -541,7 +540,7 @@ public class TopicManagerTest {
   @Test
   public void testContainsTopicWithExpectationAndRetry() throws InterruptedException {
     // Case 1: topic does not exist
-    PubSubTopic nonExistingTopic = pubSubTopicRepository.getTopic(Utils.getUniqueTopicString("topic"));
+    PubSubTopic nonExistingTopic = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString("topic"));
     Assert.assertFalse(topicManager.containsTopicWithExpectationAndRetry(nonExistingTopic, 3, true));
 
     // Case 2: topic exists
@@ -552,7 +551,7 @@ public class TopicManagerTest {
     // Case 3: topic does not exist initially but topic is created later.
     // This test case is to simulate the situation where the contains topic check fails on initial attempt(s) but
     // succeeds eventually.
-    PubSubTopic initiallyNotExistTopic = pubSubTopicRepository.getTopic(Utils.getUniqueTopicString("topic"));
+    PubSubTopic initiallyNotExistTopic = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString("topic"));
 
     final long delayedTopicCreationInSeconds = 1;
     CountDownLatch delayedTopicCreationStartedSignal = new CountDownLatch(1);
@@ -633,7 +632,7 @@ public class TopicManagerTest {
 
   @Test
   public void testContainsTopicAndAllPartitionsAreOnline() {
-    PubSubTopic topic = pubSubTopicRepository.getTopic(Utils.getUniqueTopicString("a-new-topic"));
+    PubSubTopic topic = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString("a-new-topic"));
     Assert.assertFalse(topicManager.containsTopicAndAllPartitionsAreOnline(topic)); // Topic does not exist yet
 
     topicManager.createTopic(topic, 1, 1, true);
@@ -642,7 +641,7 @@ public class TopicManagerTest {
 
   @Test
   public void testUpdateTopicMinISR() {
-    PubSubTopic topic = pubSubTopicRepository.getTopic(Utils.getUniqueTopicString("topic"));
+    PubSubTopic topic = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString("topic"));
     topicManager.createTopic(topic, 1, 1, true);
     PubSubTopicConfiguration pubSubTopicConfiguration = topicManager.getTopicConfig(topic);
     Assert.assertTrue(pubSubTopicConfiguration.minInSyncReplicas().get() == 1);

@@ -46,7 +46,6 @@ import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestMockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
-import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.pools.LandFillObjectPool;
 import io.tehuti.metrics.MetricsRepository;
@@ -85,7 +84,7 @@ public class KafkaConsumptionTest {
 
   private PubSubTopic getTopic() {
     String callingFunction = Thread.currentThread().getStackTrace()[2].getMethodName();
-    PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Utils.getUniqueTopicString(callingFunction));
+    PubSubTopic versionTopic = pubSubTopicRepository.getTopic(TestUtils.getUniqueTopicString(callingFunction));
     int partitions = 1;
     int replicas = 1;
     topicManager.createTopic(versionTopic, partitions, replicas, false);
