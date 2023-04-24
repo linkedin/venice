@@ -1,6 +1,7 @@
 package com.linkedin.venice.hadoop;
 
 import static com.linkedin.venice.hadoop.VenicePushJob.MAPPER_OUTPUT_DIRECTORY;
+import static com.linkedin.venice.hadoop.VenicePushJob.VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_PARENT_DIR_DEFAULT;
 import static com.linkedin.venice.hadoop.VenicePushJob.VALIDATE_SCHEMA_AND_BUILD_DICT_MAPPER_OUTPUT_DIRECTORY;
 import static com.linkedin.venice.hadoop.VenicePushJob.getValidateSchemaAndBuildDictionaryOutputFileNameNoExtension;
 import static org.apache.hadoop.mapreduce.MRJobConfig.ID;
@@ -78,13 +79,17 @@ public class ValidateSchemaAndBuildDictOutputFormat extends AvroOutputFormat {
   protected static void setValidateSchemaAndBuildDictionaryOutputDirPath(JobConf job) throws IOException {
     // parent directory
     String parentOutputDir = job.get(MAPPER_OUTPUT_DIRECTORY);
-    Path outputPath = new Path(parentOutputDir);
-    FileSystem fs = outputPath.getFileSystem(job);
-    createAndSetDirectoryPermission(fs, outputPath, "777");
+    if (!parentOutputDir.equalsIgnoreCase(VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_PARENT_DIR_DEFAULT)) {
+      // '/tmp' is default parent folder
+      Path outputPath = new Path(parentOutputDir);
+      FileSystem fs = outputPath.getFileSystem(job);
+      createAndSetDirectoryPermission(fs, outputPath, "777");
+    }
 
     // store specific directory under parent directory: already derived in VPJ driver and passed along.
     String fullOutputDir = job.get(VALIDATE_SCHEMA_AND_BUILD_DICT_MAPPER_OUTPUT_DIRECTORY);
-    outputPath = new Path(fullOutputDir);
+    Path outputPath = new Path(fullOutputDir);
+    FileSystem fs = outputPath.getFileSystem(job);
     createAndSetDirectoryPermission(fs, outputPath, "700");
 
     LOGGER.info(

@@ -208,7 +208,7 @@ public class VenicePushJob implements AutoCloseable {
   public static final String MAPPER_OUTPUT_DIRECTORY = "mapper.output.directory";
 
   // static names used to construct the directory and file name
-  protected static final String VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_PARENT_DIR_DEFAULT = "/tmp/venice";
+  protected static final String VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_PARENT_DIR_DEFAULT = "/tmp";
   private static final String VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_FILE_PREFIX = "mapper-output-";
   private static final String VALIDATE_SCHEMA_AND_BUILD_DICTIONARY_MAPPER_OUTPUT_FILE_EXTENSION = ".avro";
 
