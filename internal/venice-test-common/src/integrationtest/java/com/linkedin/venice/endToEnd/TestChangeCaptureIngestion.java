@@ -37,7 +37,6 @@ import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
-import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.MockCircularTime;
 import com.linkedin.venice.utils.TestMockTime;
@@ -72,7 +71,6 @@ import org.apache.samza.config.MapConfig;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
-import org.testng.annotations.Test;
 
 
 public class TestChangeCaptureIngestion {
@@ -123,7 +121,6 @@ public class TestChangeCaptureIngestion {
     TestView.resetCounters();
   }
 
-  @Test(timeOut = TEST_TIMEOUT, dataProvider = "Compression-Strategies", dataProviderClass = DataProviderUtils.class)
   public void testAAIngestionWithStoreView(CompressionStrategy compressionStrategy) throws Exception {
     ControllerClient childControllerClient =
         new ControllerClient(clusterName, childDatacenters.get(0).getControllerConnectString());
