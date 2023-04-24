@@ -19,6 +19,8 @@ import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.system.store.MetaStoreWriter;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -30,6 +32,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import org.apache.kafka.common.PartitionInfo;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -42,6 +45,7 @@ public class TestTopicCleanupService {
   private HelixReadOnlyStoreConfigRepository storeConfigRepository;
   private TopicManager topicManager;
   private TopicCleanupService topicCleanupService;
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @BeforeMethod
   public void setUp() {
@@ -56,7 +60,7 @@ public class TestTopicCleanupService {
     doReturn(0L).when(config).getTopicCleanupSleepIntervalBetweenTopicListFetchMs();
     doReturn(1).when(config).getMinNumberOfUnusedKafkaTopicsToPreserve();
     doReturn(1).when(admin).getMinNumberOfUnusedKafkaTopicsToPreserve();
-    topicCleanupService = new TopicCleanupService(admin, config);
+    topicCleanupService = new TopicCleanupService(admin, config, pubSubTopicRepository);
   }
 
   @AfterMethod
@@ -66,18 +70,17 @@ public class TestTopicCleanupService {
 
   @Test
   public void testGetAllVeniceStoreTopics() {
-    Map<String, Long> storeTopics = new HashMap<>();
-    storeTopics.put("store1_v1", 1000L);
-    storeTopics.put("store1_v2", 5000L);
-    storeTopics.put("store1_v3", Long.MAX_VALUE);
-    storeTopics.put("store1_rt", Long.MAX_VALUE);
-    storeTopics.put("store2_v10", 5000L);
-    storeTopics.put("store2_v11", Long.MAX_VALUE);
-    storeTopics.put("non_venice_topic1", Long.MAX_VALUE);
+    Map<PubSubTopic, Long> storeTopics = new HashMap<>();
+    storeTopics.put(getPubSubTopic("store1_v1", ""), 1000L);
+    storeTopics.put(getPubSubTopic("store1_v2", ""), 5000L);
+    storeTopics.put(getPubSubTopic("store1_v3", ""), Long.MAX_VALUE);
+    storeTopics.put(getPubSubTopic("store1_rt", ""), Long.MAX_VALUE);
+    storeTopics.put(getPubSubTopic("store2_v10", ""), 5000L);
+    storeTopics.put(getPubSubTopic("store2_v11", ""), Long.MAX_VALUE);
 
     doReturn(storeTopics).when(topicManager).getAllTopicRetentions();
 
-    Map<String, Map<String, Long>> filteredStoreTopics =
+    Map<String, Map<PubSubTopic, Long>> filteredStoreTopics =
         TopicCleanupService.getAllVeniceStoreTopicsRetentions(admin.getTopicManager());
     Assert.assertEquals(filteredStoreTopics.size(), 2);
     Assert.assertEquals(filteredStoreTopics.get("store1").size(), 4);
@@ -90,48 +93,60 @@ public class TestTopicCleanupService {
     final long HIGH_RETENTION_POLICY = Long.MAX_VALUE;
     doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(LOW_RETENTION_POLICY);
     doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(HIGH_RETENTION_POLICY);
-    Map<String, Long> topicRetentions1 = new HashMap<>();
-    topicRetentions1.put("store1_v1", LOW_RETENTION_POLICY);
-    topicRetentions1.put("store1_v2", LOW_RETENTION_POLICY);
-    topicRetentions1.put("store1_v3", HIGH_RETENTION_POLICY);
-    topicRetentions1.put("store1_v4", HIGH_RETENTION_POLICY);
+    Map<PubSubTopic, Long> topicRetentions1 = new HashMap<>();
+    topicRetentions1.put(pubSubTopicRepository.getTopic("store1_v1"), LOW_RETENTION_POLICY);
+    topicRetentions1.put(pubSubTopicRepository.getTopic("store1_v2"), LOW_RETENTION_POLICY);
+    topicRetentions1.put(pubSubTopicRepository.getTopic("store1_v3"), HIGH_RETENTION_POLICY);
+    topicRetentions1.put(pubSubTopicRepository.getTopic("store1_v4"), HIGH_RETENTION_POLICY);
     List<String> expectedResult1 = Arrays.asList("store1_v1", "store1_v2");
     List<String> actualResult1 = TopicCleanupService
-        .extractVersionTopicsToCleanup(admin, topicRetentions1, admin.getMinNumberOfUnusedKafkaTopicsToPreserve(), 0);
+        .extractVersionTopicsToCleanup(admin, topicRetentions1, admin.getMinNumberOfUnusedKafkaTopicsToPreserve(), 0)
+        .stream()
+        .map(PubSubTopic::getName)
+        .collect(Collectors.toList());
     actualResult1.sort(String::compareTo);
     Assert.assertEquals(actualResult1, expectedResult1);
 
-    Map<String, Long> topicRetentions2 = new HashMap<>();
-    topicRetentions2.put("store1_v1", HIGH_RETENTION_POLICY);
-    topicRetentions2.put("store1_v2", HIGH_RETENTION_POLICY);
-    topicRetentions2.put("store1_v3", LOW_RETENTION_POLICY);
-    topicRetentions2.put("store1_v4", LOW_RETENTION_POLICY);
+    Map<PubSubTopic, Long> topicRetentions2 = new HashMap<>();
+    topicRetentions2.put(pubSubTopicRepository.getTopic("store1_v1"), HIGH_RETENTION_POLICY);
+    topicRetentions2.put(pubSubTopicRepository.getTopic("store1_v2"), HIGH_RETENTION_POLICY);
+    topicRetentions2.put(pubSubTopicRepository.getTopic("store1_v3"), LOW_RETENTION_POLICY);
+    topicRetentions2.put(pubSubTopicRepository.getTopic("store1_v4"), LOW_RETENTION_POLICY);
     List<String> expectedResult2 = Arrays.asList("store1_v3", "store1_v4");
     List<String> actualResult2 = TopicCleanupService
-        .extractVersionTopicsToCleanup(admin, topicRetentions2, admin.getMinNumberOfUnusedKafkaTopicsToPreserve(), 0);
+        .extractVersionTopicsToCleanup(admin, topicRetentions2, admin.getMinNumberOfUnusedKafkaTopicsToPreserve(), 0)
+        .stream()
+        .map(PubSubTopic::getName)
+        .collect(Collectors.toList());
     actualResult2.sort(String::compareTo);
     Assert.assertEquals(actualResult2, expectedResult2);
 
-    Map<String, Long> topicRetentions3 = new HashMap<>();
-    topicRetentions3.put("store1_v1", LOW_RETENTION_POLICY);
-    topicRetentions3.put("store1_v2", HIGH_RETENTION_POLICY);
-    topicRetentions3.put("store1_v3", LOW_RETENTION_POLICY);
-    topicRetentions3.put("store1_v4", HIGH_RETENTION_POLICY);
+    Map<PubSubTopic, Long> topicRetentions3 = new HashMap<>();
+    topicRetentions3.put(pubSubTopicRepository.getTopic("store1_v1"), LOW_RETENTION_POLICY);
+    topicRetentions3.put(pubSubTopicRepository.getTopic("store1_v2"), HIGH_RETENTION_POLICY);
+    topicRetentions3.put(pubSubTopicRepository.getTopic("store1_v3"), LOW_RETENTION_POLICY);
+    topicRetentions3.put(pubSubTopicRepository.getTopic("store1_v4"), HIGH_RETENTION_POLICY);
     List<String> expectedResult3 = Arrays.asList("store1_v1", "store1_v3");
     List<String> actualResult3 = TopicCleanupService
-        .extractVersionTopicsToCleanup(admin, topicRetentions3, admin.getMinNumberOfUnusedKafkaTopicsToPreserve(), 0);
+        .extractVersionTopicsToCleanup(admin, topicRetentions3, admin.getMinNumberOfUnusedKafkaTopicsToPreserve(), 0)
+        .stream()
+        .map(PubSubTopic::getName)
+        .collect(Collectors.toList());
     actualResult3.sort(String::compareTo);
     Assert.assertEquals(actualResult3, expectedResult3);
 
     // Test minNumberOfUnusedKafkaTopicsToPreserve = 1 for regular store topics and zk shared system store topics
-    Map<String, Long> topicRetentions4 = new HashMap<>();
-    topicRetentions4.put("existent_store_v1", LOW_RETENTION_POLICY);
-    topicRetentions4.put("existent_store_v2", LOW_RETENTION_POLICY);
-    topicRetentions4.put("existent_store_v3", LOW_RETENTION_POLICY);
-    topicRetentions4.put("existent_store_v4", LOW_RETENTION_POLICY);
+    Map<PubSubTopic, Long> topicRetentions4 = new HashMap<>();
+    topicRetentions4.put(pubSubTopicRepository.getTopic("existent_store_v1"), LOW_RETENTION_POLICY);
+    topicRetentions4.put(pubSubTopicRepository.getTopic("existent_store_v2"), LOW_RETENTION_POLICY);
+    topicRetentions4.put(pubSubTopicRepository.getTopic("existent_store_v3"), LOW_RETENTION_POLICY);
+    topicRetentions4.put(pubSubTopicRepository.getTopic("existent_store_v4"), LOW_RETENTION_POLICY);
     List<String> expectedResult4 = Arrays.asList("existent_store_v1", "existent_store_v2", "existent_store_v3");
     List<String> actualResult4 = TopicCleanupService
-        .extractVersionTopicsToCleanup(admin, topicRetentions4, admin.getMinNumberOfUnusedKafkaTopicsToPreserve(), 0);
+        .extractVersionTopicsToCleanup(admin, topicRetentions4, admin.getMinNumberOfUnusedKafkaTopicsToPreserve(), 0)
+        .stream()
+        .map(PubSubTopic::getName)
+        .collect(Collectors.toList());
     actualResult4.sort(String::compareTo);
     Assert.assertEquals(actualResult4, expectedResult4);
   }
@@ -139,13 +154,12 @@ public class TestTopicCleanupService {
   @Test
   public void testCleanupVeniceTopics() throws ExecutionException {
     String storeName1 = Utils.getUniqueString("store1");
-    Map<String, Long> storeTopics = new HashMap<>();
-    storeTopics.put(storeName1 + "_v1", 1000L);
-    storeTopics.put(storeName1 + "_v2", 1000L);
-    storeTopics.put(storeName1 + "_v3", Long.MAX_VALUE);
-    storeTopics.put(storeName1 + "_v4", 1000L);
-    storeTopics.put(storeName1 + "_rt", Long.MAX_VALUE);
-    storeTopics.put("non_venice_topic1", Long.MAX_VALUE);
+    Map<PubSubTopic, Long> storeTopics = new HashMap<>();
+    storeTopics.put(getPubSubTopic(storeName1, "_v1"), 1000L);
+    storeTopics.put(getPubSubTopic(storeName1, "_v2"), 1000L);
+    storeTopics.put(getPubSubTopic(storeName1, "_v3"), Long.MAX_VALUE);
+    storeTopics.put(getPubSubTopic(storeName1, "_v4"), 1000L);
+    storeTopics.put(getPubSubTopic(storeName1, "_rt"), Long.MAX_VALUE);
 
     doReturn(storeTopics).when(topicManager).getAllTopicRetentions();
     doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(Long.MAX_VALUE);
@@ -154,17 +168,21 @@ public class TestTopicCleanupService {
 
     topicCleanupService.cleanupVeniceTopics();
 
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_rt");
-    verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v1");
-    verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v2");
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v3");
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v4");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName1, "_rt"));
+    verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName1, "_v1"));
+    verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName1, "_v2"));
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName1, "_v3"));
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName1, "_v4"));
 
     // Updated real-time topic to use low retention policy
-    storeTopics.put(storeName1 + "_rt", 1000L);
+    storeTopics.put(getPubSubTopic(storeName1, "_rt"), 1000L);
     topicCleanupService.cleanupVeniceTopics();
 
-    verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_rt");
+    verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName1, "_rt"));
+  }
+
+  private PubSubTopic getPubSubTopic(String storeName, String suffix) {
+    return pubSubTopicRepository.getTopic(storeName + suffix);
   }
 
   @Test
@@ -176,22 +194,22 @@ public class TestTopicCleanupService {
     doReturn(Optional.of(new StoreConfig(storeName2))).when(storeConfigRepository).getStoreConfig(storeName2);
     doReturn(Optional.of(new StoreConfig(storeName3))).when(storeConfigRepository).getStoreConfig(storeName3);
 
-    Map<String, Long> storeTopics1 = new HashMap<>();
-    storeTopics1.put(storeName1 + "_v1", 1000L);
-    storeTopics1.put(storeName1 + "_v2", 1000L);
-    storeTopics1.put(storeName1 + "_v3", Long.MAX_VALUE);
-    storeTopics1.put(storeName1 + "_v4", 1000L);
-    storeTopics1.put(storeName1 + "_rt", Long.MAX_VALUE);
-    storeTopics1.put("non_venice_topic1", Long.MAX_VALUE);
+    Map<PubSubTopic, Long> storeTopics1 = new HashMap<>();
+    storeTopics1.put(getPubSubTopic(storeName1, "_v1"), 1000L);
+    storeTopics1.put(getPubSubTopic(storeName1, "_v2"), 1000L);
+    storeTopics1.put(getPubSubTopic(storeName1, "_v3"), Long.MAX_VALUE);
+    storeTopics1.put(getPubSubTopic(storeName1, "_v4"), 1000L);
+    storeTopics1.put(getPubSubTopic(storeName1, "_rt"), Long.MAX_VALUE);
+    // storeTopics1.put(getPubSubTopic("non_venice_topic1", ""), Long.MAX_VALUE);
 
-    Map<String, Long> storeTopics2 = new HashMap<>();
-    storeTopics2.put(storeName2 + "_v1", 1000L);
-    storeTopics2.put(storeName2 + "_v2", 1000L);
-    storeTopics2.put(storeName2 + "_v3", Long.MAX_VALUE);
-    storeTopics2.put(storeName3 + "_v4", 1000L);
-    storeTopics2.put(storeName3 + "_rt", 1000L);
+    Map<PubSubTopic, Long> storeTopics2 = new HashMap<>();
+    storeTopics2.put(getPubSubTopic(storeName2, "_v1"), 1000L);
+    storeTopics2.put(getPubSubTopic(storeName2, "_v2"), 1000L);
+    storeTopics2.put(getPubSubTopic(storeName2, "_v3"), Long.MAX_VALUE);
+    storeTopics2.put(getPubSubTopic(storeName3, "_v4"), 1000L);
+    storeTopics2.put(getPubSubTopic(storeName3, "_rt"), 1000L);
 
-    Map<String, Long> storeTopics3 = new HashMap<>();
+    Map<PubSubTopic, Long> storeTopics3 = new HashMap<>();
 
     when(topicManager.getAllTopicRetentions()).thenReturn(storeTopics1)
         .thenReturn(storeTopics2)
@@ -211,30 +229,29 @@ public class TestTopicCleanupService {
       verify(topicManager, atLeast(4)).getAllTopicRetentions();
     });
 
-    verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v1");
-    verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v2");
-    verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(storeName2 + "_v1");
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(storeName2 + "_v2");
-    verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(storeName3 + "_rt");
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v3");
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v4");
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_rt");
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(storeName2 + "_v3");
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(storeName3 + "_v4");
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry("non_venice_topic1");
+    verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName1, "_v1"));
+    verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName1, "_v2"));
+    verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName2, "_v1"));
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName2, "_v2"));
+    verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName3, "_rt"));
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName1, "_v3"));
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName1, "_v4"));
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName1, "_rt"));
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName2, "_v3"));
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName3, "_v4"));
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic("non_venice_topic1_rt", ""));
   }
 
   @Test
   public void testRunWhenCurrentControllerChangeFromLeaderToFollower() throws Exception {
     String storeName1 = Utils.getUniqueString("store1");
     doReturn(Optional.of(new StoreConfig(storeName1))).when(storeConfigRepository).getStoreConfig(storeName1);
-    Map<String, Long> storeTopics1 = new HashMap<>();
-    storeTopics1.put(storeName1 + "_v1", 1000L);
-    storeTopics1.put(storeName1 + "_v2", 1000L);
-    storeTopics1.put(storeName1 + "_v3", Long.MAX_VALUE);
-    storeTopics1.put(storeName1 + "_v4", 1000L);
-    storeTopics1.put(storeName1 + "_rt", Long.MAX_VALUE);
-    storeTopics1.put("non_venice_topic1", Long.MAX_VALUE);
+    Map<PubSubTopic, Long> storeTopics1 = new HashMap<>();
+    storeTopics1.put(getPubSubTopic(storeName1, "_v1"), 1000L);
+    storeTopics1.put(getPubSubTopic(storeName1, "_v2"), 1000L);
+    storeTopics1.put(getPubSubTopic(storeName1, "_v3"), Long.MAX_VALUE);
+    storeTopics1.put(getPubSubTopic(storeName1, "_v4"), 1000L);
+    storeTopics1.put(getPubSubTopic(storeName1, "_rt"), Long.MAX_VALUE);
 
     when(topicManager.getAllTopicRetentions()).thenReturn(storeTopics1);
 
@@ -248,25 +265,24 @@ public class TestTopicCleanupService {
       // should be done already
       verify(admin, atLeast(3)).isLeaderControllerOfControllerCluster();
     });
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlock(storeName1 + "_v1");
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlock(storeName1 + "_v2");
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlock(storeName1 + "_v3");
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlock(storeName1 + "_v4");
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlock(storeName1 + "_rt");
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlock("non_venice_topic1");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlock(getPubSubTopic(storeName1, "_v1"));
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlock(getPubSubTopic(storeName1, "_v2"));
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlock(getPubSubTopic(storeName1, "_v3"));
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlock(getPubSubTopic(storeName1, "_v4"));
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlock(getPubSubTopic(storeName1, "_rt"));
   }
 
   @Test
   public void testRunWhenCurrentControllerChangeFromFollowerToLeader() throws Exception {
     String storeName1 = Utils.getUniqueString("store1");
     doReturn(Optional.of(new StoreConfig(storeName1))).when(storeConfigRepository).getStoreConfig(storeName1);
-    Map<String, Long> storeTopics1 = new HashMap<>();
-    storeTopics1.put(storeName1 + "_v1", 1000L);
-    storeTopics1.put(storeName1 + "_v2", 1000L);
-    storeTopics1.put(storeName1 + "_v3", Long.MAX_VALUE);
-    storeTopics1.put(storeName1 + "_v4", 1000L);
-    storeTopics1.put(storeName1 + "_rt", Long.MAX_VALUE);
-    storeTopics1.put("non_venice_topic1", Long.MAX_VALUE);
+    Map<PubSubTopic, Long> storeTopics1 = new HashMap<>();
+    storeTopics1.put(getPubSubTopic(storeName1, "_v1"), 1000L);
+    storeTopics1.put(getPubSubTopic(storeName1, "_v2"), 1000L);
+    storeTopics1.put(getPubSubTopic(storeName1, "_v3"), Long.MAX_VALUE);
+    storeTopics1.put(getPubSubTopic(storeName1, "_v4"), 1000L);
+    storeTopics1.put(getPubSubTopic(storeName1, "_rt"), Long.MAX_VALUE);
+    // storeTopics1.put(getPubSubTopic("non_venice_topic1", ""), Long.MAX_VALUE);
 
     when(topicManager.getAllTopicRetentions()).thenReturn(storeTopics1).thenReturn(new HashMap<>());
 
@@ -281,25 +297,25 @@ public class TestTopicCleanupService {
       verify(topicManager, atLeast(2)).getAllTopicRetentions();
     });
 
-    verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v1");
-    verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v2");
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v3");
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v4");
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_rt");
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry("non_venice_topic1");
+    verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName1, "_v1"));
+    verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName1, "_v2"));
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName1, "_v3"));
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName1, "_v4"));
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic(storeName1, "_rt"));
+    // verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(getPubSubTopic("non_venice_topic1", ""));
   }
 
   @Test
   public void testCleanupReplicaStatusesFromMetaSystemStoreInParent() {
     doReturn(true).when(admin).isParent();
-    String versionTopic = Version.composeKafkaTopic("test", 1);
+    PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic("test", 1));
     assertFalse(topicCleanupService.cleanupReplicaStatusesFromMetaSystemStore(versionTopic));
   }
 
   @Test
   public void testCleanupReplicaStatusesFromMetaSystemStoreWithRTTopic() {
     doReturn(false).when(admin).isParent();
-    String rtTopic = Version.composeRealTimeTopic("test");
+    PubSubTopic rtTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic("test"));
     assertFalse(topicCleanupService.cleanupReplicaStatusesFromMetaSystemStore(rtTopic));
   }
 
@@ -309,15 +325,15 @@ public class TestTopicCleanupService {
     String storeName = Utils.getUniqueString("test_store");
     doReturn(Optional.of(new StoreConfig(storeName))).when(storeConfigRepository).getStoreConfig(storeName);
     int version = 1;
-    String versionTopic = Version.composeKafkaTopic(storeName, version);
+    PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, version));
     HelixReadOnlyStoreConfigRepository repository = mock(HelixReadOnlyStoreConfigRepository.class);
     StoreConfig storeConfig = new StoreConfig(storeName);
     String cluster = "test_cluster";
     storeConfig.setCluster(cluster);
     doReturn(Optional.of(storeConfig)).when(repository).getStoreConfig(storeName);
     doReturn(repository).when(admin).getStoreConfigRepo();
-    String rtTopicForMetaSystemStore =
-        Version.composeRealTimeTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName));
+    PubSubTopic rtTopicForMetaSystemStore = pubSubTopicRepository
+        .getTopic(Version.composeRealTimeTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName)));
     TopicManager topicManager = mock(TopicManager.class);
     doReturn(false).when(topicManager).containsTopic(rtTopicForMetaSystemStore);
     doReturn(topicManager).when(admin).getTopicManager();
@@ -330,15 +346,15 @@ public class TestTopicCleanupService {
     String storeName = Utils.getUniqueString("test_store");
     doReturn(Optional.of(new StoreConfig(storeName))).when(storeConfigRepository).getStoreConfig(storeName);
     int version = 1;
-    String versionTopic = Version.composeKafkaTopic(storeName, version);
+    PubSubTopic versionTopic = pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, version));
     HelixReadOnlyStoreConfigRepository repository = mock(HelixReadOnlyStoreConfigRepository.class);
     StoreConfig storeConfig = new StoreConfig(storeName);
     String cluster = "test_cluster";
     storeConfig.setCluster(cluster);
     doReturn(Optional.of(storeConfig)).when(repository).getStoreConfig(storeName);
     doReturn(repository).when(admin).getStoreConfigRepo();
-    String rtTopicForMetaSystemStore =
-        Version.composeRealTimeTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName));
+    PubSubTopic rtTopicForMetaSystemStore = pubSubTopicRepository
+        .getTopic(Version.composeRealTimeTopic(VeniceSystemStoreType.META_STORE.getSystemStoreName(storeName)));
     TopicManager topicManager = mock(TopicManager.class);
     doReturn(true).when(topicManager).containsTopic(rtTopicForMetaSystemStore);
     doReturn(topicManager).when(admin).getTopicManager();
@@ -347,7 +363,7 @@ public class TestTopicCleanupService {
     int partitionCnt = 3;
     List<PartitionInfo> partitionInfoList = new ArrayList<>();
     for (int i = 0; i < partitionCnt; ++i) {
-      partitionInfoList.add(new PartitionInfo(versionTopic, i, null, null, null));
+      partitionInfoList.add(new PartitionInfo(versionTopic.getName(), i, null, null, null));
     }
     doReturn(partitionInfoList).when(topicManager).partitionsFor(versionTopic);
 
@@ -363,18 +379,19 @@ public class TestTopicCleanupService {
   @Test
   public void testExtractVersionTopicsToCleanupIgnoresInputWithNonVersionTopics() {
     String storeName = Utils.getUniqueString("test_store");
-    Map<String, Long> topicRetentions = new HashMap<>();
-    topicRetentions.put(Version.composeRealTimeTopic(storeName), Long.MAX_VALUE);
-    topicRetentions.put(Version.composeStreamReprocessingTopic(storeName, 1), Long.MAX_VALUE);
-    topicRetentions.put(Version.composeKafkaTopic(storeName, 1), 1000L);
-    topicRetentions.put(Version.composeKafkaTopic(storeName, 2), Long.MAX_VALUE);
-    topicRetentions.put(Version.composeKafkaTopic(storeName, 3), Long.MAX_VALUE);
+    Map<PubSubTopic, Long> topicRetentions = new HashMap<>();
+    topicRetentions.put(pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName)), Long.MAX_VALUE);
+    topicRetentions
+        .put(pubSubTopicRepository.getTopic(Version.composeStreamReprocessingTopic(storeName, 1)), Long.MAX_VALUE);
+    topicRetentions.put(pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 1)), 1000L);
+    topicRetentions.put(pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 2)), Long.MAX_VALUE);
+    topicRetentions.put(pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 3)), Long.MAX_VALUE);
 
     doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(1000);
     doReturn(false).when(admin).isResourceStillAlive(anyString());
 
-    List<String> deletableTopics = TopicCleanupService.extractVersionTopicsToCleanup(admin, topicRetentions, 2, 0);
+    List<PubSubTopic> deletableTopics = TopicCleanupService.extractVersionTopicsToCleanup(admin, topicRetentions, 2, 0);
     assertEquals(deletableTopics.size(), 1, "There should only be one deletable topic");
-    assertTrue(deletableTopics.contains(Version.composeKafkaTopic(storeName, 1)));
+    assertTrue(deletableTopics.contains(pubSubTopicRepository.getTopic(Version.composeKafkaTopic(storeName, 1))));
   }
 }

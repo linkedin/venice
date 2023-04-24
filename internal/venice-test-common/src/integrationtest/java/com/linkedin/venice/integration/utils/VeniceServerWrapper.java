@@ -21,6 +21,7 @@ import static com.linkedin.venice.ConfigKeys.SERVER_NETTY_GRACEFUL_SHUTDOWN_PERI
 import static com.linkedin.venice.ConfigKeys.SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS;
 import static com.linkedin.venice.ConfigKeys.SERVER_REST_SERVICE_STORAGE_THREAD_NUM;
+import static com.linkedin.venice.ConfigKeys.SERVER_SSL_HANDSHAKE_THREAD_POOL_SIZE;
 import static com.linkedin.venice.ConfigKeys.SYSTEM_SCHEMA_CLUSTER_NAME;
 import static com.linkedin.venice.meta.PersistenceType.ROCKS_DB;
 
@@ -223,6 +224,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
           .put(SERVER_INGESTION_ISOLATION_SERVICE_PORT, ingestionIsolationServicePort)
           .put(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L))
           .put(CLUSTER_DISCOVERY_D2_SERVICE, VeniceRouterWrapper.CLUSTER_DISCOVERY_D2_SERVICE_NAME)
+          .put(SERVER_SSL_HANDSHAKE_THREAD_POOL_SIZE, 10)
           .put(configProperties);
       if (sslToKafka) {
         serverPropsBuilder.put(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.SSL.name);

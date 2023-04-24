@@ -136,7 +136,7 @@ public class D2ControllerClient extends ControllerClient {
   /**
    * Here, if discovery fails, we will throw a VeniceException.
    */
-  private static D2ServiceDiscoveryResponse discoverCluster(
+  public static D2ServiceDiscoveryResponse discoverCluster(
       D2Client d2Client,
       String d2ServiceName,
       String storeName,

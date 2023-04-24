@@ -90,6 +90,8 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.VeniceUserStoreType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.ZKStore;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.systemstore.schemas.StoreProperties;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
@@ -97,6 +99,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.http.HttpStatus;
 import spark.Request;
@@ -104,8 +107,14 @@ import spark.Route;
 
 
 public class StoresRoutes extends AbstractRoute {
-  public StoresRoutes(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
+  private final PubSubTopicRepository pubSubTopicRepository;
+
+  public StoresRoutes(
+      boolean sslEnabled,
+      Optional<DynamicAccessController> accessController,
+      PubSubTopicRepository pubSubTopicRepository) {
     super(sslEnabled, accessController);
+    this.pubSubTopicRepository = pubSubTopicRepository;
   }
 
   /**
@@ -764,7 +773,7 @@ public class StoresRoutes extends AbstractRoute {
   }
 
   /**
-   * @see TopicManager#updateTopicCompactionPolicy(String, boolean)
+   * @see TopicManager#updateTopicCompactionPolicy(PubSubTopic, boolean)
    */
   public Route setTopicCompaction(Admin admin) {
     return new VeniceRouteHandler<StoreResponse>(StoreResponse.class) {
@@ -778,7 +787,7 @@ public class StoresRoutes extends AbstractRoute {
         try {
           admin.getTopicManager()
               .updateTopicCompactionPolicy(
-                  request.queryParams(TOPIC),
+                  pubSubTopicRepository.getTopic(request.queryParams(TOPIC)),
                   Boolean.getBoolean(request.queryParams(TOPIC_COMPACTION_POLICY)));
           veniceResponse.setName(request.queryParams(TOPIC));
         } catch (TopicDoesNotExistException e) {
@@ -797,22 +806,23 @@ public class StoresRoutes extends AbstractRoute {
       public void internalHandle(Request request, MultiStoreTopicsResponse veniceResponse) {
         AdminSparkServer.validateParams(request, GET_DELETABLE_STORE_TOPICS.getParams(), admin);
         try {
-          Map<String, Map<String, Long>> allStoreTopics =
+          Map<String, Map<PubSubTopic, Long>> allStoreTopics =
               TopicCleanupService.getAllVeniceStoreTopicsRetentions(admin.getTopicManager());
           List<String> deletableTopicsList = new ArrayList<>();
           int minNumberOfUnusedKafkaTopicsToPreserve = admin.getMinNumberOfUnusedKafkaTopicsToPreserve();
           allStoreTopics.forEach((storeName, topicsWithRetention) -> {
-            String realTimeTopic = Version.composeRealTimeTopic(storeName);
+            PubSubTopic realTimeTopic = pubSubTopicRepository.getTopic(Version.composeRealTimeTopic(storeName));
             if (topicsWithRetention.containsKey(realTimeTopic)) {
               if (admin.isTopicTruncatedBasedOnRetention(topicsWithRetention.get(realTimeTopic))) {
-                deletableTopicsList.add(realTimeTopic);
+                deletableTopicsList.add(realTimeTopic.getName());
               }
               topicsWithRetention.remove(realTimeTopic);
             }
-            List<String> deletableTopicsForThisStore = TopicCleanupService
+            List<PubSubTopic> deletableTopicsForThisStore = TopicCleanupService
                 .extractVersionTopicsToCleanup(admin, topicsWithRetention, minNumberOfUnusedKafkaTopicsToPreserve, 0);
             if (!deletableTopicsForThisStore.isEmpty()) {
-              deletableTopicsList.addAll(deletableTopicsForThisStore);
+              deletableTopicsList
+                  .addAll(deletableTopicsForThisStore.stream().map(t -> t.getName()).collect(Collectors.toList()));
             }
           });
           veniceResponse.setTopics(deletableTopicsList);

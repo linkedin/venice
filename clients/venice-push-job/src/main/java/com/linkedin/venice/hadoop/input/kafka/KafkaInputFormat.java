@@ -1,13 +1,17 @@
 package com.linkedin.venice.hadoop.input.kafka;
 
+import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_BROKER_URL;
 import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_MAX_RECORDS_PER_MAPPER;
 import static com.linkedin.venice.hadoop.VenicePushJob.KAFKA_INPUT_TOPIC;
-import static com.linkedin.venice.hadoop.input.kafka.KafkaInputUtils.getConsumerFactory;
 
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperKey;
 import com.linkedin.venice.hadoop.input.kafka.avro.KafkaInputMapperValue;
-import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.kafka.TopicManagerRepository;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.admin.ApacheKafkaAdminAdapterFactory;
+import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapterFactory;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -35,16 +39,26 @@ public class KafkaInputFormat implements InputFormat<KafkaInputMapperKey, KafkaI
    * being consumed could have log compaction enabled.
    */
   public static final long DEFAULT_KAFKA_INPUT_MAX_RECORDS_PER_MAPPER = 5000000L;
+  private final PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   protected Map<TopicPartition, Long> getLatestOffsets(JobConf config) {
-    KafkaClientFactory consumerFactory = getConsumerFactory(config);
-    try (TopicManager topicManager = new TopicManager(consumerFactory)) {
-      String topic = config.get(KAFKA_INPUT_TOPIC);
-      Map<Integer, Long> latestOffsets = topicManager.getTopicLatestOffsets(topic);
-      Map<TopicPartition, Long> partitionOffsetMap = new HashMap<>(latestOffsets.size());
-      latestOffsets.forEach(
-          (partitionId, latestOffset) -> partitionOffsetMap.put(new TopicPartition(topic, partitionId), latestOffset));
-      return partitionOffsetMap;
+    VeniceProperties consumerProperties = KafkaInputUtils.getConsumerProperties(config);
+    try (TopicManagerRepository topicManagerRepository = TopicManagerRepository.builder()
+        .setPubSubProperties(k -> consumerProperties)
+        .setLocalKafkaBootstrapServers(config.get(KAFKA_INPUT_BROKER_URL))
+        .setPubSubTopicRepository(pubSubTopicRepository)
+        .setPubSubAdminAdapterFactory(new ApacheKafkaAdminAdapterFactory())
+        .setPubSubConsumerAdapterFactory(new ApacheKafkaConsumerAdapterFactory())
+        .build()) {
+      try (TopicManager topicManager = topicManagerRepository.getTopicManager()) {
+        String topic = config.get(KAFKA_INPUT_TOPIC);
+        Map<Integer, Long> latestOffsets = topicManager.getTopicLatestOffsets(pubSubTopicRepository.getTopic(topic));
+        Map<TopicPartition, Long> partitionOffsetMap = new HashMap<>(latestOffsets.size());
+        latestOffsets.forEach(
+            (partitionId, latestOffset) -> partitionOffsetMap
+                .put(new TopicPartition(topic, partitionId), latestOffset));
+        return partitionOffsetMap;
+      }
     }
   }
 

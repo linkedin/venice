@@ -1,5 +1,6 @@
 package com.linkedin.venice.controllerapi;
 
+import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.SharedObjectFactory;
 import java.util.HashMap;
@@ -34,6 +35,17 @@ public class D2ControllerClientFactory {
       return SHARED_OBJECT_FACTORY.release(clientIdentifier);
     }
     return true;
+  }
+
+  public static D2ControllerClient discoverAndConstructConrollerClient(
+      String storeName,
+      String d2ServiceName,
+      int retryAttempts,
+      D2Client d2Client) {
+    D2ServiceDiscoveryResponse discoResponse =
+        D2ControllerClient.discoverCluster(d2Client, d2ServiceName, storeName, retryAttempts);
+    String clusterName = discoResponse.getCluster();
+    return new D2ControllerClient(d2ServiceName, clusterName, d2Client);
   }
 
   public static D2ControllerClient discoverAndConstructControllerClient(

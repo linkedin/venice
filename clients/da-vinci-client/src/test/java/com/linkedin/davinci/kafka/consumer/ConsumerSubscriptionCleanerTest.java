@@ -14,7 +14,6 @@ import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
 import com.linkedin.venice.utils.TestMockTime;
 import java.util.HashSet;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import org.testng.annotations.Test;
 
@@ -62,7 +61,7 @@ public class ConsumerSubscriptionCleanerTest {
     verify(batchUnsubFunction, times(batchUnsubFunctionExpectedCallCount)).accept(anySet());
 
     // After delay, unsubbing should happen
-    time.add(NON_EXISTING_TOPIC_CLEANUP_DELAY_MS + 1, TimeUnit.MILLISECONDS);
+    time.addMilliseconds(NON_EXISTING_TOPIC_CLEANUP_DELAY_MS + 1);
     partitionsToUnsub = consumerSubscriptionCleaner.getTopicPartitionsToUnsubscribe(partitionsToUnsub);
     assertEquals(partitionsToUnsub.size(), 1);
     assertTrue(partitionsToUnsub.contains(nonExistentTopicPartition));
@@ -70,7 +69,7 @@ public class ConsumerSubscriptionCleanerTest {
 
     // Even after delay, if there's nothing to unsub, then nothing should happen
     currentAssignment.remove(nonExistentTopicPartition);
-    time.add(NON_EXISTING_TOPIC_CLEANUP_DELAY_MS + 1, TimeUnit.MILLISECONDS);
+    time.addMilliseconds(NON_EXISTING_TOPIC_CLEANUP_DELAY_MS + 1);
     partitionsToUnsub = consumerSubscriptionCleaner.getTopicPartitionsToUnsubscribe(partitionsToUnsub);
     assertTrue(partitionsToUnsub.isEmpty());
     verify(batchUnsubFunction, times(batchUnsubFunctionExpectedCallCount)).accept(anySet()); // N.B. Same number of

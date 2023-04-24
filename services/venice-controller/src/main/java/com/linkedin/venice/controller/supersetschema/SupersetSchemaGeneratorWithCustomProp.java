@@ -81,4 +81,9 @@ public class SupersetSchemaGeneratorWithCustomProp implements SupersetSchemaGene
     }
     return supersetSchema;
   }
+
+  @Override
+  public String toString() {
+    return this.getClass().getSimpleName() + "(customProp: " + customProp + ")";
+  }
 }

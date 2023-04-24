@@ -63,7 +63,8 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     VeniceHelixAdmin newAdmin = new VeniceHelixAdmin(
         TestUtils.getMultiClusterConfigFromOneCluster(newConfig),
         new MetricsRepository(),
-        D2TestUtils.getAndStartD2Client(zkAddress));
+        D2TestUtils.getAndStartD2Client(zkAddress),
+        pubSubTopicRepository);
     // Start stand by controller
     newAdmin.initStorageCluster(clusterName);
     List<VeniceHelixAdmin> allAdmins = new ArrayList<>();
@@ -315,7 +316,8 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     VeniceHelixAdmin newLeaderAdmin = new VeniceHelixAdmin(
         TestUtils.getMultiClusterConfigFromOneCluster(newConfig),
         new MetricsRepository(),
-        D2TestUtils.getAndStartD2Client(zkAddress));
+        D2TestUtils.getAndStartD2Client(zkAddress),
+        pubSubTopicRepository);
     newLeaderAdmin.initStorageCluster(clusterName);
     List<VeniceHelixAdmin> admins = new ArrayList<>();
     admins.add(veniceAdmin);

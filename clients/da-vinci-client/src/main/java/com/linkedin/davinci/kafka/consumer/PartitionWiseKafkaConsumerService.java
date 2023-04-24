@@ -2,10 +2,10 @@ package com.linkedin.davinci.kafka.consumer;
 
 import com.linkedin.davinci.stats.KafkaConsumerServiceStats;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.KafkaClientFactory;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.Time;
@@ -32,7 +32,7 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
    * have same real-time topics, we should avoid same real-time topic partition from different version topics sharing
    * the same consumer from consumer pool.
    */
-  private final Map<PubSubTopicPartition, Set<PubSubConsumer>> rtTopicPartitionToConsumerMap =
+  private final Map<PubSubTopicPartition, Set<PubSubConsumerAdapter>> rtTopicPartitionToConsumerMap =
       new VeniceConcurrentHashMap<>();
 
   private final Logger logger;
@@ -40,7 +40,7 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
   private int shareConsumerIndex = 0;
 
   PartitionWiseKafkaConsumerService(
-      final KafkaClientFactory consumerFactory,
+      final PubSubConsumerAdapterFactory consumerFactory,
       final Properties consumerProperties,
       final long readCycleDelayMs,
       final int numOfConsumersPerKafkaCluster,
@@ -54,7 +54,8 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
       final boolean liveConfigBasedKafkaThrottlingEnabled,
       KafkaPubSubMessageDeserializer pubSubDeserializer,
       final Time time,
-      final KafkaConsumerServiceStats stats) {
+      final KafkaConsumerServiceStats stats,
+      final boolean isKafkaConsumerOffsetCollectionEnabled) {
     super(
         consumerFactory,
         consumerProperties,
@@ -70,7 +71,8 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
         liveConfigBasedKafkaThrottlingEnabled,
         pubSubDeserializer,
         time,
-        stats);
+        stats,
+        isKafkaConsumerOffsetCollectionEnabled);
     this.logger = LogManager.getLogger(PartitionWiseKafkaConsumerService.class + " [" + kafkaUrl + "]");
   }
 
@@ -134,14 +136,14 @@ public class PartitionWiseKafkaConsumerService extends KafkaConsumerService {
   private boolean alreadySubscribedRealtimeTopicPartition(
       SharedKafkaConsumer consumer,
       PubSubTopicPartition topicPartition) {
-    Set<PubSubConsumer> consumers = rtTopicPartitionToConsumerMap.get(topicPartition);
+    Set<PubSubConsumerAdapter> consumers = rtTopicPartitionToConsumerMap.get(topicPartition);
     return consumers != null && consumers.contains(consumer);
   }
 
   @Override
   void handleUnsubscription(SharedKafkaConsumer consumer, PubSubTopicPartition pubSubTopicPartition) {
     if (pubSubTopicPartition.getPubSubTopic().isRealTime()) {
-      Set<PubSubConsumer> rtTopicConsumers = rtTopicPartitionToConsumerMap.get(pubSubTopicPartition);
+      Set<PubSubConsumerAdapter> rtTopicConsumers = rtTopicPartitionToConsumerMap.get(pubSubTopicPartition);
       if (rtTopicConsumers != null) {
         rtTopicConsumers.remove(consumer);
       }

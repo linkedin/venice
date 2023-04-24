@@ -215,12 +215,12 @@ public class TestActiveActiveIngestion {
         .setLocalD2ZkHosts(localZkServer.getAddress())
         .setControllerRequestRetryCount(3);
     VeniceChangelogConsumerClientFactory veniceChangelogConsumerClientFactory =
-        new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig);
+        new VeniceChangelogConsumerClientFactory(globalChangelogClientConfig, metricsRepository);
 
     ChangelogClientConfig globalAfterImageClientConfig =
         ChangelogClientConfig.cloneConfig(globalChangelogClientConfig).setViewName("");
     VeniceChangelogConsumerClientFactory veniceAfterImageConsumerClientFactory =
-        new VeniceChangelogConsumerClientFactory(globalAfterImageClientConfig);
+        new VeniceChangelogConsumerClientFactory(globalAfterImageClientConfig, metricsRepository);
 
     VeniceChangelogConsumer<Utf8, Utf8> veniceChangelogConsumer =
         veniceChangelogConsumerClientFactory.getChangelogConsumer(storeName);

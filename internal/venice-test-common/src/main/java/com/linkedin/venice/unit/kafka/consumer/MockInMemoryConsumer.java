@@ -4,11 +4,16 @@ import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pubsub.PubSubTopicPartitionInfo;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
+import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
+import com.linkedin.venice.unit.kafka.MockInMemoryAdminAdapter;
 import com.linkedin.venice.unit.kafka.consumer.poll.PollStrategy;
+import java.time.Duration;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -17,7 +22,7 @@ import java.util.Set;
 
 
 /**
- * A {@link PubSubConsumer} implementation which reads messages from the {@link InMemoryKafkaBroker}.
+ * A {@link PubSubConsumerAdapter} implementation which reads messages from the {@link InMemoryKafkaBroker}.
  *
  * Used in unit tests as a lightweight alternative to a full-fledged integration test. Can be configured
  * with various {@link PollStrategy} implementations in order to tweak the consuming behavior.
@@ -29,19 +34,21 @@ import java.util.Set;
  *
  * TODO: Remove synchronized keyword in this class when consumer operations in consumption task is event-driven.
  */
-public class MockInMemoryConsumer implements PubSubConsumer {
+public class MockInMemoryConsumer implements PubSubConsumerAdapter {
   private final InMemoryKafkaBroker broker;
   private final Map<PubSubTopicPartition, Long> offsets = new HashMap<>();
   private final PollStrategy pollStrategy;
-  private final PubSubConsumer delegate;
+  private final PubSubConsumerAdapter delegate;
   private final Set<PubSubTopicPartition> pausedTopicPartitions = new HashSet<>();
+
+  private MockInMemoryAdminAdapter adminAdapter;
 
   /**
    * @param delegate Can be used to pass a mock, in order to verify calls. Note: functions that return
    *                 do not return the result of the mock, but rather the results of the in-memory
    *                 consumer components.
    */
-  public MockInMemoryConsumer(InMemoryKafkaBroker broker, PollStrategy pollStrategy, PubSubConsumer delegate) {
+  public MockInMemoryConsumer(InMemoryKafkaBroker broker, PollStrategy pollStrategy, PubSubConsumerAdapter delegate) {
     this.broker = broker;
     this.pollStrategy = pollStrategy;
     this.delegate = delegate;
@@ -148,5 +155,48 @@ public class MockInMemoryConsumer implements PubSubConsumer {
   @Override
   public Set<PubSubTopicPartition> getAssignment() {
     return offsets.keySet();
+  }
+
+  @Override
+  public Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp, Duration timeout) {
+    return null;
+  }
+
+  @Override
+  public Long offsetForTime(PubSubTopicPartition pubSubTopicPartition, long timestamp) {
+    return null;
+  }
+
+  @Override
+  public Long beginningOffset(PubSubTopicPartition partition, Duration timeout) {
+    return 0L;
+  }
+
+  @Override
+  public Map<PubSubTopicPartition, Long> endOffsets(Collection<PubSubTopicPartition> partitions, Duration timeout) {
+    Map<PubSubTopicPartition, Long> retOffsets = new HashMap<>();
+    for (PubSubTopicPartition pubSubTopicPartition: partitions) {
+      retOffsets.put(pubSubTopicPartition, endOffset(pubSubTopicPartition));
+    }
+    return retOffsets;
+  }
+
+  @Override
+  public Long endOffset(PubSubTopicPartition pubSubTopicPartition) {
+    return broker
+        .endOffsets(pubSubTopicPartition.getPubSubTopic().getName(), pubSubTopicPartition.getPartitionNumber());
+  }
+
+  @Override
+  public List<PubSubTopicPartitionInfo> partitionsFor(PubSubTopic topic) {
+    if (adminAdapter != null) {
+      return adminAdapter.partitionsFor(topic);
+    } else {
+      throw new UnsupportedOperationException("In-memory admin adapter is not set");
+    }
+  }
+
+  public void setMockInMemoryAdminAdapter(MockInMemoryAdminAdapter adminAdapter) {
+    this.adminAdapter = adminAdapter;
   }
 }

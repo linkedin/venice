@@ -24,6 +24,7 @@ import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicAsserti
 import static com.linkedin.venice.utils.TestUtils.waitForNonDeterministicCompletion;
 import static com.linkedin.venice.utils.Time.MS_PER_DAY;
 import static com.linkedin.venice.utils.Time.MS_PER_HOUR;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.after;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyDouble;
@@ -81,7 +82,6 @@ import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.exceptions.validation.CorruptDataException;
 import com.linkedin.venice.exceptions.validation.FatalDataValidationException;
 import com.linkedin.venice.exceptions.validation.MissingDataException;
-import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.TopicManagerRepository;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
@@ -116,12 +116,13 @@ import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.pubsub.ImmutablePubSubMessage;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubMessage;
 import com.linkedin.venice.pubsub.api.PubSubProduceResult;
 import com.linkedin.venice.pubsub.api.PubSubProducerAdapter;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.rmd.RmdSchemaEntry;
@@ -203,7 +204,6 @@ import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.mockito.ArgumentCaptor;
@@ -264,8 +264,8 @@ public abstract class StoreIngestionTaskTest {
   private ReadOnlySchemaRepository mockSchemaRepo;
   private ReadOnlyStoreRepository mockMetadataRepo;
   /** N.B.: This mock can be used to verify() calls, but not to return arbitrary things. */
-  private PubSubConsumer mockLocalKafkaConsumer;
-  private PubSubConsumer mockRemoteKafkaConsumer;
+  private PubSubConsumerAdapter mockLocalKafkaConsumer;
+  private PubSubConsumerAdapter mockRemoteKafkaConsumer;
   private TopicManager mockTopicManager;
   private TopicManagerRepository mockTopicManagerRepository;
   private AggHostLevelIngestionStats mockAggStoreIngestionStats;
@@ -334,7 +334,7 @@ public abstract class StoreIngestionTaskTest {
 
   private boolean databaseChecksumVerificationEnabled = false;
   private KafkaConsumerServiceStats kafkaConsumerServiceStats = mock(KafkaConsumerServiceStats.class);
-  private KafkaClientFactory mockFactory = mock(KafkaClientFactory.class);
+  private PubSubConsumerAdapterFactory mockFactory = mock(PubSubConsumerAdapterFactory.class);
 
   private Supplier<StoreVersionState> storeVersionStateSupplier = () -> new StoreVersionState();
 
@@ -437,8 +437,8 @@ public abstract class StoreIngestionTaskTest {
     mockRecordsThrottler = mock(EventThrottler.class);
     mockSchemaRepo = mock(ReadOnlySchemaRepository.class);
     mockMetadataRepo = mock(ReadOnlyStoreRepository.class);
-    mockLocalKafkaConsumer = mock(PubSubConsumer.class);
-    mockRemoteKafkaConsumer = mock(PubSubConsumer.class);
+    mockLocalKafkaConsumer = mock(PubSubConsumerAdapter.class);
+    mockRemoteKafkaConsumer = mock(PubSubConsumerAdapter.class);
     kafkaUrlToRecordsThrottler = new HashMap<>();
     kafkaClusterBasedRecordThrottler = new KafkaClusterBasedRecordThrottler(kafkaUrlToRecordsThrottler);
 
@@ -677,7 +677,7 @@ public abstract class StoreIngestionTaskTest {
         false).build();
 
     Properties kafkaProps = new Properties();
-    kafkaProps.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
+    kafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
 
     int leaderSubPartition = PartitionUtils.getLeaderSubPartition(PARTITION_FOO, amplificationFactor);
     storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(
@@ -803,13 +803,13 @@ public abstract class StoreIngestionTaskTest {
         new MockInMemoryConsumer(inMemoryRemoteKafkaBroker, pollStrategy, mockRemoteKafkaConsumer);
 
     doAnswer(invocation -> {
-      Properties consumerProps = invocation.getArgument(0, Properties.class);
-      String kafkaUrl = consumerProps.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
+      VeniceProperties consumerProps = invocation.getArgument(0, VeniceProperties.class);
+      String kafkaUrl = consumerProps.toProperties().getProperty(KAFKA_BOOTSTRAP_SERVERS);
       if (kafkaUrl.equals(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer())) {
         return inMemoryRemoteKafkaConsumer;
       }
       return inMemoryLocalKafkaConsumer;
-    }).when(mockFactory).getConsumer(any(), any());
+    }).when(mockFactory).create(any(), anyBoolean(), any(), any());
 
     mockWriterFactory = mock(VeniceWriterFactory.class);
     doReturn(null).when(mockWriterFactory).createVeniceWriter(any());
@@ -842,8 +842,7 @@ public abstract class StoreIngestionTaskTest {
     final Sensor mockSensor = mock(Sensor.class);
     doReturn(mockSensor).when(mockMetricsRepository).sensor(anyString(), any());
     Properties localKafkaProps = new Properties();
-    localKafkaProps
-        .put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
+    localKafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
     localKafkaConsumerService = getConsumerAssignmentStrategy().constructor.construct(
         mockFactory,
         localKafkaProps,
@@ -859,12 +858,12 @@ public abstract class StoreIngestionTaskTest {
         isLiveConfigEnabled,
         pubSubDeserializer,
         SystemTime.INSTANCE,
-        kafkaConsumerServiceStats);
+        kafkaConsumerServiceStats,
+        false);
     localKafkaConsumerService.start();
 
     Properties remoteKafkaProps = new Properties();
-    remoteKafkaProps
-        .put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, inMemoryRemoteKafkaBroker.getKafkaBootstrapServer());
+    remoteKafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryRemoteKafkaBroker.getKafkaBootstrapServer());
     remoteKafkaConsumerService = getConsumerAssignmentStrategy().constructor.construct(
         mockFactory,
         remoteKafkaProps,
@@ -880,7 +879,8 @@ public abstract class StoreIngestionTaskTest {
         isLiveConfigEnabled,
         pubSubDeserializer,
         SystemTime.INSTANCE,
-        kafkaConsumerServiceStats);
+        kafkaConsumerServiceStats,
+        false);
     remoteKafkaConsumerService.start();
 
     doReturn(100L).when(mockBandwidthThrottler).getMaxRatePerSecond();
@@ -888,7 +888,6 @@ public abstract class StoreIngestionTaskTest {
 
     return StoreIngestionTaskFactory.builder()
         .setVeniceWriterFactory(mockWriterFactory)
-        .setKafkaClientFactory(mockFactory)
         .setStorageEngineRepository(mockStorageEngineRepository)
         .setStorageMetadataService(offsetManager)
         .setLeaderFollowerNotifiersQueue(leaderFollowerNotifiers)
@@ -1182,7 +1181,7 @@ public abstract class StoreIngestionTaskTest {
   public void testMissingMessagesForTopicWithLogCompactionEnabled(boolean isActiveActiveReplicationEnabled)
       throws Exception {
     // enable log compaction
-    when(mockTopicManager.isTopicCompactionEnabled(topic)).thenReturn(true);
+    when(mockTopicManager.isTopicCompactionEnabled(pubSubTopic)).thenReturn(true);
 
     localVeniceWriter.broadcastStartOfPush(new HashMap<>());
     PubSubProduceResult putMetadata1 =
@@ -2531,7 +2530,7 @@ public abstract class StoreIngestionTaskTest {
         true).build();
 
     Properties kafkaProps = new Properties();
-    kafkaProps.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
+    kafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
 
     int leaderSubPartition = PartitionUtils.getLeaderSubPartition(PARTITION_FOO, amplificationFactor);
     storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(
@@ -2659,10 +2658,7 @@ public abstract class StoreIngestionTaskTest {
         Optional.empty(),
         1,
         extraServerProperties,
-        false).setIsDaVinciClient(isDaVinciClient)
-            .setTopicManagerRepositoryJavaBased(mockTopicManagerRepository)
-            .setAggKafkaConsumerService(aggKafkaConsumerService)
-            .build();
+        false).setIsDaVinciClient(isDaVinciClient).setAggKafkaConsumerService(aggKafkaConsumerService).build();
 
     TopicManager mockTopicManagerRemoteKafka = mock(TopicManager.class);
 
@@ -2671,11 +2667,11 @@ public abstract class StoreIngestionTaskTest {
     doReturn(mockTopicManagerRemoteKafka).when(mockTopicManagerRepository)
         .getTopicManager(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer());
 
-    doReturn(true).when(mockTopicManager).containsTopic(anyString());
-    doReturn(true).when(mockTopicManagerRemoteKafka).containsTopic(anyString());
+    doReturn(true).when(mockTopicManager).containsTopic(any());
+    doReturn(true).when(mockTopicManagerRemoteKafka).containsTopic(any());
 
     Properties kafkaProps = new Properties();
-    kafkaProps.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
+    kafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
 
     int leaderSubPartition = PartitionUtils.getLeaderSubPartition(PARTITION_FOO, amplificationFactor);
     storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(
@@ -2752,8 +2748,8 @@ public abstract class StoreIngestionTaskTest {
     doReturn(true).when(mockPcsBufferReplayStartedLagCaughtUp).isHybrid();
     doReturn(topicSwitchWithSourceRealTimeTopicWrapper).when(mockPcsBufferReplayStartedLagCaughtUp).getTopicSwitch();
     doReturn(mockOffsetRecordLagCaughtUp).when(mockPcsBufferReplayStartedLagCaughtUp).getOffsetRecord();
-    doReturn(5L).when(mockTopicManager).getPartitionLatestOffsetAndRetry(anyString(), anyInt(), anyInt());
-    doReturn(5L).when(mockTopicManagerRemoteKafka).getPartitionLatestOffsetAndRetry(anyString(), anyInt(), anyInt());
+    doReturn(5L).when(mockTopicManager).getPartitionLatestOffsetAndRetry(any(), anyInt());
+    doReturn(5L).when(mockTopicManagerRemoteKafka).getPartitionLatestOffsetAndRetry(any(), anyInt());
     doReturn(0).when(mockPcsBufferReplayStartedLagCaughtUp).getPartition();
     doReturn(0).when(mockPcsBufferReplayStartedLagCaughtUp).getUserPartition();
     storeIngestionTaskUnderTest.setPartitionConsumptionState(0, mockPcsBufferReplayStartedLagCaughtUp);
@@ -2771,8 +2767,8 @@ public abstract class StoreIngestionTaskTest {
     doReturn(topicSwitchWithSourceRealTimeTopicWrapper).when(mockPcsBufferReplayStartedRemoteLagging).getTopicSwitch();
     doReturn(mockOffsetRecordLagCaughtUpTimestampLagging).when(mockPcsBufferReplayStartedRemoteLagging)
         .getOffsetRecord();
-    doReturn(5L).when(mockTopicManager).getPartitionLatestOffsetAndRetry(anyString(), anyInt(), anyInt());
-    doReturn(150L).when(mockTopicManagerRemoteKafka).getPartitionLatestOffsetAndRetry(anyString(), anyInt(), anyInt());
+    doReturn(5L).when(mockTopicManager).getPartitionLatestOffsetAndRetry(any(), anyInt());
+    doReturn(150L).when(mockTopicManagerRemoteKafka).getPartitionLatestOffsetAndRetry(any(), anyInt());
     doReturn(150L).when(aggKafkaConsumerService).getLatestOffsetFor(anyString(), any(), any());
     Assert.assertEquals(
         storeIngestionTaskUnderTest.isReadyToServe(mockPcsBufferReplayStartedRemoteLagging),
@@ -2791,12 +2787,12 @@ public abstract class StoreIngestionTaskTest {
     doReturn(topicSwitchWithSourceRealTimeTopicWrapper).when(mockPcsOffsetLagCaughtUpTimestampLagging).getTopicSwitch();
     doReturn(mockOffsetRecordLagCaughtUpTimestampLagging).when(mockPcsOffsetLagCaughtUpTimestampLagging)
         .getOffsetRecord();
-    doReturn(5L).when(mockTopicManager).getPartitionLatestOffsetAndRetry(anyString(), anyInt(), anyInt());
-    doReturn(5L).when(mockTopicManagerRemoteKafka).getPartitionLatestOffsetAndRetry(anyString(), anyInt(), anyInt());
+    doReturn(5L).when(mockTopicManager).getPartitionLatestOffsetAndRetry(any(), anyInt());
+    doReturn(5L).when(mockTopicManagerRemoteKafka).getPartitionLatestOffsetAndRetry(any(), anyInt());
     doReturn(System.currentTimeMillis() - 2 * MS_PER_DAY).when(mockTopicManager)
-        .getProducerTimestampOfLastDataRecord(anyString(), anyInt(), anyInt());
+        .getProducerTimestampOfLastDataRecord(any(), anyInt());
     doReturn(System.currentTimeMillis()).when(mockTopicManagerRemoteKafka)
-        .getProducerTimestampOfLastDataRecord(anyString(), anyInt(), anyInt());
+        .getProducerTimestampOfLastDataRecord(any(), anyInt());
     Assert.assertEquals(
         storeIngestionTaskUnderTest.isReadyToServe(mockPcsOffsetLagCaughtUpTimestampLagging),
         isDaVinciClient);
@@ -2829,21 +2825,18 @@ public abstract class StoreIngestionTaskTest {
         Optional.empty(),
         1,
         new HashMap<>(),
-        false).setIsDaVinciClient(isDaVinciClient)
-            .setTopicManagerRepositoryJavaBased(mockTopicManagerRepository)
-            .setAggKafkaConsumerService(aggKafkaConsumerService)
-            .build();
+        false).setIsDaVinciClient(isDaVinciClient).setAggKafkaConsumerService(aggKafkaConsumerService).build();
 
     TopicManager mockTopicManagerRemoteKafka = mock(TopicManager.class);
     doReturn(mockTopicManager).when(mockTopicManagerRepository)
         .getTopicManager(inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
     doReturn(mockTopicManagerRemoteKafka).when(mockTopicManagerRepository)
         .getTopicManager(inMemoryRemoteKafkaBroker.getKafkaBootstrapServer());
-    doReturn(true).when(mockTopicManager).containsTopic(anyString());
-    doReturn(true).when(mockTopicManagerRemoteKafka).containsTopic(anyString());
+    doReturn(true).when(mockTopicManager).containsTopic(any());
+    doReturn(true).when(mockTopicManagerRemoteKafka).containsTopic(any());
 
     Properties kafkaProps = new Properties();
-    kafkaProps.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
+    kafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
     int leaderSubPartition = PartitionUtils.getLeaderSubPartition(PARTITION_FOO, amplificationFactor);
     storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(
         mockStore,
@@ -2883,8 +2876,8 @@ public abstract class StoreIngestionTaskTest {
     doReturn(true).when(mockPcsMultipleSourceKafkaServers).isHybrid();
     doReturn(topicSwitchWithMultipleSourceKafkaServersWrapper).when(mockPcsMultipleSourceKafkaServers).getTopicSwitch();
     doReturn(mockOffsetRecord).when(mockPcsMultipleSourceKafkaServers).getOffsetRecord();
-    doReturn(5L).when(mockTopicManager).getPartitionLatestOffsetAndRetry(anyString(), anyInt(), anyInt());
-    doReturn(150L).when(mockTopicManagerRemoteKafka).getPartitionLatestOffsetAndRetry(anyString(), anyInt(), anyInt());
+    doReturn(5L).when(mockTopicManager).getPartitionLatestOffsetAndRetry(any(), anyInt());
+    doReturn(150L).when(mockTopicManagerRemoteKafka).getPartitionLatestOffsetAndRetry(any(), anyInt());
     doReturn(150L).when(aggKafkaConsumerService).getLatestOffsetFor(anyString(), any(), any());
     doReturn(0).when(mockPcsMultipleSourceKafkaServers).getPartition();
     doReturn(0).when(mockPcsMultipleSourceKafkaServers).getUserPartition();
@@ -2914,12 +2907,10 @@ public abstract class StoreIngestionTaskTest {
         Optional.empty(),
         amplificationFactor,
         new HashMap<>(),
-        false).setIsDaVinciClient(isDaVinciClient)
-            .setTopicManagerRepositoryJavaBased(mockTopicManagerRepository)
-            .build();
+        false).setIsDaVinciClient(isDaVinciClient).build();
     int leaderSubPartition = PartitionUtils.getLeaderSubPartition(PARTITION_FOO, amplificationFactor);
     Properties kafkaProps = new Properties();
-    kafkaProps.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
+    kafkaProps.put(KAFKA_BOOTSTRAP_SERVERS, inMemoryLocalKafkaBroker.getKafkaBootstrapServer());
 
     storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(
         mockStore,
@@ -2951,7 +2942,7 @@ public abstract class StoreIngestionTaskTest {
     storeIngestionTaskUnderTest.processTopicSwitch(controlMessage, PARTITION_FOO, 10, mockPcs);
 
     verify(mockTopicManagerRemoteKafka, isDaVinciClient ? never() : times(1))
-        .getPartitionOffsetByTime(anyString(), anyInt(), anyLong());
+        .getPartitionOffsetByTime(any(), anyLong());
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
@@ -2974,8 +2965,7 @@ public abstract class StoreIngestionTaskTest {
     doReturn(activeActive).when(mockVersion).isActiveActiveReplicationEnabled();
 
     Properties mockKafkaConsumerProperties = mock(Properties.class);
-    doReturn("localhost").when(mockKafkaConsumerProperties)
-        .getProperty(eq(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG));
+    doReturn("localhost").when(mockKafkaConsumerProperties).getProperty(eq(KAFKA_BOOTSTRAP_SERVERS));
 
     VeniceServerConfig mockVeniceServerConfig = mock(VeniceServerConfig.class);
     VeniceProperties mockVeniceProperties = mock(VeniceProperties.class);
@@ -3259,30 +3249,52 @@ public abstract class StoreIngestionTaskTest {
               leaderProducedRecordContext,
               PARTITION_FOO,
               localKafkaConsumerService.kafkaUrl,
-              System.nanoTime());
+              System.nanoTime(),
+              System.currentTimeMillis());
         } catch (InterruptedException e) {
           throw new VeniceException(e);
         }
       };
-      verify(stats, times(0)).recordConsumerRecordsQueuePutLatency(anyDouble());
+      int wantedInvocationsForStatsWhichCanBeDisabled = 0;
+      int wantedInvocationsForAllOtherStats = 0;
+      verifyStats(stats, wantedInvocationsForStatsWhichCanBeDisabled, wantedInvocationsForAllOtherStats);
+
       produce.run();
-      verify(stats, times(1)).recordConsumerRecordsQueuePutLatency(anyDouble());
+      verifyStats(stats, ++wantedInvocationsForStatsWhichCanBeDisabled, ++wantedInvocationsForAllOtherStats);
+
       storeIngestionTaskUnderTest.disableMetricsEmission();
       produce.run();
-      verify(stats, times(1)).recordConsumerRecordsQueuePutLatency(anyDouble());
+      verifyStats(stats, wantedInvocationsForStatsWhichCanBeDisabled, ++wantedInvocationsForAllOtherStats);
+
       storeIngestionTaskUnderTest.enableMetricsEmission();
       produce.run();
-      verify(stats, times(2)).recordConsumerRecordsQueuePutLatency(anyDouble());
+      verifyStats(stats, ++wantedInvocationsForStatsWhichCanBeDisabled, ++wantedInvocationsForAllOtherStats);
 
       long currentTimeMs = System.currentTimeMillis();
       long errorMargin = 10_000;
-      verify(mockVersionedStorageIngestionStats, timeout(1000).times(3)).recordConsumedRecordEndToEndProcessingLatency(
-          anyString(),
-          anyInt(),
-          ArgumentMatchers.doubleThat(argument -> argument >= 0 && argument < 1000),
-          ArgumentMatchers
-              .longThat(argument -> argument > currentTimeMs - errorMargin && argument < currentTimeMs + errorMargin));
+      verify(mockVersionedStorageIngestionStats, timeout(1000).times(++wantedInvocationsForStatsWhichCanBeDisabled))
+          .recordConsumedRecordEndToEndProcessingLatency(
+              anyString(),
+              anyInt(),
+              ArgumentMatchers.doubleThat(argument -> argument >= 0 && argument < 1000),
+              ArgumentMatchers.longThat(
+                  argument -> argument > currentTimeMs - errorMargin && argument < currentTimeMs + errorMargin));
     }, activeActiveEnabled);
+  }
+
+  private void verifyStats(
+      HostLevelIngestionStats stats,
+      int wantedInvocationsForStatsWhichCanBeDisabled,
+      int wantedInvocationsForAllOtherStats) {
+    verify(stats, times(wantedInvocationsForStatsWhichCanBeDisabled))
+        .recordConsumerRecordsQueuePutLatency(anyDouble(), anyLong());
+    verify(stats, timeout(1000).times(wantedInvocationsForAllOtherStats)).recordTotalRecordsConsumed();
+    verify(stats, timeout(1000).times(wantedInvocationsForAllOtherStats)).recordTotalBytesConsumed(anyLong());
+    verify(mockVersionedStorageIngestionStats, timeout(1000).times(wantedInvocationsForAllOtherStats))
+        .recordRecordsConsumed(anyString(), anyInt());
+    verify(mockVersionedStorageIngestionStats, timeout(1000).times(wantedInvocationsForAllOtherStats))
+        .recordBytesConsumed(anyString(), anyInt(), anyLong());
+
   }
 
   @Test

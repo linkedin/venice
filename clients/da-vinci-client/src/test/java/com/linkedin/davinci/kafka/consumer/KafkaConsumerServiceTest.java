@@ -1,5 +1,7 @@
 package com.linkedin.davinci.kafka.consumer;
 
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doReturn;
@@ -7,15 +9,15 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.KafkaClientFactory;
-import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumer;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pubsub.PubSubTopicPartitionImpl;
 import com.linkedin.venice.pubsub.PubSubTopicRepository;
+import com.linkedin.venice.pubsub.adapter.kafka.consumer.ApacheKafkaConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapter;
+import com.linkedin.venice.pubsub.api.PubSubConsumerAdapterFactory;
 import com.linkedin.venice.pubsub.api.PubSubTopic;
 import com.linkedin.venice.pubsub.api.PubSubTopicPartition;
-import com.linkedin.venice.pubsub.consumer.PubSubConsumer;
 import com.linkedin.venice.pubsub.kafka.KafkaPubSubMessageDeserializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.throttle.EventThrottler;
@@ -28,7 +30,6 @@ import java.util.HashSet;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
-import org.apache.kafka.clients.CommonClientConfigs;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -42,10 +43,10 @@ public class KafkaConsumerServiceTest {
 
   @Test
   public void testTopicWiseGetConsumer() throws Exception {
-    ApacheKafkaConsumer consumer1 = mock(ApacheKafkaConsumer.class);
+    ApacheKafkaConsumerAdapter consumer1 = mock(ApacheKafkaConsumerAdapter.class);
     when(consumer1.hasAnySubscription()).thenReturn(true);
 
-    ApacheKafkaConsumer consumer2 = mock(ApacheKafkaConsumer.class);
+    ApacheKafkaConsumerAdapter consumer2 = mock(ApacheKafkaConsumerAdapter.class);
     when(consumer2.hasAnySubscription()).thenReturn(true);
 
     String storeName1 = Utils.getUniqueString("test_consumer_service1");
@@ -60,11 +61,11 @@ public class KafkaConsumerServiceTest {
     when(task2.getVersionTopic()).thenReturn(topicForStoreName2);
     when(task2.isHybridMode()).thenReturn(true);
 
-    KafkaClientFactory factory = mock(KafkaClientFactory.class);
-    when(factory.getConsumer(any(), any())).thenReturn(consumer1, consumer2);
+    PubSubConsumerAdapterFactory factory = mock(PubSubConsumerAdapterFactory.class);
+    when(factory.create(any(), anyBoolean(), any(), any())).thenReturn(consumer1, consumer2);
 
     Properties properties = new Properties();
-    properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, "test_kafka_url");
+    properties.put(KAFKA_BOOTSTRAP_SERVERS, "test_kafka_url");
 
     MetricsRepository mockMetricsRepository = mock(MetricsRepository.class);
     final Sensor mockSensor = mock(Sensor.class);
@@ -84,14 +85,15 @@ public class KafkaConsumerServiceTest {
         false,
         pubSubDeserializer,
         SystemTime.INSTANCE,
-        null);
+        null,
+        false);
     consumerService.start();
 
     PubSubTopic versionTopicForTask1 = task1.getVersionTopic();
-    PubSubConsumer assignedConsumerForTask1 =
+    PubSubConsumerAdapter assignedConsumerForTask1 =
         consumerService.assignConsumerFor(versionTopicForTask1, new PubSubTopicPartitionImpl(versionTopicForTask1, 0));
     PubSubTopic versionTopicForTask2 = task2.getVersionTopic();
-    PubSubConsumer assignedConsumerForTask2 =
+    PubSubConsumerAdapter assignedConsumerForTask2 =
         consumerService.assignConsumerFor(versionTopicForTask2, new PubSubTopicPartitionImpl(versionTopicForTask2, 0));
     Assert.assertNotEquals(
         assignedConsumerForTask1,
@@ -116,7 +118,7 @@ public class KafkaConsumerServiceTest {
     when(task3.getVersionTopic()).thenReturn(topicForStoreName3);
     when(task3.isHybridMode()).thenReturn(true);
     PubSubTopic versionTopicForTask3 = task3.getVersionTopic();
-    PubSubConsumer assignedConsumerForTask3 =
+    PubSubConsumerAdapter assignedConsumerForTask3 =
         consumerService.assignConsumerFor(versionTopicForTask3, new PubSubTopicPartitionImpl(versionTopicForTask3, 0));
     Assert.assertEquals(
         assignedConsumerForTask3,
@@ -135,17 +137,17 @@ public class KafkaConsumerServiceTest {
 
   @Test
   public void testTopicWiseGetConsumerForHybridMode() throws Exception {
-    ApacheKafkaConsumer consumer1 = mock(ApacheKafkaConsumer.class);
+    ApacheKafkaConsumerAdapter consumer1 = mock(ApacheKafkaConsumerAdapter.class);
     when(consumer1.hasAnySubscription()).thenReturn(false);
 
-    ApacheKafkaConsumer consumer2 = mock(ApacheKafkaConsumer.class);
+    ApacheKafkaConsumerAdapter consumer2 = mock(ApacheKafkaConsumerAdapter.class);
     when(consumer1.hasAnySubscription()).thenReturn(false);
 
-    KafkaClientFactory factory = mock(KafkaClientFactory.class);
-    when(factory.getConsumer(any(), any())).thenReturn(consumer1, consumer2);
+    PubSubConsumerAdapterFactory factory = mock(PubSubConsumerAdapterFactory.class);
+    when(factory.create(any(), anyBoolean(), any(), any())).thenReturn(consumer1, consumer2);
 
     Properties properties = new Properties();
-    properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, "test_kafka_url");
+    properties.put(KAFKA_BOOTSTRAP_SERVERS, "test_kafka_url");
 
     MetricsRepository mockMetricsRepository = mock(MetricsRepository.class);
     final Sensor mockSensor = mock(Sensor.class);
@@ -165,7 +167,8 @@ public class KafkaConsumerServiceTest {
         false,
         pubSubDeserializer,
         SystemTime.INSTANCE,
-        null);
+        null,
+        false);
     consumerService.start();
 
     String storeName = Utils.getUniqueString("test_consumer_service");
@@ -215,10 +218,10 @@ public class KafkaConsumerServiceTest {
 
   @Test
   public void testPartitionWiseGetConsumer() {
-    ApacheKafkaConsumer consumer1 = mock(ApacheKafkaConsumer.class);
+    ApacheKafkaConsumerAdapter consumer1 = mock(ApacheKafkaConsumerAdapter.class);
     when(consumer1.hasAnySubscription()).thenReturn(true);
 
-    ApacheKafkaConsumer consumer2 = mock(ApacheKafkaConsumer.class);
+    ApacheKafkaConsumerAdapter consumer2 = mock(ApacheKafkaConsumerAdapter.class);
     when(consumer2.hasAnySubscription()).thenReturn(true);
 
     String storeName1 = Utils.getUniqueString("test_consumer_service1");
@@ -236,11 +239,11 @@ public class KafkaConsumerServiceTest {
     when(task2.getVersionTopic()).thenReturn(pubSubTopicForStoreName2);
     when(task2.isHybridMode()).thenReturn(true);
 
-    KafkaClientFactory factory = mock(KafkaClientFactory.class);
-    when(factory.getConsumer(any(), any())).thenReturn(consumer1, consumer2);
+    PubSubConsumerAdapterFactory factory = mock(PubSubConsumerAdapterFactory.class);
+    when(factory.create(any(), anyBoolean(), any(), any())).thenReturn(consumer1, consumer2);
 
     Properties properties = new Properties();
-    properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, "test_kafka_url");
+    properties.put(KAFKA_BOOTSTRAP_SERVERS, "test_kafka_url");
 
     MetricsRepository mockMetricsRepository = mock(MetricsRepository.class);
     final Sensor mockSensor = mock(Sensor.class);
@@ -260,20 +263,21 @@ public class KafkaConsumerServiceTest {
         false,
         pubSubDeserializer,
         SystemTime.INSTANCE,
-        null);
+        null,
+        false);
     consumerService.start();
 
-    PubSubConsumer consumerForT1P0 = consumerService
+    PubSubConsumerAdapter consumerForT1P0 = consumerService
         .assignConsumerFor(pubSubTopicForStoreName1, new PubSubTopicPartitionImpl(pubSubTopicForStoreName1, 0));
-    PubSubConsumer consumerForT1P1 = consumerService
+    PubSubConsumerAdapter consumerForT1P1 = consumerService
         .assignConsumerFor(pubSubTopicForStoreName1, new PubSubTopicPartitionImpl(pubSubTopicForStoreName1, 1));
-    PubSubConsumer consumerForT1P2 = consumerService
+    PubSubConsumerAdapter consumerForT1P2 = consumerService
         .assignConsumerFor(pubSubTopicForStoreName1, new PubSubTopicPartitionImpl(pubSubTopicForStoreName1, 2));
-    PubSubConsumer consumerForT1P3 = consumerService
+    PubSubConsumerAdapter consumerForT1P3 = consumerService
         .assignConsumerFor(pubSubTopicForStoreName1, new PubSubTopicPartitionImpl(pubSubTopicForStoreName1, 3));
-    PubSubConsumer consumerForT2P0 = consumerService
+    PubSubConsumerAdapter consumerForT2P0 = consumerService
         .assignConsumerFor(pubSubTopicForStoreName2, new PubSubTopicPartitionImpl(pubSubTopicForStoreName2, 4));
-    PubSubConsumer consumerForT2P1 = consumerService
+    PubSubConsumerAdapter consumerForT2P1 = consumerService
         .assignConsumerFor(pubSubTopicForStoreName2, new PubSubTopicPartitionImpl(pubSubTopicForStoreName2, 5));
     Assert.assertNotEquals(consumerForT1P0, consumerForT1P1);
     Assert.assertNotEquals(consumerForT2P0, consumerForT2P1);

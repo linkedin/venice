@@ -27,7 +27,7 @@ cp ../services/venice-router/build/libs/venice-router-all.jar venice-router/
 targets=(venice-controller venice-server venice-router venice-client)
 
 for target in ${targets[@]}; do
-    docker buildx build --load --platform linux/amd64 -t "$repository/$target:$version" $target
+    docker buildx build --load --platform linux/amd64 -t "$repository/$target:$version" -t "$repository/$target:latest-dev" $target
 done
 
 rm -f venice-client/venice-push-job-all.jar

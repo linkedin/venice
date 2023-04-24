@@ -22,7 +22,7 @@ import org.apache.logging.log4j.Logger;
 public class IsolatedIngestionRequestClient implements Closeable {
   private static final Logger LOGGER = LogManager.getLogger(IsolatedIngestionRequestClient.class);
 
-  private final HttpClientTransport httpClientTransport;
+  private HttpClientTransport httpClientTransport;
 
   public IsolatedIngestionRequestClient(VeniceConfigLoader configLoader) {
     Optional<SSLFactory> sslFactory = IsolatedIngestionUtils.getSSLFactory(configLoader);
@@ -32,7 +32,7 @@ public class IsolatedIngestionRequestClient implements Closeable {
     httpClientTransport = new HttpClientTransport(sslFactory, port, requestTimeoutInSeconds);
   }
 
-  public void reportIngestionStatus(IngestionTaskReport report) {
+  public boolean reportIngestionStatus(IngestionTaskReport report) {
     String topicName = report.topicName.toString();
     int partitionId = report.partitionId;
     // Avoid sending binary data in OffsetRecord and pollute logs.
@@ -46,8 +46,10 @@ public class IsolatedIngestionRequestClient implements Closeable {
         report.offset);
     try {
       httpClientTransport.sendRequest(IngestionAction.REPORT, report);
+      return true;
     } catch (Exception e) {
       LOGGER.warn("Failed to send report with exception for topic: {}, partition: {}", topicName, partitionId, e);
+      return false;
     }
   }
 
@@ -57,6 +59,11 @@ public class IsolatedIngestionRequestClient implements Closeable {
     } catch (Exception e) {
       LOGGER.warn("Failed to send metrics update with exception", e);
     }
+  }
+
+  // Visible for testing
+  protected void setHttpClientTransport(HttpClientTransport clientTransport) {
+    this.httpClientTransport = clientTransport;
   }
 
   @Override

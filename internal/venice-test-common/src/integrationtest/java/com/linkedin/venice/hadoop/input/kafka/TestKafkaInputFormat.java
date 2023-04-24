@@ -8,6 +8,7 @@ import static com.linkedin.venice.kafka.TopicManager.DEFAULT_KAFKA_OPERATION_TIM
 import com.linkedin.venice.integration.utils.PubSubBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.pubsub.PubSubTopicRepository;
 import com.linkedin.venice.utils.IntegrationTestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -35,15 +36,20 @@ public class TestKafkaInputFormat {
 
   private PubSubBrokerWrapper kafka;
   private TopicManager manager;
+  private PubSubTopicRepository pubSubTopicRepository = new PubSubTopicRepository();
 
   @BeforeClass
   public void setUp() {
     kafka = ServiceFactory.getPubSubBroker();
-    manager = new TopicManager(
-        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
-        100,
-        24 * Time.MS_PER_HOUR,
-        IntegrationTestPushUtils.getVeniceConsumerFactory(kafka));
+    manager =
+        IntegrationTestPushUtils
+            .getTopicManagerRepo(
+                DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+                100L,
+                24 * Time.MS_PER_HOUR,
+                kafka.getAddress(),
+                pubSubTopicRepository)
+            .getTopicManager();
   }
 
   @AfterClass
@@ -53,8 +59,8 @@ public class TestKafkaInputFormat {
   }
 
   public String getTopic(int numRecord, int numPartition) {
-    String topicName = Utils.getUniqueString("test_kafka_input_format");
-    manager.createTopic(topicName, numPartition, 1, true);
+    String topicName = Utils.getUniqueString("test_kafka_input_format") + "_v1";
+    manager.createTopic(pubSubTopicRepository.getTopic(topicName), numPartition, 1, true);
     VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceWriterFactory(kafka.getAddress());
     try (VeniceWriter<byte[], byte[], byte[]> veniceWriter =
         veniceWriterFactory.createVeniceWriter(new VeniceWriterOptions.Builder(topicName).build())) {

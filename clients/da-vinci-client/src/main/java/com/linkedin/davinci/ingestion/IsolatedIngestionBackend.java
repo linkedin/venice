@@ -29,6 +29,8 @@ import com.linkedin.venice.utils.locks.AutoCloseableLock;
 import com.linkedin.venice.utils.locks.AutoCloseableSingleLock;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -54,6 +56,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
   private final MainIngestionRequestClient mainIngestionRequestClient;
   private final MainIngestionMonitorService mainIngestionMonitorService;
   private final VeniceConfigLoader configLoader;
+  private final ExecutorService completionReportHandlingExecutor = Executors.newFixedThreadPool(10);
   private Process isolatedIngestionServiceProcess;
 
   public IsolatedIngestionBackend(
@@ -184,6 +187,13 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
   }
 
   @Override
+  public void shutdownIngestionTask(String topicName) {
+    mainIngestionRequestClient.shutdownIngestionTask(topicName);
+    super.shutdownIngestionTask(topicName);
+    mainIngestionMonitorService.cleanupTopicState(topicName);
+  }
+
+  @Override
   public void addIngestionNotifier(VeniceNotifier ingestionListener) {
     if (ingestionListener != null) {
       super.addIngestionNotifier(ingestionListener);
@@ -229,6 +239,7 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
 
   public void close() {
     try {
+      completionReportHandlingExecutor.shutdownNow();
       mainIngestionMonitorService.stopInner();
       mainIngestionRequestClient.shutdownForkedProcessComponent(IngestionComponentType.KAFKA_INGESTION_SERVICE);
       mainIngestionRequestClient.shutdownForkedProcessComponent(IngestionComponentType.STORAGE_SERVICE);
@@ -245,12 +256,20 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
         .equals(MainPartitionIngestionStatus.MAIN);
   }
 
-  private boolean isTopicPartitionIngesting(String topicName, int partition) {
+  boolean isTopicPartitionIngesting(String topicName, int partition) {
     return !getMainIngestionMonitorService().getTopicPartitionIngestionStatus(topicName, partition)
         .equals(MainPartitionIngestionStatus.NOT_EXIST);
   }
 
-  private VeniceNotifier getIsolatedIngestionNotifier(VeniceNotifier notifier) {
+  ExecutorService getCompletionHandlingExecutor() {
+    return completionReportHandlingExecutor;
+  }
+
+  VeniceConfigLoader getConfigLoader() {
+    return configLoader;
+  }
+
+  VeniceNotifier getIsolatedIngestionNotifier(VeniceNotifier notifier) {
     return new RelayNotifier(notifier) {
       @Override
       public void completed(
@@ -259,12 +278,15 @@ public class IsolatedIngestionBackend extends DefaultIngestionBackend
           long offset,
           String message,
           Optional<LeaderFollowerStateType> leaderState) {
+        // Use thread pool to handle the completion reporting to make sure it is not blocking the report.
         if (isTopicPartitionIngesting(kafkaTopic, partition)) {
-          VeniceStoreVersionConfig config = configLoader.getStoreConfig(kafkaTopic);
-          config.setRestoreDataPartitions(false);
-          config.setRestoreMetadataPartition(false);
-          // Start partition consumption locally.
-          startConsumption(config, partition, leaderState);
+          getCompletionHandlingExecutor().submit(() -> {
+            VeniceStoreVersionConfig config = getConfigLoader().getStoreConfig(kafkaTopic);
+            config.setRestoreDataPartitions(false);
+            config.setRestoreMetadataPartition(false);
+            // Start partition consumption locally.
+            startConsumption(config, partition, leaderState);
+          });
         } else {
           LOGGER.error(
               "Partition: {} of topic: {} is not assigned to this host, will not resume the ingestion on main process.",
