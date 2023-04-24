@@ -47,7 +47,9 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
         batchGetKeySize,
         (metricsRepository) -> {},
         Optional.empty(),
-        useRequestBasedMetadata);
+        useRequestBasedMetadata,
+        false,
+        Optional.empty());
   }
 
   /**
@@ -64,7 +66,9 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
       int batchGetKeySize,
       Consumer<MetricsRepository> statsValidation,
       Optional<AvroGenericStoreClient> vsonThinClient,
-      boolean useRequestBasedMetadata) throws Exception {
+      boolean useRequestBasedMetadata,
+      boolean expectedExceptions,
+      Optional<String> exceptionMessage) throws Exception {
     MetricsRepository metricsRepositoryForGenericClient = new MetricsRepository();
     AvroGenericStoreClient<String, GenericRecord> genericFastClient =
         getGenericFastClient(clientConfigBuilder, metricsRepositoryForGenericClient, useRequestBasedMetadata);
@@ -86,28 +90,44 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
             Set<String> keys = new HashSet<>();
             keys.add(key1);
             keys.add(key2);
-            Map<String, GenericRecord> resultMap = genericFastClient.batchGet(keys).get();
-            assertEquals(resultMap.size(), 2);
-            assertEquals((int) resultMap.get(key1).get(VALUE_FIELD_NAME), i);
-            assertEquals((int) resultMap.get(key2).get(VALUE_FIELD_NAME), i + 1);
 
-            // Test Vson client
-            Map<String, Object> vsonResultMapofObj = genericFastVsonClient.batchGet(keys).get();
-            assertEquals(vsonResultMapofObj.size(), 2);
+            if (expectedExceptions) {
+              try {
+                genericFastClient.batchGet(keys).get();
+                fail();
+              } catch (VeniceClientException | ExecutionException e) {
+                assertTrue(e.getMessage().endsWith(exceptionMessage.get()));
+              }
+              try {
+                genericFastVsonClient.batchGet(keys).get();
+                fail();
+              } catch (VeniceClientException | ExecutionException e) {
+                assertTrue(e.getMessage().endsWith(exceptionMessage.get()));
+              }
+            } else {
+              Map<String, GenericRecord> resultMap = genericFastClient.batchGet(keys).get();
+              assertEquals(resultMap.size(), 2);
+              assertEquals((int) resultMap.get(key1).get(VALUE_FIELD_NAME), i);
+              assertEquals((int) resultMap.get(key2).get(VALUE_FIELD_NAME), i + 1);
 
-            Object vsonResultObj = vsonResultMapofObj.get(key1);
-            assertTrue(
-                vsonResultObj instanceof Map,
-                "VsonClient should return Map, but got " + vsonResultObj.getClass());
-            Map vsonResult = (Map) vsonResultObj;
-            assertEquals((int) vsonResult.get(VALUE_FIELD_NAME), i);
+              // Test Vson client
+              Map<String, Object> vsonResultMapofObj = genericFastVsonClient.batchGet(keys).get();
+              assertEquals(vsonResultMapofObj.size(), 2);
 
-            vsonResultObj = vsonResultMapofObj.get(key2);
-            assertTrue(
-                vsonResultObj instanceof Map,
-                "VsonClient should return Map, but got " + vsonResultObj.getClass());
-            vsonResult = (Map) vsonResultObj;
-            assertEquals((int) vsonResult.get(VALUE_FIELD_NAME), i + 1);
+              Object vsonResultObj = vsonResultMapofObj.get(key1);
+              assertTrue(
+                  vsonResultObj instanceof Map,
+                  "VsonClient should return Map, but got " + vsonResultObj.getClass());
+              Map vsonResult = (Map) vsonResultObj;
+              assertEquals((int) vsonResult.get(VALUE_FIELD_NAME), i);
+
+              vsonResultObj = vsonResultMapofObj.get(key2);
+              assertTrue(
+                  vsonResultObj instanceof Map,
+                  "VsonClient should return Map, but got " + vsonResultObj.getClass());
+              vsonResult = (Map) vsonResultObj;
+              assertEquals((int) vsonResult.get(VALUE_FIELD_NAME), i + 1);
+            }
           }
         } else if (batchGetKeySize == recordCnt) {
           // test batch get of size recordCnt (configured)
@@ -116,26 +136,42 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
             String key = keyPrefix + i;
             keys.add(key);
           }
-          Map<String, GenericRecord> resultMap = genericFastClient.batchGet(keys).get();
-          assertEquals(resultMap.size(), recordCnt);
 
-          for (int i = 0; i < recordCnt; ++i) {
-            String key = keyPrefix + i;
-            assertEquals((int) resultMap.get(key).get(VALUE_FIELD_NAME), i);
-          }
+          if (expectedExceptions) {
+            try {
+              genericFastClient.batchGet(keys).get();
+              fail();
+            } catch (VeniceClientException | ExecutionException e) {
+              assertTrue(e.getMessage().endsWith(exceptionMessage.get()));
+            }
+            try {
+              genericFastVsonClient.batchGet(keys).get();
+              fail();
+            } catch (VeniceClientException | ExecutionException e) {
+              assertTrue(e.getMessage().endsWith(exceptionMessage.get()));
+            }
+          } else {
+            Map<String, GenericRecord> resultMap = genericFastClient.batchGet(keys).get();
+            assertEquals(resultMap.size(), recordCnt);
 
-          // vson
-          Map<String, Object> vsonResultMapofObj = genericFastVsonClient.batchGet(keys).get();
-          assertEquals(vsonResultMapofObj.size(), recordCnt);
+            for (int i = 0; i < recordCnt; ++i) {
+              String key = keyPrefix + i;
+              assertEquals((int) resultMap.get(key).get(VALUE_FIELD_NAME), i);
+            }
 
-          for (int i = 0; i < recordCnt; ++i) {
-            String key = keyPrefix + i;
-            Object vsonResultObj = vsonResultMapofObj.get(key);
-            assertTrue(
-                vsonResultObj instanceof Map,
-                "VsonClient should return Map, but got" + vsonResultObj.getClass());
-            Map vsonResult = (Map) vsonResultObj;
-            assertEquals((int) vsonResult.get(VALUE_FIELD_NAME), i);
+            // vson
+            Map<String, Object> vsonResultMapofObj = genericFastVsonClient.batchGet(keys).get();
+            assertEquals(vsonResultMapofObj.size(), recordCnt);
+
+            for (int i = 0; i < recordCnt; ++i) {
+              String key = keyPrefix + i;
+              Object vsonResultObj = vsonResultMapofObj.get(key);
+              assertTrue(
+                  vsonResultObj instanceof Map,
+                  "VsonClient should return Map, but got" + vsonResultObj.getClass());
+              Map vsonResult = (Map) vsonResultObj;
+              assertEquals((int) vsonResult.get(VALUE_FIELD_NAME), i);
+            }
           }
         } else {
           throw new VeniceException("unsupported batchGetKeySize: " + batchGetKeySize);
@@ -143,14 +179,30 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
       } else {
         for (int i = 0; i < recordCnt; ++i) {
           String key = keyPrefix + i;
-          GenericRecord value = genericFastClient.get(key).get();
-          assertEquals((int) value.get(VALUE_FIELD_NAME), i);
 
-          // Test Vson client
-          Object vsonResult = genericFastVsonClient.get(key).get();
-          assertTrue(vsonResult instanceof Map, "VsonClient should return Map, but got" + vsonResult.getClass());
-          Map vsonValue = (Map) vsonResult;
-          assertEquals((int) vsonValue.get(VALUE_FIELD_NAME), i);
+          if (expectedExceptions) {
+            try {
+              genericFastClient.get(key).get();
+              fail();
+            } catch (VeniceClientException | ExecutionException e) {
+              assertTrue(e.getMessage().endsWith(exceptionMessage.get()));
+            }
+            try {
+              genericFastVsonClient.get(key).get();
+              fail();
+            } catch (VeniceClientException | ExecutionException e) {
+              assertTrue(e.getMessage().endsWith(exceptionMessage.get()));
+            }
+          } else {
+            GenericRecord value = genericFastClient.get(key).get();
+            assertEquals((int) value.get(VALUE_FIELD_NAME), i);
+
+            // Test Vson client
+            Object vsonResult = genericFastVsonClient.get(key).get();
+            assertTrue(vsonResult instanceof Map, "VsonClient should return Map, but got" + vsonResult.getClass());
+            Map vsonValue = (Map) vsonResult;
+            assertEquals((int) vsonValue.get(VALUE_FIELD_NAME), i);
+          }
         }
       }
       statsValidation.accept(metricsRepositoryForGenericClient);
@@ -181,10 +233,20 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
             Set<String> keys = new HashSet<>();
             keys.add(key1);
             keys.add(key2);
-            Map<String, TestValueSchema> resultMap = specificFastClient.batchGet(keys).get();
-            assertEquals(resultMap.size(), 2);
-            assertEquals(resultMap.get(key1).int_field, i);
-            assertEquals(resultMap.get(key2).int_field, i + 1);
+
+            if (expectedExceptions) {
+              try {
+                specificFastClient.batchGet(keys).get();
+                fail();
+              } catch (VeniceClientException | ExecutionException e) {
+                assertTrue(e.getMessage().endsWith("metadata is not ready, attempting to re-initialize"));
+              }
+            } else {
+              Map<String, TestValueSchema> resultMap = specificFastClient.batchGet(keys).get();
+              assertEquals(resultMap.size(), 2);
+              assertEquals(resultMap.get(key1).int_field, i);
+              assertEquals(resultMap.get(key2).int_field, i + 1);
+            }
           }
         } else if (batchGetKeySize == recordCnt) {
           // test batch get of size recordCnt (configured)
@@ -193,12 +255,21 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
             String key = keyPrefix + i;
             keys.add(key);
           }
-          Map<String, TestValueSchema> resultMap = specificFastClient.batchGet(keys).get();
-          assertEquals(resultMap.size(), recordCnt);
 
-          for (int i = 0; i < recordCnt; ++i) {
-            String key = keyPrefix + i;
-            assertEquals(resultMap.get(key).int_field, i);
+          if (expectedExceptions) {
+            try {
+              specificFastClient.batchGet(keys).get();
+              fail();
+            } catch (VeniceClientException | ExecutionException e) {
+              assertTrue(e.getMessage().endsWith("metadata is not ready, attempting to re-initialize"));
+            }
+          } else  {
+            Map<String, TestValueSchema> resultMap = specificFastClient.batchGet(keys).get();
+            assertEquals(resultMap.size(), recordCnt);
+            for (int i = 0; i < recordCnt; ++i) {
+              String key = keyPrefix + i;
+              assertEquals(resultMap.get(key).int_field, i);
+            }
           }
         } else {
           throw new VeniceException("unsupported batchGetKeySize: " + batchGetKeySize);
@@ -206,112 +277,17 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
       } else {
         for (int i = 0; i < recordCnt; ++i) {
           String key = keyPrefix + i;
-          TestValueSchema value = specificFastClient.get(key).get();
-          assertEquals(value.int_field, i);
-        }
-      }
-      statsValidation.accept(metricsRepositoryForSpecificClient);
-    } finally {
-      if (specificFastClient != null) {
-        specificFastClient.close();
-      }
-    }
-  }
 
-  private void runTestWithClientException(
-      ClientConfig.ClientConfigBuilder clientConfigBuilder,
-      boolean batchGet,
-      Consumer<MetricsRepository> statsValidation,
-      Optional<AvroGenericStoreClient> vsonThinClient) throws Exception {
-    MetricsRepository metricsRepositoryForGenericClient = new MetricsRepository();
-    AvroGenericStoreClient<String, GenericRecord> genericFastClient =
-        getGenericFastClient(clientConfigBuilder, metricsRepositoryForGenericClient, true);
-
-    AvroGenericStoreClient<String, Object> genericFastVsonClient = null;
-    // Construct a Vson store client
-    genericFastVsonClient =
-        getGenericFastVsonClient(clientConfigBuilder.clone(), new MetricsRepository(), vsonThinClient, true);
-    try {
-      if (batchGet) {
-        Set<String> keys = new HashSet<>();
-        for (int i = 0; i < recordCnt; ++i) {
-          String key = keyPrefix + i;
-          keys.add(key);
-        }
-
-        try {
-          genericFastClient.batchGet(keys).get();
-          fail();
-        } catch (VeniceClientException | ExecutionException e) {
-          assertTrue(e.getMessage().endsWith("metadata is not ready, attempting to re-initialize"));
-        }
-        // Test Vson client
-        try {
-          genericFastVsonClient.batchGet(keys).get();
-          fail();
-        } catch (VeniceClientException | ExecutionException e) {
-          assertTrue(e.getMessage().endsWith("metadata is not ready, attempting to re-initialize"));
-        }
-      } else {
-        for (int i = 0; i < recordCnt; ++i) {
-          String key = keyPrefix + i;
-
-          try {
-            genericFastClient.get(key).get();
-            fail();
-          } catch (VeniceClientException | ExecutionException e) {
-            assertTrue(e.getMessage().endsWith("metadata is not ready, attempting to re-initialize"));
-          }
-          // Test Vson client
-          try {
-            genericFastVsonClient.get(key).get();
-            fail();
-          } catch (VeniceClientException | ExecutionException e) {
-            assertTrue(e.getMessage().endsWith("metadata is not ready, attempting to re-initialize"));
-          }
-        }
-      }
-      statsValidation.accept(metricsRepositoryForGenericClient);
-    } finally {
-      if (genericFastClient != null) {
-        genericFastClient.close();
-      }
-      if (genericFastVsonClient != null) {
-        genericFastVsonClient.close();
-      }
-    }
-
-    // Test specific store client
-    MetricsRepository metricsRepositoryForSpecificClient = new MetricsRepository();
-    ClientConfig.ClientConfigBuilder specificClientConfigBuilder = clientConfigBuilder.clone();
-    AvroSpecificStoreClient<String, TestValueSchema> specificFastClient = getSpecificFastClient(
-        specificClientConfigBuilder,
-        metricsRepositoryForSpecificClient,
-        TestValueSchema.class,
-        true);
-    try {
-      if (batchGet) {
-        Set<String> keys = new HashSet<>();
-        for (int i = 0; i < recordCnt; ++i) {
-          String key = keyPrefix + i;
-          keys.add(key);
-        }
-
-        try {
-          specificFastClient.batchGet(keys).get();
-          fail();
-        } catch (VeniceClientException | ExecutionException e) {
-          assertTrue(e.getMessage().endsWith("metadata is not ready, attempting to re-initialize"));
-        }
-      } else {
-        for (int i = 0; i < recordCnt; ++i) {
-          String key = keyPrefix + i;
-
-          try {
-            specificFastClient.get(key).get();
-            fail();
-          } catch (VeniceClientException | ExecutionException e) {
-            assertTrue(e.getMessage().endsWith("metadata is not ready, attempting to re-initialize"));
+          if (expectedExceptions) {
+            try {
+              specificFastClient.get(key).get();
+              fail();
+            } catch (VeniceClientException | ExecutionException e) {
+              assertTrue(e.getMessage().endsWith("metadata is not ready, attempting to re-initialize"));
+            }
+          } else {
+            TestValueSchema value = specificFastClient.get(key).get();
+            assertEquals(value.int_field, i);
           }
         }
       }
@@ -364,9 +340,18 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
             batchGetKeySize,
             m -> {},
             Optional.of(genericVsonThinClient),
-            useRequestBasedMetadata);
+            useRequestBasedMetadata,
+            false,
+            Optional.empty());
       } else {
-        runTest(clientConfigBuilder, multiGet, batchGetKeySize, m -> {}, Optional.empty(), useRequestBasedMetadata);
+        runTest(
+            clientConfigBuilder,
+            multiGet,
+            batchGetKeySize, m -> {},
+            Optional.empty(),
+            useRequestBasedMetadata,
+            false,
+            Optional.empty());
       }
     } finally {
       if (genericThinClient != null) {
@@ -381,16 +366,12 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
     }
   }
 
-  @Test(dataProvider = "Four-True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TIME_OUT)
+  @Test(dataProvider = "FastClient-Three-Boolean-And-A-Number", timeOut = TIME_OUT)
   public void testFastClientWithoutServers(
       boolean multiGet,
       boolean dualRead,
       boolean speculativeQueryEnabled,
-      boolean useRequestBasedMetadata) throws Exception {
-    if (useRequestBasedMetadata == false) {
-      // we only test this case for the request based metadata as it relies on servers
-      return;
-    }
+      int batchGetKeySize) throws Exception {
     // stop all servers
     for (VeniceServerWrapper veniceServerWrapper: veniceCluster.getVeniceServers()) {
       veniceCluster.stopVeniceServer(veniceServerWrapper.getPort());
@@ -417,9 +398,25 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
         clientConfigBuilder.setSpecificThinClient(specificThinClient);
         genericVsonThinClient = getGenericVsonThinClient();
 
-        runTestWithClientException(clientConfigBuilder, multiGet, m -> {}, Optional.of(genericVsonThinClient));
+        runTest(
+            clientConfigBuilder,
+            multiGet,
+            batchGetKeySize,
+            m -> {},
+            Optional.of(genericVsonThinClient),
+            true,
+            true,
+            Optional.of("metadata is not ready, attempting to re-initialize"));
       } else {
-        runTestWithClientException(clientConfigBuilder, multiGet, m -> {}, Optional.empty());
+        runTest(
+            clientConfigBuilder,
+            multiGet,
+            batchGetKeySize,
+            m -> {},
+            Optional.empty(),
+            true,
+            true,
+            Optional.of("metadata is not ready, attempting to re-initialize"));
       }
     } finally {
       if (genericThinClient != null) {
@@ -468,6 +465,6 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
           assertTrue(metric.value() > 0, "Long tail retry for single-get should be triggered");
         }
       });
-    }, Optional.empty(), useRequestBasedMetadata);
+    }, Optional.empty(), useRequestBasedMetadata, false, Optional.empty());
   }
 }
