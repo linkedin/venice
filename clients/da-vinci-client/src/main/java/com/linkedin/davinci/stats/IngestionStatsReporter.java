@@ -115,7 +115,7 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
         new IngestionStatsGauge(this, () -> getStats().getReadyToServeWithRTLag(), 0));
 
     // Do not need to check store name here as per user system store is not in active/active mode.
-    if (getStats().getIngestionTask().isActiveActiveReplicationEnabled()) {
+    if (null != getStats() && getStats().getIngestionTask().isActiveActiveReplicationEnabled()) {
       registerSensor(UPDATE_IGNORED_DCR, new IngestionStatsGauge(this, () -> getStats().getUpdateIgnoredRate(), 0));
       registerSensor(TOTAL_DCR, new IngestionStatsGauge(this, () -> getStats().getTotalDCRRate(), 0));
       registerSensor(
