@@ -24,7 +24,7 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.Test;
 
 
-public class TopicManagerITest extends TopicManagerTest {
+public class TopicManagerIntegrationTest extends TopicManagerTest {
   private PubSubBrokerWrapper pubSubBrokerWrapper;
 
   @AfterClass
