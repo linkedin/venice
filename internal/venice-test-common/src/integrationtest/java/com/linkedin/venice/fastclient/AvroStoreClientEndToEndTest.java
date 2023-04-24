@@ -352,12 +352,12 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
             String key = keyPrefix + i;
             keys.add(key);
           }
-          Map<String, TestValueSchema> resultMap = specificFastClient.batchGet(keys).get();
-          assertEquals(resultMap.size(), recordCnt);
 
-          for (int i = 0; i < recordCnt; ++i) {
-            String key = keyPrefix + i;
-            assertEquals(resultMap.get(key).int_field, i);
+          try {
+            specificFastClient.batchGet(keys).get();
+            fail();
+          } catch (VeniceClientException e) {
+            assertTrue(e.getMessage().endsWith("metadata is not ready, attempting to re-initialize"));
           }
         } else {
           throw new VeniceException("unsupported batchGetKeySize: " + batchGetKeySize);
