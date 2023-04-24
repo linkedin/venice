@@ -21,3 +21,4 @@ internal/venice-test-common/src/jmh/generated
 _site/
 Gemfile.lock
 .bundles_cache
+rocksdb/

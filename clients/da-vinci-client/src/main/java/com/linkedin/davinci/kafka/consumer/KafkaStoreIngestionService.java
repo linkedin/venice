@@ -104,6 +104,7 @@ import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -1204,8 +1205,18 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     int amplificationFactor = PartitionUtils.getAmplificationFactor(metadataRepo, topicName);
     int offset = amplificationFactor * partition;
     for (int subPartition: PartitionUtils.getSubPartitions(partition, amplificationFactor)) {
-      OffsetRecord offsetRecord =
-          new OffsetRecord(offsetRecordArray.get(subPartition - offset).array(), partitionStateSerializer);
+      byte[] offsetRecordByteArray = offsetRecordArray.get(subPartition - offset).array();
+      OffsetRecord offsetRecord = null;
+      try {
+        offsetRecord = new OffsetRecord(offsetRecordByteArray, partitionStateSerializer);
+      } catch (Exception e) {
+        LOGGER.error(
+            "Caught exception when deserializing offset record byte array: {} for topic: {}, subPartition: {}.",
+            Arrays.toString(offsetRecordByteArray),
+            topicName,
+            subPartition);
+        throw e;
+      }
       storageMetadataService.put(topicName, subPartition, offsetRecord);
       LOGGER
           .info("Updated OffsetRecord: {} for topic: {}, partition: {}", offsetRecord.toString(), topicName, partition);

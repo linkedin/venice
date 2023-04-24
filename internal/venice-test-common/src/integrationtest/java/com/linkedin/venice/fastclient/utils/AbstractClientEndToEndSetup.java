@@ -1,6 +1,7 @@
 package com.linkedin.venice.fastclient.utils;
 
 import static com.linkedin.venice.ConfigKeys.SERVER_HTTP2_INBOUND_ENABLED;
+import static com.linkedin.venice.ConfigKeys.SERVER_QUOTA_ENFORCEMENT_ENABLED;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_CLUSTER_NAME;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_PARTITION_ID;
 import static com.linkedin.venice.system.store.MetaStoreWriter.KEY_STRING_STORE_NAME;
@@ -22,6 +23,7 @@ import com.linkedin.venice.fastclient.schema.TestValueSchema;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterCreateOptions;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.Version;
@@ -92,7 +94,6 @@ public abstract class AbstractClientEndToEndSetup {
    * is faster than the counter decrement following a successful get, so some get() calls will
    * not be sent due to blocked instances. Setting this variable to be 100 from the tests for now.
    * This needs to be discussed further.
-    */
   public final Object[] BATCH_GET_KEY_SIZE = { 2, recordCnt };
 
   @DataProvider(name = "FastClient-Four-Boolean-And-A-Number")
@@ -110,7 +111,17 @@ public abstract class AbstractClientEndToEndSetup {
     Utils.thisIsLocalhost();
     Properties props = new Properties();
     props.put(SERVER_HTTP2_INBOUND_ENABLED, "true");
-    veniceCluster = ServiceFactory.getVeniceCluster(1, 2, 1, 2, 100, true, false, props);
+    props.put(SERVER_QUOTA_ENFORCEMENT_ENABLED, "true");
+    VeniceClusterCreateOptions createOptions = new VeniceClusterCreateOptions.Builder().numberOfControllers(1)
+        .numberOfServers(2)
+        .numberOfRouters(1)
+        .replicationFactor(2)
+        .partitionSize(100)
+        .sslToStorageNodes(true)
+        .sslToKafka(false)
+        .extraProperties(props)
+        .build();
+    veniceCluster = ServiceFactory.getVeniceCluster(createOptions);
 
     r2Client = ClientTestUtils.getR2Client(ClientTestUtils.FastClientHTTPVariant.HTTP_2_BASED_HTTPCLIENT5);
 
