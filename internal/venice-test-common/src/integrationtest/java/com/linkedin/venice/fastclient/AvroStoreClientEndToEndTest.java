@@ -221,7 +221,6 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
   private void runTestWithClientException(
       ClientConfig.ClientConfigBuilder clientConfigBuilder,
       boolean batchGet,
-      int batchGetKeySize,
       Consumer<MetricsRepository> statsValidation,
       Optional<AvroGenericStoreClient> vsonThinClient) throws Exception {
     MetricsRepository metricsRepositoryForGenericClient = new MetricsRepository();
@@ -234,56 +233,24 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
         getGenericFastVsonClient(clientConfigBuilder.clone(), new MetricsRepository(), vsonThinClient, true);
     try {
       if (batchGet) {
-        // test batch get of size 2 (current default max)
-        if (batchGetKeySize == 2) {
-          for (int i = 0; i < recordCnt - 1; ++i) {
-            String key1 = keyPrefix + i;
-            String key2 = keyPrefix + (i + 1);
-            Set<String> keys = new HashSet<>();
-            keys.add(key1);
-            keys.add(key2);
-            try {
-              genericFastClient.batchGet(keys).get();
-              fail();
-            } catch (VeniceClientException e) {
-              assertTrue(e.getMessage().endsWith("metadata is not ready, attempting to re-initialize"));
-            } catch (ExecutionException e) {
-              assertTrue(e.getCause().getMessage().endsWith("metadata is not ready, attempting to re-initialize"));
-            }
+        Set<String> keys = new HashSet<>();
+        for (int i = 0; i < recordCnt; ++i) {
+          String key = keyPrefix + i;
+          keys.add(key);
+        }
 
-            // Test Vson client
-            try {
-              genericFastVsonClient.batchGet(keys).get();
-              fail();
-            } catch (VeniceClientException e) {
-              assertTrue(e.getMessage().endsWith("metadata is not ready, attempting to re-initialize"));
-            } catch (ExecutionException e) {
-              assertTrue(e.getCause().getMessage().endsWith("metadata is not ready, attempting to re-initialize"));
-            }
-          }
-        } else if (batchGetKeySize == recordCnt) {
-          // test batch get of size recordCnt (configured)
-          Set<String> keys = new HashSet<>();
-          for (int i = 0; i < recordCnt; ++i) {
-            String key = keyPrefix + i;
-            keys.add(key);
-          }
-          try {
-            genericFastClient.batchGet(keys).get();
-            fail();
-          } catch (VeniceClientException e) {
-            assertTrue(e.getMessage().endsWith("metadata is not ready, attempting to re-initialize"));
-          }
-
-          // vson
-          try {
-            genericFastVsonClient.batchGet(keys).get();
-            fail();
-          } catch (VeniceClientException e) {
-            assertTrue(e.getMessage().endsWith("metadata is not ready, attempting to re-initialize"));
-          }
-        } else {
-          throw new VeniceException("unsupported batchGetKeySize: " + batchGetKeySize);
+        try {
+          genericFastClient.batchGet(keys).get();
+          fail();
+        } catch (VeniceClientException | ExecutionException e) {
+          assertTrue(e.getMessage().endsWith("metadata is not ready, attempting to re-initialize"));
+        }
+        // Test Vson client
+        try {
+          genericFastVsonClient.batchGet(keys).get();
+          fail();
+        } catch (VeniceClientException | ExecutionException e) {
+          assertTrue(e.getMessage().endsWith("metadata is not ready, attempting to re-initialize"));
         }
       } else {
         for (int i = 0; i < recordCnt; ++i) {
@@ -292,19 +259,15 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
           try {
             genericFastClient.get(key).get();
             fail();
-          } catch (VeniceClientException e) {
+          } catch (VeniceClientException | ExecutionException e) {
             assertTrue(e.getMessage().endsWith("metadata is not ready, attempting to re-initialize"));
-          } catch (ExecutionException e) {
-            assertTrue(e.getCause().getMessage().endsWith("metadata is not ready, attempting to re-initialize"));
           }
           // Test Vson client
           try {
             genericFastVsonClient.get(key).get();
             fail();
-          } catch (VeniceClientException e) {
+          } catch (VeniceClientException | ExecutionException e) {
             assertTrue(e.getMessage().endsWith("metadata is not ready, attempting to re-initialize"));
-          } catch (ExecutionException e) {
-            assertTrue(e.getCause().getMessage().endsWith("metadata is not ready, attempting to re-initialize"));
           }
         }
       }
@@ -328,50 +291,27 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
         true);
     try {
       if (batchGet) {
-        // test batch get of size 2 (default)
-        if (batchGetKeySize == 2) {
-          for (int i = 0; i < recordCnt - 1; ++i) {
-            String key1 = keyPrefix + i;
-            String key2 = keyPrefix + (i + 1);
-            Set<String> keys = new HashSet<>();
-            keys.add(key1);
-            keys.add(key2);
-            try {
-              specificFastClient.batchGet(keys).get();
-              fail();
-            } catch (VeniceClientException e) {
-              assertTrue(e.getMessage().endsWith("metadata is not ready, attempting to re-initialize"));
-            } catch (ExecutionException e) {
-              assertTrue(e.getCause().getMessage().endsWith("metadata is not ready, attempting to re-initialize"));
-            }
-          }
-        } else if (batchGetKeySize == recordCnt) {
-          // test batch get of size recordCnt (configured)
-          Set<String> keys = new HashSet<>();
-          for (int i = 0; i < recordCnt; ++i) {
-            String key = keyPrefix + i;
-            keys.add(key);
-          }
+        Set<String> keys = new HashSet<>();
+        for (int i = 0; i < recordCnt; ++i) {
+          String key = keyPrefix + i;
+          keys.add(key);
+        }
 
-          try {
-            specificFastClient.batchGet(keys).get();
-            fail();
-          } catch (VeniceClientException e) {
-            assertTrue(e.getMessage().endsWith("metadata is not ready, attempting to re-initialize"));
-          }
-        } else {
-          throw new VeniceException("unsupported batchGetKeySize: " + batchGetKeySize);
+        try {
+          specificFastClient.batchGet(keys).get();
+          fail();
+        } catch (VeniceClientException | ExecutionException e) {
+          assertTrue(e.getMessage().endsWith("metadata is not ready, attempting to re-initialize"));
         }
       } else {
         for (int i = 0; i < recordCnt; ++i) {
           String key = keyPrefix + i;
+
           try {
             specificFastClient.get(key).get();
             fail();
-          } catch (VeniceClientException e) {
+          } catch (VeniceClientException | ExecutionException e) {
             assertTrue(e.getMessage().endsWith("metadata is not ready, attempting to re-initialize"));
-          } catch (ExecutionException e) {
-            assertTrue(e.getCause().getMessage().endsWith("metadata is not ready, attempting to re-initialize"));
           }
         }
       }
@@ -401,7 +341,9 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
             .setSpeculativeQueryEnabled(speculativeQueryEnabled)
             .setDualReadEnabled(dualRead)
             // default maxAllowedKeyCntInBatchGetReq is 2. configuring it to test different cases.
-            .setMaxAllowedKeyCntInBatchGetReq(recordCnt);
+            .setMaxAllowedKeyCntInBatchGetReq(recordCnt)
+            // this needs to be revisited to see how much this should be set. Current default is 50.
+            .setRoutingPendingRequestCounterInstanceBlockThreshold(recordCnt);
 
     // dualRead also needs thinClient
     AvroGenericStoreClient<String, GenericRecord> genericThinClient = null;
@@ -439,18 +381,12 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
     }
   }
 
-  @Test(dataProvider = "FastClient-Four-Boolean-And-A-Number", timeOut = TIME_OUT)
+  @Test(dataProvider = "Four-True-and-False", dataProviderClass = DataProviderUtils.class, timeOut = TIME_OUT)
   public void testFastClientWithoutServers(
       boolean multiGet,
       boolean dualRead,
       boolean speculativeQueryEnabled,
-      boolean useRequestBasedMetadata,
-      int batchGetKeySize) throws Exception {
-    if (multiGet == false && batchGetKeySize != (int) BATCH_GET_KEY_SIZE[0]) {
-      // redundant case as batchGetKeySize doesn't apply for single gets, so run only once
-      // TODO add a better dataProvider
-      return;
-    }
+      boolean useRequestBasedMetadata) throws Exception {
     if (useRequestBasedMetadata == false) {
       // we only test this case for the request based metadata as it relies on servers
       return;
@@ -481,14 +417,9 @@ public class AvroStoreClientEndToEndTest extends AbstractClientEndToEndSetup {
         clientConfigBuilder.setSpecificThinClient(specificThinClient);
         genericVsonThinClient = getGenericVsonThinClient();
 
-        runTestWithClientException(
-            clientConfigBuilder,
-            multiGet,
-            batchGetKeySize,
-            m -> {},
-            Optional.of(genericVsonThinClient));
+        runTestWithClientException(clientConfigBuilder, multiGet, m -> {}, Optional.of(genericVsonThinClient));
       } else {
-        runTestWithClientException(clientConfigBuilder, multiGet, batchGetKeySize, m -> {}, Optional.empty());
+        runTestWithClientException(clientConfigBuilder, multiGet, m -> {}, Optional.empty());
       }
     } finally {
       if (genericThinClient != null) {
