@@ -1958,6 +1958,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           setUpDaVinciPushStatusStore(clusterName, systemStoreType.extractRegularStoreName(storeName));
         }
 
+        // Update the store object to avoid potential system store flags reversion during repository.updateStore(store).
+        store = repository.getStore(storeName);
         version.setPushType(pushType);
         store.addVersion(version);
         // Apply cluster-level native replication configs
