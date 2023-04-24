@@ -14,6 +14,8 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.UPDATE_ACL;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
+import com.linkedin.venice.authentication.AuthenticationService;
+import com.linkedin.venice.authorization.AuthorizerService;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.AclResponse;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -24,8 +26,12 @@ import spark.Route;
 
 
 public class CreateStore extends AbstractRoute {
-  public CreateStore(boolean sslEnabled, Optional<DynamicAccessController> accessController) {
-    super(sslEnabled, accessController);
+  public CreateStore(
+      boolean sslEnabled,
+      Optional<DynamicAccessController> accessController,
+      Optional<AuthenticationService> authenticationService,
+      Optional<AuthorizerService> authorizerService) {
+    super(sslEnabled, accessController, authenticationService, authorizerService);
   }
 
   /**

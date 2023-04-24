@@ -27,8 +27,8 @@ public interface AuthorizerService {
    * Check if the principal has the permission to perform the method on the resource. Implementation should define how to handle
    * duplicate/conflicting ACE entries present for the resource and also how to handle presence of no AceEntries for a resource.
    *
-   * @param method what method is being performed.
-   * @param resource what resource the method is being performed
+   * @param method    what method is being performed.
+   * @param resource  what resource the method is being performed
    * @param principal who is performing the method on the resource.
    * @return {@code true} if principal has the permission to perform the method on the resource, otherwise return {@code false}.
    */
@@ -38,8 +38,8 @@ public interface AuthorizerService {
    * Check if the principal has the permission to perform the method on the resource. Implementation should define how to handle
    * duplicate/conflicting ACE entries present for the resource and also how to handle presence of no AceEntries for a resource.
    *
-   * @param method what method is being performed.
-   * @param resource what resource the method is being performed
+   * @param method       what method is being performed.
+   * @param resource     what resource the method is being performed
    * @param accessorCert who is performing the method on the resource.
    * @return {@code true} if principal has the permission to perform the method on the resource, otherwise return {@code false}.
    */
@@ -48,6 +48,7 @@ public interface AuthorizerService {
   /**
    * Return a list of existing AceEntries present for the given resource.
    * Implementations should return an empty AclBinding object when no acl's are present for the resource.
+   *
    * @param resource
    * @return {@link AclBinding} object containg the list of existing aceEntries. The AceEntry list may be empty if there is no existing ACL's provisioned.
    */
@@ -90,24 +91,37 @@ public interface AuthorizerService {
   /**
    * This may perform any initialization steps that may be necessary before start provisioning any ACL's for a resource. This
    * may be used to setup/allocate any metadata/context about the resource.
-   *
+   * <p>
    * This is optional to implement.
    * Implementation should mandate if this needs to be called before start provisioning any ACL's for the resource.
+   *
    * @param resource
    */
   public default void setupResource(Resource resource) {
-  };
+  }
+
+  ;
 
   /**
    * This may perform any finalization steps that may be necessary after all ACL's for a resource is deleted and the resource will
    * not be used later. This may be used to clean up any metadata/context information about the resource that was setup in
    * {@link #setupResource}.
-   *
+   * <p>
    * This is optional to implement.
    * Implementation should mandate if this needs to be called after deleting all ACL's for the resource.
+   *
    * @param resource
    */
   public default void clearResource(Resource resource) {
-  };
+  }
+
+  /**
+   * Tells whether the user is a super user or not. This is used to bypass ACL checks.
+   * @param principal
+   * @return true or false
+   */
+  public default boolean isSuperUser(Principal principal, String storeName) {
+    return false;
+  }
 
 }

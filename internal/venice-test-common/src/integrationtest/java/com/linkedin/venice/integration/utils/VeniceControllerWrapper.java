@@ -321,6 +321,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           metricsRepository,
           d2ServerList,
           Optional.empty(),
+          Optional.ofNullable(options.getAuthenticationService()),
           Optional.ofNullable(options.getAuthorizerService()),
           d2Client,
           consumerClientConfig,
@@ -409,7 +410,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       d2ServerList.add(createD2Server(zkAddress, securePort, true, isParent));
     }
     D2Client d2Client = D2TestUtils.getAndStartD2Client(zkAddress);
-    service = new VeniceController(configs, d2ServerList, Optional.empty(), d2Client);
+    service = new VeniceController(configs, d2ServerList, Optional.empty(), Optional.empty(), d2Client);
   }
 
   /***
