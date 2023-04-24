@@ -2577,6 +2577,11 @@ public class VeniceParentHelixAdmin implements Admin {
         // Dry-run generating Write Compute schemas before sending admin messages to enable Write Compute because Write
         // Compute schema generation may fail due to some reasons. If that happens, abort the store update process.
         addWriteComputeSchemaForStore(clusterName, storeName, true);
+        if (!setStore.chunkingEnabled) {
+          LOGGER.info("Enabling chunking for the new write-compute store: {}", storeName);
+          setStore.chunkingEnabled = true;
+          updatedConfigsList.add(CHUNKING_ENABLED);
+        }
       }
 
       if (!veniceHelixAdmin.isHybrid(currStore.getHybridStoreConfig())

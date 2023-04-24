@@ -309,6 +309,71 @@ public class TestParentControllerWithMultiDataCenter {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
+  public void testUpdateStoreOnParentEnableWriteCompute() {
+    String clusterName = CLUSTER_NAMES[0];
+    String storeName = Utils.getUniqueString("store");
+    String valueSchema = "{\n" + "  \"type\": \"record\",\n" + "  \"name\": \"TestRecord\",\n" + "  \"fields\": [\n"
+        + "    {\"name\": \"int_field\", \"type\": \"int\", \"default\": 0},\n"
+        + "    {\"name\": \"string_field\", \"type\": \"string\", \"default\": \"\"}\n" + "  ]\n" + "}";
+
+    String parentControllerURLs = multiRegionMultiClusterWrapper.getControllerConnectString();
+    try (ControllerClient parentControllerClient =
+        ControllerClient.constructClusterControllerClient(clusterName, parentControllerURLs)) {
+      /**
+       * Create a test store
+       */
+      NewStoreResponse newStoreResponse =
+          parentControllerClient.retryableRequest(5, c -> c.createNewStore(storeName, "", "\"string\"", valueSchema));
+      Assert.assertFalse(
+          newStoreResponse.isError(),
+          "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+
+      /**
+       * Send UpdateStore to parent controller to update a store config
+       */
+      final long expectedHybridRewindSeconds = 100;
+      final long expectedHybridOffsetLagThreshold = 100;
+      final BufferReplayPolicy expectedHybridBufferReplayPolicy = BufferReplayPolicy.REWIND_FROM_SOP;
+      final UpdateStoreQueryParams updateStoreParams =
+          new UpdateStoreQueryParams().setHybridRewindSeconds(expectedHybridRewindSeconds)
+              .setHybridOffsetLagThreshold(expectedHybridOffsetLagThreshold)
+              .setHybridBufferReplayPolicy(expectedHybridBufferReplayPolicy)
+              .setWriteComputationEnabled(true);
+
+      TestWriteUtils.updateStore(storeName, parentControllerClient, updateStoreParams);
+
+      ControllerClient[] controllerClients = new ControllerClient[childDatacenters.size() + 1];
+      controllerClients[0] = parentControllerClient;
+      for (int i = 0; i < childDatacenters.size(); i++) {
+        controllerClients[i + 1] =
+            new ControllerClient(clusterName, childDatacenters.get(i).getControllerConnectString());
+      }
+
+      /**
+       * Verify parent controller and all child controllers have updated the config
+       */
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, true, () -> {
+        for (ControllerClient controllerClient: controllerClients) {
+          StoreResponse storeResponse = controllerClient.getStore(storeName);
+          Assert.assertFalse(storeResponse.isError());
+          StoreInfo storeInfo = storeResponse.getStore();
+
+          Assert.assertNotNull(storeInfo.getHybridStoreConfig());
+          Assert.assertEquals(
+              storeInfo.getHybridStoreConfig().getOffsetLagThresholdToGoOnline(),
+              expectedHybridOffsetLagThreshold);
+          Assert.assertEquals(storeInfo.getHybridStoreConfig().getRewindTimeInSeconds(), expectedHybridRewindSeconds);
+          Assert
+              .assertEquals(storeInfo.getHybridStoreConfig().getBufferReplayPolicy(), expectedHybridBufferReplayPolicy);
+          Assert.assertTrue(storeInfo.isWriteComputationEnabled());
+          Assert.assertTrue(storeInfo.isChunkingEnabled()); // Chunking will be automatically enabled when enabling
+                                                            // write compute
+        }
+      });
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
   public void testEnableActiveActiveReplicationSchema() {
     String clusterName = CLUSTER_NAMES[0];
     String storeName = Utils.getUniqueString("store");

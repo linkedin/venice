@@ -66,10 +66,11 @@ public class TopicMessageFinder {
     int partitionCount = storeInfo.getPartitionCount();
     // Parse key string and figure out the right partition
     byte[] serializedKey = serializeKey(keyString, keySchemaStr);
+    boolean chunking = false;
     if (version != -1) {
       if (storeInfo.getVersion(version).isPresent()) {
         if (storeInfo.getVersion(version).get().isChunkingEnabled()) {
-          serializedKey = new KeyWithChunkingSuffixSerializer().serializeNonChunkedKey(serializedKey);
+          chunking = true;
         }
         partitionCount = storeInfo.getVersion(version).get().getPartitionCount();
       } else {
@@ -83,6 +84,11 @@ public class TopicMessageFinder {
 
     int assignedPartition = new DefaultVenicePartitioner().getPartitionId(serializedKey, partitionCount);
     LOGGER.info("Assigned partition: {} for key: {}", assignedPartition, keyString);
+
+    if (chunking) {
+      // When chunking is enabled, we need to append the suffix before looking up Kafka topic.
+      serializedKey = new KeyWithChunkingSuffixSerializer().serializeNonChunkedKey(serializedKey);
+    }
 
     TopicPartition topicPartition = new TopicPartition(topic, assignedPartition);
     long startOffset;
