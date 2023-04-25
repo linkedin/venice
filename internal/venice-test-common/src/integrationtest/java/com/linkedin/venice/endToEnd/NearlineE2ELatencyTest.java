@@ -4,6 +4,7 @@ import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.utils.IntegrationTestPushUtils.*;
 import static com.linkedin.venice.utils.TestWriteUtils.*;
 
+import com.linkedin.davinci.stats.IngestionStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.StoreHealthAuditResponse;
@@ -32,6 +33,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.logging.log4j.LogManager;
@@ -170,14 +172,25 @@ public class NearlineE2ELatencyTest {
       throw new RuntimeException(e);
     }
 
+    AtomicBoolean producerToLocalBroker = new AtomicBoolean(false);
+    AtomicBoolean localBrokerToReadyToServe = new AtomicBoolean(false);
     cluster0.getVeniceServers().forEach(s -> {
-      VeniceServerWrapper veniceServerWrapper = (VeniceServerWrapper) s;
-      VeniceServer veniceServer = veniceServerWrapper.getVeniceServer();
+      VeniceServer veniceServer = s.getVeniceServer();
       MetricsRepository metricsRepository = veniceServer.getMetricsRepository();
       metricsRepository.metrics().forEach((k, v) -> {
-        LOGGER.info("Server: {} , Metric: {}, Value: {}", veniceServerWrapper.getAddressForLogging(), k, v);
+        if (k.contains(IngestionStats.NEARLINE_PRODUCER_TO_LOCAL_BROKER_LATENCY)) {
+          LOGGER.info("Server: {} , Metric: {}, Value: {}", s.getAddressForLogging(), k, v.value());
+          producerToLocalBroker.set(true);
+          // Assert.assertTrue(v.value() > 0);
+        } else if (k.contains(IngestionStats.NEARLINE_LOCAL_BROKER_TO_READY_TO_SERVE_LATENCY)) {
+          LOGGER.info("Server: {} , Metric: {}, Value: {}", s.getAddressForLogging(), k, v.value());
+          localBrokerToReadyToServe.set(true);
+          // Assert.assertTrue(v.value() > 0);
+        }
       });
     });
+
+    // Assert.assertTrue(metricFound.get());
 
     // Primary servers receive from broker
     // Secondary servers receive from primary servers
