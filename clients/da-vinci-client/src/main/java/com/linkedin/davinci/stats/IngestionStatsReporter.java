@@ -114,6 +114,21 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
         READY_TO_SERVE_WITH_RT_LAG_METRIC_NAME,
         new IngestionStatsGauge(this, () -> getStats().getReadyToServeWithRTLag(), 0));
 
+    if (!VeniceSystemStoreUtils.isSystemStore(storeName)) {
+      registerSensor(
+          NEARLINE_PRODUCER_TO_LOCAL_BROKER_LATENCY + "_rt_avg",
+          new IngestionStatsGauge(this, () -> getStats().getNearlineProducerToLocalBrokerLatencyAvg(), 0));
+      registerSensor(
+          NEARLINE_PRODUCER_TO_LOCAL_BROKER_LATENCY + "_rt_max",
+          new IngestionStatsGauge(this, () -> getStats().getNearlineProducerToLocalBrokerLatencyMax(), 0));
+      registerSensor(
+          NEARLINE_LOCAL_BROKER_TO_READY_TO_SERVE_LATENCY + "_rt_avg",
+          new IngestionStatsGauge(this, () -> getStats().getNearlineLocalBrokerToReadyToServeLatencyAvg(), 0));
+      registerSensor(
+          NEARLINE_LOCAL_BROKER_TO_READY_TO_SERVE_LATENCY + "_rt_max",
+          new IngestionStatsGauge(this, () -> getStats().getNearlineLocalBrokerToReadyToServeLatencyMax(), 0));
+    }
+
     // Do not need to check store name here as per user system store is not in active/active mode.
     if (null != getStats() && getStats().getIngestionTask().isActiveActiveReplicationEnabled()) {
       registerSensor(UPDATE_IGNORED_DCR, new IngestionStatsGauge(this, () -> getStats().getUpdateIgnoredRate(), 0));
@@ -150,18 +165,6 @@ public class IngestionStatsReporter extends AbstractVeniceStatsReporter<Ingestio
             new IngestionStatsGauge(this, () -> getStats().getRegionHybridAvgConsumedOffset(regionId), 0));
       }
     }
-    registerSensor(
-        NEARLINE_PRODUCER_TO_LOCAL_BROKER_LATENCY + "rt_avg",
-        new IngestionStatsGauge(this, () -> getStats().getNearlineProducerToLocalBrokerLatencyAvg(), 0));
-    registerSensor(
-        NEARLINE_PRODUCER_TO_LOCAL_BROKER_LATENCY + "rt_max",
-        new IngestionStatsGauge(this, () -> getStats().getNearlineProducerToLocalBrokerLatencyMax(), 0));
-    registerSensor(
-        NEARLINE_LOCAL_BROKER_TO_READY_TO_SERVE_LATENCY + "rt_avg",
-        new IngestionStatsGauge(this, () -> getStats().getNearlineLocalBrokerToReadyToServeLatencyAvg(), 0));
-    registerSensor(
-        NEARLINE_LOCAL_BROKER_TO_READY_TO_SERVE_LATENCY + "rt_max",
-        new IngestionStatsGauge(this, () -> getStats().getNearlineLocalBrokerToReadyToServeLatencyMax(), 0));
   }
 
   private static class IngestionStatsGauge extends Gauge {
