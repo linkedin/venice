@@ -1,6 +1,6 @@
 package com.linkedin.venice.fastclient;
 
-import static org.testng.Assert.*;
+import static org.testng.Assert.assertTrue;
 import static org.testng.AssertJUnit.assertEquals;
 
 import com.linkedin.r2.transport.common.Client;
